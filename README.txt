@@ -15,3 +15,6 @@ Got ^M in the readme file, build files are fine.
 
 Using net beans, can we do a checkin?
 
+
+Checked in by Mike Riley (lvskiprof@cox.net)
+
