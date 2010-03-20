@@ -9,5 +9,6 @@ and hopefully checked backed in again.
 
 20 Mar 2010
 Checked out from willow in the lab
-No password prompted for when checked out.  Need password to checkin
-Got ^M in the readme file
+No password prompted for when checked out.  Need password to checkin. Prompts for it.
+
+Got ^M in the readme file, build files are fine.
