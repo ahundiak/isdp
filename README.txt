@@ -12,3 +12,6 @@ Checked out from willow in the lab
 No password prompted for when checked out.  Need password to checkin. Prompts for it.
 
 Got ^M in the readme file, build files are fine.
+
+Using net beans, can we do a checkin?
+
