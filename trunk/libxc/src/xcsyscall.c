@@ -87,7 +87,7 @@ void *XC_mmap (uint addr, uint len, int prot, int flags, int fd, uint off)
 #if defined(__mips__)
   void *mapaddr = mmap ((void *)addr, len, prot, flags, fd, off);
 #else
-  void *mapaddr = (void *)mmap (addr, len, prot, flags, fd, off);
+  void *mapaddr = (void *)mmap ((caddr_t)addr, len, prot, flags, fd, off);
 #endif
 /*
   if (mapaddr == (caddr_t)-1)

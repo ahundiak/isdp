@@ -5,6 +5,7 @@
 #include <string.h>
 #include <fcntl.h>
 #include <stdarg.h>
+#include <unistd.h>
 #include <link.h>
 #ifndef SunOS_4x
 #include <stdlib.h>
@@ -17,6 +18,7 @@
 #include "objaccess.h"
 #include "dloadpvt.h"
 #include "dload.h"
+#include "xcsyscall.h"
 #if CLIX
 #include <sys/pioctl.h>
 extern char *tempnam (char *, char *);

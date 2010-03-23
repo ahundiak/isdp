@@ -1,4 +1,6 @@
 #include <stdio.h>
+#include <unistd.h>
+#include <stdlib.h>
 #include "dload.h"
 #include "test.h"
 
@@ -189,7 +191,7 @@ void runtests ()
 }
 
 
-main ()
+int main (int argc, char **argv)
 {
   int what;
 

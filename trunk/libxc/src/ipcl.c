@@ -1,5 +1,5 @@
 #include <assert.h>
-#include <sys/types.h>
+#include <unistd.h>
 #include <sys/ipc.h>
 #include <sys/msg.h>
 #include <sys/sem.h>
@@ -7,6 +7,7 @@
 #include <errno.h>
 #include <stdio.h>
 #include "ipcl.h"
+#include "malloc.h"
 
 #define NOT 	!
 #define SYSERR -1

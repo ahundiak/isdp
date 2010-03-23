@@ -1,3 +1,5 @@
+#include <strings.h>
+#include <stdio.h>
 #include "dload.h"
 #include "test.h"
 extern char *Main_redef1 ();

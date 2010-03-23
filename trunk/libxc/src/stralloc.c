@@ -1,3 +1,4 @@
+#include <strings.h>
 #include <memory.h>
 #include <malloc.h>
 
@@ -8,7 +9,10 @@
 #define  MAXBUCKET  (4*NUMSLOTS - 1)  /* longer than this gets malloced */
 
 typedef unsigned char uchar;
+
+#ifndef SUNOS58
 typedef unsigned int  uint;
+#endif
 
 #define  ELEMENT  union elem
 ELEMENT {

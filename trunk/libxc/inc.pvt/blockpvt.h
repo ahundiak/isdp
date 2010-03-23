@@ -3,6 +3,12 @@
 
 /* architecture dependent parameters */
 
+#if SunOS_4x
+extern trapreturn ();
+#else
+#define trapreturn(x,y)
+#endif
+
 #if defined(__clipper__) | defined(__sparc__) | defined(__mips__) | defined(__i386__)
 #define  ALIGNSZ           8  /* address alignment (minimum value is 4)    */
 #define  PAGESZ         4096  /* size of a page (ALIGNSZ multiple assumed) */
@@ -86,7 +92,7 @@
 /*********/
 /* TYPES */
 /*********/
-#if !defined(SYS_TYPES_H) && !defined(__sys_types_h)
+#if !defined(SYS_TYPES_H) && !defined(__sys_types_h)  && !defined(_SYS_TYPES_H)
 typedef unsigned int   uint;
 typedef unsigned short ushort;
 #endif

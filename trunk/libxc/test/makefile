@@ -1,54 +1,34 @@
 .SUFFIXES: .c .o .so
 
-XCLIBS = $(LIB)/libxc.a $(LIB)/libxcmalloc.a
+INC_PVT	= ../inc.pvt
+INC_PUB = ../include
 
-IPATH =  \
-	-I$(INC_PVT) \
-	-I$(INC_PUB)
+XCLIBS	= -lxc -lxcmalloc
+DOPT=-DRUN_X=1 -DX11=1 -DLITTLE_ENDIAN=1 -DSYSV=1 -DSYS5=1 -DSVR4=1 -DSUNOS=1 -DSUNOS5=1 -DSUNOS58=1 -Di386=1 -D__i386=1 -DINTEL=1 -DUNIX=1 -DSunOS_5x=1 -D__i386__=1 -DSunOS=1
+COPT	= -g -Xa -xCC -m32 -Kpic -c -I$(INC_PVT) -I$(INC_PUB) $(DOPT)
 
 # Main target
 
-TARGET: objtester testdrive DLtest_1.o DLtest_2.o DLtest_2A.o DLtest_2B.o DLtest_3.o DLtest_4.o DLtest_4A.o DLtest_4B.o DLtest_5.o DLtest_5A.o DLtest_5B.o DLtest_6.o
+TARGET: objtester testdrive DLtest_1.so DLtest_2.so DLtest_2A.so DLtest_2B.so DLtest_3.so DLtest_4.so DLtest_4A.so DLtest_4B.so DLtest_5.so DLtest_5A.so DLtest_5B.so DLtest_6.so
 
-objtester: objtester.o $(XCLIBS)
-	$(CC) $(COPT) -o objtester objtester.o $(XCLIBS) $(LINKLIBS)
+objtester: objtester.o
+	$(CC) -g -o objtester objtester.o $(XCLIBS)
 
-testdrive: testdrive.o $(XCLIBS)
-	$(CC) $(COPT) -o testdrive testdrive.o $(XCLIBS) $(LINKLIBS)
+testdrive: testdrive.o
+	$(CC) -g -o testdrive testdrive.o $(XCLIBS)
 
 # Dependencies
 
 objtester.o: \
-	$(TEST)/objtester.c
+	objtester.c
 
 testdrive.o: \
-	$(TEST)/testdrive.c
+	testdrive.c
 
 # Rules
 
 .c.o:
-	@if [ "$(WHY)" ]; then echo "\t$<: $?"; fi
-	@if [ -z "$(VERBOSE_RULES)" ]; \
-	 then \
-	     echo "\t$< -> $*.o"; \
-	 else \
-	     echo "\t$(CC) $(COPT) $(IPATH) $(DOPT) $(DOPT1) -c $*.c"; \
-	 fi
-	@$(CC) $(COPT) $(IPATH) $(DOPT) $(DOPT1) -c $*.c
-	@echo
+	$(CC) $(COPT) -c $*.c
 
-.c.so:
-	@if [ "$(WHY)" ]; then echo "\t$<: $?"; fi
-	@if [ -z "$(VERBOSE_RULES)" ]; \
-	 then \
-	     echo "\t$< -> $*.so"; \
-	 else \
-	     echo "\t$(CC) $(COPT) $(CCSOFLAGS) $(IPATH) $(DOPT) -c $*.c"; \
-	 fi
-	@$(CC) $(COPT) $(CCSOFLAGS) $(IPATH) $(DOPT) $(DOPT1) -c $*.c
-	@if [ ! -z "$(VERBOSE_RULES)" ]; \
-	 then \
-	     echo "\t$(LD) $(LDSOFLAGS) -o $*.so $*.o"; \
-	 fi
-	@$(LD) $(LDSOFLAGS) -o $*.so $*.o
-	@echo
+.o.so:	DLtest_1.o DLtest_2.o DLtest_2A.o DLtest_2B.o DLtest_3.o DLtest_4.o DLtest_4A.o DLtest_4B.o DLtest_5.o DLtest_5A.o DLtest_5B.o DLtest_6.o
+	$(LD) -G $< -o $@

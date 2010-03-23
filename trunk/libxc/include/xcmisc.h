@@ -18,7 +18,6 @@ extern int   slock          (int *lockptr);
 extern int   slockw         (int *lockptr);
 extern char *stralloc       (char *string);
 extern void  strfree        (char *string);
-extern int   trapreturn     (void (*fn)(), void *arg);
 extern char *whence         (char *name, char *workdir);
 #else  /* K&R "C" */
 extern char *exefile        ();

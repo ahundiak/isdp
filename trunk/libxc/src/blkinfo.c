@@ -1,3 +1,5 @@
+#include <stdio.h>
+#include <string.h>
 #include <alloca.h>
 #include "blockpvt.h"
 
@@ -80,7 +82,7 @@ CHUNK *chunk;
   return 0;
 }
 
-static int chunkindex (size)
+static int chunkindex (int size)
 {
   if (size <= 100)   return 0;
   if (size <= 200)   return 1;

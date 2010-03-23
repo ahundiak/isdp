@@ -1,6 +1,10 @@
+#include <stdio.h>
+#include <unistd.h>
+#include <stdlib.h>
+#include <strings.h>
 #include "objaccess.h"
 
-main (int argc, char **argv)
+int main (int argc, char **argv)
 {
   char file[256];
   OBJFD *fd;
