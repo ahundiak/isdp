@@ -1,7 +1,7 @@
 #ifndef FImin_included
 #define FImin_included	1
 
-#include "FIimport.h"   /* Import must be included first for shlib */
+// #include "FIimport.h"   /* Import must be included first for shlib */
 
 #include <X11/Xlib.h>  /* X11-4/17/90 */
 #include <X11/Xatom.h>

@@ -1,6 +1,7 @@
 #ifndef FIimport_included
 #define FIimport_included	1
-
+#if 0
+/* 23 Mar 2010 - Entire file is obsolete, do not include it, delete later */
 
 
 /**********************************************************************/
@@ -28,31 +29,6 @@
 
 /* dmb:09/23/92: We should probably extend the use of standard    */
 /* include files here and get away from defining these ourselves. */
-
-/* dmb:09/23/92: Begin original externs.  */
-
-	/*** functions imported from libc.a:	***/
-extern int	access();
-extern int	atoi();
-extern double	atof();
-extern int	close();
-extern int	fclose();
-
-#if defined(mips)
-extern FILE * fopen(const char *, const char *);
-#else
-extern FILE *	fopen();
-#endif
-
-#if defined(clipper)
-extern int	fprintf __((FILE *, const char *, ...));
-#elif defined(mips) || defined(sun) || defined(sparc) || defined(i386)
-extern int	fprintf (FILE *, const char *, ...);
-#elif (!defined(hpux))
-
-#else
-extern int	fprintf();
-#endif
 
 #if defined(clipper)
 extern _MY_SIZE_T fread __((void *, size_t, size_t, FILE *));
@@ -489,5 +465,6 @@ extern FILE		_iob[];
 
 #endif	/*** defined(clipper) || defined(mips) || defined(sun) || defined(sparc) ***/
 
+#endif
 #endif /* FIimport_included */
 

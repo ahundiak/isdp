@@ -3,9 +3,9 @@
 #endif
 
 #include "FImin.h"
-
-#include <sys/errno.h>
 #include <stdio.h>
+#include <sys/errno.h>
+int errno;
 #include <setjmp.h>
 #if !defined(i86pc)
 #include <sys/utsname.h>

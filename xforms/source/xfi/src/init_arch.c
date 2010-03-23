@@ -1,3 +1,5 @@
+/* 23 Mar 2010 - This is another obsolete import shared function hack delete it */
+
 #include <stdio.h>
 #include <errno.h>
 #include <ctype.h>
