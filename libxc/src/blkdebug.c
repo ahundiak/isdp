@@ -4,6 +4,9 @@
 
 #include <signal.h>
 #include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <signal.h>
 #include "blockpvt.h"
 
 static void mkchksum (void *chksum, void *ptr, uint size)
@@ -38,7 +41,7 @@ static void abort1 (char *text, void *addr, uint size, char *name, int cnt)
   printf ("\n*** Error detected on entry to %s after %d calls\n", name, cnt);
   fflush (stdout);
   signal (SIGTRAP, SIG_IGN);
-  kill (getpid (), SIGTRAP);
+  (void) kill (getpid (), SIGTRAP);
   exit (1);
 }
 

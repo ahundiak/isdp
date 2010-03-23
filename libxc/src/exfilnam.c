@@ -1,8 +1,10 @@
+#include <stdlib.h>
 #include <sys/param.h>
 #include <errno.h>
 #include <malloc.h>
 #include <string.h>
 #include "error.h"		/* libxc header file */
+#include "expshell.h"
 
 #define BADSIZE		0
 #define NULLNAME	1

@@ -1,4 +1,11 @@
+#include <strings.h>
+#include <unistd.h>
+#include "malloc.h"
+
+#ifndef NULL
 #define  NULL  (char *)0
+#endif
+
 #if defined(__STDC__) && defined(__mips__)
 #define  environ  _environ
 #endif

@@ -1,6 +1,10 @@
 #include <stdio.h>
+#include <strings.h>
 #include "blockpvt.h"
+#include "blkinfo.h"
+#include "blkdebug.h"
 #include "malloc.h"
+#include "xcmisc.h"
 
 #define  GRABSZ       (5*PAGESZ)    /* extra space to get at each growmalloc */
 #define  BS_INC            5        /* size increment for BStack             */
@@ -55,7 +59,7 @@ uint   size;
   oldbrk = sbrk (0);
   newbrk = (char *)ALIGN (oldbrk + size + GRABSZ, PAGESZ);
   if (brk (newbrk) != -1) {
-    growblk (blk, oldbrk, newbrk - oldbrk);
+    growblk (blk, oldbrk, (unsigned) (newbrk - oldbrk));
     return MAL_RETRY;
   }
 

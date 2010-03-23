@@ -1,7 +1,7 @@
 #ifndef _VLA_H
 #define _VLA_H  1
 
-#define vla(t)     struct { unsigned int incr; unsigned int dim; t (*body); }
+#define vla(t)     struct { unsigned int incr; unsigned int dim; t *body;}
 
 #ifndef VLA_C
 #define Vdat(v)      ((v).body)

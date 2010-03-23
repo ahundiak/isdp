@@ -2,18 +2,12 @@
 /*             THESE ARE CURRENTLY PRIVATE INTERNAL ROUTINES                 */
 /*                 DO NOT DOCUMENT THEM AT THIS TIME!!!                      */
 /*****************************************************************************/
-#include "hash.h"
+#include <strings.h>
+#include "namecache.h"
 
 #define  AVGNAMELEN  18		/* average name length */
 #define  GROWFACTOR  1.5	/* cache growth factor */
 
-typedef struct ncache NAMECACHE;
-struct ncache {
-    int        next;
-    int        alloc;
-    char      *cache;
-    HASHTABLE *dups;
-};
 
 static char *addrec;
 

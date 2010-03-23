@@ -6,13 +6,16 @@
 #include <sys/stat.h>
 #include <string.h>
 #include <fcntl.h>
+#include <stdio.h>
 #include <ar.h>
 #include "xcmisc.h"
 #include "errordef.h"
 #include "vla.h"
 #include "malloc.h"
+#include "namecache.h"
 #include "objaccess.h"
 #include "objpvt.h"
+#include "xcsyscall.h"
 
 /* need a "xcsyscall.h" include file for this later */
 
@@ -516,7 +519,7 @@ static int get_global_symbols (struct objpriv *pfd)
 {
   int            nsyms, ngsyms, ndx;
   char          *names;
-  void          *ncache;
+  NAMECACHE     *ncache;
   struct scnhdr *scn;
   struct syment *symtab, *INsym;
   char           tmpname[9];            /* for 8-byte symbol names */
@@ -571,10 +574,10 @@ static int get_global_symbols (struct objpriv *pfd)
 
     if (INsym->n_zeroes)
       if (INsym->n_name[7])
-        OUTsym->name = (char *)namecache_add
+        OUTsym->name = ncache->cache + namecache_add
                                  (ncache, strncpy (tmpname, INsym->n_name, 8));
-      else OUTsym->name = (char *)namecache_add (ncache, INsym->n_name);
-    else OUTsym->name= (char *)namecache_add (ncache, names + INsym->n_offset);
+      else OUTsym->name = ncache->cache + namecache_add (ncache, INsym->n_name);
+    else OUTsym->name= ncache->cache + namecache_add (ncache, names + INsym->n_offset);
 
     /* symbol flags */
 
@@ -604,11 +607,9 @@ static int get_global_symbols (struct objpriv *pfd)
     pfd->symmap[ndx] = OUTsym++;
   }
 
-  /* adjust symbol names to the proper pointers */
+  /* Release the cache structure, but keep the cache of names table */
 
   pfd->info->nametbl = namecache_fini (ncache);
-  for (OUTsym = pfd->info->symptr; ngsyms--; OUTsym++)
-    OUTsym->name = pfd->info->nametbl + (int)OUTsym->name;
 
   /* return success/failure here */
 
@@ -1060,7 +1061,7 @@ static int get_global_symbols (struct objpriv *pfd)
 {
   int           nsyms, ngsyms, ndx;
   char         *names;
-  void         *ncache;
+  NAMECACHE    *ncache;
   struct nlist *symtab, *INsym;
   STE          *OUTsym;
 
@@ -1121,7 +1122,7 @@ static int get_global_symbols (struct objpriv *pfd)
 
   for (ndx = 0, INsym = symtab; ndx < nsyms; INsym++, ndx++) {
     if (INsym->n_type & N_EXT) {
-      OUTsym->name= (char *)namecache_add (ncache, names + INsym->n_un.n_strx);
+      OUTsym->name= ncache->cache = namecache_add (ncache, names + INsym->n_un.n_strx);
       OUTsym->value = INsym->n_value;
       OUTsym->type  = 0;
       switch (INsym->n_type & ~N_EXT) {
@@ -1136,11 +1137,9 @@ static int get_global_symbols (struct objpriv *pfd)
     }
   }
 
-  /* adjust symbol names to the proper pointers */
+  /* Release the cache structure, but keep the cache of names table */
 
   pfd->info->nametbl = namecache_fini (ncache);
-  for (OUTsym = pfd->info->symptr; ngsyms--; OUTsym++)
-    OUTsym->name = pfd->info->nametbl + (int)OUTsym->name;
 
   /* return success/failure here */
 
@@ -1987,7 +1986,7 @@ error:
 static int get_global_symbols (struct objpriv *pfd)
 {
   int         nsyms, ngsyms, cnt;
-  void       *ncache;
+  NAMECACHE  *ncache;
   char       *names;
   Elf32_Sym  *symtab, *INsym;
   STE        *OUTsym;
@@ -2080,7 +2079,7 @@ static int get_global_symbols (struct objpriv *pfd)
     if (OUTsym->whatis & SYM_COMM)
       OUTsym->value = INsym->st_size;
     else OUTsym->value = INsym->st_value;
-    OUTsym->name = (char *)namecache_add (ncache, names + INsym->st_name);
+    OUTsym->name = ncache->cache + namecache_add (ncache, names + INsym->st_name);
     OUTsym->type = 0;
 
     /* symbol map entry (if needed) */
@@ -2091,11 +2090,9 @@ static int get_global_symbols (struct objpriv *pfd)
     OUTsym++;
   }
 
-  /* adjust symbol names to the proper pointers */
+  /* Release the cache structure, but keep the cache of names table */
 
   pfd->info->nametbl = namecache_fini (ncache);
-  for (OUTsym = pfd->info->symptr; ngsyms--; OUTsym++)
-    OUTsym->name = pfd->info->nametbl + (int)OUTsym->name;
 
   /* return success/failure here */
 

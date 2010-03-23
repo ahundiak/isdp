@@ -1,6 +1,7 @@
 /*  this function try to expand shell variables */
 #include <ctype.h>
-#include <stdio.h>    
+#include <stdio.h>
+#include <stdlib.h>
 #include <math.h>
 #include <errno.h>
 #include <string.h>
@@ -132,7 +133,6 @@ int flag;
   char out_buf[512];      
   char var_name[256];     /* contain shell var name        */
   char substitu[512];
-  char *getenv(),*malloc() ;
   char *end,*string;
 
   buf_siz = *siz;

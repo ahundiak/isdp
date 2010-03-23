@@ -4,6 +4,8 @@
 #include <varargs.h>
 #endif
 #include <stdio.h>
+#include <strings.h>
+#include <stdlib.h>
 #include "error.h"
 
 extern int    errno;
