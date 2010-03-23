@@ -1,4 +1,4 @@
-#include <Xlib.h>
+#include <X11/Xlib.h>
 #include "FImin.h"
 
 #include "FIappl.h"

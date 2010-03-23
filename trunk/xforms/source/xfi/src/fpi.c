@@ -5,7 +5,12 @@
 #include "FImin.h"
 
 #include <stdio.h>
+#include <string.h>
+#include <stdlib.h>
 #include <sys/errno.h>
+
+int errno; // 23 Mar 2010 - ah - guess we need this now
+
 #include <setjmp.h> /* dmb:09/24/92: Causes problems on Sun now... */
 #include "FIgroup.h"
 #include "MI.h"
@@ -309,7 +314,7 @@ int FIf_display (Form form_ptr)
 
       /* GMD 3/13/92  Check to see if the screen this form is on   */
       /*              has had its stipple pixmaps loaded in.       */
-      /*              If not, then load them in.           ‚        */
+      /*              If not, then load them in.           ï¿½        */
 
       if (_FIpix_gray12_array [form->Xscreen] == (Pixmap) NULL)
          _FI_create_pixmaps (form->Xwindow, form->Xscreen);
@@ -708,7 +713,7 @@ int FIf_paint_area (Form form_ptr,
 /*  the application needs to know what portion of the form to refresh */
 /*  its special graphics on.                                          */
 
-FI_get_last_paint_area (int *xlo,
+int FI_get_last_paint_area (int *xlo,
                         int *ylo,
                         int *xhi,
                         int *yhi)
