@@ -1,0 +1,466 @@
+PLAID VERSION 1.0 DOCUMENTATION.                                May 1, l986
+-------------------------------
+
+PIXEL BUDGETING ALGORITHM
+-------------------------
+
+The first zone in any zone hierarchy spans the em square or the set width of
+the character.  The number of pixels allocated to these root zones determines
+the scaling of the character in each dimension.
+
+Each zone within a hierarchy of zones (except the root zone) has exactly one
+parent zone.  Except in some particular circumstances, all zones fall within
+the bounds of their parent zones i.e. no overlapping occurs.  In Figure 1
+zone A is the root zone and is the parent of zones B, F and G.  Zone B is the
+parent zone of zones C, D and E.  The allocation of pixels to this zone
+hierarchy is used to illustrate the pixel allocation process.
+
+The root zone A is initially allocated pixels appropriate to the desired
+scaling.  For example, if zone A represents OA outline resolution units and
+a 7 point character at 300 dots per inch is required, 
+
+            PA = OA * 300 * 7 / (8640 * 72) pixels
+
+The figure 8640 reflects the fact that OA is measured in units of 1/8640 em.
+
+The number of pixels allocated to the root zone A is rounded to the nearest
+whole number and distributed to the daughter zones B, F and G.  The first
+daughter zone B is allocated
+ 
+            PB = PA * OB / OA pixels
+
+The daughter zone F is allocated
+
+            PF = (PA - PB) * OF / (OA - OB) pixels
+
+The daughter zone G is allocated
+
+            PG = (PA - PB - PF) * OG / (OA - OB - OF) pixels
+
+Because zone G is the last daughter zone of zone A, OG = OA - OB - OF and
+hence receives the number of pixels remaining after the other daughter zones
+have been allocated pixels.
+
+Note that the rate of exchange between outline resolution units and pixels
+varies from one level to the next as rounding takes place to arrive at an
+integral number of pixels in each zone.
+
+The number of pixels PB allocated to zone B is in turn distributed over
+its daughter zones C, D and E.
+
+The first daughter zone C is allocated
+ 
+            PC = PB * OC / OB pixels
+
+The daughter zone D is allocated
+
+            PD = PB * OD / OB pixels
+
+Because zones C and D are on the same level, the rate of exchange from outline
+resolution units to pixels is the same for each zone.
+
+The daughter zone E is allocated
+
+            PE = (PB - PC - PD) * OE / (OB - OC - OD) pixels
+
+Because zone E is the last daughter zone of zone B, OE = OB - OC - OD and
+hence receives the number of pixels remaining after the other daughter zones
+have been allocated pixels.
+
+When all zones have been allocated an integral number of pixels, the terminal
+zones (i.e. non-parent zones) are sorted by starting position.  This allows
+absolute pixel assignments for each zone boundary to be made.  These pixel
+assignments may then be interpolated linearly to generate a list of outline
+resolution unit values which correspond to the center of each pixel.  These
+sampling values are then used for scan conversion in place of the usual
+linear steps.
+
+
+                            
+           +----------------A------------------+
+
+           +---------B-----------+
+
+           +---C---+     +---D---+
+
+                   +--E--+             +---F---+
+
+                                 +--G--+
+
+
+Figure 1: Typical zone hierarchy.  Zone A is the root zone and the parent
+zone of daughter zones B, F and G.  Zone B is the parent zone of zones C, D
+and E.
+
+
+
+PLAID SOURCE FORMAT
+-------------------
+
+Figure 2 illustrated a typical plaid source file format.  In addition to the
+data itself, certain comment information has been added to assist in the
+(human) interpretation and use of the data.  Comments are normally stripped
+during input by ignoring all character strings starting with a semicolon up
+to the end of the line containing the semicolon.
+
+The first non-blank line in the file is the font name.  In the example this is
+
+    GEOMETRIC-211-FUTURA-BOLD-CONDENSED- 
+
+This is used to identify the font for which the plaid has been prepared.
+
+The font name is followed by the number of characters for which plaid has
+been included.  In the case of the plaid example in Figure 2, this is 134.
+
+The specified number of characters is followed by that number of sets of 
+plaid data.
+
+Each set of plaid data consists of the x zone hierarchy followed by the 
+y zone hierarchy.
+
+Each zone hierarchy consists of the number of zones followed by that number
+of zone definitions.
+
+Each zone definition contains 7 fields as follows:
+   FROM
+   TO
+   PROPAGATE FLAG
+   NEW LEVEL FLAG
+   CONTINUE FLAG
+   MINIMUM ZONE SIZE
+   CONSTRAINT FUNCTION SIZE
+   CONSTRAINT FUNCTION
+
+The FROM field specifies the starting coordinate of the zone in outline
+resolution units (1/8640 em).
+
+The TO files specifies the ending coordinate of the zone in outline resolution
+units (1/8640 em).  The numerical value of the TO zone is always greater than
+that of the FROM zone.  Thus the size of a zone may always be calculated from
+the value of T0 - FROM.
+
+The PROP FLAG field indicates whether the zone is a parent zone.  Parent zones
+have a PROP FLAG set to 1; other zones have the PROP FLAG set to zero.
+
+The NEW LEVEL FLAG field indicates whether or not a new rate of exchange from
+outline resolution units to pixels is to be computed which takes into account
+the result of pixel assignment to the preceding zone(s).  If so, the NEW LEVEL
+FLAG is set to one.  If the same rate of exchange as was used in the preceding
+zone is to be used in the current zone, the NEW LEVEL FLAG is set to zero.
+
+The CONTINUE FLAG field indicated whether or not the zone is the last zone in
+a group.  If there are more zones in the current group, the CONTINUE FLAG is
+set to one; otherwise it is set to zero.
+
+The MINIMUM ZONE SIZE field indicates the minimum number of pixels to be
+assigned to the zone.  If the calculated number of pixels for a given size is
+less than this value, the minimum value is used instead.
+
+The CONSTRAINT FUNCTION SIZE field indicates the number of items in the
+constraint function field.  Zero indicates that no constraint function items
+are to be read.
+
+The CONSTRAINT FUNCTION field consists of a series of items.  The number is
+equal to the value of the CONSTRAINT FUNCTION SIZE field.  An item may be a
+value or a function.  During execution, values are loaded onto an execution 
+stack; functions are executed taking their arguments from the execution stack
+and pushing their result onto the execution stack.  17 item types are
+defined:
+
+    P item                           P<char id>~<zone number>
+    F item                           F<char id>~<zone number>
+    T item                           T<char id>~<zone number>
+    floating point constant
+    No-op                            NOP
+    Addition function                +
+    Subtraction function             -
+    Multiplication finction          *
+    Division function                //
+    PRINT function                   PRINT
+    FIXR function                    FIXR
+    FIX function                     FIX
+    CO function                      CO
+    CF function                      CF
+    RRFS function                    RRFS
+    RRHS function                    RRHS
+    RRFS1 function                   RRFS1
+    RRHS1 function                   RRHS1
+    BZON function                    BZON
+    BZON1 function                   BZON1
+    LZON function                    LZON
+    LZON1 function                   LZON1
+    CFFLB function                   CFFLB
+    CFFRB function                   CFFRB
+    CFSLB function                   CFSLB
+    CFSRB function                   CFSRB
+
+A P item represents the whole number of pixels allocated to the specified zone
+of the specified character calculated in accordance with the pixel budgetting
+algorithm.  The value is pushed onto the execution stack.
+
+An F item represents the floating number of pixels allocated to the specified
+zone of the specified character calculated in accordance with the pixel
+budgetting algorithm. The value is pushed onto the execution stack.
+
+A T item represents the whole number of pixels allocated to the specified zone
+of the specified character calculated at top level i.e. ignoring the effect
+of pixel budgetting at higher levels.  The value is pushed onto the execution
+stack.
+
+The value of a floating point constant is pushed onto the execution stack.
+
+An addition function takes two arguments from the execution stack, adds them
+together and pushes the result back onto the stack.
+
+An subtraction function takes two arguments from the execution stack, subtracts
+the top of the stack from the next value and pushes the result back onto the
+stack.
+
+An multiplication function takes two arguments from the execution stack,
+multiplies them together and pushes the result back onto the stack.
+
+An division function takes two arguments from the execution stack, divides
+the top of the stack into the next value and pushes the result back onto the
+stack.
+
+A PRINT function has no effect on the execution stack.
+
+A FIXR function takes one argument from the execution stack, rounds it to the
+nearest whole number and pushes the result back onto the stack.
+
+A FIX function takes one argument from the execution stack, rounds it down to
+the next whole number and pushes the result back onto the stack.
+
+A CO function takes three arguments from the execution stack and returns a
+whole number of pixels.  The three arguments (in the order pushed onto the
+stack) are threshold, fpixels_self and pixels_other.  If fpixels_self differs
+from pixels_other by less than threshold, pixels_other is returned; otherwise,
+fpixels is rounded to the nearest number of whole pixels and returned.
+
+A CF function takes three arguments from the execution stack and returns a
+whole number of pixels.  The three arguments (in the order pushed onto the
+stack) are threshold, fpixels_self and fpixels_other.  If fpixels_self differs
+from fpixels_other by less than the threshold, the average value of
+fpixels_self and fpixels_other is rounded to the nearest whole number of
+pixels and returned as the result.  Otherwise, a combination of rounding up or
+down for fpixels_self and fpixels_other is chosen whose ratio most closely
+approximates the ratio of the unrounded values.
+
+An RRFS function takes three arguments from the execution stack and returns a
+whole number of pixels.  The three arguments (in the order pushed onto the
+stack) are pixels_other_footspace, pixels_my_height, pixels_other_height.  The
+value of pixels_other_footspace is reduced by half the difference between
+pixels my_height and pixels_other_height. The result is rounded to the nearest
+whole number and pushed onto the stack.
+
+An RRFS1 function takes three arguments from the execution stack and returns a
+whole number of pixels.  The three arguments (in the order pushed onto the
+stack) are pixels_other_footspace, pixels_my_height, pixels_other_height.  The
+value of pixels_other_footspace is reduced by half the difference between pixels
+my_height and pixels_other_height. The result is rounded down to the next whole
+number and pushed onto the stack.  
+
+An RRHS function takes three arguments from the execution stack and returns a
+whole number of pixels.  The three arguments (in the order pushed onto the
+stack) are pixels_other_headspace, pixels_my_height, pixels_other_height.  The
+value of pixels_other_head_space is reduced by half the difference between
+pixels my_height and pixels_other_height. The result is rounded down to the
+next whole number and pushed onto the stack.
+
+An RRHS1 function takes three arguments from the execution stack and returns a
+whole number of pixels.  The three arguments (in the order pushed onto the
+stack) are pixels_other_headspace, pixels_my_height, pixels_other_height.  The
+value of pixels_other_head_space is reduced by half the difference between pixels
+my_height and pixels_other_height. The result is rounded up to the next whole
+number and pushed onto the stack.  
+
+A BZON function takes two arguments from the execution stack and returns a
+whole number of pixels.  The two arguments (in the order pushed onto the
+stack) are fpixels_self and fpixels_other.
+If the rounded sum of fpixels_self and fpixels_other is less than or equal
+to a threshold of 10, the rounded sum is divided by two rounding up the
+result if necessary to the next whole number. 
+Otherwise, the fpixels_self is rounded to the nearest whole number.     
+
+A BZON1 function takes three arguments from the execution stack and returns
+a whole number of pixels.  The three arguments (in the order pushed onto the
+stack) are fpixels_self, fpixels_other and threshold.
+If the rounded sum of fpixels_self and fpixels_other is less than or equal
+to the threshold, the rounded sum is divided by two rounding up the result
+if necessary to the next whole number. 
+Otherwise, the fpixels_self is rounded to the nearest whole number.     
+
+A LZON function takes two arguments from the execution stack and returns a
+whole number of pixels.  The two arguments (in the order pushed onto the
+stack) are fpixels_self and fpixels_other.
+If the rounded sum of fpixels_self and fpixels_other is less than or equal
+to a threshold of 10, the rounded sum is divided by two rounding down the
+result if necessary to the next whole number. 
+Otherwise, the fpixels_self is rounded to the nearest whole number.     
+
+A LZON1 function takes three arguments from the execution stack and returns
+a whole number of pixels.  The three arguments (in the order pushed onto the
+stack) are fpixels_self, fpixels_other and threshold.
+If the rounded sum of fpixels_self and fpixels_other is less than or equal
+to the threshold, the rounded sum is divided by two rounding down the result
+if necessary to the next whole number. 
+Otherwise, the fpixels_self is rounded to the nearest whole number.     
+
+A CFFLB function takes five arguments from the execution stack and returns a
+whole number of pixels.  The five arguments (in the order pushed onto the
+stack) are threshold, fpixels_first_lb, fpixels_first_rb, fpixels_second_lb,
+fpixels_second_rb.
+If the sum of the left and right side bearings of the first character is
+less than the specified threshold, CFFLB carries out a special pixel
+budgeting process for the left and right side bearings of the first and
+second characters. The process ensures that the sum of the left and right
+side bearings of the first character has the same parity as the sum of the
+left and right side bearings of the second character. If these sums are both
+odd, pixels are allocated to the left and right side bearings of each character
+in a manner that tends to allocate the extra pixel to the left side bearings.
+CFFLB returns the number of pixels allocated to the left side bearing of the
+first character.                                                         
+
+A CFFRB function takes five arguments from the execution stack and returns a
+whole number of pixels.  The five arguments (in the order pushed onto the
+stack) are threshold, fpixels_first_lb, fpixels_first_rb, fpixels_second_lb,
+fpixels_second_rb.
+If the sum of the left and right side bearings of the first character is
+less than the specified threshold, CFFRB carries out a special pixel
+budgeting process for the left and right side bearings of the first and
+second characters. The process ensures that the sum of the left and right
+side bearings of the first character has the same parity as the sum of the
+left and right side bearings of the second character. If these sums are both
+odd, pixels are allocated to the left and right side bearings of each character
+in a manner that tends to allocate the extra pixel to the left side bearings.
+CFFRB returns the number of pixels allocated to the right side bearing of the
+first character.                                                         
+
+A CFSLB function takes five arguments from the execution stack and returns a
+whole number of pixels.  The five arguments (in the order pushed onto the
+stack) are threshold, fpixels_first_lb, fpixels_first_rb, fpixels_second_lb,
+fpixels_second_rb.
+If the sum of the left and right side bearings of the first character is
+less than the specified threshold, CFSLB carries out a special pixel
+budgeting process for the left and right side bearings of the first and
+second characters. The process ensures that the sum of the left and right
+side bearings of the first character has the same parity as the sum of the
+left and right side bearings of the second character. If these sums are both
+odd, pixels are allocated to the left and right side bearings of each character
+in a manner that tends to allocate the extra pixel to the left side bearings.
+CFSLB returns the number of pixels allocated to the left side bearing of the
+second character.                                                        
+
+A CFSRB function takes five arguments from the execution stack and returns a
+whole number of pixels.  The five arguments (in the order pushed onto the
+stack) are threshold, fpixels_first_lb, fpixels_first_rb, fpixels_second_lb,
+fpixels_second_rb.
+If the sum of the left and right side bearings of the first character is
+less than the specified threshold, CFSRB carries out a special pixel
+budgeting process for the left and right side bearings of the first and
+second characters. The process ensures that the sum of the left and right
+side bearings of the first character has the same parity as the sum of the
+left and right side bearings of the second character. If these sums are both
+odd, pixels are allocated to the left and right side bearings of each character
+in a manner that tends to allocate the extra pixel to the left side bearings.
+CFSRB returns the number of pixels allocated to the right side bearing of the
+second character.                                                       
+
+An XHT_ADJ function takes no arguments from the execution stack,
+and pushes the current value of the x height adjustment factor (default 1.0)
+onto the stack.              
+
+When all of the items in the constraint function string have been executed,
+the one remaining item on the stack is the number of pixels to be allocated to
+the zone containing the constraint function.
+
+In the example of a plaid source format shown in Figure 2, each zone definition
+is followed by a comment consisting of three numbers.  These are for reference
+only and do not form part of the plaid data.
+
+The first number in the zone comment field indicates the number of outline 
+resolution units in the field.  This is simply the difference between the
+FROM field and the TO field.
+
+The second number in the zone comment field indicates the calculated number
+of pixels allocated to the zone assuming an initial rate of exchange of 20
+pixels per em.  
+
+The third number in the zone comment field indicates the integral number of
+pixels allocated to the zone assuming an initial rate of exchange of 20 pixels
+per em.
+
+
+
+swiss_slabserif_722_serifa_bold 
+
+;   (C)  COPYRIGHT 1985
+;   BITSTREAM INC.
+;   215 First Street
+;   Cambridge, MA 02142
+;   All Rights Reserved
+
+;   This material and its contents are confidential proprietary property of Bitstream Inc.
+;   Patent applied for.
+
+;   This material is a preliminary and is subject to change without notice
+
+181       ;  Number of characters
+
+001       ;  Character ID
+
+ 4        ;  Number of x zones
+; FROM    TO P L C MIN FSIZE             FUNCTION                 ORUS     NEW PIXELS     OLD PIXELS  NAME OLD FUNCTION
+     0  6412 1 1 0   3     0                                 ;    6412   15.000000  15  15.000000  15  ASW NIL
+
+  3341  6412 0 1 1   1     0                                 ;    3071    7.184186   7   7.184186   7  ADS NIL
+     0  2970 0 1 1   1     0                                 ;    2970    7.111643   7   7.111643   7  ADS NIL
+  2970  3341 0 1 0   1     0                                 ;     371    1.000000   1   1.000000   1  ACR NIL
+
+ 8        ;  Number of y zones
+; FROM    TO P L C MIN FSIZE             FUNCTION                 ORUS     NEW PIXELS     OLD PIXELS  NAME OLD FUNCTION
+ -2043  6597 1 1 0   4     0                                 ;    8640   20.000000  20  20.000000  20  EMH NIL
+
+ -2043     0 0 1 1   1     4 2.100 F001~1 P008~1 CO          ;    2043    4.729167   5   4.729167   5  ABB (CO 2.1 SELF H~HBB)
+  5670  6597 0 1 1   0     4 1.100 F001~2 P008~3 CO          ;     927    2.107776   2   2.107776   2  AHS (CO 1.1 SELF H~HHS)
+     0  5670 1 1 0   3     0                                 ;    5670   13.000000  13  13.000000  13  AHH NIL
+
+     0   844 0 1 1   1     4 1.100 F001~4 P008~4 CO          ;     844    1.935097   2   1.935097   2  ATS (CO 1.1 SELF H~HTS)
+  1755  2582 0 0 1   1     4 0.510 F001~5 P008~5 CO          ;     827    1.896120   2   1.896120   2  AHL (CO .51 SELF H~HHL)
+  2582  5670 0 1 1   1     4 0.750 F001~6 P005~7 CO          ;    3088    6.949737   7   6.949738   7  AVC (CO .75 SELF E~EVC)
+   844  1755 0 1 0   1     0                                 ;     911    2.000000   2   2.000000   2      NIL
+
+002       ;  Character ID
+
+ 7        ;  Number of x zones
+; FROM    TO P L C MIN FSIZE             FUNCTION                 ORUS     NEW PIXELS     OLD PIXELS  NAME OLD FUNCTION
+     0  5602 1 1 0   4     0                                 ;    5602   13.000000  13  13.000000  13   SW NIL
+
+  3982  5214 0 1 1   1     4 0.750 F002~1 P015~1 CO          ;    1232    2.858979   3   2.858979   3  BRS (CO .75 SELF O~ORS)
+   911  2109 0 0 1   1     4 0.750 F002~2 P008~1 CO          ;    1198    2.780079   3   2.780079   3  BSS (CO .75 SELF H~HSS)
+  2109  3982 0 1 1   1     0                                 ;    1873    4.133354   4   4.133354   4      NIL
+   186   911 0 1 1   1     0                                 ;     725    1.674365   2   1.674365   2  BSL NIL
+  5214  5602 0 1 1   0     0                                 ;     388    0.675958   1   0.675958   1   RB NIL
+     0   186 0 1 0   0     0                                 ;     186    0.000000   0   0.000000   0      NIL
+
+ 9        ;  Number of y zones
+; FROM    TO P L C MIN FSIZE             FUNCTION                 ORUS     NEW PIXELS     OLD PIXELS  NAME OLD FUNCTION
+ -2043  6597 1 1 0   6     0                                 ;    8640   20.000000  20  20.000000  20  EMH NIL
+
+ -2043     0 0 1 1   1     4 2.100 F002~1 P008~1 CO          ;    2043    4.729167   5   4.729167   5  BBB (CO 2.1 SELF H~HBB)
+  5636  6597 0 1 1   0     4 1.100 F002~2 P008~3 CO          ;     961    2.185084   2   2.185084   2  BHS (CO 1.1 SELF H~HHS)
+     0  5636 1 1 0   5     0                                 ;    5636   13.000000  13  13.000000  13  BHH NIL
+
+     0   844 0 1 1   1     8 1.100 F002~4 F002~6 + 0.5 * P008~4 CO;     844    1.946771   2   1.946771   2  BTS (CO 1.1 SELF H~HTS)
+  2514  3291 0 0 1   1     4 0.510 F002~5 P008~5 CO          ;     777    1.792229   2   1.792229   2  BHL (CO .51 SELF H~HHL)
+  4843  5636 0 0 1   1     8 1.100 F002~4 F002~6 + 0.5 * P008~4 CO;     793    1.829134   2   1.829134   2  BTS (CO 1.1 SELF H~HTS)
+  3291  4843 0 1 1   1     0                                 ;    1552    3.371819   3   3.371819   3      NIL
+   844  2514 0 1 0   1     0                                 ;    1670    4.000000   4   4.000000   4      NIL
+
+
+etc...
+
+
+
+
+Figure 2: Example of Plaid Source Format
