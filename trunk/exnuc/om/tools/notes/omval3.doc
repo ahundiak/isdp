@@ -1,0 +1,157 @@
+Steps to validate a corrupted a file
+------------------------------------
+
+Run the file in Dr. OS and observe the errors thrown out.  If Dros goes into
+minimum mode, then it means the OM internal data structures have been corrupted
+and they need to be set back.  If Dros does'nt go into the minimum mode, then
+it could mean that only some other objects could be corrupt (could be related
+to tags, checksums,  etc) and as such the file structure and the headers are
+okay. This should be easily repairable.
+
+The document provides an insight into the various types of corruptions that
+frequently happen and how to go about correcting them.
+
+A few hints
+-----------
+
+*  If more details about the file is necessary, we can invoke Dros in the 
+   verbose mode (V option), and this would give you all the details like the
+   location of the OM Meta Objects (Cluster instances, OSCO, OSO, etc)
+
+*  The best way to fix out complex errors is to put Dros itself into debug
+   and then go about Dros'ing the file.  This would give the user access to
+   all the internal structures of Dros which would contain the necessary
+   information to be filled in at the corrupted places.
+
+The various types of possible corruptions are :
+
+Header Related
+--------------
+*  File versions, OM versions, etc have been corrupted. 
+   -> Edit the file (D command) and put in the correct versions required.
+
+*  File pointer of OSO is corrupted, file size corrupt.
+   -> Try to put the exact file size (in bytes)back in header and see it it
+      works.  If so, the OSO should now be valid. If things dont work, it 
+      would mostly mean that the file has been truncated and cluster 0    
+      has been lost.  In these cases, nothing can be done.
+
+*  Checksums do not match but there are no other errors.
+   -> Calculate the right checksum (Dros does this for you) and place them
+      back.  This needs to be done once for the file and then for the 
+      header seperately.  If Dros does'nt report errors after that, then the
+      file is fine. Or else, the problem is with some other corruptions 
+      because of which the checksum has become invalid.
+
+*  Invalid Magic.
+   -> Try to put back the magic and see if it works. Magic number is OM
+      (4d 4f). Otherwise, this could not be a OM file at all.
+
+*  There are some cases in which some data accidently got prepended to the
+   file and thus Dros is not able to understand.  This can be found out
+   after close supervision of the file in the Dump mode (X command).  We
+   need to look for the OM magic and the version stamps, etc.  In these
+   cases, we can chuck away the prepended garbage and the file would come
+   up fine.
+
+Channel Corruptions
+-------------------
+At times, the various components of the channels may get corrupted (like the
+header, the channel instance, etc).  Some of these errors can be corrected
+(with some great difficulty and time, of course) and some of them can be
+handled by nullifying some channel links, which would lead to the damage
+of channel connections, but at least, the file would come up quite well.
+
+*  Channel offset corrupted within the object's instance.
+   -> Once we have determined that the channel is not empty (again, this
+      needs to be done by seeing the file and requires some experience),
+      then look up the instance data of that object and see where that channel
+      instance would possibly begin and insert that offset.
+
+*  Objects on the channel corrupt.
+   -> Again, there are two possible ways to charge this situtation. 
+
+      One would be to insert NULL objids in these places.  This would lead to
+      breakage of channel linkages, but then our intention is to bring up the
+      file successfully.  This could be done for large files and some
+      multiply occuring channels.  
+      
+      The next possible way would be to look up the other objects on whose
+      channel, this particular corrupted object could have been connected.
+      This would require a search on the whole file for that particular
+      corrupted object id, and determine from the few hits arising, which
+      is the correct one and insert that object's id in the corrupted
+      channel.
+
+*  Channel header corruption.
+   -> If the count field is corrupt, determine the actual number of objects
+      residing in the channel and insert the count in the header.  Again,
+      this would be simple only for restricted channels.  Further, the
+      header flags should be read to see if a tail exists and if so, that
+      count should be also taken care.  Functions to achieve this exist in
+      Dros and the OM code itself.
+
+   -> If the flags field of the header got corrupted, look into the channel
+      instance and see what kind of channel it is.  It may not be possible
+      always to repair the flags field if the channel is non-restricted, etc.
+
+Tags
+----
+The tag and the tag version attached to the object header may become 
+corrupted.  Such kind of repairs can be done automatically by using the
+tag repair coammand (T command) within the Dros.  
+
+If that does'nt clean up the whole file, we can always lookup the tag record
+which contains the set of objects and the tags and related information and
+manually set back the corrupted objects.
+
+
+Cluster instance corruptions
+----------------------------
+At times, the OMCluster object might become corrupted but the individual
+objects residing on that cluster themselves would be correct.  In these 
+cases, read the list of object ids and the class ids from each of the
+object headers and put them back into the cluster instance.  Mostly, only
+corruptions to the oid and the classid VLAs can be repaired in the 
+Cluster instance.
+If the file pointer of the cluster itself is damaged,  it could be very
+difficult to put it back as we need to search the whole file for the set
+of contiguous objects indicated in the Cluster instance VLA and put back
+the starting file offset in the cluster instance.  Note that in cases where
+both the file pointer and the VLAs get corrupted, the scenario gets out
+of control. 
+
+
+OSCO corruptions
+----------------
+The OSCO for a particular class could become invalid.  Possible errors 
+would be num_parents field, component size, etc.  This can be determined
+from the class and set back. 
+
+One more errors which occurs frequently is that the reference count field
+of the OSCO does'nt match with the number of objects of that class present
+in the design file.  This would require an updation of the reference count
+field of the OSCO to the correct value.
+
+
+Continuous chunk of zeroes
+--------------------------
+In a particular cluster, many objects could be wiped out in succession which
+would create a continuous chunk of zeroes.  Thus while validating individual
+object headers, Dros would be stuck as the next object won't be found as it
+has been wiped out.  In these cases, we need to create skeleton objects 
+in the order found from the Cluster Instance and with the minimum size as
+indicated by the OSCO and put them back and see if we are able to achieve
+the continuity.  If things hold, the file could be brought up successfully
+and all these spurious objects could be deleted.  
+
+We would be losing the data (we have lost them already), but there is no way
+we can get them back.  The idea is to bring up the file up successfully.
+
+
+Miscellaneous errors
+--------------------
+Other miscellaneous errors like a break in the Hole array, removal of
+empty user specified clusters, etc. can be handled.
+
+
