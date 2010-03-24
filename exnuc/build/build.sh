@@ -54,7 +54,7 @@ case $OS in
                 else
                   BUILD_LIST="sun6 EXNUC"
                 fi;;
-          "5.5" | "5.5.1" | "5.8" )
+          "5.5" | "5.5.1" | "5.8" | "5.10" )
                 ARCH=`uname -m`
                 case $ARCH in
                      "i86pc" )  BUILD_LIST="intel5 EXNUC";;

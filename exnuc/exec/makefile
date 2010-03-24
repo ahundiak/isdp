@@ -20,8 +20,7 @@ directories:
 	@if test ! -d $(TARGET)/exec/lib; then mkdir $(TARGET)/exec/lib; fi
 
 binaries:\
-	DRIVER \
-	JNL
+	DRIVER
 
 LOCALE: $(TARGET)/exec/locale/makefile
 	@cd $(TARGET)/exec/locale; \

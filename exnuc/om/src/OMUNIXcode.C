@@ -50,6 +50,7 @@ ems001  02-dec-1991    Added the function som_is_om_file.
 #include        <invent.h>
 #endif
 #if defined (IRIX5) || defined (SUNOS5) || !defined (NT)
+typedef unsigned long long	uint64_t;
 #include	<sys/swap.h>
 #endif
 

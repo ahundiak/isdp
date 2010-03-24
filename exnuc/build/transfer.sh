@@ -26,5 +26,7 @@ do
 		exit 2
 	fi
 	#echo "\tcp $SRC/$FILE $DEST/$FILE"
+        #echo "MKDIR $DEST"
+        mkdir -p `dirname $DEST/$FILE`
 	cp $SRC/$FILE $DEST/$FILE
 done

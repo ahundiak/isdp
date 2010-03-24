@@ -53,7 +53,7 @@ $(TARGET)/om/opp/opp/makefile: \
 	$(MAKEMAKE) opp.m $(TARGET)/om/opp/opp/makefile
 
 $(TARGET)/om/opp/opp/kpster.h $(TARGET)/om/opp/opp/kptype.h $(TARGET)/om/opp/opp/y.tab.h:
-	if test "$(UNAMESR)" = "SunOS 5.5.1" -o "$(UNAMESR)" = "SunOS 5.5" -o "$(UNAMESR)" = "SunOS 5.4" -o "$(UNAMESR)" = "SunOS 5.8" -o "$(UNAMESR2)" = "IRIX 5"; \
+	if test "$(UNAMESR)" = "SunOS 5.5.1" -o "$(UNAMESR)" = "SunOS 5.5" -o "$(UNAMESR)" = "SunOS 5.4" -o "$(UNAMESR)" = "SunOS 5.8" -o "$(UNAMESR)" = "SunOS 5.10" -o "$(UNAMESR2)" = "IRIX 5"; \
 	then \
 		cp $(EXNUC)/om/opp/opp/ntkpster.h $(TARGET)/om/opp/opp/kpster.h; \
 		cp $(EXNUC)/om/opp/opp/ntkptype.h $(TARGET)/om/opp/opp/kptype.h; \

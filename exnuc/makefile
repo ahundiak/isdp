@@ -59,7 +59,7 @@ MAKEMAKE:
 	elif test "$(UNAMESR)" = "SunOS 4.1.2"; \
 	then \
 		$(MAKE) -f mkmk.mksun; \
-	elif [ "$(UNAMESR)" = "SunOS 5.8" -o "$(UNAMESR)" = "SunOS 5.5" -o "$(UNAMESR)" = "SunOS 5.5.1" ]; \
+	elif [ "$(UNAMESR)" = "SunOS 5.10" -o "$(UNAMESR)" = "SunOS 5.8" -o "$(UNAMESR)" = "SunOS 5.5" -o "$(UNAMESR)" = "SunOS 5.5.1" ]; \
 	then \
 		if test "`uname -m`" = "i86pc"; \
 		then \

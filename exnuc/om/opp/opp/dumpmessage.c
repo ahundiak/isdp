@@ -450,12 +450,21 @@ void write_method_header (msg, methargs, inline_send)
    fputs ("{ register char *opp_pargs = OPPmargs->p_arglist;\n", oppout);
    for (m1=msg->field_link,m = methargs; m && m1; m = m->link, m1=m1->link)
     {
+#if 0 // XXX Remove this older version for opp_the_type
      fprintf (oppout, "#define %s opp_the_type\n", m->s.s.name);
      fputs ("{ typedef ", oppout);
      dump_arg (oppout, m);
      fputs (";\n", oppout);
      fprintf (oppout, "#undef %s\n", m->s.s.name);
      fprintf (oppout, "  %s = *(opp_the_type *)opp_pargs;\n", m->s.s.name);
+#else
+     fprintf (oppout, "  %s = *(", m->s.s.name);
+     print_type_info (oppout, m->type_info);
+     if (m->type_info.dcltr_link != NULL && m->type_info.dcltr_link->type == dt_pointer)
+      fputs (" **)opp_pargs; // formerly opp_the_type code\n", oppout);
+     else
+      fputs (" *)opp_pargs; // formerly opp_the_type code\n", oppout);
+#endif
      if (m1->link)
       {
        pp_fprintf (oppout, " opp_pargs += (int)offsetof(struct %s_%s_Msg, %s) -\
@@ -463,8 +472,12 @@ void write_method_header (msg, methargs, inline_send)
 	clsname, msgname, m1->link->s.s.name, clsname, msgname, m1->s.s.name);
        cur_out_line +=1;
       }
+#if 0 // XXX Remove this older version for opp_the_type
      fputs ("}\n", oppout);
      cur_out_line += 5;
+#else
+     cur_out_line += 2;
+#endif
     }
 #endif
    fputs ("}\n", oppout);
