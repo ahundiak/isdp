@@ -1,0 +1,2673 @@
+
+
+from    : Henry BEQUET 
+to      : Joyce HOWELL
+subject : The directory sub-system.
+          Programmer Perception.
+date    : 2/14/1987 (revised : 04/25/1988)
+
+
+   This document describes the general naming capability provided by the
+directory sub-system.  This sub-system provides a layered structure to store
+and retrieve named objects.  There is no restriction on the class of the
+objects that can be stored in a directory.  The attachment of reference
+files is fully supported.
+
+   The user perception of the system (commands and forms) is described in
+another document (DRAFT level).
+
+
+                            
+1. Programmer Perception
+
+   1.1. The Class IGRdir
+
+   1.2. Operations on Directories
+
+        1.2.1. The Messages
+
+               1.2.1.1. Name an element
+               1.2.1.2. Remove a name
+               1.2.1.3. Rename an element (macro)
+               1.2.1.4. Translate a name
+               1.2.1.5. Untranslate an element (macro)
+               1.2.1.6. List content of directory -- [ ls, dump ]
+               1.2.1.7. Pass a message ------------- [ pass, range_pass ]
+               1.2.1.8. Find element names
+               1.2.1.9. Indexing
+
+        1.2.2. The Macros
+
+               1.2.2.1. Name an element ------------ [ add_name,  mkpath ]
+               1.2.2.2. Remove a name -------------- [ rm_name, rm_objid ]
+               1.2.2.3. Rename an element
+               1.2.2.4. Translate a name
+               1.2.2.5. Untranslate an element
+               1.2.2.6. List content of directory -- [ ls, dump ]
+               1.2.2.7. Pass a message
+               1.2.2.8. Make a directory
+               1.2.2.9. Delete a directory
+               1.2.2.10 Current directory ---------- [ cd, pwd ]
+               1.2.2.11 Find element names
+               1.2.2.12 Object space support ------- [ mount,  give_osnum,
+	                                               umount, give_pathname ]
+               1.2.2.13 Indexing
+
+               1.2.2.14 Miscellaneous -------------- [ report_error, split,
+	                                               is_regexp, free, init ]
+
+
+        1.2.3. Error Codes
+
+
+
+2. Appendix
+
+   2.1. Configuration File
+
+   2.2. Programming examples
+
+        2.2.1. Name an element
+        2.2.2. Remove a name
+        2.2.3. Rename an element
+        2.2.4. Translate a name
+        2.2.5. Untranslate an element
+        2.2.6. List content of directory
+        2.2.7. Pass a message
+        2.2.8. Make a directory
+        2.2.9. Delete a directory
+        2.2.10 Current directory  
+        2.2.11 Find element names
+        2.2.12 Object space support
+        2.2.13 Miscellaneous
+
+1. Programmer perception
+   ---------------------
+
+   1.1. The class IGRdir
+        ----------------
+
+   The specification file of a directory looks like :
+
+
+class specification IGRdir ( 1:2 ) of Root;
+
+ message add ( DIint *status; DIchar *node );
+   /*
+      This message is used to store an information with its key in the
+      selected storing system 
+
+      Argument description :
+      --------------------
+
+        DIint *status          : the returned status			(OUT)
+                                   DIR_S_SUCCESS : successful operation
+                                   DIR_E_ABORT   : directory error
+
+        DIchar *node           : the information to be stored    	(IN)
+   */
+
+
+ message retrieve ( DIint *status; DIchar *node, **buffer );
+   /* 
+      This message is used to retrieve an information giving its key
+
+      Argument description :
+      --------------------
+
+        DIint *status          : the returned status		 	(OUT)
+                                   DIR_S_SUCCESS : successful operation
+                                   DIR_E_ABORT   : directory error
+
+        DIchar *node           : the information to be retrieved 	(IN)
+
+        DIchar *buffer         : the buffer to be filled out	 	(IN)
+   */
+
+
+
+ message remove ( DIint *status; DIchar *node, **buffer );
+   /* 
+      This message is used to remove an information giving its key
+
+      Argument description :
+      --------------------
+
+        DIint *status          : the returned status			(OUT)
+                                   DIR_S_SUCCESS : successful operation
+                                   DIR_E_ABORT   : directory error
+        DIchar *node           : the key be used			(IN)
+
+        DIchar *buffer         : the buffer to be filled out		(IN)
+   */
+
+
+  message list ( DIint *status; DIchar *reg_exp; 
+                 DIint *count; DIint (*driver) () );
+   /* 
+      This message is used to list the entries of the directory.  The
+      driver function will be called for each node.  The driver must
+      have two arguments : a character (the type of information) and
+      a pointer to the node, casted to a pointer to character.
+
+
+      Argument description :
+      --------------------
+
+        DIint *status     : the returned status				(OUT)
+                              DIR_S_SUCCESS        : successful operation
+                              DIR_E_OVFLOW         : overflow error
+                              DIR_E_ABORT          : directory error
+
+        DIchar *reg_exp   : if not NULL, only the names			(IN)
+			      that match this regular 
+			      expression are given.
+
+        DIint *count      : the number of listed entry 			(OUT)
+
+        DIint driver ()	  : a function that will be called for		(IN)
+                              each node
+   */
+
+
+
+ message ls ( DIint *status; DIchar *reg_exp; DIchar ***lines; 
+              DIint *count; DIchar options );
+   /* 
+      This message is used to list the entries (objects + directories)
+      of the directory.  If a regular expression is given, only the 
+      names that match it are returned.
+
+
+      Argument description :
+      --------------------
+
+        DIint *status            : the returned status			(OUT)
+                                     DIR_S_SUCCESS        : successful operation
+                                     DIR_E_OVFLOW         : overflow error
+                                     DIR_E_ABORT          : directory error
+
+        DIchar *reg_exp          : if not NULL, only the names		(IN)
+				     that match this regular 
+				     expression are given.
+
+        DIchar ***lines          : if not NULL, the entries are		(OUT)
+				     listed in this array
+
+        DIint *count             : the number of listed entry        (IN/OUT)
+                                   *count MUST be 0 
+
+        DIchar options           : one option is valid,			(IN)
+
+                                       o OPT_ALL : the names starting with
+                                                   a dot (.) are displayed
+   */
+
+ message find ( DIint *status; DIchar *reg_exp; DIchar ***lines; DIgrid **grids;
+                DIint *count; DIint max_level, *deep; DIchar options );
+   /* 
+      This message is used to find the entries of my directory and my
+      sub-directories that match the regular expression
+
+      Argument description :
+      --------------------
+
+        DIint *status           : the returned status			(OUT)
+                                    DIR_S_SUCCESS        : successful operation
+                                    DIR_E_OVFLOW         : overflow error
+                                    DIR_E_ABORT          : directory error
+
+
+        DIchar *reg_exp         : must be specified; only      		(IN)
+				    the names that match this 
+				    regular expression are given.
+
+
+        DIchar ***lines         : if specified, the entires are 	(OUT)
+	   		            listed in this array
+
+        DIgrid **grids          : the grids of the listed entries	(OUT)
+
+        DIint *count            : the number of listed entry;        (IN/OUT)
+				    its value must be set to 0 
+				    (*count = 0) before the call
+
+        DIint  max_level        : the maximum level of search 		(IN)
+				    (< 0 means no limit)
+
+        DIint  *deep            : the effective deep of the 		(OUT)
+				    search (<= max_level)
+
+        DIchar options          : two options are valid,		(IN)
+                                       o OPT_LEVEL   : the display is indented
+                                                       to reflect the directory
+                                                       structure
+
+                                       o OPT_ALL : the names starting with
+                                                   a dot (.) are displayed
+   */
+
+
+ /* Object naming capabilities : the following messages can be used as
+    --------------------------   an object naming manager interface; 
+                                 the error messages are defined in 
+                                 DIdef.h    */
+
+ message add_name ( DIint  *status; DIchar *name; DIobjid objid; );
+   /*
+      This message is defined to add the objid to the target directory; 
+      its name must not be in the target directory
+
+      Argument description :
+      --------------------
+
+        DIint  *status          : the returned status			(OUT)
+                                    DIR_S_SUCCESS : successful operation
+                                    DIR_I_REORG   : successful operation,
+                                                    storage modified
+                                    DIR_E_NAME_DUP: name duplicated
+                                    DIR_E_OVFLOW  : overflow error
+                                    DIR_E_SYNTAX  : syntax error
+                                    DIR_E_ABORT   : directory error
+
+        DIchar  *name           : the name of the object        	(IN)
+
+        DIobjid objid           : the objid to be added         	(IN)
+   */
+
+
+ message remove_by_name ( DIint  *status; DIchar  *name );
+   /*
+      This message removes the given object (by name) from the directory,
+      if any
+
+      Argument description :
+      --------------------
+
+        DIint  *status          : the returned status			(OUT)
+                                    DIR_S_SUCCESS        : successful operation
+                                    DIR_W_NAME_NOT_FOUND : name missing
+                                    DIR_E_SYNTAX         : syntax error
+                                    DIR_E_ABORT          : directory error
+
+        DIchar  *name           : the name to be removed        	(IN)
+   */
+
+
+ message translate ( DIint *status; DIchar *name; DIobjid *objid );
+   /* 
+      This message is sent to translate a name into an objid
+
+      Argument description :
+      --------------------
+
+        DIint  *status          : the returned status			(OUT)
+                                    DIR_S_SUCCESS        : successful operation
+                                    DIR_W_NAME_NOT_FOUND : name duplicated
+                                    DIR_E_OVFLOW         : overflow error
+                                    DIR_E_SYNTAX         : syntax error
+                                    DIR_E_ABORT          : directory error
+
+        DIchar  *name           : the name of the object 		(IN)
+
+        DIobjid *objid          : the objid associated with     	(OUT)
+				  the name
+   */
+
+
+ message index ( DIint *status; DIint index; DIchar *name; DIobjid *objid );
+   /* 
+      This message is sent to translate an index into an objid
+
+      Argument description :
+      --------------------
+
+        DIint  *status          : the 	returned status			(OUT)
+                                    DIR_S_SUCCESS        : successful operation
+                                    DIR_E_OVFLOW         : overflow error
+                                    DIR_E_ABORT          : directory error
+
+        DIint index             : the index of the object 		(IN)
+
+        DIchar *name		: the object name			(OUT)
+
+        DIobjid *objid          : the objid associated with     	(OUT)
+				  the name
+   */
+
+
+ message unindex ( DIint *status; DIint *index; DIchar *name; DIobjid objid );
+   /* 
+      This message is sent to translate a name (or an objid) into an index
+
+      Argument description :
+      --------------------
+
+        DIint  *status          : the 	returned status			(OUT)
+                                    DIR_S_SUCCESS        : successful operation
+                                    DIR_W_NAME_NOT_FOUND : name NOT found
+                                    DIR_E_ABORT          : directory error
+
+        DIint *index            : the index of the name 		(OUT)
+
+        DIchar *name		: the object name			(IN)
+
+        DIobjid objid		: the object objid			(IN)
+   */
+
+
+ message dump ( DIint *status; DIchar *reg_exp; OM_p_CLASSLIST classlist;
+                DIchar ***lines; DIgrid **grids; DIint *count; 
+                DIchar options );
+   /* 
+      This message is used to list the entries (objects + directories)
+      of the directory.  If a regular expression is given, only the 
+      names that match it are returned.
+
+      Argument description :
+      --------------------
+
+        DIint *status            : the returned status			(OUT)
+                                    DIR_S_SUCCESS        : successful operation
+                                    DIR_E_OVFLOW         : overflow error
+                                    DIR_E_ABORT          : directory error
+
+        OM_p_CLASSLIST classlist : list of classes that must or 	(IN)
+                                   must not be returned
+
+        DIchar *reg_exp          : if not NULL, only the names		(IN)
+				   that match this regular 
+				   expression are given.
+
+        DIchar ***lines          : if not NULL, the entries are		(OUT)
+				   listed in this array
+
+        DIgrid **grids           : the grids of the objects     	(IN)
+
+        DIint *count             : the number of listed entry       (IN/OUT)
+                                   *count MUST be 0
+
+        DIchar options           : one option is valid,			(IN)
+
+                                       o OPT_ALL : the names starting with
+                                                   a dot (.) are displayed.
+
+                                       o OPT_TRAILER : a trailer is added at
+                                                       the end of the names.
+   */
+
+
+
+ message pass ( DIint *status; OM_S_MESSAGE msg; OM_E_WRT_FLAG flag;
+                DIchar *reg_exp; OM_p_CLASSLIST classlist );
+   /*
+      This message will send msg to the objects of the target directory, 
+      eventually restricted by classlist 
+
+      Argument description :
+      --------------------
+
+        DIint *status            : the returned status			(OUT)
+                                    DIR_S_SUCCESS        : successful operation
+                                    DIR_E_OVFLOW         : overflow error
+                                    DIR_E_ABORT          : directory error
+
+        OM_p_CLASSLIST classlist :  list of classes that must or 	(IN)
+                                    must not be returned
+
+        DIchar *reg_exp          : if specified, only the names 	(IN)
+				   that match this regular
+				   expression are given.
+
+        OM_S_MESSAGE msg         : the message to be sent		(IN)
+
+        OM_E_WRT_FLAG flag       : the mode to be used to send		(IN)
+				   the message
+   */
+
+
+
+ message range_pass ( DIint *status; OM_E_WRT_FLAG flag; OM_S_MESSAGE msg;
+                      DIchar *lowname, *hiname );
+   /* 
+      This message is used to send msg to all the objects that have
+      a key in the interval [lowname, hiname]
+
+      Argument description : (NOT YET IMPLEMENTED)
+      --------------------
+
+        DIint *status       : the returned status			(OUT)
+                                 DIR_S_SUCCESS   : successful operation
+                                 DIR_E_ABORT     : directory error
+   */
+
+
+end specification IGRdir;
+
+
+
+   1.2. Operations on Directories
+        -------------------------
+
+         1.2.1. The Messages
+                ------------
+
+  In the following lines we discuss the use of the directory messages.  Using
+the message interface is NOT recommended when the hierarchy needs to be acces-
+sed.  The use of the message interface permits the use of a directory as a
+single object (not part of the hierarchy).  Note that a directory MUST receive
+the message sleep before being saved on the disk and MUST receive the message
+wakeup before being used in memory.  The macro interface is described in 1.2.2.
+
+
+                1.2.1.1. Name an element
+                         ---------------
+
+                         To add an object to a directory, the message 
+IGRdir.add_name is sent to the proper directory.  This message sets the
+object name; a name must be unique within a directory, in case of an 
+attempt to add a synonym, an error message is returned and the object 
+is not included in the target directory.  
+
+
+                1.2.1.2. Remove a name
+                         -------------
+
+                         An object can be removed from a directory using
+the message IGRdir.remove_by_name.
+
+
+
+                1.2.1.3. Rename an element
+                         -----------------
+
+                         The rename feature is supported by the macro interface.
+
+
+                1.2.1.4. Translate a name
+                         ----------------
+
+                         In order to retrieve an object by name, a message
+IGRdir.translate can be sent to a directory.  If no object with the specified
+name is found, the status is set accordingly and a null objid is returned. 
+
+
+                1.2.1.5. Untranslate an element
+                         ----------------------
+
+                         The untranslate feature is supported by the macro
+interface.
+
+
+                1.2.1.6. List content of directory
+                         --------------------------------
+
+                         The IGRdir.ls message returns the names of the 
+directory objects within an array.  The returned list can be restricted 
+to some classes of objects.  The memory will be allocated by the system.  
+It is up to the caller to release memory.  See the di$free macro for
+further information.  If a NULL pointer is sent, no name is returned.
+                         The names returned by the IGRdir.ls 
+message can be restricted by a regular expression.  If a NULL pointer is 
+given as regular expression, then "*" is assumed (see appendix for a 
+description of the regular expressions).  The trailers are defined in
+the IGRdir.dfg file (see appendix) on a class name basis.
+
+                         The classes of objects may be restricted by the
+classlist.
+
+                         If the directory structure is something like :
+
+                                :
+                              /   \
+                             /     \
+                            /       \
+                         usr1       ref
+                         /   \
+                        /     \
+                       /       \
+                   points    lines
+                   /   \       |
+                  /     \      |
+                 /       \     |
+                p1       p2   l10
+
+an ls with the regular expression ":*:*:*" will return the following array of
+names :
+
+                    :usr1:points:
+                    p1
+                    p2
+                    :usr1:lines:
+                    l10
+
+
+
+                         The IGRdir.dump message returns the grids in addition
+to the names.
+
+                                            
+                1.2.1.7. Pass a message
+                         --------------
+
+                         The IGRdir.pass message is used to send a message 
+to all objects of the directory, this list can be restricted to some names 
+and/or classes (see ls and find).  Also, the IGRdir.range_pass message can
+be used to send a message to objects whose key is in a specified interval.
+
+
+                1.2.1.8. Find element names
+                         ------------------
+
+                         The IGRdir.find message returns the names of the 
+directory objects within an array.  The difference between IGRdir.ls and
+IGRdir.find is that IGRdir.find performs the search recursively, i.e. the
+contents of the sub-directories are also printed.  If a regular expression
+is given, only the names that match it are returned.  Note that the regular
+expression may not be a path name : the regular expression refers to
+the names in a directory, it doesn't care about levels. The memory will be
+allocated by the system.  It is up to the caller to release memory.
+The trailers are defined in the IGRdir.dfg file (see appendix) on a class 
+name basis.  The level option will have the effect to modify the output in
+such a way that the layered structure will be shown by indentation.
+The starting directory specifies where the find should start.
+The maximum level is a way to limit the depth of the search (-1 means that
+there is no limit) and deep returns the maximum depth that has been 
+reached. 
+
+                         If the directory structure is something like :
+
+                                :
+                              /   \
+                             /     \
+                            /       \
+                         usr1       ref
+                         /   \
+                        /     \
+                       /       \
+                   points    lines
+                   /   \       |
+                  /     \      |
+                 /       \     |
+                p1       p2   l10
+
+a find with the regular expression "*", starting at ":" will return the
+following array of names :
+
+                    :usr1
+                    :usr1:points:
+                    :usr1:points:p1
+                    :usr1:points:p2
+                    :usr1:lines:
+                    :usr1:lines:l10
+                    :ref
+
+               1.2.1.9. Indexing
+                        --------
+
+                        It is possible to access a directory like an array.
+The objects are ordered on a creation time basis.  If an object is removed 
+from a directory, then the objects with a higher index are shifted backward.
+This functionnality is achieved by the index message.  In addition, the
+unindex message may be used to find the index of an object knowing its
+objid or its name.  The lowest boundary is 0 and the highest is the number
+of objects in the directory - 1.
+
+                        For instance, if a directory contains the following
+entries (the order matters!) :
+
+                    p0
+                    p1
+                    p2
+                    line0
+                    l10
+                    ref
+
+the result of IGRdir.index ( &status, 3, name, NULL ) will be line0 (put in
+name) and the result of IGRdir.unindex ( &status, &index, "l10", NULL_OBJID )
+will be 4 (put in index).
+
+
+
+
+         1.2.2. The Macros
+                ----------
+
+The file DIprims.h looks like :
+
+
+	Abstract:
+        ---------
+        	The following DIrectory 0.0 "primitives" are actually "macros"
+	which are operated on by the OM pre-processor.  Their purpose,
+ 	usage, and format are described in more detail in the 
+ 	"DIrectory 0.0 User Writeup".  Basically, this file contains macros
+        of the form:
+
+	#omdef di$<function_name> ( <parameters> ) 
+
+      	   ... 
+            	
+	#endomdef
+	
+        Notes:
+        ------
+        
+	--- Standard names ---
+	This list has standard names to use for things
+	like object space number (osnum). This will provide an 
+    	assurance of a standard interface. It is not complete, and
+	should be updated as new names appear in macros.
+
+	class name			classname
+	class id			classid
+        pointer to classid              p_classid
+        pointer to class list           p_classes
+	os number			osnum
+	os name				osname
+	channel	address			chanaddr
+	channel name			channame
+	channel number			channum
+        channel selector                chanselect
+        pointer to channel selector     p_chanselect
+	object id			objid
+        object instance pointer         object
+	cluster number			clusternum
+	maximum size			maxsize
+	extend size			extsize
+	extend count			extcount
+	maximum number of objects	maxobjs
+	send depth			depth
+	number				num
+	data structure name		structure
+	size				size
+	pointer	(int *)			ptr
+
+        directory name (char *)         dirname
+        path name (char *)              pathname
+        directory object id             dirid
+        pointer to dirid                p_dirid
+        object name (char *)            objname
+        previous name (char *)          oldname
+        new name (char *)               newname
+        pointer to lines of results
+                         (char ***)     lines
+        flag for message sends          flag
+        execution status (long *)       sts
+        regular expression (char *)     regexp
+        maximum level (int)             max_level
+        options (char)                  options
+        deep of search (int *)          deep
+        result of ls (char [PATH_MAX])
+                                        line
+        index in list of ls             index
+        
+        osnum + objid			grid
+        pointer to grid			grids
+
+        logical				logical name (object space)
+        sleep				flag to send a sleep message
+                                        to directories
+	keep				is not NULL when the B-tree
+					has not to be deleted during 
+					a sleep
+        path                            the search path
+        
+
+        Error Codes :
+        -------------
+
+        The following error codes are returned by the directory sub-system.
+        They are defined in the DIdef.h file.
+
+
+/*---------------------------------------------------------------------------*/
+
+
+/* This macro is used to display an error message corresponding to
+   the specified status.
+
+   return status :
+                      DIR_S_SUCCESS : successful operation
+
+      Argument description :
+      --------------------
+
+        DIint  sts       : the status					(IN)
+        DIchar *comment  : a comment to be printed with   		(IN)
+                           the error message
+*/
+
+#omdef di$report_error ( sts, comment = NULL )
+       DIreport_error ( sts, comment )
+#endomdef
+
+
+/*---------------------------------------------------------------------------*/
+
+
+/* This macro is used to add a name in the directory sub-system 
+
+   return status :
+                      DIR_S_SUCCESS 	   : successful operation
+                      DIR_W_NAME_NOT_FOUND : (directory) name NOT found
+                      DIR_E_NAME_DUP	   : name duplicated
+                      DIR_E_OVFLOW  	   : overflow error
+                      DIR_E_SYNTAX  	   : syntax error
+                      DIR_E_ABORT   	   : directory error
+
+      Argument description :
+      --------------------
+
+        DIchar *objname         : the name of the object       		(IN)
+        
+        GRobjid objid           : the objid to be added         	(IN)
+        
+        DIspacenum *p_osnum	: the object space number       	(OUT)
+                                   of the directory where the
+                                   object will be added
+*/
+
+#omdef di$add_name ( objname, 
+                     objid,
+                     p_osnum = NULL )
+       DImain ( NULL, DIadd_name, -1, (objname), NULL, (objid), NULL, NULL,
+                (p_osnum), NULL, NULL, NULL, OPT_ALL, NULL )
+#endomdef
+
+/*---------------------------------------------------------------------------*/
+
+
+/* This macro is used to translate a dirname + name + index 
+   from the directory sub-system (-> (osnum, objid))
+
+   return status :
+                   DIR_S_SUCCESS        : successful operation
+                   DIR_W_NAME_NOT_FOUND : name NOT found
+                   DIR_E_OVFLOW         : overflow error
+                   DIR_E_SYNTAX         : syntax error
+                   DIR_E_ABORT          : directory error
+
+      Argument description :
+      --------------------
+
+        DIchar *dirname         : the name of the directory		(IN)
+
+        DIchar *path		: the search path;  it is not		(IN)
+                                  taken into account if an
+                                  absolute name is given.
+                                  
+        DIint index		: the index of the object in the	(IN)
+                                  directory
+                                  
+        DIchar *name		: the object name			(OUT)
+
+        GRobjid *p_objid        : the objid associated with     	(OUT)
+			 	  the name + index
+			 	  
+        DIspacenum *p_osnum	: the object space number of    	(OUT)
+                                  the object + index
+*/
+
+#omdef di$index ( dirname = NULL,
+                  path    = NULL,
+                  index,
+                  name    = NULL,
+                  p_objid = NULL,
+                  p_osnum = NULL )
+       DIindex ( (dirname), (path), (index), (name), (p_osnum), (p_objid) )
+#endomdef
+
+/*---------------------------------------------------------------------------*/
+
+
+/* This macro is used to translate a dirname + a name (or objid) into an index.
+
+   return status :
+                   DIR_S_SUCCESS        : successful operation
+                   DIR_W_NAME_NOT_FOUND : name NOT found
+                   DIR_E_OVFLOW         : overflow error
+                   DIR_E_SYNTAX         : syntax error
+                   DIR_E_ABORT          : directory error
+
+      Argument description :
+      --------------------
+
+        DIchar *dirname         : the name of the directory		(IN)
+
+        DIchar *path		: the search path;  it is not		(IN)
+                                  taken into account if an
+                                  absolute name is given.
+                                  
+        DIint *p_index		: pointer to the index of the object 	(OUT)
+                                  in the directory
+                                  
+        DIchar *name		: the object name			(IN)
+
+        DIobjid objid		: the object identifier			(IN)
+*/
+
+#omdef di$unindex ( dirname = NULL,
+                    path    = NULL,
+                    p_index,
+                    name    = NULL,
+                    objid   = NULL_OBJID )
+       DIunindex ( (dirname), (path), (p_index), (name), (objid) )
+#endomdef
+
+/*---------------------------------------------------------------------------*/
+
+
+/* This macro is used to translate a name from the directory sub-system.  This
+   means that given the name, the osnum and objid of the object are returned.
+
+   return status :
+                   DIR_S_SUCCESS        : successful operation
+                   DIR_W_NAME_NOT_FOUND : name NOT found
+                   DIR_E_OVFLOW         : overflow error
+                   DIR_E_SYNTAX         : syntax error
+                   DIR_E_ABORT          : directory error
+
+      Argument description :
+      --------------------
+
+        DIchar *objname         : the name of the object 		(IN)
+
+        DIchar *path		: the search path;  it is not		(IN)
+                                  taken into account if an
+                                  absolute name is given.
+
+        GRobjid *p_objid        : the objid associated with     	(OUT)
+			 	  the name
+			 	  
+        DIspacenum *p_osnum	: the object space number of    	(OUT)
+                                  the object
+*/
+
+#omdef di$translate ( objname,
+                      path    = NULL,
+                      p_objid,
+                      p_osnum = NULL )
+       DImain ( NULL, DItranslate, 1, (objname), 0, NULL_OBJID, NULL, 
+                (p_objid), (p_osnum), NULL, NULL, NULL, OPT_ALL, 1 )
+#endomdef
+
+
+/*---------------------------------------------------------------------------*/
+
+
+/* This macro is used to untranslate a name from the directory sub-system.
+   Untranslate means : knowing the osnum and the objid, finding the name.
+   Since synonyms (more than one name for one object) are supported, the
+   untranslate macro supports an index and a counter.  The counter gives
+   the number of synonyms and the index specifies the index (starting at
+   0) of the name that is returned in name.
+
+   return status :
+                   DIR_S_SUCCESS        : successful operation
+                   DIR_W_NAME_NOT_FOUND : name NOT found
+                   DIR_E_OVFLOW         : overflow error
+                   DIR_E_INVARG  	: the specified object does not exist
+                                          (bad osnum and/or bad objid )
+                   DIR_E_ABORT          : directory error
+
+      Argument description :
+      --------------------
+
+        DIchar *name           : the name of the object (this		(OUT)
+			         array must contain at least
+			         PATH_MAX characters).
+
+        GRobjid objid          : the objid associated with		(IN)
+			 	 the name.
+				 
+        DIspacenum osnum       : the object space number of the 	(IN)
+				 object.
+
+        DIint index	       : the index of the name in the		(IN)
+                                 synonym list.
+
+        DIint *ptr	       : the number of synonyms			(OUT)
+*/
+
+#omdef di$untranslate ( objname,
+                        index = NULL,
+                        ptr   = NULL,
+                        objid,
+                        osnum = OM_Gw_current_OS )
+       DIuntranslate ( (objname), (index), (ptr), (objid), (osnum) )
+#endomdef
+
+
+/*---------------------------------------------------------------------------*/
+
+/* This macro is used to remove a name from the directory sub-system.
+
+   return status :
+                   DIR_S_SUCCESS        : successful operation
+                   DIR_W_NAME_NOT_FOUND : name NOT found
+                   DIR_E_SYNTAX         : syntax error
+                   DIR_E_INVARG  	: the specified object does not exist
+                                          (bad osnum and/or bad objid )
+                   DIR_E_ABORT          : directory error
+
+      Argument description :
+      --------------------
+
+        DIchar *regexp          : the name (regular expression)  	(IN)
+                                  to be removed
+
+        DIchar *path		: the search path;  it is not		(IN)
+                                  taken into account if an
+                                  absolute name is given.
+*/
+
+#omdef di$rm_name ( regexp, path = NULL )
+       DIrm_name ( (regexp) )
+#endomdef
+
+
+/*---------------------------------------------------------------------------*/
+
+
+/* This macro is used to remove an entry from the directory sub-system.
+
+   return status :
+                   DIR_S_SUCCESS        : successful operation
+                   DIR_W_NAME_NOT_FOUND : name NOT found
+                   DIR_E_ABORT          : directory error
+
+      Argument description :
+      --------------------
+
+        GRobjid objid           : the objid to be removed       	(IN)
+
+        DIspacenum osnum        : the object space number       	(IN)
+                                  of the object
+*/
+
+#omdef di$rm_objid ( objid, osnum = OM_Gw_current_OS )
+       DIrm_objid ( (objid), (osnum) )
+#endomdef
+
+
+/*---------------------------------------------------------------------------*/
+
+
+/* This macro renames a previously named object.
+
+   return status :
+                   DIR_S_SUCCESS        : successful operation
+                   DIR_W_NAME_NOT_FOUND : name NOT found (oldname)
+                   DIR_E_NAME_DUP       : name duplicated (newname)
+                   DIR_E_OVFLOW         : overflow error
+                   DIR_E_SYNTAX         : syntax error
+                   DIR_E_ABORT          : directory error
+
+      Argument description :
+      --------------------
+
+        DIchar *oldname       : the name to be changed			(IN)
+
+        DIchar *path	      : the search path;  it is not		(IN)
+                                taken into account if an
+                                absolute name is given.
+
+        DIchar *newname       : the new name				(IN)
+*/
+
+#omdef di$rename ( oldname,
+                   path    = NULL,
+                   newname = NULL )
+       DImain ( NULL, DIrename, 1, (oldname), 0, NULL_OBJID, (newname), 
+                NULL, NULL, NULL, NULL, NULL, OPT_ALL, 1 )
+#endomdef
+ 
+
+/*---------------------------------------------------------------------------*/
+
+
+/*
+   The following commands have functionalities quite close to the UNIX commands
+*/
+
+
+/* This macro returns the current directory.  The name is returned in 
+   dirname, the objid in p_dirid and the osnum in p_osnum.  Note that
+   each argument may be NULL if no value has to be returned.
+
+   return status :
+                   DIR_S_SUCCESS : successful operation
+                   DIR_E_ABORT   : directory error
+
+      Argument description :
+      --------------------
+
+        DIchar *dirname      : the name of the current			(OUT)
+		               directory
+
+        GRobjid *p_dirid     : the current directory objid		(OUT)
+        
+        DIspacenum *p_osnum  : the current directory object		(OUT)
+                               space number
+*/ 
+
+#omdef di$pwd ( p_dirid = NULL,
+                p_osnum = NULL,
+                dirname = NULL )
+       DIpwd ( (dirname), (p_dirid), (p_osnum) )
+
+#endomdef
+
+/*---------------------------------------------------------------------------*/
+
+
+/* This macro is used to change the current directory.  It may
+   return the osnum and objid of the new current directory.
+
+   return status :
+                   DIR_S_SUCCESS : successful operation
+                   DIR_E_SYNTAX  : syntax error
+                   DIR_E_OVFLOW  : overflow error
+                   DIR_E_ABORT   : directory error
+
+      Argument description :
+      --------------------
+
+        DIchar *dirname      : the name of the directory to be  	(IN)
+		               the current one
+
+        DIchar *path	     : the search path;  it is not		(IN)
+                               taken into account if an
+                               absolute name is given.
+
+        GRobjid *p_dirid     : the new current directory objid		(OUT)
+        
+        DIspacenum *p_osnum  : the object space number of the   	(OUT)
+                               new current directory
+*/
+
+#omdef di$cd ( dirname,
+               path    = NULL,
+               p_dirid = NULL,
+               p_osnum = NULL )
+       DIcd ( (dirname), (p_dirid), (p_osnum) )
+#endomdef
+
+
+/*---------------------------------------------------------------------------*/
+
+
+/* This macro is used to create a new directory.
+
+   return status :
+                   DIR_S_SUCCESS   : successful operation
+                   DIR_E_DIR_DUP   : directory name duplicated
+                   DIR_E_SYNTAX    : syntax error
+                   DIR_E_OVFLOW    : overflow error
+                   DIR_E_ABORT     : directory error
+
+      Argument description :
+      --------------------
+
+        DIchar *dirname      : the name of the directory 		(IN)
+			       to be created
+
+        GRobjid *p_dirid     : the created directory objid		(OUT)
+        
+        DIspacenum *p_osnum  : the object space number of the   	(OUT)
+                               created directory
+*/
+
+#omdef di$mkdir ( dirname,
+                  p_dirid = NULL,
+                  p_osnum = NULL )
+       DImain ( NULL, DImkdir, -1, dirname, 0, NULL_OBJID, NULL, p_dirid,
+                p_osnum, NULL, NULL, NULL, OPT_ALL, 1 )
+#endomdef
+
+
+/*---------------------------------------------------------------------------*/
+
+
+/* This macro removes an existing directory.
+
+   return status :
+                   DIR_S_SUCCESS   : successful operation
+                   DIR_E_SYNTAX    : syntax error
+                   DIR_E_OVFLOW    : overflow error
+                   DIR_E_ABORT     : directory error
+
+      Argument description :
+      --------------------
+
+        DIchar *dirname     : the name of the directory to be		(IN)
+			      deleted
+
+        DIchar *path	    : the search path;  it is not		(IN)
+                              taken into account if an
+                              absolute name is given.
+*/
+
+#omdef di$rmdir ( dirname,
+                  path = NULL )
+       DImain ( NULL, DIrmdir, -1, (dirname), 0, NULL_OBJID, NULL, NULL,
+                NULL, NULL, NULL, NULL, OPT_ALL, 1 )
+#endomdef
+
+/*---------------------------------------------------------------------------*/
+
+
+/* This macro is used to send a message to all the objects that match
+   the regular expression.
+
+   return status :
+                   DIR_S_SUCCESS   : successful operation
+                   DIR_E_OVFLOW    : overflow error
+                   DIR_E_ABORT     : directory error
+
+      Argument description :
+      --------------------
+
+        DIchar *regexp           : if specified, only the names		(IN)
+				   that match this regular
+				   expression are given.
+
+        OM_S_MESSAGE msg         : the message to be sent		(IN)
+
+        OM_E_WRT_FLAG flag       : the mode to be used to send		(IN)
+				   the message
+
+        OM_p_CLASSLIST p_classes : a list of class id's to            	(IN)
+                                   restrict the choice.
+*/
+
+#omdef di$pass ( flag = OM_e_wrt_object,
+                 msg,
+                 regexp = "*",
+                 p_classes = NULL )
+       DIpass ( (flag), (msg), (regexp), (p_classes) )
+#endomdef
+
+
+/*---------------------------------------------------------------------------*/
+
+
+/* This macro is used to split a full pathname into the dirname and the
+    name within the directory.
+
+    return status :
+                   DIR_S_SUCCESS   : successful operation
+
+      Argument description :
+      --------------------
+
+        DIchar *pathname   : the pathname to be split			(IN)
+      
+        DIchar *dirname    : the directory name				(OUT)
+      
+        DIchar *name       : the object name				(OUT)
+*/
+
+#omdef di$split ( pathname,
+                  dirname = NULL,
+                  name = NULL )
+       DIsplit ( (pathname), (dirname), (name) )
+#endomdef
+
+
+/*---------------------------------------------------------------------------*/
+
+
+/* This macro is used to test if string is regular expression that can
+    match more than one name.
+
+    return status :
+                    DIR_S_SUCCESS   : the argument is a regular expression
+                                      that can match more than one name
+                    NULL            : the argument is not a regular expression
+
+      Argument description :
+      --------------------
+
+         DIchar *regexp 	: the name to be checked	      (IN)
+*/
+
+#omdef di$is_regexp ( regexp )
+       DIis_regexp ( (regexp) )
+#endomdef
+
+
+/*---------------------------------------------------------------------------*/
+
+
+/* This macro is used to find the names that match the regular expression.
+    If lines is specified (DIchar ***), it is filled out with the results.
+
+        o  options may be OPT_TRAILER, OPT_LEVEL, OPT_TRAILER | OPT_LEVEL
+           or NULL.
+        o  deep returns the maximum layer number 
+        o  max_level may be used to restrict the deep of the search (-1 means
+           no restriction)
+
+    return status :
+                    DIR_S_SUCCESS : successful operation
+                    DIR_E_OVFLOW  : overflow error
+                    DIR_E_ABORT   : directory error
+
+      Argument description :
+      --------------------
+
+        DIchar *start_dir       : the directory where the 		(IN)
+				  find should start.
+
+        DIchar *regexp          : only the names that match this 	(IN)
+				  regular expression are given.
+
+        DIchar ***lines         : if specified, the entries are 	(OUT)
+		                  listed in this array
+			          
+        DIgrid **grids          : the grids of the listed entries	(OUT)
+
+        DIint *ptr              : the number of listed entry;		(OUT)
+
+        DIint  max_level        : the maximum level of search 		(IN)
+				  (< 0 means no limit)
+
+        DIint  *deep            : the effective deep of the 		(OUT)
+				  search (<= max_level)
+
+        DIchar options          : two options are valid,		(IN)
+                                       o OPT_LEVEL   : the display is indented
+                                                       to reflect the directory
+                                                       structure
+
+                                       o OPT_TRAILER : the names are displayed
+                                                       with a trailer depending
+                                                       upon the class
+*/
+
+#omdef di$find ( start_dir = ".", 
+                 regexp = "*",
+                 lines = NULL,
+                 grids = NULL,
+                 ptr, 
+                 max_level = -1,
+                 deep = NULL,
+                 options = OPT_TRAILER )
+       DIfind ( (start_dir), (regexp), (lines), (grids), (ptr), 
+                (max_level), (deep), (char) (options) )
+#endomdef
+
+
+/*---------------------------------------------------------------------------*/
+
+
+/* This macro is used to find the names that match the regular expression.
+   The result may be retrieved using the di$fetch_find macro.
+
+        o  options may be OPT_TRAILER, OPT_LEVEL, OPT_TRAILER | OPT_LEVEL
+           or NULL.
+        o  deep returns the maximum layer number 
+        o  max_level may be used to restrict the deep of the search (-1 means
+           no restriction)
+        o  the result must be fetched using the di$fetch_find macro
+
+    return status :
+                    DIR_S_SUCCESS : successful operation
+                    DIR_E_ABORT   : directory error
+
+      Argument description :
+      --------------------
+
+        DIchar *start_dir       : the directory where the       	(IN)
+				  find should start.
+
+        DIchar *regexp          : only the names that match this 	(IN)
+				  regular expression are given.
+
+        DIint *ptr              : the number of listed entry;		(OUT)
+
+        DIint  max_level        : the maximum level of search 		(IN)
+				  (< 0 means no limit)
+
+        DIint  *deep            : the effective deep of the 		(OUT)
+				  search (<= max_level)
+
+        DIchar options          : two options are valid,		(IN)
+                                       o OPT_LEVEL   : the display is indented
+                                                        to reflect the directory
+                                                        structure
+
+                                       o OPT_TRAILER : the names are displayed
+                                                        with a trailer depending
+                                                        upon the class
+*/
+
+#omdef di$start_find ( start_dir = ".", 
+                       regexp    = "*",
+                       ptr, 
+                       max_level = -1,
+                       deep      = NULL,
+                       options   = OPT_TRAILER )
+       DIstart_find ( (start_dir), (regexp), (ptr), 
+                      (max_level), (deep), (char) (options) )
+#endomdef
+
+
+/*---------------------------------------------------------------------------*/
+
+
+/* This macro is used get the result of a di$start_find.  The index determines
+   the number of the line that should be fetched out.
+
+    return status :
+                    DIR_S_SUCCESS : successful operation
+                    DIR_E_OVFLOW  : overflow error
+                    DIR_E_ABORT   : directory error
+
+      Argument description :
+      --------------------
+
+        DIchar line []          : the array to put the result in	(OUT)
+
+        DIgrid *p_grid		: the grid of the line			(OUT)
+				   
+        DIint  index            : the index of the line to be		(IN)
+   			          fetched; this index must be
+				  in [0, count[, where count
+                                  is returned by start_find
+*/
+   
+#omdef di$fetch_find ( p_grid = NULL, line = NULL, index )
+       DIfetch_find ( (line), (p_grid), (index) )
+#endomdef
+
+
+/*---------------------------------------------------------------------------*/
+
+ 
+/* This macro is used to list the names that match the regular expression.
+   If lines is specified (DIchar ***), it is filled out with the results.
+
+        o  options may be OPT_TRAILER or NULL.
+
+    return status :
+                    DIR_S_SUCCESS : successful operation
+                    DIR_E_OVFLOW  : overflow error
+                    DIR_E_ABORT   : directory error
+
+      Argument description :
+      --------------------
+
+        DIchar *regexp             : if not NULL, only the names	(IN)
+				     that match this regular 
+				     expression are given.
+				   
+        DIchar ***lines            : if not NULL, the entries are	(OUT)
+				     listed in this array
+
+        DIint *ptr                 : the number of listed entry         (OUT)
+
+        DIchar options             : one option is valid,		(IN)
+                                       o OPT_TRAILER : the names are displayed
+                                                        with a trailer depending
+                                                        upon the class
+*/
+
+#omdef di$ls ( regexp       = "*", 
+               lines        = NULL, 
+               ptr, 
+               options      = OPT_TRAILER )
+       DImain ( NULL, NULL, -1, (regexp), NULL, NULL, NULL, NULL,
+                NULL, (lines), NULL, (ptr), (options), NULL )
+#endomdef
+
+
+/*---------------------------------------------------------------------------*/
+
+
+/* This macro is used to initiate an ls.  This macro doesn't give the
+   result to the user, rather it allows the user to get the entries
+   one by one using the di$fetch_ls macro.
+
+    return status :
+                    DIR_S_SUCCESS : successful operation
+                    DIR_E_ABORT   : directory error
+
+      Argument description :
+      --------------------
+
+        DIchar *regexp             : if not NULL, only the names	(IN)
+				     that match this regular 
+				     expression are given.
+
+        DIint *ptr                 : the number of listed entry         (OUT)
+
+        DIchar options             : one option is valid,		(IN)
+                                       o OPT_TRAILER : the names are displayed
+                                                        with a trailer depending
+                                                        upon the class
+*/
+
+#omdef di$start_ls ( regexp       = "*", 
+                     ptr, 
+                     options      = OPT_TRAILER )
+       DIstart_dump ( (1), (NULL), (regexp), 
+                      (ptr), (char) (options) )
+#endomdef
+
+
+/*---------------------------------------------------------------------------*/
+
+
+/* This macro is used get the result of a di$start_ls.  The index determines
+   the number of the line that should be fetched out.
+
+    return status :
+                    DIR_S_SUCCESS : successful operation
+                    DIR_E_OVFLOW  : overflow error
+                    DIR_E_ABORT   : directory error
+
+      Argument description :
+      --------------------
+
+        DIchar line []          : the array to put the result in  	(OUT)
+				   
+        DIint  index            : the index of the line to be	  	(IN)
+				  fetched; this index must be
+				  in [0, count[, where count
+                                  is returned by start_ls
+*/
+   
+#omdef di$fetch_ls ( line, p_grid = NULL, index )
+       DIfetch_dump ( (line), (p_grid), (index) )
+#endomdef
+
+
+/*---------------------------------------------------------------------------*/
+
+
+/* This macro is used to list the names that match the regular expression.
+   If lines is specified (DIchar ***), it is filled out with the results.
+
+        o  options may be OPT_TRAILER, OPT_ALL, OPT_ALL | OPT_TRAILER or NULL.
+
+    return status :
+                    DIR_S_SUCCESS : successful operation
+                    DIR_E_OVFLOW  : overflow error
+                    DIR_E_ABORT   : directory error
+
+      Argument description :
+      --------------------
+
+        DIchar *regexp             : if not NULL, only the names	(IN)
+				     that match this regular 
+				     expression are given.
+				   
+        OM_p_CLASSLIST p_classes   : a list of class id's to           	(IN)
+                                     restrict the choice.
+
+        DIchar ***lines            : if not NULL, the entries are	(OUT)
+				     listed in this array
+
+        DIgrid **grids             : if not NULL, the grid entries 	(OUT)
+				     are listed in this array
+
+        DIint *ptr                 : the number of listed entry   	(OUT)
+
+        DIchar options             : one option is valid,		(IN)
+                                       o OPT_TRAILER : the names are displayed
+                                                        with a trailer depending
+                                                        upon the class
+*/
+
+#omdef di$dump ( regexp    = "*", 
+                 p_classes = NULL,
+                 lines     = NULL, 
+                 grids     = NULL, 
+                 ptr, 
+                 options   = OPT_TRAILER )
+       DImain ( (p_classes), NULL, -1, (regexp), NULL, NULL, NULL, NULL,
+                NULL, (lines), (grids), (ptr), (options), 1 )
+#endomdef
+
+
+/*---------------------------------------------------------------------------*/
+
+
+/* This macro is used to initiate a dump.  This macro doesn't give the
+   result to the user, rather it allows the user to get the entries
+   one by one using the di$fetch_dump macro.
+
+    return status :
+                    DIR_S_SUCCESS : successful operation
+                    DIR_E_ABORT   : directory error
+
+      Argument description :
+      --------------------
+
+        DIchar *regexp             : if not NULL, only the names	(IN)
+				     that match this regular 
+				     expression are given.
+
+        OM_p_CLASSLIST p_classes   : a list of class id's to            (IN)
+                                     restrict the choice.
+ 
+        DIint *ptr                 : the number of listed entry         (OUT)
+
+        DIchar options             : one option is valid,		(IN)
+                                       o OPT_TRAILER : the names are displayed
+                                                        with a trailer depending
+                                                        upon the class
+*/
+
+#omdef di$start_dump ( regexp    = "*", 
+                       p_classes = NULL,
+                       ptr, 
+                       options   = OPT_TRAILER )
+       DIstart_dump ( (NULL), (p_classes), (regexp),
+                      (ptr), (char) (options) )
+#endomdef
+
+
+/*---------------------------------------------------------------------------*/
+
+
+/* This macro is used to get the result of a di$start_dump.  The index
+   determines the number of the line that should be fetched out.
+
+    return status :
+                    DIR_S_SUCCESS : successful operation
+                    DIR_E_OVFLOW  : overflow error
+                    DIR_E_ABORT   : directory error
+
+      Argument description :
+      --------------------
+
+        DIchar line []          : the array to put the result in   	(OUT)
+				   
+        DIgrid  *p_grid         : the grid corresponding to        	(OUT)
+                                  the line
+				   
+        DIint  index            : the index of the line to be	   	(IN)
+				  fetched; this index must be
+				  in [0, count[, where count
+                                  is returned by start_dump
+*/
+   
+#omdef di$fetch_dump ( line = NULL, p_grid = NULL, index )
+       DIfetch_dump ( (line), (p_grid), (index) )
+#endomdef
+/*---------------------------------------------------------------------------*/
+
+
+/*
+   This macro is used to mount an object space.
+
+    return status :
+                    DIR_S_SUCCESS : successful operation
+                    DIR_E_OVFLOW  : overflow error
+                    DIR_E_ABORT   : directory error
+
+      Argument description :
+      --------------------
+
+        DIchar     logical []	: the object space logical name 	(IN)
+
+        DIspacenum osnum	: object space to be mounted		(IN)
+*/
+   
+#omdef di$mount ( logical, osnum )
+       DImount ( (logical), (osnum) )
+#endomdef
+
+/*---------------------------------------------------------------------------*/
+
+/*
+   This macro is used to unmount an object space.
+
+
+    return status :
+                    DIR_S_SUCCESS : successful operation
+                    DIR_E_OVFLOW  : overflow error
+                    DIR_E_INVARG  : the specified directory is NOT the
+                                    root directory of an objects space
+                    DIR_E_ABORT   : directory error
+
+      Argument description :
+      --------------------
+
+        DIchar     dirname	: directory to be unmounted		(IN)
+
+        DIint      sleep	: if not NULL, the directories will 	(IN)
+        			  receive a IGRdir.sleep message.  It
+        			  must be the case before saving the
+        			  directories to the disk.
+
+        DIint      keep		: if not NULL, the directories will 	(IN)
+				  keep the B-tree structure.  It is
+				  used to avoid B-tree destruction and
+				  re-construction when a non-final save
+				  is performed.  If sleep is NULL, this
+				  argument is ignored.
+*/
+   
+#omdef di$umount ( dirname, sleep = NULL, keep = NULL )
+       DIumount ( (dirname), (sleep), (keep) )
+#endomdef
+
+/*---------------------------------------------------------------------------*/
+
+/* This macro adds an entry in a directory and creates any directories
+   in the entry's path spec that do not already exist.  
+
+   return status :
+
+          DIR_S_SUCCESS  : successful (directories and entry created)
+          DIR_E_NAME_DUP : entry name duplicated ( cannot overwrite entry )
+          DIR_E_SYNTAX   : syntax error ( badly formatted path )
+	  DIR_E_ABORT    : general failure
+
+
+
+      Argument description :
+      --------------------
+
+        DIobjid   objid       : object id of newly created entry  	(IN)
+				in directory 
+
+
+        DIchar *full_pathname : the full path name of the new     	(IN)
+				entry to by added:  for example, 
+				:usr1:line:l1.  
+
+
+
+        DIspacenum *p_osnum   : the object space number of the    	(OUT)
+				directory where the entry was made
+
+    Caveats
+
+       If the code fails while creating directories in the full pathname
+       or when adding the name to last directory, then any directories 
+       created by the command will remain!  Code to cleanup the directories
+       will be added at a later date.  In the meantime, be very carefull
+       about the use of this routine.
+ */
+#omdef  di$mkpath( objid,   pathname,   p_osnum  )
+        DImkpath( (objid), (pathname), (p_osnum) )
+#endomdef
+
+/*---------------------------------------------------------------------------*/
+
+/*
+   This macro is used to initialize the directory sub-system.  This macro
+   MUST be called before any other one.
+
+
+    return status :
+                    DIR_S_SUCCESS : successful operation
+                    DIR_E_OVFLOW  : overflow error
+                    DIR_E_INVARG  : the specified arguments are not valid
+                    DIR_E_ABORT   : directory error
+
+      Argument description :
+      --------------------
+
+        DIchar separator	: the directory separator		(IN)
+                                  default is ':'
+                                  
+        DIchar current		: the character representing the	(IN)
+                                  current directory
+                                  default is '.'
+                                  
+        DIchar home		: the character representing the home	(IN)
+                                  directory
+                                  default is '~'
+                                  
+        DIchar back		: the character representing the 	(IN)
+                                  previous current directory
+                                  default is '-'
+*/
+   
+#omdef di$init ( separator = NULL, current = NULL, home = NULL, back = NULL )
+       DIinit ( (separator), (current), (home), (back) )
+#endomdef
+
+/*-------------------------------------------------------------------------*/
+
+/*
+   This macro is used to free memory allocated by di$ls, di$find or di$dump.
+
+    return status :
+                    DIR_S_SUCCESS : successful operation
+                    DIR_E_ABORT   : directory error
+
+      Argument description :
+      --------------------
+
+        DIchar  **lines		: lines to be freed			(IN)
+
+        DIint   count		: number of lines			(IN)
+
+*/
+   
+#omdef di$free ( lines, count )
+       DIfree ( (lines), (count) )
+#endomdef
+
+/*---------------------------------------------------------------------------*/
+
+/*
+   This macro is used to find one object space associated with a pathname.
+
+    return status :
+                    DIR_S_SUCCESS        : successful operation
+                    DIR_E_SYNTAX         : syntax error
+                    DIR_W_NAME_NOT_FOUND : name NOT found
+                    DIR_E_ABORT          : directory error
+
+      Argument description :
+      --------------------
+
+        DIchar  	*pathname	: pathname to be analyzed	(IN)
+
+        DIspacenum   	*p_osnum	: object space number 		(OUT)
+                                          associated with the pathname
+
+*/
+   
+#omdef di$give_osnum ( pathname, p_osnum )
+       DIgive_osnum ( (pathname), (p_osnum) )
+#endomdef
+
+/*---------------------------------------------------------------------------*/
+
+/*
+   This macro is used to find one path name associated with an object space.
+
+    return status :
+                    DIR_S_SUCCESS        : successful operation
+                    DIR_E_SYNTAX         : syntax error
+                    DIR_W_NAME_NOT_FOUND : name NOT found
+                    DIR_E_INVARG   	 : the specified osnum has not been
+                                           mounted
+                    DIR_E_ABORT          : directory error
+
+
+      Argument description :
+      --------------------
+
+        DIspacenum   	osnum		: object space number 		(IN)
+
+        DIchar  	*pathname	: pathname to be returned 	(OUT)
+
+*/
+   
+#omdef di$give_pathname ( osnum, pathname )
+       DIgive_pathname ( (osnum), (pathname) )
+#endomdef
+
+
+               1.2.2.1. Name an element
+
+                        The macro di$add_name is used to add a name to the
+directory sub-system.  Note that the directory an object is in must be in
+the same object space as the object.  When a regular expression is given, 
+several names may be added with one call.
+
+                        The di$mkpath (make path) macro is very similar to the
+di$add_name macro.  The difference is that the directories that are in the
+path name will be created.  For instance, the following call
+
+
+                  status = di$mkpath ( objid    = my_id,
+                                       pathname = ":master:lines:l1" );
+
+will result in the creation of the following hierarchy (even if master and
+lines didn't exist before the call) :
+
+
+                             :
+                             |
+                            \|/
+                           master
+                             |
+                            \|/
+                           lines
+                             |
+                            \|/
+                             l1
+
+
+               1.2.2.2. Remove a name
+
+                        di$rm_name and di$rm_objid are used to remove an
+element from the directory sub-system.
+
+
+               1.2.2.3. Rename an element
+
+                        The macro di$rename is used to change the name of
+a previously named element.
+
+
+               1.2.2.4. Translate a name
+
+                        The name to (osnum, objid) translation is performed
+by the macro di$translate.  Regular expressions are accepted.
+
+
+               1.2.2.5. Untranslate an element
+
+                        The (osnum, objid) to name translation is performed
+by the macro di$untranslate.
+
+
+               1.2.2.6. List content of directory
+
+                         The di$ls macro returns the names of the 
+directory objects within an array.  The returned list can be restricted 
+to some classes of objects.  The memory will be allocated by the system.  
+It is up to the caller to release memory. The names returned by the 
+di$ls macro can be restricted by a regular expression.  If a NULL pointer is 
+given as regular expression, then "*" is assumed (see appendix for a 
+description of the regular expressions).  The trailers are defined in the
+IGRdir.dfg file (see appendix) on a class name basis.
+
+                         If the directory structure is something like :
+
+                                :
+                              /   \
+                             /     \
+                            /       \
+                         usr1       ref
+                         /   \
+                        /     \
+                       /       \
+                   points    lines
+                   /   \       |
+                  /     \      |
+                 /       \     |
+                p1       p2   l10
+
+
+an ls with the regular expression ":*:*:*" will return the following array of
+names :
+
+                    :usr1:points:
+                    p1
+                    p2
+                    :usr1:lines:
+                    l10
+
+
+                         Using the di$start_ls and di$fetch_ls macros,
+it is possible to deal with one entry at a time : the di$start_ls macro
+is called to initialize the directory sub-system internal arrays and
+the di$fetch_ls macro is used as many times as needed to get the entries.
+With the same regular expression for the di$start_ls macro, the results
+of successive di$fetch_ls macro calls will be :
+
+                    :usr1:points:p1
+                    :usr1:points:p2
+                    :usr1:lines:l10
+
+                        The di$dump, di$start_dump and di$fetch_dump macros
+may be used when the grids are needed.
+
+
+               1.2.2.7. Pass a message
+
+                        The macro di$pass may be used to send a message to
+one or many named objects.
+
+
+               1.2.2.8. Make a directory
+
+                        The macro di$mkdir is used to create a new directory.
+
+
+               1.2.2.9. Delete a directory
+
+                        The macro di$rmdir is used to delete an empty directory.
+
+
+               1.2.2.10. Current directory
+
+                        The macro di$pwd allows to find the current directory
+while the macro di$cd allows to change it.
+
+
+               1.2.2.11 Find element names
+
+                        The di$find macro returns the names of the 
+directory objects within an array.  The difference between di$ls and
+di$find is that di$find performs the search recursively, i.e. the
+contents of the sub-directories are also printed.  If a regular expression
+is given, only the names that match it are returned.  Note that the regular
+expression may not be a path name (:) : the regular expression refers to
+the names in a directory, it doesn't care about levels. The memory will be
+allocated by the system.  It is up to the caller to release memory.
+The trailers are defined in the IGRdir.dfg file (see appendix) on a class 
+name basis.  The level option will have the effect to modify the output in
+such a way that the layered structure will be shown by indentation.
+The starting directory specifies where the find should start.
+The maximum level is a way to limit the depth of the search (-1 means that
+there is no limit) and deep returns the maximum depth that has been 
+reached. 
+
+                         If the directory structure is something like :
+
+                                :
+                              /   \
+                             /     \
+                            /       \
+                         usr1       ref
+                         /   \
+                        /     \
+                       /       \
+                   points    lines
+                   /   \       |
+                  /     \      |
+                 /       \     |
+                p1       p2   l10
+
+a find with the regular expression "*", starting at ":" will return the
+following array of names :
+
+                    :usr1
+                    :usr1:points:
+                    :usr1:points:p1
+                    :usr1:points:p2
+                    :usr1:lines:
+                    :usr1:lines:l10
+                    :ref
+
+                         Using the di$start_find and di$fetch_find macros,
+it is possible to deal with one entry at a time : the di$start_find macro 
+is called to initialize the directory sub-system internal arrays and the
+di$fetch_find macro is used as many time as needed to get the entries.
+
+With the same parameters for the di$start_find macro, the results of
+successive di$fetch_find calls will be :
+
+                    :usr1
+                    :usr1:points:
+                    :usr1:points:p1
+                    :usr1:points:p2
+                    :usr1:lines:
+                    :usr1:lines:l10
+                    :ref
+
+
+               1.2.2.12 Object space support
+
+                        The directory sub-system has one common root for all
+the object spaces.  Each object space may have a root directory (called the
+root of the object space).  An object space may be mounted to the hierarchy
+using the di$mount macro.  The arguments of this macro are the logical name
+and the object space number.  The logical name must be a valid directory
+name, like the directory name given to di$mkdir for instance.  The result of
+the di$mount macro will be a new directory with the entire object space
+hierarchy underneath it.  Note that the directories are not copied : a link
+to the root of the object space is created.  The object space may be removed
+from the hierarchy using the macro di$umount.  The sleep and keep arguments
+are reserved for internal use (DO NOT specify them !).
+
+                        The di$give_osnum and di$give_pathname can be used
+in a manner similar to that of translate and untranslate.  The di$give_osnum
+macro returns one object space associated with the pathname while the
+di$give_pathname macro returns one pathname associated with the osnum.
+
+
+
+               1.2.2.13 Indexing
+
+                        The macro di$index is used to find the name and/or
+the objid of an object knowing its index.  The objects are ordered on a
+creation time basis.  If an object is removed from a directory, then the
+objects with a higher index are shifted backward.  The macro di$unindex
+performs the name or objid to index conversion.  The lowest boundary is 0 and the highest is the number
+of objects in the directory - 1.
+
+                        For instance, if a directory :usr1 contains the 
+following entries (the order matters!) :
+
+                    p0
+                    p1
+                    p2
+                    line0
+                    l10
+                    ref
+
+the result of 
+
+                   di$index ( dirname = ":usr1",
+                              index   = 3,
+                              name    = name )
+
+will be line0 (put in name) and the result of
+
+                   di$unindex ( dirname = ":usr1",
+                                p_index = &index,
+                                name    = "l10" )
+
+will be 4 (put in index).
+
+
+               1.2.2.14 Miscellaneous
+
+                        The macro di$report_error is used to print the
+description of an error code returned by a message send or by a macro call.
+In addition, a comment may be printed out.
+
+                        The macro di$split is used to separate the object
+name and the directory name.
+
+                        The macro di$is_regexp returns one if the argument
+is a regular expression that may match more than one entry in the system.
+
+                        The macro di$init is used to initialize the directory
+sub-system.  This macro MUST be called before any other one.
+
+                        The macro di$free is used to free memory allocated
+by di$ls, di$dump, and di$find.
+
+   1.2.3. Error codes
+          -----------
+
+          The error codes are defined in the file DIdef.h :
+
+/* Definitions used by the options for the ls and find commands */
+#define OPT_TRAILER  1
+#define OPT_LEVEL    2
+#define OPT_FILE     4 
+#define OPT_CLASS    8
+#define OPT_ALL     16
+
+#define CHAR_TRAILER 't'
+#define CHAR_LEVELS  'l'
+#define CHAR_FILE    'f'
+#define CHAR_CLASS   'c'
+#define CHAR_ALL     'a'
+
+
+
+#define DIR_D_OBJID_STRING  0	/* key is OM_S_OBJID, datum is string	*/
+#define DIR_D_STRING_OBJID  1	/* key is string, datum is OM_S_OBJID   */
+#define DIR_D_GRID_STRING   2	/* key is GRid, datum is string		*/
+#define DIR_D_STRING_GRID   3	/* key is string, datum is GRid		*/
+
+/* Maximum number of object spaces that may be loaded */
+#define DIR_MAX_OS 256
+
+/* Error Messages */
+
+#define WARN 0
+#define SUCC 1
+#define ERRO 2
+#define INFO 3
+#define SEVE 4
+
+
+#define DIR_S_SUCCESS (SUCC)
+
+#define DIR_E_ABORT    (ERRO | 0x210)
+#define DIR_E_INVARG   (ERRO | 0x220)
+#define DIR_E_NAME_DUP (ERRO | 0x230)
+#define DIR_E_DIR_DUP  (ERRO | 0x240)
+#define DIR_E_SYNTAX   (ERRO | 0x250)
+#define DIR_E_OVFLOW   (ERRO | 0x260)
+#define DIR_E_ILL_NAME (ERRO | 0x270)
+
+#define DIR_W_NAME_NOT_FOUND (WARN | 0x200)
+#define DIR_W_DIR_NOT_FOUND  (WARN | 0x210)
+#define DIR_W_NOT_IMPL       (WARN | 0x220)
+
+#define DIR_I_DIR_EMPTY      (INFO | 0x200)
+#define DIR_I_REORG          (INFO | 0x210)
+
+
+
+2. Appendix
+   ========
+
+   2.1. Configuration Files
+        -------------------
+
+               An example of the file IGRdir.dfg is listed below.  This file
+is supposed to be in the draft/config directory.
+
+
+#
+#  The following file is used to configure the directory sub-system.
+#  The valid commands are :
+#
+#      dir= : a directory to be created at initialization time, the root
+#             directory is always created (full pathname).
+#
+#      pwd= : the default working directory.
+#
+#      trl= : the trailer used in ls and find; the format is
+#                      trl=<class name>,<trailer>
+#             note that only one character is valid for a trailer
+#
+#
+#   Note that a line starting with a "#" is taken as comment line.
+#
+dir=:usr1
+dir=:usr2
+dir=:usr3
+dir=:usr1:points
+dir=:usr1:lines
+dir=:usr1:circles
+dir=:usr1:arcs
+dir=:usr1:expressions
+dir=:ref
+dir=:tmp
+pwd=:usr1
+trl=IGRdir,:
+trl=expression,%
+trl=node,#
+trl=GRlinear,|
+trl=GRpoint,.
+trl=GRgraphics,*
+
+
+   2.2. Programming examples
+        --------------------
+
+        This set of programming examples is a cook book.  It provides examples
+with macro calls.  They can easily be converted to message sends.
+
+
+        2.2.1. Name an element
+
+               {
+
+                 DIint      status;
+                 OM_S_OBJID objid;
+                 DIchar     name [PATH_MAX];
+
+                 /* initialize objid and name */
+                 ...
+
+                 status = di$add_name ( objname = name, objid = objid );
+                 if (status != DIR_S_SUCCESS)
+                   di$report_error ( sts = status, comment = "add_name" );
+               }
+
+
+               {
+
+                 DIint      status;
+		 OM_S_OBJID objid;
+		 OMuword    osnum;
+                 DIchar     dir_name [PATH_MAX];
+		 
+		 /* initialize pathname and objid */
+		 ...
+
+                 status = di$mkpath ( pathname = dir_name,
+		                      objid    = objid,
+				      p_osnum  = &osnum );
+                 if (status != DIR_S_SUCCESS)
+                  di$report_error ( sts = status, comment = "mkpath" );
+	       }
+
+
+        2.2.2. Remove a name
+
+               {
+
+                 DIint     status;
+                 DIchar    name [PATH_MAX];
+
+                 /* initialize name */
+                 ...
+
+                 status = di$rm_name ( regexp = name );
+                 if (status != DIR_S_SUCCESS)
+                   di$report_error ( sts = status, comment = "rm_name" );
+               }
+
+
+               {
+
+                 DIint      status;
+		 OM_S_OBJID objid;
+                 OMuword    osnum;
+
+                 /* initialize name */
+                 ...
+
+                 status = di$rm_objid ( objid = objid, osnum = osnum );
+                 if (status != DIR_S_SUCCESS)
+                   di$report_error ( sts = status, comment = "rm_objid" );
+               }
+
+
+
+        2.2.3. Rename an element
+
+               {
+
+                 DIint     status;
+                 DIchar    old_name [PATH_MAX],
+                           new_name [PATH_MAX];
+
+                 /* initialize old_name and new_name */
+                 ...
+
+                 status = di$rename ( oldname = old_name, 
+                                      newname = new_name );
+                 if (status != DIR_S_SUCCESS)
+                   di$report_error ( sts = status, comment = "rename" );
+               }
+
+
+
+        2.2.4. Translate a name
+
+               {
+
+                 DIint      status;
+                 OMuword    osnum;
+                 OM_S_OBJID objid;
+                 DIchar     name [PATH_MAX];
+
+                 /* initialize name */
+                 ...
+
+                 status = di$translate ( objname = name, 
+                                         p_osnum = &osnum,
+                                         p_objid = &objid );
+                 if (status != DIR_S_SUCCESS)
+                   di$report_error ( sts = status, comment = "translate" );
+               }
+
+
+
+        2.2.5. Untranslate an element
+
+               {
+
+                 DIint      status;
+                 OM_S_OBJID objid;
+                 OMuword    osnum;
+                 DIchar     name [PATH_MAX];
+
+                 /* initialize objid and osnum */
+                 ...
+
+                 status = di$untranslate ( osnum   = osnum,
+                                           objid   = objid,
+                                           objname = name );
+                 if (status != DIR_S_SUCCESS)
+                   di$report_error ( sts = status, comment = "untranslate" );
+               }
+
+
+
+        2.2.6. List content of directory
+
+               {
+
+                 DIint     status, count, i;
+                 DIchar    **lines;
+
+                 /* list all the names with 2 characters */
+                 status = di$ls ( regexp = "??",
+                                  lines  = &lines, 
+                                  ptr    = &count );
+                 if (status != DIR_S_SUCCESS)
+                   di$report_error ( sts = status, comment = "ls" );
+                 else
+                 {
+                   for (i = 0; i < count; i++)
+                   {
+                     printf ( "element [%d] : '%s'\n", lines [i] );
+                     free ( lines [i] );
+                   }
+                   free ( lines );
+                 }
+               }
+
+
+               {
+
+                 DIint     status, count, i;
+                 DIchar    line [PATH_MAX];
+
+                 /* list all the names with 2 characters */
+                 status = di$start_ls ( regexp = "??",
+                                        ptr    = &count );
+                 if (status != DIR_S_SUCCESS)
+                   di$report_error ( sts = status, comment = "start_ls" );
+                 else
+                   for (i = 0; i < count; i++)
+                   {
+                     di$fetch_ls ( line = line, index = i );
+                     printf ( "element [%d] : '%s'\n", line );
+                   }
+               }
+
+
+
+               {
+
+                 DIint     status, count, i;
+                 DIchar    **lines;
+		 DIgrid    *grids;
+
+                 /* dump all the names with 2 characters */
+                 status = di$dump ( regexp = "??",
+				    lines  = &lines,
+				    grids  = &grids,
+                                    ptr    = &count );
+                 if (status != DIR_S_SUCCESS)
+                   di$report_error ( sts = status, comment = "dump" );
+                 else
+		 {
+                   printf ( "count : %d\n", count );
+                   for (i = 0; i < count; i++)
+                     printf ( "lines [%d] : '%s' - ( %d, %d )\n",
+                              i, lines [i], grids [i].osnum, grids [i].objid );
+
+                   di$free ( lines = lines, count = count );
+		 }
+               }
+
+
+               {
+
+                 DIint     status, count, i;
+                 DIchar    line [PATH_MAX];
+
+                 /* dump all the names with 2 characters */
+                 status = di$start_dump ( regexp = "??",
+                                          ptr    = &count );
+                 if (status != DIR_S_SUCCESS)
+                   di$report_error ( sts = status, comment = "start_dump" );
+                 else
+                   for (i = 0; i < count; i++)
+                   {
+                     di$fetch_dump ( line = line, index = i );
+                     printf ( "element [%d] : '%s'\n", line );
+                   }
+               }
+
+
+
+        2.2.7. Pass a message
+
+               {
+
+                 DIint     status;
+                 DIchar    reg_exp [PATH_MAX];
+
+                 /* initialize reg_exp */
+                 ...
+
+                 status =  di$pass ( msg    = message Root.debug (),
+                                     regexp = reg_exp );
+                 if (status != DIR_S_SUCCESS)
+                   di$report_error ( sts     = status, 
+                                     comment = "pass ( Root.debug )" );
+               }
+
+
+
+        2.2.8. Make a directory
+
+               {
+
+                 DIint      status;
+                 OM_S_OBJID dirid;
+                 DIchar     dir_name [PATH_MAX];
+
+                 /* initialize dirname */
+                 ...
+
+                 status = di$mkdir ( dirname = dir_name, p_dirid = &dirid );
+                 if (status != DIR_S_SUCCESS)
+                   di$report_error ( sts = status, comment = "mkdir" );
+               }
+
+
+
+        2.2.9. Delete a directory
+
+               {
+
+                 DIint     status;
+                 DIchar    dir_name [PATH_MAX];
+
+                 /* initialize dirname */
+                 ...
+
+                 status = di$rmdir ( dirname = dir_name );
+                 if (status != DIR_S_SUCCESS)
+                   di$report_error ( sts = status, comment = "rmdir" );
+               }
+
+
+
+       2.2.10. Current directory
+
+	       {
+
+		 DIint      status;
+		 OM_S_OBJID dirid;
+		 OMuword    osnum;
+		 DIchar     name [PATH_MAX];
+
+		 status = di$pwd ( dirname = name,
+				   p_osnum = &osnum,
+				   p_dirid = &dirid );
+		 if (status != DIR_S_SUCCESS)
+		   di$report_error ( sts = status, comment = "pwd" );
+	       }
+
+
+	       {
+
+		 DIint      status;
+		 OM_S_OBJID dirid;
+		 OMuword    osnum;
+		 DIchar     dir_name [PATH_MAX];
+
+                 /* initialize dirname */
+                 ...
+
+		 status = di$cd ( dirname = dir_name,
+				   p_osnum = &osnum,
+				   p_dirid = &dirid );
+		 if (status != DIR_S_SUCCESS)
+		   di$report_error ( sts = status, comment = "cd" );
+	       }
+
+
+
+       2.2.11. Find element names
+
+
+               {
+
+                 DIint     status, count, i;
+                 DIchar    **lines;
+
+                 /* find all the names in the system */
+                 status = di$find ( regexp    = "*",
+                                    start_dir = ":",
+                                    lines     = &lines, 
+                                    ptr       = &count );
+                 if (status != DIR_S_SUCCESS)
+                   di$report_error ( sts = status, comment = "find" );
+                 else
+                 {
+                   for (i = 0; i < count; i++)
+                   {
+                     printf ( "element [%d] : '%s'\n", lines [i] );
+                     free ( lines [i] );
+                   }
+                   free ( lines );
+                 }
+               }
+
+
+               {
+
+                 DIint     status, count, i;
+                 DIchar    line [PATH_MAX];
+
+                 /* find all the names in the system */
+                 status = di$start_find ( start_dir = ":",
+                                          regexp    = "*",
+                                          ptr       = &count );
+                 if (status != DIR_S_SUCCESS)
+                   di$report_error ( sts = status, comment = "start_find" );
+                 else
+                   for (i = 0; i < count; i++)
+                   {
+                     di$fetch_find ( line = line, index = i );
+                     printf ( "element [%d] : '%s'\n", line );
+                   }
+               }
+
+
+
+       2.2.12. Object space support 
+
+
+               {
+
+                 DIint      status;
+		 OM_S_OBJID osid;
+		 OMuword    osnum;
+                 DIchar     logical_name [PATH_MAX];
+
+                 /* initialize logical */
+		 ...
+
+                 DIstrcpy ( logical_name, "ref.dgn" );
+                 DIstrcat ( logical_name, ":master" );
+                 status = di$mount ( logical = logical_name, osnum = osnum );
+                 if (status != DIR_S_SUCCESS)
+                   di$report_error ( sts = status, comment = "mount" );
+	       }
+
+
+	       {
+
+		 DIint      status, om_status;
+		 OM_S_OBJID osid;
+		 OMuword    osref;
+		 DIchar     dir_name [PATH_MAX];
+
+		 /* initialize dirname and sleep */
+		 ...
+
+                 status = di$umount ( dirname = dir_name, sleep = 1 );
+                 if (status != DIR_S_SUCCESS)
+                   di$report_error ( sts = status, comment = "umount" );
+                 else
+                 {
+                   om_status = om$send ( msg=message OMFiledOS.write("ref.dgn"),
+                                         senderid = NULL_OBJID,
+                                         targetid = osid,
+                                         targetos = osref );
+
+                   if (om_status != OM_S_SUCCESS)
+                     om$report_error ( sts = om_status );
+                   else
+                     om_status = om$send ( msg = message OMFiledOS.delete ( 1 ),
+                                           senderid = NULL_OBJID,
+                                           targetid = osid,
+                                           targetos = osref );
+                 }
+	       }
+
+
+               {
+		 
+		 DIint     status;
+		 OMuword   osnum;
+		 DIchar    path_name [PATH_MAX];
+
+		 /* initialize pathname */
+		 ...
+
+		 status = di$give_osnum ( pathname = path_name,
+					  p_osnum  = &osnum );
+		 if (status != DIR_S_SUCCESS)
+		   di$report_error ( sts = status, comment = "give_osnum");
+	       }
+
+
+               {
+		 
+		 DIint     status;
+		 OMuword   osnum;
+		 DIchar    path_name [PATH_MAX];
+
+		 /* initialize osnum */
+		 ...
+
+		 status = di$give_pathname ( osnum    = osnum,
+					     pathname = path_name );
+		 if (status != DIR_S_SUCCESS)
+		   di$report_error ( sts = status, comment = "give_pathname");
+	       }
+
+
+
+       2.2.13. Miscellaneous
+
+
+		{
+		  
+		  DIint    status;
+		  DIchar   name     [PATH_MAX],
+		           dir_name [PATH_MAX],
+		           pathname [PATH_MAX];
+
+		  /* initialize pathname */
+		  ...
+
+		  status = di$split ( pathname = pathname,
+			              dirname  = dir_name,
+				      name     = name );
+		  if (status != OM_S_SUCCESS)
+		    di$report_error ( sts = status, comment = "split" );
+		}
+
+
+		{
+
+		  DIint     status;
+		  DIchar    reg_exp;
+
+		  /* initialize regexp */
+		  ...
+
+		  status = di$is_regexp ( regexp = reg_exp );
+		  if (status != OM_S_SUCCESS)
+		    di$report_error ( sts = status, comment = "is_regexp" );
+		}
+
+
+		{
+
+		  DIint     count, status;
+		  DIchar    lines [PATH_MAX];
+
+		  /* initialize count and lines */
+		  ...
+
+		  status = di$free ( count = count, lines = lines );
+		  if (status != DIR_S_SUCCESS)
+		    di$report_error ( sts = status, comment = "free" );
+		}
