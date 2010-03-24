@@ -58,3 +58,5 @@ $(TARGETDIR_OBJ):
 
 $(TARGETDIR_LIB):
 	mkdir -p $(TARGETDIR_BIN)
+
+# Need the newline
