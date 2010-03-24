@@ -1,0 +1,321 @@
+/*
+ * This ppl shows how to deal with the r-tree directly without using
+ * any of the messages designed to be used.
+ *
+ * This should be used with care only if there are some corrupted 
+ * objects sitting on the r-tree which can't be  removed with the
+ * usual find_and_remove and that kinda messages.
+ *
+ * This requires the object ids of GRrtree object and the corrupted
+ * object which needs to be removed from the r-tree.
+ *
+ * If the object has a spacemap entry, then that entry needs to be
+ * deleted seperately.  This means that we need to go to OM_PMS
+ * and delete that object using 'd' command.  This ppl removes the
+ * objid's entry only from the r-tree and NOT from the object space.
+ *
+ * Corruptions and problems may occur if the entry is removed from
+ * the r-tree but the object still lies in the object space or
+ * vice versa.
+ * If any object's entry is there in the r-tree but not in the space
+ * map, then EMS will crash whenever the code passes thro' r-tree 
+ * stuff. (OMrtree3df.C).
+ *
+ * This ppl has'nt been automated to scan thro' the r-tree for 
+ * duplicate/corrupt entries and remove them by itself.  This needs
+ * to be done.
+ *
+ * IMPORTANT:  This ppl will work only if the height of the tree is less
+ * than two or less.  Meaning, a GRrtree object which points to OMrtree 
+ * objects and these OMrtree objects should be the LEAF nodes.  In
+ * other words, this ppl should be implemented to recursively search
+ * the r-tree whatever may be its height.
+ *
+ *     Srikanth S                          14 Sep '95
+ */
+
+#include "OMminimum.h"
+#include "OMspecify.h"
+/* #include "OMprimitives.h" */
+#include "OMmacros.h"
+#include "cisend.h"
+#include "OMindex.h"
+#include "OMDB.h"
+#include "OMrtreedef.h"
+
+extern OM_p_OSD        OM_GA_OSDs;
+extern OMuword         OM_Gw_maxOS;
+extern OM_p_CLASSDEF   *OM_GA_active_classes;
+
+extern int dump_space();
+extern void dump_trnmap();
+extern int som_get_classname();
+
+/* 
+ * There is something silly in the page header. 'Key_count' is represented
+ * as a 'char', whereas it should be unsigned char.  Hence, we do some
+ * gimmick to get the unsigned value.
+ * Hence, we use the variable 'count'.
+ */
+
+void rtree_print_header(rtree)
+R_PAGE_3D_FLT *rtree;
+{
+   char tmp_char;
+   unsigned count; 
+
+   tmp_char = rtree->Header.Key_count;
+   count = * (unsigned *) (&tmp_char);
+
+   printf("Key_count : %d\n", count);
+   printf("Page_type : %d\n", rtree->Header.Page_type);
+   printf("Rtree_type : %d\n", rtree->Header.Rtree_type);
+   printf("Page_count : %d\n", rtree->Header.Page_count);
+}
+
+void rtree_print_node(rtree)
+R_PAGE_3D_FLT *rtree;
+{
+   int i;
+   char tmp_char;
+   unsigned count;
+
+   tmp_char = rtree->Header.Key_count;
+   count = * (unsigned *) (&tmp_char);
+
+   rtree_print_header(rtree);
+   printf("----------------------------------------------------------------\n");
+   printf("index  oid    range\n");
+   for(i=0; i<count; i=i+1)
+   {
+      printf("%d   %d   %f %f %f %f %f %f\n", i, rtree->Objid[i], 
+             rtree->Key[i].xmin, rtree->Key[i].ymin, rtree->Key[i].zmin,
+             rtree->Key[i].xmax, rtree->Key[i].ymax, rtree->Key[i].zmax);
+   }
+   printf("----------------------------------------------------------------\n");
+}
+
+/* 
+ * This routine searches for the corrupted object and removes it.
+ * 'Key_count' is reduced by one and all the objecs beyond the
+ * corrupted objects are moved one level ahead. (Actually, this is how the
+ * corrupted object is removed).
+ */
+
+process_leaf(rtree, objid)
+R_PAGE_3D_FLT *rtree;
+OM_S_OBJID    objid;
+{
+   int i, j;
+   char tmp_char;
+   unsigned count;
+
+   tmp_char = rtree->Header.Key_count;
+   count = * (unsigned *) (&tmp_char);
+
+   for(i=0; i<count; i=i+1)
+   {
+      if (rtree->Objid[i] == objid)
+      {
+         /* Hit the corrupted entry */
+  
+         for(j=i; j<count-1; j=j+1)
+         {
+            rtree->Objid[j] = rtree->Objid[j+1];
+            memcpy( &rtree->Key[j],&rtree->Key[j+1], sizeof(DB_3D_FLT_BOX) ); 
+         }
+         /* This works ... */
+         rtree->Header.Key_count = rtree->Header.Key_count - 1;
+         goto cont;
+      }
+   }
+   /* No mathching entry found */
+   return(1); /* failure */
+
+cont:
+   return(0); /* success */
+}
+
+
+/* return value: 
+         SUCCESS : 0
+         FAILURE : 1
+*/
+my_get_rip(objid, osnum, rip)
+OM_S_OBJID        objid;
+OMuword           osnum;
+OM_p_RIP          rip;
+{
+   int            sts, i;
+   OM_p_OSD       p_OSD;
+   OM_S_OBJID     cluster_oid;
+
+/*
+   printf("Key in objid, osnum : ");
+   scanf("%d %d", &objid, &osnum);
+   printf("Details about objid, osnum :  %d, %d\n", objid, osnum);
+*/
+
+   p_OSD = OM_GA_OSDs[osnum];
+   if ( (p_OSD == NULL) || (osnum > OM_Gw_maxOS) )
+   {
+      printf("No such OS\n");
+      return(1);
+   }
+   if ((IF_NULL_OBJID(objid)) || (objid >= p_OSD->CurSpaceMapSize))
+   {
+      printf("No such OS\n");
+      return(1);
+   }
+
+   rip->p_mapentry = &p_OSD->Spacemap[objid];
+
+   /*=====================================*/
+   /*  check if spacemap entry is in use  */
+   /*=====================================*/
+
+   if ( !(OM_OBJ_INVALID(rip->p_mapentry->flags) ) )
+   {
+      /*===========================================*/
+      /*  check if cluster needs to be faulted in  */
+      /*===========================================*/
+
+      if (OM_OBJ_IN_FILE(rip->p_mapentry->flags))
+      {
+         cluster_oid = p_OSD->Clusters
+           [rip->p_mapentry->state.filed_obj.clusterid]->oid;
+
+         printf ("Sending fault msg to cluster oid = %d in OS %d\n",
+                   cluster_oid, osnum);
+
+         if (!(1&(sts = ci$send ( msg=message OMCluster.fault(0),
+                                  targetid=cluster_oid  ))))
+         {
+            som_report_error(sts);
+            return(1);
+         }
+      } /* if (OM_OBJ_IN_FILE  */
+      rip->p_object = rip->p_mapentry->state.object;
+
+      return(0);
+   } /* if !(OM_OBJ_INVALID  */
+/*   printf("No such object exists.\n"); */
+   return(1);
+   
+} /* my_get_rip */
+
+/*
+ * ABSTRACT:
+ * ---------
+ * Get the instance of the r-tree root-page from the object id of the
+ * GRrtree object. 
+ * If it is the LEAF page, then search thro' its contents to find
+ * the corrupted object id and remove it. 
+ * If it is a NON-LEAF page, then get its children OMrtree nodes and
+ * get their contents and perform the search on them.
+ *
+ * Just note that this processing has been stopped in the second level 
+ * and this needs to be done recursively.
+ */
+
+main()
+{
+   OM_S_OBJID      grrtree_objid, cor_objid;
+   OMuword         osnum;
+   R_PAGE_3D_FLT   *p_rtree, *p_next_page;
+   OM_S_RIP        rip, next_rip ;
+   int             sts, i;
+   OM_p_CLASSDEF   p_acld;
+   OM_S_OBJID      *p_tmp_objs;
+   char            tmp_char;
+   unsigned        count;
+   
+   printf("Key in GRrtree objid, osnum : ");
+   scanf("%d %d", &grrtree_objid, &osnum);
+
+   printf("Key in the objid of the corrupted rtree entry :");
+   scanf("%d", &cor_objid);
+
+   /* get the resultant instance pointer for the GRrtree object */
+   sts = my_get_rip(grrtree_objid, osnum, &rip);
+   if (sts)
+   {
+      printf("Problem getting GRrtree instance.\n");
+      return(1);
+   }
+   
+   /* Store the r-tree root in p_rtree */
+   p_rtree = (R_PAGE_3D_FLT *) ( (int)rip.p_object + sizeof(OM_S_OBJECTHDR) +
+                                  sizeof(int) + sizeof(OM_S_OBJID) );
+
+   rtree_print_header(p_rtree);
+   
+   /* 
+    * If the GRrtree object itself is the leaf node, then there are 
+    * no OMrtree objects present. This essentially means that the 
+    * GRrtree object itself holds the keys of various objects. 
+    * Now, traverse thro' the individual objects and search for the
+    * corrupted object id.
+    */
+ 
+   if (IS_R_LEAF(p_rtree->Header.Page_type))
+   {
+      if(process_leaf(p_rtree, cor_objid))
+         printf("Objid : %d not found in rtree.\n", cor_objid);
+      else
+         printf("Successfully removed objid : %d from rtree.\n", cor_objid);
+
+      return(0);
+   }
+
+   tmp_char = p_rtree->Header.Key_count;
+   count = * (unsigned *) (&tmp_char);
+
+   /* Process the OMrtree objects now */
+   p_tmp_objs = (OM_S_OBJID *) malloc(count * sizeof(OM_S_OBJID));
+
+   /* Store the set of OMrtree objects in a temp. array */
+   for(i=0; i<count; i=i+1)
+      p_tmp_objs[i] = p_rtree->Objid[i];
+
+   for(i=0; i<count; i=i+1)
+   {
+      sts = my_get_rip(p_rtree->Objid[i], osnum, &next_rip);
+      if (sts)
+      {
+         printf("Problem getting OMrtree instance with oid : %d\n", 
+                  p_rtree->Objid[i]);
+         return(1);
+      }
+
+      p_next_page = (R_PAGE_3D_FLT *) ( (int)next_rip.p_object + 
+         sizeof(OM_S_OBJECTHDR) + sizeof(int) + sizeof(OM_S_OBJID) );
+
+      printf("Header for OMrtree object (oid = %d)\n", p_rtree->Objid[i]);
+      rtree_print_header(p_next_page);
+
+      if (IS_R_LEAF(p_next_page->Header.Page_type))
+      {
+         if(process_leaf(p_next_page, cor_objid))
+            continue; /* cor_objid not in this object */
+         else
+         {
+            /* the corrupted object has been removed */
+            printf("Successfully removed objid : %d from rtree.\n", cor_objid);
+            return(0);
+         }
+      }
+      else
+      {
+         /* Yet to handle */
+         printf("Tree height is now 3.  Exitting... \n");
+         return(1);
+      }
+
+   } /* for i */
+
+   /* Corrupted object was not located in r-tree */
+   printf("Objid : %d not found in rtree.\n", cor_objid);
+   return(1);
+}
+
