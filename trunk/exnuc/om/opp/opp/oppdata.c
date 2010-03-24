@@ -390,4 +390,4 @@ char oppout_name[256] = "";
 
 int keep_mode;
 int filter_duplicate_includes = 0;
-int emit_lines = 1;
+int emit_lines = 0; // No lines numbers

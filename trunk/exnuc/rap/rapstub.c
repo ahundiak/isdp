@@ -1,3 +1,5 @@
+#include <stdio.h>
+
 /*ARGSUSED*/
 int RAP_get_keyboard_data( buffer, count )
 char *buffer;

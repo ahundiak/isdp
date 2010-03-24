@@ -15,9 +15,11 @@ extern char	*convert_filename(char *);
 #endif
 
 #define PITS(a) { char *c; c = a; while (*c) putc (*(c++),cpp_outfile); }
-#define OUTPUT_LINE ((omcpp_opts['l']==0)&&\
+#define OUTPUT_LINEx ((omcpp_opts['l']==0)&&\
                      (omcpp_opts['L']==0)&&\
                      (omcpp_opts['P']==0))
+
+#define OUTPUT_LINE 0
 
 #if defined (IRIX5) || defined (SUNOS5)
 static int not_in_stdc = 0;
