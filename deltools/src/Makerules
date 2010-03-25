@@ -1,0 +1,87 @@
+# Makerules include file for deltools
+
+CC	= acc
+CP	= cp
+
+C4FLAGS	=
+CDEFS	=
+CFLAGS	=
+COPT	= -O3
+DEPEND	= -make
+
+AS	= as
+ASFLAGS	= -ai
+
+AR	= ar
+
+ACCFL	= acc.lst
+BCKFL	= Makefile.bck
+DPNDFL	= make.dpnd
+TMPFL	= make.tmp
+PRNTFL	= Make.print
+
+DPNDLN	= DO NOT DELETE THIS LINE -- make depends on it.
+
+AOPTS	= -Atarg=${TARGET}
+ASOPTS	= -F${TARGET}
+
+all:
+	@if [ ! -d ${DIR} ]; \
+	then \
+		mkdir -p ${DIR}; \
+	fi
+	@make -e ${TARG}
+
+clean::
+	rm -f *.o ${BCKFL} ${PRNTFL} core
+
+depend_strip:
+	@cp Makefile ${BCKFL}
+	@sed -e '/${DPNDLN}/q' < Makefile | sed -e '/${DPNDLN}/d' > ${TMPFL}
+	@echo "# ${DPNDLN} " >> ${TMPFL}
+	@echo "" >> ${TMPFL}
+	@cat ${TMPFL} > Makefile
+	@rm -f ${TMPFL}
+
+depend_libs: 
+	@${CC} ${CFLAGS} ${INCDIRS} ${DEPEND} ${SRCS_LIBS} ${CDEFS} > ${ACCFL}
+	@for obj in ${OBJECTS}; \
+	do \
+		echo ${LIB}": "${LIB}"("$$obj")" >> ${DPNDFL}; \
+	done
+	@awk -F':' '{ if ( $$2 ~ /h$$/ ) \
+		printf ( "%s(%s):%s\n",lib,$$1,$$2 ) }' \
+			lib=${LIB} ${ACCFL} >> ${DPNDFL}
+	@cat ${DPNDFL} | sort | uniq >> Makefile
+	@rm -f ${ACCFL} ${DPNDFL}
+
+depend_objs:
+	@${CC} ${CFLAGS} ${INCDIRS} ${DEPEND} ${SRCS_OBJS} ${CDEFS} > ${ACCFL}
+	@awk -F':' '{ if ( $$2 ~ /h$$/ ) { \
+		printf ( "%s: %s\n",$$1,$$2 ) } \
+	else if ( $$2 ~ /c$$/ ) { \
+		printf ( "%s: %s\n",$$1,$$2 ) } }' ${ACCFL} >> ${DPNDFL}
+	@cat ${DPNDFL} | sort | uniq >> Makefile
+	@rm -f ${ACCFL} ${DPNDFL}
+
+.c.a:
+	@echo "\t$*.c -> $@"
+	@echo "\tremaking $*.o because of : $? \n"
+	@if [ "${COPT}" = "-g" ]; \
+	then \
+		echo " compiling $*.c with -g option"; \
+	fi
+	${CC} ${INCDIRS} ${AOPTS} ${C4FLAGS} ${COPT} ${CDEFS} ${CFLAGS} -c $<
+	${AR} ${ARFLAGS} $@ $*.o
+	@rm -f $*.o
+	@echo ""
+
+.c.o:
+	@echo "\t$*.c -> $@"
+	@echo "\tremaking $*.o because of : $? \n"
+	@if [ "${COPT}" = "-g" ]; \
+	then \
+		echo " compiling $*.c with -g option"; \
+	fi
+	${CC} ${INCDIRS} ${AOPTS} ${C4FLAGS} ${COPT} ${CDEFS} ${CFLAGS} -c $<
+	@echo ""
