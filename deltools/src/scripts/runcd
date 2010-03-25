@@ -1,0 +1,316 @@
+#!/bin/sh
+#  The runcd shell script is used to mount a CD/ROM and execute 
+#  /mnt/startup.  The /mnt/startup file is user definable.  
+#
+
+REM_FLAG=$1
+REM_SYSTEM=$2
+
+NULL=/dev/null
+
+if [ $LOGNAME != "root" ]
+then
+   echo "You must be root to run \"runcd\""
+   exit 1
+fi
+
+case `uname -s` in
+SunOS)
+    case `uname -r` in 
+    5.*)
+	PLATFORM=Solaris
+	if [ `uname -p` = i386 ]
+	then
+	    CD_DEV=/dev/dsk/cdrom
+	else
+	    CD_DEV=/dev/dsk/c0t6d0s2
+	fi
+	CD_TYPE="-F hsfs"
+	MOUNT_FILE="cat /etc/mnttab"
+	SHELL=/sbin/sh; export SHELL
+	;;
+    4.*)
+	PLATFORM=SunOS_4
+	CD_DEV=/dev/sr0
+	CD_TYPE="-t hsfs"
+        MOUNT_FILE="cat /etc/mtab"
+	SHELL=/bin/sh; export SHELL
+	;;
+    esac
+    ;;
+# mvr:05/07/94 HP cd-rom mounting parameters initialization.
+HP-UX)
+	PLATFORM=HP_UX
+	CD_DEV=/dev/dsk/cdrom
+	CD_TYPE="-t cdfs"
+        MOUNT_FILE="cat /etc/mnttab"
+	SHELL=/bin/sh; export SHELL
+	;;
+CLIX)
+    PLATFORM=CLIX
+    CD_DEV=/dev/dsk/cdrom
+    CD_TYPE="-f CDFS"
+    FFS_TYPE="-f FFS"
+    MOUNT_FILE="/etc/mount"
+    SHELL=/bin/sh; export SHELL
+    ;;
+IRIX)
+    PLATFORM=IRIX
+    CD_DEV=/dev/dsk/cdrom
+    CD_TYPE="-t iso9660"
+    MOUNT_FILE="cat /etc/mtab"
+    SHELL=/bin/sh; export SHELL
+    ;;
+*)
+    PLATFORM=SCO
+    CD_DEV=/dev/cd0
+    CD_TYPE="-f HS"
+    MOUNT_FILE="/etc/mount"
+    SHELL=/bin/sh;export SHELL
+    ;;
+esac
+
+if [ ! -d /mnt ]
+then
+    mkdir /mnt
+    chown root /mnt
+    chgrp sys /mnt
+    chmod 755 /mnt
+fi
+
+if [ "$REM_FLAG" = "-r" ]
+then
+    REMOTE=1
+    CD_DEV="$REM_SYSTEM:/del"
+# mvr:05/25/94 the following line shoud be case $PLATFORM. not PLATFOEM
+    case $PLATFORM in
+    CLIX)
+        CD_TYPE="-f NFS"
+	;;
+#mvr:05/07/94 
+    HP_UX)
+        CD_TYPE="-t nfs"
+	;;
+    SunOS_4 | IRIX)
+	CD_TYPE="-t nfs"
+	;;
+    Solaris)
+	CD_TYPE="-F nfs"
+	;;
+    esac
+else 
+    REMOTE=0
+fi
+
+if [ "IRIX" = "$PLATFORM" ]
+then
+    trap 'echo "$0: Abort"; umount /mnt >$NULL 2>&1; exit 1' 1 2 3 15
+else
+    trap 'echo "$0: Abort"; umount /mnt >$NULL 2>&1; exit 1' 1 2 3 14 15
+fi
+
+if [ $REMOTE = 0 ]
+then
+    if [ $PLATFORM != IRIX -a ! -b $CD_DEV ]
+    then
+	echo "
+Your CD/ROM drive has not been configured. The device file $CD_DEV has
+not been defined. Please refer to your system documentation for proper
+configuration procedures."
+	echo
+	exit 255
+    fi
+    
+    if [ $PLATFORM = IRIX -a ! -c $CD_DEV ]
+    then
+        echo "
+Before you can use Intergraph Software Delivery Utilities, you need
+to create a device node "/dev/dsk/cdrom" which is linked to the
+correct device node in /dev/scsi/... for your CD-ROM drive.  Please
+refer to the instructions in your Intergraph CD-ROM booklet."
+	echo
+	exit 255
+    fi
+fi
+
+mount -r $CD_TYPE $CD_DEV /mnt >$NULL 2>&1 
+result=$?
+
+if [ $REMOTE = 1 ]
+then
+    #
+    # NFS mount of remote CD/ROM failed.
+    #
+    echo "The /del filesystem on $REM_SYSTEM could not be mounted."
+    echo "Make sure that the /del filesystem has been exported so"
+    echo "that this machine may access it."
+    exit 255
+else
+    #
+    # Mount of local CD/ROM failed.
+    # If we're a clipper, try mounting the CD/ROM as an FFS file system
+    #
+    if [ $result != 0 -a $PLATFORM = CLIX ]
+    then
+	mount -r $FFS_TYPE $CD_DEV /mnt >$NULL 2>&1
+	result=$?
+    fi
+
+    if [ $result != 0 ]
+    then
+	if [ ! -f /mnt/startup -a ! -f /mnt/STARTUP ]
+	then
+	    if eval $MOUNT_FILE | fgrep $CD_DEV >/dev/null 2>&1
+	    then
+		echo
+		echo "The CD/ROM is already mounted."
+		if [ $PLATFORM = SunOS_4 ]
+		then
+		    /usr/bin/echo -n "Do you wish to unmount the CD/ROM and try again (y/n) [y]: "
+		else
+		    echo "Do you wish to unmount the CD/ROM and try again (y/n) [y]: \c"
+		fi
+		read ans
+		case ${ans:=y} in
+		y*|Y*)
+		    umount $CD_DEV
+		    exec $0
+		    ;;
+		esac
+	    else
+		echo
+		echo "Error mounting this CD/ROM. Possible causes are:"
+		echo "o The CD/ROM is already mounted."
+		echo "o The CD/ROM disc is not loaded in the CD/ROM drive."
+		echo "o The CD/ROM disc is not a $PLATFORM mountable CD/ROM."
+		echo "o The CD/ROM drive is not connected or configured properly."
+	    fi
+	    exit 255
+	else
+	    # 
+	    # A /mnt/startup file exists already.
+	    #
+	    if eval $MOUNT_FILE | fgrep /mnt > /dev/null 2>&1
+	    then
+		#
+		# /mnt is already a mounted file system.
+		# If it's not the CD/ROM drive, offer to unmount and try again.
+		#
+		set `mount | grep /mnt`
+		if [ $PLATFORM != SunOS_4 ]
+		then
+		    if [ $3 != $CD_DEV ]
+		    then
+			echo
+			echo "Another file system is currently mounted on /mnt."
+			echo "Do you wish to unmount it and try again (y/n) [y]: \c"
+			read ans
+			case ${ans:=y} in
+			y*|Y*)
+			    umount /mnt
+			    exec $0
+			    ;;
+			esac
+			exit 255
+		    fi
+		else
+		    if [ $1 != $CD_DEV ]
+		    then
+			echo
+			echo "Another file system is currently mounted on /mnt."
+# mvr:05/07/94
+			if [ $PLATFORM = HP_UX ]
+			then
+				/bin/echo -n "Do you wish to unmount it and try again (y/n) [y]: "
+			else
+				/usr/bin/echo -n "Do you wish to unmount it and try again (y/n) [y]: "
+			fi
+			read ans
+			case ${ans:=y} in
+			y*|Y*)
+			    umount /mnt
+			    exec $0
+			    ;;
+			esac
+			exit 255
+		    fi
+		fi
+	    else
+		#
+		# /mnt is NOT mounted.  And yet, there's a /mnt/startup file.
+		# (This would be quite unusual...)
+		# On the off chance that the CD/ROM is mounted somwhere else...
+		#
+		if eval $MOUNT_FILE | fgrep $CD_DEV >/dev/null 2>&1
+		then
+		    echo
+		    echo "The CD/ROM is already mounted."
+		    if [ $PLATFORM = SunOS_4 ]
+		    then
+			/usr/bin/echo -n "Do you wish to unmount the CD/ROM and try again (y/n) [y]: "
+		    else
+			echo "Do you wish to unmount the CD/ROM and try again (y/n) [y]: \c"
+		    fi
+		    read ans
+		    case ${ans:=y} in
+		    y*|Y*)
+			umount $CD_DEV
+			exec $0
+			;;
+		    esac
+		else
+		    #
+		    # OK, we don't know HOW the /mnt/startup file got there.
+		    # It probably shouldn't be trusted.
+		    #
+		    echo
+		    echo "The CD/ROM cannot be mounted.  Possible causes are:"
+		    echo "o The CD/ROM is already mounted."
+		    echo "o The CD/ROM disc is not loaded in the CD/ROM drive."
+		    echo "o The CD/ROM disc is not a $PLATFORM mountable CD/ROM."
+		    echo "o The CD/ROM drive is not connected or configured properly."
+		    echo
+		    echo "The startup file in /mnt/startup will be ignored"
+		fi
+		exit 255
+	    fi
+	fi
+    fi
+fi
+
+if [ -f /mnt/startup ]
+then
+    cp /mnt/startup /tmp/startup >$NULL 2>&1
+    if [ $? -ne 0 ]
+    then
+	echo
+        echo "Error copying /mnt/startup to /tmp/startup."
+        kill -1 $$
+    fi
+elif [ -f /mnt/STARTUP ]
+then
+    #
+    # Might be an ISO9660 file system under CLIX -- the uppercase
+    # filenames are not "hidden" from us as they are in SunOS
+    #
+    cp /mnt/STARTUP /tmp/startup >$NULL 2>&1
+    if [ $? -ne 0 ]
+    then
+	echo
+        echo "Error copying /mnt/STARTUP to /tmp/startup."
+        kill -1 $$
+    fi
+else
+    echo
+    echo "A startup file does not exist on this CD/ROM."
+    kill -1 $$
+fi
+
+umount /mnt >$NULL 2>&1
+chmod a+x /tmp/startup >$NULL 2>&1
+if [ $REMOTE = 1 ]
+then
+	exec /bin/sh /tmp/startup -r
+else
+	exec /bin/sh /tmp/startup
+fi
