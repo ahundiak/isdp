@@ -1,0 +1,371 @@
+
+--------------------------------------------------------
+Delivering Software to Remote Nodes from a Delivery Node
+--------------------------------------------------------
+
+"remote_newprod" is a script utility which automates the upgrading
+of multiple networked workstations or servers from a central node.
+
+Remote_newprod is designed to run on a server that is a CDROM delivery
+source or has been set up as a delivery node created through the use of
+"makenode", also supplied in the DELTOOLS product.
+
+	Note: The remote_newprod utility will not load (from
+	CDROM) products that require load keys until each
+	CLIX remote node has been upgraded to 04.00 CSS and
+	rebooted.  This allows decryption of longer keys.
+	If the CLIX node has been booted with a 04.00 or
+        later UNIXBOOT, no reboot is necessary.
+
+The remote_newprod utility resides in the /usr/ip32/deltools/node
+directory and uses a file "r_newprod.dat" that defines a "program" which
+directs the upgrade process.  A sample r_newprod.dat file resides in
+/usr/ip32/deltools/node.  The r_newprod.dat file is an ASCII file that
+can be edited by vi, emacs, or any other file editor.
+
+We suggest saving a copy of this file before creating your own
+r_newprod.dat which will replace the one delivered in the
+/usr/ip32/deltools/node directory when you run remote_newprod.
+Loading DELTOOLS to a workstation/server replaces the file r_newprod.dat 
+as well.
+ 
+Remote_newprod accepts a set of keywords and values that define 
+information needed to load software to a remote node.  KEYWORDS are 
+entered in this manner: 
+
+KEYWORD	definition
+      .
+      .
+      .
+      .
+      .
+
+
+Blank lines and lines starting with a '#' character within the
+r_newprod.dat file are considered as comments by remote_newprod.
+If you supply a keyword with no definition, remote_newprod will
+revert that keyword's definition back to a default if one exists.
+
+The following is a description of the keywords.  The
+r_newprod.dat supplied in /usr/ip32/deltools/node exhibits the
+standard 05.00 keywords, excepting the FILESYSTEM keyword.
+
+
+DEBUG	YES
+
+Defining the DEBUG keyword tells remote_newprod to display information
+useful for troubleshooting.  It is not necessary to define this keyword.
+This data is displayed in the window from which remote_newprod is executed.
+If you encounter difficulties, you may also want to invoke remote_newprod in 
+a shell trace mode ( ksh -x /usr/ip32/deltools/node/remote_newprod ). 
+This will allow a better step by step evaluation of what is happening.
+
+
+
+SERVER	nodename.username.password
+
+The SERVER keyword is used to establish a network connection string
+(nodename.username.password) for the system that acts as the newprod
+delivery node (should be the current node you are logged into).
+This should be the node from which remote_newprod is run.
+
+	Note: the nodename can be substituted by the server's
+	address.  Remote_newprod will abort unless the SERVER
+	keyword is defined.  You can specify multiple SERVER
+	keywords throughout the file, remote_newprod will use
+	the most recent definition.  
+
+
+
+
+MEDIA		DISK
+
+The MEDIA keyword is used to specify the type of newprod connection
+that the target node will make to the SERVER.  The two valid values
+are CDROM and DISK, where CDROM indicates that the products are
+available from remote CDROM (a CDROM drive attached to the SERVER)
+and DISK indicates that the products are available from a delivery
+structure (constructed by makenode) on the SERVER.  If MEDIA is not
+defined, then DISK will be used.  The MEDIA option can be specified 
+multiple times throughout the file.
+
+
+
+
+
+LOGWHERE	/path/dirname
+			or
+LOGWHERE	emailpath!user
+			or
+LOGWHERE	user@emailpath
+
+The LOGWHERE keyword is the location on the SERVER node where
+remote_newprod will deposit logging information of each installation.
+If LOGWHERE is not defined, then remote_newprod will instruct each
+remote system to mail its log file to the "root" account on that
+machine.  If you specify a value for LOGWHERE, remote_newprod
+considers values containing a "/" to be a directory and will create it
+if it does not exist.  All other values are treated as mailpaths.
+
+The log file for a given node is kept in the /usr/spool directory so that 
+it is not removed when the system reboots as was previously the case.
+It is named r.log.{pid} by default.
+
+If LOGWHERE is a mail path, the system will continue trying to mail
+a log file back to the server if network connections are interrupted
+through the normal mail retrying technique.  The style of the mailpath
+should conform to the mail system you have configured
+
+The LOGWHERE keyword can be defined multiple times.
+
+
+
+
+
+MAX	number_of_systems
+
+The MAX keyword is used to define the maximum number of systems that
+remote_newprod will update at the same time.  In other words, if you
+have 18 systems to upgrade, but your network and/or server can
+handle only 8 at a time, then specify 8 for the MAX keyword.
+Remote_newprod will ensure that no more than MAX upgrade processes
+are invoked at any given time.  If the MAX is not defined, then MAX
+will default to 8.  The MAX keyword can be defined multiple times.
+
+This keyword is very important.  If for some reason you enter the same node
+as a TARGET multiple times in the r_newprod.dat file, you should place the 
+TARGET lines for it well apart, so that remote_newprod does not try to execute 
+on the same node more than once at a time.  A large MAX value can cause
+multiple TARGET statements to the same node to conflict , possibly causing 
+colliding and failures to those nodes.
+
+
+
+
+
+MODEL	nodename.username.password
+			or 
+MODEL	/path/filename
+
+The MODEL keyword is used to define the nodename.username.password
+(or filename on the server) of the "defaults" file used to define
+the installation prompt answers.  This file is created by a program
+(getanswer) which is used during the installation to prompt the user
+for inputs such as which options to load if a product allows such.
+
+If a nodename.username.password is defined, then remote_newprod will
+copy the /usr/ip32/.defaults file from that node and transfer it to
+the target node.  This allows you to upgrade a workstation and answer
+the newprod prompts the way you want them, then use remote_newprod
+to do the same with the other nodes on the network.  You must
+exercise caution in doing this, however.  
+
+Any answers given during delivery on the future MODEL node that
+might cause conflicts on other nodes should be removed from the
+file.  An example of this type of conflict would be certain questions
+asked during the installation of the INC product.  The user is
+requested to enter an internet address, which must be unique on each
+node.  Attempting to use the same address on multiple nodes would
+create a problem.  Lines such as this should be removed from a
+.defaults file before using it for a MODEL .defaults file.  Generally
+speaking, few such conflicts exist.
+
+If you prefer, you may transfer the .defaults file to the workstation
+being upgraded and maintain it locally.  If the MODEL keyword is not
+defined, then installation prompts will be answered with the
+responses from previous newprod runs on the target node.  If no
+previous answers are defined, then product install scripts will
+default to answers provided by the script.
+
+The MODEL keyword can be defined multiple times.
+
+
+
+
+
+FILESYSTEM	mounted_filesystem	
+
+The FILESYSTEM keyword allows the specification of a filesystem to
+which newprod will attempt to load/upgrade products.  If the keyword
+is not used or is specified without a value, software is loaded to the
+/usr filesystem.  If specified with a value, newprod is invoked with
+the "-b" flag and the filesystem specified as its argument.  This
+keyword should be used carefully, since it will remain in effect
+until the next FILESYSTEM value is specified.  
+
+	Note: This keyword is not available in versions of
+	the remote_newprod script prior to the 5.4 release.
+        You should determine if it can be used from your server
+	system by issuing a:
+
+	'grep FILESYSTEM /usr/ip32/deltools/node/remote_newprod'
+
+	command.  If a line of text containing:
+
+	 echo "newprod $FILESYSTEM -y$opt
+
+	is displayed, you can use this keyword if desired.
+
+
+The sample shown later in this file shows how a single node (dbsysc)
+can have remote_newprod run to it 2 times, once to load the /usr
+filesystem by default and later to a different filesystem to load a
+new product and upgrade existing products on the newly defined
+FILESYSTEM.  After defining a FILESYSTEM, all TARGETs thereafter will
+have newprod invoked using that filesystem.  This means: define
+FILESYSTEM back to the default ( FILESYSTEM with no argument) after loading 
+to an alternate filesystem or you may not get what you expected.
+
+
+PRODUCTS	u toolbox  sg01005
+
+The PRODUCTS keyword specifies the products loaded by newprod.  If a
+"u" appears in the list, then newprod will expand it to mean all
+currently out-of-date products.  The PRODUCTS keyword can be product
+numbers or product names.  If the PRODUCTS keyword is not defined,
+remote_newprod will load all products that are out-of-date for the
+target node.  Again, the PRODUCTS keyword may be specified multiple
+times.   The name to use is that displayed in the newprod menus.
+
+
+
+
+		
+TARGET		nodename.root.password
+
+The TARGET keyword defines the target nodename.root.password
+combinations for remote_newprod. This is the workstation that
+will be receiving new software via newprod from the SERVER. 
+
+	Note: you must specify the "root" user and password.
+	Remote_newprod cannot install software properly without
+	root permissions on the target node.
+
+When remote_newprod encounters a TARGET keyword, it will submit an
+installation process on that target node, using all KEYWORDS defined
+up to that point.  Remote_newprod will abort if no TARGET keyword
+appears within this file.  Again, multiple TARGET keywords may be
+defined within this file.   Upgrading the same workstation that is
+acting as the server node by defining a TARGET for it is not valid.
+
+You should also not construct your r_newprod.dat file such that 2
+upgrades to the same node will occur at the same time, they may
+conflict and cause load failures to occur. (SEE MAX discussion above)
+
+
+
+
+
+REBOOT	YES
+	or
+REBOOT	NO
+
+The REBOOT keyword specifies whether you want remote_newprod to
+reboot the target workstation after the installation process is
+complete.  The default value for REBOOT is NO.
+
+
+
+
+
+EXIT
+
+The EXIT keyword allows you to terminate the remote_newprod process
+before the rest of input is read.  This is useful for debugging or
+loading one system without having to delete/comment-out multiple
+lines of your file.
+
+
+
+
+
+
+
+
+
+An example r_newprod.dat file follows:
+
+-------- File would start after this line ----------
+
+SERVER		server.wsdel
+MEDIA		CDROM
+LOGWHERE	server!mylogin
+MODEL		dbsys.sys.syspassword
+MAX		4
+PRODUCTS	u
+REBOOT		YES
+TARGET		dbsysa.root.rootpassword
+PRODUCTS	sg01005 SYSVDOC u
+TARGET		dbsysb.root.rootpassword
+TARGET		dbsysc.root.rootpassword
+TARGET		grasysa.root.rootpassword
+TARGET		grasysb.root.rootpassword
+FILESYSTEM	/usr3
+#products will now be loaded to /usr3 until the next FILESYSTEM definition
+PRODUCTS	BSPMATH u
+MODEL		grasys.sys.syspassword
+#dbsysc will load BSPMATH and update existing products on /usr3 using
+#answers from the defaults file copied from grasys
+TARGET		dbsysc.root.rootpassword
+FILESYSTEM
+#the remaining TARGETs will be loaded to the /usr filesystem using the
+#answers form the defaults file copied from grasys above
+TARGET		grasysa.root.rootpassword
+TARGET		grasysb.root.rootpassword
+TARGET		grasysc.root.rootpassword
+TARGET		grasysd.root.rootpassword
+
+----------- File would end at this line --------------
+
+
+
+
+
+Once you have finished defining the "program" for remote_newprod,
+exit and save the r_newprod.dat file.  Now you may invoke
+remote_newprod.
+
+Key in the following at the # prompt to invoke the remote_newprod utility:
+
+	# cd /usr/ip32/deltools/node
+	# ./remote_newprod
+
+
+Performance notes:
+
+Loading large numbers of workstations simultaneously is a valuable
+tool.  Using an Intergraph InterPro 2020 as a server, 5 workstations
+were simultaneously upgraded from CLIX CSS 04.00 to 05.00 baseline and
+Microstation with 4 options selected.  Loading them from a makenode
+created disk structure proved 2.75 times as fast as delivering from a
+CD/ROM device.  If you have large numbers of nodes to upgrade, you may
+want to consider using a disk in this manner rather than loading
+directly from the distribution CD/ROM.  The time spent creating the
+delivery node may result in less workstation user downtime due to the
+improved time of the actual upgrade.  There is also less speed
+decrease when increased numbers of workstations are done
+simultaneously from disk compared to CD/ROM.
+
+You may also decide to upgrade from multiple servers at once.  A
+network analyzer was used to observe the mentioned upgrade in
+progress.  At no time did the upgrade consume more than 25% of the
+network.  That was seen for a brief period only, and normally the
+high percentage seen was about 13%, but most of the time the values
+seen were around 2.5%.   Most of the time spent upgrading is at the
+workstation decompressing files and doing local processing.
+
+A single midrange server will burden itself with disk and packetizing
+before it can flood the net with activity, so 2 servers would probably
+not conflict enough to cause network failures.  This statement would
+not apply in the same manner to high end servers such as the
+Intergraph InterServe 6509 which have faster cpus and I/O bandwidth.
+Relatively more workstations could be upgraded from such a machine
+than from a lower class server.  No tests were made across router
+pairs or modem couplers either.
+
+In general, CD/ROM upgrades are much slower because the CD drive has
+limited I/O transfer speed, and has relatively slow "seek" time when
+compared to a disk.  Upgrading multiple workstations from a CD
+compounds these facts and results in longer upgrades.
+
+
