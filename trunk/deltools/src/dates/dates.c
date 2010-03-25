@@ -1,8 +1,16 @@
+// From the INTEL_SOLARIS MakeFile
+// -DSYSV -DSVR4 -DNEWDIRS -DL_ENDIAN
+#define SYSV
+#define SVR4
+#define NEWDIRS
+#define L_ENDIAN
+
 #include <stdlib.h>
 #include <signal.h>
 #include <stdio.h>
 #include <ctype.h>
 #include <string.h>
+#include <unistd.h>
 
 #define SHOWALL		0
 #define SHOWNOTES	1
@@ -343,9 +351,10 @@ fprintf(stderr, "Usage: %s [+%%n%%#%%d%%v%%t%%p%%w%%m] [[-x] <product name>] ...
 
 		/*
 		 * check for product directory
+                 * 25 Mar 2010 - ah - Remove this check for now
 		 */
-		if (access(p.wsdir, 0))
-			tab[i][0] = '\0';
+		//if (access(p.wsdir, 0))
+		//	tab[i][0] = '\0';
 
 		if (!tab[i][0])
 			continue;
