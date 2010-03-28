@@ -1,0 +1,392 @@
+/*****************************************************************************
+
+	Name:COanalyze.u
+	Desc: Print element information to a file
+
+*****************************************************************************/
+
+#include "stdio.h"
+#include "cieveryone.h"
+#include "cimacros.h"
+#include "OMminimum.h"
+#include "igetypedef.h"
+#include "igrtypedef.h"
+#include "gr.h"
+#include "griodef.h"
+#include "griomacros.h"
+#include "maerr.h"		/* MANOMEMORY */
+#include "grgs.h"		/* GRobj_env */
+#include "grownerdef.h"		/* GR_LC_RIGID */
+#include "growner.h"		/* GR_LC_RIGID */
+#include "grgsmacros.h"		/* gr$gsget_fence() macro */
+#include "OMmacros.h"		/* OM_BLOCK_MOVE() macro */
+
+#include "dpmacros.h"
+#include "dm_status.h"
+#include "report.h"
+#include "exmacros.h"
+#include "grmsg.h"
+#include "msdef.h"		/* MSSUCC, MSFAIL */
+#include "ms.h"		/* MSSUCC, MSFAIL */
+#include "msmacros.h"
+
+enum GRanalyze_types analysis_type;
+
+extern int 	UI_prompt(),COgetevent(),tolower();
+extern int 	GRgsmgr_fun(),GRget_token();
+extern 		DPerase_hilite();
+extern char 	*malloc();
+
+char 		user_output_file[128];
+int	 	is_valid_file;
+FILE 		*user_output_fptr;
+IGRchar 	locbuff[MS_MAX_MSG_LENGTH], accbuff[MS_MAX_MSG_LENGTH],
+        	relbuff[MS_MAX_MSG_LENGTH], msgbuff[MS_MAX_MSG_LENGTH];
+IGRdouble 	response_data[256];
+
+extern GRclassid OPP_GRgrset_class_id;
+
+
+analyze_elements(loc_obj, md_env, accept, window_id, response)
+struct GRid 	loc_obj;
+struct GRmd_env *md_env;
+double 		*accept;
+struct GRid 	window_id;
+int 		response;
+{
+    int 	sts, i;
+    long 	msg, input_mask, loc_msg, obj_count;
+    IGRint 	TokenList[3];
+    IGRint 	token, size, obj_flag;
+    GRclassid   subclassid;
+
+    enum GRdpmode 	mode;
+
+    struct GRid 	fence_id;
+    struct GRobj_env 	lc_obj, *objects;
+    struct GRevent 	grevent;
+    struct EX_button	button;
+
+
+    if( response != SPECIFIED_OBJ )
+    {
+	/* Analyse one element only */
+
+	sts = ci$send( msg = message GRgraphics.GRanalyze_element( &msg,
+							md_env,
+							user_output_fptr,
+							&analysis_type),
+		      targetid = loc_obj.objid,
+		      targetos = loc_obj.osnum);
+
+	/* put the accept point on to queue */
+        button.x = accept[0];
+	button.y = accept[1];
+	button.z = accept[2];
+	button.objid = window_id.objid;
+	button.osnum = window_id.osnum;
+        size = sizeof(struct EX_button);
+
+	sts = ex$putque(msg = &msg, 
+		        byte = &size,
+			response = &response,
+			buffer = (IGRchar *)&button);
+	if (!(sts & 1) )
+	  printf(" error in putque \n");
+    }
+    else
+    {
+	TokenList[0] = DATA;
+	TokenList[1] = RESET;
+	TokenList[2] = GR_UNKNOWN_TYPE;
+	size = sizeof(struct GRevent);
+	input_mask = GRm_DATA|GRm_RJT_MOVEON;
+
+	sts = om$get_classid( objid = loc_obj.objid,
+			      osnum = loc_obj.osnum,
+			      p_classid = &subclassid);
+	
+	if (om$is_ancestry_valid( superclassid = OPP_GRgrset_class_id,
+				subclassid = subclassid) == OM_S_SUCCESS)
+	{
+	    
+	    obj_count = 0;
+
+	    sts =
+	    ci$send (msg = message GRgrset.GSinqcount(
+						      &msg,
+						      &obj_count),
+		     targetid = loc_obj.objid,
+		     targetos = loc_obj.osnum);
+	    
+	    if(!obj_count) return;
+	    objects = (struct GRobj_env *) malloc (obj_count * 
+					      sizeof (struct GRobj_env));
+
+	    if (objects == (struct GRobj_env *)NULL)
+	      return;
+
+	    gr$gsget_fence(msg = &loc_msg, fence_id = &fence_id);
+
+	    if (!(1 & loc_msg))
+	    {
+		fence_id.objid = NULL_OBJID;
+		fence_id.osnum = 0;
+	    }
+
+	    for (i=0; i<obj_count; i=i+1)
+	    {
+		obj_flag = 0;
+
+		sts = 
+		ci$send(msg = message GRgrset.GSget_object(
+						&msg,
+						&objects[i],
+						sizeof(struct GRobj_env),
+						&obj_flag,
+						i, i),
+		        targetid = loc_obj.objid,
+		        targetos = loc_obj.osnum);
+		if (!(sts & msg & 1) || obj_flag != 1)
+	        {
+		    printf(" Could not find object[%d]:%d\n",i,obj_flag);
+		    continue;
+	        }
+
+		mode = GRhd;
+
+	     	sts =
+     		ci$send(msg = message GRgraphics.GRdisplay(
+						&msg,
+						&md_env->md_env.matrix_type,
+						md_env->md_env.matrix,
+						&mode,
+						&md_env->md_id),
+			targetid=objects[i].obj_id.objid,
+			targetos=objects[i].obj_id.osnum);
+	    }
+
+  	    ex$message(field = PROMPT_FIELD, msgnumb = GR_P_Acc);
+	    token = GRget_token(&msg,
+				TokenList,
+				&input_mask,
+				&grevent,
+				&size, 
+				&response,
+				response_data);
+	    dp$erase_hilite(msg = &sts);
+	    if( response != DATA) return;
+/*
+            button.x = grevent.event.button.x;
+	    button.y = grevent.event.button.y;
+	    button.z = grevent.event.button.z;
+	    button.objid = window_id.objid;
+	    button.osnum = window_id.osnum;
+            size = sizeof(struct EX_button);
+	    sts = ex$putque(msg = &msg, 
+		            byte = &size,
+			    response = &response,
+		       	    buffer = (IGRchar *)&button);
+	    if (!(sts & 1) )
+	      printf(" error in putque \n");
+*/
+
+	    for (i=0; i<obj_count; i=i+1)
+	    {
+
+		if (!((objects[i].obj_id.objid == fence_id.objid)
+		      &&   (objects[i].obj_id.osnum == fence_id.osnum)))
+	        {
+		    sts = 
+		    ci$send( msg = message GRgraphics.GRanalyze_element( &msg,
+							&objects[i].mod_env,
+							user_output_fptr,
+							&analysis_type),
+			    targetid = objects[i].obj_id.objid,
+			    targetos = objects[i].obj_id.osnum);
+		    if(!(sts&1))
+		      continue;
+		}
+	    }	/* for (i = 0; i < obj_count; i++) */
+        }
+	else
+	{
+	
+       sts = ci$send( msg = message GRgraphics.GRanalyze_element( &msg,
+                                                        md_env,
+                                                        user_output_fptr,
+                                                        &analysis_type),
+                      targetid = loc_obj.objid,
+                      targetos = loc_obj.osnum);
+	}	
+    }
+}
+    
+
+IsValidFilename(filename)
+char		filename[128];
+{
+  int	i;
+
+  i = 0;
+  is_valid_file = TRUE;
+
+  while ( filename[i] != '\0' )
+  {
+    if ( ((filename[i] >= '0') && (filename[i] <= '9')) ||
+         ((filename[i] >= 'a') && (filename[i] <= 'z')) || 
+         ((filename[i] >= 'A') && (filename[i] <= 'Z')) || 
+         (filename[i] == '.') || (filename[i] == '_')   ||
+         (filename[i] == '/') )
+      i = i + 1;
+    else {
+      is_valid_file = FALSE;        /* invalid model name */
+      break;
+    }
+  }
+}
+
+main()
+{
+
+  IGRint 	response;
+  IGRboolean	first_elem;
+  IGRlong 	sts, mask, long_rc;
+  IGRdouble 	data[3], accept[3];
+  
+  struct GRid     located_obj,window_id;
+  struct GRevent  myevent,nbytes;
+  struct GRmd_env located_env;
+
+  ex$message(msgnumb = GR_M_Zanalyze);
+
+  STATE_analysis_type:
+
+// ex$message(msgnumb = GR_P_EntAnalType, buff = msgbuff);
+
+//   mask = GRm_STRING|GRm_RJT_MOVEON;
+  sts = ci$getevent( msgnum = GR_P_EntAnalType,
+		     response = &response,
+		     stackable = 1,
+		     mask = mask,
+		     event = &myevent);
+  if( response == EX_STRING)
+  {
+      if( tolower(myevent.event.keyin[0]) == 'g')
+	analysis_type = GENERAL;
+      else   if( tolower(myevent.event.keyin[0]) == 'd')
+	analysis_type = DETAILED;
+      else 
+       goto STATE_analysis_type;
+  }
+  else if ( response == RESET)
+      analysis_type = GENERAL;
+  else if ( ( response == EX_VALUE) && (myevent.event.value == 0.0) )
+      analysis_type = GENERAL;
+  else goto STATE_analysis_type;
+
+  STATE_get_filename:
+
+//  ex$message(msgnumb = GR_P_Entfilename, buff = msgbuff);
+
+  ex$message(msgnumb = GR_M_Zanalyze);
+  ci$getevent( msgnum = GR_P_Entfilename,
+	       response = &response,
+	       event = &myevent,
+	       stackable = 1);
+
+  if (( response != EX_STRING && response != RESET && response != EX_VALUE))
+    goto STATE_get_filename;
+
+  strcpy(user_output_file, myevent.event.keyin);
+
+  if(response == RESET)
+     user_output_fptr = stdout;
+  else if ( (response == EX_VALUE) && (myevent.event.value == 0.0) )
+     user_output_fptr = stdout;
+  else
+  {
+      IsValidFilename(user_output_file);
+      if(!is_valid_file)
+      {
+       	  ex$message( field = ERROR_FIELD,
+		      msgnumb = GR_E_CntOpenFile);
+	  goto STATE_get_filename;
+	   
+      }
+      user_output_fptr = fopen( user_output_file,"w");
+      if (user_output_fptr == NULL )
+      {
+       	  ex$message( field = ERROR_FIELD,
+		      msgnumb = GR_E_CntOpenFile);
+	  goto STATE_get_filename;
+      }
+  }
+
+  first_elem = TRUE;
+
+ STATE_locate_object:
+
+  located_obj.objid = NULL_OBJID;
+
+  ex$message(msgnumb = GR_P_IdEleMvOnCl, buff = locbuff);
+  ex$message(msgnumb = GR_P_AccNxtRje, buff = accbuff);
+
+  if (first_elem)  
+    ex$message(msgnumb = GR_P_IdEle, buff = locbuff);
+    
+  ex$message(msgnumb = GR_M_Zanalyze);
+  ci$locate( prompt = locbuff,
+	     acc_prompt = accbuff,
+	    response = &response,
+	    md_env = &located_env,
+	    classes = "GRgraphics",
+	    owner_action = LC_READ|
+	                   LC_HANDLES | LC_REF_HEADER |
+	                   LC_REF_OBJECTS,
+	    data_point = data,
+	    accept_point = accept,
+	    obj = &located_obj.objid,
+	    window_id = &window_id.objid,
+	    window_osnum = &window_id.osnum,
+	    osnum = &located_obj.osnum,
+	    stackable = TRUE);
+
+  switch(response)
+  {
+    case EX_DATA:
+    case SPECIFIED_OBJ:
+
+      analyze_elements(located_obj,&located_env,accept,window_id,response);
+      first_elem = FALSE;
+      goto STATE_locate_object;
+
+    case STRING:
+	/* Not handled */
+      break;
+
+    case RESET:
+      if( user_output_fptr != stdout)
+      fclose(user_output_fptr);
+      goto STATE_analysis_type;
+      /* close the file */
+      break;
+
+    default:
+      break;
+ }
+
+wrapup:
+    return;
+
+}
+
+wakeup()
+{
+  ex$message(msgnumb = GR_M_Zanalyze);
+  
+}
+
+sleep()
+{
+}

@@ -1,0 +1,568 @@
+/*
+$Author: hans $
+$Revision: 1.1.1.1 $
+$Date: 2001/12/17 22:39:29 $
+$Locker:  $
+$Log: COedtdim.u,v $
+Revision 1.1.1.1  2001/12/17 22:39:29  hans
+Initial import to CVS
+
+# Revision 340.0  1997/05/27  23:06:20  root
+# COMMENT : Initial checkin to 3.4.0 RCS from 3.3.0 src
+#
+# Revision 330.0  1996/01/11  21:20:13  root
+# COMMENT : Initial checkin to 3.3.0 RCS from 3.2.0 src
+#
+# Revision 320.1  1994/12/14  06:33:04  gvk
+# COMMENT : Reference file attachment scale was computed properly.
+#
+# Revision 320.0  1994/12/12  17:49:49  root
+# COMMENT : Initial checkin to 3.2 RCS from 3.1 src
+#
+# Revision 240.7  1993/12/23  06:08:52  gvk
+# COMMENT : Clear the DIM_IN_PLACEMENT bit for dimensions already recomputed.
+#
+# Revision 240.6  1993/08/03  22:55:02  gvk
+# COMMENT : Dimension Tr fixes
+#
+# Revision 240.5  1993/08/03  05:42:45  laxmi
+# COMMENT : Dimensioning 2.4 CR and TR fixes checkin. -Laxmi
+#
+# Revision 240.4  1993/03/16  11:58:12  laxmi
+# COMMENT : Drawview scale no longer posted on to dim_param object -Laxmi.
+#
+# Revision 240.2  1993/02/25  08:29:37  laxmi
+# COMMENT : Dim_grid initialised to make edit dimensions work properly -Laxmi.
+#
+# Revision 240.1  1993/01/28  22:50:12  doree
+# COMMENT : incorporating release 2.2 revision 220.1
+#
+# Revision 240.0  1992/12/06  23:38:58  tim
+# COMMENT : Initial checkin to 2.4 RCS
+#
+# Revision 220.0  1992/08/29  06:19:08  root
+# COMMENT : Corresponds to Rel201.10 in 2.0.1 RCS
+#
+Revision 201.10  1992/07/20  12:04:25  gvk
+COMMENT : Added LC_HANDLES bit for locating constraints.
+
+Revision 201.9  1992/07/20  04:15:24  gvk
+COMMENT : Modified files to remove obsolete function calls.
+
+Revision 201.6  1992/02/28  15:17:16  henry
+COMMENT : DON'T call free twice for the same pointer (that hurts!)
+
+Revision 201.5  1992/02/01  13:54:18  dimdp20
+COMMENT : Edit dimension : locate all in view fix for Driving Dim - Feb 1. 92 - Poo
+
+*/
+
+#include "cieveryone.h"
+#include "cilocate.h"
+#include "cisend.h"
+#include "cievent.h"
+#include "ciexecdef.h"
+#include "ciexec.h"
+
+#include "nddef.h"
+#include "GM.h"
+#include "ndmacros.h"
+
+#include "msdef.h"
+#include "msmacros.h"
+#include "dimfiundef.h"
+#include "FI.h"
+
+#include "DMmessages.h"
+#include "dimdef.h"
+#include "dim.h"
+#include "dimcomplex.h"
+#include "dm_status.h"
+#include "dimformdef.h"
+#include "dimform.h"
+#include "dimmacros.h"
+#include "dimdload.h"
+
+GRobj file_id;
+struct GRid dim_grid;
+
+int sts, msg;
+struct GRid located_obj, *obj;
+struct GRmd_env md_env, located_env;
+struct GRevent event;
+int nb_obj, nb_to_up, i, j;
+
+char data_str[256];
+struct DMkeyboard dm_keyboard;
+
+int response;
+double response_data[1024];
+
+struct DMenv_param my_env;
+struct DMloc_param my_loc;
+struct DMmisc_param my_misc;
+struct DMgadget_stack my_stack;
+
+int    my_state;
+OM_S_CLASSLIST classlist;
+OMuword class[2];
+
+extern struct DMenv_param frm_env;
+extern struct DMloc_param frm_loc;
+extern struct DMmisc_param frm_misc;
+extern struct DMsenv_param frm_senv;
+extern struct DMgadget_stack edit_stack;
+extern struct GRid Dim_grid;
+extern int    frm_state;
+extern int    NDexec_batch(), NDwait_batch();
+extern int DMget_scale();
+extern MSmessage();
+
+extern strncmp(), strncpy();
+extern char *malloc();
+extern int free();
+extern GRclassid OPP_DMroot_class_id,
+	         OPP_expression_class_id;
+
+extern int printf();
+extern int fprintf();
+IGRchar msgbuff[MS_MAX_MSG_LENGTH];
+
+main()
+{
+	IGRlong status;     
+
+	ex$message(msgnumb = DMC_M_DMEdDm, buff = msgbuff);
+	message(msgbuff);
+
+	STATE_locate:
+
+	do
+	{
+                ex$message(msgnumb = DM_P_IdDims, buff = msgbuff);
+
+		ci$locate(
+			prompt = msgbuff,
+			response = &response,
+			md_env = &located_env,
+			owner_action = LC_RIGID_COMP | LC_RIGID_OWNER
+					| LC_FLEX_COMP | LC_NO_REF_HEADER
+					| LC_HANDLES,
+			eligible_classes = &classlist,
+			obj = &located_obj.objid,
+			osnum = &located_obj.osnum);
+	} while (response != DATA && response != SPECIFIED_OBJ);
+
+	status =
+	DMget_fence_objects (
+		     &msg,
+		     &located_env,
+                     located_obj,
+		     &nb_obj,
+		     &obj,
+		     &response,
+		     (char *)response_data );
+
+	if (nb_obj == 0) goto STATE_locate;
+
+	load_dim(dim_grid = obj[0]);
+	set_form_state(STATE_DIMENSION);
+	edit_stack.count = 0;
+
+	STATE_modify:
+
+        ex$message(msgnumb = DM_P_ModParVals, buff = msgbuff);
+
+	ci$getevent(
+                prompt = msgbuff,
+		event = &event,
+		response = &response,
+		stackable = TRUE,
+		mask = GRm_STRING | GRm_BACK_UP | GRm_RESET);
+
+	switch (response)
+	{
+		case STRING:
+
+		strncpy(data_str, event.event.keyin, GR_MAX_CHAR);
+		data_str[GR_MAX_CHAR - 1] = '\0';
+		if (!strncmp(data_str, "dm=", 3))
+			strcpy(dm_keyboard.response, &data_str[3]);
+		else	strcpy(dm_keyboard.response, data_str);
+
+		push &dm_keyboard;
+
+		sts =
+		ci$run(file_id = &file_id,
+			entry   = "keyboard_input");
+		dm$status(sts = sts, action = RET_STATUS);
+		break;
+
+		case D_RESET:
+		case BACKUP:
+
+		if (obj) 
+                {
+                  free(obj);
+                  obj = 0;
+                }
+		goto STATE_locate;
+
+		case RESET:
+
+		update_dimensions();
+		if (obj)
+                {
+                  free(obj);
+                  obj = 0;
+                }
+		Dim_grid.objid = NULL_OBJID;
+		goto STATE_locate;
+	}
+
+	goto STATE_modify;
+}
+
+load_dim(grid)
+struct GRid grid;
+{
+	IGRuchar geom_type;
+	IGRuchar disp_type;
+	struct GRid first;
+	IGRint rc;
+	IGRint count;
+	struct GRid list[MAX_DIM_ROOTS];
+	IGRint drawview;
+	IGRdouble scale;
+
+	printf("                ");
+
+	Dim_grid = grid;
+
+	sts =
+	dm$get_dim_param(
+		type = DM_ENV_PARAM,
+		dim_objid = grid.objid,
+		dim_osnum = grid.osnum,
+		p_data = &frm_env);
+	dm$status(sts = sts, action = RET_STATUS);
+
+	sts =
+        ci$send(msg = message DMroot.inq_display_type(&disp_type),
+                targetid = grid.objid,
+                targetos = grid.osnum);
+        dm$status(sts = sts, action = RET_STATUS);
+
+ 	sts =
+        ci$send(msg = message DMroot.inq_geom_type(&geom_type),
+                targetid = grid.objid,
+                targetos = grid.osnum);
+        dm$status(sts = sts, action = RET_STATUS);
+
+
+	if( (disp_type & DIM_AUTO_SCALED) && !(geom_type & DIM_DRIVING))
+	{
+
+		sts =
+                ci$send(msg = message DMroot.get_first_in_cpx(&rc, &first),
+                                 targetid = grid.objid,
+				 targetos = grid.osnum);
+                dm$status(sts = sts,action = RET_STATUS);
+
+                sts =
+                ci$send(msg = message DMroot.DMreturn_roots(&count, list),
+                                targetid = first.objid,
+                                targetos = first.osnum);
+                dm$status(sts = sts,action = RET_STATUS);
+
+                DMget_scale(&scale, &drawview, list[DIM_CPX_ORIG],&located_env);
+		if(scale >0.0)
+			frm_env.sca_fact = scale;
+
+	}
+
+	sts =
+	dm$get_dim_param(
+		type = DM_LOC_PARAM,
+		dim_objid = grid.objid,
+		dim_osnum = grid.osnum,
+		p_data = &frm_loc);
+	dm$status(sts = sts, action = RET_STATUS);
+
+	sts =
+	dm$get_dim_param(
+		type = DM_MISC_PARAM,
+		dim_objid = grid.objid,
+		dim_osnum = grid.osnum,
+		p_data = &frm_misc);
+	dm$status(sts = sts, action = RET_STATUS);
+
+	frm_misc.tog_term = FALSE;
+
+	sts =
+	dm$get_dim_param(
+		type = DM_SENV_PARAM,
+		dim_objid = grid.objid,
+		dim_osnum = grid.osnum,
+		p_data = &frm_senv);
+	dm$status(sts = sts, action = RET_STATUS);
+}
+
+save_dim(grid)
+struct GRid grid;
+{
+	IGRshort dim_type;
+	IGRboolean gt_annot;
+
+	sts =
+	ci$send(msg = message DMroot.get_dim_type(&dim_type),
+		targetid = grid.objid,
+		targetos = grid.osnum);
+	dm$status(sts = sts, action = RET_STATUS);
+
+	gt_annot =	(dim_type == TEXT_WITH_LEADER)		||
+			(dim_type == TEXT_WITH_BALLOON)		||
+			(dim_type == LEADER_LINE)		||
+			(dim_type == FEATURE_CONTROL_FRAME)	||
+			(dim_type == DATUM_FRAME);
+
+	if (!gt_annot)
+	{
+		sts =
+		dm$put_dim_param(
+			type = DM_ENV_PARAM,
+			dim_objid = grid.objid,
+			dim_osnum = grid.osnum,
+			p_data = &frm_env);
+		dm$status(sts = sts, action = RET_STATUS);
+
+		sts =
+		dm$put_dim_param(
+			type = DM_LOC_PARAM,
+			dim_objid = grid.objid,
+			dim_osnum = grid.osnum,
+			p_data = &frm_loc);
+		dm$status(sts = sts, action = RET_STATUS);
+
+		sts =
+		dm$put_dim_param(
+			type = DM_MISC_PARAM,
+			dim_objid = grid.objid,
+			dim_osnum = grid.osnum,
+			p_data = &frm_misc);
+		dm$status(sts = sts, action = RET_STATUS);
+	}
+	else
+	{
+		sts = DMmerge_senv(&frm_senv, &frm_env, &frm_loc, &frm_misc);
+		dm$status(sts = sts, action = RET_STATUS);
+
+		sts =
+		dm$put_dim_param(
+			type = DM_SENV_PARAM,
+			dim_objid = grid.objid,
+			dim_osnum = grid.osnum,
+			p_data = &frm_senv);
+		dm$status(sts = sts, action = RET_STATUS);
+	}
+}
+
+set_form_state(state)
+int state;
+{
+	frm_state = state;
+
+	push -1;
+
+	sts =
+	ci$run(file_id = &file_id,
+		entry   = "refresh_form");
+	dm$status(sts = sts, action = RET_STATUS);
+}
+
+delete()
+{
+	if (obj) 
+        {
+          free(obj);
+          obj = 0;
+        }
+}
+
+sleep()
+{
+	struct GRid null_grid;
+
+	if (frm_state != STATE_GLOBAL)
+	{
+		my_stack = edit_stack;
+		my_env   = frm_env;
+		my_loc   = frm_loc;
+		my_misc  = frm_misc;
+		my_state = frm_state;
+
+		set_form_state(STATE_GLOBAL);
+	}
+}
+
+wakeup()
+{
+	if (my_state != frm_state)
+	{
+		edit_stack = my_stack;
+		frm_env    = my_env;
+		frm_loc    = my_loc;
+		frm_misc   = my_misc;
+
+		set_form_state(my_state);
+	}
+}
+
+init()
+{
+	ci$get_module_info(md_env = &md_env);
+
+	sts =
+	ci$load(file_name = "dim_forms",
+		load      = LOAD,
+		file_id   = &file_id);
+	dm$status(sts = sts, action = RET_STATUS);
+
+	frm_state = STATE_GLOBAL;
+	my_state = STATE_GLOBAL;
+
+	class[0] = OPP_DMroot_class_id;
+	class[1] = OPP_expression_class_id;
+
+	classlist.w_count = 2;
+	classlist.w_flags = OM_CLST_subclass;
+	classlist.p_classes = class;
+}
+
+set_dim_state(flag, dim_grid, dim_state)
+int flag;
+struct GRid dim_grid;
+IGRint dim_state;
+{
+	int sts;
+
+	sts =
+	ci$send(msg = message DMroot.set_dim_state(flag, (char)dim_state),
+		targetid = dim_grid.objid,
+		targetos = dim_grid.osnum);
+	dm$status(sts = sts, action = RET_STATUS);
+
+	return(TRUE);
+}
+
+update_dimensions()
+{
+	int sts, rc;
+	int index;
+	int cn_type[32];
+	int *l_obj_info;
+	IGRboolean leader;
+	IGRboolean memory_allocated;
+	IGRlong long_rc;
+
+	set_form_state(STATE_REPLAY);
+
+	if (nb_obj > 32)
+	{
+		l_obj_info = (int *)malloc(nb_obj * sizeof(int));
+
+		if (l_obj_info == NULL)
+		{
+			write("update_dimensions: malloc failed\n");
+			return(FALSE);
+		}
+
+		memory_allocated = TRUE;
+	}
+	else
+	{
+		l_obj_info = cn_type;
+		memory_allocated = FALSE;
+	}
+
+	for (index=0; index<nb_obj; index=index+1)
+	{
+		set_dim_state(BIT_OR, obj[index], DIM_IN_EDIT);
+
+		load_dim(obj[index]);
+
+		sts =
+		ci$run(file_id = &file_id,
+			entry   = "replay_stack");
+		dm$status(sts = sts, action = RET_STATUS);
+
+		sts =
+		ci$send(msg = message NDnode.NDdisplay(
+						0,
+						GRbe,
+						&md_env),
+			targetid = obj[index].objid,
+			targetos = obj[index].osnum);
+		dm$status(sts = sts, action = RET_STATUS);
+
+		save_dim(obj[index]);
+
+		if (frm_misc.tog_term)
+		{
+			sts =
+			ci$send(msg = message DMroot.toggle_ter_loca(&rc, NULL),
+				targetid = obj[index].objid,
+				targetos = obj[index].osnum);
+			dm$status(sts = sts, action = RET_STATUS);
+		}
+
+		sts =
+		ci$send(msg = message DMroot.leader_needed(
+							&rc,
+							&md_env,
+							&leader),
+			targetid = obj[index].objid,
+			targetos = obj[index].osnum);
+		dm$status(sts = sts, action = RET_STATUS);
+
+		
+		   sts =
+               ci$send(msg = message NDnode.NDs_compute_node(
+                                            &long_rc,
+                                            ND_COMP,
+                                            &md_env),
+                          targetid = obj[index].objid,
+                        targetos = obj[index].osnum);
+		set_dim_state(BIT_CLEAR, obj[index], DIM_IN_EDIT);
+               dm$status(sts = sts, action = RET_STATUS);
+
+               sts =
+                 ci$send(msg = message NDnode.NDdisplay(
+                                         0,
+                                         GRbd,
+                                         &md_env),
+                          targetid = obj[index].objid,
+                        targetos = obj[index].osnum);
+                 dm$status(sts = sts, action = RET_STATUS);
+		
+	}
+
+/*
+        l_obj_info[index] = ND_COMP;
+	nd$wait_batch(
+		type = GR_GEOM_POSTED,
+		l_object = obj,
+		l_obj_info = l_obj_info,
+		nb_obj   = nb_obj);
+
+	nd$exec_batch();
+*/
+
+	if (memory_allocated) 
+        {
+          free(l_obj_info);
+        }
+
+	return(TRUE);
+}
+

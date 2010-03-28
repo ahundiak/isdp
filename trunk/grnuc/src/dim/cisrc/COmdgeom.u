@@ -1,0 +1,1179 @@
+ /*
+$Author: hans $
+$Revision: 1.1.1.1 $
+$Date: 2001/12/17 22:39:29 $
+$Locker:  $
+$Log: COmdgeom.u,v $
+Revision 1.1.1.1  2001/12/17 22:39:29  hans
+Initial import to CVS
+
+# Revision 340.0  1997/05/27  23:06:22  root
+# COMMENT : Initial checkin to 3.4.0 RCS from 3.3.0 src
+#
+# Revision 330.0  1996/01/11  21:20:16  root
+# COMMENT : Initial checkin to 3.3.0 RCS from 3.2.0 src
+#
+# Revision 320.1  1995/06/30  12:39:32  gvk
+# COMMENT : Changed the action type to NO_ACTION for remove_from_cpx calls from modify
+#
+# Revision 320.0  1994/12/12  17:49:52  root
+# COMMENT : Initial checkin to 3.2 RCS from 3.1 src
+#
+# Revision 240.5  1993/12/17  13:46:43  samuel
+# COMMENT : Fix for TR119313981-Computing immediately.
+#
+# Revision 240.4  1993/11/19  08:41:45  samuel
+# COMMENT : Added LC_FLEX_COMP bit to locate owner_action.
+#
+# Revision 240.1  1993/08/03  22:55:03  gvk
+# COMMENT : Dimension Tr fixes
+#
+# Revision 240.0  1992/12/06  23:39:01  tim
+# COMMENT : Initial checkin to 2.4 RCS
+#
+# Revision 220.1  1992/10/16  19:25:15  poo
+# COMMENT : Checking in 2.1 Fixes to 2.2 RCS
+#
+Revision 201.21  1992/09/08  11:16:02  poo
+COMMENT : Fix for modify geom on coordinate dimension - multiple copies left out.
+
+Revision 201.16  1992/07/20  12:04:21  gvk
+COMMENT : Added LC_HANDLES bit for locating constraints.
+
+Revision 201.15  1992/07/20  04:15:26  gvk
+COMMENT : Modified files to remove obsolete function calls.
+
+Revision 201.13  1992/02/26  11:43:10  dimdp20
+COMMENT : Prevent source modification on retrieved dimension.
+
+Revision 201.12  1992/02/19  11:57:19  dimdp20
+COMMENT : Dimension Fixes Release - S. Poovannan - Feb. 19 1992
+
+Revision 201.10  1992/01/22  07:35:31  dimdp20
+COMMENT : Dimension Fixes Release - S. Poovannan - Jan. 22 1992.
+
+*/
+	
+#include "cieveryone.h"
+#include "cimacros.h"
+#include "OMminimum.h"
+#include "igetypedef.h"
+#include "igrtypedef.h"
+#include "igr.h"
+#include "igrdp.h"
+#include "dpdef.h"
+#include "dp.h"
+#include "dpstruct.h"
+#include "gr.h"
+#include "fontdef.h"
+#include "font.h"
+#include "gotextdef.h"
+#include "gotext.h"
+#include "grdpbdef.h"
+#include "grdpb.h"
+#include "grdpbmacros.h"
+
+#include "msdef.h"
+#include "msmacros.h"
+#include "OMmacros.h"
+#include "dpmacros.h"
+
+#include "asdef.h"
+#include "asmacros.h"
+#include "asbox.h"
+#include "parametric.h"
+
+#include "DIdef.h"
+#include "DItypedef.h"
+#include "DIglob.h"
+#include "DIprims.h"
+#include "FI.h"
+
+#include "ma.h"
+#include "bserr.h"
+
+#include "nddef.h"
+#include "GM.h"
+#include "ndmacros.h"
+
+#include "dimfiundef.h"
+#include "dimdef.h"
+#include "dim.h"
+#include "dimplan.h"
+#include "dimglobal.h"
+#include "dimerror.h"
+#include "dimlinear.h"
+#include "dimmacros.h"
+#include "dm_status.h"
+#include "dimdload.h"
+#include "dimdyn.h"
+#include "dimcomplex.h"
+#include "dimmod.h"
+#include "dimsrc.h"
+#include "diminst.h"
+#include "dimgraph.h"
+#include "dimco.h"
+#include "DMmsg.h"
+#include "DMcmd.h"
+
+extern ASmake_source();
+extern ASsuper_construct();
+extern GRfindcontext();
+extern printf();
+extern fprintf();
+extern GRdpb_get();
+extern char *malloc();
+extern free();
+extern MSmessage();
+
+OM_S_OBJECT_LINKAGE list[1];
+
+struct GRid copy_dim, src;
+struct GRmd_env md_env, dyn_env, located_env;
+int level, size;
+
+struct GRvg_construct go_cnst_list;
+int    index;
+IGRint sleep_flag;
+
+OM_S_CLASSLIST classlist;
+OMuword classes[5];
+
+OM_S_CHANSELECT to_dimension;
+int count, comp_type, type;
+int sts, msg, rc, i;
+int gt_annot;
+int radial_dim, jogged_dim;
+int repost_needed;
+struct dim_ret_struct dim_rst;
+
+IGRshort dim_type, geom_type;
+
+extern GRclassid
+	OPP_GR3dtext_class_id,
+	OPP_GR3dlineseg_class_id,
+	OPP_GR3dlinestr_class_id,
+	OPP_GR3dcirarc_class_id,
+	OPP_DMroot_class_id,
+	OPP_DMannot_class_id;
+
+IGRchar msgbuff[MS_MAX_MSG_LENGTH];
+IGRchar locbuff[MS_MAX_MSG_LENGTH];
+IGRchar accbuff[MS_MAX_MSG_LENGTH];
+IGRchar relbuff[MS_MAX_MSG_LENGTH];
+
+IGRboolean leader;
+IGRint response;
+IGRpoint locate_point;
+IGRchar *dm_attr;
+struct GRid dim_grid, located_obj;
+struct GRevent event;
+struct dim_attr dimension_attr;
+struct annot_attr annot_attr;
+struct cenline_attr cenline_attr;
+
+main()
+{
+	STATE_loc_dim:
+
+	ex_message(DM_P_Loelofdi, locbuff);
+	ex_message(DM_P_Ac, accbuff);
+	ex_message(DM_E_EltNotFound, relbuff);
+	copy_dim.objid = NULL_OBJID;
+	repost_needed =  FALSE;
+	radial_dim = FALSE;
+	jogged_dim = FALSE;
+
+	do
+	{
+		ci$locate(
+			prompt = locbuff,
+			acc_prompt = accbuff,
+			relocate_prompt = relbuff,
+			eligible_classes = &classlist,
+			owner_action = LC_RIGID_COMP | LC_RIGID_OWNER |
+					LC_FLEX_COMP | LC_FLEX_OWNER  |
+					LC_HANDLES, 
+			response = &response,
+			md_env = &located_env,
+			data_point = locate_point,
+			obj = &located_obj.objid,
+			osnum = &located_obj.osnum);
+	} while (response != DATA);
+
+	list[0].S_objid = NULL_OBJID;
+
+	sts =
+	om$get_channel_objects(
+		objid = located_obj.objid,
+		osnum = located_obj.osnum,
+		p_chanselect = &to_dimension,
+		list = list,
+		size = sizeof(list),
+		count = &count);
+	dm$status(sts = sts, action = RET_STATUS);
+
+	dim_grid.objid = list[0].S_objid;
+	dim_grid.osnum = list[0].osnum;
+
+
+	if ((list[0].S_objid == NULL_OBJID)
+	|| (!DMancestry_valid(dim_grid, OPP_DMroot_class_id)))
+	{
+		ex_message(DM_E_Baoblo, NULL);
+		goto STATE_loc_dim;
+	}
+
+	sts =
+	ci$send(msg = message DMroot.get_dim_type(&dim_type),
+		targetid = dim_grid.objid,
+		targetos = dim_grid.osnum);
+	dm$status(sts = sts, action = RET_STATUS);
+
+	gt_annot = DMancestry_valid(dim_grid, OPP_DMannot_class_id);
+
+	if (gt_annot)
+		dm_attr = (char *)&annot_attr;
+	else if (dim_type == CENTER_LINE)
+		dm_attr = (char *)&cenline_attr;
+	else	dm_attr = (char *)&dimension_attr;
+
+	sts =
+	ci$send(msg = message DMroot.get_dim_attr((char *)dm_attr),
+		targetid = dim_grid.objid,
+		targetos = dim_grid.osnum);
+	dm$status(sts = sts, action = RET_STATUS);
+
+	if (gt_annot)
+	{
+		geom_type = annot_attr.geom_type;
+
+		if (annot_attr.brkpt) free(annot_attr.brkpt);
+		if (annot_attr.text_string) free(annot_attr.text_string);
+	}
+	else
+	{
+		if (dim_type == CENTER_LINE)
+			geom_type = 0;
+		else	geom_type = dimension_attr.geom_type;
+	}
+
+	radial_dim = 	(dim_type == RADIAL) ||
+			(dim_type == RADIAL_DIAMETER);
+
+	if (dim_type == CENTER_LINE)
+		comp_type = DIM_LINE3;
+	else
+	{
+		sts =
+		ci$send(msg = message DMroot.return_go_index(
+							&msg,
+							located_obj,
+							&comp_type),
+			targetid = dim_grid.objid,
+			targetos = dim_grid.osnum);
+		dm$status(sts = sts, action = RET_STATUS);
+	}
+
+	if (dim_type == WELD)
+	{
+		if (comp_type == TERM)
+			comp_type = DIM_ORI_TERM;
+		else if (comp_type == LEAD_LINE)
+			comp_type = DIM_LEADER; 
+		else	comp_type = DIM_TEXT;
+	}
+	else if (dim_type == SURF)
+	{
+		if (comp_type == SURF_TERM)
+			comp_type = DIM_ORI_TERM;
+		else if (comp_type == SURF_LEADER)
+			comp_type = DIM_LEADER; 
+		else	comp_type = DIM_TEXT;
+	}
+	else if ((dim_type == RADIAL) && dimension_attr.jogged)
+	{
+		jogged_dim = TRUE;
+		if (comp_type != DIM_TEXT)
+		   comp_type = DIM_LINE1;
+	}
+
+	if (gt_annot)
+	{
+		switch (comp_type)
+		{
+			case DIM_TEXT:
+			case DIM_BALLOON:
+
+			ex_message(DM_I_Modite, NULL);
+			move_annot_text(dim_grid);
+			break;
+
+			case DIM_ORI_TERM:
+			move_annot_term(dim_grid);
+			break;
+
+			case DIM_LEADER:
+			move_annot_leader(dim_grid);
+			break;
+		}
+	}
+	else
+	{
+		switch (comp_type)
+		{
+			case DIM_TEXT:
+			case DIM_LEADER:
+
+			ex_message(DM_I_Modite, NULL);
+			move_dimension_text(dim_grid);
+			break;
+
+			case DIM_ORI_TERM:
+			case DIM_MEA_TERM:
+
+			ex$message(msgnumb = DMC_M_TogTer, field = ERROR_FIELD);
+			toggle_terminators(dim_grid);
+			break;
+
+			case DIM_ORI_PROJ:
+
+			ex_message(DM_I_MoPrLi, NULL);
+
+			if(radial_dim)
+			  move_dimension_line(dim_grid, FALSE, jogged_dim);
+			else
+			  move_projection_line(dim_grid, FALSE);
+
+			break;
+
+			case DIM_MEA_PROJ:
+
+			ex_message(DM_I_MoPrLi, NULL);
+			move_projection_line(dim_grid, TRUE);
+			break;
+
+			case DIM_LINE1:
+			case DIM_LINE2:
+
+			{
+				ex_message(DM_I_MoDiLi, NULL);
+			        move_dimension_line(dim_grid,FALSE, jogged_dim);
+			}
+			break;
+
+			case DIM_LINE3:
+			case DIM_LINE4:
+
+			ex_message(DM_P_PosCline, NULL);
+			move_dimension_line(dim_grid, TRUE, jogged_dim);
+			break;
+
+			default:
+
+			status("Unknown component type");
+			write("type = ", type, "\n");
+			break;
+		}
+	}
+
+	goto STATE_loc_dim;
+}
+
+ex_message(msgnumb, buff)
+int msgnumb;
+char buff[];
+{
+	ex$message(msgnumb = msgnumb, buff = buff);
+}
+
+init()
+{
+	ASsuper_construct();
+	ci$get_module_info(md_env = &md_env);
+	ci$get_module_info(md_env = &dyn_env);
+	dyn_env.md_id.objid = NULL_OBJID;
+	copy_dim.objid = NULL_OBJID;
+
+	sts =
+	om$make_chanselect(channame = "GRconnector.to_owners",
+			p_chanselect = &to_dimension);
+	dm$status(sts = sts, action = RET_STATUS);
+
+	classlist.w_count = 4;
+	classlist.w_flags = OM_CLST_subclass;
+	classlist.p_classes = classes;
+
+	classes[0] = OPP_GR3dtext_class_id;
+	classes[1] = OPP_GR3dlineseg_class_id;
+	classes[2] = OPP_GR3dcirarc_class_id;
+	classes[3] = OPP_GR3dlinestr_class_id;
+
+	sleep_flag = FALSE;
+}
+
+wakeup()
+{
+	if (sleep_flag)
+	{
+		ci$put(string = "");
+		sleep_flag = FALSE;
+	}
+
+	ex_message(DMC_M_DMMdDmGm, msgbuff);
+	message(msgbuff);
+}
+
+move_dimension_text(dim_grid)
+struct GRid dim_grid;
+{
+	ex_message(DM_P_Entepo, NULL);
+	
+
+	STATE_1:
+
+
+	sleep_flag = TRUE;
+	dm$invoke_dynamics(
+		msg = &msg,
+		preproc = LEADER_OFF | CLEAR_OFFSET | MASK_STATE,
+		prestate =  DIM_NEEDS_UPDATE,
+		control = MOVE_BREAK_PT,
+		md_env = &dyn_env,
+		copy = TRUE,
+		cp_grid = &copy_dim,
+		dim_grid = &dim_grid);
+
+
+	ex_message(DM_P_Entepo, locbuff);
+
+	ci$getevent(
+		prompt = locbuff,
+		event = &event,
+		response = &response,
+		stackable = TRUE,
+		mask = GRm_DATA | GRm_STRING | GRm_BACK_UP | GRm_RESET);
+
+	switch(response)
+	{
+		case DATA:
+
+		dm$invoke_dynamics(
+			msg = &msg,
+			dynamics = FALSE,
+			postproc = CHGDP,
+			control = MOVE_BREAK_PT,
+			md_env = &dyn_env,
+			event = &event,
+			dim_grid = &copy_dim);
+		break;
+
+		default:
+
+		delete_copy2();
+
+		if (response == RESET || response == D_RESET)
+			return(TRUE);
+		else	goto STATE_1;
+
+		break;
+	}
+
+	STATE_2:
+
+	leader = FALSE;
+
+	sts =
+	ci$send(msg = message DMroot.leader_needed(
+					&msg,
+					&dyn_env,
+					&leader),
+		targetid = copy_dim.objid,
+		targetos = copy_dim.osnum);
+	dm$status(sts = sts, action = RET_STATUS);
+
+	if (leader)
+	{
+		ex_message(DM_P_Enhotepo, NULL);
+
+		sleep_flag = TRUE;
+		dm$invoke_dynamics(
+			msg = &msg,
+			preproc = MASK_STATE,
+			prestate = DIM_NEEDS_UPDATE,
+			control = MOVE_LEADER_PT,
+			md_env = &dyn_env,
+			dim_grid = &copy_dim);
+
+		ex_message(DM_P_Enhotepo, locbuff);
+
+		ci$getevent(
+			prompt = locbuff,
+			event = &event,
+			response = &response,
+			stackable = TRUE,
+			mask = GRm_DATA | GRm_STRING | GRm_BACK_UP | GRm_RESET);
+
+		switch(response)
+		{
+			case DATA:
+
+			dm$invoke_dynamics(
+				msg = &msg,
+				dynamics = FALSE,
+				postproc = CHGDP,
+				control = MOVE_LEADER_PT,
+				md_env = &dyn_env,
+				event = &event,
+				dim_grid = &copy_dim);
+			break;
+
+			case D_RESET:
+			case RESET:
+
+			delete_copy2();
+
+			if (response == RESET) return(TRUE);
+			goto STATE_1;
+
+			default:
+			goto STATE_2;
+		}
+	}
+
+	sts =
+	ci$send(msg = message DMroot.copy_dim_attr(
+					&msg,
+					INST_OFFS_PT  |
+					INST_BREAK_PT |
+					INST_LEADER_PT |
+					INST_JOG_PTS   |
+					INST_NOT_IN_BATCH,
+					&copy_dim,
+					&md_env),
+		targetid = dim_grid.objid,
+		targetos = dim_grid.osnum);
+	dm$status(sts = sts, action = RET_STATUS);
+
+	delete_copy2();
+}
+
+toggle_terminators(dim_grid)
+struct GRid dim_grid;
+{
+	IGRint	 mode;
+
+	sts =
+	ci$send(msg = message DMroot.toggle_ter_loca(&msg, &md_env),
+		targetid = dim_grid.objid,
+		targetos = dim_grid.osnum);
+	dm$status(sts = sts, action = RET_STATUS);
+
+}
+
+get_parent_type(dim_type)
+int dim_type;
+{
+	switch (dim_type)
+	{
+		case SINGLE_PARALLEL:
+		case STACKED_ANGULAR:
+		case STRINGED_ANGULAR:
+
+		return(LINE_TYPE);
+
+		case SINGLE_ARC_LENGTH:
+		case SINGLE_ARC_ANGLE:
+
+		return(CIRC_ARC_TYPE);
+
+		case CIRCULAR_DIAMETER:
+
+		return(ARC_TYPE);
+
+		default:
+
+		return(POINT_TYPE);
+	}
+}
+
+move_dimension_line(dim_grid, cenline, jogged_dim)
+struct GRid dim_grid;
+int cenline;
+int jogged_dim;
+{
+	int pos_key, sts, rc, control, d_type, vertex;
+	short first_in_cpx, jogged;
+	int inst_copy;
+
+
+	if (cenline)
+		pos_key = DM_P_PtInOut;
+	else	pos_key = DM_P_Endili;
+
+	control = MOVE_TRAK_PT;
+	inst_copy = INST_TRAK_PT;
+
+	if (radial_dim)
+	{
+		dm_give_structure(DIM_RAD_CURVE);
+
+		if (jogged_dim)
+		{
+			sts =
+			ci$send(msg = message DMroot.return_vertex(
+							&rc,
+							&d_type,
+							&first_in_cpx,
+							&jogged,
+							locate_point,
+							&vertex,
+							&dyn_env),
+				targetid = dim_grid.objid,
+				targetos = dim_grid.osnum);
+			dm$status(sts = sts, action = RET_STATUS);
+	
+			if (vertex == 3)
+			{
+				control = MOVE_JOG_PT2;
+				inst_copy = INST_JOG_PTS;
+				pos_key = DM_P_PosCenPtMd;
+			}
+			else if (vertex == 2)
+			{
+				control = MOVE_JOG_PT1;
+				inst_copy = INST_JOG_PTS;
+				pos_key = DM_P_PosBrkPt;
+			}
+			else if (vertex == 1)
+			{
+				control = MOVE_JOG_PT | MOVE_TRAK_PT;
+				inst_copy = INST_JOG_PTS;
+				pos_key = DM_P_PosBrkPt;
+			}
+		}
+	}
+
+	ex_message(pos_key, NULL);
+
+	STATE_1:
+
+	sleep_flag = TRUE;
+	dm$invoke_dynamics(
+		msg = &msg,
+		preproc = MASK_STATE,
+		prestate = DIM_IN_MODIFY,
+		control = control,
+		md_env = &dyn_env,
+		copy = TRUE,
+		cp_grid = &copy_dim,
+		dim_grid = &dim_grid);
+
+	ex_message(pos_key, locbuff);
+
+	ci$getevent(
+		prompt = locbuff,
+		event = &event,
+		response = &response,
+		stackable = TRUE,
+		mask = GRm_DATA | GRm_STRING | GRm_BACK_UP | GRm_RESET);
+
+	switch(response)
+	{
+		case DATA:
+
+		dm$invoke_dynamics(
+			msg = &msg,
+			dynamics = FALSE,
+			preproc = MASK_STATE,
+			prestate = DIM_IN_MODIFY,
+			postproc = CLEAR_STATE | CHGDP,
+			poststate = DIM_IN_MODIFY,
+			control = control,
+			md_env = &dyn_env,
+			event = &event,
+			dim_grid = &copy_dim);
+		break;
+
+		default:
+
+		repost_data(DIM_RAD_CURVE);
+		delete_copy2();
+
+		if (response == D_RESET || response == RESET) return(TRUE);
+		goto STATE_1;
+	}
+
+	inst_copy = inst_copy | INST_NOT_IN_BATCH;
+
+	sts =
+	ci$send(msg = message DMroot.copy_dim_attr(
+					&msg,
+					inst_copy,
+					&copy_dim, 
+					&md_env),
+		targetid = dim_grid.objid,
+		targetos = dim_grid.osnum);
+	dm$status(sts = sts, action = RET_STATUS);
+
+	delete_copy2();
+
+	return(TRUE);
+}
+
+move_projection_line(dim_grid, proj_index)
+struct GRid dim_grid;
+int proj_index;
+{
+	int status, rc, control, d_type, vertex;
+	short first_in_cpx, jogged;
+	int inst_copy, msgkey;
+
+	inst_copy = INST_PROJ_OFFS_PT;
+
+	msgkey = DM_P_EnPrLi;
+
+	if (dim_type == COORDINATE)
+	{
+		sts =
+		ci$send(msg = message DMroot.return_vertex(
+						&rc,
+						&d_type,
+						&first_in_cpx,
+						&jogged,
+						locate_point,
+						&vertex,
+						&dyn_env),
+			targetid = dim_grid.objid,
+			targetos = dim_grid.osnum);
+		dm$status(sts = sts, action = RET_STATUS);
+
+		if (vertex == 0)
+		{
+			if (first_in_cpx)
+				control = MOVE_ORIG_PT;
+			else	control = MOVE_MEAS_PT;
+		}
+		else
+		{
+			inst_copy = INST_TRAK_PT;
+
+			msgkey = DM_P_PosDim;
+
+			if (jogged)
+			{
+				inst_copy = INST_JOG_PTS;
+
+				if (vertex == 1)
+				{
+					control = MOVE_JOG_PT;
+					msgkey = DM_P_EnFBrkPt;
+				}
+				else if (vertex == 2)
+				{
+					control = MOVE_JOG_PT1;
+					msgkey = DM_P_EnSBrkPt;
+				}
+				else	control = MOVE_JOG_PT2;
+			}
+			else	control = MOVE_TRAK_PT;
+		}
+	}
+	else
+	{
+		if (proj_index)
+			control = MOVE_MEAS_PT;
+		else	control = MOVE_ORIG_PT;
+	}
+
+	ex_message(msgkey, NULL);
+
+	STATE_1:
+
+	
+	sleep_flag = TRUE;
+	dm$invoke_dynamics(
+		msg = &msg,
+		preproc = MASK_STATE,
+		prestate = DIM_IN_MODIFY,
+		control = control,
+		md_env = &dyn_env,
+		copy = TRUE,
+		cp_grid = &copy_dim,
+		dim_grid = &dim_grid);
+
+	ex_message(msgkey, locbuff);
+
+	ci$getevent(
+		prompt = locbuff,
+		event = &event,
+		response = &response,
+		stackable = TRUE,
+		mask = GRm_DATA | GRm_STRING | GRm_BACK_UP | GRm_RESET);
+
+	switch(response)
+	{
+		case DATA:
+
+		dm$invoke_dynamics(
+			msg = &msg,
+			dynamics = FALSE,
+			preproc = MASK_STATE,
+			prestate = DIM_IN_MODIFY,
+			postproc = CLEAR_STATE | CHGDP,
+			poststate = DIM_IN_MODIFY,
+			control = control,
+			md_env = &dyn_env,
+			event = &event,
+			dim_grid = &copy_dim);
+		break;
+
+		default:
+
+		delete_copy2();
+
+		if (response == D_RESET || response == RESET) return(TRUE);
+		goto STATE_1;
+	}
+
+	inst_copy = inst_copy | INST_NOT_IN_BATCH;
+
+	sts =
+	ci$send(msg = message DMroot.copy_dim_attr(
+					&msg,
+					inst_copy,
+					&copy_dim, 
+					&md_env),
+		targetid = dim_grid.objid,
+		targetos = dim_grid.osnum);
+	dm$status(sts = sts, action = RET_STATUS);
+
+	delete_copy2();
+
+	return(TRUE);
+}
+
+dm_give_structure(index)
+int index;
+{
+	sts=
+	DMsrc_give_structure(
+			&rc,
+			index,
+			ORIG_INFO,
+			(geom_type & DIM_IMPORTED),
+			FALSE,
+			NULL_OBJID,
+			dim_grid.objid,
+			dim_grid.osnum,
+			&md_env,
+			&dim_rst);
+	dm$status(sts = sts, action = RET_STATUS);
+	
+	repost_needed = TRUE;
+}
+
+move_annot_text(dim_grid)
+struct GRid dim_grid;
+{
+	ex_message(DM_P_Entepo, NULL);
+
+	STATE_1:
+
+	sleep_flag = TRUE;
+	dm$modify_annot(
+		msg = &msg,
+		control = MOVE_TEXT,
+		md_env = &dyn_env,
+		copy = TRUE,
+		cp_grid = &copy_dim,
+		dim_grid = &dim_grid);
+
+	ex_message(DM_P_Entepo, locbuff);
+
+	ci$getevent(
+		prompt = locbuff,
+		event = &event,
+		response = &response,
+		stackable = TRUE,
+		mask = GRm_DATA | GRm_STRING | GRm_BACK_UP | GRm_RESET);
+
+	switch(response)
+	{
+		case DATA:
+
+		dm$modify_annot(
+			msg = &msg,
+			dynamics = FALSE,
+			control = MOVE_TEXT,
+			md_env = &dyn_env,
+			copy = FALSE,
+			event = &event,
+			dim_grid = &copy_dim);
+		break;
+
+		default:
+
+		delete_copy2();
+		if (response == D_RESET || response == RESET) return(TRUE);
+
+		goto STATE_1;
+	}
+
+	sts =
+	ci$send(msg = message DMroot.copy_dim_attr(
+					&msg,
+					INST_NOT_IN_BATCH,
+					&copy_dim, 
+					&md_env),
+		targetid = dim_grid.objid,
+		targetos = dim_grid.osnum);
+	dm$status(sts = sts, action = RET_STATUS);
+
+	delete_copy2();
+
+	return(TRUE);
+}
+
+move_annot_term(dim_grid)
+struct GRid dim_grid;
+{
+	STATE_1:
+
+	dm_give_structure(AN_ROOT_ELEM1);
+
+	sleep_flag = TRUE;
+	dm$modify_annot(
+		msg = &msg,
+		control = MOVE_TERMINATOR,
+		md_env = &dyn_env,
+		copy = TRUE,
+		cp_grid = &copy_dim,
+		dim_grid = &dim_grid);
+
+	ci$getevent(
+		prompt = locbuff,
+		event = &event,
+		response = &response,
+		stackable = TRUE,
+		mask = GRm_DATA | GRm_STRING | GRm_BACK_UP | GRm_RESET);
+
+	switch(response)
+	{
+		case DATA:
+
+		dm$modify_annot(
+			msg = &msg,
+			dynamics = FALSE,
+			control = MOVE_TERMINATOR,
+			md_env = &dyn_env,
+			copy = FALSE,
+			event = &event,
+			dim_grid = &copy_dim);
+		break;
+
+		default:
+
+		delete_copy2();
+		repost_data(AN_ROOT_ELEM1);
+
+		if (response == D_RESET || response == RESET) return(TRUE);
+		goto STATE_1;
+	}
+
+	sts =
+	ci$send(msg = message DMroot.copy_dim_attr(
+					&msg,
+					INST_NOT_IN_BATCH,
+					&copy_dim, 
+					&md_env),
+		targetid = dim_grid.objid,
+		targetos = dim_grid.osnum);
+	dm$status(sts = sts, action = RET_STATUS);
+
+	delete_copy2();
+}
+
+move_annot_leader(dim_grid)
+struct GRid dim_grid;
+{
+	ex_message(DM_P_PosBrkPt, NULL);
+
+	STATE_1:
+
+	dm_give_structure(AN_ROOT_ELEM1);
+
+	sleep_flag = TRUE;
+	dm$modify_annot(
+		msg = &msg,
+		control = MOVE_POLE,
+		data_point = locate_point,
+		md_env = &dyn_env,
+		copy = TRUE,
+		dim_grid = &dim_grid);
+
+	ci$getevent(
+		prompt = locbuff,
+		event = &event,
+		response = &response,
+		stackable = TRUE,
+		mask = GRm_DATA | GRm_STRING | GRm_BACK_UP | GRm_RESET);
+
+	switch(response)
+	{
+		case DATA:
+
+		dm$modify_annot(
+			msg = &msg,
+			dynamics = FALSE,
+			control = MOVE_POLE,
+			data_point = locate_point,
+			md_env = &dyn_env,
+			event = &event,
+			copy = TRUE,
+			dim_grid = &dim_grid,
+			cp_grid = &copy_dim);
+		break;
+
+		default:
+
+		repost_data(AN_ROOT_ELEM1);
+		if (response == D_RESET || response == RESET) return(TRUE);
+		goto STATE_1;
+	}
+
+	sts =
+	ci$send(msg = message DMroot.copy_dim_attr(
+					&msg,
+					INST_NOT_IN_BATCH,
+					&copy_dim, 
+					&md_env),
+		targetid = dim_grid.objid,
+		targetos = dim_grid.osnum);
+	dm$status(sts = sts, action = RET_STATUS);
+
+	delete_copy2();
+}
+
+
+repost_data(index)
+int index;
+{
+	if (!repost_needed)
+		return(TRUE);
+
+	sts=
+	DMsrc_give_structure(
+			&rc,
+			index,
+			ORIG_INFO,
+			(geom_type & DIM_IMPORTED),
+			TRUE,
+			NULL_OBJID,
+			dim_grid.objid,
+			dim_grid.osnum,
+			&md_env,
+			&dim_rst);
+	dm$status(sts = sts, action = RET_STATUS);
+	
+        return(TRUE);
+}
+
+
+delete()
+{
+        if(radial_dim)
+                index = DIM_RAD_CURVE;
+        else    index = AN_ROOT_ELEM1;
+        repost_data(index);
+        delete_copy2();
+}
+
+struct LAdelete { IGRint *msg; struct GRmd_env *env;};
+struct LArmcpx { IGRint *msg; IGRint act; struct GRmd_env *env;};
+struct LAdisp { IGRint obs; enum GRdpmode dpmode; struct GRmd_env *env;};
+struct LAcomp { IGRint *msg; IGRint comp; struct GRmd_env *env;};
+
+delete_copy2()
+{
+	struct LArmcpx arg_list_cpx;
+	struct LAdelete arg_list_del;
+	struct LAdisp arg_list_erase;
+	struct LAdisp arg_list_disp;
+	struct LAcomp arg_list_comp;
+	OM_S_MESSAGE msg_struct1[2], msg_struct2[3];
+	struct GRid par_dim, child_dim, par_copy, child_copy;
+	IGRint msg, count, sts, mode;
+
+	if (copy_dim.objid == NULL_OBJID) return(TRUE);
+
+	arg_list_cpx.msg = &msg;
+	arg_list_cpx.act = NO_ACTION;
+	arg_list_cpx.env= &dyn_env;
+
+	sts =
+	om$make_message(classname="DMroot",
+			methodname="remove_from_cpx",
+			size = sizeof(struct LArmcpx), 
+			p_arglist = &arg_list_cpx,
+			p_msg = &msg_struct1[0]);
+	dm$status(sts = sts, action = RET_STATUS);
+
+	arg_list_del.msg = &msg;
+	arg_list_del.env= &dyn_env;
+
+	sts =
+	om$make_message(classname="GRgraphics",
+			methodname="GRdelete",
+			size = sizeof(struct LAdelete), 
+			p_arglist = &arg_list_del,
+			p_msg = &msg_struct1[1]);
+	dm$status(sts = sts, action = RET_STATUS);
+
+	sts = DMbroadcast (&msg, ROOT | CHILDREN, msg_struct1, 2, &copy_dim);
+	dm$status(sts = sts, action = RET_STATUS);
+
+	arg_list_erase.obs = 0;
+	arg_list_erase.dpmode = GRbe;
+	arg_list_erase.env= &md_env;
+
+	sts =
+	om$make_message(classname="NDnode",
+			methodname="NDdisplay",
+			size = sizeof(struct LAdisp), 
+			p_arglist = &arg_list_erase,
+			p_msg = &msg_struct2[0]);
+	dm$status(sts = sts, action = RET_STATUS);
+
+	arg_list_comp.msg = &msg;
+	arg_list_comp.comp = ND_COMP;
+	arg_list_comp.env= &md_env;
+
+	sts =
+	om$make_message(classname="NDnode",
+			methodname="NDs_compute_node",
+			size = sizeof(struct LAcomp), 
+			p_arglist = &arg_list_comp,
+			p_msg = &msg_struct2[1]);
+	dm$status(sts = sts, action = RET_STATUS);
+
+	arg_list_disp.obs = 0;
+	arg_list_disp.dpmode = GRbd;
+	arg_list_disp.env= &md_env;
+
+	sts =
+	om$make_message(classname="NDnode",
+			methodname="NDdisplay",
+			size = sizeof(struct LAdisp), 
+			p_arglist = &arg_list_disp,
+			p_msg = &msg_struct2[2]);
+	dm$status(sts = sts, action = RET_STATUS);
+
+	sts = DMbroadcast (&msg, ROOT | CHILDREN, msg_struct2, 3, &dim_grid);
+	dm$status(sts = sts, action = RET_STATUS);
+
+	copy_dim.objid = NULL_OBJID;
+	return(TRUE);
+}	
+
+

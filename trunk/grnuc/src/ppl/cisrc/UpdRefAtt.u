@@ -1,0 +1,552 @@
+/*
+Name
+        UpdRefAtt -- Update Reference File Attachments
+
+Description
+        This command is used in conjunction with the Copy Assembly command to
+        update the reference file attachments in the copied files.
+
+Usage
+        The command expects one argument: the name of a file which contains
+        information about the work already done by copyOS.  The file should
+        contains lines of the format "OldAttachmentName NewAttachmentName
+        MasterFileName."
+
+History
+        mrm     08/19/92    creation
+*/
+
+#include <stdio.h>
+#include <string.h>
+//#include <sys/param.h>      // This coredumps cci
+#include "ciminimum.h"
+#include "cimacros.h"
+#include "OMminimum.h"
+#include "OMindex.h"
+#include "OMprimitives.h"
+#include "DIdef.h"
+#include "exdef.h"
+#include "ex.h"
+#include "exmacros.h"
+#include "msdef.h"
+#include "msmacros.h"
+#include "igr.h"
+#include "igrdp.h"
+#include "godef.h"
+#include "go.h"
+#include "grdpbdef.h"
+#include "grdpbmacros.h"
+#include "refdef.h"
+#include "ref.h"
+#include "grmsg.h"
+
+#define MAXPATHLEN 1024
+
+#define DoNotWriteFile  0
+#define WriteFile       1
+
+#define verbose(x) if (verbose_flag) x
+
+/*
+        The "Attachment" structure is used to store the old and new names of a
+        reference file, along with the name of the master file to which it is
+        attached.  Note that the order of the fields within the structure is
+        important; the master file comes first so that an array of Attachment
+        structures may be easily sorted to minimize file retrieval.
+*/
+struct Attachment
+{
+    char master_file[MAXPATHLEN];
+    char old_name[MAXPATHLEN];
+    char new_name[MAXPATHLEN];
+};
+
+/*
+        External data
+*/
+
+extern OMuword OPP_GRreffile_class_id;
+extern struct EX_invisible_module *invisible_table;
+
+/*
+        Global (to this file) data
+*/
+int verbose_flag;
+
+/*
+Name
+        GRsave_this_file
+*/
+
+GRsave_this_file(filename, mod, ref, ref_mod)
+char *filename;
+struct GRmd_env *mod;
+struct GRid *ref;
+struct GRmd_env *ref_mod;
+{
+    int sts, msg, j, file_number;
+
+    verbose(printf("saving %s\n", filename));
+
+    /* get the invisible table index from the ref osnum */
+    /* Note - this is an expansion of the Get_invisible_index
+       macro in refpriv.h.  The expansion is used because ppl
+       cannot handle the local variable declaration or the
+       increment operator within the macro */
+    file_number = -1;
+    verbose(printf("EX_MAX_INVIS_MODULES = %d\n", EX_MAX_INVIS_MODULES));
+    verbose(printf("ref_mod->md_id.osnum = %d\n", ref_mod->md_id.osnum));
+    for (j = 0; j < EX_MAX_INVIS_MODULES; j = j + 1)
+    {
+        verbose(printf("invisible_table[%d].obj_space_num = %d\n", 
+                       j, invisible_table[j].obj_space_num));
+        if (invisible_table[j].obj_space_num == (int)ref_mod->md_id.osnum)
+        {
+            file_number = j;
+            break;
+        }
+    }
+    if (j == EX_MAX_INVIS_MODULES)
+    {
+        printf("Cannot save %s: error finding invisible index\n", filename);
+        return(0);
+    }
+
+    /* save the file */
+    verbose(printf("calling ex$save_module; file_number = %d\n", file_number));
+    sts = ex$save_module(ftype = EX_invisible,
+                         index = file_number);
+    if (!(sts & 1))
+    {
+        printf("Failed to save %s: %#x", filename, sts);
+        exit;
+    }
+
+    /* detach the reference file by deleting the attachment */
+    verbose(printf("deleting ref file %d, %d\n", ref->osnum, ref->objid));
+    sts = ci$send(msg = message GRgraphics.GRdelete(&msg, mod),
+                  targetid = ref->objid,
+                  targetos = ref->osnum);
+
+    if (!(sts & msg & 1))
+    {
+        printf("Failed to save %s: %#x, %#x", filename, sts, msg);
+        exit;
+    }
+}
+
+/*
+Name
+        GRget_attachment_info        
+*/
+
+int GRget_attachment_info(mod, nattachments, filenames, objids, osnums)
+struct GRmd_env *mod;   /* in  */
+int *nattachments;      /* out */
+char **filenames;       /* out */
+OM_S_OBJID **objids;    /* out */
+OMuword **osnums;       /* out */
+{
+    char *f;
+    short nest;
+    IGRboolean pass;
+    int sts, msg, i, len, which_error;
+    long count, out_count;
+    unsigned long props;
+    struct GRid refmgr;
+    struct GRinquire_list requests[3];
+
+    /* get the reference file manager for this space */
+    verbose(printf("getting super from mod [%d, %d]\n",
+                   mod->md_id.osnum, mod->md_id.objid));
+    sts = ex$get_super(mod_id = mod->md_id.objid,
+                       mod_osnum = mod->md_id.osnum,
+                       super_name = "Ref Mgr",
+                       create = 0,
+                       super_id = &refmgr.objid,
+                       super_osnum = &refmgr.osnum);
+    if (!(sts & 1))
+    {
+        printf("Failed to get reference file manager in space %d\n",
+               mod->md_id.osnum);
+        return(FALSE);
+    }
+    verbose(printf("refmgr = %d, %d\n", refmgr.osnum, refmgr.objid));
+
+    /* get a list of the reference file attachments in the current space */
+    verbose(printf("getting attachment list size\n"));
+    nest = FALSE;
+    props = 0;
+    sts = ci$send(msg = message Super_rfmgr.GRget_channel_count(&msg, &props,
+                                                                &nest, &count),
+                  targetid = refmgr.objid,
+                  targetos = refmgr.osnum);
+
+    if (!(sts & msg & 1))
+    {
+        printf("Failed to get attachment count in space %d: ", refmgr.osnum);
+        printf("%#x, %#x\n", sts, msg);
+        return(FALSE);
+    }
+
+    verbose(printf("attachment count = %d\n", count));
+
+    *osnums = (OMuword *)om$malloc(size = count * sizeof(OMuword));
+    *objids = (OM_S_OBJID *)om$malloc(size = count * sizeof(OM_S_OBJID));
+
+    verbose(printf("getting attachment list \n"));
+    sts = ci$send(msg = message Super_rfmgr.GRget_channel_objects
+                  (&msg, &props, &nest, &count, 
+                   *objids, *osnums, &out_count),
+                  targetid = refmgr.objid,
+                  targetos = refmgr.osnum);
+
+    if (!(sts & msg & 1) || count != out_count)
+    {
+        printf("Failed to get attachment list in space %d\n", refmgr.osnum);
+        printf("%d, %d\n", sts, msg);
+        printf("count = %d, out_count = %d\n", count, out_count);
+        return(FALSE);
+    }
+    *nattachments = out_count;
+
+    /* retrieve info about the files attached to master file */
+    verbose(printf("getting filenames\n"));
+    len = (count + 1) * sizeof(char) * MAXPATHLEN;
+    *filenames = (char *)om$malloc(size = len);
+    f = *filenames;
+    i = 0;
+    requests[i].var = REFERENCE_FILE_NAME;
+    requests[i].num_requested = MAXPATHLEN - 1;
+    i = i + 1;
+    requests[i].var = END_REPORT_REQUEST;
+    requests[i].var_ptr = NULL;
+    requests[i].num_requested = 0;
+    pass = FALSE;
+    for (i = 0; i < count; i = i + 1)
+    {
+        requests[0].var_ptr = &f[i * MAXPATHLEN];
+        sts = ci$send(msg = message GRreffile.GRinquireref(&msg,
+                                                           mod,
+                                                           requests,
+                                                           &which_error,
+                                                           &pass,
+                                                           NULL),
+                      targetid = objids[0][i],
+                      targetos = osnums[0][i]);
+        if (!(sts & msg & 1))
+        {
+            printf("Failed to get ref name: %#x, %#x\n", sts, msg);
+            return(FALSE);
+        }
+        verbose(printf("f[%d] = %s\n", i, &f[i * MAXPATHLEN]));
+    }
+    return(TRUE);
+}
+
+/*
+        Main
+*/
+main (argc, argv)
+int argc;
+char *argv[];
+{
+    char *filenames, *osname, *c, *ce, empty_name[4];
+    char data_file[MAXPATHLEN], buf[MAXPATHLEN * 3], active_file[MAXPATHLEN];
+    char mount_name[DI_PATH_MAX];
+    char newfilename[DI_PATH_MAX];
+    char tmp_name[DI_PATH_MAX];
+    short layer;
+    int sts, msg;
+    int i, j, n, len, count, last;
+    int nattachments, nlines, longline;
+    unsigned int properties;
+    long type;
+    FILE *dp;
+    OMuword *attach_osnums;
+    OM_S_OBJID *attach_objids;
+    OM_p_DUPINTOS *ref_file_dupos;
+    struct Attachment *a;
+    struct GRid ref;
+    struct GRmd_env mod, ref_mod;
+    struct GRvg_construct clist;
+    struct GRrf_info rf_info;
+    struct IGRlbsys lbsys;
+    struct IGRdisplay display;
+
+    /* get the name of the data file */
+    if (argc > 1)
+    {
+        strcpy(data_file, argv[1]);
+
+        /* check for a verbose flag */
+        if (argc > 2)
+            verbose_flag = TRUE;
+    }
+    else
+    {
+        ci$get(msgnum = GR_P_EntFlNme, string = data_file);
+    }
+
+    verbose(printf("UpdRefAtt...\n"));
+    verbose(printf("\targc = %d\n", argc));
+    verbose(for (i = 0; i < argc; i = i + 1) 
+            printf("\targv[%d] = %s\n", i, argv[i]));
+
+    /* open the data file */
+    if ((dp = fopen(data_file, "r")) == NULL)
+    {
+        ex$message(msgnumb = GR_E_CannotOpenFile);
+        exit;
+    }
+
+    /* make a quick scan to see how many lines are in the file */
+    verbose(printf("scanning file %s\n", data_file));
+    nlines = 0;
+    longline = 0;
+    while (fgets(buf, sizeof(buf), dp))
+    {
+        nlines = nlines + 1;
+        len = strlen(buf);
+        verbose(printf("len = %d, buf = %s", len, buf));
+        if (len > longline)
+            longline = len;
+    }
+    if (nlines == 0 || longline == 0)
+    {
+        printf("Data file %s is empty\n", data_file);
+        ex$message(msgnumb = GR_E_FileEmpty);
+        fclose(dp);
+        exit;
+    }
+    rewind(dp);
+
+    /* allocate some memory - calloc to help in sort later */
+    verbose(printf("allocating memory\n"));
+    a = (struct Attachment *)om$calloc(num = nlines,
+                                       size = sizeof(struct Attachment));
+
+    /* read in each line */
+    verbose(printf("reading file\n"));
+    for (i = 0; i < nlines; i = i + 1)
+    {
+        /*
+            don't use fscanf directly; it will read past eol looking for the
+            optional third parameter
+        */
+        fgets(buf, sizeof(buf), dp); 
+        sscanf(buf, "%s %s %s",
+               a[i].old_name, a[i].new_name, a[i].master_file);
+    }
+
+    /* sort the list to minimize file retrieval */
+    verbose(printf("sorting list\n"));
+    qsort(a, nlines, sizeof(struct Attachment), strcmp);
+
+    verbose(for (i = 0; i < nlines; i = i + 1)
+            printf("%2d: %-20s %-20s %-20s\n",
+                   i, a[i].master_file, a[i].old_name, a[i].new_name));
+
+    /* get ready to loop through all the master files */
+    active_file[0] = NULL;
+    empty_name[0] = NULL;
+    ref.objid = NULL_OBJID;
+
+    /* set static variable for background attachments */
+    DEset_localplot();
+
+    /* loop through all the master files */
+    for (i = 0; i < nlines; i = i + 1)
+    {
+        verbose(printf("Processing attachment %d\n", i));
+
+        /* retrieve the proper file */
+        if (strcmp(active_file, a[i].master_file))
+        {
+            if (ref.objid != NULL_OBJID)
+            {
+                /* save the previous file */
+                GRsave_this_file(active_file, &mod, &ref, &ref_mod);
+            }
+
+            /*
+                Retrieve the file as a writable reference file.  The code here
+                is taken from COref.sl, action construct_reference_file.
+            */
+
+            /* set up the construct arguments */
+            gr$get_module_env(buffer = &mod);
+            gr$get_active_display(buffer = &display);
+            gr$get_active_layer(buffer = &layer);
+            properties = 0;     /* GRRF_IS_READ_ONLY used in a-r-f command */
+            MAidmx(&msg,lbsys.matrix);
+            lbsys.diag_pt1[0] = (double)(GRDGNLIMITS_MIN_D + 1.0);
+            lbsys.diag_pt1[1] = (double)(GRDGNLIMITS_MIN_D + 1.0);
+            lbsys.diag_pt1[2] = (double)(GRDGNLIMITS_MIN_D + 1.0);
+            lbsys.diag_pt2[0] = (double)(GRDGNLIMITS_MAX_D - 1.0);
+            lbsys.diag_pt2[1] = (double)(GRDGNLIMITS_MAX_D - 1.0);
+            lbsys.diag_pt2[2] = (double)(GRDGNLIMITS_MAX_D - 1.0);
+            rf_info.filename = a[i].master_file;
+            rf_info.named_view = NULL;
+            rf_info.clip_poly = NULL;
+            rf_info.prism_classname = NULL;
+            rf_info.description = NULL;
+            rf_info.ref_properties = &properties;
+            rf_info.scale = NULL;
+            clist.msg = &msg;
+            clist.env_info = &mod;
+            clist.properties = 0;
+            clist.geometry = (IGRchar *) &lbsys;
+            clist.display = &display;
+            clist.level = layer;
+            clist.newflag = FALSE;
+            clist.name = NULL;
+            clist.class_attr = (char *)&rf_info;
+ 
+            /* make the file writable */
+            GRmake_writable(&msg, a[i].master_file,NULL);
+
+            /* attach the file */
+            verbose(printf("attaching ref %s\n", a[i].master_file));
+            ref.osnum = mod.md_id.osnum;
+            ref.objid = NULL_OBJID;
+            sts = ci$send(msg = message GRreffile.GRconstruct(&clist),
+                          construct = 1,
+                          targetid = ref.objid,
+                          targetos = ref.osnum);
+            if (!(sts & msg & 1))
+            {
+                printf("Failed to attach ref file %s: ", a[i].master_file);
+                printf("%#x, %d\n", sts, msg);
+                DEreset_localplot();
+                exit;
+            }
+            verbose(printf("attached ref %s: [%d, %d]\n",
+                           a[i].master_file, ref.osnum, ref.objid));
+
+            /* get the module object for the new space */
+            sts = ci$send(msg = message GRreffile.GRgetenvironment
+                          (&msg, &mod, &ref_mod),
+                          targetid = ref.objid,
+                          targetos = ref.osnum);
+            if (!(sts & msg & 1))
+            {
+                printf("Failed to get mod info for %s: ", a[i].master_file);
+                printf("%#x, %#x\n", sts, msg);
+                DEreset_localplot();
+                exit;
+            }
+            verbose(printf("GRreffile.GRgetenvironment [%d, %d]\n",
+                           ref_mod.md_id.osnum, ref_mod.md_id.objid));
+
+            /* free the data from the previous file */
+            om$dealloc(ptr = filenames);
+            om$dealloc(ptr = attach_objids);
+            om$dealloc(ptr = attach_osnums);
+
+            /* get the new attachment info */
+            sts = GRget_attachment_info(&ref_mod, &nattachments, &filenames,
+                                        &attach_objids, &attach_osnums);
+            if (!(sts & 1))
+            {
+                printf("Failed to get attachment info: %#x\n", sts);
+                DEreset_localplot();
+                exit;
+            }
+
+            /* store the active file name */
+            strcpy(active_file, a[i].master_file);
+        }
+
+        /* 
+            check all the attachments to the current file for a match with the
+            old filename
+        */
+        for (j = 0; j < nattachments; j = j + 1)
+        {
+            /*
+                KLUDGE!!  Both me->filename and me->osname ought to be pulled
+                out of the reference file object and compared to a[i].old_name
+                to see if either match.  The a[i].old_name was obtained ('way
+                back up the road) from GRlist_ref, which follows the same
+                precedence rules as the reference file objects when retrieving
+                files; ie me->osname first, then me->filename. However, there
+                is no way to pull out me->osname from here.  Therefore, if the
+                filename portion a[i].old_name matches me->filename, a match
+                is assumed.
+
+                A mechanism for retrieving the osname should be added before
+                2.1 goes out the door, but cannot be added for the special
+                Xerox build, since dload on the Sun is not pretty.  For now,
+                Xerox will have to be careful about identical filenames
+                scattered in different directories.
+            */
+
+            if (c = strrchr(a[i].old_name, (int)'/'))
+                osname = c + 1;
+            else
+                osname = a[i].old_name;
+
+            /* check whether the old/new filenames match */
+            verbose(printf("Checking %s against %s and %s\n",
+                           &filenames[j * MAXPATHLEN], a[i].old_name, osname));
+            if (strcmp(&filenames[j * MAXPATHLEN], a[i].old_name) == 0 ||
+                strcmp(&filenames[j * MAXPATHLEN], osname) == 0)
+            {
+                verbose(printf("Matched a[%d].old_name (%s) ",
+                               i, a[i].old_name));
+                verbose(printf("to filenames[%d] (%s)\n",
+                               j, &filenames[j * MAXPATHLEN]));
+                verbose(printf("changing attachment %d, %d to %s\n",
+                               attach_osnums[j], attach_objids[j],
+                               a[i].new_name));
+                strcpy(newfilename,a[i].new_name);
+                if(newfilename[0] != '/')
+                 {
+                    if(strchr(newfilename,'/'))
+                     {
+                        getcwd(tmp_name,DI_PATH_MAX);
+                        strcat(tmp_name,"/");
+                        strcat(tmp_name,newfilename);
+                        strcpy(newfilename,tmp_name);
+                        
+                     }
+                 }
+                /* change the reference file attachment name */
+                sts = ci$send(msg = message GRreffile.GRchgfilename
+                                             (&msg, newfilename, empty_name),
+                              targetid = attach_objids[j],
+                              targetos = attach_osnums[j]);
+                verbose(printf("GRchgfilename: %#x, %#x\n", sts, msg));
+                if (!(sts & msg & 1))
+                {
+                    printf("Failed to change attachment name from %s to %s\n",
+                           a[i].old_name, a[i].new_name);
+                    printf("%#x, %#x\n", sts, msg);
+#if BelieveReturnCode
+                    DEreset_localplot();
+                    exit;
+#else
+                    printf("Continuing...\n");
+#endif
+                }
+            }
+        }
+    }
+
+    if (ref.objid != NULL_OBJID)
+    {
+        /* save the last file */
+        GRsave_this_file(active_file, &mod, &ref, &ref_mod);
+    }
+
+    /* reset the static variable */
+    DEreset_localplot();
+
+    /* free the data from the final file */
+    om$dealloc(ptr = filenames);
+    om$dealloc(ptr = attach_objids);
+    om$dealloc(ptr = attach_osnums);
+
+    verbose(printf("UpdRefAtt: exiting\n"));
+}

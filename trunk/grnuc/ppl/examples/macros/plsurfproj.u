@@ -1,0 +1,122 @@
+/************************************************************************/
+/*                                                                      */
+/*  Program : plsurfproj.u  		Macro : ems$pl_surf_of_prjn	*/
+/*                    							*/
+/*   Defined in :   EMSascmacros.h					*/
+/*                                                                      */
+/*   Comments : An example of generating either a surface or solid of   */
+/* 		projection from a curve. Open curve -> surface only.    */
+/* 		Closed curve -> surface or solid.			*/
+/*									*/
+/************************************************************************/
+#include <stdio.h>
+#include "ciminimum.h"
+#include "cimacros.h"
+#include "ci_easy.h"
+#include "go.h"
+#include "grdpbmacros.h"
+#include "dpmacros.h"
+#include "lcdef.h"
+
+#include "EMSascmacros.h"
+#include "EMSasnuc.h"
+#include "EMSasopts.h"
+
+extern	int	GRdpb_get();
+extern	int	DPmacupdate();
+extern GRclassid OPP_GRcurve_class_id;
+extern GRclassid OPP_EMSsubbs_class_id;
+
+main ()
+{
+  /* Declare variables here : */
+     struct EMSobject_info    obj_info;
+     struct EMSpoint_info     base_point;
+     struct EMSpoint_info     height_point;
+     struct GRvg_construct    const_list;
+     struct IGRdisplay        disp_buffer;
+     IGRboolean               is_solid;
+     IGRshort                 disp_level;
+     IGRboolean               assoc_placement;
+     IGRushort                options;
+     GRobjid                  prjn_obj;
+     IGRpoint                 base_pt;
+     IGRpoint                 height_pt;
+     IGRint                   tmp,sts, num_bytes;
+     IGRlong                  msg_loc, nbytes_ret;
+
+  /* End of variable declarations */
+
+    message ("Place Surface/Solid of Projection") ;
+
+    /*Get the object */
+
+    ci$locate ( obj=&obj_info.grid.objid,
+		osnum = &obj_info.grid.osnum,
+	        md_env=&obj_info.env,
+	        prompt="Identify the Profile/Curve",
+	        acc_prompt="Accept/Reject ",
+	        relocate_prompt="Element not Found",
+		classes = "GRcurve",
+		owner_action = LC_RIGID_COMP | LC_FLEX_COMP
+	      );
+
+    ci$get(prompt="Enter base point for projection vector",
+           point = base_pt);
+
+    base_point.pt[0] = base_pt[0];
+    base_point.pt[1] = base_pt[1];
+    base_point.pt[2] = base_pt[2];
+    base_point.type  = EMSdatainfo_numeric;
+
+    ci$get(prompt="Enter height point for projection vector",
+           point = height_pt);
+  
+    height_point.pt[0] = height_pt[0];
+    height_point.pt[1] = height_pt[1];
+    height_point.pt[2] = height_pt[2];
+    height_point.type  = EMSdatainfo_numeric;
+
+    ci$get ( value = tmp,
+	     prompt = "Projected Surface/Solid : Solid = 1; Surface = 0"
+	   );
+    is_solid = tmp;
+
+    num_bytes = sizeof(struct IGRdisplay);
+    gr$get_active_display ( msg = &msg_loc, sizbuf = &num_bytes,
+			    nret= &nbytes_ret, buffer = &disp_buffer );
+    gr$get_active_level   ( buffer = &disp_level );
+    
+    const_list.msg        = &msg_loc;
+    const_list.env_info   = &obj_info.env;
+    const_list.display    = &disp_buffer;
+    const_list.properties = GRIS_LOCATABLE | GRIS_DISPLAYABLE;
+    const_list.newflag    = FALSE;
+    const_list.level      = disp_level;
+    const_list.class_attr = NULL;
+    const_list.name       = NULL;
+    const_list.geometry   = NULL;
+
+    gr$get_associative_flag ( buffer = &assoc_placement );
+    
+    if ( ! assoc_placement )
+         options = EMSasconst_notassociative;
+    else
+         options = NULL;
+
+    sts = ems$pl_surf_of_prjn  ( msg = &msg_loc,
+                                 curve = &obj_info,
+                                 base_point = &base_point,
+                                 height_point = &height_point,
+                                 is_solid = is_solid,
+				 options = options,
+                                 construction_list = &const_list,
+                                 prjn_obj = &prjn_obj);
+    if (!(sts & msg_loc & 1)) goto wrapup;
+
+    dp$update ( msg = &msg_loc);
+    exit;
+wrapup:
+       printf("Surface/Solid of Projection Creation Failed\n");
+       exit;
+}
