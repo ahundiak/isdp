@@ -1,0 +1,161 @@
+/*	Description:							*/
+/*	This macro constructs a surface which blends 2 existing 	*/
+/*	surfaces along interior curves lying on the surfaces. The 	*/
+/* 	constructed object is returned in *constructed_object field.	*/
+
+
+/************************************************************************/
+/*									*/
+/*  Program: blnd_sf_ext.u	    Macro: ems$pl_blnd_sf_ext		*/
+/*									*/
+/*  Defined in: EMSascmacros.h						*/
+/*									*/
+/*  Comments  : Designed to draw a surface between 2 surfaces whose 	*/
+/*	u_left, u_right, v_left & v_right are known.  These are obtained*/
+/*	from user as 19, 20, 21 & 22 by the PPL.			*/
+/************************************************************************/
+
+
+#include <stdio.h>
+#include "ciminimum.h"
+#include "cimacros.h"
+#include "ci_easy.h"
+#include "go.h"
+#include "grdpbmacros.h"
+#include "dpmacros.h"
+#include "lcdef.h"
+
+#include "EMSascmacros.h"
+#include "EMSasnuc.h"
+#include "EMSasopts.h"
+
+extern	int	GRdpb_get();
+extern	int	DPmacupdate();
+
+main ()
+{
+  /* Declare variables here : */
+     struct GRvg_construct    const_list;
+     struct IGRdisplay        disp_buffer;
+
+     struct GRlc_info         surface1;
+     IGRint                   side_1;
+     IGRboolean               is_side1_reversed;
+     IGRpoint               blend_dir1;
+    
+     struct GRlc_info         surface2;
+     IGRint                   side_2;
+     IGRboolean               is_side2_reversed;
+     IGRpoint               blend_dir2;
+    
+     OM_S_OBJID               blended_obj;
+
+     IGRshort                 disp_level;
+     IGRboolean               assoc_placement;
+     unsigned int             options;
+     IGRint                   sts, num_bytes;
+     IGRlong                  msg_loc, nbytes_ret;
+     GRobjid                  objid1,objid2;
+
+  /* End of variable declarations */
+
+    message (" Place Blend between 2 Surfaces - Interior Curves ") ;
+
+    /*Get the object */
+
+    ci$locate ( obj=&objid1,
+		lc_info = &surface1,
+	        prompt="Identify surface 1",
+	        acc_prompt="Accept/Reject ",
+	        relocate_prompt="Surface not Found",
+		classes = "EMSsubbs",
+		owner_action = LC_RIGID_COMP | LC_FLEX_COMP
+	      );
+
+    ci$get ( value = side_1,
+	     prompt = "Side of the surface to be blended [19:20:21:22]"
+	   );
+
+    ci$get ( value = is_side1_reversed,
+	     prompt = "Is side_1 reversed ? Yes = 1 No = 0"
+	   );
+
+    ci$get ( prompt = "Give a data point for the direction of the blend",
+	     point = blend_dir1
+	   );
+
+    ci$locate ( obj=&objid2,
+		lc_info=&surface2,
+	        prompt="Identify surface 2",
+	        acc_prompt="Accept/Reject ",
+	        relocate_prompt="Surface not Found",
+		classes = "EMSsubbs",
+		owner_action = LC_RIGID_COMP | LC_FLEX_COMP
+ 	      );
+    if ( objid1 == objid2 )
+    {
+      status ( " This element has already been selected " );
+      ci$locate ( obj=&objid2,
+		  lc_info=&surface2,
+	          prompt="Identify surface 2",
+	          acc_prompt="Accept/Reject ",
+	          relocate_prompt="Surface not Found",
+		  classes = "EMSsubbs",
+		  owner_action = LC_RIGID_COMP | LC_FLEX_COMP
+	        );
+    }
+
+    ci$get ( value = side_2,
+	     prompt = "Side of the surface to be blended [19:20:21:22]"
+	   );
+
+    ci$get ( value = is_side2_reversed,
+	     prompt = "Is side_1 reversed ? Yes = 1 No = 0"
+	   );
+
+    ci$get ( point = blend_dir2,
+	     prompt = "Give a data point for the direction of the blend"
+	   );
+
+    num_bytes = sizeof(struct IGRdisplay);
+    gr$get_active_display ( msg = &msg_loc, sizbuf = &num_bytes,
+			    nret= &nbytes_ret, buffer = &disp_buffer );
+    gr$get_active_level   ( buffer = &disp_level );
+    
+    const_list.msg        = &msg_loc;
+    const_list.env_info   = &surface1.module_info;
+    const_list.display    = &disp_buffer;
+    const_list.properties = GRIS_LOCATABLE | GRIS_DISPLAYABLE;
+    const_list.newflag    = FALSE;
+    const_list.level      = disp_level;
+    const_list.class_attr = NULL;
+    const_list.name       = NULL;
+    const_list.geometry   = NULL;
+
+    gr$get_associative_flag ( buffer = &assoc_placement );
+    
+    if ( ! assoc_placement )
+         options = EMSasconst_notassociative;
+    else
+         options = NULL;
+
+    sts = ems$pl_blnd_sf_ext(msg               = &msg_loc,
+                             surface1          = &surface1,
+                             side1             = side_1,
+                             is_side1_reversed = is_side1_reversed,
+                             blend_direction_1 = blend_dir1,
+                             surface2          = &surface2,
+                             side2             = side_2,
+                             is_side2_reversed = is_side2_reversed,
+                             blend_direction_2 = blend_dir2,
+                             options           = options,
+                             construction_list = &const_list,
+                             constructed_object= &blended_obj
+                            );
+    if (!(sts & msg_loc & 1)) goto wrapup;
+
+    dp$update ( msg   = &msg_loc );
+    exit;
+wrapup:
+            status(" Place Blend failed due to math error");
+}

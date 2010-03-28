@@ -1,0 +1,249 @@
+ /*
+ COPYRIGHT
+                     COPYRIGHT INTERGRAPH CORPORATION
+                              < 1986, 1987 >
+  
+              Including software  and  its  file formats, and
+              audio-visual displays; all rights reserved; may
+              only  be  used   pursuant   to  the  applicable
+              software     license     agreement;    contains
+              confidential  and  proprietary  information  of
+              intergraph and/or other  third parties which is
+              protected  by  copyright,   trade  secret,  and
+              trademark  law,  and  may  not  be  provided or
+              otherwise made available  without prior written
+              authorization.
+  
+  
+                         RESTRICTED RIGHTS LEGEND
+              Use, duplication,  or  disclosure  by  the U.S.
+              Government is  subject  to  restrictions as set
+              forth in subdivision  (b)(3)(ii)  of the Rights
+              in Technical Data  and Computer Software clause
+              at 52.227-7013.
+  
+  
+              Intergraph Corporation
+              One Madison Industrial Park
+              Huntsville, Al 35807-4201
+  
+ */ 
+
+/*
+   Name     : pixel
+
+   Abstract : This CI command will access the dpb to allow the active
+              dit tolerance to be viewed and/or changed.  Note:  The
+              term pixel is used when the user sees it.  Otherwise, 
+              our internal usage is dit.
+
+   History  : jjc  8/31/89  created
+              jjc  2/14/90  modified input validation.  resolved infinite
+                            loop.
+*/  
+
+#include <stdio.h>         
+#include <ctype.h>          
+/*#include <fcntl.h>*/
+#include <sys/types.h>     
+#include <string.h>        
+#include "OMminimum.h"     
+#include "OMerrordef.h"    
+#include "OMprimitives.h"  
+#include "OMindex.h"       
+#include "codebug.h"       
+#include "ciminimum.h"     
+#include "cimacros.h"      
+#include "cisend.h"        
+#include "ciminimum.h"     
+#include "cimacros.h"      
+#include "mspriv.h"
+#include "msdef.h"
+#include "msmacros.h"
+#include "grerr.h"
+#include "grmessage.h"
+#include "gr.h"            
+#include "ex.h"
+#include "exmacros.h"      
+#include "igr.h"           
+#include "igrdp.h"         
+#include "igrmacros.h"     
+#include "igrtypedef.h"    
+#include "igetypedef.h"    
+#include "grdpbdef.h"      
+#include "grdpb.h"        
+#include "grdpbmacros.h"  
+
+/*  re-define this macro to use it in ci 
+ */
+#omdef
+    ex$message (field=0, msgnumb = MS_NO_MSG, msgname = NULL, 
+                justification=0, buff=NULL, type=NULL, 
+                var=NULL, in_buff=NULL, time = MS_IMMEDIATE, 
+                seconds = MS_IMMEDIATE)
+#if om$specified (type)
+  {
+    if (MS_init ( (&MS_msg), (msgnumb), (msgname), (in_buff), (field), 
+                  (justification) ) )
+     {
+        MS_fix_type( (&MS_msg), (type) );
+        sprintf( (MS_msg.variables), (MS_msg.for_type), var );
+        MS_out_msg ( (&MS_msg), (buff), (field), (justification),
+                     (time), (seconds) );
+     }
+  }
+#else
+    MSmessage ( (field), (msgnumb), (msgname), (justification), (buff),
+                (type), (var), (in_buff), (time), (seconds) );
+#endif    
+#endomdef
+
+
+
+extern long strtol();
+extern double strtod();
+
+char mystatus[50];
+IGRlong  mymsg;
+IGRdouble mybuffer;
+IGRdouble mynret;
+struct MS_sd_msg MS_msg; 
+
+
+/* The instructions in wakeup are executed when the command first starts
+ * up and when control comes back to the command after being suspended
+ */ 
+wakeup()
+{
+ IGRshort localsize;
+ IGRlong  localbuffer;
+
+  localsize = sizeof(IGRdouble);
+  gr$get_dit_tolerance (msg=&mymsg,sizbuf=&localsize,buffer=&mybuffer,nret=&mynret );
+  localbuffer = (int)mybuffer;
+
+  ex$message (field = ERROR_FIELD,
+              msgnumb  = GR_S_ActPixTol,
+              justification = CENTER_JUS,
+              type = "%d",
+              var  = `localbuffer` );
+
+}
+  
+main (argc, argv)
+int argc;
+char *argv[];
+{
+
+
+IGRshort mysizbuf;
+int      myintvalue;
+char     getstring[50];
+char     commndstring[55];
+int      j, 
+         k,
+         quit, 
+         done;
+double   num;
+char     *ptr,*ptr2;
+
+
+   
+quit = 0;    
+done = 0;                                     
+mysizbuf = sizeof(IGRdouble);
+
+  
+while(done == 0)
+ {
+     /* have only command name, need to prompt for value 
+      */
+     while(1)
+      { 
+        /* looping until get something other than another command 
+         */
+
+        ex$message ( field         = MESSAGE_FIELD,
+                     msgnumb       = GRC_M_SetActPixTol,
+                     justification = CENTER_JUS );
+
+        ci$get( string = getstring,
+                msgnum = GR_P_EntPixTol );
+
+        if(*getstring == 0)
+         { 
+           /* user hit return key, exit the command
+            */
+           quit = 1;
+           break;
+         }
+        else
+         {
+           ptr = 0;
+           myintvalue = (int)strtol(getstring,&ptr2,10);
+           num = (double)strtod(getstring,&ptr,10);
+           if(myintvalue == 0) /* have 0 or non-numeric or 0<num<1 */
+             if(num != 0)  /* have num between 0 and 1*/
+              { /* Have 0<number<1 so I will flag this case as follows */
+                myintvalue = 999;
+                break;
+              }
+             else  /* have 0 or non-numeric */
+               if(!(strcmp(getstring,ptr2)))
+                { /* Have a non-numeric, send to the command server */
+                  strcpy(commndstring,"\033");
+                  strcat(commndstring,getstring);
+                  ci$put( cmd = getstring );
+                  quit = 1;
+                  break;
+                }
+               else 
+                { /* have 0 */
+                  break;
+                } 
+           else 
+             {  /* have valid value */
+                break;
+             }
+         }
+   } /* end while(1) */
+
+
+  mybuffer = (double)myintvalue;
+
+  if((myintvalue >= 0) && (myintvalue < 101) && (quit == 0)) 
+   {
+     /* we have a value and it is in the valid range of 0..100 
+      */
+     gr$put_dit_tolerance (msg=&mymsg,sizbuf=&mysizbuf,buffer=&mybuffer);
+     gr$get_dit_tolerance (msg=&mymsg,sizbuf=&mysizbuf,buffer=&mybuffer,nret=&mynret );
+
+     ex$message ( field         = ERROR_FIELD,
+                  msgnumb       = GR_S_ActPixTol,
+                  justification = CENTER_JUS,
+                  type          = "%d",
+                  var           = `myintvalue` );
+
+     done = 1;
+   } 
+  else if(quit == 0)
+        {
+          /* we have a value, but it is not in the valid range of 0..100 
+           */
+
+          ex$message ( field         = ERROR_FIELD,
+                       msgnumb       = GR_S_ValPixTol,
+                       justification = CENTER_JUS );
+          ex$message ( field         = MESSAGE_FIELD,
+                       msgnumb       = GRC_M_SetActPixTol,
+                       justification = CENTER_JUS );
+        }
+       else
+        {
+          /* the user hit return to exit the command without changing
+           * the dit tolerance value
+           */
+          done = 1;
+        }
+  } /* end while(done==0) */
+} /* end main */

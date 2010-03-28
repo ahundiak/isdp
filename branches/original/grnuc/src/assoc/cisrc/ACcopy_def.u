@@ -1,0 +1,277 @@
+/* Copy macro definition from a macro library to another */
+
+#include <stdio.h>
+#include "cieveryone.h"
+#include "cimacros.h"
+#include "acdef.h"
+#include "acmacros.h"
+#include "macro.h"
+#include "grdpbdef.h"
+#include "grdpb.h"
+#include "grdpbmacros.h"
+#include "nddef.h"
+#include "AS_status.h"
+#include "asbox.h"
+#include "madef.h"
+#include "exdef.h"
+#include "exmacros.h"
+#include "DItypedef.h"
+#include "DIdef.h"
+#include "DIglob.h"
+#include "DIprims.h"
+#include "msdef.h"
+#include "msmacros.h"
+#include "ASmsg.h"
+#include "AScmd.h"
+#include "grmsg.h"
+
+extern MAidmx(),ACconstruct_wd(),ACfind_macro_defn(),ACadd_macro_name(),
+       AClib_name(),
+       EX_get_modid_given_osnum(),
+       DIuntranslate(),DIfast_trans(),
+       /*UI_message(),UI_status(),*/
+       printf(),sprintf();
+extern DIpwd(),DIcd(),
+       DIgive_pathname(),
+       ACconstruct_save();
+
+extern char *strrchr();
+extern int ACauto_save;
+
+FILE *input_file;
+int save_auto_save;
+int something_copied;
+
+main()
+{
+ int status,msg,rc;
+ char macro_name[80]; char full_name[DI_PATH_MAX],
+      new_full_name[DI_PATH_MAX];
+ char macro_lib_name1[20];
+ char macro_lib_name2[20];
+ char *c;
+ char text[80];
+ char ums_text[256];
+
+ struct GRid wd,
+ 	     macro,new_macro,
+             old_default,new_default;
+
+ struct GRmd_env md_env,new_md_env;
+ 
+ /* Initialize module env */
+
+ md_env.md_env.matrix_type = MAIDMX;
+ new_md_env.md_env.matrix_type = MAIDMX;
+ MAidmx(&msg,md_env.md_env.matrix);
+ MAidmx(&msg,new_md_env.md_env.matrix);
+
+ input_file = NULL;
+
+ /* message("Copy Macro Definition"); */
+ ex$message ( msgnumb = AC_M_CopMac );
+ 
+
+ while(1)
+ {
+ /* Key in name of input file / Move on */
+ ci$get(msgnum = AS_P_KyInNmInFlMo,
+	string = macro_name,
+	rc = rc);
+
+ if(!rc){ input_file = NULL; break;}
+ else 
+  {
+   input_file = fopen(macro_name,"r");
+   if(input_file == NULL)
+    {
+     /* UI_status("Can not open file"); */
+     ex$message ( msgnumb = AS_S_CntOpFl );
+    }
+   else break;
+  }
+ }
+  
+
+ while(1)
+  {
+   /* Get the macro name to copy */
+
+   if(input_file == NULL)
+   {
+     ci$get(msgnum = AS_P_KyInNmMcToCp,
+            /* prompt = "Keyin the name of the macro to copy", */
+	    string = macro_name,
+	    rc = rc);
+     if(!(rc&1)) continue;
+   }
+   else
+   {
+     status = fscanf(input_file,"%s",macro_name);
+     if(status != 1) break;
+   }
+
+   if(macro_name[0] == '#')
+   {
+      ex$message (msgnumb = AS_S_DsNtCp, buff = ums_text );
+      /* sprintf(text,"does NOT copy %s",macro_name); */
+      sprintf(text,ums_text,macro_name);
+      UI_status(text);
+      if(input_file) printf("%s\n",text);
+      continue;
+   }
+
+   /* Get working directory */
+   status = ac$construct_wd(mode = AC_INQ,
+			    dir = &wd);
+  
+   /* Get macro description */
+
+   status = ac$find_macro_defn(action = ACfind_no_load,
+  			       macro_name = macro_name,
+			       p_macro_defn_id = &macro);
+   if(!(status&1))
+   {
+     /* sprintf(text, "%s not found --> not copied", macro_name); */
+     ex$message (msgnumb = AS_S_NtFndNtCp, buff = ums_text );
+     sprintf(text, ums_text, macro_name);
+     UI_status(text);
+     if(input_file) printf("%s\n",text);
+     continue;
+   }
+
+   /* verify that the macro does not already exists in the target library */
+
+   status = di$untranslate(objid = macro.objid,
+                           osnum = macro.osnum,
+                           objname = full_name);
+   if(!(status&1)) continue;
+
+   status = di$give_pathname(osnum = wd.osnum,
+			     pathname = new_full_name);
+   strcat(new_full_name,":constructs:");
+   strcat(new_full_name,macro_name);
+
+   status = di$translate(objname = new_full_name,
+                         p_objid = &new_macro.objid,
+                         p_osnum = &new_macro.osnum);
+   if(status&1)
+   {
+     /*  "%s already exists in the target library --> not copied"  */
+     ex$message (msgnumb = AS_S_AlExTrLbNtCp, buff = ums_text );
+     sprintf(text, ums_text, macro_name);
+     UI_status(text);
+     if(input_file) printf("%s\n",text);
+     continue;
+   }
+
+
+   md_env.md_id.osnum = macro.osnum;
+   md_env.md_id.objid = NULL_OBJID;
+
+   new_md_env.md_id.osnum = wd.osnum;
+   new_md_env.md_id.objid = NULL_OBJID;
+
+
+/* Copy macro definition */
+
+ status = ci$send(msg = message ACmacro_defn.ACcopy_definition
+			(&msg,macro_name,&md_env,&new_md_env,&new_macro),
+		    targetid = macro.objid,
+		    targetos = macro.osnum);
+
+/*Copy default parameter box if any and if it does not already exist in target*/
+
+ if(status&msg&1)
+  {
+   something_copied = 1;
+   c = strrchr(full_name,'$');
+   if(c != NULL) strcpy(c,"$def");
+   else strcat(full_name,"$def");
+
+   status = di$translate(objname = full_name,
+                       p_objid = &old_default.objid,
+                       p_osnum = &old_default.osnum);
+   if(status&1) 
+    {
+     c = strrchr(new_full_name,'$');
+     if(c != NULL) strcpy(c,"$def");
+     else strcat(new_full_name,"$def");
+
+     status = di$translate(objname = new_full_name,
+                       p_objid = &new_default.objid,
+                       p_osnum = &new_default.osnum);
+     if(!(status&1))
+      {
+       status = ci$send(msg = message ACmacro_defn.ACcopy_default
+			     (&msg,&new_macro,&md_env,&new_md_env,&new_default),
+		    targetid = macro.objid,
+		    targetos = macro.osnum);
+      }
+     }
+  }
+  
+/* Tell the user */
+
+end_loop:
+
+  /*  copied "%s from library %s to library %s", */
+ if(status&1)
+ {
+  ex$message (msgnumb = AS_S_CpFrLbToLb, buff = ums_text );
+
+  ac$lib_name(osnum = macro.osnum,
+              name_size = 20,
+	      name = macro_lib_name1);
+  ac$lib_name(osnum = wd.osnum,
+	      name_size = 20,
+	      name = macro_lib_name2);
+  sprintf(text, ums_text, macro_name,macro_lib_name1,macro_lib_name2);
+ }
+ else ex$message(msgnumb = GR_I_Error , buff = text);
+
+  UI_status(text);
+  if(input_file) printf("%s\n",text);
+
+  
+ } /* end loop on macro to copy */
+} 
+
+delete()
+{
+ if(input_file) fclose(input_file);
+}
+
+/* Just to write macro library one time at the end of the copy operation */
+
+sleep()
+{
+ char ums_text[256];
+ 
+ ACauto_save = save_auto_save;
+ if(something_copied)
+  { 
+   if(ACauto_save)
+   { 
+     /* "Working library written on file" */
+     ex$message (msgnumb = AS_S_WkLbWrFl, buff = ums_text );
+     UI_status(ums_text);
+     ac$save_wd();
+   
+     }
+   else
+   {
+     /* "Warning, working library NOT written on file" */
+     ex$message (msgnumb = AS_S_WrnWkLbWrFl, buff = ums_text );
+     UI_status(ums_text);
+   }
+
+  }
+}
+
+wakeup()
+{
+ save_auto_save = ACauto_save;
+ ACauto_save = 0;
+ something_copied = 0;
+}

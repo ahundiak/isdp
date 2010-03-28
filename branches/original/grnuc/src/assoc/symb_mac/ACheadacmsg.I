@@ -1,0 +1,978 @@
+/*
+/*  History :
+/*	LLC :- 15_9_90	 + creation date
+/*
+/* */
+
+class implementation ACheader;
+
+#include "OMmacros.h"
+#include "AS_status.h"
+#include "nddef.h"
+#include "asbox.h"
+#include "asmacros.h"
+
+#include "DIdef.h"
+#include "DIprims.h"
+#include "grownerdef.h"
+#include "grdpbdef.h"
+#include "grdpbmacros.h"
+#include "dpdef.h"
+#include "dpmacros.h"
+#include "grerr.h"
+#include "exmacros.h"
+
+#include "acrepdef.h"
+#include "acrepmacros.h"
+
+#include "grsymdef.h"
+
+#define	gen_rg_collect		0x00010800	/* temp def */
+#define	ACS_NO_VALID_PATH	'\007'
+
+#define	AS_DEBUG
+
+from	ACmacro_defn	import	ACgive_upscan;
+from	ACcpx_defn	import	ACgive_temp_desc,ACgive_name;
+from	ACmodel_mgr	import	ACreturn_model;
+from 	ACmodel		import 	ACsame_temp_values,ACdisconnect_head;
+
+extern	IGRboolean	ASbroadcast_in_progress;
+
+/* ************* MSG ACcontext_compute () ********************************	*/
+
+method ACcontext_compute ( IGRlong *rc; IGRint cn_type;
+                        IGRint num_temp; struct GRid temp_list [];
+                        struct GRid *context;
+                        struct GRmd_env *md_env)
+{
+IGRlong			msg,sts;
+struct	ret_struct	pardef;
+IGRint			i;
+struct	GRid		model;
+struct	GRid		new_model;
+struct	GRid		md_mgr;
+IGRchar			*mac_name;
+IGRboolean		ref_flag;
+IGRlong			fd_msg;
+struct	GRid		mac_def;
+struct	GRid		my_grid;
+IGRint			tmp_nb;
+struct	stemp		*temp_desc;
+IGRint			int_msg;
+struct GRid *list;
+int			rep;
+
+
+	/*| initialization */
+	my_grid.objid	= my_id;
+	my_grid.osnum	= OM_Gw_current_OS;
+
+	*rc 	 = ND_COMP_SUCC;
+	ref_flag = FALSE;
+        list = NULL;
+
+	if( me->state & ND_DEGRADED ){
+
+		as$status( sts = 0, string =("element %d not updated because degraded\n",my_id));
+		return	OM_W_ABORT;
+	}
+
+/* Transfer context if any */
+
+    if(    context->objid != NULL_OBJID
+       &&( context->objid != my_id || context->osnum != OM_Gw_current_OS))
+   {
+IGRint                  STATE;
+IGRshort                own_prop;
+struct  GRsymbology     symb;
+IGRshort                cid;
+
+
+	if( ! ( me->STATE & ncpx_root )){
+
+		/*| wait jla for rep */
+
+		sts = om$send(	msg	 =  message ACncpx.ACget_STATE
+						( &STATE ),
+				targetid = context->objid,
+				targetos = context->osnum ); 
+		as$status( sts = sts );
+
+		STATE = ( ncpx_consumed | ncpx_missing ) & STATE;
+		me->STATE = (~(ncpx_consumed|ncpx_missing)) &  me->STATE;
+		me->STATE= STATE|me->STATE;
+	}
+	
+	/*| modify symbologie */
+	sts = om$send(	msg	 = message GRvg.GRgetsymb
+					( &msg, &symb ),
+			targetid = context->objid,
+			targetos = context->osnum ); 
+	as$status( sts = sts );
+
+	sts = om$send(	msg	 = message GRvg.GRputsymb
+					( &msg, &symb ),
+			targetid = my_id );
+	as$status( sts = sts );
+
+	/*| reset context owner properties */
+	
+	sts = om$get_classid(	objid	= context->objid,
+				osnum	= context->osnum,
+				p_classid = (OMuword *)&cid );
+	as$status( sts = sts );
+
+	if( om$is_ancestry_valid(	subclassid	= cid,
+					superclassid	= OPP_ACheader_class_id )
+		== OM_S_SUCCESS ){
+
+		sts = om$send(	msg	 = message GRowner.GRget_owner_properties
+						( &msg, &own_prop ),
+				targetid = context->objid,
+				targetos = context->osnum ); 
+		as$status( sts = sts );
+
+		sts = om$send(	msg	 = message GRowner.GRchg_owner_properties
+						( &msg, 1, &own_prop ),
+				targetid = my_id );
+		as$status( sts = sts );
+	}
+      }
+
+ 
+
+	if( me->STATE & ncpx_root ){
+
+		/*| object STATE is ncpx_root */
+		return	OM_S_SUCCESS;
+	}
+
+    /* Do I need to generate an extra template for representation ? */
+
+    sts = om$send(msg = message ACncpx.ACget_rep(&rep),
+                     targetid = my_id);
+
+    if((sts&1) && rep&(AC_FREE_REP|AC_DEP_REP))
+      {
+       sts = ac$compute_rep_value(initial_rep = rep,
+                                     p_root = temp_list,
+                                     nb_root = num_temp,
+                                     resulting_rep = &rep);
+       if(rep&AC_ERROR_REP)
+        {
+         char dummy_rep;
+         struct GRsymbology symb;
+
+         /*| Turn to error */
+         ac$get_def_rep(prep = &dummy_rep,
+                        esymb = &symb);
+         sts = om$send(msg = message GRvg.GRputsymb(&msg,&symb),
+                       targetid = my_id);
+         as$status(sts = sts);
+         goto wrapup;
+        }
+
+       list =(struct GRid *)om$malloc(size = (num_temp+1)*sizeof(struct GRid));
+       if(!list) goto wrapup;
+       OM_BLOCK_MOVE(temp_list,list+1,num_temp*sizeof(struct GRid));
+       temp_list = list;
+
+       rep  = rep&AC_VDS_REP;
+       /*" call generate_rep with value %x rep\n",rep */
+       sts = ACgenerate_rep(rep,OM_Gw_current_OS,temp_list);
+       num_temp += 1;
+      }
+
+
+
+	/*| find ref in template list */
+	for( i=0; i<num_temp; i++ ){
+
+		sts = om$send(	msg	 =  message NDnode.NDgive_structure( 
+						&msg, 
+						&pardef, 
+						md_env ),
+				targetid = temp_list[i].objid,
+				targetos = temp_list[i].osnum );
+	        as$status( sts = sts, action = GOTO_VALUE, value = wrapup);
+
+		if( pardef.type & ref_generic ){
+
+			ref_flag = TRUE;
+			break;
+		}
+	}
+
+	if( ref_flag != TRUE ){
+
+		/*| try to find ref in edit template */
+
+		sts = om$send(	msg	 = message ACcpx.find_macro( &mac_def ),
+				targetid = my_id );
+	        as$status( sts = sts, action = GOTO_VALUE, value = wrapup);
+
+		sts = om$send(	msg	 = message ACcpx_defn.ACgive_temp_desc(
+					&tmp_nb,
+					&temp_desc ),
+			targetid = mac_def.objid,
+			targetos = mac_def.osnum );
+		as$status( sts = sts );
+
+		for( i=0; i<tmp_nb; i++ )
+			if( temp_desc[i].type & ref_generic ) break;
+
+		if( i<tmp_nb ){
+
+			sts = om$send(	msg	 = message NDmacro.ACgive_structure(
+							&int_msg,
+							NULL,
+							temp_desc[i].name,
+							&pardef,
+							md_env ),
+				targetid = temp_list[temp_desc[i].back].objid,
+				targetos = temp_list[temp_desc[i].back].osnum );
+			as$status( sts = sts );
+			if( ( int_msg&1 ) && (pardef.type & ref_generic )){
+
+				/*| get the ref */
+				ref_flag = TRUE;
+			}
+		}
+
+	}/*end edit ref*/
+
+	if( ref_flag != TRUE ){
+		printf(" no referentiel in template \n");
+		*rc	= ND_COMP_FAIL;
+		return	OM_W_ABORT;
+	}
+
+	/*| set instance data */
+	me->origin[0] = pardef.var.ref_st.t[3];
+	me->origin[1] = pardef.var.ref_st.t[7];
+	me->origin[2] = pardef.var.ref_st.t[11];
+
+	for( i=0; i<3; i++ ){
+
+		me->matrix[i]   = pardef.var.ref_st.t[i];
+		me->matrix[i+3] = pardef.var.ref_st.t[i+4];
+		me->matrix[i+6] = pardef.var.ref_st.t[i+8];
+	}
+
+	/*| get model model attach on chn cmp ind 0 */
+	sts = om$send(	msg	 = message ACheader.ACfind_model
+						( &fd_msg, &model ),
+			targetid = my_id );
+	as$status( sts = sts, msg = "Error in msg ACfind_model" );
+	/*" model : id/os = (%d/%d)\n", model.objid, model.osnum */
+
+	if( fd_msg&1 ){	
+		msg = TRUE;
+		sts = om$send(	msg	 = message ACmodel.ACsame_temp_values( 
+						&msg,
+						num_temp, 
+						temp_list,
+						md_env ),
+				targetid = model.objid,
+				targetos = model.osnum );
+	        as$status( sts = sts, action = GOTO_VALUE, value = wrapup);
+	}
+
+	if( (!(fd_msg&1)) || (!(msg&1)) ){
+
+		/*| find a new model */
+		sts = om$send(	msg	 = message ACheader.ACget_model_mgr
+						( &msg, &md_mgr ),
+				targetid = my_id );
+		as$status( sts = sts, msg = "Error in msg ACget_model_mgr" );
+		/*" md_mgr : id/os = (%d/%d)\n", md_mgr.objid, md_mgr.osnum */
+
+		sts = om$send(	msg	 = message ACcpx.find_macro( &mac_def ),
+				targetid = my_id );
+	        as$status( sts = sts, action = GOTO_VALUE, value = wrapup);
+
+		/*| get macro def name */
+		sts = om$send(	msg	 = message ACcpx_defn.ACgive_name
+						( &mac_name ),
+				targetid = mac_def.objid, 
+				targetos = mac_def.osnum );
+		as$status( sts = sts, msg = "Error in msg ACgive_name" );
+
+		new_model.objid = NULL_OBJID;
+		sts = om$send(	msg	= message ACmodel_mgr.ACreturn_model(
+						&msg,
+						AChdr_norange | AChdr_nodisplay,
+						0,
+						mac_name,
+						num_temp,
+						temp_list,
+						&model,
+						md_env,
+						&new_model ),
+				targetid = md_mgr.objid,
+				targetos = md_mgr.osnum );
+		as$status( sts = sts, msg = "Error in msg ACreturn_model" );
+		/*" new_model : id/os = (%d/%d)\n", new_model.objid, new_model.osnum */
+
+		if( fd_msg & 1 ) {
+
+			/*| disconnect old model and header */
+			sts = om$send(	msg	 = message ACmodel.ACdisconnect_head(
+							&msg,
+							&my_grid,
+							md_env ),
+					targetid = model.objid,
+					targetos = model.osnum );
+			as$status( sts = sts, msg = "Error in msg ACdisconnect_head" );
+		}
+
+		/*| connect new model and header */
+		sts = om$send(	msg	= message Root.connect(
+						AS_to_owner,
+						0,
+						my_id,
+						OM_Gw_current_OS,
+						AS_to_comp,
+						OM_K_MAXINT ),
+				targetid = new_model.objid,
+				targetos = new_model.osnum );
+		as$status( sts = sts, msg = "Error in msg connect" );
+
+	}
+
+wrapup :
+
+if(list != NULL) om$dealloc(ptr = list);
+return	sts;
+}
+
+
+/* *************** MSG ACgive_path () *********************************	*/
+
+method	ACgive_path( int *suc; struct GRid *go_obj; char *footname )
+{
+IGRlong sts, msg;
+struct	tf_foot	loc_foot;
+
+	/*| initialization */
+	*suc		= 0;
+	footname[0]	= '\0';
+	loc_foot.tf_id	= *go_obj;
+
+	/*" go_obj : id/os = (%d/%d)\n", go_obj->objid, go_obj->osnum */
+
+	sts = om$send(	msg	 = message ACheader.ACget_name_of_tf_foot
+					( &msg, &loc_foot ),
+			targetid = my_id );
+	as$status( sts = sts, action = RET_STATUS );
+	as$status( sts = msg, action = RET_STATUS );
+/*^
+	printf(" information from tf_list\n");
+	printf(" tf_id	: id/os = (%d/%d)\n", loc_foot.tf_id.objid, loc_foot.tf_id.osnum );
+	printf(" foot	: id/os = (%d/%d)\n", loc_foot.foot.objid, loc_foot.foot.osnum );
+	printf(" name	: %s\n", loc_foot.tf_name );
+*/
+
+	if( loc_foot.tf_name[0] != ACS_NO_VALID_PATH ){
+
+		strcpy( footname, loc_foot.tf_name );
+		/*" footname : %s\n", footname */
+		*suc	= 1;
+
+	}
+
+return	OM_S_SUCCESS;
+}
+
+/* ********************************************************************	*/
+
+#define acfail() \
+    status = om$send(msg = message ACncpx.NDdelete(&emp_env), \
+		       targetid = my_id ); \
+    as$status(action = RET_STATUS); \
+    return(1);
+
+/* *************** MSG ACmplace_from_def () ***************************	*/
+
+method ACmplace_from_def(int *rc, prop; 	char rep;char *macro_name;
+	       	int num_temp;	struct GRid *temp_list;
+		struct GRid *def_occ;
+		struct GRmd_env *md_env )
+
+{
+IGRlong			msg, sts;
+IGRint			i;
+IGRint			tot_up;
+IGRint			mac_prop;
+struct	GRmd_env	emp_env;
+struct	sup		*dsup;
+IGRlong			status;
+struct	GRid		md_mgr;
+struct	GRid		model;
+IGRint			j;
+struct	GRid		mac_def;
+IGRboolean		chg_class_flag;
+struct	GRid		my_grid;
+struct	GRsymbology	symb;
+
+struct	ret_struct	pardef;
+IGRint 			tot_temp;
+struct	stemp		*dtemp;
+IGRint			int_msg;
+int ideb_rep,new_rep;
+struct GRid *list;
+IGRint			cn_type;
+IGRboolean		no_cs;
+
+
+	/*| initialization */
+	*rc			= OM_S_SUCCESS;
+	chg_class_flag		= FALSE;
+	emp_env 		= *md_env;
+	emp_env.md_id.objid 	= NULL_OBJID;
+	my_grid.objid		= my_id;
+	my_grid.osnum		= OM_Gw_current_OS;
+	list = NULL;
+
+
+/*"rep is %x num_temp %d\n",rep,num_temp */
+
+/* Remove if necessary template 0 which is representation */
+
+  if(rep && temp_list[0].objid == NULL_OBJID)
+    {
+     num_temp --;
+     temp_list++;
+     ideb_rep = 1;
+    }
+  else    ideb_rep = 0;
+
+	if( ! ( prop & AChdr_noprotect )){
+		for( i=0;i<num_temp;i++ )
+			as$make_source(	go_grid = temp_list[i], 
+					as_grid = &temp_list[i] );
+	}
+
+	sts = om$send(	msg	 = message NDnode.NDconnect( 
+					num_temp, 
+					temp_list, 
+					NULL_GRID, 
+					ND_NEW),
+			targetid = my_id);
+	as$status( sts = sts, msg = "Error in msg NDconnect" );
+
+/* Verify parent representation consistency */
+
+  if(rep&(AC_FREE_REP|AC_DEP_REP))
+   {
+    status = ac$compute_rep_value(initial_rep = 0,
+                                p_root = temp_list,
+                                nb_root = num_temp,
+                                resulting_rep = &new_rep);
+
+    if(new_rep&AC_ERROR_REP) return OM_W_ABORT;        /* Inconsistent roots */
+    else if(new_rep&AC_FREE_REP)rep=AC_FREE_REP | rep & ~AC_DEP_REP;
+                                                       /*roots without rep*/
+    else                        rep = new_rep;         /* roots with rep  */
+   }
+
+  status = om$send(msg = message ACncpx.ACput_rep(rep,~0),
+                   targetid = my_id);
+  as$status(action = RET_STATUS);
+
+
+	/* find macro definition */
+	sts = om$send(	msg	 = message ACncpx.ACattach
+					( &int_msg, macro_name ),
+			targetid = my_id );
+	as$status( sts = sts, action = RET_STATUS);
+	if( int_msg != 1 ) {acfail()}
+
+	sts = om$send(	msg	 = message ACheader.ACget_model_mgr
+					( &msg, &md_mgr ),
+			targetid = my_id );
+	as$status( sts = sts, msg = "Error in msg ACget_model_mgr" );
+	/*" model_mgr : id/os = (%d/%d)\n", md_mgr.objid, md_mgr.osnum */
+
+	sts = om$send(	msg	 = message ACcpx.find_macro( &mac_def ),
+			targetid = my_id );
+	as$status( sts = sts, msg = "Error in msg find_macro", action = RET_STATUS );
+	/*" mac_def : id/os = (%d/%d)\n", mac_def.objid, mac_def.osnum */
+
+	if( ! ( prop & AChdr_noprotect )) {
+
+		sts = om$send(	msg	 = message ACmacro_defn.ACgive_upscan( 
+						&tot_up,
+						&mac_prop, 
+						&dsup ),
+				targetid = mac_def.objid,
+				targetos = mac_def.osnum );
+		as$status( sts = sts, msg = "Error in msg ACgive_upscan");
+
+		if( !( mac_prop & ACcant_place_sym )){
+			printf("ACncpx cannot place macros prepared for symbol macro\n");
+			msg = 0; {acfail()}
+		}
+
+		if( tot_up != num_temp+ideb_rep) {
+			printf("ACncpx.place_real bad template\n");
+			msg = 0; {acfail()}
+		}
+
+
+		/* check valid expanded template ( one ref and a list of expression 
+			or text_attribut or parameter box */
+	
+
+		sts = om$send(	msg	 = message ACcpx_defn.ACgive_temp_desc
+						( &tot_temp, &dtemp ),
+				targetid = mac_def.objid,
+				targetos = mac_def.osnum );
+		as$status( sts = sts, msg = "Error in msg ACgive_temp_desc" );
+
+		no_cs	= TRUE;
+		for( i=ideb_rep; i<tot_temp; i++ ) {
+
+			sts = om$send(	msg	 =  message ACcpx.ACfind_exp_temp_struct( 
+							&int_msg, 
+							i, 
+							&pardef, 
+							md_env ),
+					targetid = my_id );
+		        as$status( sts = sts, action = RET_STATUS );
+			/*" found type %x expected %x  \n",pardef.type,dtemp[i].type */
+			if( ! (int_msg&1) || 
+				( ! IS_SAME_GEOM( pardef.type,dtemp[i].type)&&
+					! (dtemp[i].type==~0) )){
+
+				printf( "Place symbol_macro illegal template defn for %s\n",
+					dtemp[i].down_scan );
+				*rc = 0;
+				return	OM_S_SUCCESS;
+			}
+
+			/*" shake type of temp : %d\n", pardef.type */
+			if( chg_class_flag != TRUE ) 
+			switch( pardef.type ){
+
+			case ref_generic :
+				no_cs = FALSE;
+				/*| ref */
+				break;
+			case double_type :
+				/*| double */
+				break;
+			case text_type :
+				/*| text */
+				break;
+			case gen_rg_collect :
+				/*| rg_collect */
+			case macro_generic :
+				/*| macro_generic */
+				break;
+
+			default :
+				chg_class_flag = TRUE;
+
+			}/*end switch*/
+
+		}/*end for*/
+
+		if( no_cs == TRUE || chg_class_flag == TRUE ){
+
+			printf(" Error in template type. Change class of ocurrence from ACheader to ACconst\n");
+
+			sts = om$change_class(	objid	    = my_id,
+						classname   = "ACconst",
+						sd_override = OM_K_change_class_sd_override );
+			as$status( sts = sts, msg = "Error in mc change_class",
+						action  = RET_STATUS );
+			chg_class_flag = TRUE;
+			my_grid.objid	= my_id;
+
+		}/*end chg class*/
+
+	}/*end noprotect*/
+
+	if( chg_class_flag != TRUE ) {
+
+		/*| set coordinate systeme data */
+
+		sts = om$send(	msg	 = message ACcpx_defn.ACgive_temp_desc
+						( &tot_temp, &dtemp ),
+				targetid = mac_def.objid,
+				targetos = mac_def.osnum );
+		as$status( sts = sts, msg = "Error in msg ACgive_temp_desc" );
+
+	        /*"tot_temp %d\n",tot_temp */
+
+		for( i=ideb_rep; i<tot_temp; i++ )
+	             {
+		       /*"temp %d type %d\n",i,dtemp[i].type */
+		      
+			if( dtemp[i].type & ref_generic ){
+
+				sts = om$send(	msg	 =  message ACcpx.ACfind_exp_temp_struct( 
+								&int_msg, 
+								i, 
+								&pardef, 
+								md_env ),
+						targetid = my_id );
+			        as$status( sts = sts, action = RET_STATUS );
+
+				/*| type ref : set instance data */
+				me->origin[0] = pardef.var.ref_st.t[3];
+				me->origin[1] = pardef.var.ref_st.t[7];
+				me->origin[2] = pardef.var.ref_st.t[11];
+
+				for( j=0; j<3; j++ ){
+
+					me->matrix[j] 	= 
+						pardef.var.ref_st.t[j];
+					me->matrix[j+3]	= 
+						pardef.var.ref_st.t[j+4];
+					me->matrix[j+6]	= 
+						pardef.var.ref_st.t[j+8];
+				}				
+
+				break;
+			}/*end ref*/
+		      }
+
+		if( i==tot_temp ){
+			printf(" Error no cs template for ACheader \n");
+			*rc = 0;
+			return	OM_S_SUCCESS;
+		}
+
+		/*| ask to model_mgr for a model */
+/*^
+		printf(" num_temp : %d\n", num_temp );
+		for( i=0; i<num_temp; i++ )
+			printf(" temp[%d] : id/os = (%d/%d)\n", i,
+				temp_list[i].objid, temp_list[i].osnum );
+*/
+
+/* Generate template for representation */
+
+   
+    if((sts&1) && rep&(AC_FREE_REP|AC_DEP_REP))
+      {
+       if(ideb_rep == 1) temp_list--;
+       else
+	{
+         list =(struct GRid *)om$malloc(size=(num_temp+1)*sizeof(struct GRid));
+         if(!list) goto wrapup;
+         OM_BLOCK_MOVE(temp_list,list+1,num_temp*sizeof(struct GRid));
+         temp_list = list;
+	}
+
+       rep  = rep&AC_VDS_REP;
+       /*" call generate_rep with value %x rep\n",rep */
+       sts = ACgenerate_rep(rep,OM_Gw_current_OS,temp_list);
+       num_temp += 1;
+      }
+
+
+
+
+
+		sts = om$send(	msg	= message ACmodel_mgr.ACreturn_model(
+						&msg,
+			      AChdr_norange | AChdr_nodisplay | AChdr_noprotect,
+						rep,
+						macro_name,
+						num_temp,
+						temp_list,
+						def_occ,
+						md_env,
+						&model ),
+				targetid = md_mgr.objid,
+				targetos = md_mgr.osnum );
+		as$status( sts = sts, msg = "Error in msg ACreturn_model", action = RET_STATUS );
+		/*" model : id/os = (%d/%d)\n", model.objid, model.osnum */
+	
+		/*| connect model and header (header owner of model) */
+		sts = om$send(	msg	= message Root.connect(
+						AS_to_owner,
+						0,
+						my_id,
+						OM_Gw_current_OS,
+						AS_to_comp,
+						OM_K_MAXINT ),
+				targetid = model.objid,
+				targetos = model.osnum );
+		as$status( sts = sts, msg = "Error in msg connect", action = RET_STATUS );
+
+		/*| set model symbology */
+		sts = om$send(	msg	 = message GRvg.GRgetsymb
+						( &msg, &symb ),
+				targetid = model.objid,
+				targetos = model.osnum );
+		as$status( sts = sts, msg = "Error in msg getsymb" );
+
+		sts = om$send(	msg	 = message GRvg.GRputsymb
+						( &msg, &symb ),
+				targetid = my_id );
+		as$status( sts = sts, msg = "Error in msg GRputsymb" );
+
+		/*| set instance data */
+		me->owner_properties	= 0;
+		me->properties		= GRIS_LOCATABLE | GRIS_DISPLAYABLE;
+
+	}/*end chg_class_flag*/
+
+	if( chg_class_flag == TRUE ) {
+
+		if( prop & AChdr_nocompute )	return	OM_S_SUCCESS;
+		/*| NDs_compute */
+		cn_type = ND_COMP;
+		sts = om$send(	msg	 = message ACncpx.NDcompute_node(
+						&msg,
+						cn_type,
+						num_temp,
+						temp_list,
+						&emp_env ),
+				targetid = my_grid.objid );
+		as$status( sts = sts, action = RET_STATUS );
+
+	}
+
+	if( prop & AChdr_norange )	return	OM_S_SUCCESS;
+	/*| addwrng */
+	sts = om$send(	msg 	 = message GRgraphics.GRaddwrng( &msg, md_env ),
+			targetid = my_grid.objid );
+	as$status( sts = sts, msg = "Error in msg GRaddwrng" );
+
+	if( prop & AChdr_nodisplay )	return	OM_S_SUCCESS;
+	/*| display */
+	sts = om$send(	msg 	 = message NDnode.NDdisplay
+					( 0, GRbd, md_env ),
+			targetid = my_grid.objid );
+	as$status( sts = sts, action = RET_STATUS );
+
+wrapup :
+ if(list != NULL) om$dealloc(ptr = list);
+
+return	OM_S_SUCCESS;
+}
+
+/* *********** MSG ACreturn_foot () ***********************************	*/
+
+method ACreturn_foot( IGRlong *rc; IGRchar *foot_name; struct GRid *foot;
+                            IGRshort *mx_type; IGRdouble *matrix )
+{
+IGRlong		sts, msg;
+IGRint		i;
+IGRdouble	my_matrix[16];
+struct	GRid	model;
+IGRshort	ft_type;
+IGRdouble	ft_matrix[16];
+IGRdouble	new_matrix[16];
+
+
+	/*| initialization */
+	*rc	= MSSUCC;
+
+	if( foot_name[0] == '\0' ){
+
+		/*| ret myself */
+		foot->objid	= my_id;
+		foot->osnum	= OM_Gw_current_OS;
+		if( mx_type != NULL )	*mx_type	= MAIDMX;
+		if( matrix  != NULL )	MAidmx( &msg, matrix );
+		return		OM_S_SUCCESS;
+	}
+
+	sts = om$send(	msg	 = message ACheader.ACfind_model
+					( &msg, &model ),
+			targetid = my_id );		
+	as$status( sts = sts, msg = "Error in msg ACfind_model" );
+	/*" model : id/os (%d/%d)\n", model.objid, model.osnum */
+
+	sts = om$send(	msg	 = message NDmacro.ACreturn_foot( 
+					rc, 
+					foot_name, 
+					foot, 
+                                        &ft_type, 
+					ft_matrix ),
+			targetid = model.objid,
+			targetos = model.osnum );
+	as$status( sts = sts, msg = "Error in msg ACgive_foot" );
+	/*" %s id/os = (%d/%d)\n", foot_name, foot->objid, foot->osnum  */
+
+	if( matrix != NULL || mx_type != NULL ){
+
+		IGRshort	four = 4;
+
+		/*| build matrix */
+		for( i=0; i<3; i++)	my_matrix[i] = me->matrix[i];
+		my_matrix[3]	= me->origin[0];
+		for( i=4; i<7; i++)	my_matrix[i] = me->matrix[i-1];
+		my_matrix[7]	= me->origin[1];
+		for( i=8; i<11; i++)	my_matrix[i] = me->matrix[i-2];
+		my_matrix[11]	= me->origin[2];
+		for( i=12; i<15; i++)	my_matrix[i] = 0;
+		my_matrix[15]	= 1;
+
+		if( ft_type != MAIDMX )
+			MAmulmx( &msg, &four, &four, &four, 
+					my_matrix, ft_matrix, new_matrix );
+
+		else	for( i=0; i<16; i++ ) new_matrix[i] = my_matrix[i];
+			
+		if( matrix != NULL )
+			for( i=0; i<16; i++ )	matrix[i] = new_matrix[i];
+
+		if( mx_type != NULL )	MAtypemx( &msg, new_matrix, mx_type );
+
+	}/*end info matrix*/
+
+return	OM_S_SUCCESS;
+}
+
+/* ******************* MSG ACgive_structure() *************************	*/
+
+method ACgive_structure( IGRint *rc; IGRint *dir_ind; IGRchar *foot_name;
+			struct ret_struct *ptr_rst; struct GRmd_env *md_env )
+{
+IGRlong			sts, msg;
+struct	GRid		foot;
+struct	GRmd_env	new_env;
+IGRshort		ft_type;
+IGRdouble		ft_matrix[16];
+IGRshort		four;
+
+
+	/*| initialization */
+	*rc 	= OM_S_SUCCESS;
+	new_env = *md_env;
+	four	= 4;
+
+	sts = om$send(	msg	 = message NDmacro.ACreturn_foot( 
+					(IGRlong *) rc, 
+					foot_name, 
+					&foot, 
+					&ft_type,
+					ft_matrix ),
+			targetid = my_id );
+	as$status( sts = sts, msg = "Error in msg ACgive_foot", action = RET_STATUS );
+	/*" path : %s\n", foot_name */
+	/*" foot of path : id/os = (%d/%d)\n", foot.objid, foot.osnum */
+
+	/*| check way of multiplication */
+	MAmulmx( &msg, &four, &four, &four, md_env->md_env.matrix,ft_matrix, 
+				 new_env.md_env.matrix );
+
+	MAtypemx( &msg, new_env.md_env.matrix, &new_env.md_env.matrix_type );
+
+	/*| get structure */
+	if( *rc != 0 )
+		ASany_give_struct( foot.objid, foot.osnum, &new_env, ptr_rst );
+
+
+return	OM_S_SUCCESS;
+}
+/* ******************* MSG ACconsume () *******************************	*/
+
+method ACconsume( IGRlong *rc; char *footname; int cpy_req;
+			struct GRid *cpy_GRid; struct GRmd_env *md_env )
+
+{
+IGRlong			sts, msg;
+struct	GRid		foot_id;
+IGRdouble		mat[16];
+IGRshort		mat_type;
+IGRshort		action, mask;
+struct	GRmd_env	from_env, to_env;
+IGRint			i;
+IGRshort		four;
+
+	/*| initialization */
+	*rc	= MSFAIL;
+	four	= 4;
+
+	sts = om$send(	msg	 = message NDmacro.ACreturn_foot(
+					&msg,
+					footname,
+					&foot_id,
+					&mat_type,
+					mat ),
+			targetid = my_id );
+	if( ! ( sts & msg & 1 ) )	return	sts;
+
+	/*| modify my properties */
+	action	= 0;
+	mask	= GRIS_LOCATABLE | GRIS_DISPLAYABLE;
+	sts = om$send(	msg	 = message GRgraphics.GRchgprops
+					( &msg, &action, &mask ),
+			targetid = my_id );
+	as$status( sts = sts );
+
+	/*| set consumed state */
+	me->STATE = me->STATE | ncpx_consumed;
+
+	if( cpy_req ){
+
+		/*| copy consume feet */
+		if( md_env->md_env.matrix_type != MAIDMX ){
+
+			MAmulmx( &msg, &four, &four, &four, 
+					md_env->md_env.matrix, mat, 
+						from_env.md_env.matrix );
+
+			MAtypemx( &msg, from_env.md_env.matrix, 
+					&from_env.md_env.matrix_type );
+
+		} else {
+
+			for( i=0; i<16; i++ ){
+
+				from_env.md_env.matrix[i]	= mat[i];
+				from_env.md_env.matrix_type	= mat_type;
+			}
+		  }
+
+		from_env.md_id.objid	= md_env->md_id.objid;
+		from_env.md_id.osnum	= OM_Gw_current_OS;
+
+		to_env.md_id	= md_env->md_id;
+		MAidmx( &msg, to_env.md_env.matrix );
+		to_env.md_env.matrix_type = MAIDMX;
+
+		sts = om$send(	msg	 = message GRgraphics.GRcopy(
+						&msg,
+						&from_env,
+						&to_env,
+						&cpy_GRid->objid ),
+				targetid = foot_id.objid,
+				targetos = foot_id.osnum );
+		as$status( sts = sts );
+
+		cpy_GRid->osnum	= md_env->md_id.osnum;
+						
+	}/*end copy*/
+
+	*rc	= MSSUCC;
+
+return	OM_S_SUCCESS;
+}
+
+/* ******************* MSG ACunconsume () *****************************	*/
+
+method ACunconsume( IGRlong *rc; char *footname )
+
+{
+IGRlong		sts;
+
+	sts = om$send(	msg	 = message ACncpx.ACunconsume
+					( rc, "" ),
+			mode	 = OM_e_wrt_message,
+			targetid = my_id );
+	as$status( sts = sts );
+
+return	sts;
+}
+
+end implementation ACheader;

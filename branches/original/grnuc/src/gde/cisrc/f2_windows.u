@@ -1,0 +1,270 @@
+/*
+$Log: f2_windows.u,v $
+Revision 1.1.1.1  2001/12/17 22:39:36  hans
+Initial import to CVS
+
+# Revision 340.0  1997/05/27  23:17:05  root
+# COMMENT : Initial checkin to 3.4.0 RCS from 3.3.0 src
+#
+# Revision 330.0  1996/01/11  21:31:27  root
+# COMMENT : Initial checkin to 3.3.0 RCS from 3.2.0 src
+#
+# Revision 320.0  1994/12/12  18:00:13  root
+# COMMENT : Initial checkin to 3.2 RCS from 3.1 src
+#
+# Revision 240.0  1992/12/07  00:04:57  tim
+# COMMENT : Initial checkin to 2.4 RCS
+#
+# Revision 220.0  1992/08/29  06:41:06  root
+# COMMENT : Corresponds to Rel201.3 in 2.0.1 RCS
+#
+Revision 201.3  1992/07/13  20:43:21  tim
+COMMENT : added Log variable
+
+*/
+
+#include "ciminimum.h"
+#include "cimacros.h"
+
+#include "dpdef.h"
+#include "dp.h"
+#include "dpmacros.h"
+
+#include "msdef.h"
+#include "OMerrordef.h"
+
+#include "mapriv.h"
+#include "igrdp.h"
+#include "dpstruct.h"
+#include <stdio.h>
+
+#include "f2_layerobjs.u"
+
+
+/*  TGM  5/5/92  modified to use the message subsystem  */
+
+void display_window_info(cur_mod_env, fileptr, mode)
+struct GRmd_env cur_mod_env;
+FILE		*fileptr;
+int		mode;
+{
+  IGRlong ret_msg;
+  IGRlong i, j;
+  
+  IGRlong nret;
+  IGRlong total_num;
+  struct GRid window_objs[32];
+  struct var_list window_var_list[100];
+  IGRlong which_error;
+  IGRchar window_name[80], window_description[80];
+  IGRint nbytes_ret[100];
+  IGRdouble window_origin[3], window_range[6];
+  int sts;
+  
+
+  IGRint window_num;
+  IGRshort levels[1024];
+  IGRint num_of_levels;
+  IGRint num_on;
+  int print_to_screen;
+  char loc_buff[80], display_X[10], display_Y[10], display_Z[10];
+
+
+
+
+
+  extern DPgetggid();
+  extern DPsetinqgragad();
+  extern printf();
+  
+
+  ex$message(msgnumb=GR_I_X,buff=display_X);
+  ex$message(msgnumb=GR_I_Y,buff=display_Y);
+  ex$message(msgnumb=GR_I_Z,buff=display_Z);
+
+
+  print_to_screen = mode & SCREEN_OUTPUT;
+  
+  ex$message(msgnumb=GR_I_Windows,buff=loc_buff);
+  if (print_to_screen)
+  {
+    writestars();
+    write(loc_buff,"\n\n");
+  }
+  filestars(fileptr);
+  fprintf(fileptr, "%s\n\n");
+
+  display_layer_names(fileptr, mode);
+
+  dp$get_gragad_id(msg = &ret_msg, 
+			mod_GRid = &cur_mod_env, 
+			name = "*", 
+			array_size = 32, 
+			numberofids = &nret, 
+			total_num = &total_num, 
+			found_GRids = window_objs);
+
+  for (i = 0; i < total_num; i = i+1)
+  {
+    window_var_list[0].var = GRAGAD_NAME;
+    window_var_list[0].var_ptr = window_name;
+    window_var_list[0].num_bytes = 80;
+    window_var_list[0].bytes_returned = &nbytes_ret[0];
+
+    window_var_list[1].var = WIN_NO;
+    window_var_list[1].var_ptr = (IGRchar * ) &window_num;
+    window_var_list[1].num_bytes = sizeof(IGRint);
+    window_var_list[1].bytes_returned = &nbytes_ret[1];
+
+    window_var_list[2].var = VIEW_ORIGIN;
+    window_var_list[2].var_ptr = (IGRchar * )window_origin;
+    window_var_list[2].num_bytes = 3 * sizeof(IGRdouble);
+    window_var_list[2].bytes_returned = &nbytes_ret[2];
+
+    window_var_list[3].var = WLD_VOLUME;
+    window_var_list[3].var_ptr = (IGRchar * )window_range;
+    window_var_list[3].num_bytes = 6 * sizeof(IGRdouble);
+    window_var_list[3].bytes_returned = &(nbytes_ret[3]);
+
+    window_var_list[4].var = END_PARAM;
+
+    sts = dp$inq_set_gragad(msg = &ret_msg, 
+			osnum = cur_mod_env.md_id.osnum, 
+			gragad_objid = window_objs[i].objid, 
+			which_error = &which_error, 
+			var_list = window_var_list);
+
+
+    num_of_levels = 1024;
+    dp$inq_levels(msg = &ret_msg, 
+		  num_of_levels = &num_of_levels,  
+		  levels = levels, 
+		  gragad_objid = window_objs[i].objid, 
+		  gragad_osnum = window_objs[i].osnum);
+
+
+
+    if (print_to_screen)
+    {
+      indent(1);
+      writedashes2();
+
+      ex$message(msgnumb=GR_I_WindID,buff=loc_buff);
+      indent(1);
+      write(loc_buff," ....................... ", 
+	window_objs[i].objid, "\n");
+
+      ex$message(msgnumb=GR_I_Nme,buff=loc_buff);
+      indent(1);
+      write("       ",loc_buff," ..................... ", window_name, "\n");
+
+      ex$message(msgnumb=GR_I_Number,buff=loc_buff);
+      indent(1);
+      write("       ",loc_buff," ................... ", window_num, "\n");
+
+      ex$message(msgnumb=GR_I_Origin,buff=loc_buff);
+      indent(1);
+      printf("       %s ................... %s = %.3lf\n", loc_buff,
+        display_X, window_origin[0]);
+
+      indent(1);
+      printf("                                  %s = %.3lf\n", display_Y,
+	window_origin[1]);
+
+      indent(1);
+      printf("                                  %s = %.3lf\n",  display_Z,
+	window_origin[2]);
+
+
+      ex$message(msgnumb=GR_I_Range,buff=loc_buff);
+      indent(1);
+      printf("       %s .................... %s = %.3lf\n", loc_buff, display_X,
+	window_range[0]);
+
+      indent(1);
+      printf("                                  %s = %.3lf\n", display_Y,
+	window_range[1]);
+
+      indent(1);
+      printf("                                  %s = %.3lf\n", display_Z,
+	window_range[2]);
+
+      indent(1);
+      printf("                                  %s = %.3lf\n", display_X,
+	window_range[3]);
+
+      indent(1);
+      printf("                                  %s = %.3lf\n", display_Y,
+	window_range[4]);
+
+      indent(1);
+      printf("                                  %s = %.3lf\n\n", display_Z,
+	window_range[5]);
+    }
+
+    fileindent(1, fileptr);
+    filedashes2(fileptr);
+
+    
+    ex$message(msgnumb=GR_I_WindID,buff=loc_buff);
+    fileindent(1, fileptr);
+    fprintf(fileptr, "%s ..................... %d\n", loc_buff,
+	window_objs[i].objid);
+
+    ex$message(msgnumb=GR_I_Nme,buff=loc_buff);
+    fileindent(1, fileptr);
+    fprintf(fileptr, "       %s ................... %s\n", loc_buff,
+      window_name);
+
+    ex$message(msgnumb=GR_I_Number,buff=loc_buff);
+    fileindent(1, fileptr);
+    fprintf(fileptr, "       %s ................. %d\n", loc_buff, window_num);
+
+
+    ex$message(msgnumb=GR_I_Origin,buff=loc_buff);
+    fileindent(1, fileptr);
+    fprintf(fileptr, "       %s ................. %s = %.3lf\n", loc_buff,
+        display_X, window_origin[0]);
+
+    fileindent(1, fileptr);
+    fprintf(fileptr, "                                %s = %.3lf\n", display_Y,
+	window_origin[1]);
+
+    fileindent(1, fileptr);
+    fprintf(fileptr, "                                %s = %.3lf\n", display_Z,
+	window_origin[2]);
+
+
+    ex$message(msgnumb=GR_I_Range,buff=loc_buff);
+    fileindent(1, fileptr);
+    fprintf(fileptr, "       %s .................. %s = %.3lf\n", loc_buff,
+        display_X, window_range[0]);
+
+    fileindent(1, fileptr);
+    fprintf(fileptr, "                                %s = %.3lf\n", display_Y,
+	window_range[1]);
+
+    fileindent(1, fileptr);
+    fprintf(fileptr, "                                %s = %.3lf\n",  display_Z,
+	window_range[2]);
+
+    fileindent(1, fileptr);
+    fprintf(fileptr, "                                %s = %.3lf\n", display_X,
+	window_range[3]);
+
+    fileindent(1, fileptr);
+    fprintf(fileptr, "                                %s = %.3lf\n", display_Y,
+	window_range[4]);
+
+    fileindent(1, fileptr);
+    fprintf(fileptr, "                                %s = %.3lf\n\n", 
+        display_Z, window_range[5]);
+
+    display_layer_states(window_objs[i].objid, window_objs[i].osnum, fileptr, mode);
+
+
+    
+  }
+
+  elements_on_layers(fileptr, mode);
+}
