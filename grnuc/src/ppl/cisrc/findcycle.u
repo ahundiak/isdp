@@ -1,0 +1,218 @@
+#include "stdio.h"
+#include "cieveryone.h"
+#include "cimacros.h"
+#include "OMminimum.h"
+#include "igetypedef.h"
+#include "igrtypedef.h"
+#include "gr.h"
+ 
+#include "OMmacros.h"
+#include "dpmacros.h"
+ 
+#include "expmacros.h"
+#include "cisend.h"
+#include "nddef.h"
+#include "ndmacros.h"
+#include "exmacros.h"
+#include "madef.h"
+ 
+
+int Find_cycle(l_objid,l_osnum,exp_objid, exp_osnum )
+GRobj exp_objid,l_objid;
+short exp_osnum,l_osnum;
+{
+ 
+  struct GRid var[2];
+
+  var[0].objid = l_objid;
+  var[0].osnum = l_osnum;
+  var[1].objid = exp_objid;
+  var[1].osnum = exp_osnum;
+ 
+  if ((nd$dep_exist(nb_root = 1, l_root = &var[0], nb_tip  = 1, l_tip  = &var[1])))
+  {
+     return TRUE;
+  }
+  else
+  {
+     return FALSE;
+  }
+}
+ 
+main()
+{
+   GRobj loc_objid;
+   short loc_osnum;
+   struct GRid grid,cur_mod;
+   int stat;
+   char objclass[132];
+   struct GRid *exp_grid,*par_grid; 
+   short int num_obj;
+   int i,rc,num_exp,num_par,j,found;
+   long msg;
+   enum GRdpmode mode;
+   short mtx_type;
+   double matrix[16];
+
+   message("Find cycles in associative Geometry");
+ 
+   stat = ex$get_cur_mod ( id = &cur_mod.objid, osnum = &cur_mod.osnum );
+   mtx_type = MAIDMX;
+   MAidmx ( &msg, matrix );
+
+   exp_grid = NULL;
+   par_grid = NULL;
+ 
+   while (1)
+   {
+       ci$locate(prompt = "Locate expression or profile",
+                 owner_action =
+                                LC_RIGID_OWNER |
+                                LC_RIGID_COMP  |
+                                LC_FLEX_OWNER  |
+                                LC_FLEX_COMP   |
+                                LC_HANDLES     |
+                                LC_REF_HEADER  |
+                                LC_REF_OBJECTS,
+                 obj = &loc_objid,
+                 osnum = &loc_osnum);
+ 
+       if (loc_objid == NULL_OBJID) break;
+ 
+       grid.objid = loc_objid;
+       grid.osnum = loc_osnum;
+ 
+       om$get_classname( objid = loc_objid,
+                         osnum = loc_osnum,
+                         classname = objclass );
+
+       if(om$is_ancestry_valid (subclassname = objclass,
+                                superclassname = "expression") == OM_S_SUCCESS)
+       {
+
+           stat=ci$send(msg=
+			message NDnode.NDget_objects(ND_ROOT|ND_IN_BUF, NULL,
+					0,&exp_grid,0,OM_K_MAXINT, &num_exp),
+                        targetid = loc_objid,
+                        targetos = loc_osnum);
+
+           if (num_exp )
+           {
+              for (i=0;i<num_exp;i=i+1)
+    	      {
+                 mode = GRhd;
+                 if (cur_mod.osnum == exp_grid[i].osnum)
+                      ci$send ( msg = 
+				message GRgraphics.GRdisplay ( &msg, &mtx_type,
+						 matrix , &mode, &cur_mod ),
+                                targetid = exp_grid[i].objid,
+                                targetos = exp_grid[i].osnum );
+
+                 found = Find_cycle(loc_objid, loc_osnum,
+                                    exp_grid[i].objid,
+                                    exp_grid[i].osnum);
+                 if (found)
+     	 	 {
+       		    status("Expression Loop found");
+       		    exit;
+     		 }
+     		 else
+     		 {
+      		    mode = GRhe;
+      		    ci$send ( msg = 
+			      message GRgraphics.GRdisplay ( &msg, &mtx_type,
+						 matrix , &mode, &cur_mod ),
+                              targetid = exp_grid[i].objid,
+                              targetos = exp_grid[i].osnum );
+     		 }
+
+    	      }
+    	      status("No expression Loop found");
+   	   }
+    	   status("No expression Loop found");
+       }
+       else
+       {
+           if(om$is_ancestry_valid ( subclassname = objclass,
+                                     superclassname = "SKmgr") == OM_S_SUCCESS)
+           { 
+
+   	       stat=ci$send(msg=
+			    message NDnode.NDget_objects(ND_ROOT|ND_IN_BUF, 
+				NULL,0,&exp_grid,0,OM_K_MAXINT, &num_exp),
+                            targetid = loc_objid,
+                            targetos = loc_osnum);
+ 
+               for (i=0;i<num_exp;i=i+1)
+               {
+ 
+                   om$get_classname( objid = exp_grid[i].objid,
+                                     osnum = exp_grid[i].osnum,
+                                     classname = objclass);
+ 
+ 
+                   if (om$is_ancestry_valid ( subclassname = objclass, 
+				superclassname = "expression") == OM_S_SUCCESS)
+                   {
+      		      mode = GRhd;
+                      if (cur_mod.osnum == exp_grid[i].osnum)
+                          ci$send ( msg = 
+				    message GRgraphics.GRdisplay ( &msg,
+					 &mtx_type, matrix , &mode, &cur_mod ),
+                                    targetid = exp_grid[i].objid,
+                                    targetos = exp_grid[i].osnum );
+
+      		      stat=ci$send(msg=
+				 message NDnode.NDget_objects(ND_ROOT|ND_IN_BUF,
+				      NULL,0,&par_grid,0,OM_K_MAXINT,&num_par),
+                                   targetid = exp_grid[i].objid,
+                                   targetos = exp_grid[i].osnum);
+      		      if (num_par)
+      		      {
+       			for (j=0;j<num_par;j=j+1)
+       			{
+        		   mode = GRhd;
+                           if (cur_mod.osnum == par_grid[j].osnum)
+                             ci$send ( msg = 
+				       message GRgraphics.GRdisplay ( &msg,
+					 &mtx_type, matrix , &mode, &cur_mod ),
+                                       targetid = par_grid[j].objid,
+                                       targetos = par_grid[j].osnum );
+
+        		   found = Find_cycle(exp_grid[i].objid,
+					      exp_grid[i].osnum,
+					      par_grid[j].objid,
+					      par_grid[j].osnum);
+        		   if (found)
+        		   { 
+          		      status("Expression Loop found");
+         		      exit;
+        		   }
+        		   else
+        		   {
+         		      mode = GRhe;
+         		      ci$send ( msg = 
+					message GRgraphics.GRdisplay ( &msg,
+					  &mtx_type, matrix , &mode, &cur_mod ),
+                                        targetid = par_grid[j].objid,
+                                        targetos = par_grid[j].osnum );
+        		   }
+       			}
+      		   }
+     		   mode = GRhe;
+                   ci$send(msg =
+			   message GRgraphics.GRdisplay ( &msg, &mtx_type,
+						    matrix , &mode, &cur_mod),
+                           targetid = exp_grid[i].objid,
+                           targetos = exp_grid[i].osnum );
+ 
+               }
+            }
+    	    status("No expression loop found");
+         } 
+      }
+   }
+}
+ 
+ 
+

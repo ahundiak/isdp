@@ -1,0 +1,339 @@
+/*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
+/*                                 COastxtcrv                                 */
+/*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
+
+#include "cieveryone.h"
+#include "cimacros.h"
+#include "asmacros.h"
+#include "OMerrordef.h"
+#include "asmacros.h"
+#include "codef.h"
+#include "msdef.h"
+#include "ASmessages.h"
+#include "msmacros.h"
+#include "grdpbdef.h"
+#include "grdpb.h"
+#include "grdpbmacros.h"
+#include "gotextdef.h"
+#include "nddef.h"
+#include "DIdef.h"
+#include "DItypedef.h"
+#include "DIglob.h"
+#include "DIprims.h"
+#include "DImacros.h"
+
+
+char    name[80],real_name[160],mysyntax[80];
+double  accept_pt[4];                 /* Accept point of the locate           */
+struct  GRmd_env  md_env;             /* Environment located                  */
+long    sts;                          /* returned message from a function     */
+long 	msg;			      /* returned message from a function     */
+struct  GRid  select_obj;             /* Identifier of the selected object    */
+struct  GRid  context_id;             /* Identifier of the context            */
+struct  GRid  src_id;                 /* Identifier of the src object         */
+struct  GRid window;
+double  d4[4];                        /* Accept point of the locate           */
+short   osnum;                        /* Current object space                 */
+char   cmd_name[MAX_PROMPT_SIZE];     /* locate prompt                        */
+char   loc_prompt[MAX_PROMPT_SIZE];   /* locate prompt                        */
+char   acc_prompt[MAX_PROMPT_SIZE];   /* accept prompt                        */
+short action,props;
+int filled_text;
+struct GRid go;
+char sup_state;
+struct ret_struct rst;
+struct IGRline boreline;
+double view_rot[16],dummy_pt[3],dummy_pt1[3],dummy_dbl,snap_point[3];
+
+GRobjid TEXT;
+
+struct GRparms dummy_par;
+
+/* User messages */
+
+/* External functions */
+
+extern ASmake_source_from_env(),ASany_give_struct();
+extern GRfindcontext();
+extern int MSmessage(),UI_status();
+extern ASget_active_symb();
+extern GRdpb_get();
+extern printf();
+extern DIfast_trans();
+extern CO_xlate_from_user_mode();
+
+
+/* update my symbology in construction list */
+
+get_my_symb()
+{
+ 
+ short active_level;
+ struct IGRdisplay active_display;
+ int msg;
+ int NumberOfBytes;
+ int BytesReceived;
+ struct  GRdpb_text_symb text_symb;
+
+
+ ASget_active_symb(&active_level,&active_display);
+
+ cnst_list.color = active_display.color;
+ cnst_list.weight = active_display.weight;
+ cnst_list.style = active_display.style;
+ cnst_list.level = active_level;
+ cnst_list.locatable = 1;
+ cnst_list.displayable = 1;
+
+ NumberOfBytes = sizeof( text_symb );
+ gr$get_text_symb( msg    = &msg,
+                   sizbuf = &NumberOfBytes,
+                   buffer = &text_symb,
+                   nret   = &BytesReceived );
+
+ if(text_symb.Active_flags & GRFILLED_TEXT) filled_text = 1;
+ else					    filled_text = 0;
+
+ if ( !(msg&1) ) { write( "cannot get text symbology" ) ; return 0 ; }
+
+
+ cnst_list.font = text_symb.Active_font;
+ cnst_list.just = text_symb.Active_just;
+ cnst_list.width = text_symb.Active_width;
+ cnst_list.height = text_symb.Active_height;
+ cnst_list.line_spac = text_symb.Active_linespac;
+ cnst_list.char_spac = text_symb.Active_charspac;
+}
+
+
+main()
+  {
+int name_defined;
+GRobj   list[5];                      /* List of object to place              */
+int     initial_count,count;          /* Number of object to place            */
+int     decimals;
+
+  ex$message(msgnumb = AC_M_DISPMC,
+	     buff  = cmd_name);
+  message(cmd_name);
+  sup_state = ND_DEL_NO_CH | ND_DONT_MVRT;
+
+  /* Get the current osnum */
+
+  ci$get_module_info(md_os = &osnum);
+  ex$message(buff =  loc_prompt, msgnumb = AS_P_TXTCRV1);
+
+
+  /* Locate eventually a referential and give a format */
+  initial_count = 3;
+  ci$get(rc = msg,
+         msgnum = AS_P_KyInPrNmMoOp,
+         /* prompt = "Key in parameter name / Move-on for options", */
+	 string = name);
+
+   if(M_response == RESET)
+   {
+    name_defined = FALSE;
+
+/* get coordinate systeme for attachement */
+  
+    while (1)
+    {
+     if(ci$locate( prompt       = loc_prompt,
+  	     	    obj          = &select_obj.objid,
+	     	    osnum	 = &select_obj.osnum,
+                    owner_action = LC_RIGID_COMP,
+		    md_env	 = &md_env))
+      {
+       as$any_give_structure(go_grid = select_obj,
+			     mod_env = &md_env,
+			     inst = &rst);
+       if(rst.type & ref_generic)
+	{
+         initial_count = 4;
+	 as$make_source(go_grid = select_obj,
+			mod_env = &md_env,
+			as_os = osnum,
+			as_grid = &src_id);
+	 list[3] = src_id.objid;
+	 break;
+	}
+       }
+      else if (M_response == RESET) break;
+     }
+
+/* get user format */
+     ex$message( msgnumb = AS_S_Def3DecPlc );
+     /* UI_status("Default is 3 decimal places"); */
+     ci$get(rc = msg,
+        msgnum = AS_P_KyInNDPMoDf,
+	/* prompt = " Keyin number of decimal places / Move-on for default", */
+        string = name);
+     if(msg)
+      {
+        decimals = atoi( name );
+        if ( (decimals != 0) || (! strcmp (name, "0")) )
+        {
+          list[initial_count] = NULL_OBJID;
+	  sprintf ( mysyntax, "%s%s%s", "%10.", name, "lf" );
+          send text_exp.place("",mysyntax) to list[initial_count];
+          send NDnode.NDchg_state(sup_state,sup_state) to list[initial_count];
+          initial_count = initial_count+1;
+	}
+      }
+     }
+    else
+     {
+      if(!msg) return;
+      name_defined = TRUE;
+     }
+
+  
+    while(1)
+      {
+
+       if(!name_defined)
+        {
+         ci$get(rc = msg,
+	      msgnum = AS_P_Paraname,
+	      string = name);
+         if(!msg) exit;
+	}
+       name_defined = FALSE;
+
+       if( name[0] == '\0' )
+        { 
+          ex$message(msgnumb = AS_S_DISPM1);
+          continue;
+        }  
+
+       di$cvt_name_from_input(u_path = name,
+                              s_path = real_name);
+
+
+       sts = di$translate(objname = real_name,
+  	                 p_objid = &select_obj.objid,
+			 p_osnum = &select_obj.osnum); 
+       if((select_obj.objid == NULL_OBJID) || !( sts & DIR_S_SUCCESS ) ) 
+ 	{
+  	 ex$message(msgnumb = AS_E_ParaNFound);
+    	 continue;
+ 	}
+       as$any_give_structure(go_grid = select_obj,
+			     mod_env = &md_env,
+			     inst = &rst);
+       if( !(rst.type&parameter_generic))
+ 	{
+  	 ex$message(msgnumb = AS_E_ParaNFound);
+    	 continue;
+ 	}
+      list[0] = select_obj.objid;
+
+
+      ex$message(buff =  loc_prompt, msgnumb = AS_P_IdCurvPt);
+      ex$message(buff =  acc_prompt, msgnumb = AS_P_TXTCRV3);
+      if(!ci$locate
+            (prompt       = loc_prompt,
+             md_env       = &md_env,
+  	     acc_prompt   = acc_prompt,
+  	     obj          = &select_obj.objid,
+             accept_point = snap_point,
+  	     osnum        = &select_obj.osnum,
+	     window_id    = &window.objid,
+	     window_osnum = &window.osnum)) {continue;}
+
+      /* control the type of the located object */
+
+       as$any_give_structure(go_grid = select_obj,
+			     mod_env = &md_env,
+			     inst = &rst);
+
+       if(!(rst.type & point_generic) &&
+          !(rst.type & line_generic)  &&
+          !(rst.type & curve_generic) &&
+          !(rst.type & conic_generic)) continue;
+
+       /* lineproject the accept point on the curve */
+
+       sts = ci$send (msg = message IGEgragad.DPinrot(&msg,view_rot),
+                    targetid = window.objid,
+                    targetos = window.osnum);
+       boreline.point1 = snap_point;
+       boreline.point2 = dummy_pt1;
+       dummy_pt1[0] = snap_point[0] + 100*view_rot[8];
+       dummy_pt1[1] = snap_point[1] + 100*view_rot[9];
+       dummy_pt1[2] = snap_point[2] + 100*view_rot[10];
+
+       sts = ci$send(msg = message GRgraphics.GRlnproject(&msg,
+				&md_env.md_env.matrix_type,
+				 md_env.md_env.matrix,
+				 &boreline,dummy_pt,&accept_pt[1],
+				 &dummy_dbl,&dummy_par),
+			targetid = select_obj.objid,
+			targetos = select_obj.osnum);
+			
+  
+  
+      /* Make a src object with the selected object */
+  
+      as$make_source(go_grid      = select_obj,
+  	             mod_env      = &md_env,
+  		     as_os        = osnum,
+  		     as_grid      = &src_id);
+      list[1] = src_id.objid;
+  
+      // create index point on curve
+
+     if(!(rst.type & point_generic))
+     {
+      /* Text on curve */
+      list[2] = NULL_OBJID;
+      accept_pt[0] = 2.e+10;
+/*      cnst_list.displayable = 0; to be able to move the text */
+      set_symb();
+
+      send ASindexpt.place(1,&src_id.objid,accept_pt) to list[2];
+
+      cnst_list.displayable = 1;
+      set_symb();
+
+      // Turn it to support only element 
+      send NDnode.NDchg_state(sup_state,sup_state) to list[1];
+
+      // provisoire il faut transformer global en local qque part
+
+      d4[0]=0;
+      d4[1]=0;
+      d4[2]=0;
+      d4[3]=0;
+      count = initial_count;
+      }
+      else
+      {
+      /* Text on point */
+      count = initial_count -1;
+      list[2] = list[3];
+      }
+  
+      /* Place the objects and display them */
+  
+      get_my_symb();
+      set_symb();
+      set_text_attr();
+ 
+      send AStextpm.place( count, list, d4 ) to TEXT;
+      if(filled_text)
+         {
+           props = GRFILLED_DISPLAY;
+           action = 1;
+           ci$send(msg = message NDnode.ASreturn_go(&go,NULL,NULL),
+                   targetid = TEXT);
+           ci$send(msg = message GRgraphics.GRchgprops(&msg,&action,&props),
+                   targetid = go.objid);
+         }
+      
+      send ASsrctext.NDdisplay(0,0,0) to TEXT;
+    }/* end while */ 
+}/* end main */ 
+
+/*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/

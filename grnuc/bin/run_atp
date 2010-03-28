@@ -1,0 +1,578 @@
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+#
+#   run_atp - autotesting procedures
+#
+#   Usage: run_atp [-v ] [-s] [-b ] [-e level] 
+#              -x pathname -l pathname [-f file(s)]|[-t testlist(s)]
+#
+#   Options:
+#          -v             Verbose (echo status to screen; default is off)
+#          -s             Save design file(s) created by testing; (default
+#			  is off).  A .r file is saved in the wd directory.
+#          -b             Run in batch mode; default is interactive.
+#          -e level       Level of output evaluation [0-3] (default is
+#			  0, none).  Error level 1 writes a debug out file of 
+#                         the contents of the design file and it checked 
+#                         against a previous debug out file.
+#          -x             Pathname of executable ($ATP_PRODUCT).
+#          -l             Directory location of ATPs ($ATP_PATH).
+#
+#          -t test [test] Name of test(s) to run.  Test is specified as a
+#                         regular expression.  Use "\" before characters
+#			  to be expanded (ex: Ln\* for Ln1, Ln2, etc).
+#			  ex: run_atp ... -t CpRotAx1 FnCl Ln\* .
+#          -f file [file] Text file(s) containing list of tests.  The
+#			  full pathname is required.
+#
+#
+#   History:
+#       06/08/89 - Creation.  Bill Tetmeyer and Dave Wilson
+#       09/18/89 - Alpha Release
+#	12/03/90 - Added Error Check Level 1
+#	04/03/90 - Added KILLIPCS variable
+#
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+unalias cd rm cat tr cut who exec find
+
+USAGE="Usage: run_atp [-v] [-s] [-b] [-e level]
+           -x pathname -l pathname [-f file(s)]|[-t test(s)]
+
+Options:
+      -v             Verbose (echo status to screen; default is off)
+      -s             Save design file(s) created by testing; (default is off).
+      -b             Run in batch mode; default is interactive.
+      -e level       Level of output evaluation [0-3] (default is 0,
+		     none, 1 compare debug out files)
+      -x pathname    Pathname of executable ($ATP_PRODUCT).
+      -l pathname    Directory location of ATPs ($ATP_PATH).
+
+      -t test [test] Name of test(s) to run.  Test is specified as a
+                     regular expression.
+      -f file [file] Text file(s) containing list of tests.  The full
+		     pathname is required.
+
+  note: -t xor -f is a required option"
+
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+if [ $# -eq 0 ]      # if number of arguments is 0, display usage and exit
+then
+   echo "$USAGE";
+   exit;
+fi;
+
+KILLIPCS=killallipcs
+
+#
+#   Get options for the automatic testing program.
+#   The "set --" command allows Unix to parse an argument preceded
+#   by a hyphen.
+#
+#   The getopt command gets all flags.  If a flag is defined with a
+#   ":" following it, that option requires an argument.
+#
+set -- `getopt vsbtfe:x:l: $* 2> /dev/null`
+
+if [ $? -ne 0 ]      # if getopt failed
+then
+   echo "$USAGE";
+   exit 2;
+fi;
+
+
+# Get value of $EXNUC for calling driver script.
+
+EXNUC=`grep EXNUC /usr/ip32/product_data | cut -d" " -f5`
+
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+yes_no='n'	# Save design file var for executable command line.
+
+#     Initialize, as empty strings, the arguments to the shell script.
+
+batch=''
+verbose=''
+evaluate='0'
+save=''
+executable=$ATP_PRODUCT
+if [ ! -x "$executable" ]          # does the executable exist?
+	then
+		echo "executable $executable not found"
+		exit
+	fi
+test_file_path=$ATP_PATH
+if [ ! -d "$test_file_path" ]          # does the directory exist?
+	then
+		echo "ATP directory $test_file_path not found"
+		exit
+	else test_file_path=$ATP_PATH/
+	fi
+
+test_names=''
+testlists=''
+
+#     Parse the arguments to the shell script
+
+while (:)
+do
+   SWITCH=$1;
+
+   case $SWITCH in
+
+   -b) batch=' -b';                    # batch mode
+       shift
+       ;;
+
+   -v) verbose="TRUE";                  # verbose mode
+       shift
+       ;;
+
+   -e) shift                            # evaluation level
+       if [ $1 -ge 0 -a $1 -lt 4 ]      # $1 >= 0 and $1 < 4
+       then
+          evaluate=$1
+	  [ -n "$verbose" ] && echo "debug: evaluate option is $evaluate\n"
+          shift
+       else
+          echo "evaluate option must be between 0 and 3"
+          exit;
+       fi
+       ;;
+
+   -s) save="TRUE"                      # save output design files
+       yes_no='y'
+       [ -n "$verbose" ] && echo "debug: save output design file\n"
+       shift
+       ;; 
+
+   -x) shift                            # location of executable
+       executable=$1
+       if [ -x "$executable" ]          # does the executable exist?
+       then
+       [ -n "$verbose" ] && echo "debug: executable is $executable\n"
+          shift
+       else
+	  echo "executable $executable not found"
+	  exit
+       fi
+       ;;
+
+   -l) shift                            # location of test files
+       test_file_path=$1/
+       if [ -d "$test_file_path" ]           # is the location a directory?
+       then
+          [ -n "$verbose" ] && echo "debug: Path to ATP is $test_file_path \n"
+          shift
+       else
+	  echo "run_atp: test file directory $test_file_path does not exist"
+	  exit
+       fi
+       ;;
+
+   -t) testname="TRUE"    # flag for name of test(s) to run
+       shift
+       ;;
+
+   -f) testlists="TRUE"   # flag for file with list of tests to run
+       shift
+       ;;
+
+   --) shift;
+       break;;
+    
+   esac;
+done
+
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# check for required arguments
+
+if [ -z "$executable" ]		#  Is it null ?
+then
+   echo "run_atp: No executable specified\n"
+   exit
+fi
+
+if [ $test_file_path ]		# The -l option was chosen
+then
+   if [ -d "$test_file_path" ]	# if the directory exists
+   then
+      [ -n "$verbose" ] && echo "debug: The ATP directory path exists.\n"
+   else
+      echo "run_atp: bad test file path specified\n"
+      exit
+   fi
+else
+   [ -n "$verbose" ] && echo "debug: The ATP directory path (-l) is required\n"
+   exit
+fi
+
+if [ $testlists ] && [ $testname ]    # did the user specify both -t and -f ?
+then
+   echo "run_atp: cannot specify both -t and -f\n"
+   exit
+fi
+
+if [ "$testlists" ]	# -f option for list of ATP's in a text file
+then
+   [ -n "$verbose" ] && echo "debug: user specified testlist option\n"
+   if [ $# -eq 0 ]   # Is a testfile not specified?
+   then
+	echo "run_atp: User must specify test file\n"
+	exit
+   fi
+   testlists="$*"
+   testnames=`cat $testlists`
+else
+if [ "$testname" ]	# -t option for testfiles was specified
+     then
+        [ -n "$verbose" ] && echo "debug: user specified testnames option\n"
+	tests=
+	pwdir=$PWD
+	cd $test_file_path
+	tests=$*
+	testnames=`echo $tests|tr -d '/'`
+	cd $pwdir
+     else
+        echo "run_atp: must specify either -t or -f option\n"
+        exit
+     fi
+fi 
+
+if [ $# -eq 0 ]   # are testnames or testfiles specified?
+then
+   if [ "$testlists" ]
+   then
+      echo "run_atp: must specify test file\n"
+      exit
+   else
+      echo "run_atp: must specify test name\n"
+      exit
+   fi
+fi
+
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+#			Start Main Testing Loop
+
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+BEGIN_DIR=$PWD
+
+[ -n "$verbose" ] && echo "debug: starting main loop\n"
+for atp_file in $testnames	# Read the name of each ATP
+do
+	if [ "${#atp_file}" -gt 12 ]	# No. of chars in ATP name
+	then
+		[ -n "$verbose" ] && echo "debug: ATP name too long.\n \
+Going to next ATP."
+		continue	# Skip remaining commands in for loop
+	fi
+
+	[ -n "$verbose" ] && echo "debug: ATP is $atp_file\n""\ndebug: Running killipcs\n"
+	exec > /dev/null		# Supress screen output
+	$KILLIPCS
+	exec > /dev/tty		# Direct stdout to screen
+
+	# Create work Directory for ATP files and local logfile
+
+	WORK_DIR=$PWD/${atp_file}wd/
+
+	if [ ! -d "$WORK_DIR" ]	# If the work directory doesnt exist
+	then
+		mkdir $WORK_DIR
+		[ -n "$verbose" ] && echo "debug: making $WORK_DIR\n"
+	fi
+
+	logfile="${WORK_DIR}${atp_file}.l"
+        prodout="${WORK_DIR}${atp_file}.s"
+        if [ -s ${prodout} ]
+         then
+           rm ${prodout}
+        fi
+
+	[ -n "$verbose" ] && echo "debug: logfile: $logfile\n"
+	rm $logfile 2> /dev/null  # throw away any possible error message
+
+
+	#		Create Header for Logfile
+       
+	echo > $logfile
+	echo "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~" >> $logfile
+	echo "        LOGFILE FOR AUTOMATED TESTING PROCEDURE" >> $logfile
+	echo >> $logfile
+	echo "Date: `date`" >> $logfile
+	echo "Versions: " >> $logfile
+	
+	rm tempfile 2> /dev/null  # throw away any possible error message
+
+	# Get the current version of the executable for the logfile.
+	${executable} -b -cftmp$$  -C '"exit=n"' 2>> tempfile
+
+	cat tempfile | grep "version" >> $logfile
+
+	echo "System type: `uname -m`" >> $logfile
+
+	echo "CPU: `inqcpuid`" >> $logfile
+
+	echo "`clh lookup \`uname -n\`/full`"> tempfile # Unix version
+	cat tempfile | grep "UNIX" | cut -d: -f2-3 | sed 's/.$//' >> $logfile
+	rm tempfile
+
+	echo "Node: `uname -n" >> $logfile
+
+	echo "User: `who am i | sed 's/ .*$//'`" >> $logfile
+
+	echo >> $logfile
+
+	cd ../
+	LOG_CENTRAL=$PWD/adm
+	cd -
+	if [ ! -d "$LOG_CENTRAL" ]
+	then
+		mkdir $LOG_CENTRAL
+	fi
+	[ -n "$verbose" ] && echo "debug: Central log dir: $LOG_CENTRAL\n"
+
+
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# 		Copy ATP files to work directory and execute.
+
+	TEST_PATH=${test_file_path}${atp_file}/
+
+	[ -n "$verbose" ] && echo "debug: ATP pathname is $TEST_PATH\n"
+
+	cp $TEST_PATH/* $WORK_DIR
+
+	filename="${TEST_PATH}${atp_file}.u"
+	filename_e="${TEST_PATH}${atp_file}.e"
+
+	if test -r "$filename" || test -r "$filename_e"   # does the file exist?
+	then  
+		[ -n "$verbose" ] && echo "debug: testname = $filename\n"
+
+		echo "---------------------------------------------------" >> $logfile
+		echo >> $logfile
+		echo "ATP: ${atp_file}" >> $logfile
+		echo "Running test of ${filename}" >> $logfile
+		echo "`grep Originated ${filename}` " >> $logfile
+		echo >> $logfile
+		echo "---------------------------------------------------" >> $logfile
+	        # build and echo the filenames for this test
+		work_ifile="$WORK_DIR${atp_file}.i"
+
+		# We are using two filenames, one with a .e extension
+		# and one identical but without the extension.  During
+		# execution, ci adds ".e" to the filename argument.
+		#
+		cmdwrkfile_e="$WORK_DIR${atp_file}.e"
+		[ -n "$verbose" ] && echo "debug: File to be executed is $cmdwrkfile_e\n"
+		cmdwrkfile="$WORK_DIR${atp_file}"
+
+		workfile="$WORK_DIR${atp_file}.r"
+		[ -n "$verbose" ] && echo "debug: Design file will be $workfile\n"
+		if [ -r "$workfile" ]   # does the file exist?
+		then
+			[ -n "$verbose" ] && echo "debug: deleting old $workfile\n"
+			\rm $workfile
+		fi
+
+	        val_file="$TEST_PATH${atp_file}.v"
+		if [ -n "$evaluate" ] # evaluate output
+		then
+			[ -n "$verbose" ] && echo "debug: Design file will be compared with $val_file\n"
+		fi
+
+		# does baseline .e file exist?
+		if [ -r "$cmdwrkfile_e" ]
+	 	then
+		   :
+	 	else
+		   [ -n "$verbose" ] && echo "debug: No $cmdwrkfile_e\n"
+	 	fi
+
+	        # If it exists, copy baseline (.i) design file to a work file
+		 if [ -r "$work_ifile" ]   # does a baseline design file exist?
+		 then
+			cp "$work_ifile" "$workfile"
+   		        create_flag=" -f "
+     		 else
+       			create_flag=" -cf "
+		 fi
+
+		cd $WORK_DIR
+
+# If the .e is newer, remove the .u so it isnt processed by cci
+exec > /dev/null 2>&1 # Redirect stdout to a null device
+if [ -n `find $TEST_PATH -name $atp_file.e -newer $filename -print` ]
+then
+	exec > /dev/tty 2>&1	# Redirect stdout back to screen
+	[ -n "$verbose" ] && echo "debug:$atp_file.e is newer than $atp_file.u so cci will not be invoked\n"
+	rm $atp_file.u
+else
+if test -r "$filename_e"
+then
+  exec > /dev/tty 2>&1    # Redirect stdout back to screen
+  [ -n "$verbose" ] && echo "debug: cci will not process atp_file.u\n"
+else
+	exec > /dev/tty 2>&1	# Redirect stdout back to screen
+	[ -n "$verbose" ] && echo "debug: cci will process atp_file.u\n"
+fi
+fi
+		[ -n "$verbose" ] && echo "debug: Executing from $PWD\n"
+
+         # construct the command line and execute the product
+		command_line="$executable $batch $data_path $create_flag $workfile"
+		[ -n "$verbose" ] && echo "debug: command_line: $command_line -C "ci" "$cmdwrkfile" "exit="$yes_no\n"
+	${executable} -b -cftmp$$  -C '"exit=n"' 2>> /dev/null
+# Redirect stderr and stdout to screenout file
+		exec >> ${prodout} 2>&1
+		$command_line -C '"ci" '"$cmdwrkfile"' "exit="'$yes_no
+
+		exit_status=$?
+		exec > /dev/tty 2>&1	# Redirect to screen again
+                cat ${prodout} >> $logfile
+
+		[ -n "$verbose" ] && echo "debug: echo exit status=$exit_status\n"
+
+
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+#			evaluate test results
+
+		if [ $exit_status -eq 0 ]   # Check return code from image
+		then
+		    echo >> $logfile
+	            echo "Test of ${atp_file} was SUCCESSFUL" >> $logfile
+		    echo "Last signal trapped was $exit_status." >> $logfile
+		    echo >> $logfile
+		else
+		    echo "Test of ${atp_file} was UNSUCCESSFUL" >> $logfile
+		    echo "Last signal trapped was $exit_status." >> $logfile
+		    echo >> $logfile
+		fi
+
+		if [ -n "$evaluate" ] # evaluate output
+		then
+			: #echo Evalute output
+			# atpeval $testname
+		fi
+
+
+		SWITCH=$exit_status;
+		case $SWITCH in
+		0) echo "$exit_status\tExit from the shell" >> $logfile
+		   [ -n "$verbose" ] && echo "debug: $exit_status\tExit from the shell"
+		   ;;
+		1) echo "$exit_status\tHangup" >> $logfile
+		   [ -n "$verbose" ] && echo "debug: $exit_status\tHangup"
+		   ;;
+		2) echo "$exit_status\tInterrupt" >> $logfile
+		   [ -n "$verbose" ] && echo "debug: $exit_status\tInterrupt"
+		   ;;
+		3) echo "$exit_status\tQuit" >> $logfile
+		   [ -n "$verbose" ] && echo "debug: $exit_status\tQuit"
+		   ;;
+		4) echo "$exit_status\tIllegal Instruction" >> $logfile
+		   [ -n "$verbose" ] && echo "debug: $exit_status\tIllegal Instruction"
+		   ;;
+		5) echo "$exit_status\tTrace trap" >> $logfile
+		   [ -n "$verbose" ] && echo "debug: $exit_status\tTrace trap"
+		   ;;
+		6) echo "$exit_status\tIOT instruction" >> $logfile
+		   [ -n "$verbose" ] && echo "debug: $exit_status\tIOT instruction"
+		   ;;
+		7) echo "$exit_status\tEMT instruction" >> $logfile
+		   [ -n "$verbose" ] && echo "debug: $exit_status\tEMT instruction"
+		   ;;
+		8) echo "$exit_status\tFloating point exception" >> $logfile
+		   [ -n "$verbose" ] && echo "debug: $exit_status\tFloating point exception"
+		   ;;
+		9) echo "$exit_status\tKill" >> $logfile
+		   [ -n "$verbose" ] && echo "debug: $exit_status\tKill"
+		   ;;
+		10) echo "$exit_status\tBus error" >> $logfile
+		    [ -n "$verbose" ] && echo "debug: $exit_status\tBus error"
+		    ;;
+
+		11) echo "$exit_status\tSegmentation violation" >> $logfile
+		    [ -n "$verbose" ] && echo "debug: $exit_status\tSegmentation violation"
+		    ;;
+		12) echo "$exit_status\tBad arg to a system call" >> $logfile
+		    [ -n "$verbose" ] && echo "debug: $exit_status\tBad arg to a system call"
+		    ;;
+		13) echo "$exit_status\tWrite to pipe w/o process to read it" >> $logfile
+		    [ -n "$verbose" ] && echo "debug: $exit_status\tWrite to pipe w/o process to read it"
+		    ;;
+		14) echo "$exit_status\tAlarm timeout" >> $logfile
+		    [ -n "$verbose" ] && echo "debug: $exit_status\tAlarm timeout"
+		    ;;
+		15) echo "$exit_status\tSoftware termination - sent by KILL by default" >> $logfile
+		    [ -n "$verbose" ] && echo "debug: $exit_status\tSoftware termination - sent by KILL by default"
+		    ;;
+		esac
+
+	else
+		echo "$filename does not exist\n"
+	fi
+
+#        if [ -f ${WORK_DIR}${prodout} ]
+#         then
+#          grep -v "I/" ${WORK_DIR}${prodout} > ${WORK_DIR}${prodout}
+#          diff ${WORK_DIR}${prodout} ${WORK_DIR}${prodout}.old > /usr/tmp/atpjunk
+#          if [ -s /usr/tmp/atpjunk ]
+#           then
+#            echo "*** WARNING *** stdout/stderr different"
+#            echo "*** WARNING *** stdout/stderr different" >> $logfile
+#          fi 
+#          cp ${WORK_DIR}${prodout} ${TEST_PATH}${prodout}.old
+#        fi
+
+        if [ ${evaluate} -eq 1 ]
+         then
+          if [ -f ${WORK_DIR}${atp_file}.dd ]
+           then
+            diff ${WORK_DIR}${atp_file}.d ${WORK_DIR}${atp_file}.dd > /usr/tmp/atpjunk
+            if [ -s /usr/tmp/atpjunk ]
+             then
+              echo "**** WARNING ****  Error check level 1 failed - Geometry different" >> $logfile
+              echo "**** WARNING ****  Error check level 1 failed - Geometry different"
+              cp ${WORK_DIR}${atp_file}.d ${TEST_PATH}${atp_file}.nd
+            else
+              echo "Error check level 1 passed - geometry the same" >> $logfile
+            fi
+          else
+           echo "Error check level 1 not performed - ${atp_file}.dd does not exist" >> $logfile
+           echo "Error check level 1 not performed - ${atp_file}.dd does not exist" 
+           if [ -f ${WORK_DIR}${atp_file}.d ]
+            then
+             echo "  creating .dd file from atp" >> $logfile
+             echo "  creating .dd file from atp"
+             echo cp ${WORK_DIR}${atp_file}.d ${TEST_PATH}${atp_file}.dd
+             cp ${WORK_DIR}${atp_file}.d ${TEST_PATH}${atp_file}.dd
+           fi
+          fi
+        fi
+	echo "Concluded testing at `date`" >> $logfile
+	echo >> $logfile
+
+	# Catenate the logfile to the central, ongoing log file
+	cat $logfile>>$LOG_CENTRAL/log_all
+	[ -n "$verbose" ] && echo "debug: Logged to $logfile and $LOG_CENTRAL/logfile\n"
+
+
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+#			Remove work files
+
+	    if [ -z "$save" ]   # Is the save flag null ?
+	    then
+		# Remove everything but logfile
+		rm $WORK_DIR${atp_file}.[!ls]
+	    else
+		# Compress the .r workfile - To be implemented
+		# Remove everything but the logfile and .r file
+		rm $WORK_DIR${atp_file}.[!lrds]
+	    fi
+	cd $BEGIN_DIR
+		rm $WORK_DIR/menu_locations menu_locations 2> /dev/null
+				# throw away any possible error message
+done	# End ATF

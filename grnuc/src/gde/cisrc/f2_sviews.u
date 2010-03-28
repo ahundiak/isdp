@@ -1,0 +1,554 @@
+/* TGM 5/5/92 modified to use message subsystem */
+
+/*
+$Log: f2_sviews.u,v $
+Revision 1.1.1.1  2001/12/17 22:39:36  hans
+Initial import to CVS
+
+# Revision 340.0  1997/05/27  23:17:01  root
+# COMMENT : Initial checkin to 3.4.0 RCS from 3.3.0 src
+#
+# Revision 330.0  1996/01/11  21:31:23  root
+# COMMENT : Initial checkin to 3.3.0 RCS from 3.2.0 src
+#
+# Revision 320.0  1994/12/12  18:00:09  root
+# COMMENT : Initial checkin to 3.2 RCS from 3.1 src
+#
+# Revision 240.3  1993/04/06  16:31:16  henry
+# COMMENT : Add loc_buff so that %s would not read a double.
+#
+# Revision 240.2  1993/03/01  19:41:47  mikel
+# COMMENT : remove ms.h or change it to msmacros.h
+#
+# Revision 240.1  1992/12/31  15:14:37  mike
+# COMMENT : TR119222870 - remove fi.h dependencies, use exfi.h definitions instead
+#
+# Revision 240.0  1992/12/07  00:04:46  tim
+# COMMENT : Initial checkin to 2.4 RCS
+#
+# Revision 220.0  1992/08/29  06:40:57  root
+# COMMENT : Corresponds to Rel201.2 in 2.0.1 RCS
+#
+Revision 201.2  1992/07/13  20:43:14  tim
+COMMENT : added Log variable
+
+*/
+
+#include "ciminimum.h"
+#include "cimacros.h"
+
+#include "dpdef.h"
+#include "dp.h"
+#include "dpmacros.h"
+
+#include "msdef.h"
+#include "OMerrordef.h"
+
+#include "mapriv.h"
+#include "igrdp.h"
+#include "dpstruct.h"
+
+#include <stdio.h>
+
+
+#include "msmacros.h"
+
+#include "igrtypedef.h"
+#include "igetypedef.h"
+#include "igr.h"
+#include "gr.h"
+#include "exfi.h"
+#include "exdef.h"
+#include "ex.h"
+#include "grdpbmacros.h"
+#include "grdpbdef.h"
+#include "grdpb.h"
+#include "godef.h"
+#include "go.h"
+#include "griodef.h"
+#include "grio.h"
+#include "griomacros.h"
+#include "exmacros.h"
+#include "OMmacros.h"
+#include "grerr.h"
+#include "lcdef.h"
+#include "lc.h"
+#include "OMindex.h"
+#include "refdef.h"
+#include "ref.h"
+
+
+
+
+void change_level_bits_to_array()
+{
+}
+
+
+display_sview_info(mod_env, fileptr, mode)
+struct GRmd_env mod_env;
+FILE *fileptr;
+int mode;
+{
+  IGRlong ret_msg;
+  IGRint numviews;
+  IGRlong i, j;
+  
+  IGRlong nret;
+  IGRlong total_num;
+  struct GRid *view_objs;
+  struct var_list view_var_list[100];
+  IGRlong which_error;
+  IGRchar view_name[80], view_description[80];
+  IGRint nbytes_ret[100];
+  IGRdouble view_origin[3], view_range[6], wld_range[6];
+  int sts;
+  char loc_buff[80], loc_buff2[80], display_X[20], display_Y[20], display_Z[20];
+  
+  struct DPrange_check rng_chk;
+  IGRmatrix wld_vw_mtx, vw_wld_mtx;
+  IGRshort four;
+  int print_to_screen;
+
+
+
+  IGRlong                 om_msg;
+  IGRlong                 count;
+  IGRboolean                 zero;
+  unsigned long           ref_prop;
+  IGRlong                 size;
+  IGRlong                 temp;
+  IGRint                  number;
+  IGRint                  array_size;
+  IGRchar                 file_name[EXFI_STRLEN];
+  IGRchar                 name[EXFI_STRLEN];
+  IGRchar                 saved_view[EXFI_STRLEN];   
+  IGRchar                 *p;
+  GRobjid                 mgr_objid;
+  struct GRinquire_list   list[5];
+
+  GRobj 			*objids;
+  short			*osnums;
+
+  struct GRref_instance_data	ref_instance;
+
+
+
+
+  extern DPtotal_num_svw();
+  extern DPgetvwid();
+  extern DPsetinqsavvw();
+/*  extern char *malloc();  */
+  extern printf();
+  extern DPsetrng();
+  extern DPgetrng();
+  extern IGRboolean MAinvmx();
+  extern 			EX_get_super();
+
+
+
+
+
+  
+  ex$message(msgnumb=GR_I_X,buff=display_X);
+  ex$message(msgnumb=GR_I_Y,buff=display_Y);
+  ex$message(msgnumb=GR_I_Z,buff=display_Z);
+
+  print_to_screen = mode & SCREEN_OUTPUT;
+
+  four = 4;
+
+  sts = dp$total_num_saved_vw(msg = &ret_msg, 
+			total_num = &numviews, 
+			osnum = &mod_env.md_id.osnum);
+
+  ex$message(msgnumb=GR_I_SavedViews,buff=loc_buff);
+  if (print_to_screen)
+  {
+    writestars();
+    write(loc_buff,"\n\n");
+  }
+
+  filestars(fileptr);
+  fprintf(fileptr, "%s\n\n",loc_buff);
+  if (ret_msg != MSSUCC || sts != OM_S_SUCCESS)
+  {
+    ex$message(msgnumb=GR_E_NotAvail,buff=loc_buff);
+    if (print_to_screen)
+      write("\t!!!  ",loc_buff,"  !!!\n");
+    fprintf(fileptr, "\t!!! %s  !!!\n",loc_buff);
+    return;
+  }
+
+
+  /*
+   *  malloc enough space for number of views determined
+   */
+
+  view_objs = (struct GRid *)malloc(numviews * sizeof(struct GRid));
+
+
+  /* 
+   *  get list of ids of saved views
+   */
+
+  sts = dp$get_saved_vw_id(msg = &ret_msg, 
+			osnum = mod_env.md_id.osnum, 
+			name = "*", 
+			numberofids = &nret, 
+			total_num = &total_num, 
+			array_size = numviews, 
+			found_GRids = view_objs);
+
+  if (numviews == 0)
+  {
+    ex$message(msgnumb=GR_E_NoSvVwInFil,buff=loc_buff);
+    if (print_to_screen)
+      write("\t!!!  ",loc_buff,"  !!!\n");
+    fprintf(fileptr, "\t!!!  %s  !!!\n",loc_buff);
+    return;
+  }
+
+  /* 
+   *  for each saved view 
+   */
+  for (i = 0; i < numviews; i = i+1)
+  {
+    /* 
+     * set up view_var_list structure to get info on desired attributes
+     * for each saved view.  
+     */
+
+    view_var_list[0].var = SAV_VW_NAME;
+    view_var_list[0].var_ptr = view_name;
+    view_var_list[0].num_bytes = 80;
+    view_var_list[0].bytes_returned = &nbytes_ret[0];
+
+    view_var_list[1].var = DESCRIPT;
+    view_var_list[1].var_ptr = view_description;
+    view_var_list[1].num_bytes = 80;
+    view_var_list[1].bytes_returned = &nbytes_ret[1];
+
+    view_var_list[2].var = VIEW_ORIGIN;
+    view_var_list[2].var_ptr = (IGRchar * )view_origin;
+    view_var_list[2].num_bytes = 3 * sizeof(IGRdouble);
+    view_var_list[2].bytes_returned = &nbytes_ret[2];
+
+    view_var_list[3].var = VW_VOLUME;
+    view_var_list[3].var_ptr = (IGRchar * )view_range;
+    view_var_list[3].num_bytes = 6 * sizeof(IGRdouble);
+    view_var_list[3].bytes_returned = &(nbytes_ret[3]);
+
+    view_var_list[4].var = VIEW_ROTATION;
+    view_var_list[4].var_ptr = (IGRchar * )wld_vw_mtx;
+    view_var_list[4].num_bytes = sizeof(IGRmatrix);
+    view_var_list[4].bytes_returned = &(nbytes_ret[4]);
+
+    view_var_list[5].var = END_PARAM;
+
+
+
+    sts = dp$inq_set_saved_view(msg = &ret_msg, 
+			osnum = mod_env.md_id.osnum, 
+			vw_objid = view_objs[i].objid, 
+			which_error = &which_error, 
+			var_list = view_var_list);
+
+
+    /*
+     *  Do some calculations here to get the view volume in world
+     *  coordinates.  The default is the view coordinates.
+     */
+
+    MAinvmx(&ret_msg, &four, wld_vw_mtx, vw_wld_mtx);
+
+    vw_wld_mtx[3] = view_origin[0];
+    vw_wld_mtx[7] = view_origin[1];
+    vw_wld_mtx[11] = view_origin[2];
+
+    /* These DP functions are private functions that could change
+	in the future.  See Martha Perreault for those changes.
+    */
+    DPsetrng(&ret_msg, vw_wld_mtx, &rng_chk);
+    DPgetrng(&ret_msg, vw_wld_mtx, &rng_chk, view_range, wld_range);
+
+
+    /*
+     *  output results
+     */
+
+    if (print_to_screen)
+    { 
+      writedashes();
+      ex$message(msgnumb=GR_I_CurrentFil,buff=loc_buff);
+      write("\t",loc_buff,"\n");
+      ex$message(msgnumb=GR_I_ViewID,buff=loc_buff);
+      write("\t",loc_buff," ................. ", view_objs[i].objid, "\n");
+      ex$message(msgnumb=GR_I_Nme,buff=loc_buff);
+      write("\t     ",loc_buff," ............... ", view_name, "\n");
+      ex$message(msgnumb=GR_I_Descript,buff=loc_buff);
+      write("\t     ",loc_buff," ........ ", view_description, "\n");
+      ex$message(msgnumb=GR_I_Origin,buff=loc_buff);
+      printf("\t     %s ............. %s = %.3lf\n", 
+            loc_buff, display_X, view_origin[0]);
+      printf("\t                          %s = %.3lf\n",
+            display_Y, view_origin[1]);
+      printf("\t                          %s = %.3lf\n", 
+            display_Z, view_origin[2]);
+/*      write("	VIEW_RANGE (in view coordinates):  ", view_range, "\n"); */
+
+      ex$message(msgnumb=GR_I_Range,buff=loc_buff);
+      printf("\t     %s .............. %s = %.3lf\n", 
+            loc_buff, display_X, wld_range[0]);
+      printf("\t                          %s = %.3lf\n", 
+            display_Y, wld_range[1]);
+      printf("\t                          %s = %.3lf\n", 
+            display_Z, wld_range[2]); 
+
+      printf("\t                          %s = %.3lf\n",
+            display_X, wld_range[3]);
+      printf("\t                          %s = %.3lf\n", 
+            display_Y, wld_range[4]);
+      printf("\t                          %s = %.3lf\n\n", 
+            display_Z, wld_range[5]);
+
+    }
+
+    filedashes(fileptr);
+    ex$message(msgnumb=GR_I_ViewID,buff=loc_buff);
+    fprintf(fileptr, "\t%s ................. %d\n", loc_buff,
+	view_objs[i].objid);
+    ex$message(msgnumb=GR_I_Nme,buff=loc_buff);
+    fprintf(fileptr, "\t     %s ............... %s\n", loc_buff, view_name);
+    ex$message(msgnumb=GR_I_Descript,buff=loc_buff);
+    fprintf(fileptr, "\t     %s ........ %s\n", loc_buff,
+	view_description);
+
+    ex$message(msgnumb=GR_I_Origin,buff=loc_buff);
+    fprintf(fileptr, "\t     %s ............. %s = %.3lf\n", loc_buff,
+	display_X, view_origin[0] );
+    fprintf(fileptr, "\t                          %s = %.3lf\n", display_Y,
+	view_origin[1]);
+    fprintf(fileptr, "\t                          %s = %.3lf\n", display_Z,
+	view_origin[2]);
+
+/*
+    fprintf(fileptr, "	VIEW_RANGE (in view coordinates):  ");
+    for (j = 0; j < 6; j = j+1)
+      fprintf(fileptr, "%lf", view_range[j]);
+    fprintf(fileptr, "\n");
+*/
+    ex$message(msgnumb=GR_I_Range,buff=loc_buff);
+    fprintf(fileptr, "\t     %s .............. %s = %.3lf\n", loc_buff,
+	display_X, wld_range[0]);
+    fprintf(fileptr, "\t                          %s = %.3lf\n", display_Y,
+	wld_range[1]);
+    fprintf(fileptr, "\t                          %s = %.3lf\n", display_Z,
+	wld_range[2]);
+
+    fprintf(fileptr, "\t                          %s = %.3lf\n", display_X,
+	wld_range[3]);
+    fprintf(fileptr, "\t                          %s = %.3lf\n", display_Y,
+	wld_range[4]);
+    fprintf(fileptr, "\t                          %s = %.3lf\n\n", display_Z,
+	wld_range[5]);
+
+  }
+
+
+  free(view_objs);
+
+
+   zero = 0;
+   number = 0;
+   ref_prop = NULL;
+
+   om_msg = ex$get_super (mod_id = mod_env.md_id.objid, 
+            mod_osnum = mod_env.md_id.osnum,  
+            super_name = REFERENCE_FILE_MANAGER,
+            create = TRUE, super_class = "Super_rfmgr", 
+            super_id = &mgr_objid);
+  
+   if (om_msg != OM_S_SUCCESS)
+     return;
+
+
+   if ( om_msg & 1)
+   {
+      om_msg = ci$send(
+               msg = message Super_rfmgr.GRget_channel_count(&ret_msg,
+               &ref_prop, &zero, &count),
+               targetid = mgr_objid, targetos = mod_env.md_id.osnum);
+
+      if (om_msg != OM_S_SUCCESS || ret_msg != MSSUCC)
+	return;
+
+      if ((om_msg & 1) && count)
+      {
+
+	 objids = (GRobj *)malloc(sizeof(GRobj) * count);
+	 osnums = (short *)malloc(sizeof(short) * count);
+
+         array_size = count * sizeof(GRobjid);
+   
+         om_msg = ci$send(
+                  msg = message Super_rfmgr.GRget_channel_objects(&ret_msg,
+                  &ref_prop, &zero, &array_size, objids, osnums,
+                  &count),
+                  targetid = mgr_objid,
+                  targetos = mod_env.md_id.osnum);
+
+
+      if (om_msg != OM_S_SUCCESS || ret_msg != MSSUCC)
+	return;
+
+         if (om_msg & 1)
+         {      
+
+            list[0].var = REFERENCE_FILE_NAME;
+            list[0].var_ptr = file_name;
+            list[0].num_requested = EXFI_STRLEN;
+
+            list[1].var = SAVED_VIEW_NAME;
+            list[1].var_ptr = saved_view;
+            list[1].num_requested = EXFI_STRLEN;
+
+            list[2].var = REFERENCE_INSTANCE_DATA;
+            list[2].var_ptr = (char *)&ref_instance;
+            list[2].num_requested = sizeof(ref_instance);
+
+            list[3].var = END_PARAM;
+            list[3].var_ptr = NULL;
+            list[3].num_requested = NULL;
+
+            for (i=0; i < count; i = i+1)
+            {
+
+               om_msg = ci$send (
+                        msg = message GRreffile.GRinquireref(&ret_msg,
+                        &mod_env, list, &temp, &zero, NULL),
+                        targetos = osnums[i],
+                        targetid = objids[i]);
+
+               if (om_msg & 1)
+               {
+
+		if (print_to_screen)
+		{
+		  writedashes();
+                  ex$message(msgnumb=GR_I_RefFlNme,buff=loc_buff);
+ 		  write("\t",loc_buff," .......... ", file_name, "\n");
+		  if (strcmp(saved_view, ""))
+		  {
+                    ex$message(msgnumb=GR_I_SvVwNme,buff=loc_buff);
+		    write("\t",loc_buff," ............. ", saved_view, "\n");
+                    ex$message(msgnumb=GR_I_Scale,buff=loc_buff);
+  		    if (strcmp(ref_instance.scale, ""))    
+		      write("\t",loc_buff," ....................... ", 
+			ref_instance.scale, "\n");
+ 		    else
+                    {
+                      ex$message(msgnumb=GR_I_NoneGiven,buff=loc_buff2);
+		      write("\t",loc_buff," ....................... ",loc_buff2,"\n");
+                    }
+	 	  }
+		  else 
+		  {
+                    ex$message(msgnumb=GR_I_NoneGiven,buff=loc_buff2);
+                    ex$message(msgnumb=GR_I_SvVwNme,buff=loc_buff);
+		    write("\t",loc_buff," ............. ",loc_buff2);
+                    ex$message(msgnumb=GR_I_Scale,buff=loc_buff);
+		    write("\t",loc_buff," ....................... ",loc_buff2,"\n");
+		  }		  
+
+                  ex$message(msgnumb=GR_I_Origin,buff=loc_buff);
+		  printf("\t%s ...................... %s = %.3lf\n", 
+			loc_buff, display_X, ref_instance.vw_origin[0]);
+		  printf("\t                              %s = %.3lf\n", 
+			display_Y, ref_instance.vw_origin[1]);
+		  printf("\t                              %s = %.3lf\n", 
+			display_Z, ref_instance.vw_origin[2]);
+
+                  ex$message(msgnumb=GR_I_Range,buff=loc_buff);
+		  printf("\t%s ....................... %s = %.3lf\n", 
+			loc_buff, display_X, ref_instance.range[0]);
+		  printf("\t                              %s = %.3lf\n", 
+			display_Y, ref_instance.range[1]);
+		  printf("\t                              %s = %.3lf\n", 
+			display_Z, ref_instance.range[2]);
+		  printf("\t                              %s = %.3lf\n", 
+			display_X, ref_instance.range[3]);
+		  printf("\t                              %s = %.3lf\n", 
+			display_Y, ref_instance.range[4]);
+		  printf("\t                              %s = %.3lf\n\n", 
+			display_Z, ref_instance.range[5]);
+/*
+		  write("\tLayers:  ", ref_instance.dp_levels, "\n");
+*/
+		}  /* end print_to_screen */
+
+
+
+                ex$message(msgnumb=GR_I_RefFlNme,buff=loc_buff);
+ 		fprintf(fileptr, "\t%s .......... %s\n", 
+			loc_buff, file_name);
+		if (strcmp(saved_view, ""))
+		{
+                  ex$message(msgnumb=GR_I_SvVwNme,buff=loc_buff);
+		  fprintf(fileptr, "\t%s ............. %s\n", 
+			loc_buff, saved_view);
+                  ex$message(msgnumb=GR_I_Scale,buff=loc_buff);
+  		  fprintf(fileptr, "\t%s ....................... %s\n", 
+			loc_buff, ref_instance.scale);
+	 	}
+		else 
+		{
+                  ex$message(msgnumb=GR_I_NoneGiven,buff=loc_buff2);
+                  ex$message(msgnumb=GR_I_SvVwNme,buff=loc_buff);
+		  fprintf(fileptr, "\t%s ............. %s\n",
+                         loc_buff, loc_buff2);
+                  ex$message(msgnumb=GR_I_Scale,buff=loc_buff);
+		  fprintf(fileptr, "\t%s ....................... %s\n",
+                         loc_buff, loc_buff2);
+		}		  
+
+                ex$message(msgnumb=GR_I_Origin,buff=loc_buff);
+		fprintf(fileptr, "\t%s ..................... %s = %.3lf\n", 
+			loc_buff, display_X, ref_instance.vw_origin[0]);
+		fprintf(fileptr, "\t                             %s = %.3lf\n", 
+			display_Y, ref_instance.vw_origin[1]);
+		fprintf(fileptr, "\t                             %s = %.3lf\n", 
+			display_Z, ref_instance.vw_origin[2]);
+
+                ex$message(msgnumb=GR_I_Range,buff=loc_buff);
+		fprintf(fileptr, "\t%s ....................... %s = %.3lf\n",
+			loc_buff, display_X, ref_instance.range[0]);
+		fprintf(fileptr, "\t                              %s = %.3lf\n",
+			display_Y, ref_instance.range[1]);
+		fprintf(fileptr, "\t                              %s = %.3lf\n",
+			display_Z, ref_instance.range[2]);
+		fprintf(fileptr, "\t                              %s = %.3lf\n",
+			display_X, ref_instance.range[3]);
+		fprintf(fileptr, "\t                              %s = %.3lf\n",
+			display_Y, ref_instance.range[4]);
+		fprintf(fileptr, "\t                              %s = %.3lf\n\n",
+			display_Z, ref_instance.range[5]);
+/*
+		fprintf(fileptr, "\tLayers:  ", ref_instance.dp_levels, "\n");
+*/
+
+               }  /* end if om_msg & 1 */
+            }         
+
+         }
+      }
+      else 
+      {
+	return;
+      }
+   }   
+
+
+  free(objids);
+  free(osnums);
+}

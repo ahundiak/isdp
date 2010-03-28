@@ -1,0 +1,558 @@
+/**************************************************************************
+**   PROGRAM:    GRCrGr.u
+**
+**   HISTORY:  Name    Date  Note
+**            ---------------------------------------------
+**            Joe Wagner  11-89  Version 1.3.0
+**            Joe Wagner  03-90  Put in prompt/messages control
+**            Joe Wagner  03-90  Made command line callable
+**            Joe Wagner  03-90  Made a function
+**            Joe Wagner  04-90  Made a program again
+**            Joe Wagner  11-90  Added Font info defaults near sample area
+**            Joe Wagner  01-91  Changed "Cell Name" to "Character Number"
+**            Joe Wagner  01-91  Changed FTB to GR.
+**            Joe Wagner  02-91  Changed to create work areas with decimal
+**                               numbers instead of the STATIC TEXT.
+**            Joe Wagner  02-91  Changed to save parms before changing,
+**                               then reset @ end.
+**            Joe Wagner  05-92  Converted mesages to the message sub-system
+**
+**  DESCRIPTION: This program sets up a blank design file in preparation
+**     to run Font Builder.
+**    Argument 1 - delete flag, to delete all graphics in file.
+**        0 = do not delete
+**        1 = delete
+**    Argument 2 - # of work areas to create in file.
+**        0 = create none
+**        256 = maximum #
+**    Returns - 0 = success
+**        1 = failure
+**/
+
+#include <stdio.h>
+#include "cieveryone.h"
+#include "cimacros.h"
+#include "string.h"
+#include "igrtypedef.h"
+#include "igrdp.h"
+#include "igr.h"
+#include "grdpbdef.h"
+#include "grdpb.h"
+#include "grdpbmacros.h"
+#include "msdef.h"
+#include "msmacros.h"
+#include "grmsg.h"
+
+#ifdef DEBUG
+#define dprintf(ARGS) fprintf ARGS
+#else
+#define dprintf(ARGS) ";";
+#endif
+
+IGRshort    act_level_buf;
+IGRlong     ists, buff_size, bytes_ret;
+struct      IGRdisplay  act_disp_buf;
+struct      GRdpb_text_symb  act_text_buf;
+
+main()
+{
+  char   temp_str[256 + 1], answer[256 + 1], char_number_str[10], loc_buff[80];
+  double origin[3], lower_left[3], upper_right[3];
+  int    rows, cols, stop_here, sts, del_flag, work_areas, char_number_val;
+
+  /******************* SAVE TEXT PARMS & FONT *******************/
+
+  buff_size = sizeof(IGRshort);
+  gr$get_active_level( msg=&ists, sizbuf=&buff_size,
+                         buffer=&act_level_buf, nret=&bytes_ret);
+
+  buff_size = sizeof(struct IGRdisplay);
+  gr$get_active_display( msg=&ists, sizbuf=&buff_size,
+                         buffer=&act_disp_buf, nret=&bytes_ret);
+
+  buff_size = sizeof(struct GRdpb_text_symb);
+  gr$get_text_symb( msg=&ists, sizbuf=&buff_size,
+                    buffer=&act_text_buf, nret=&bytes_ret);
+
+  dprintf((stderr,"Inside GRCrGr active params\n"));
+  dprintf((stderr,"\tColor\t=\t%d\n",act_disp_buf.color));
+  dprintf((stderr,"\tWeight\t=\t%d\n",(int)act_disp_buf.weight));
+  dprintf((stderr,"\tStyle\t=\t%d\n",(int)act_disp_buf.style));
+  dprintf((stderr,"\tLevel\t=\t%d\n",(int)act_level_buf));
+  dprintf((stderr,"\n\tactive text params\n"));
+  dprintf((stderr,"\tFont\t=\t%d\n",(short int)act_text_buf.Active_font));
+  dprintf((stderr,"\tAscii Font\t=\t%d\n",(short int)act_text_buf.Active_ascii_font));
+  dprintf((stderr,"\tJust\t=\t%d\n",(int)act_text_buf.Active_just));
+  dprintf((stderr,"\tWidth\t=\t%g\n",act_text_buf.Active_width));
+  dprintf((stderr,"\tHeight\t=\t%g\n",act_text_buf.Active_height));
+
+  /*******************   SETUP  *******************/
+
+  origin[0] = 0.0;
+  origin[1] = 0.0;
+  origin[2] = 0.0;
+  lower_left[0] = origin[0];
+  lower_left[1] = origin[1];
+  lower_left[2] = 0.0;
+  del_flag = 1;
+
+  ex$message(field=MESSAGE_FIELD,msgnumb=GR_I_CreGrFle);
+  status(" ");
+
+  ci$get( string = answer,
+        prompt="Do you want all elements deleted ? (y/[n])");
+  if ( ( answer[0] == 'y' ) || ( answer[0] == 'Y' ) )
+  {
+    del_flag = 0;
+  }
+
+  ci$get( string = answer,
+        prompt="Enter number of areas (1-256 in multiples of 10)[1]");
+  work_areas = atoi(answer);
+  dprintf((stderr,"Inside GRCrGr del_flag= %d ,work_areas= %d\n",
+          del_flag,work_areas));
+
+  /**** Insure that the file is empty ****/
+
+  ci$quiet( hlp = 1 ); /* Begin Quiet */
+
+  if ( del_flag == 0 )
+  {
+    begincmd_key("GRDlE");
+    ci$put(cmd_key="GRSlAlE");
+    ci$put(point = origin);
+    ci$put(response = TERMINATE);
+    endcmd();
+  }
+
+  /****  How many work areas are desired?
+
+  /****  Enter number of areas (1-256 in multiples of 10)[1] ***/
+  /****  Check work_areas for each step of range 0-256       ***/
+  if ( work_areas == 0 )
+    stop_here = 999;
+  else if (( work_areas > 0 ) && ( work_areas <= 10 ))
+    stop_here = 996;
+  else if (( work_areas > 10 ) && ( work_areas <= 20 ))
+    stop_here = 993;
+  else if (( work_areas > 20 ) && ( work_areas <= 30 ))
+    stop_here = 990;
+  else if (( work_areas > 30 ) && ( work_areas <= 40 ))
+    stop_here = 987;
+  else if (( work_areas > 40 ) && ( work_areas <= 50 ))
+    stop_here = 984;
+  else if (( work_areas > 50 ) && ( work_areas <= 60 ))
+    stop_here = 981;
+  else if (( work_areas > 60 ) && ( work_areas <= 70 ))
+    stop_here = 978;
+  else if (( work_areas > 70 ) && ( work_areas <= 80 ))
+    stop_here = 975;
+  else if (( work_areas > 80 ) && ( work_areas <= 90 ))
+    stop_here = 972;
+  else if (( work_areas > 90 ) && ( work_areas <= 100 ))
+    stop_here = 969;
+  else if (( work_areas > 100 ) && ( work_areas <= 110 ))
+    stop_here = 966;
+  else if (( work_areas > 110 ) && ( work_areas <= 120 ))
+    stop_here = 963;
+  else if (( work_areas > 120 ) && ( work_areas <= 130 ))
+    stop_here = 960;
+  else if (( work_areas > 130 ) && ( work_areas <= 140 ))
+    stop_here = 957;
+  else if (( work_areas > 140 ) && ( work_areas <= 150 ))
+    stop_here = 954;
+  else if (( work_areas > 150 ) && ( work_areas <= 160 ))
+    stop_here = 951;
+  else if (( work_areas > 160 ) && ( work_areas <= 170 ))
+    stop_here = 948;
+  else if (( work_areas > 170 ) && ( work_areas <= 180 ))
+    stop_here = 945;
+  else if (( work_areas > 180 ) && ( work_areas <= 190 ))
+    stop_here = 942;
+  else if (( work_areas > 190 ) && ( work_areas <= 200 ))
+    stop_here = 939;
+  else if (( work_areas > 200 ) && ( work_areas <= 210 ))
+    stop_here = 936;
+  else if (( work_areas > 210 ) && ( work_areas <= 220 ))
+    stop_here = 933;
+  else if (( work_areas > 220 ) && ( work_areas <= 230 ))
+    stop_here = 930;
+  else if (( work_areas > 230 ) && ( work_areas <= 240 ))
+    stop_here = 927;
+  else if (( work_areas > 240 ) && ( work_areas <= 250 ))
+    stop_here = 924;
+  else if (( work_areas > 250 ) && ( work_areas <= 256 ))
+    stop_here = 921;
+  else
+  {
+    ex$message(msgnumb=GR_E_WrkOutRng,buff=loc_buff);
+    fprintf(stderr,"%s.\n",loc_buff);
+    dprintf((stderr,"GRCrGr work areas is out of range\n"));
+    exit;
+  }
+  if (work_areas == 0 )
+  {
+    dprintf((stderr,"GRCrGr Creating SAMPLE work area only.\n"));
+  }
+  else
+  {
+    dprintf((stderr,"Creating %d work area(s).\n",work_areas));
+  }
+
+  /**** Set the basic symbology for the DEFAULT font info ****/
+  begincmd_key("GRSSt");        /* Line Style is 0 */
+  ci$put(value=0);
+  endcmd();
+  begincmd_key("GRSWg");        /* Line Weight is 0 */
+  ci$put(value=0);
+  endcmd();
+  begincmd_key("GRSLy");        /* Level is 1023 */
+  ci$put(value=1023);
+  endcmd();
+  begincmd_key("GRSCl");        /* Color is GREEN */
+  ci$put(string="green");
+  endcmd();
+  begincmd_key("GRTgGrDs");     /* Turn the grid on */
+  ci$put(point = origin, window_name = "top");
+  ci$put(response = TERMINATE);
+  endcmd();
+  begincmd_key("GRTgGrLc");     /* Turn grid lock on */
+  ci$put(point = origin);
+  ci$put(response = TERMINATE);
+  endcmd();
+  begincmd_key("GRSTxJs");      /* Set Text Justification to Top,Left */
+  ci$put(value=3);
+  endcmd();
+  begincmd_key("GRSTxSz");      /* Set Text Size to .25 for DEFAULT */
+  ci$put(value=.25);
+  endcmd();
+  begincmd_key("GRSASFn");      /* Set ASCII Text FONT to DEFAULT */
+  ci$put(string="default");
+  endcmd();
+
+  /***  Position Design File near DEFAULT font info area ***/
+  lower_left[0] = -1.0;
+  lower_left[1] = 1007.0;
+  lower_left[2] = 0.0;
+  upper_right[0] = 6.0;
+  upper_right[1] = 1003.0;
+  upper_right[2] = 0.0;
+
+  lower_left[0] = 0.0;             /* Set origin for text */
+  lower_left[1] = 1006.0;
+
+  begincmd_key("GRPTx");
+  ci$put(string = "Font Name :");
+  ci$put(point = lower_left);
+  ci$put(response = TERMINATE);
+  endcmd();
+
+  lower_left[0] = 0.0;             /* Set origin for text */
+  lower_left[1] = 1005.0;
+  begincmd_key("GRPTx");
+  ci$put(string = "Font Number :");
+  ci$put(point = lower_left);
+  ci$put(response = TERMINATE);
+  endcmd();
+
+  lower_left[0] = 0.0;             /* Set origin for text */
+  lower_left[1] = 1004.0;
+  begincmd_key("GRPTx");
+  ci$put(string = "Font Class :");
+  ci$put(point = lower_left);
+  ci$put(response = TERMINATE);
+  endcmd();
+
+  begincmd_key("GRSCl");        /* Color is YELLOW */
+  ci$put(string="yellow");
+  endcmd();
+
+  lower_left[0] = 3.0;             /* Set origin for text */
+  lower_left[1] = 1006.0;
+  begincmd_key("GRPTx");
+  ci$put(string = "DEFAULT");
+  ci$put(point = lower_left);
+  ci$put(response = TERMINATE);
+  endcmd();
+
+  lower_left[0] = 3.0;             /* Set origin for text */
+  lower_left[1] = 1005.0;
+  begincmd_key("GRPTx");
+  ci$put(string = "0");
+  ci$put(point = lower_left);
+  ci$put(response = TERMINATE);
+  endcmd();
+
+  lower_left[0] = 3.0;             /* Set origin for text */
+  lower_left[1] = 1004.0;
+  begincmd_key("GRPTx");
+  ci$put(string = "Character");
+  ci$put(point = lower_left);
+  ci$put(response = TERMINATE);
+  endcmd();
+  /**** END of DEFAULT font info creation ***/
+
+  /**** Set the basic symbology for the working grid ****/
+  begincmd_key("GRSSt");        /* Line Style is 2 */
+  ci$put(value=2);
+  endcmd();
+  begincmd_key("GRSCl");        /* Color is RED */
+  ci$put(string="red");
+  endcmd();
+
+  /***  Position Design File near SAMPLE area ***/
+  lower_left[0] = 12.0;
+  lower_left[1] = 1003.0;
+  lower_left[2] = 0.0;
+  upper_right[0] = 18.0;
+  upper_right[1] = 1006.0;
+  upper_right[2] = 0.0;
+
+  begincmd_key("GRPBlDgPn");
+  ci$put(point = lower_left);
+  ci$put(point = upper_right);
+/*  ci$put(point = lower_left, window_name = "top");
+  ci$put(point = upper_right, window_name = "top"); */
+  ci$put(response = TERMINATE);
+  endcmd();
+
+  /***  Draw SAMPLE in area ***/
+  begincmd_key("GRSLy");        /* Layer(Level) is 63 */
+  ci$put(value=63);
+  endcmd();
+  begincmd_key("GRSSt");        /* Line Style is 0 */
+  ci$put(value=0);
+  endcmd();
+  begincmd_key("GRSCl");        /* Color is GREEN */
+  ci$put(string="green");
+  endcmd();
+
+  lower_left[0] = 13.0;
+  lower_left[1] = 1004.0;
+  upper_right[0] = 14.0;
+  upper_right[1] = 1005.0;
+
+  begincmd_key("GRPBlDgPn");
+  ci$put(point = lower_left);
+  ci$put(point = upper_right);
+  ci$put(response = TERMINATE);
+  endcmd();
+
+  begincmd_key("GRSLy");            /* Layer(Level) is 61 */
+  ci$put(value=61);
+  endcmd();
+  begincmd_key("GRSCl");            /* Color is YELLOW */
+  ci$put(string="yellow");
+  lower_left[0] = 15.0;             /* Set origin for text */
+  lower_left[1] = 1005.7;
+  endcmd();
+  begincmd_key("GRSTxJs");  /* Set Text Justification to Center,Center */
+  ci$put(value=7);
+  endcmd();
+
+  begincmd_key("GRPTx");
+  ci$put(string = "Character Number");
+  ci$put(point = lower_left);
+  ci$put(response = TERMINATE);
+  endcmd();
+
+  begincmd_key("GRSLy");    /* Put Cell Description text on layer 62 */
+  ci$put(value=62);
+  endcmd();
+
+  lower_left[0] = 15.0;     /* Set origin for text */
+  lower_left[1] = 1003.3;
+
+  begincmd_key("GRSTxSz");  /* Set Text Size for Cell Description */
+  ci$put(value=.11);
+  endcmd();
+
+  begincmd_key("GRPTx");
+  ci$put(string = "30 character Cell Description");
+  ci$put(point = lower_left);
+  ci$put(response = TERMINATE);
+  endcmd();
+
+  begincmd_key("GRFtV");    /* Fit to get a better look at graphics */
+  ci$put(point = origin);
+  ci$put(response = TERMINATE);
+  endcmd();
+
+  begincmd_key("GRZmOtV");
+  ci$put(point = lower_left);
+  ci$put(response = TERMINATE);
+  endcmd();
+
+  /** end position dgn file **/
+
+  dprintf((stderr,"GRCrGr Placing work area shapes.\n"));
+  /***  Prepare to Draw 10 x 25 matrix of 6"x3" blocks ***/
+  lower_left[0] = 0.0;
+  lower_left[1] = 997.0;
+  lower_left[2] = 0.0;
+  upper_right[0] = 6.0;
+  upper_right[1] = 1000.0;
+  upper_right[2] = 0.0;
+
+  begincmd_key("GRSLy");        /* Layer(Level) is 1023 */
+  ci$put(value=1023);
+  endcmd();
+  begincmd_key("GRSSt");        /* Line Style is 2 */
+  ci$put(value=2);
+  endcmd();
+  begincmd_key("GRSCl");        /* Color is RED */
+  ci$put(string="red");
+  endcmd();
+
+  rows = 0;
+  cols = 0;
+
+  /***  SETUP the large blocks in a Matrix ***/
+  for ( rows = 997; rows >= stop_here; rows = rows - 3 )
+  {
+    lower_left[1] = (double)rows;
+    upper_right[1] = (double)rows + 3.0;
+    for ( cols = 0; cols <= 57; cols = cols + 6 )
+    {
+      lower_left[0] = (double)cols;
+      upper_right[0] = (double)cols + 6.0;
+      begincmd_key("GRPBlDgPn");
+      ci$put(point = lower_left);
+      ci$put(point = upper_right);
+      ci$put(response = TERMINATE);
+      endcmd();
+    }
+  }
+  /***  END of Outer Block matrix creation ***/
+
+  dprintf((stderr,"GRCrGr Placing tile boxes.\n"));
+  /***  SETUP the smaller blocks in each large block ***/
+
+  begincmd_key("GRSLy");        /* Level is 63 */
+  ci$put(value=63);
+  endcmd();
+  begincmd_key("GRSSt");        /* Line Style is 0 */
+  ci$put(value=0);
+  endcmd();
+  begincmd_key("GRSCl");        /* Color is GREEN */
+  ci$put(string="green");
+  endcmd();
+
+  rows=0;
+  cols=0;
+
+  for ( rows = 997; rows >= stop_here; rows = rows - 3 )
+  {
+    lower_left[1] = (double)rows + 1.0;
+    upper_right[1] = (double)rows + 2.0;
+    for ( cols = 0; cols <= 57; cols = cols + 6 )
+    {
+      lower_left[0] = (double)cols + 1.0;
+      upper_right[0] = (double)cols + 2.0;
+      begincmd_key("GRPBlDgPn");
+      ci$put(point = lower_left);
+      ci$put(point = upper_right);
+      ci$put(response = TERMINATE);
+      endcmd();
+    }
+  }
+  /***  END of Tile Box matrix creation ***/
+
+  /***  PLACE the "Cell Description" text inside the large block ***/
+  begincmd_key("GRSLy");  /* Level is 62 */
+  ci$put(value=62);
+  endcmd();
+  begincmd_key("GRSCl");        /* Color is YELLOW */
+  ci$put(string="yellow");
+  endcmd();
+
+  dprintf((stderr,"GRCrGr Placing generic char descriptions.\n"));
+
+  /**  Start the PLACE "Cell Description" TEXT command outside the loop **/
+  begincmd_key("GRPTx");
+  ci$put(string = "30 character Cell Description");
+
+  rows=0;
+  cols=0;
+  for ( rows = 997; rows >= stop_here; rows = rows - 3 )
+  {
+    lower_left[1] = (double)rows + .3;
+    for ( cols = 0; cols <= 57; cols = cols + 6 )
+    {
+      lower_left[0] = (double)cols + 3.0;
+      ci$put(point = lower_left);
+    }
+  }
+  /***  End the PLACE TEXT command outside the loop ***/
+  ci$put(response = TERMINATE);
+  endcmd();
+
+  /***  END of PLACE "Cell Description" TEXT loop ***/
+
+  dprintf((stderr,"GRCrGr Placing generic char numbers.\n"));
+
+  /***  PLACE the "Character Number" text inside the large block ***/
+
+  begincmd_key("GRSLy");           /* Layer(Level) is 61 */
+  ci$put(value=61);
+  endcmd();
+  begincmd_key("GRSTxSz");         /* Set Text Size for Char Numbers */
+  ci$put(value=.25);
+  endcmd();
+
+  /***  Start the PLACE "Char Numbers" TEXT command outside the loop ***/
+  char_number_val = 32;            /* Start @ space character. */
+  begincmd_key("GRPTx");
+  strcpy(char_number_str, ntoa(char_number_val));
+  dprintf((stderr,"GRCrGr char_number_val=%d,char_number_str=%s\n",
+           char_number_val,char_number_str));
+  ci$put(string = char_number_str);
+
+  rows=0;
+  cols=0;
+  for ( rows = 997; rows >= stop_here; rows = rows - 3 )
+  {
+    lower_left[1] = (double)rows + 2.7;
+    for ( cols = 0; cols <= 57; cols = cols + 6 )
+    {
+      lower_left[0] = (double)cols + 3.0;
+      ci$put(point = lower_left);
+      ci$put(response = RESET);
+      char_number_val = char_number_val + 1;
+      strcpy(char_number_str, ntoa(char_number_val));
+      ci$put(string = char_number_str);
+    }
+  }
+  /***  End the PLACE TEXT command outside the loop ***/
+  ci$put(response = TERMINATE);
+  endcmd();
+  /***  END of PLACE "Character Number" TEXT loop ***/
+
+  /***  Reset the Drawing Parameters to previous settings  ***/
+
+  buff_size = sizeof(struct IGRdisplay);
+  gr$put_active_display( msg=&ists, sizbuf=&buff_size,
+                         buffer=&act_disp_buf );
+
+  buff_size = sizeof(IGRshort);
+  gr$put_active_level( msg=&ists, sizbuf=&buff_size,
+                         buffer=&act_level_buf );
+
+  buff_size = sizeof(struct GRdpb_text_symb);
+  gr$put_text_symb( msg=&ists, sizbuf=&buff_size,
+                    buffer=&act_text_buf );
+
+  begincmd_key("GRFtV");        /* Fit View */
+  ci$put(point = origin);
+  ci$put(response = TERMINATE);
+  endcmd();
+
+  ci$quiet( hlp = 0, msg = 0 ); /* End Quiet */
+
+  dprintf((stderr,"GRCrGr Graphics Creation Completed.\n"));
+
+  ex$message(field=MESSAGE_FIELD,msgnumb=GR_I_CreGrFle);
+  ex$message(msgnumb=GR_I_ProcCmplt,buff=loc_buff); 
+  status(loc_buff); 
+}
+/*** End of create_graphics  ****/

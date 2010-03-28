@@ -1,0 +1,221 @@
+#  Author : Jimmy Dodd
+#
+#  This script is to time the grnuc/model builds
+#
+
+cls
+
+function COMP_TIME
+{
+  BEGHOUR=`echo $BEGTIME | cut -d":" -f1`
+  BEGMIN=`echo $BEGTIME | cut -d":" -f2`
+  ENDHOUR=`echo $ENDTIME | cut -d":" -f1`
+  ENDMIN=`echo $ENDTIME | cut -d":" -f2`
+
+  while [ "$BEGDAY" -lt "$ENDDAY" ]
+  do
+    let ENDHOUR=$ENDHOUR+24
+    let BEGDAY=$BEGDAY+1
+  done
+
+  TOTBEGMIN=$(( ( $BEGHOUR *60 ) + $BEGMIN ))
+  TOTENDMIN=$(( ( $ENDHOUR *60 ) + $ENDMIN ))
+
+  let TOTALTIME=$TOTENDMIN-$TOTBEGMIN
+  let TOTALHOUR=$TOTALTIME/60
+  let TOTALMIN=$TOTALTIME%60
+  echo "=========================="
+  if [ "$TOTALHOUR" = "0" ]
+  then
+    echo "TOTAL = $TOTALMIN minutes\n"
+  else
+    if [ "$TOTALHOUR" = "1" ]
+    then
+      echo "TOTAL = $TOTALHOUR hour and $TOTALMIN minutes\n"
+    else
+      echo "TOTAL = $TOTALHOUR hours and $TOTALMIN minutes\n"
+    fi
+  fi
+
+  let BIGTIME=$BIGTIME+$TOTALTIME
+  let BIGHOUR=$BIGTIME/60
+  let BIGMIN=$BIGTIME%60
+}
+
+BIGTIME=0
+if [ "$PROD" != "GRNUC" -a "$PROD" != "MODEL" ]
+then
+  P=h
+  while [ "$P" != "g" -a "$P" != "m" ]
+    do
+    read -r P?" Enter which product you want to time [g]GRNUC or [m]MODEL :"
+  done
+
+  if [ "$P" = "g" ] 
+  then 
+    PROD=GRNUC 
+  else 
+    if [ "$P" = "m" ] 
+    then 
+      PROD=MODEL 
+    fi
+  fi
+fi
+
+echo "c100 common stuff"
+echo "================="
+if [ "$PROD" = "GRNUC" ]
+then
+  cd $GRNUC/spec
+  ls -long QYnpt.S | awk ' { printf $4" "$5" "$6" finish\n" } '
+  ENDTIME=`ls -long QYnpt.S | awk '{print $6}'`
+  ENDDAY=`ls -long QYnpt.S | awk '{print $5}'`
+  cd $GRNUC/config/english/messages/src
+  ls -long *.mb | tail -1 | awk ' { printf $4" "$5" "$6" start\n" } '
+  BEGTIME=`ls -long *.mb | tail -1 | awk '{printf $6}'`
+  BEGDAY=`ls -long *.mb | tail -1 | awk '{printf $5}'`
+  COMP_TIME
+else 
+  if [ "$PROD" = "MODEL" ]
+  then
+    cd $MODEL/spec
+    ls -long VEtoggle.S | awk ' { printf $4" "$5" "$6" finish\n" } '
+    ENDTIME=`ls -long VEtoggle.S | awk '{print $6}'`
+    ENDDAY=`ls -long VEtoggle.S | awk '{print $5}'`
+    cd $MODEL/config/english/messages/src
+    ls -long *.mb | tail -1 | awk ' { printf $4" "$5" "$6" start\n" } '
+    BEGTIME=`ls -long *.mb | tail -1 | awk '{printf $6}'`
+    BEGDAY=`ls -long *.mb | tail -1 | awk '{printf $5}'`
+    COMP_TIME
+  fi
+fi
+
+echo "$CPUTYPE generating makefiles"
+echo "=========================="
+
+if [ "$PROD" = "GRNUC" ]
+then
+  cd $GRTARG/src/pplsrc/cci
+  ls -long makeimp | tail -1 | awk ' { printf $4" "$5" "$6" finish\n" } '
+  ENDTIME=`ls -long makeimp | tail -1 | awk '{print $6}'`
+  ENDDAY=`ls -long makeimp | tail -1 | awk '{print $5}'`
+  cd $GRTARG/src/IGRdir/src
+  ls -long makeimp | tail -1 | awk ' { printf $4" "$5" "$6" start\n" } '
+  BEGTIME=`ls -long makeimp | tail -1 | awk '{printf $6}'`
+  BEGDAY=`ls -long makeimp | tail -1 | awk '{printf $5}'`
+  COMP_TIME
+else 
+  if [ "$PROD" = "MODEL" ]
+  then
+    cd $MDTARG/ve/src/make_sh
+    ls -long makefile | tail -1 | awk ' { printf $4" "$5" "$6" finish\n" } '
+    ENDTIME=`ls -long makefile | tail -1 | awk '{print $6}'`
+    ENDDAY=`ls -long makefile | tail -1 | awk '{print $5}'`
+    cd $MDTARG/src_freeform/spec
+    ls -long makefile | tail -1 | awk ' { printf $4" "$5" "$6" start\n" } '
+    BEGTIME=`ls -long makefile | tail -1 | awk '{printf $6}'`
+    BEGDAY=`ls -long makefile | tail -1 | awk '{printf $5}'`
+    COMP_TIME
+  fi
+fi
+
+echo "$CPUTYPE compiling all source"
+echo "=========================="
+
+if [ "$PROD" = "GRNUC" ]
+then
+  cd $GRTARG/src/util/find_msg
+  ls *.o > /dev/null 2>&1
+  if [ $? != 0 ]
+  then
+    echo "`date +%m\ \ %d\ %H:%M` (and still going)"
+    ENDTIME=`date +%H:%M`
+    ENDDAY=`date +%d`
+  else
+    ls -long *.o | tail -1 | awk ' { printf $4" "$5" "$6" finish\n" } '
+    ENDTIME=`ls -long *.o | tail -1 | awk '{print $6}'`
+    ENDDAY=`ls -long *.o | tail -1 | awk '{print $5}'`
+  fi
+  cd $GRTARG/src/pplsrc/com
+  ls -long *.o | tail -1 | awk ' { printf $4" "$5" "$6" start\n" } '
+  BEGTIME=`ls -long *.o | tail -1 | awk '{printf $6}'`
+  BEGDAY=`ls -long *.o | tail -1 | awk '{printf $5}'`
+  COMP_TIME
+else 
+  if [ "$PROD" = "MODEL" ]
+  then
+    cd $MDTARG/ve/src/make_sh
+    ls *.o > /dev/null 2>&1
+    if [ $? != 0 ]
+    then
+      echo "`date +%m\ \ %d\ %H:%M` (and still going)"
+      ENDTIME=`date +%H:%M`
+      ENDDAY=`date +%d`
+    else
+      ls -long *.o | tail -1 | awk ' { printf $4" "$5" "$6" finish\n" } '
+      ENDTIME=`ls -long *.o | tail -1 | awk '{print $6}'`
+      ENDDAY=`ls -long *.o | tail -1 | awk '{print $5}'`
+    fi
+    cd $MDTARG/src_freeform/spec
+    ls -long *.o | tail -1 | awk ' { printf $4" "$5" "$6" start\n" } '
+    BEGTIME=`ls -long *.o | tail -1 | awk '{printf $6}'`
+    BEGDAY=`ls -long *.o | tail -1 | awk '{printf $5}'`
+    COMP_TIME
+  fi
+fi
+
+if [ "$CPUTYPE" != "c100" -a "$CPUTYPE" != "c400" -a "$CPUTYPE" != "isl" ]
+then
+  echo "$CPUTYPE compiling dictionary"
+  echo "=========================="
+
+  if [ "$PROD" = "GRNUC" ]
+  then
+    cd $GRTARG/dict
+    if [ $? != 0 ]
+    then
+      echo "`date +%m\ \ %d\ %H:%M` (and still going)"
+      ENDTIME=`date +%H:%M`
+      ENDDAY=`date +%d`
+    else
+      ls -long user_data.o | tail -1 | awk ' { printf $4" "$5" "$6" finish\n" } '
+      ENDTIME=`ls -long user_data*.o | tail -1 | awk '{print $6}'`
+      ENDDAY=`ls -long user_data*.o | tail -1 | awk '{print $5}'`
+    fi 
+    ls -long ACci_header.o | tail -1 | awk ' { printf $4" "$5" "$6" start\n" } '
+    BEGTIME=`ls -long ACci_header.o | tail -1 | awk '{printf $6}'`
+    BEGDAY=`ls -long ACci_header.o | tail -1 | awk '{printf $5}'`
+    COMP_TIME
+  else 
+    if [ "$PROD" = "MODEL" ]
+    then
+      cd $MDTARG/dict
+      if [ $? != 0 ]
+      then
+        echo "`date +%m\ \ %d\ %H:%M` (and still going)"
+        ENDTIME=`date +%H:%M`
+        ENDDAY=`date +%d`
+      else
+        ls -long shsolid_temp.o | tail -1 | awk ' { printf $4" "$5" "$6" finish\n" } '
+        ENDTIME=`ls -long shsolid_temp*.o | tail -1 | awk '{print $6}'`
+        ENDDAY=`ls -long shsolid_temp*.o | tail -1 | awk '{print $5}'`
+      fi 
+      ls -long shsolid_temp.T | tail -1 | awk ' { printf $4" "$5" "$6" start\n" } '
+      BEGTIME=`ls -long shsolid_temp.T | tail -1 | awk '{printf $6}'`
+      BEGDAY=`ls -long shsolid_temp.T | tail -1 | awk '{printf $5}'`
+      COMP_TIME
+    fi
+  fi
+fi
+
+if [ "$BIGHOUR" = "0" ]
+then
+  echo "GRAND TOTAL = $BIGMIN minutes\n"
+else
+  if [ "$BIGHOUR" = "1" ]
+  then
+    echo "GRAND TOTAL = $BIGHOUR hour and $BIGMIN minutes\n"
+  else
+    echo "GRAND TOTAL = $BIGHOUR hours and $BIGMIN minutes\n"
+  fi
+fi

@@ -1,0 +1,2595 @@
+/**************************************************************************
+**   PROGRAM:    GRCrFnMn.u
+**
+**   HISTORY:  Name        Date   Note
+**            ---------------------------------------------
+**             Joe Wagner  04-90  Version 1.3.2
+**             Joe Wagner  12-90  Put header in & changed interface
+**                                to remove the Microstation FLIB depend-
+**                                ancy.
+**             Joe Wagner  01-91  Changed references to "Font Builder"
+**                                file now to say "FONTLIB" file. Changed
+**                                FTBCrClFl to FTBCrFnFl.
+**             Joe Wagner  01-91  Minor interface fixes.
+**             Joe Wagner  01-91  Changed name from FTBMain to GRCrFnMn.
+**             Joe Wagner  01-91  Version 1.4.1
+**             Joe Wagner  01-91  Disabled the FIf_set_location() for the
+**                                Main form, use the coords in the form.
+**             Joe Wagner  02-91  Cleanup & fixed the init,wakeup,sleep &
+**                                delete functions.
+**             Joe Wagner  02-91  Changed the Review Fontlib option to use
+**                                a form (GRFntLst).
+**             Tim McKee   09-91  replace sh() with system() and handle
+**                                GRFlib returning 0 on success
+**             Tim McKee   05-92  converted messages to the mesage 
+**                                sub-system
+**             Mrudula     11-92  Fixed EMS hang problem. Removed Fillable
+**                                toggle from the group. Toggle doesn't work
+**                                if in the group.
+**             Eddie Pike  01-93  make sure form is initialized before display
+**
+**  DESCRIPTION: This program is the primary CI program controling the
+**               forms for "Create Font".
+*/
+
+/*#include <errno.h>*/
+#include <stdio.h>
+#include <tools.h>
+#include "string.h"
+#include "cieveryone.h"
+#include "cimacros.h"
+#include "OMindex.h"
+#include "grsymdef.h"
+#include "grsymmacros.h"
+#include "cimath.h"
+#include "grgs.h"
+#include "grgsmacros.h"
+#include "growner.h"
+#include "cimacros.h"
+#include "msdef.h"
+#include "exmacros.h"
+#include "msmacros.h"
+#include "grmsg.h"
+
+#include "FI.h"
+#include "CIforms.h"
+
+/*#include "Iforms_def.h"	*** use I/Forms #defines LAST ***/
+
+#define sh(a) system(a)
+
+struct  CIform_st  form_st;
+
+#define  FORM  100
+#define  FORM1  101
+#define  FORM2  102
+#define  SUCCESS TRUE
+#define  FAILED FALSE
+
+/*** Master form gadets ****/
+#define BUTTON_12   12
+#define BUTTON_13   13
+#define BUTTON_17   17
+#define BUTTON_18   18
+#define BUTTON_19   19
+#define BUTTON_20   20
+
+#define TOGGLE_41  41
+
+#define FIELD_15   15
+#define FIELD_22   22
+#define FIELD_24   24
+#define FIELD_26   26
+#define FIELD_28   28
+#define FIELD_30   30
+#define FIELD_37   37
+
+#define TEXT_38    38
+#define NOTE_1     40
+
+#define TOGGLE_16   16
+#define TOGGLE_39   39
+
+#define GROUP_1     31
+#define GROUP_2     32
+#define GROUP_3     33
+#define GROUP_4     34
+#define GROUP_5     35
+
+/*** Subform gadets ****/
+#define BUTTON_14   14
+#define BUTTON_23   23
+#define BUTTON_24   24
+
+#define FIELD_16   16
+#define FIELD_18   18
+#define FIELD_21   21
+
+#define TOGGLE_19   19
+#define TOGGLE_22   22
+
+#define GROUP_1a   25
+#define GROUP_2a   26
+#define GROUP_3a   27
+
+/*** Revform gadet ****/
+#define REV_FIELD   12
+
+#define MAX_SYM_DEFS  256
+#define TXT_FLAG  33
+
+int   Which_Command, Which_SUB_Command, FTBLeave, FTBExecute,
+      just_did_pos_cursor,test_wakeup,cursor_loc,rev_exit_flag,
+      Which_REV_Command,row;
+int   xxxx, yyy;    /* DELETE ME! */
+int fill_tf;  /* make it a fillable typeface? 0 no / 1 yes */
+char cmd_str[256];
+
+Form  form, sub_form, rev_form;
+
+#ifdef DEBUG
+#define dprintf(ARGS) fprintf ARGS
+#else
+#define dprintf(ARGS) ";";
+#endif
+
+#include "GRmkfilltf.u"
+
+/********************************************************/
+/*  Declare all Forms System Functions as external.     */
+/********************************************************/
+extern int FIf_delete();
+extern int FIf_display();
+extern int FIf_erase();
+extern int FIf_new();
+extern int FIf_set_cmd_oid_os();
+extern int ci_notification();
+
+/****************************************************************/
+/* calculate_cursor_pos() - This is the function that gets the  */
+/*    length of the text that is in the input field and sets a  */
+/*    pointer (str_length) to the size and returns sts.         */
+/****************************************************************/
+int calculate_cursor_pos( id_form, id_field, field_str, str_length)
+Form id_form;
+int  id_field;
+char *field_str;
+int  *str_length;
+{
+int sts;
+  sts = FI_SUCCESS;
+  sts = FIg_get_text(id_form,id_field,field_str);
+  if ( sts != FI_SUCCESS )
+  {
+    fprintf(stderr,"FIg_get_text error in calculate_cursor_pos\n");
+  }
+  *str_length = strlen ( field_str );
+  dprintf((stderr,"calculate_cursor_pos str_length=%d\n",*str_length));
+  return(sts);
+} /* END of calculate_cursor_pos */
+
+/****************************************************************/
+/* form_notification() - This is the function that gets called  */
+/*                       when a gadget on the form is selected. */
+/****************************************************************/
+int form_notification ( )
+{
+
+  double  temp_value, toggle_val;
+  int    sts, t_state, g_state, work_areas, i;
+  int    response, sel_flag, r_pos, del_flag, font_numb;
+  char  temp_text[ 256 + 1 ], temp_text1[ 256 +1], loc_buff[80];
+
+  dprintf((stderr,"inside form_notification()\n"));
+  dprintf((stderr,"FTBLeave=%d\n",FTBLeave));
+
+  switch ( form_st.form_label )
+  {
+   case FORM:    /*** Master Form ***/
+   {
+    switch ( form_st.gadget_label )
+    {
+      case FI_ACCEPT:
+      {
+        dprintf((stderr,"ACCEPT button on Main\n"));
+        FTBLeave=TRUE;
+        dprintf((stderr,"FTBLeave=%d\n",FTBLeave));
+        FIf_erase(form);
+        break; /**** End of Accept case ****/
+      }
+
+      case FI_CANCEL:
+      {
+        dprintf((stderr,"CANCEL button on Main\n"));
+        FTBLeave=TRUE;
+        dprintf((stderr,"FTBLeave=%d\n",FTBLeave));
+        FIf_erase(form);
+        break; /**** End of Cancel case ****/
+      }
+
+      case FI_EXECUTE:
+      {
+        dprintf((stderr,"EXECUTE button Main\n"));
+        FTBExecute=TRUE;
+        dprintf((stderr,"FTBExecute=%d\n",FTBExecute));
+        dprintf((stderr,"Which_Command==%d\n",Which_Command));
+        break; /**** End of Execute case ****/
+      }
+
+      case BUTTON_12:
+      {
+        Which_Command=BUTTON_12;
+
+
+        ex$message(msgnumb=GR_I_EntNumWrkAreas,buff=loc_buff);
+        sts = FIg_set_text(form,10,loc_buff);
+        if ( sts != FI_SUCCESS )
+        {
+          fprintf(stderr,"error in FIg_set_text on Btn_12\n");
+        }
+        FIg_erase(form,FIELD_15);
+        FIg_erase(form,14);
+        FIg_erase(form,GROUP_2);
+        FIg_erase(form,GROUP_3);
+        FIg_erase(form,GROUP_4);
+        FIg_erase(form,GROUP_5);
+        FIg_erase(form,TOGGLE_41);
+        FIg_erase(form,TOGGLE_39);
+        FIg_erase(form,NOTE_1);
+
+        FIg_display(form,TOGGLE_16);
+        FIg_display(form,TEXT_38);
+        FIg_display(form,FIELD_37);
+
+/*
+fprintf (stderr,"Just before pos_cursor \n" );
+for  ( xxxx = 0; xxxx < 10000; xxxx = xxxx + 1 )
+  yyy = (double) xxxx * xxxx;
+
+        sts=FIfld_pos_cursor(form,FIELD_37,0,0,0,0,4,4);
+        if ( sts != FI_SUCCESS )
+        {
+          fprintf (stderr,"ERROR: FIfld_pos_cursor BUTTON_12.\n" );
+          fprintf (stderr," sts = %d\n", sts );
+        }
+fprintf (stderr,"Just before break \n" );
+for  ( xxxx = 0; xxxx < 10000; xxxx = xxxx + 1 )
+  yyy = (double) xxxx * xxxx;
+*/
+        break;
+      }
+
+      case BUTTON_13:
+      {
+        Which_Command=BUTTON_13;
+        ex$message(msgnumb=GR_I_EntClFlDl,buff=loc_buff);
+        sts = FIg_set_text(form,10,loc_buff);
+        if ( sts != FI_SUCCESS )
+        {
+          fprintf(stderr,"error in FIg_set_text\n");
+        }
+
+        FIg_display(form,GROUP_1);
+
+        FIg_erase(form,FIELD_37);
+        FIg_erase(form,TEXT_38);
+        FIg_erase(form,GROUP_2);
+        FIg_erase(form,GROUP_3);
+        FIg_erase(form,GROUP_4);
+        FIg_erase(form,GROUP_5);
+        FIg_erase(form,TOGGLE_41);
+        FIg_erase(form,TOGGLE_39);
+        FIg_erase(form,NOTE_1);
+
+#ifdef JAJ_TEST
+/* jaj - testing
+fprintf (stderr,"Just before pos cursor to FIELD 15\n" );
+for  ( xxxx = 0; xxxx < 100000; xxxx = xxxx + 1 )
+  yyy = (double) xxxx * xxxx;
+	just_did_pos_cursor = 1;
+*/
+#endif
+
+        sts = calculate_cursor_pos(form,FIELD_15,temp_text,&cursor_loc);
+        FIfld_pos_cursor(form,FIELD_15,0,0,0,0,cursor_loc,cursor_loc);
+
+#ifdef JAJ_TEST
+/* jaj - testing
+for  ( xxxx = 0; xxxx < 100000; xxxx = xxxx + 1 )
+  yyy = (double) xxxx * xxxx;
+
+fprintf (stderr,"Just after pos cursor to FIELD 15\n" );
+
+for  ( xxxx = 0; xxxx < 100000; xxxx = xxxx + 1 )
+  yyy = (double) xxxx * xxxx;
+
+fprintf (stderr,"AFTER after pos cursor to FIELD 15\n" );
+*/
+#endif
+        break;
+      }
+
+      case BUTTON_17:
+      {
+        Which_Command=BUTTON_17;
+        ex$message(msgnumb=GR_I_EntFlfl,buff=loc_buff);
+        sts = FIg_set_text(form,10,loc_buff);
+        if ( sts != FI_SUCCESS )
+        {
+          fprintf(stderr,"error in FIg_set_text\n");
+        }
+        FIg_erase(form,GROUP_1);
+        FIg_erase(form,GROUP_3);
+        FIg_erase(form,GROUP_4);
+        FIg_erase(form,GROUP_5);
+        FIg_erase(form,TOGGLE_41);
+        FIg_erase(form,TOGGLE_39);
+        FIg_display(form,GROUP_2);
+        FIg_display(form,NOTE_1);
+
+        sts = calculate_cursor_pos(form,FIELD_22,temp_text,&cursor_loc);
+        FIfld_pos_cursor(form,FIELD_22,0,0,0,0,cursor_loc,cursor_loc);
+        break;
+      }
+
+      case BUTTON_18:  /** Run Font Librarian ***/
+      {
+        FTBExecute = TRUE;
+        Which_Command=BUTTON_18;
+        FIg_erase(form,GROUP_1);
+        FIg_erase(form,GROUP_2);
+        FIg_erase(form,GROUP_3);
+        FIg_erase(form,GROUP_4);
+        FIg_erase(form,GROUP_5);
+        FIg_erase(form,TOGGLE_41);
+        FIg_erase(form,FIELD_37);
+        FIg_erase(form,TEXT_38);
+        FIg_erase(form,TOGGLE_39);
+        FIg_erase(form,NOTE_1);
+/*
+        FIg_disable(form,BUTTON_12);
+        FIg_disable(form,BUTTON_13);
+        FIg_disable(form,BUTTON_17);
+        FIg_disable(form,BUTTON_18);
+        FIg_disable(form,BUTTON_19);
+        FIg_disable(form,BUTTON_20);
+        FIg_disable(form,1);
+        FIg_disable(form,2);
+        FIg_disable(form,4);
+*/
+        /*** Clear Master Form Message Field ****/
+        sts = FIg_set_text(form,10," ");
+        if ( sts != FI_SUCCESS )
+        {
+          fprintf(stderr,"error in FIg_set_text\n");
+        }
+        break;
+      }
+
+      case BUTTON_19:
+      {
+        Which_Command=BUTTON_19;
+        ex$message(msgnumb=GR_I_EntFlflFnum,buff=loc_buff);
+        sts = FIg_set_text(form,10,loc_buff);
+        if ( sts != FI_SUCCESS )
+        {
+          fprintf(stderr,"error in FIg_set_text\n");
+        }
+
+        FIg_erase(form,GROUP_1);
+        FIg_erase(form,GROUP_4);
+        FIg_erase(form,TOGGLE_39);
+        FIg_erase(form,NOTE_1);
+        FIg_display(form,GROUP_3);
+        FIg_display(form,GROUP_2);
+        FIg_display(form,GROUP_5);
+        FIg_display(form,TOGGLE_41);
+
+        sts = calculate_cursor_pos(form,FIELD_22,temp_text,&cursor_loc);
+        FIfld_pos_cursor(form,FIELD_22,0,0,0,0,cursor_loc,cursor_loc);
+
+        break;
+      }
+
+      case BUTTON_20:
+      {
+        Which_Command=BUTTON_20;
+        ex$message(msgnumb=GR_I_EntFnTfFl,buff=loc_buff);
+        sts = FIg_set_text(form,10,loc_buff);
+        if ( sts != FI_SUCCESS )
+        {
+          fprintf(stderr,"FIg_set_text error, case BUTTON_20\n");
+        }
+        FIg_erase(form,GROUP_1);
+        FIg_erase(form,GROUP_2);
+        FIg_erase(form,GROUP_3);
+        FIg_erase(form,TOGGLE_39);
+        FIg_erase(form,NOTE_1);
+        FIg_display(form,GROUP_4);
+        FIg_display(form,GROUP_5);
+        FIg_display(form,TOGGLE_41);
+        sts = calculate_cursor_pos(form,FIELD_30,temp_text,&cursor_loc);
+        FIfld_pos_cursor(form,FIELD_30,0,0,0,0,cursor_loc,cursor_loc);
+
+        break;
+      }
+
+      case TOGGLE_16:
+      {
+        sts = FIg_get_value(form,TOGGLE_16,&toggle_val);
+        if (( sts == FI_SUCCESS ) && ( toggle_val == 0 ))
+        {
+          del_flag = 0;
+          dprintf((stderr,"set DELETE flag to Yes\n"));
+        }
+        else
+        {
+          del_flag = 1;
+          dprintf((stderr,"set DELETE flag to No\n"));
+        }
+        dprintf((stderr,"toggle_16,val=%lf\n",toggle_val));
+        break;
+      }
+
+      case FIELD_15:  /** CELL FILE NAME field  **/
+      {
+        sts = FIfld_get_text(form,form_st.gadget_label,0,0,256,temp_text,
+              &sel_flag,&r_pos);
+        if (( sts == FI_SUCCESS ) && (strlen(temp_text) > 0))
+        {
+          dprintf((stderr,"'%s' is from CELL FILE field\n",temp_text));
+          if( access( temp_text, 4 ) != 0 )
+          {
+
+            dprintf((stderr, "Can not READ Cell file(%s)\n",temp_text));
+            ex$message(msgnumb=GR_E_CantReadFile,buff=loc_buff);
+            sts = FIg_set_text(form,10,loc_buff);
+            if ( sts != FI_SUCCESS )
+            {
+              fprintf(stderr,"error in FIg_set_text\n");
+            }
+/*
+            just_did_pos_cursor = 1;
+*/
+            sts=calculate_cursor_pos(form,FIELD_22,temp_text,&cursor_loc);
+            FIfld_pos_cursor(form,FIELD_22,0,0,0,0,cursor_loc,cursor_loc);
+            break;
+          }
+          dprintf((stderr,"Cell file '%s' is found\n",temp_text));
+          sts = FIg_set_text(form,10," ");
+          if ( sts != FI_SUCCESS )
+          {
+            fprintf(stderr,"error in FIg_set_text\n");
+          }
+        }
+        else
+        {
+/*          sprintf(temp_text1,"No Cell file specified. Please re-enter.",
+              temp_text);
+*/
+          ex$message(msgnumb=GR_E_NoCellFlSpec,buff=temp_text1);
+          sts = FIg_set_text(form,10,temp_text1);
+          if ( sts != FI_SUCCESS )
+          {
+            fprintf(stderr,"error in FIg_set_text\n");
+          }
+/*
+	      just_did_pos_cursor = 1;
+*/
+/*  Commented out following two lines to fix EMS hang problem. 
+    TR 11925517 --Mrudula */
+/*          sts=calculate_cursor_pos(form,FIELD_22,temp_text,&cursor_loc);
+          FIfld_pos_cursor(form,FIELD_22,0,0,0,0,cursor_loc,cursor_loc);*/
+        }
+        break;
+      }
+
+      case FIELD_22:  /** FONTLIB FILE NAME field  **/
+      {
+        sts = FIfld_get_text(form,FIELD_22,0,0,256,temp_text,
+              &sel_flag,&r_pos);
+        if ( sts == FI_SUCCESS )
+        {
+          if ( strlen(temp_text) > 0 )
+          {
+            dprintf((stderr,"FONTLIB FILE is '%s'\n", temp_text));
+            if((access( temp_text, 0 ) == 0 ) && (Which_Command==17))
+            {
+              dprintf((stderr,"FONTLIB file (%s) exists.\n", temp_text));
+/*              sprintf(temp_text1,"File exists. Overwrite?"); */
+              ex$message(msgnumb=GR_E_FlExstOvr,buff=temp_text1);
+              sts = FIg_set_text(form,10, temp_text1);
+              if ( sts != FI_SUCCESS )
+              {
+                fprintf(stderr,"error in FIg_set_text\n");
+              }
+/*            FIg_set_location(form,TOGGLE_39,145,285); */
+              FIg_display(form,TOGGLE_39);
+              break;
+            }
+            dprintf((stderr,"FONTLIB file (%s) ok.\n", temp_text));
+            sts = FIg_set_text(form,10," ");
+            if ( sts != FI_SUCCESS )
+            {
+              fprintf(stderr,"error in FIg_set_text\n");
+            }
+            FIg_erase(form,TOGGLE_39);
+          }
+          else
+          {
+/*            sprintf(temp_text1,"No FONTLIB file specified. Please re-enter.",
+                temp_text);
+*/
+            ex$message(msgnumb=GR_E_NoFlflSpec,buff=temp_text1);
+            sts = FIg_set_text(form,10,temp_text1);
+            if ( sts != FI_SUCCESS )
+            {
+              fprintf(stderr,"error in FIg_set_text\n");
+            }
+          }
+        }
+        else
+        {
+          fprintf(stderr,"error in FIg_get_text\n");
+        }
+        break;
+      }
+
+      case FIELD_24:    /** TYPEFACE FILE NAME field  **/
+      {
+        sts = FIfld_get_text(form,FIELD_24,0,0,256,temp_text,
+              &sel_flag,&r_pos);
+        if ( sts == FI_SUCCESS )
+        {
+          if ( strlen(temp_text) <= 0 )
+          {
+/*            sprintf(temp_text1,
+                   "No Typeface file specified. Please re-enter.");
+*/
+            ex$message(msgnumb=GR_E_NoTfflSpec,buff=temp_text1);
+            sts = FIg_set_text(form,10,temp_text1);
+            if ( sts != FI_SUCCESS )
+            {
+              fprintf(stderr,"error in FIg_set_text\n");
+            }
+/*
+            sts=calculate_cursor_pos(form,FIELD_24,temp_text,&cursor_loc);
+            if ( sts != FI_SUCCESS )
+            {
+              fprintf(stderr,"error in calculate_cursor_pos\n");
+            }
+            FIfld_pos_cursor(form,FIELD_24,0,0,0,0,cursor_loc,cursor_loc);
+*/
+          }
+          else
+          {
+            sts = FIg_get_state(form,BUTTON_19,&g_state);
+            if ( sts != FI_SUCCESS )
+            {
+              fprintf(stderr,"error in FIg_get_state\n");
+            }
+            dprintf((stderr,"TYPEFACE FILE is '%s'\n",temp_text));
+            if (g_state == 1)
+            {
+              if( access( temp_text, 0 ) == 0 )
+              {
+                dprintf((stderr,"TYPEFACE file (%s) exists.\n",temp_text));
+/*                sprintf(temp_text1, "TYPEFACE file exists. Overwrite?");
+*/
+                ex$message(msgnumb=GR_I_TfExstOvr,buff=temp_text1);
+                sts = FIg_set_text(form,10,temp_text1);
+                if ( sts != FI_SUCCESS )
+                {
+                  fprintf(stderr, "FIg_set_text error for FIELD_24\n");
+                }
+                FIg_set_location(form,TOGGLE_39,280,330);
+                FIg_display(form,TOGGLE_39);
+              }
+              else
+              {
+                dprintf((stderr,"TYPEFACE FILE '%s' is ok.\n", temp_text));
+                sts = FIg_set_text(form, 10," ");
+                if ( sts != FI_SUCCESS )
+                {
+                  fprintf(stderr, "error in FIg_set_text\n");
+                }
+                FIg_erase(form,TOGGLE_39);
+              }
+            }
+            else
+            {
+              if( access( temp_text, 0 ) == 0 )
+              {
+                dprintf((stderr, "TYPEFACE (%s) exists. thats OK\n",
+                    temp_text));
+                sts = FIg_set_text(form, 10," ");
+                if ( sts != FI_SUCCESS )
+                {
+                  fprintf(stderr, "error in FIg_set_text\n");
+                }
+                FIg_erase(form,TOGGLE_39);
+              }
+              else
+              {
+                dprintf((stderr,
+                 "TYPEFACE (%s) doesnt exist. thats not OK\n", temp_text));
+/*                sprintf(temp_text1, "File does not exist. Re-enter name.");
+*/
+                ex$message(msgnumb=GR_E_FlNotExstRe,buff=temp_text1);
+                sts = FIg_set_text(form, 10,temp_text1);
+                if ( sts != FI_SUCCESS )
+                {
+                  fprintf(stderr, "FIg_set_text error for FIELD_24\n");
+                }
+/*
+                sts=calculate_cursor_pos(form,FIELD_24,temp_text,
+                     &cursor_loc);
+                if ( sts != FI_SUCCESS )
+                {
+                  fprintf(stderr,"error in calculate_cursor_pos\n");
+                }
+                FIfld_pos_cursor(form,FIELD_24,0,0,0,0,cursor_loc,
+                     cursor_loc);
+*/
+              }
+            }
+          }
+        } /* END of if SUCCESS **/
+        break;
+      }
+
+      case FIELD_26:  /** FONT # field  **/
+      {
+        dprintf((stderr,"FONT # field_26\n"));
+        sts = FIfld_get_value(form,FIELD_26,0,0,&temp_value,
+              &sel_flag,&r_pos);
+        if ( sts == FI_SUCCESS )
+        {
+          font_numb = (int) temp_value;
+          dprintf((stderr,"FONT # =%d\n",font_numb));
+          if ((font_numb < 0) || (font_numb > 127))
+          {
+            dprintf((stderr,"FONT # out of range(0-127), #=%d\n",
+                font_numb));
+            ex$message(msgnumb=GR_E_FnOutofRng,buff=loc_buff,var=font_numb);
+            sts = FIg_set_text(form,10,loc_buff);
+            if ( sts != FI_SUCCESS )
+            {
+              fprintf(stderr,"error in FIg_set_text\n");
+            }
+/*
+            sts=calculate_cursor_pos(form,FIELD_26,temp_text,&cursor_loc);
+            FIfld_pos_cursor(form,FIELD_26,0,0,0,0,cursor_loc,cursor_loc);
+*/
+          }
+          dprintf((stderr,"FONT NUMBER '%d' is ok.\n", font_numb));
+          sts = FIg_set_text(form,10," ");
+          if ( sts != FI_SUCCESS )
+          {
+            fprintf(stderr,"error in FIg_set_text\n");
+          }
+        }
+        else
+        {
+/*          sprintf(temp_text1,"No Font Number specified. Please re-enter.",
+              temp_text);
+*/
+          ex$message(msgnumb=GR_E_NoFnSpec,buff=temp_text1);
+          sts =FIg_set_text(form,10,temp_text1);
+          if ( sts != FI_SUCCESS )
+          {
+            fprintf(stderr,"error in FIg_set_text\n");
+          }
+        }
+        break;
+      }
+
+      case FIELD_28:  /** FONT LIBRARY FILE NAME field,NOT USED **/
+      {
+        dprintf((stderr,"field_28 FONT LIBRARY FILE field\n"));
+        cursor_loc = 0;
+        sts = FIfld_get_text(form,FIELD_28,0,0,256,temp_text,
+              &sel_flag,&r_pos);
+        dprintf((stderr,"field_28 sts=%d\n",sts));
+        dprintf((stderr,"field_28 sel_flag=%d\n",sel_flag));
+        if ( sts == FI_SUCCESS )
+        {
+          dprintf((stderr,"FONT LIBRARY FILE is '%s'\n",temp_text));
+          if( access( temp_text, 4 ) != 0 )
+          {
+            dprintf((stderr,"Can not READ FONT LIBRARY file (%s)\n",
+                temp_text));
+/*            sprintf(temp_text1, "Can not READ FONT LIBRARY"); */
+            ex$message(msgnumb=GR_E_FlflNotRead,buff=temp_text1);
+            sts = FIg_set_text(form,10,temp_text1);
+            if ( sts != FI_SUCCESS )
+            {
+              fprintf(stderr,"error in FIg_set_text\n");
+            }
+            break;
+          }
+          dprintf((stderr,"FONT LIBRARY FILE '%s' is ok.\n",temp_text));
+          sts = FIg_set_text(form,10," ");
+          if ( sts != FI_SUCCESS )
+          {
+            fprintf(stderr,"error in FIg_set_text\n");
+          }
+        }
+        else
+        {
+/*          sprintf(temp_text1,
+             "No Font Library file specified. Please re-enter.",temp_text);
+*/
+          ex$message(msgnumb=GR_E_NoFlflSpec,buff=temp_text1);
+          sts = FIg_set_text(form,10,temp_text1);
+          if ( sts != FI_SUCCESS )
+          {
+            fprintf(stderr,"error in FIg_set_text\n");
+          }
+        }
+        break;
+      }
+
+      case FIELD_30:  /** FONT NAME field  **/
+      {
+        dprintf((stderr,"field_30 FONT NAME FILE\n"));
+        sts = FIfld_get_text(form,form_st.gadget_label,0,0,256,temp_text,
+              &sel_flag,&r_pos);
+        if (( sts == FI_SUCCESS ) && (strlen(temp_text) > 0))
+        {
+          dprintf((stderr,"FONT NAME is %s\n",temp_text));
+          sts = FIg_set_text(form,10," ");
+          if ( sts != FI_SUCCESS )
+          {
+            fprintf(stderr,"error in FIg_set_text\n");
+          }
+        }
+        else
+        {
+          dprintf((stderr,"error in FIfld_get_text\n"));
+        }
+        break;
+      }
+
+      case FIELD_37:  /** # of WORK AREAS field  **/
+      {
+        dprintf((stderr,"field_37 WORK AREAS field\n"));
+        sts = FIfld_get_text(form,form_st.gadget_label,0,0,256,temp_text,
+              &sel_flag,&r_pos);
+        if ( sts == FI_SUCCESS )
+        {
+          if ( (strlen(temp_text) < 0) || (strlen(temp_text) > 260) )
+          {
+           dprintf((stderr,"invalid # of work areas is %s\n",temp_text));
+/*           sprintf(temp_text1,
+                  "Invalid number of work areas. Please re-enter.");
+*/
+           ex$message(msgnumb=GR_E_InvldNumWrkAreas,buff=temp_text1);
+           sts = FIg_set_text(form,10,temp_text1);
+           if ( sts != FI_SUCCESS )
+            {
+             fprintf(stderr,"error in FIg_set_text\n");
+            }
+/*
+            sts=calculate_cursor_pos(form,FIELD_37,temp_text,&cursor_loc);
+            if ( sts != FI_SUCCESS )
+             {
+              fprintf(stderr,"error in calculate_cursor_pos()\n");
+             }
+            FIfld_pos_cursor(form,FIELD_37,0,0,0,0,cursor_loc,cursor_loc);
+*/
+          }
+          else
+          {
+           dprintf((stderr,"# of work areas is %s\n",temp_text));
+          }
+        }
+        else
+        {
+          dprintf((stderr,"error in FIfld_get_text WORK AREAS field\n"));
+        }
+        break;
+      }
+
+      default:
+      {
+        dprintf((stderr, "gadget = %d ,val=%d\n",
+            form_st.gadget_label,form_st.value));
+        break;
+      }
+
+    } /***  End F_notify switch( form_st.gadget_label ) on MASTER ***/
+    break;
+   } /*** End case FORM (MASTER) ***/
+
+   case FORM1:    /*** SUB Form ***/
+   {
+    switch ( form_st.gadget_label )
+    {
+      case FI_ACCEPT:
+      {
+        dprintf((stderr,"ACCEPT button on SUBFORM\n"));
+        FIg_erase(sub_form,GROUP_1a);
+        FIg_erase(sub_form,GROUP_2a);
+        FIg_erase(sub_form,GROUP_3a);
+        FIg_erase(sub_form,TOGGLE_22);
+
+        sts = FIg_set_state_off(sub_form,Which_SUB_Command);
+        if ( sts != FI_SUCCESS )
+        {
+          fprintf(stderr,"error FIg_set_state_off %d\n",Which_SUB_Command);
+        }
+
+        sts = FIg_set_state_off(sub_form,FI_ACCEPT);
+        if ( sts != FI_SUCCESS )
+        {
+          fprintf(stderr,"error FIg_set_state_off FI_ACCEPT\n");
+        }
+
+        FIf_erase( sub_form);
+
+        FIf_display ( form );
+        dprintf((stderr,"FTBLeave=%d\n",FTBLeave));
+        break; /**** End of Accept case on SUB ****/
+      }
+
+      case FI_CANCEL:
+      {
+        dprintf((stderr,"CANCEL button on SUBFORM\n"));
+        FIg_erase(sub_form,GROUP_1a);
+        FIg_erase(sub_form,GROUP_2a);
+        FIg_erase(sub_form,GROUP_3a);
+        FIg_erase(sub_form,TOGGLE_22);
+
+        sts = FIg_set_state_off(sub_form,Which_SUB_Command);
+        if ( sts != FI_SUCCESS )
+        {
+          fprintf(stderr,"error FIg_set_state_off %d\n",Which_SUB_Command);
+        }
+
+        sts = FIg_set_state_off(sub_form,FI_CANCEL);
+        if ( sts != FI_SUCCESS )
+        {
+          fprintf(stderr,"error FIg_set_state_off FI_CANCEL\n");
+        }
+
+        FIf_erase( sub_form);
+
+        FIf_display ( form );
+        dprintf((stderr,"FTBLeave=%d\n",FTBLeave));
+        break; /**** End of Cancel case on SUB ****/
+      }
+
+      case FI_EXECUTE:
+      {
+        dprintf((stderr,"EXECUTE button SUBFORM\n"));
+        FTBExecute=TRUE;
+
+        FIg_erase(sub_form,GROUP_1a);
+        FIg_erase(sub_form,GROUP_2a);
+        FIg_erase(sub_form,GROUP_3a);
+        FIg_erase(sub_form,TOGGLE_22);
+
+        sts = FIg_set_state_off(sub_form,Which_SUB_Command);
+        if ( sts != FI_SUCCESS )
+        {
+          fprintf(stderr,"error FIg_set_state_off %d\n",Which_SUB_Command);
+        }
+
+        sts = FIg_set_state_off(sub_form,FI_EXECUTE);
+        if ( sts != FI_SUCCESS )
+        {
+          fprintf(stderr,"error FIg_set_state_off FI_EXECUTE\n");
+        }
+
+        dprintf((stderr,"FTBExecute=%d\n",FTBExecute));
+        dprintf((stderr,"Which_SUB_Command==%d\n",Which_SUB_Command));
+        break; /**** End of Execute case on SUB ****/
+      }
+
+      case BUTTON_12:
+      {
+        Which_SUB_Command = BUTTON_12;
+        ex$message(msgnumb=GR_I_EntFlfl,buff=loc_buff);
+        sts = FIg_set_text(sub_form,10,loc_buff);
+        if ( sts != FI_SUCCESS )
+        {
+          fprintf(stderr,"error in FIg_set_text\n");
+        }
+
+        FIg_erase(sub_form,GROUP_2a);
+        FIg_erase(sub_form,GROUP_3a);
+        FIg_erase(sub_form,TOGGLE_22);
+        FIg_display(sub_form,GROUP_1a);
+
+        sts=calculate_cursor_pos(sub_form,FIELD_16,temp_text,&cursor_loc);
+        FIfld_pos_cursor(sub_form,FIELD_16,0,0,0,0,cursor_loc,cursor_loc);
+
+        break;
+      }
+
+      case FIELD_16:
+      {
+        sts = FIg_get_text(sub_form,FIELD_16,temp_text);
+        if ( sts == FI_SUCCESS )
+        {
+          if ( strlen(temp_text) <= 0 )
+          {
+            ex$message(msgnumb=GR_I_EntFlfl,buff=temp_text1);
+            sts = FIg_set_text(sub_form,10, temp_text1);
+            if ( sts != FI_SUCCESS )
+            {
+              fprintf(stderr,"error in FIg_set_text\n");
+            }
+          }
+          else
+          {
+            sts = FIg_get_state(sub_form,BUTTON_12,&g_state);
+            if ( sts != FI_SUCCESS )
+            {
+              fprintf(stderr,"error in FIg_get_state\n");
+            }
+            dprintf((stderr,"FONT LIB FILE is '%s'\n",temp_text));
+            if (g_state == 1)
+            {
+              if( access( temp_text, 0 ) == 0 )
+              {
+                dprintf((stderr,"FONT LIB file (%s) exists.\n",temp_text));
+/*            sprintf(temp_text1, "Can not overwrite. Enter new filename."); */
+                ex$message(msgnumb=GR_E_CantOvrwrtfl,buff=temp_text1);
+                sts = FIg_set_text(sub_form,10,temp_text1);
+                if ( sts != FI_SUCCESS )
+                {
+                  fprintf(stderr, "FIg_set_text error for FIELD_16\n");
+                }
+/*
+                sts=calculate_cursor_pos(sub_form,FIELD_16,temp_text,
+                    &cursor_loc);
+                FIfld_pos_cursor(sub_form,FIELD_16,0,0,0,0,cursor_loc,
+                    cursor_loc);
+*/
+              }
+              else
+              {
+                dprintf((stderr,"FONT LIB FILE '%s' is ok.\n", temp_text));
+                sts = FIg_set_text(sub_form,10," ");
+                if ( sts != FI_SUCCESS )
+                {
+                  fprintf(stderr, "error in FIg_set_text\n");
+                }
+              }
+            }
+            else
+            {
+              if( access( temp_text, 0 ) == 0 )
+              {
+                dprintf((stderr,"FONT LIB (%s) exists. thats OK\n",
+                    temp_text));
+                sts = FIg_set_text(sub_form,10," ");
+                if ( sts != FI_SUCCESS )
+                {
+                  fprintf(stderr, "error in FIg_set_text\n");
+                }
+              }
+              else
+              {
+                dprintf((stderr,
+                 "FONT LIB (%s) doesnt exist. thats not OK\n", temp_text));
+/*                sprintf(temp_text1, "File does not exist. Re-enter name.");
+*/
+                ex$message(msgnumb=GR_E_FlNotExstRe,buff=temp_text1);
+                sts = FIg_set_text(sub_form, 10,temp_text1);
+                if ( sts != FI_SUCCESS )
+                {
+                  fprintf(stderr, "FIg_set_text error for FIELD_16\n");
+                }
+/*
+                sts=calculate_cursor_pos(sub_form,FIELD_16,temp_text,
+                    &cursor_loc);
+                FIfld_pos_cursor(sub_form,FIELD_16,0,0,0,0,cursor_loc,
+                    cursor_loc);
+*/
+              }
+            }
+          }
+        } /* END of if SUCCESS **/
+        else
+        {
+          fprintf(stderr, "FIg_get_text error for FIELD_16\n");
+        }
+        break;
+      }
+
+      case BUTTON_13:
+      {
+        Which_SUB_Command = BUTTON_13;
+        ex$message(msgnumb=GR_I_EntFlClFnum,buff=loc_buff);
+        sts = FIg_set_text(sub_form,10,loc_buff);
+        if ( sts != FI_SUCCESS )
+        {
+          fprintf(stderr,"error in FIg_set_text\n");
+        }
+        FIg_erase(sub_form,TOGGLE_22);
+        FIg_display(sub_form,GROUP_1a);
+        FIg_display(sub_form,GROUP_2a);
+        FIg_display(sub_form,GROUP_3a);
+
+        sts=calculate_cursor_pos(sub_form,FIELD_16,temp_text,&cursor_loc);
+        FIfld_pos_cursor(sub_form,FIELD_16,0,0,0,0,cursor_loc,cursor_loc);
+
+        break;
+      }
+
+      case BUTTON_23:
+      {
+        Which_SUB_Command = BUTTON_23;
+        ex$message(msgnumb=GR_I_EntFlClFnum,buff=loc_buff);
+        sts = FIg_set_text(sub_form,10,loc_buff);
+        if ( sts != FI_SUCCESS )
+        {
+          fprintf(stderr,"error in FIg_set_text\n");
+        }
+
+        FIg_erase(sub_form,TOGGLE_22);
+        FIg_display(sub_form,GROUP_1a);
+        FIg_display(sub_form,GROUP_2a);
+        FIg_display(sub_form,GROUP_3a);
+
+        sts=calculate_cursor_pos(sub_form,FIELD_16,temp_text,&cursor_loc);
+        FIfld_pos_cursor(sub_form,FIELD_16,0,0,0,0,cursor_loc,cursor_loc);
+
+        break;
+      }
+
+      case BUTTON_24:
+      {
+        Which_SUB_Command = BUTTON_24;
+        ex$message(msgnumb=GR_I_EntFlflFnum,buff=loc_buff);
+        sts = FIg_set_text(sub_form,10,loc_buff);
+        if ( sts != FI_SUCCESS )
+        {
+          fprintf(stderr,"error in FIg_set_text\n");
+        }
+
+        FIg_erase(sub_form,GROUP_2a);
+        FIg_erase(sub_form,TOGGLE_22);
+        FIg_display(sub_form,GROUP_1a);
+        FIg_display(sub_form,GROUP_3a);
+
+        sts=calculate_cursor_pos(sub_form,FIELD_16,temp_text,&cursor_loc);
+        FIfld_pos_cursor(sub_form,FIELD_16,0,0,0,0,cursor_loc,cursor_loc);
+
+        break;
+      }
+
+      case BUTTON_14:
+      {
+        Which_SUB_Command = BUTTON_14;
+        ex$message(msgnumb=GR_I_EntFlfl,buff=loc_buff);
+        sts = FIg_set_text(sub_form,10,loc_buff);
+        if ( sts != FI_SUCCESS )
+        {
+          fprintf(stderr,"error in FIg_set_text\n");
+        }
+
+        FIg_erase(sub_form,GROUP_2a);
+        FIg_erase(sub_form,GROUP_3a);
+        FIg_display(sub_form,GROUP_1a);
+        FIg_display(sub_form,TOGGLE_22);
+
+        sts=calculate_cursor_pos(sub_form,FIELD_16,temp_text,&cursor_loc);
+        FIfld_pos_cursor(sub_form,FIELD_16,0,0,0,0,cursor_loc,cursor_loc);
+
+        break;
+      }
+
+      case TOGGLE_19:
+      {
+        sts = FIg_get_state(sub_form,TOGGLE_19,&t_state);
+        if ( sts != FI_SUCCESS )
+        {
+          fprintf(stderr,"error in FIg_get_state for TOGGLE_19\n");
+        }
+        dprintf((stderr,"TOGGLE 19, state=%d\n",t_state));
+        if (( sts == FI_SUCCESS ) && ( t_state == 0 ))
+        {
+          dprintf((stderr,"toggle 19,state=%d which is OK.\n", t_state));
+          sts = FIg_set_text(sub_form,10," ");
+          if ( sts != FI_SUCCESS )
+          {
+            fprintf(stderr,"FIg_set_text error in TOGGLE 19\n");
+          }
+        }
+        else
+        {
+          dprintf((stderr,"toggle 19,state=%d NOT OK.\n", t_state));
+/*          sprintf(temp_text,"Symbol Font Class not impemented."); */
+          ex$message(msgnumb=GR_E_FntClassNImp,buff=temp_text);
+          sts = FIg_set_text(sub_form,10,&temp_text[0]);
+          if ( sts != FI_SUCCESS )
+          {
+            fprintf(stderr,"FIg_set_text error in TOGGLE 19\n");
+          }
+          /*** for loop to wait a few seconds before setting the
+               toggle back to the original value ***/
+          for ( i = 0; i < 2000; i = i + 1 )
+          {
+            dprintf((stderr,"do nothing important loop\n"));
+          }
+          sts = FIg_set_state_off(sub_form,TOGGLE_19);
+          if ( sts != FI_SUCCESS )
+          {
+            fprintf(stderr,"error FIg_set_state_on toggle_19\n");
+          }
+          sts = FIg_set_text(sub_form,10," ");
+          if ( sts != FI_SUCCESS )
+          {
+            fprintf(stderr,"FIg_set_text error in TOGGLE 19\n");
+          }
+        }
+        break;
+      }
+    } /*** End F_notify switch( form_st.gadget_label ) on SUB ***/
+    break;
+   } /*** End case FORM1 (SUB) ***/
+
+   case FORM2:    /*** Rev Form ***/
+   {
+    switch ( form_st.gadget_label )
+    {
+      case FI_ACCEPT:
+      {
+       Which_REV_Command=FI_ACCEPT;
+       dprintf((stderr,"ACCEPT button on REVFORM\n"));
+        sts = FIg_set_state_off(rev_form,FI_ACCEPT);
+        if ( sts != FI_SUCCESS )
+        {
+          fprintf(stderr,"error FIg_set_state_off FI_ACCEPT\n");
+        }
+        FIf_erase( rev_form);
+          dprintf((stderr,"In FI_ACCEPT case;row=%d\n",row));
+          for ( i=0; i < row; i = i + 1)
+            {
+              sts = FIfld_set_text(rev_form,REV_FIELD,i,0," ",0);
+              if ( sts != FI_SUCCESS )
+                {
+                dprintf((stderr,"ERROR: erasing the rev_field\n"));
+                fprintf(stderr,"Error FIfld_set_text(rev) erasing\n");
+                }
+            } /* END of for ( i=0; i > row; i = i + 1) */
+        FIf_display ( sub_form );
+        dprintf((stderr,"FTBLeave=%d\n",FTBLeave));
+        break; /**** End of Accept case on REV FORM ****/
+      }
+    } /*** End F_notify switch( form_st.gadget_label ) on REV ***/
+    break;
+   } /*** End case FORM2 (REV) ***/
+
+  break; /* break for F_notify switch ( form_st.form_label ) */
+  } /***  End F_notify switch ( form_st.form_label ) ***/
+
+  ci$put( response = MOVE_ON );
+
+  dprintf((stderr,"end of form_notification()\n"));
+
+} /*** END of form_notification() Master Form ***/
+
+/*** form init ***/
+form_init()
+ {
+/*  double rds[1024/8];
+  char   * response_data; */
+  int    sts,i;
+
+  ex$message(field=MESSAGE_FIELD,msgnumb=GR_I_CreFont);
+  status("");
+
+  dprintf((stderr,"performing INIT\n"));
+
+  FTBExecute=FALSE;
+  FTBLeave=FALSE;
+  Which_Command = 0;
+/*  response_data = (char *) rds; */
+
+  /*  Create Master form (read form file into memory). */
+  form = NULL;
+  sts = FIf_new ( FORM, "GRFntBldr", ci_notification, &form );
+  if ( sts || form == NULL )
+  {
+    fprintf( stderr, 
+      "\nError initializing form GRFntBldr: form = %x, sts = %d\n",
+      form, sts );
+    status("");
+    exit;
+  }
+
+  /* Let the form know who to notify when a gadget is updated. */
+  sts = FIf_set_cmd_oid_os ( form, MY_ID, OM_Gw_current_OS );
+  if ( sts )
+  {
+    fprintf(stderr,"ERROR: FIf_set_cmd_oid_os() sts = %d\n",sts);
+    status("");
+    exit;
+  }
+  /*    DON'T need to set the location
+  sts = FIf_set_location(form,350,70);
+  */
+  /*  Create SUB form (read form file into memory). */
+  sub_form = NULL;
+  sts = FIf_new ( FORM1, "GRRnFontLib", ci_notification, &sub_form );
+  if ( sts || sub_form == NULL )
+  {
+    fprintf( stderr, 
+      "\nError initializing form GRRnFontLib: sub_form = %x, sts = %d\n",
+      sub_form, sts );
+    status("");
+    exit;
+  }
+
+  /* Let the form know who to notify when a gadget is updated. */
+  sts = FIf_set_cmd_oid_os ( sub_form, MY_ID, OM_Gw_current_OS );
+  if ( sts )
+  {
+    fprintf(stderr,"ERROR: FIf_set_cmd_oid_os() sts = %d\n",sts);
+    status("");
+    exit;
+  }
+  sts = FIf_set_location(sub_form,300,160);
+  if ( sts )
+  {
+    fprintf(stderr,"ERROR: FIf_set_location() on sub_form sts = %d\n",sts);
+    status("");
+    exit;
+  }
+
+  /*  Create SUB form REVIEW FONTLIB (read form file into memory). */
+  rev_form = NULL;
+  sts = FIf_new ( FORM2, "GRFntLst", ci_notification, &rev_form );
+  if ( sts || rev_form == NULL )
+  {
+    fprintf( stderr, 
+      "\nError initializing form GRFntLst: rev_form = %x, sts = %d\n",
+      rev_form, sts );
+    status("");
+    exit;
+  }
+
+  /* Let the form know who to notify when a gadget is updated. */
+  sts = FIf_set_cmd_oid_os ( rev_form, MY_ID, OM_Gw_current_OS );
+  if ( sts )
+  {
+    fprintf(stderr,"ERROR: FIf_set_cmd_oid_os() sts = %d\n",sts);
+    status("");
+    exit;
+  }
+
+  sts = FIf_display ( form );
+  if ( sts )
+  {
+    fprintf(stderr,"ERROR: FIf_display() on MASTER sts = %d\n",sts);
+    status("");
+    exit;
+  }
+
+ } /* End of form_init */
+
+/****************************************************************/
+/* main() -                                                     */
+/****************************************************************/
+main()
+{
+long   event;
+double temp_value;
+int    response, sts, t_state, work_areas, g_state, i;
+int    resp, ret1, size, sel_flag, r_pos, font_numb;
+char   temp_text[ 256 + 1 ], temp_text1[ 256 + 1 ], temp_str[ 256 + 1 ];
+char   cmd_str[ 1024 + 1 ], cell_file[ 256 + 1 ], ftb_file[ 256 + 1 ];
+char   font_lib[ 256 + 1 ], type_file[ 256 + 1 ], user_font[ 256 + 1 ];
+char   abs_path[ 256 + 1 ], app_path[ 256 + 1 ], ftb_path[ 256 + 1 ];
+char   temp_text2[ 256 + 1 ], line[80], proc_mess[40], loc_buff[80];
+char   del_flag[10];
+FILE   *font_tbl,*pipe;
+
+  ex$message(msgnumb=GR_I_Processing,buff=proc_mess);
+  rev_exit_flag = 0;
+  test_wakeup = 0;
+  dprintf((stderr,"In Main\n"));
+  dprintf((stderr,"in MAIN() test_wakeup = %d\n",test_wakeup));
+
+  /**************************************************************/
+  /* Set the PATH variables.                                    */
+  /**************************************************************/
+  EX_getpath( 0, app_path, 1 + 256, EX_CONFIG_PATH );
+
+  for ( i = 0 ;; i = i + 1 )
+  {
+    *ftb_path=NULL;
+    *abs_path=NULL;
+    if( EX_getpath( i, abs_path, 1 + 256, EX_PRODUCT_PATH ))
+    {
+      strcpy( ftb_path, abs_path ) ;
+      strcat( ftb_path, "/bin/GRsend" ) ;
+      if( access( ftb_path, 5 ) == 0 )
+      {
+        dprintf((stderr,"Path for Ftb in product_data file is:%s\n",
+            abs_path));
+        break;
+      }
+    }
+    else
+    {
+      fprintf(stderr,"Can not find path for Ftb in product_data file.\n");
+      fprintf(stderr,"     Looking in %s\n",ftb_path);
+    }
+  }
+
+ /*** initialize forms ***/
+ form_init();
+ dprintf((stderr,"after FORM_INIT() test_wakeup = %d\n",test_wakeup));
+ 
+  /*** BEGIN While ************************************************/
+  /****************************************************************/
+  /* Loop until the user selects either CANCEL or ACCEPT gadget.  */
+  /* The form_notification routine sets FTBLeave = TRUE to signal */
+  /* termination.                                                 */
+  /****************************************************************/
+  /**** Check the value of FTBLeave to exit ****/
+  while (FTBLeave != TRUE)
+  {
+    dprintf((stderr,"TOP of Main LOOP\n"));
+    dprintf((stderr,"FTBLeave=%d\n",FTBLeave));
+    dprintf((stderr,"FTBExecute=%d\n",FTBExecute));
+
+
+    FTBExecute=FALSE;
+
+    ex$message(msgnumb=GR_I_SelOptFrm,buff=loc_buff);
+    ci$get(response=&response, prompt=loc_buff);
+
+    dprintf((stderr,"after ci$get gadget=%d\n",form_st.gadget_label));
+
+    if ( FTBExecute == TRUE )
+    {
+      switch ( form_st.form_label )
+      {
+       case FORM:
+       {
+        switch ( Which_Command )
+        {
+          case BUTTON_12: /*** Create Graphics Command ***/
+          {
+            dprintf((stderr,"CASE 12 Which_Command=%d\n",Which_Command));
+            sts = FIg_set_text(form,10,"Create Graphics");
+            if ( sts != FI_SUCCESS )
+            {
+              fprintf(stderr,"EXECUTE BUTTON_12: FIg_set_text error.\n");
+            }
+
+            sts = FIg_get_state(form,TOGGLE_16,&t_state);
+            dprintf((stderr,"toggle=%d,state=%d\n",TOGGLE_16,t_state));
+            if (( sts == FI_SUCCESS ) && ( t_state == 0 ))
+            {
+              dprintf((stderr,"set del_flag to Yes\n"));
+              strcpy(del_flag, "y");
+            }
+            else
+            {
+              dprintf((stderr,"set del_flag to No\n"));
+              strcpy(del_flag, "n");
+            }
+            sts = FIg_get_value(form,FIELD_37,&temp_value);
+            work_areas = (int) temp_value;
+            if (( sts != FI_SUCCESS ) || ( work_areas < 0 )
+                                      || ( work_areas > 260 ))
+            {
+              dprintf((stderr,"Error field_37=%d\n",work_areas));
+              ex$message(msgnumb=GR_E_InvldNumWrkAreas,buff=loc_buff); 
+              sts = FIg_set_text(form,10,loc_buff);
+              if ( sts != FI_SUCCESS )
+              {
+                fprintf(stderr,"EXECUTE BUTTON_12: FIg_set_text error.\n");
+              }
+              sts=calculate_cursor_pos(form,FIELD_37,temp_text,&cursor_loc);
+              if ( sts != FI_SUCCESS )
+               {
+                fprintf(stderr,"error in calculate_cursor_pos()\n");
+               }
+              FIfld_pos_cursor(form,FIELD_37,0,0,0,0,cursor_loc,cursor_loc);
+
+              break;
+            }
+            else
+            {
+              dprintf((stderr,"before GRCrGr %s %d\n",del_flag,work_areas));
+              sts = FIg_set_text(form,10,proc_mess);
+              if ( sts != FI_SUCCESS )
+              {
+                fprintf(stderr,"EXECUTE BUTTON_12: FIg_set_text error.\n");
+              }
+
+              begincmd_key("CIAcPPCm");
+              ci$put( string = "GRCrGr" );
+              ci$put( string = del_flag );
+              ci$put( string = itoa(work_areas) );
+              endcmd();
+
+              dprintf((stderr,"after GRCrGr call\n"));
+            }
+            FIg_erase(form,TOGGLE_16);
+            FIg_erase(form,FIELD_37);
+            FIg_erase(form,TEXT_38);
+            sts = FIg_set_state_off(form,BUTTON_12); /* Pop up button 12 */
+            if ( sts != FI_SUCCESS )
+            {
+              fprintf(stderr,"EXEC BTN_12: FIg_set_state_off error.\n");
+            }
+            ex$message(msgnumb=GR_I_CreGrFin,buff=loc_buff);
+            sts = FIg_set_text(form,10,loc_buff);
+            if ( sts != FI_SUCCESS )
+            {
+              fprintf(stderr,"EXECUTE BTN_12: FIg_set_text error.\n");
+            }
+            status("");
+            break;
+          }
+
+          case BUTTON_13: /*** Create Graphics Using Cell File Command ***/
+          {
+            dprintf((stderr,"CASE 13 Which_Command=%d\n",Which_Command));
+           
+            ex$message(msgnumb=GR_I_CreGrClFl,buff=loc_buff); 
+            sts = FIg_set_text(form,10,loc_buff);
+            if ( sts != FI_SUCCESS )
+            {
+              fprintf(stderr,"Error FIfld_set_text\n");
+            }
+
+            sts = FIg_get_state(form,TOGGLE_16,&t_state);
+            dprintf((stderr,"toggle=%d,state=%d\n",TOGGLE_16,t_state));
+            if (( sts == FI_SUCCESS ) && ( t_state == 0 ))
+            {
+              dprintf((stderr,"set del_flag to Yes\n"));
+              strcpy(del_flag, "y");
+            }
+            else
+            {
+              dprintf((stderr,"set del_flag to No\n"));
+              strcpy(del_flag, "n");
+            }
+
+            /*** Get the Cell File name in temp_text ***/
+            sts = FIfld_get_text(form,FIELD_15,0,0,256,temp_text,
+                  &sel_flag,&r_pos);
+            if ( sts != FI_SUCCESS )
+            {
+              fprintf(stderr,"Error FIfld_get_text\n");
+            }
+            if( access( temp_text, 0 ) != 0 )
+            {
+              dprintf((stderr,"Cell File (%s) doesn't exist.\n",temp_text));
+/*            sprintf(temp_text1,"Cell File (%s) doesn't exist.",temp_text); */
+              
+              ex$message(msgnumb=GR_E_ClFleExstNot,buff=temp_text1,var=temp_text);
+              sts = FIg_set_text(form,10,temp_text1);
+              if ( sts != FI_SUCCESS )
+              {
+                fprintf(stderr,"error in FIg_set_text\n");
+              }
+              FIg_erase(form,GROUP_1);
+              /* Pop up button 13 */
+              sts = FIg_set_state_off(form,BUTTON_13);
+              if ( sts != FI_SUCCESS )
+              {
+                fprintf(stderr,"error FIg_set_state_off btn_13\n");
+              }
+              break;
+            }
+            else
+            {
+              strcpy( cell_file,temp_text );
+
+              dprintf((stderr,"before GRCrFnFl %s %d\n",del_flag,work_areas));
+              sts = FIg_set_text(form,10,proc_mess);
+              if ( sts != FI_SUCCESS )
+              {
+                fprintf(stderr,"EXECUTE BUTTON_13: FIg_set_text error.\n");
+              }
+
+              begincmd_key("CIAcPPCm");
+              ci$put( string = "GRCrGrCl" );
+              ci$put( string = del_flag );
+              ci$put( string = cell_file );
+              endcmd();
+
+              dprintf((stderr,"after GRCrGr call\n"));
+            }
+
+            dprintf((stderr,"after create graphics cell\n"));
+           
+            ex$message(msgnumb=GR_I_CreGrFin,buff=loc_buff);
+            sts = FIg_set_text(form,10,loc_buff);
+            if ( sts != FI_SUCCESS )
+            {
+              fprintf(stderr,"error in FIg_set_text\n");
+            }
+            FIg_erase(form,GROUP_1);
+            sts = FIg_set_state_off(form,BUTTON_13); /* Pop up button 13 */
+            if ( sts != FI_SUCCESS )
+            {
+              fprintf(stderr,"EXEC BTN_13: FIg_set_state_off error.\n");
+            }
+            status("");
+            break;
+          }
+
+          case BUTTON_17:  /*** Create FONTLIB File Command  ***/
+          {
+            dprintf((stderr,"CASE 17 Which_Command=%d\n",Which_Command));
+            ex$message(msgnumb=GR_I_CreFlfl,buff=loc_buff);
+            sts = FIg_set_text(form,10,loc_buff);
+  
+            /*** Get the FONTLIB File name in temp_text ***/
+            sts = FIfld_get_text(form,FIELD_22,
+                0,0,256, temp_text,&sel_flag,&r_pos);
+            if ( sts != FI_SUCCESS )
+            {
+              fprintf(stderr,"Error FIfld_get_text\n");
+            }
+            if( access( temp_text, 0 ) != 0 )
+            {
+              dprintf((stderr,"FONTLIB File (%s) doesn't exist.\n",temp_text));
+              FIg_erase(form,GROUP_2);
+              sts = FIg_set_state_off(form,BUTTON_17); /* Pop up btn 17 */
+              if ( sts != FI_SUCCESS )
+              {
+                fprintf(stderr,"error FIg_set_state_off button_17\n");
+              }
+            }
+            sts = FIg_set_text(form,10,proc_mess);
+            if ( sts != FI_SUCCESS )
+            {
+              fprintf(stderr,"error in FIg_set_text\n");
+            } 
+
+            strcpy( ftb_file, temp_text );
+           /** Replace FTBCrClFl with GRCrFnFl **/
+            dprintf((stderr,"before call to GRCrFnFl.\n"));
+            begincmd_key("CIAcPPCm");
+            ci$put(string="GRCrFnFl");
+            ci$put(string=ftb_file);
+            endcmd();
+            dprintf((stderr,"after call to GRCrFnFl.\n"));
+/*
+            ex$message(msgnumb=GR_I_CreFlflFin,buff=loc_buff);
+*/
+		
+            sts = FIg_set_text(form,10,"                 ");
+            if ( sts != FI_SUCCESS )
+            {
+              fprintf(stderr,"error in FIg_set_text\n");
+            }
+
+            FIg_erase(form,GROUP_2);
+            FIg_erase(form,TOGGLE_39);
+            FIg_erase(form,NOTE_1);
+            sts = FIg_set_state_off(form,BUTTON_17); /* Pop up btn 17 */
+            if ( sts != FI_SUCCESS )
+            {
+              fprintf(stderr,"EXEC BTN_17: FIg_set_state_off error.\n");
+            }
+            break;
+          }
+
+          case BUTTON_18:  /*** Font Library Commands  ***/
+          {
+            dprintf((stderr,"CASE 18 Which_Command=%d\n",Which_Command));
+  
+            FIf_erase(form);
+            dprintf((stderr,"before call to GRFlib.\n"));
+            ex$message(msgnumb=GR_I_SelFlOpt,buff=loc_buff);
+            sts = FIg_set_text(sub_form,10,loc_buff);
+            if ( sts != FI_SUCCESS )
+            {
+              fprintf(stderr,"error in FIg_set_text\n");
+            }
+
+            FIf_display ( sub_form );
+    /*** Put the GRFlib processing code HERE ***/
+           dprintf((stderr,"after call to GRFlib.\n"));
+
+            sts = FIg_set_text(form,10," ");
+            if ( sts != FI_SUCCESS )
+            {
+              fprintf(stderr,"error in FIg_set_text\n");
+            }
+
+            sts = FIg_set_state_off(form,BUTTON_18); /* Pop up btn 18 */
+            if ( sts != FI_SUCCESS )
+            {
+              fprintf(stderr,"error FIg_set_state_off button_18\n");
+            }
+            break;
+          } /** End of case BUTTON_18 in main ***/
+
+          case BUTTON_19:  /*** Create Typeface File Command ***/
+          {
+
+            dprintf((stderr,"CASE 19 Which_Command=%d\n",Which_Command));
+            ex$message(msgnumb=GR_I_CreateTffl,buff=loc_buff);
+            sts = FIg_set_text(form,10,loc_buff);
+
+            /*** Get the FontLib name in temp_text ***/
+            /*** GET FontLib from FIELD_22 instead of 28 ***/
+            sts = FIfld_get_text(form,FIELD_22,0,0,256,temp_text,
+                  &sel_flag,&r_pos);
+            if ( sts != FI_SUCCESS )
+            {
+              fprintf(stderr,"Error FIfld_get_text\n");
+            }
+            /*** Get Fillable response ***/
+            sts = FIg_get_state(form,TOGGLE_41,&fill_tf);
+            if ( sts != FI_SUCCESS )
+            {
+              fprintf(stderr,"Error FIg_get_value\n");
+            }
+           
+            if( access( temp_text, 0 ) != 0 )
+            {
+              dprintf((stderr,"FONT LIB (%s) doesn't exist.\n",temp_text));
+/*              sprintf(temp_text1,"FONT LIB (%s) doesn't exist.",temp_text); */
+              ex$message(msgnumb=GR_E_FlDontExst,buff=temp_text1,var=temp_text);
+              sts = FIg_set_text(form,10,temp_text1);
+              if ( sts != FI_SUCCESS )
+              {
+                fprintf(stderr,"error in FIg_set_text\n");
+              }
+
+              FIg_erase(form,GROUP_3);
+              FIg_erase(form,GROUP_5);
+              FIg_erase(form,TOGGLE_41);
+              FIg_erase(form,TOGGLE_39);
+
+              sts = FIg_set_state_off(form,BUTTON_19); /* Pop up btn 19 */
+              if ( sts != FI_SUCCESS )
+              {
+                fprintf(stderr,"error FIg_set_state_off button_19\n");
+              }
+              status("");
+              break;
+            }
+            strcpy( font_lib, temp_text );
+
+            /*** Get the Font Number in temp_value ***/
+            sts = FIfld_get_value(form,FIELD_26,0,0,&temp_value,
+                  &sel_flag,&r_pos);
+            if ( sts != FI_SUCCESS )
+            {
+              fprintf(stderr,"Error FIfld_get_value\n");
+            }
+            font_numb = (int) temp_value;
+            if ((font_numb < 0) || (font_numb > 127))
+            {
+              dprintf((stderr,"FONT num. (%d) out of range.\n",font_numb));
+/*              sprintf(temp_text1,"FONT num. (%d) out of range.",font_numb);
+*/
+              ex$message(msgnumb=GR_E_FnOutofRng,buff=temp_text1,var=font_numb);
+              sts = FIg_set_text(form,10,temp_text1);
+              if ( sts != FI_SUCCESS )
+              {
+                fprintf(stderr,"error in FIg_set_text\n");
+              }
+
+              FIg_erase(form,GROUP_3);
+              FIg_erase(form,GROUP_5);
+              FIg_erase(form,TOGGLE_41);
+              FIg_erase(form,TOGGLE_39);
+
+              sts = FIg_set_state_off(form,BUTTON_19); /* Pop up btn 19 */
+              if ( sts != FI_SUCCESS )
+              {
+                fprintf(stderr,"error FIg_set_state_off button_19\n");
+              }
+              status("");
+              break;
+            }
+
+            /*** Get the Typeface File name in temp_text1 ***/
+            sts = FIfld_get_text(form,FIELD_24,0,0,256,temp_text1,
+                  &sel_flag,&r_pos);
+            if ( sts != FI_SUCCESS )
+            {
+              fprintf(stderr,"Error FIfld_get_text\n");
+            }
+            strcpy( type_file, temp_text1 );
+            if (strlen(type_file) <= 0 )
+            {
+                ex$message(msgnumb=GR_E_NoTfflSpec,buff=loc_buff);
+                FIg_set_text(form,10,loc_buff);
+                break;
+            }
+
+            sts = FIg_get_state(form,TOGGLE_39,&t_state);
+            dprintf((stderr,"toggle=%d,state=%d\n",TOGGLE_39,t_state));
+            if (( sts == FI_SUCCESS ) && ( t_state == 1 ))
+            {
+              dprintf((stderr,"toggle=%d,state=%d\n",TOGGLE_16,t_state));
+/*             sprintf(temp_text1, "Do not overwrite file,Re-enter file.");
+*/
+              ex$message(msgnumb=GR_E_CantOvrwrtfl,buff=temp_text1);
+              sts = FIg_set_text(form,10,temp_text1);
+              if ( sts != FI_SUCCESS )
+              {
+                fprintf(stderr,"error in FIg_set_text\n");
+              }
+
+              FIg_erase(form,GROUP_3);
+              FIg_erase(form,GROUP_5);
+              FIg_erase(form,TOGGLE_41);
+              FIg_erase(form,TOGGLE_39);
+
+              sts = FIg_set_state_off(form,BUTTON_19); /* Pop up btn 19 */
+              if ( sts != FI_SUCCESS )
+              {
+                fprintf(stderr,"error FIg_set_state_off button_19\n");
+              }
+              sts = FIg_set_state_off(form,TOGGLE_39);
+              if ( sts != FI_SUCCESS )
+              {
+                fprintf(stderr,"error FIg_set_state_on toggle_39\n");
+              }
+              status(" ");
+              break;
+            }
+
+
+            /****  Prepare message fields  ****/
+            status(" ");
+            prompt(" ");
+
+            /**** Load a temporary variable with the GRChFn info ****/
+            dprintf((stderr,"%s/bin/GRChFn -l %s -n %d -o %s\n",
+                abs_path, font_lib,font_numb,type_file));
+            sprintf(cmd_str,"%s/bin/GRChFn -l %s -n %d -o %s",
+                abs_path, font_lib,font_numb,type_file);
+
+            /** Call sh & envoke GRChFn with temporary info **/
+            sts = sh(cmd_str);
+
+            if ( sts != 0 )
+            {			
+/*              sprintf(temp_text1,"Cannot load font number %d from FONTLIB", 
+		    font_numb);
+*/
+
+              ex$message(msgnumb=GR_E_CantLdFn,buff=temp_text1,var=font_numb);
+              sts = FIg_set_text(form,10,temp_text1);
+              if ( sts != FI_SUCCESS )
+              {
+                    fprintf(stderr,"error in FIg_set_text\n");
+              }
+              status("");
+              break;
+	    }
+
+            /****  Prepare message fields  ****/
+            status(" ");
+            prompt(" ");
+
+            /**** Load a temporary variable with the GRflibconv info ****/
+            dprintf((stderr,"%s/bin/GRflibconv -l %s -n %d -o %s\n",
+                abs_path, font_lib,font_numb,type_file));
+            sprintf(cmd_str,"%s/bin/GRflibconv -l %s -n %d -o %s",
+                abs_path, font_lib,font_numb,type_file);
+
+            /** Call sh & envoke GRflibconv with temporary info **/
+            sts = sh(cmd_str);
+
+            if ( sts != 0 )
+            {			
+              fprintf(stderr,"GRflibconv failed.\n");
+/*              sprintf(temp_text1,"Error Creating Typeface File (%s).",
+                      type_file);
+*/
+              ex$message(msgnumb=GR_E_ErrCreTf,buff=temp_text1,var=type_file);
+              sts = FIg_set_text(form,10,temp_text1);
+              if ( sts != FI_SUCCESS )
+              {
+                    fprintf(stderr,"error in FIg_set_text\n");
+              }
+              status("");
+              break;
+	    }
+
+            dprintf((stderr,"GRflibconv completed.\n"));
+/*            sprintf(temp_text1,"Typeface File (%s) created.",type_file);
+*/
+            ex$message(msgnumb=GR_I_TfCreated,buff=temp_text1,var=type_file);
+            sts = FIg_set_text(form,10,temp_text1);
+            if ( sts != FI_SUCCESS )
+            {
+              fprintf(stderr,"error in FIg_set_text\n");
+            }
+
+            /****  Load a temporary variable with the GRChTf info ****/
+            sprintf(cmd_str,"%s/bin/GRChTf %s\n",abs_path,type_file);
+            ex$message(msgnumb=GR_I_ChkTfFile,buff=loc_buff);
+            sts = FIg_set_text(form,10,loc_buff);
+            if ( sts != FI_SUCCESS )
+            {
+              fprintf(stderr,"error in FIg_set_text\n");
+            }
+
+            /**** Call sh & envoke GRChTf with temporary info ****/
+            sts = sh(cmd_str);
+            dprintf((stderr,"Typeface Check results=%d\n",sts));
+            if ( sts != 0 )
+            {
+              dprintf((stderr,"Typeface Check failed.\n"));
+/*              sprintf(temp_text1,"Error Checking Typeface File (%s).",
+                  type_file);
+*/
+              ex$message(msgnumb=GR_E_ErrChkTf,buff=temp_text1,var=type_file); 
+              sts = FIg_set_text(form,10,temp_text1);
+              if ( sts != FI_SUCCESS )
+              {
+                fprintf(stderr,"error in FIg_set_text\n");
+              }
+              status("");
+              break;
+            }
+            dprintf((stderr,"Typeface Check completed.\n"));
+/*            sprintf(temp_text1,"Typeface File (%s) confirmed.",type_file);
+*/
+            ex$message(msgnumb=GR_I_TfflConfrm,buff=temp_text1,var=type_file);
+            sts = FIg_set_text(form,10,temp_text1);
+            if ( sts != FI_SUCCESS )
+            {
+              fprintf(stderr,"error in FIg_set_text\n");
+            }
+           
+            if (fill_tf == 1)
+            {
+              GRmkfilltf(type_file,1);
+            }
+
+            /****  Cleanup message fields  ****/
+            status(" ");
+            prompt(" ");
+
+            FIg_erase(form,GROUP_2);
+            FIg_erase(form,GROUP_3);
+            FIg_erase(form,GROUP_5);
+            FIg_erase(form,TOGGLE_41);
+            FIg_erase(form,TOGGLE_39);
+            FIg_erase(form,TOGGLE_41);
+
+
+            sts = FIg_set_state_off(form,BUTTON_19); /* Pop up btn 19 */
+            if ( sts != FI_SUCCESS )
+            {
+              fprintf(stderr,"error FIg_set_state_off button_19\n");
+            }
+            ex$message(msgnumb=GR_I_CreTfflCmplt,buff=loc_buff);
+            sts = FIg_set_text(form,10,loc_buff);
+            if ( sts != FI_SUCCESS )
+            {
+              fprintf(stderr,"error in FIg_set_text\n");
+            }
+            status("");
+            break;
+          }
+
+          case BUTTON_20:  /*** Install Typeface File Command ***/
+          {
+            dprintf((stderr,"CASE 20 Which_Command=%d\n",Which_Command));
+            ex$message(msgnumb=GR_I_InstTfFile,buff=loc_buff);
+            sts = FIg_set_text(form,10,loc_buff);
+
+            /**  Setup Message fields  ****/
+/*            sprintf(temp_str,"Installing typeface file.");
+
+            sts = FIg_set_text(form,10,temp_str);    */
+            if ( sts != FI_SUCCESS )
+            {
+              fprintf(stderr,"error FIg_set_text.\n");
+            }
+
+            /** Open GRfont.table file to write the font_table entry **/
+            font_tbl = fopen( "/usr/tmp/GRfont.table","w" );
+
+            /**  Get TYPEFACE filename from the user. ****/
+            sts = FIfld_get_text(form,FIELD_24,0,0,256, 
+                    temp_text1,&sel_flag,&r_pos);
+            if ( sts != FI_SUCCESS )
+            {
+              fprintf(stderr,"Error FIfld_get_text\n");
+            }
+            strcpy( type_file, temp_text1 );
+
+            /**  Get FONT name from the user. ****/
+            sts = FIfld_get_text(form,FIELD_30,0,0,256,temp_text1,
+                  &sel_flag,&r_pos);
+            if ( sts != FI_SUCCESS )
+            {
+              fprintf(stderr,"Error FIfld_get_text\n");
+            }
+            strcpy( user_font, temp_text1 );
+
+            /**  Put TYPEFACE filename into temp_str variable in order
+            to copy it the app_path/config/english/typeface directory. ***/
+            sprintf(cmd_str,
+                    "%s/bin/GRsend cp %s %s/config/english/typeface/%s\n",
+                    abs_path, type_file, app_path, user_font );
+            sh(cmd_str);
+
+            /** Put TYPEFACE filename & FONT name into temp_str to make the
+            entry for the app_path/config/english/font_table file. ***/
+            sprintf(cmd_str,"%s,%s,    dec.cm ,,196", user_font,type_file);
+
+            /**  Write line into GRfont.table. ****/
+            fprintf( font_tbl,"%s\n",cmd_str);
+            fclose(font_tbl);
+
+            /**  Concatenate GRfont.table onto app_path/config/english/
+            font_table if it exists, else just copy it. ****/
+            sprintf(temp_str,"%s/config/english/font_table",app_path);
+            if ( access(temp_str,0) == 0)
+            {
+              sprintf(temp_str,
+              "cat %s/%s /usr/tmp/GRfont.table > /usr/tmp/GRtemp.ftbl\n",
+                 app_path,"config/english/font_table");
+            }
+            else
+            {
+              dprintf((stderr,
+                "Can not access file %s. Will cp.\n",temp_str));
+              sprintf(temp_str,
+                "cp /usr/tmp/GRfont.table /usr/tmp/GRtemp.ftbl\n");
+            }
+            sh(temp_str);
+            sprintf(cmd_str,
+  "%s/bin/GRsend mv /usr/tmp/GRtemp.ftbl %s/config/english/font_table\n",
+                  abs_path, app_path);
+            sh(cmd_str);
+
+            /*** Invoke the excutive function EX_init_locale ****
+             **** This rereads the font_table so the new typeface ****
+             **** are available. ****/
+            EX_init_locale();
+
+            FIg_erase(form,GROUP_4);
+            FIg_erase(form,GROUP_5);
+            FIg_erase(form,TOGGLE_41);
+            FIg_erase(form,TOGGLE_39);
+
+            sts = FIg_set_state_off(form,BUTTON_20); /* Pop up btn 20 */
+            if ( sts != FI_SUCCESS )
+            {
+              fprintf(stderr,"error FIg_set_state_off button_20\n");
+            }
+/*            sprintf(temp_str,"Typeface file %s,installed.",type_file);
+*/
+            ex$message(msgnumb=GR_I_TfFileInst,buff=temp_str,var=type_file);
+            sts = FIg_set_text(form,10,temp_str);
+            if ( sts != FI_SUCCESS )
+            {
+              fprintf(stderr,"error in FIg_set_text on btn 20\n");
+            }
+            status("");
+            break;
+          }
+
+          default:
+          {
+            dprintf((stderr,"CASE default: Which_Command=%d\n",
+                     Which_Command));
+            ex$message(msgnumb=GR_E_InvCmd,buff=loc_buff);
+            sts=FIg_set_text(form,10,loc_buff);
+            if ( sts != FI_SUCCESS )
+            {
+              fprintf(stderr,"error in FIg_set_text\n");
+            }
+            break;
+          }
+
+        } /** End switch case in MAIN for MASTER ***/
+       } /** End case FORM in Main for MASTER   ***/
+       break;
+
+       case FORM1:
+       {
+        switch ( Which_SUB_Command )
+        {
+        case BUTTON_12:
+        {
+          dprintf((stderr,"Which_SUB_Command=%d\n", Which_SUB_Command));
+          sts = FIfld_get_text(sub_form,FIELD_16,0,0,256,temp_text,
+                &sel_flag,&r_pos);
+          if ( sts != FI_SUCCESS )
+          {
+            fprintf(stderr,"Error FIfld_get_text\n");
+          }
+          if ( access( temp_text, 0 ) != 0 )
+          {
+            dprintf((stderr,"\nabs_path=%s temp_text=%s\n",abs_path,
+                     temp_text));
+            sprintf(cmd_str,"%s/bin/GRFlib -c %s\n", abs_path,temp_text);
+            ex$message(msgnumb=GR_I_CreFlfl,buff=loc_buff);
+            sts = FIg_set_text(sub_form,10,loc_buff);
+            sts = sh(cmd_str);
+            if ( sts != 0 )
+            {
+              ex$message(msgnumb=GR_E_CreFlflFail,buff=loc_buff);
+              sts = FIg_set_text(sub_form, 10,loc_buff);
+              FIg_erase(sub_form, GROUP_1a); /* Font lib text & field */
+              sts=FIg_set_value(sub_form, BUTTON_12,0.0); /* Popup b_12 */
+              if ( sts != FI_SUCCESS )
+              {
+                fprintf(stderr, "error FIg_set_value button_12,Sub\n");
+              }
+            }
+            else
+            {
+              FIg_erase(sub_form, GROUP_1a); /* Font lib text & field */
+              sts=FIg_set_value(sub_form, BUTTON_12,0.0); /* Popup b_12 */
+              if ( sts != FI_SUCCESS )
+              {
+                fprintf(stderr, "error FIg_set_value button_12,Sub\n");
+              }
+              ex$message(msgnumb=GR_I_CreFlflFin,buff=loc_buff);
+              sts = FIg_set_text(sub_form, 10,loc_buff);
+              if ( sts != FI_SUCCESS )
+              {
+                fprintf(stderr, "error in FIg_set_text\n");
+              }
+            }
+          }
+          else
+          {    
+            ex$message(msgnumb=GR_E_OvrNotImpl,buff=loc_buff);
+            sts = FIg_set_text(sub_form,10,loc_buff);
+            if ( sts != FI_SUCCESS )
+            {
+              fprintf(stderr,"Error FIg_set_text\n");
+            }
+          }
+          break;
+        }
+
+        case BUTTON_13:
+        {
+          dprintf((stderr,"Which_SUB_Command=%d\n",Which_SUB_Command));
+          /*** Get the FontLib name in temp_text ***/
+          sts = FIfld_get_text(sub_form,FIELD_16,0,0,256,temp_text,
+                &sel_flag,&r_pos);
+          if ( sts != FI_SUCCESS )
+          {
+            fprintf(stderr,"Error FIfld_get_text\n");
+          }
+          if( access( temp_text, 0 ) != 0 )
+          {
+            dprintf((stderr,"FONT LIB (%s) doesn't exist.\n",temp_text));
+/*            sprintf(temp_text1,"FONT LIB (%s) doesn't exist.",temp_text);
+*/
+            ex$message(msgnumb=GR_E_FlDontExst,buff=temp_text1,var=temp_text);
+            sts = FIg_set_text(sub_form,10,temp_text1);
+            if ( sts != FI_SUCCESS )
+            {
+              fprintf(stderr,"error in FIg_set_text\n");
+            }
+
+            FIg_erase(sub_form,GROUP_1a);
+            FIg_erase(sub_form,GROUP_2a);
+            FIg_erase(sub_form,GROUP_3a);
+
+            /* Pop up btn 13 */
+            sts = FIg_set_state_off(sub_form,BUTTON_13);
+            if ( sts != FI_SUCCESS )
+            {
+              fprintf(stderr,"error FIg_set_state_off button_13,Sub\n");
+            }
+            break;
+          }
+
+          /*** Get the Cell File name in temp_text1 ***/
+          sts = FIfld_get_text(sub_form,FIELD_18,0,0,256,temp_text1,
+                &sel_flag,&r_pos);
+          if ( sts != FI_SUCCESS )
+          {
+            fprintf(stderr,"Error FIfld_get_text\n");
+          }
+          if( access( temp_text1, 0 ) != 0 )
+          {
+            dprintf((stderr,"Cell File (%s) doesn't exist.\n",temp_text1));
+/*            sprintf(temp_text2,"Cell File (%s) doesn't exist.",temp_text1);
+*/
+            ex$message(msgnumb=GR_E_ClDontExst,buff=temp_text2,var=temp_text1);
+            sts = FIg_set_text(sub_form,10,temp_text2);
+            if ( sts != FI_SUCCESS )
+            {
+              fprintf(stderr,"error in FIg_set_text\n");
+            }
+
+            FIg_erase(sub_form,GROUP_1a);
+            FIg_erase(sub_form,GROUP_2a);
+            FIg_erase(sub_form,GROUP_3a);
+            /* Pop up btn 13 */
+            sts = FIg_set_state_off(sub_form,BUTTON_13);
+            if ( sts != FI_SUCCESS )
+            {
+              fprintf(stderr,"error FIg_set_state_off button_13,Sub\n");
+            }
+            break;
+          }
+
+          /*** Get the Font Number in temp_value ***/
+          sts = FIfld_get_value(sub_form,FIELD_21,0,0,&temp_value,
+                &sel_flag,&r_pos);
+          if ( sts != FI_SUCCESS )
+          {
+            fprintf(stderr,"Error FIfld_get_value\n");
+          }
+          font_numb = (int) temp_value;
+          /*** Get the STATE of the FONT CLASS toggle in t_state ***/
+          sts = FIg_get_state(sub_form,TOGGLE_19,&t_state);
+          dprintf((stderr,"out toggle=19,state=%d\n",t_state));
+          dprintf((stderr,"font_numb=%d\n",font_numb));
+          if (( sts == FI_SUCCESS ) && ( t_state == 0 ))
+          {
+            /*** STATE 0 of the FONT CLASS toggle is Character ***/
+            dprintf((stderr,"state0 toggle=19,state=%d\n",t_state));
+            sprintf(cmd_str,"%s/bin/GRFlib -a %s:%d %s",
+                abs_path, temp_text1,font_numb,temp_text);
+          }
+          else
+          {
+            /*** STATE 1 of the FONT CLASS toggle is Symbol ***/
+            dprintf((stderr,"state1 toggle=19,state=%d\n",t_state));
+            sprintf(cmd_str,"The Symbol Class option is not implemented.");
+      /*    sprintf(cmd_str,"%s/bin/GRFlib -a %s:%d %s\n",abs_path,
+                temp_text1,font_numb,temp_text); */
+
+            FIg_erase(sub_form,GROUP_1a);
+            FIg_erase(sub_form,GROUP_2a);
+            FIg_erase(sub_form,GROUP_3a);
+            /* Pop up btn 13 */
+            sts = FIg_set_state_off(sub_form,BUTTON_13);
+            if ( sts != FI_SUCCESS )
+            {
+              fprintf(stderr,"error FIg_set_state_off button_13,Sub\n");
+            }
+            break;
+          }
+          dprintf((stderr,"%s\n",cmd_str));
+          ex$message(msgnumb=GR_I_InsFont,buff=loc_buff);
+          sts = FIg_set_text(sub_form,10,loc_buff);
+          sts = sh(cmd_str);
+          if ( sts != 0 )
+          {
+            ex$message(msgnumb=GR_E_CantInsFont,buff=loc_buff);
+            sts = FIg_set_text(sub_form,10,loc_buff);
+            break;
+          }
+
+          FIg_erase(sub_form,GROUP_1a); /* Font lib file text & field */
+          FIg_erase(sub_form,GROUP_2a);
+          FIg_erase(sub_form,GROUP_3a);
+          sts = FIg_set_state_off(sub_form,BUTTON_13); /* Pop up btn 13 */
+          if ( sts != FI_SUCCESS )
+          {
+            fprintf(stderr,"error FIg_set_state_off button_13,Sub\n");
+          }  
+          ex$message(msgnumb=GR_I_InsFontFl,buff=loc_buff);
+          sts = FIg_set_text(sub_form,10,loc_buff);
+          if ( sts != FI_SUCCESS )
+          {
+            fprintf(stderr,"error in FIg_set_text\n");
+          }
+          break;
+        }
+
+        case BUTTON_23:
+        {
+          dprintf((stderr,"Which_SUB_Command=%d\n",Which_SUB_Command));
+          /*** Get the FontLib name in temp_text ***/
+          sts = FIfld_get_text(sub_form,FIELD_16,0,0,256,temp_text,
+                &sel_flag,&r_pos);
+          if ( sts != FI_SUCCESS )
+          {
+            fprintf(stderr,"Error FIfld_get_text\n");
+          }
+          if( access( temp_text, 0 ) != 0 )
+          {
+            dprintf((stderr,"FONT LIB (%s) doesn't exist.\n",temp_text));
+/*            sprintf(temp_text1,"FONT LIB (%s) doesn't exist.",temp_text);
+*/
+            ex$message(msgnumb=GR_E_FlDontExst,buff=temp_text1,var=temp_text);
+            sts = FIg_set_text(sub_form,10,temp_text1);
+            if ( sts != FI_SUCCESS )
+            {
+              fprintf(stderr,"error in FIg_set_text\n");
+            }
+
+            FIg_erase(sub_form,GROUP_1a);
+            FIg_erase(sub_form,GROUP_2a);
+            FIg_erase(sub_form,GROUP_3a);
+            /* Pop up btn 23 */
+            sts = FIg_set_state_off(sub_form,BUTTON_23);
+            if ( sts != FI_SUCCESS )
+            {
+              fprintf(stderr,"error FIg_set_state_off button_23,Sub\n");
+            }
+            break;
+          }
+
+          /*** Get the Cell File name in temp_text1 ***/
+          sts = FIfld_get_text(sub_form,FIELD_18,0,0,256,temp_text1,
+                &sel_flag,&r_pos);
+          if ( sts != FI_SUCCESS )
+          {
+            fprintf(stderr,"Error FIfld_get_text\n");
+          }
+          if( access( temp_text1, 0 ) != 0 )
+          {
+            dprintf((stderr,"Cell File (%s) doesn't exist.\n",temp_text1));
+/*            sprintf(temp_text2,"Cell File (%s) doesn't exist.",temp_text1);
+*/
+            ex$message(msgnumb=GR_E_ClDontExst,buff=temp_text2,var=temp_text1);
+            sts = FIg_set_text(sub_form,10,temp_text2);
+            if ( sts != FI_SUCCESS )
+            {
+              fprintf(stderr,"error in FIg_set_text\n");
+            }
+
+            FIg_erase(sub_form,GROUP_1a);
+            FIg_erase(sub_form,GROUP_2a);
+            FIg_erase(sub_form,GROUP_3a);
+            /* Pop up btn 23 */
+            sts = FIg_set_state_off(sub_form,BUTTON_23);
+            if ( sts != FI_SUCCESS )
+            {
+              fprintf(stderr,"error FIg_set_state_off button_23,Sub\n");
+            }
+            break;
+          }
+
+          /*** Get the Font Number in temp_value ***/
+          sts = FIfld_get_value(sub_form,FIELD_21,0,0,&temp_value,
+                &sel_flag,&r_pos);
+          if ( sts != FI_SUCCESS )
+          {
+            fprintf(stderr,"Error FIfld_get_value\n");
+          }
+          font_numb = (int) temp_value;
+          /*** Get the STATE of the FONT CLASS toggle in t_state ***/
+          sts = FIg_get_state(sub_form,TOGGLE_19,&t_state);
+          dprintf((stderr,"out toggle=19,state=%d\n",t_state));
+          if (( sts == FI_SUCCESS ) && ( t_state == 0 ))
+          {
+            /*** STATE 0 of the FONT CLASS toggle is Character ***/
+            dprintf((stderr,"state0 toggle=19,state=%d\n",t_state));
+            sprintf(cmd_str,"%s/bin/GRFlib -r %s:%d %s",
+                abs_path, temp_text1,font_numb,temp_text);
+          }
+          else
+          {
+            /*** STATE 1 of the FONT CLASS toggle is Symbol ***/
+            dprintf((stderr,"state1 toggle=19,state=%d\n",t_state));
+            sprintf(cmd_str,"The Symbol Class option is not implemented.");
+            /*   sprintf(cmd_str,"%s/bin/GRFlib -r %s:%d %s\n",abs_path,
+                 temp_text1,font_numb,temp_text); */
+
+            FIg_erase(sub_form,GROUP_1a);
+            FIg_erase(sub_form,GROUP_2a);
+            FIg_erase(sub_form,GROUP_3a);
+            /* Pop up btn 23 */
+            sts = FIg_set_state_off(sub_form,BUTTON_23);
+            if ( sts != FI_SUCCESS )
+            {
+              fprintf(stderr,"error FIg_set_state_off button_23,Sub\n");
+            }
+            break;
+          }
+          dprintf((stderr,"%s\n",cmd_str));
+          ex$message(msgnumb=GR_I_RplcFont,buff=loc_buff);
+          sts = FIg_set_text(sub_form,10,loc_buff);
+          sts = sh(cmd_str);
+          if ( sts != 0 )
+          {
+            ex$message(msgnumb=GR_E_RplcClFail,buff=loc_buff);
+            sts = FIg_set_text(sub_form,10,loc_buff);
+            break;
+          }
+
+          FIg_erase(sub_form,GROUP_1a); /* Font lib file text & field */
+          FIg_erase(sub_form,GROUP_2a);
+          FIg_erase(sub_form,GROUP_3a);
+          /* Pop up btn 23 */
+          sts = FIg_set_state_off(sub_form,BUTTON_23);
+          if ( sts != FI_SUCCESS )
+          {
+            fprintf(stderr,"error FIg_set_state_off button_23,Sub\n");
+          }
+          ex$message(msgnumb=GR_I_RplcClCmplt,buff=loc_buff); 
+          sts = FIg_set_text(sub_form,10,loc_buff);
+          if ( sts != FI_SUCCESS )
+          {
+            fprintf(stderr,"error in FIg_set_text\n");
+          }
+          break;
+        }
+        case BUTTON_24:
+        {
+          dprintf((stderr,"Which_SUB_Command=%d\n",Which_SUB_Command));
+          /*** Get the FontLib name in temp_text ***/
+          sts = FIfld_get_text(sub_form,FIELD_16,0,0,256,temp_text,
+                &sel_flag,&r_pos);
+          if ( sts != FI_SUCCESS )
+          {
+            fprintf(stderr,"Error FIfld_get_text\n");
+          }
+          if( access( temp_text, 0 ) != 0 )
+          {
+            dprintf((stderr,"FONT LIB (%s) doesn't exist.\n",temp_text));
+/*            sprintf(temp_text1,"FONT LIB (%s) doesn't exist.",temp_text);
+*/
+            ex$message(msgnumb=GR_E_FlDontExst,buff=temp_text1,var=temp_text);
+            sts = FIg_set_text(sub_form,10,temp_text1);
+            if ( sts != FI_SUCCESS )
+            {
+              fprintf(stderr,"error in FIg_set_text\n");
+            }
+
+            FIg_erase(sub_form,GROUP_1a);
+            FIg_erase(sub_form,GROUP_3a);
+            /* Pop up btn 24 */
+            sts = FIg_set_state_off(sub_form,BUTTON_24);
+            if ( sts != FI_SUCCESS )
+            {
+              fprintf(stderr,"error FIg_set_state_off button_24,Sub\n");
+            }
+            break;
+          }
+
+          /*** Get the Font Number in temp_value ***/
+          sts = FIfld_get_value(sub_form,FIELD_21,0,0,&temp_value,
+                &sel_flag,&r_pos);
+          if ( sts != FI_SUCCESS )
+          {
+            fprintf(stderr,"Error FIfld_get_value\n");
+          }
+          font_numb = (int) temp_value;
+          /*** Get the STATE of the FONT CLASS toggle in t_state ***/
+          sts = FIg_get_state(sub_form,TOGGLE_19,&t_state);
+          dprintf((stderr,"out toggle=19,state=%d\n",t_state));
+          if (( sts == FI_SUCCESS ) && ( t_state == 0 ))
+          {
+            /*** STATE 0 of the FONT CLASS toggle is Character ***/
+            dprintf((stderr,"state0 toggle=19,state=%d\n",t_state));
+            sprintf(cmd_str,"%s/bin/GRFlib -d %d %s",
+                abs_path,font_numb,temp_text);
+          }
+          else
+          {
+            /*** STATE 1 of the FONT CLASS toggle is Symbol ***/
+            dprintf((stderr,"state1 toggle=19,state=%d\n",t_state));
+            sprintf(cmd_str,"The Symbol Class option is not implemented.");
+            /*       sprintf(cmd_str,"%s/bin/GRFlib -d %d %s",abs_path,
+            font_numb,temp_text); */
+
+            FIg_erase(sub_form,GROUP_1a);
+            FIg_erase(sub_form,GROUP_3a);
+            /* Pop up btn 24 */
+            sts = FIg_set_state_off(sub_form,BUTTON_24);
+            if ( sts != FI_SUCCESS )
+            {
+              fprintf(stderr,"error FIg_set_state_off button_24,Sub\n");
+            }
+            break;
+          }
+          dprintf((stderr,"%s\n",cmd_str));
+          ex$message(msgnumb=GR_I_DelFont,buff=loc_buff);
+          sts = FIg_set_text(sub_form,10,loc_buff);
+          sts = sh(cmd_str);
+          if ( sts != 0 )
+          {
+            ex$message(msgnumb=GR_E_CantDelFont,buff=loc_buff);
+            sts = FIg_set_text(sub_form,10,loc_buff);
+            break;
+          }
+          FIg_erase(sub_form,GROUP_1a); /* Font lib file text & field */
+          FIg_erase(sub_form,GROUP_3a);
+          sts = FIg_set_value(sub_form,BUTTON_24,0.0); /* Pop up btn 24 */
+          if ( sts != FI_SUCCESS )
+          {
+            fprintf(stderr,"error FIg_set_value button_24,Sub\n");
+          }
+          ex$message(msgnumb=GR_I_DelFontFl,buff=loc_buff);
+          sts = FIg_set_text(sub_form,10,loc_buff);
+          if ( sts != FI_SUCCESS )
+          {
+            fprintf(stderr,"error in FIg_set_text\n");
+          }
+          break;
+        }
+        case BUTTON_14:
+        {
+          dprintf((stderr,"Which_SUB_Command=%d\n",Which_SUB_Command));
+          sts = FIfld_get_text(sub_form,FIELD_16,0,0,256,temp_text,
+                &sel_flag,&r_pos);
+          if ( sts != FI_SUCCESS )
+          {
+            fprintf(stderr,"Error FIfld_get_text\n");
+          }
+          sts = FIg_get_state(sub_form,TOGGLE_22,&t_state);
+          dprintf((stderr,"toggle=%d,state=%d\n",TOGGLE_22,t_state));
+          ex$message(msgnumb=GR_I_RevFontlib,buff=loc_buff);
+          if (( sts == FI_SUCCESS ) && ( t_state == 0 ))
+          {
+            dprintf((stderr,"toggle=%d,state=%d\n",TOGGLE_22,t_state));
+            sprintf(cmd_str,"%s/bin/GRFlib -b %s",abs_path,temp_text);
+              /*     "vterm -xs \"%s/bin/GRFlib -b %s\" -T '%s %s'&",
+              abs_path,temp_text,loc_buff,temp_text);*/
+          }
+          else
+          {
+            dprintf((stderr,"toggle=%d,state=%d\n",TOGGLE_22,t_state));
+            sprintf(cmd_str,"%s/bin/GRFlib -l %s",abs_path,temp_text);
+              /*     "vterm -xs \"%s/bin/GRFlib -l %s\" -T '%s %s'&",
+              abs_path,temp_text,loc_buff,temp_text); */
+          }
+          ex$message(msgnumb=GR_I_RevFile,buff=loc_buff);
+          sts = FIg_set_text(sub_form,10,loc_buff);
+          if ( sts != FI_SUCCESS )
+           {
+            fprintf(stderr,"Error FIg_set_text(sub):Review message.\n");
+           }
+          FIf_cvrt_to_perm_win ( sub_form );
+          FIf_erase( sub_form );
+          pipe = popen(cmd_str,"r");
+          if ( pipe == NULL )
+           {
+             dprintf((stderr,"ERROR: opening pipe,%d\n",pipe));
+             fprintf(stderr,"Error opening pipe.\n");
+             sts = FIg_set_text(sub_form,10,GR_E_FlCantOpn);
+             if ( sts != FI_SUCCESS )
+              {
+               fprintf(stderr,"Error FIg_set_text(sub):open error.\n");
+              }
+             break;
+           }
+          else
+           {
+             row = 0;
+             while ( fgets(line,80,pipe) != 0 )
+              {
+                sts = FIfld_set_text(rev_form,REV_FIELD,row,0,line,0);
+                if ( sts != FI_SUCCESS )
+                  {
+                  dprintf((stderr,"ERROR: writing to rev_field\n"));
+                 fprintf(stderr,"Error FIfld_set_text(rev)\n");
+                  }
+                row = row + 1;
+              } /* END of while ( fgets(line,80,pipe) != 0 ) */
+             pclose(pipe);
+           } /* END if (!pipe) else */
+
+          dprintf((stderr,"@FIf_display(REV_FORM)\n"));
+          FIf_display ( rev_form );
+
+          FIg_erase(sub_form,GROUP_1a); /* Font lib file text & field */
+          FIg_erase(sub_form,TOGGLE_22); /* BREIF/FULL toggle */
+          sts=FIg_set_value(sub_form,BUTTON_14,0.0); /* Pop up button 14 */
+          if ( sts != FI_SUCCESS )
+          {
+            fprintf(stderr,"error FIg_set_value button_14,Sub\n");
+          }
+          ex$message(msgnumb=GR_I_RevFlCmplt,buff=loc_buff);
+          sts = FIg_set_text(sub_form,10,loc_buff);
+          if ( sts != FI_SUCCESS )
+          {
+            fprintf(stderr,"error in FIg_set_text\n");
+          }
+          break;
+
+          default:
+          {
+            dprintf((stderr,"FORM1:CASE default: Which_SUB_Command=%d\n",
+                     Which_SUB_Command));
+            ex$message(msgnumb=GR_E_InvCmd,buff=loc_buff);
+            sts = FIg_set_text(sub_form,10,loc_buff);
+            if ( sts != FI_SUCCESS )
+            {
+              fprintf(stderr,"error in FIg_set_text\n");
+            }
+            break;
+          }
+        } /** End case 5 for SUB ***/
+        } /** End switch case in MAIN for SUB ***/
+       } /** End case FORM1 in Main for SUB   ***/
+       break;
+
+       case FORM2:
+       {
+        switch ( Which_REV_Command )
+        {
+        case FI_ACCEPT:
+        {
+          dprintf((stderr,"Which_REV_Command=%d\n", Which_REV_Command));
+          FIf_erase ( rev_form );   /* erase REV_FORM    */
+          sts=FIg_set_value(rev_form,FI_ACCEPT,0.0); /* Pop up button */
+          if ( sts != FI_SUCCESS )
+          {
+            fprintf(stderr,"error FIg_set_value FI_ACCEPT,REV\n");
+          }
+        }  /** End case FI_ACCEPT for REV     ***/
+        } /** End switch case in MAIN for REV ***/
+       } /** End case FORM2 in Main for REV   ***/
+       break;
+
+      } /** End switch ( form_st.form_label ) ***/
+    }  /** End if (FTBExecute) ***/
+
+    dprintf((stderr,"BOTTOM of Main LOOP\n"));
+    dprintf((stderr,"FTBLeave=%d\n",FTBLeave));
+    dprintf((stderr,"FTBExecute=%d\n",FTBExecute));
+
+  } /**** END While ******************************************************/
+
+} /**** END main in GRCrFnMn.u  ***/
+
+/*** wakeup ***/
+wakeup()
+ {
+/*  test_wakeup = 0; */
+  dprintf((stderr,"performing WAKEUP\n"));
+  dprintf((stderr,"in WAKEUP() test_wakeup = %d\n",test_wakeup));
+  if ( test_wakeup == 1 )
+   {
+    dprintf((stderr,"displaying MASTER FORM\n"));
+    ex$message(field=MESSAGE_FIELD,msgnumb=GR_I_CreFont);
+    status("");
+    FIf_display ( form );
+   }
+ } /* End of wakeup */
+
+/*** sleep ***/
+sleep()
+ {
+  if ( FTBExecute == FALSE )
+   {
+   dprintf((stderr,"performing SLEEP\n"));
+   /*** clear operator communication fields ***/
+   message("");
+   status("");
+   prompt("");
+   FIf_erase ( form );       /* erase MASTER form */
+   FIf_erase ( sub_form );   /* erase SUB_FORM    */
+   FIf_erase ( rev_form );   /* erase REV_FORM    */
+   test_wakeup = 1;
+   } /* END if ( FTBExecute == TRUE ) */
+ } /* End of sleep() */
+
+/*** delete ***/
+delete()
+ {
+  dprintf((stderr,"performing DELETE of Master\n"));
+  FIf_delete ( form );
+
+  dprintf((stderr,"performing DELETE of Sub\n"));
+  FIf_delete ( sub_form );
+
+  dprintf((stderr,"performing DELETE of Rev\n"));
+  FIf_delete ( rev_form );
+
+  /*** clear operator communication fields ***/
+  message("");
+  status("");
+  prompt("");
+  /** May need to delete object after all finished ***/
+  /*
+  dprintf((stderr,"MY_ID = %x\n",MY_ID));
+  sts = ci$send( msg = message ci.delete(), targetid = MY_ID,
+                 targetos = OM_Gw_current_OS );
+  */
+ } /* End of delete() */

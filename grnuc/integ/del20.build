@@ -1,0 +1,280 @@
+
+echo $VERSNO
+echo $LOGDIR
+echo $LOGNUM
+echo $LOGFILE
+echo $BUILDER
+echo $PREFIX
+echo $HPLOTLIB
+echo $RECOMPILE
+echo $RCS
+echo $MSGBUILD
+echo $COMPILE
+echo $REMAKES
+echo $RMCONFIG
+echo $DEPEND
+echo $RMPPLDOTE
+echo $REMAKEDICT
+echo $LINK
+echo $EMSPACK
+echo $VERYPACK
+echo $SUFFIX
+echo $PACK
+echo $PACKFILE
+echo $UNIT_TEST
+
+################################################################################
+#									       #
+# Compile all files, removing old object files as required.                    #
+#                                                                              #
+# The steps here are:                                                          #
+#                                                                              #
+#   1. Remove files in config/commands directory if required                   #
+#   2. Remove ".e" files if required                                           #
+#   3. Remove intermdediate libraries (every time for a compile verification)  #
+#   4. Remake dict directory if required                                       #
+#   5. Link spec files to master spec directory (if recompile ONLY)            #
+#   6. Remake the makefiles if required                                        #
+#   7. Make all the source directories                                         #
+#                                                                              #
+################################################################################
+
+
+
+#
+# If COMPILE is true then perform needed operations to compile.
+# -------------------------------------------------------------
+#
+if [ "${COMPILE}" = "y" ]
+then
+
+  #
+  # Remove files in config/commands directory if required
+  # -----------------------------------------------------
+  #
+  if [ "$RMCONFIG" = "y" ]
+  then
+    if [ "${CLIPPER}" = "y" ]
+    then
+      rmcfgcomm.sh
+    fi
+  fi
+
+  #
+  # Remove ".e" files if required
+  # -----------------------------
+  #
+  if [ "${RECOMPILE}" = "n" ]
+  then
+    if [ "$RMPPLDOTE" = "y" ]
+    then
+      rmdote.sh
+    fi
+  fi
+
+  #
+  # Always rebuild the libraries (insure proper compilation)
+  # --------------------------------------------------------
+  #
+  if [ "${RECOMPILE}" = "n" ]
+  then
+    rmintlib.sh
+  fi
+
+  #
+  # Remake dict dictionary if required
+  # ----------------------------------
+  #
+  if [ "${RECOMPILE}" = "n" ]
+  then
+    if [ "$REMAKEDICT" = "y" ]
+    then
+      remkdict.sh
+    fi
+  fi
+
+  #
+  # Link spec files to master spec directory (if recompile ONLY)
+  # ------------------------------------------------------------
+  #
+  if [ "${RECOMPILE}" = "y" ] && [ "${CLIPPER}" = "y" ]
+  then
+    linkspec.sh
+  fi
+
+
+  #
+  # Make message files
+  # --------------------------------
+  #
+
+  if [ "$CLIPPER" = "y" -a "$PROD" != "MDS" ]
+    then
+      mkmsg.sh
+  fi
+
+  #
+  # Remake the makefiles if required
+  # --------------------------------
+  #
+
+  if [ "${REMAKES}" = "y" ]
+  then
+    # check include files
+
+    chkinclude.sh >> $LOGFILE    # REDIRECT INSIDE THE SCRIPT ?????
+
+    if [ "${RECOMPILE}" = "n" ]
+    then
+
+      # Remove makefiles
+
+      rmmake.sh
+    fi
+
+    # Relink spec files
+
+    linkspec.sh
+
+  fi
+
+  #
+  # Make each directory
+  # -------------------
+  #
+
+  echo "Compiling:"
+  if [ "${DEPEND}" = "y" ]
+  then
+    export MAKEFILE=makefile.m
+  else
+    export MAKEFILE=makefile
+  fi
+
+  #  Call THE make script to beat all make scripts
+
+  make.all
+
+  ### CAN WE NOT HAVE A VARIABLE FOR "/usr2/tmp/$MASHBLDLOG" ????? ???????????
+
+
+  cat /usr2/tmp/$MASBLDLOG >> $LOGFILE
+  rm /usr2/tmp/$MASBLDLOG
+
+
+  echo "Finished making" >> $LOGFILE
+
+fi ## from -> if [ "${COMPILE}" = "y" ]
+
+
+
+
+################################################################################
+#									       #
+# The image is linked here.                                                    #
+#                                                                              #
+################################################################################
+
+if [ "${LINK}" = "y" ]
+then
+  link.sh
+  necho "setup test environment, so we can test what we linked"
+  $SOURCEDIR/integ/setup.test
+fi
+
+################################################################################
+#									       #
+# Make version number                                                          #
+#                                                                              #
+################################################################################
+if [ "$PROD" != "MDS" ]
+then
+  cd $TARGETDIR
+  cp $SOURCEDIR/*ver.c $TARGETDIR
+
+  if [ "${SUN}" = "y" ]
+  then
+     makever.sh $TARGETDIR $PROD "03.04.00.$VERSNO" `date +"%d-%h-%Y"`
+  else
+     makever.sh $TARGETDIR $PROD "03.04.00.$VERSNO" `date +"%d-%b-%Y"`
+  fi
+fi
+
+################################################################################
+#									       #
+# Build ems applications and ems version numbers                               #
+#                                                                              #
+################################################################################
+
+if [ "${EMSPACK}" = "y" ]
+then
+   makeemspack.sh
+fi
+
+
+################################################################################
+#									       #
+# Verify TARGETDIR with the snapshot from before the build                     #
+#                                                                              #
+################################################################################
+
+
+if [ "${RECOMPILE}" = "y" ]
+then
+  if [ "${SOURCEDIR}" != "${TARGETDIR}" ]
+  then
+    grvertarg.sh
+  fi
+fi
+
+
+################################################################################
+#									       #
+# Run suffix.sh (WHAT DOES THIS DO????)                                        #
+#                                                                              #
+################################################################################
+
+if [ "$SUFFIX" = "y" ]
+then
+  cd ${SOURCEDIR}
+  suffix.sh 2>&1 | tee -a $LOGFILE
+fi
+
+
+################################################################################
+#									       #
+#  Verify packaging                                                            #
+#                                                                              #
+################################################################################
+
+if [ "$VERYPACK" = "y" ]
+then
+  cd $TARGETDIR
+  verypack.sh $PACKFILE
+fi
+
+
+################################################################################
+#									       #
+# Do the packaging                                                             #
+#                                                                              #
+################################################################################
+
+if [ "$PACK" = "y" ]
+then
+  pack.sh
+fi
+
+if [ "$CLIPPER" = "y" -o "$C400" = "y" ]
+then
+  MAILER=elm
+else
+  MAILER=Mail
+fi
+
+echo "340.$VERSNO - $0 is thru on `uname -n` at `date`" \
+       | $MAILER -s "$0 is thru" $BUILDER
+
+echo "$0 IS THROUGH" >> $LOGFILE
+
+exit 0

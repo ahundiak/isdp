@@ -1,0 +1,4673 @@
+/*
+$Author: hans $
+$Revision: 1.1.1.1 $
+$Date: 2001/12/17 22:39:29 $
+$Locker:  $
+$Log: fastener.u,v $
+Revision 1.1.1.1  2001/12/17 22:39:29  hans
+Initial import to CVS
+
+# Revision 340.0  1997/05/27  23:06:40  root
+# COMMENT : Initial checkin to 3.4.0 RCS from 3.3.0 src
+#
+# Revision 330.0  1996/01/11  21:20:35  root
+# COMMENT : Initial checkin to 3.3.0 RCS from 3.2.0 src
+#
+# Revision 320.1  1995/01/09  10:42:04  subha
+# COMMENT : Fastener length is updated correctly if washer is added.
+#
+# Revision 320.0  1994/12/12  17:50:09  root
+# COMMENT : Initial checkin to 3.2 RCS from 3.1 src
+#
+# Revision 240.7  1994/08/10  10:53:01  samuel
+# COMMENT : Using ex macros to get path for GRNUC product
+#
+# Revision 240.6  1993/12/04  09:41:51  samuel
+# COMMENT : Assoc lock is set to off during this command
+#
+# Revision 240.4  1993/06/01  13:12:59  scott
+# COMMENT : duplicate msgnumbs changed
+#
+# Revision 240.3  1993/03/05  15:50:14  mikel
+# COMMENT : build error, move exfi.h down in list of includes
+#
+# Revision 240.2  1992/12/31  15:14:01  mike
+# COMMENT : TR119222870 - remove fi.h dependencies, use exfi.h definitions instead
+#
+# Revision 240.1  1992/12/28  21:27:31  poo
+# COMMENT : Fixes for UMS messages subsystem, TR #11913902, #11922267, #11920920, & #119!
+#
+# Revision 220.1  1992/10/19  13:23:09  gvk
+# COMMENT : Form initialized .
+#
+Revision 201.11  1992/07/30  08:09:29  gvk
+COMMENT : included stdio.h
+
+Revision 201.10  1992/03/27  11:22:51  dimdp20
+COMMENT : Fixes for placing washer for topview Bolt/Nut/Screw if needed.
+
+Revision 201.8  1992/01/20  07:58:56  dimdp20
+COMMENT : Dimension Fixes Release - S. Poovannan - Jan 20 1992
+
+Revision 201.7  92/01/13  06:00:14  dimdp20
+COMMENT : Dimensioning fixes release  - 13th Jan 92
+
+*/
+
+#include "stdio.h"
+#include "cieveryone.h"
+#include "cimacros.h"
+#include "grmacros.h"
+#include "grwireframe.h"
+#include "growner.h"
+#include "grdpbdef.h"
+#include "grdpb.h"
+#include "grdpbmacros.h"
+#include "exfi.h"
+#include "igrtypedef.h"
+#include "igrdp.h"
+#include "godef.h"
+#include "go.h"
+#include "ex.h"
+#include "griodef.h"
+#include "grio.h"
+#include "griomacros.h"
+#include "FI.h"
+#include "FEI.h" 
+#include "CIforms.h"
+#include "dimfmext.h"
+#include "msmacros.h"
+#include "msdef.h"
+#include "DMmsg.h"
+#include "grownmacros.h"
+
+struct CIform_st form_st;
+struct EXFI_data_st data_st;
+
+
+int	flag,pos, beam_init, o_profile, edit_state, met_imp, met_imp1,
+	junk,j,junkd, getvalid;
+int     orig_weight;
+char	txtstr[20], fieldtxt[30], beam_name[15], ofile[132], 
+	tx1[20],tx2[10],tx3[10],tx4[10],tx5[10], tx6[10], list_f[132], list_pre[4];
+double	mydouble, oring_id, oring_od, dtemp;
+int	len_count;
+struct GRid	TEMP_GRID, TEMP_GRIDS[100];
+//struct GRmd_env	MOD_ENV;
+
+extern int GRcreate_graphic_group();
+extern int EX_get_product_data();
+extern GRactive_owner_fun();
+//extern	char    ASbroadcast_in_progress;
+//extern	char		*strchr();
+//extern	char		*strrchr();
+extern	char		*strncpy();
+
+extern int ci_notification();
+extern int FIf_new();
+extern int FIf_delete();
+extern int FIf_display();
+extern int FIf_erase();
+extern int FIf_set_cmd_oid_os();
+extern int FIfld_get_text();
+extern int FIfld_get_value();
+extern int FIfld_set_value();
+extern int FIfld_set_select();
+extern int FIfld_get_list_text();
+extern int FIfld_set_list_num_rows();
+extern int FIfld_get_list_num_rows();
+extern int FIfld_set_num_rows();
+extern int FIfld_get_num_rows();
+extern int FIfld_set_text();
+extern int FIfld_set_mode();
+extern int FIfld_set_list_default_text();
+extern int FIg_get_state();
+extern int FIg_disable();
+extern int FIg_set_state_on();
+extern int FIg_set_state_off();
+extern int FIg_erase();
+extern int FIg_display();
+extern int FIg_get_text();
+extern int FIg_set_text();
+extern int FIg_get_size();
+extern int FIg_set_size();
+extern int FIg_get_location();
+extern int FIg_set_location();
+extern int MSmessage();
+
+Form	form[20];
+short form_flag[11];
+
+/* END OF J HANSON'S MODS */
+
+extern int DImain();
+
+// include the coordinate functions and fastener data 
+
+//#include "junk.h"
+#include "jkfunc.h"      // for function library
+#include "mdu_data.h"	 // for mdu type data dase functions
+#include "jkdraw.h"
+
+#define PI      3.14159265359
+
+// define gadget labels for main menu form ( form[0] ) 
+#define CHECK    1
+#define FEXIT    4
+#define PROMPT	 9
+#define MESS	 10
+#define RETURN1  999
+#define BOLT    13
+#define NUT     14
+#define CHSCREW 15
+#define CSSCREW 16
+#define THOLE   17
+#define STUD    18
+#define BEAM	19
+#define SPRING	20
+#define ORING	21
+#define MDCTEXT	102
+#define DATABASE 101
+#define ANGLE	30
+#define MDC	32
+#define SCALE	33
+#define MATTEXT 124
+#define MATERIAL 125
+#define ANG0	25
+#define ANG90	26
+#define ANG180	27
+#define ANG270	28
+
+// define gadget labels common to many forms
+#define DIA     122
+#define LENGTH  130
+#define METRIC  127
+#define IMP     128
+#define WASHFC  120
+#define WASHER  121
+
+// define gadget labels for bolts subform ( form[1] )
+#define BOLTAF  112
+#define BOLTAC  113
+#define BOLTTOP 114
+
+// define gadget labels for nuts subform ( form[2] )
+#define NUTAF	212
+#define NUTAC	213
+#define NUTTOP	214
+#define NUTHIN  215
+
+// define gadget labels for cap head screw subform ( form[3] )
+#define CHSSIDE 312
+#define CHSTOP	313
+
+// define gadget labels for counter sunk screw subform ( form[4] )
+#define CSSSIDE 412
+#define CSSTOP	413
+
+// define gadget labels for tapped holes subform ( form[5] )
+#define HOLECST	512
+#define HOLECBT	513
+#define THPLNT	514
+#define THCST	515
+#define THCBT	516
+#define HOLECS	517
+#define HOLECB	518
+#define THPLN	519
+#define THCS	520
+#define THCB	521
+#define CSD	522
+#define CSDTXT	532
+#define CBDIA	523
+#define CBDIATXT 533
+#define CBD	524
+#define CBDTXT  534
+#define DRILLD	525
+#define DRILLDTXT 535
+
+// define gadget labels for studs subform ( form[6] )
+
+#define STUD1	612
+
+// define gadget labels for beam subform ( form[7] )
+
+#define IBEAM	700
+#define IBEAMS	701
+#define CBEAM	702
+#define CBEAMS	703
+#define TBEAM	704
+#define TBEAMS	705
+#define ABEAM	706
+#define ABEAMS	707
+#define BEAMSZ	708
+#define BEAMLN	709
+#define MIRR_Y	710
+#define MIRR_NO	711
+#define MIRR_XY	712
+#define MIRR_X	713
+#define BEAMSEL	750
+
+
+// define gadget labels for spring subform ( form[8] )
+
+#define SPRINGTOP	812
+#define SPRINGSIDE	813
+#define SPRINGTR	814
+#define SPRINGBR	815
+#define SPRINGMR	816
+#define SPRINGPG	817
+#define SPRINGNP	818
+
+
+// define gadget labels for oring subform ( form[9] )
+
+#define ORINGT	900
+#define ORINGS	901
+#define ORINGID	902
+#define ORINGOD	903
+
+// define gadget labels for beam list subform ( form[10] )
+
+#define BEAMHEADER	950
+#define BEAMLIST	951
+#define EDITLIST	975
+
+#define SPRINGLIST	952
+#define ORINGLIST	953
+
+extern char *getenv();
+extern GRdpb_get(), GRdpb_put();
+
+extern fscanf(),printf(),fprintf();
+extern sprintf();
+extern  int	free();
+extern GRdisplay_associative_button();
+
+IGRboolean	assoc_flag;
+IGRboolean	int_sleep;
+
+short   wt1, savewt, savest, savej;
+
+int     i, test_wakeup,my_wakeup, sts, mg, subgad, main_resp, sub_resp, curfm;
+int	washer, wface, nuthin, celflag, holeflag, resp1, resplen;
+int	diaflag, dbflag, bolt_type, nut_type, cap_type, css_type, thole_type,
+	stud_type, diflg;
+
+int	beam_type, spring_type, np, profile, mirrorx, mirrory, Match;
+double	web_height, web_thick, flange_length, flange_thick, rot_angle, 
+	pnt1[3], beam_length, top_rad, units, bot_rad, mat_rad, pg;
+struct GRid	WINDOW;
+struct GRevent	jimbo;
+
+struct 
+ {
+  int response;
+  int *data;
+ } e;
+
+
+// FROM set_UDdata()
+
+     IGRchar *attr[10], *value[10];
+     int	msg, type[10];
+     struct GRobj_env objects[10];
+     struct GRid part_id, PART;
+
+// end of cut from set_UDdata()
+
+
+double  dia, len, thlen, *p0,p1[3],p2[3],dp[3],*p3,p4[3],diat,sc,sc2;
+double  cbd, csd, refpt1[3];
+double	aa, sa, sa2, dt, curang, rotang , newang;
+double	dummy, holecbd, threadd, drilld, studtl1, studtl2;
+
+char	mduenv[80];
+char	data_file[80];
+char    strp[80],class[20];
+
+GRobj	head_cel, shank_cel, group_obj, cell_obj, lastobj, obj_temp, window1;
+
+char	bpn[16],npn[16],chspn[16],csspn[16],spn[16]; // partnum prefixes
+int	numdia;		// number of sets of dia data read from jkdraw.dat
+
+struct mfdata *mfp;     // pointer to structure type mfdata
+struct mfdata *mfheader;  // pointer to header structure to start linked list
+
+struct	UDtype	UDdata;		// User data for mdu type database
+struct  GRevent event1,event2;
+struct  GRdpb_scale actsc,savesc;
+struct fmname		// 'array' for formnames
+{
+	char	name[16];
+};
+struct fmname form_name[12];
+
+/*struct	prompts
+{
+	char	p[80];
+};
+struct	prompts	stp[100];*/
+
+FILE	*fp, *outfile;
+
+
+//****************************************************************************
+// place_shank
+//
+// function to create a shank as a cell (global cell shank_obj )
+//
+//
+place_shank(d1)
+double d1;
+{
+GRobj	shankobj[20];
+double  b1[3], b2[3], b3[3];
+int	shanknum;
+char	buffer[80];
+
+
+   b1[2] = b2[2] = b3[2] = p1[2];
+   #ifdef DEBUG
+	write( "into place shank. sc=",sc," dia=",dia,'\n');
+   #endif
+   // create shank
+   begincmd( "place line seg" );
+   b1[0] = p1[0] -sc*dia/2 ;
+   b1[1] = p1[1] -d1 ;
+   ci$put( point = b1 );
+
+   /* washer*sc*mfp->wth factor is added to keep the
+      bolt length fixed when a washer is added.
+                   -- Fix for TR# 11911544 --Subha */
+
+   b1[1] = b1[1] + d1+sc*mfp->ptch-sc*len + washer*sc*mfp->wth ;
+   ci$put( point = b1 );
+   b1[0] = b1[0] + sc*mfp->ptch ;
+   b1[1] = b1[1] - sc*mfp->ptch ;
+   ci$put( point = b1 );
+   b1[0] = b1[0] + sc*dia-2*sc*mfp->ptch ;
+   ci$put( point = b1 );
+   b1[0] = b1[0] + sc*mfp->ptch ;
+   b1[1] = b1[1] + sc*mfp->ptch ;
+   ci$put( point = b1 );
+   b1[1] = b1[1] + sc*len-sc*mfp->ptch-d1 - washer*sc*mfp->wth ;
+   ci$put( point = b1 );
+   ci$put( response = RESET );
+   ci$put( response = TERMINATE );
+   endcmd();
+
+   get_symb();
+   orig_weight = cnst_list.weight;
+   cnst_list.weight = 0;
+   set_gal_symb();
+
+   #ifdef DEBUG
+	write( "thlen=",thlen,"\nlen=",len,"\nsc=",sc,"\nd1=",d1,"\nb1=",b1,'\n');
+   #endif
+
+   begincmd( "place line seg" );
+   b1[0] = b1[0] - sc*mfp->ptch;
+   b1[1] = b1[1] + d1 - fabs(sc*len) + washer*sc*mfp->wth ;
+   ci$put( point = b1 );
+   b1[1] = b1[1] + fabs(sc*thlen) ;
+   ci$put( point = b1 );
+   b1[0] = b1[0] + sc*mfp->ptch ;
+   b1[1] = b1[1] + fabs(sc*mfp->thro) ;
+   ci$put( point = b1 );
+   ci$put( response = RESET );
+   b1[0] = b1[0] - sc*dia  ;
+   ci$put( point = b1 );
+   b1[0] = b1[0] + sc*mfp->ptch ;
+   b1[1] = b1[1] - fabs(sc*mfp->thro) ;
+   ci$put( point = b1 );
+   b1[1] = b1[1] - fabs(sc*thlen) ;
+   ci$put( point = b1 );
+   ci$put( response = RESET );
+   ci$put( response = TERMINATE );
+   endcmd();
+
+   cnst_list.weight = wt1;
+   set_gal_symb();
+   #ifdef DEBUG
+   write(" mfp->ptch=",mfp->ptch,"\nsc=",sc,"\ndia=",dia,"\nthlen=",thlen,'\n');
+   ex$message( msgnumb = DM_P_RstToCntu, // reset to continue
+	       buff    = buffer );
+   ci$get(string = tx1, prompt = buffer);
+   #endif
+   begincmd( "place line seg" );
+   b1[0] = b1[0] - sc*mfp->ptch ;
+   b1[1] = b1[1] + fabs(sc*mfp->ptch) ;
+   ci$put( point = b1 );
+   b1[0] = b1[0] + sc*dia ;
+   ci$put( point = b1 );
+   ci$put( response = RESET );
+   b1[1] = b1[1] + fabs(sc*thlen) - fabs(sc*mfp->ptch) ;
+   ci$put( point = b1 );
+   b1[0] = b1[0] - sc*dia ;
+   ci$put( point = b1 );
+   ci$put( response = RESET );
+   ci$put( response = TERMINATE );
+   endcmd();
+
+   if ( washer == 0 && subgad != CSSSIDE )
+   {
+	shanknum = 13;
+	b1[0] = p1[0] + (sc*dia/2)+sc*mfp->ruh;
+	b1[1] = p1[1];
+	b2[0] = b1[0] - sc*mfp->ruh*sin(PI/4);
+	b2[1] = b1[1] + sc*mfp->ruh*(cos(PI/4)-1);
+	b3[0] = p1[0] + sc*dia/2;
+	b3[1] = p1[1] - sc*mfp->ruh;
+	begincmd(   "Place Arc by 3 Points");
+	ci$put( point = b1 );
+	ci$put( point = b2 );
+	ci$put( point = b3 );
+	b1[0] = p1[0] - (sc*dia/2)-sc*mfp->ruh;
+	b2[0] = b1[0] + sc*mfp->ruh*sin(PI/4);
+	b3[0] = p1[0] - sc*dia/2;
+	ci$put( point = b3 );
+	ci$put( point = b2 );
+	ci$put( point = b1 );
+	ci$put( response = TERMINATE );
+	endcmd();
+   }
+   else
+   {
+	shanknum = 11;
+   }
+
+   readrtree(shankobj,shanknum,0);
+
+   shank_cel = place_group_temp( shankobj , shanknum );
+   cnst_list.weight = orig_weight;
+   set_gal_symb();
+   get_symb();
+   return shanknum;
+}
+
+//****************************************************************************
+// bolt
+//
+// function to place a bolt                          
+
+bolt()
+{
+GRobj	headobj[20];
+int	i,shanknum,headnum;
+double	h2,d1,d2,w,tp1[3],ht1;
+double  b1[3], b2[3], b3[3];
+
+   tp1[2] = b1[2] = b2[2] = b3[2] = p1[2];
+
+ // create bolt according to sub form selection
+
+ if ( subgad == BOLTTOP )
+ {
+   tp1[0] = p1[0] + sc*mfp->wac/2;
+   tp1[1] = p1[1];
+
+   begincmd( "place N-sided polygon by vertex" );
+   ci$put( value = 6 );
+   ci$put( point = p1 );
+   ci$put( point = tp1 );
+   ci$put( response = RESET );
+   ci$put( response = TERMINATE );
+   endcmd();
+
+   begincmd( "place circle by center and edge point/diameter" );
+   ci$put( point = p1 );
+   b1[0] = p1[0] - sc*mfp->waf/2;
+   b1[1] = p1[1];
+   ci$put( point = b1 );
+   ci$put( response = RESET );
+   ci$put( response = TERMINATE );
+   endcmd();
+
+   /*- Place washer if present*/
+
+   headnum = 2;
+   
+   if ( washer == 1 )
+   {
+	begincmd( "place circle by center and edge point/diameter" );
+	ci$put( point = p1 );
+	b1[0] = p1[0] - sc*mfp->wd/2;
+	b1[1] = p1[1];
+	ci$put( point = b1 );
+	ci$put( response = RESET );
+	ci$put( response = TERMINATE );
+	endcmd();
+
+	headnum = 3;
+   }
+
+   // read head objects and create head_cel
+
+   readrtree(headobj,headnum,0);
+
+   head_cel = place_group_temp( headobj , headnum );
+
+   shanknum = 0;
+ }
+ else
+ {
+
+   w = sc*mfp->wac/4;
+   h2 = 0.3*w;
+   d1 = (1-washer)*sc*mfp->ruh;
+   d2 = fabs(washer*sc*mfp->wth) + fabs(wface*sc*mfp->wft);
+   ht1 = sc*mfp->ht - fabs(wface*sc*mfp->wft);
+   // reduce the length if a washer is used
+   thlen = fabs(thlen) - fabs(washer*sc*mfp->wth);
+
+   // create head according to sub form selection
+
+
+   if ( subgad == BOLTAC )
+   {
+   	b1[0] = p1[0] - sc*mfp->wac/2;
+   	b1[1] = p1[1] + d2;
+	begincmd( "place line seg" );
+	ci$put( point = b1 );
+	b1[1] = b1[1] + ht1 - h2;
+	ci$put( point = b1 );
+	ci$put( response = RESET );
+	b1[0] = b1[0] + w;
+	ci$put( point = b1 );
+	b1[1] = p1[1] + d2;
+	ci$put( point = b1 );
+	ci$put( response = RESET );
+	b1[0] = p1[0] + sc*mfp->wac/2 - w;
+	ci$put( point = b1 );
+	b1[1] = b1[1] + ht1 - h2;
+	ci$put( point = b1 );
+	ci$put( response = RESET );
+	b1[0] = b1[0] + w;
+	ci$put( point = b1 );
+	b1[1] = p1[1] + d2;
+	ci$put( point = b1 );
+	ci$put( response = RESET );
+	b1[0] = p1[0] - sc*mfp->wac/2 + w/2;
+	b1[1] = p1[1] + ht1 + d2;
+	ci$put( point = b1 );
+	b1[0] = p1[0] - w/2 + sc*mfp->wac/2;
+	ci$put( point = b1 );
+	ci$put( response = RESET );
+	ci$put( response = TERMINATE );
+	endcmd();
+
+	b1[0] = p1[0] + sc*mfp->wac/2;
+	b1[1] = p1[1] +ht1+d2-h2;
+
+	begincmd(   "Place Arc by 3 Points");
+	ci$put( point = b1 );
+	b2[0] = b1[0] - w/2;
+	b2[1] = b1[1] + h2;
+	ci$put( point = b2 );
+	b1[0] = b1[0] - w;
+	ci$put( point = b1 );
+	ci$put( point = b1 );
+	b2[0] = p1[0];
+	ci$put( point = b2 );
+	b1[0] = p1[0] + w - sc*mfp->wac/2;
+	ci$put( point = b1 );
+	ci$put( point = b1 );
+	b2[0] = b1[0] - w/2;
+	ci$put( point = b2 );
+	b1[0] = b2[0] - w/2;
+	ci$put( point = b1 );
+	ci$put( response = RESET );
+	ci$put( response = TERMINATE );
+	endcmd();
+
+	headnum = 8;
+   }
+   else
+   {
+   	b1[0] = p1[0] - sc*mfp->waf/2;
+   	b1[1] = p1[1] + d2;
+	begincmd( "place line seg" );
+	ci$put( point = b1 );
+	b1[1] = b1[1] + ht1;
+	ci$put( point = b1 );
+	b1[0] = b1[0] + sc*mfp->waf;
+	ci$put( point = b1 );
+	b1[1] = p1[1] + d2;
+	ci$put( point = b1 );
+	ci$put( response = RESET );
+	b1[0] = p1[0];
+	ci$put( point = b1 );
+	b1[1] = b1[1] + ht1;
+	ci$put( point = b1 );
+	ci$put( response = RESET );
+	ci$put( response = TERMINATE );
+	endcmd();
+
+	b1[0] = p1[0] + sc*mfp->waf/2;
+	b1[1] = p1[1] +ht1+d2-h2;
+
+	begincmd(   "Place Arc by 3 Points");
+	ci$put( point = b1 );
+	b2[0] = p1[0] + sc*mfp->waf/4;
+	b2[1] = b1[1] + h2;
+	ci$put( point = b2 );
+	b1[0] = p1[0];
+	ci$put( point = b1 );
+	ci$put( point = b1 );
+	b2[0] = p1[0] - sc*mfp->waf/4;
+	ci$put( point = b2 );
+	b1[0] = p1[0] - sc*mfp->waf/2;
+	ci$put( point = b1 );
+	ci$put( response = RESET );
+	ci$put( response = TERMINATE );
+	endcmd();
+
+	headnum = 6;
+   }
+   // add washer ?
+   if ( washer == 1 )
+   {
+	begincmd( "place line seg" );
+	b1[0] = p1[0] - sc*mfp->wd/2;
+	b1[1] = p1[1];
+	ci$put( point = b1 );
+	b1[1] = b1[1] + sc*mfp->wth;
+	ci$put( point = b1 );
+	b1[0] = b1[0] + sc*mfp->wd;
+	ci$put( point = b1 );
+	b1[1] = b1[1] - sc*mfp->wth;
+	ci$put( point = b1 );
+	ci$put( response = RESET );
+	ci$put( response = TERMINATE );
+	endcmd();
+
+	headnum = headnum + 3;
+   }
+
+   // washer faced ?
+   if ( wface == 1 )
+   {
+	begincmd( "place line seg" );
+	if( subgad == BOLTAC )
+	{
+		b1[0] = p1[0] - sc*mfp->wac/2;
+		b1[1] = p1[1] + d2;
+		ci$put( point = b1 );
+		b1[0] = b1[0] + sc*mfp->wac;
+		ci$put( point = b1 );
+		ci$put( response = RESET );
+		b1[0] = b1[0] + (sc*mfp->wfd-sc*mfp->wac)/2;
+		ci$put( point = b1 );
+		b1[1] = b1[1] - sc*mfp->wft;
+		ci$put( point = b1 );
+		ci$put( response = RESET );
+		b1[0] = b1[0] - sc*mfp->wfd;
+		ci$put( point = b1 );
+		b1[1] = b1[1] + sc*mfp->wft;
+		ci$put( point = b1 );
+	}
+	else
+	{
+		b1[0] = p1[0] - sc*mfp->waf/2;
+		b1[1] = p1[1] + d2;
+		ci$put( point = b1 );
+		b1[0] = b1[0] + sc*mfp->waf;
+		ci$put( point = b1 );
+		ci$put( response = RESET );
+		b1[0] = b1[0] + (sc*mfp->wfd-sc*mfp->waf)/2;
+		ci$put( point = b1 );
+		b1[1] = b1[1] - sc*mfp->wft;
+		ci$put( point = b1 );
+		ci$put( response = RESET );
+		b1[0] = b1[0] - sc*mfp->wfd;
+		ci$put( point = b1 );
+		b1[1] = b1[1] + sc*mfp->wft;
+		ci$put( point = b1 );
+	}
+	ci$put( response = RESET );
+	ci$put( response = TERMINATE );
+	endcmd();
+
+	headnum = headnum + 3;
+   }
+
+   // read head objects and create head_cel
+
+   readrtree(headobj,headnum,0);
+
+
+   head_cel = place_group_temp( headobj , headnum );
+
+   // head creation finished - call function to create shank_cel
+ 
+   shanknum = place_shank( d1 );
+
+ }
+
+ // group the two objects as a single group
+
+ if( shanknum == 0 )
+ {
+   lastobj = head_cel;
+ }
+ else
+ {
+   headobj[0] = head_cel;
+   headobj[1] = shank_cel;
+   headnum = 2;
+   lastobj = place_group_temp( headobj , headnum );
+ }
+
+   // record a point for reference for rotating and copying etc
+
+   refpt1[0] = p1[0];
+   refpt1[1] = p1[1];
+   refpt1[2] = p1[2];
+
+   if ( sa != 0 )
+   {
+	begincmd( "rotate element  by 3 Points" );
+	ci$put( obj = lastobj );
+	ci$put( point = p1 );
+	dlfunc( 1.0 , 0.0 , 0.0 );
+	dlfunc( -1.0+cos(sa) , sin(sa) , 0.0 );
+	ci$put( response = RESET );
+	ci$put( response = TERMINATE );
+	endcmd();
+   }
+}
+
+// function to place a hex nut                       
+
+nut()
+{
+GRobj	headobj[20];
+int	i,headnum;
+double	d2,h2,w,tp1[3],ht1;
+
+double  b1[3], b2[3], b3[3];
+
+ tp1[2] = b1[2] = b2[2] = b3[2] = p1[2];
+
+ // create nut according to sub form selection
+
+ if ( subgad == NUTTOP )
+ {
+   tp1[0] = p1[0] + sc*mfp->wac/2;
+   tp1[1] = p1[1];
+
+   begincmd( "place N-sided polygon by vertex" );
+   ci$put( value = 6 );
+   ci$put( point = p1 );
+   ci$put( point = tp1 );
+   ci$put( response = RESET );
+   ci$put( response = TERMINATE );
+   endcmd();
+
+   begincmd( "place circle by center and edge point/diameter" );
+   ci$put( point = p1 );
+   b1[0] = p1[0] + sc*mfp->waf/2;
+   b1[1] = p1[1];
+   ci$put( point = b1 );
+   ci$put( response = RESET );
+   ci$put( response = TERMINATE );
+   endcmd();
+
+   headnum = 2;
+
+   if (washer == 1)
+   {
+	begincmd( "place circle by center and edge point/diameter" );
+	ci$put( point = p1 );
+	b1[0] = p1[0] + sc*mfp->wd/2;
+	b1[1] = p1[1];
+	ci$put( point = b1 );
+	ci$put( response = RESET );
+	ci$put( response = TERMINATE );
+	endcmd();
+
+	headnum = 3;
+   }
+ }
+ else
+ {
+
+   w = sc*mfp->wac/4;
+   h2 = 0.3*w;
+   d2 = washer*sc*mfp->wth + wface*sc*mfp->wft;
+   if ( nuthin == 0 )
+     ht1 = sc*mfp->nht - wface*sc*mfp->wft;
+   else
+     ht1 = sc*mfp->nhtt - wface*sc*mfp->wft;
+
+   // create head according to sub form selection
+
+
+   if ( subgad == NUTAC )
+   {
+	if ( wface == 0 )
+	{
+	   ht1 = ht1 - h2;
+	   d2 = d2 + h2;
+	}
+
+   	b1[0] = p1[0] - sc*mfp->wac/2;
+   	b1[1] = p1[1] + d2;
+   	b1[2] = p1[2];
+	begincmd( "place line seg" );
+	ci$put( point = b1 );
+	b1[1] = b1[1] + ht1 - h2;
+	ci$put( point = b1 );
+	ci$put( response = RESET );
+	b1[0] = b1[0] + w;
+	ci$put( point = b1 );
+	b1[1] = p1[1] + d2;
+	ci$put( point = b1 );
+	ci$put( response = RESET );
+	b1[0] = p1[0] + sc*mfp->wac/2 - w;
+	ci$put( point = b1 );
+	b1[1] = b1[1] + ht1 - h2;
+	ci$put( point = b1 );
+	ci$put( response = RESET );
+	b1[0] = b1[0] + w;
+	ci$put( point = b1 );
+	b1[1] = p1[1] + d2;
+	ci$put( point = b1 );
+	ci$put( response = RESET );
+	b1[0] = p1[0] - sc*mfp->wac/2 + w/2;
+	b1[1] = p1[1] + ht1 + d2;
+	ci$put( point = b1 );
+	b1[0] = p1[0] - w/2 + sc*mfp->wac/2;
+	ci$put( point = b1 );
+	ci$put( response = RESET );
+	ci$put( response = TERMINATE );
+	endcmd();
+
+	b1[0] = p1[0] + sc*mfp->wac/2;
+	b1[1] = p1[1] +ht1+d2-h2;
+
+	begincmd(   "Place Arc by 3 Points");
+	ci$put( point = b1 );
+	b2[0] = b1[0] - w/2;
+	b2[1] = b1[1] + h2;
+	ci$put( point = b2 );
+	b1[0] = b1[0] - w;
+	ci$put( point = b1 );
+	ci$put( point = b1 );
+	b2[0] = p1[0];
+	ci$put( point = b2 );
+	b1[0] = p1[0] + w - sc*mfp->wac/2;
+	ci$put( point = b1 );
+	ci$put( point = b1 );
+	b2[0] = b1[0] - w/2;
+	ci$put( point = b2 );
+	b1[0] = b2[0] - w/2;
+	ci$put( point = b1 );
+	ci$put( response = RESET );
+	ci$put( response = TERMINATE );
+	endcmd();
+
+	headnum = 8;
+   }
+   else
+   {
+   	b1[0] = p1[0] - sc*mfp->waf/2;
+   	b1[1] = p1[1] + d2;
+   	b1[2] = p1[2];
+	begincmd( "place line seg" );
+	ci$put( point = b1 );
+	b1[1] = b1[1] + ht1;
+	ci$put( point = b1 );
+	b1[0] = b1[0] + sc*mfp->waf;
+	ci$put( point = b1 );
+	b1[1] = p1[1] + d2;
+	ci$put( point = b1 );
+	ci$put( response = RESET );
+	b1[0] = p1[0];
+	ci$put( point = b1 );
+	b1[1] = b1[1] + ht1;
+	ci$put( point = b1 );
+	ci$put( response = RESET );
+	ci$put( response = TERMINATE );
+	endcmd();
+
+	b1[0] = p1[0] + sc*mfp->waf/2;
+	b1[1] = p1[1] +ht1+d2-h2;
+
+	begincmd(   "Place Arc by 3 Points");
+	ci$put( point = b1 );
+	b2[0] = p1[0] + sc*mfp->waf/4;
+	b2[1] = b1[1] + h2;
+	ci$put( point = b2 );
+	b1[0] = p1[0];
+	ci$put( point = b1 );
+	ci$put( point = b1 );
+	b2[0] = p1[0] - sc*mfp->waf/4;
+	ci$put( point = b2 );
+	b1[0] = p1[0] - sc*mfp->waf/2;
+	ci$put( point = b1 );
+	ci$put( response = RESET );
+	ci$put( response = TERMINATE );
+	endcmd();
+
+	headnum = 6;
+   }
+   // add washer ?
+   if ( washer == 1 )
+   {
+	begincmd( "place line seg" );
+	b1[0] = p1[0] - sc*mfp->wd/2;
+	b1[1] = p1[1];
+	ci$put( point = b1 );
+	b1[1] = b1[1] + sc*mfp->wth;
+	ci$put( point = b1 );
+	b1[0] = b1[0] + sc*mfp->wd;
+	ci$put( point = b1 );
+	b1[1] = b1[1] - sc*mfp->wth;
+	ci$put( point = b1 );
+	ci$put( response = RESET );
+	ci$put( response = TERMINATE );
+	endcmd();
+
+	headnum = headnum + 3;
+   }
+
+   // washer faced ?
+   if ( wface == 1 )
+   {
+	begincmd( "place line seg" );
+	if( subgad == NUTAC )
+	{
+		b1[0] = p1[0] - sc*mfp->wac/2;
+		b1[1] = p1[1] + d2;
+		ci$put( point = b1 );
+		b1[0] = b1[0] + sc*mfp->wac;
+		ci$put( point = b1 );
+		ci$put( response = RESET );
+		b1[0] = b1[0] + (sc*mfp->wfd-sc*mfp->wac)/2;
+		ci$put( point = b1 );
+		b1[1] = b1[1] - sc*mfp->wft;
+		ci$put( point = b1 );
+		ci$put( response = RESET );
+		b1[0] = b1[0] - sc*mfp->wfd;
+		ci$put( point = b1 );
+		b1[1] = b1[1] + sc*mfp->wft;
+		ci$put( point = b1 );
+	}
+	else
+	{
+		b1[0] = p1[0] - sc*mfp->waf/2;
+		b1[1] = p1[1] + d2;
+		ci$put( point = b1 );
+		b1[0] = b1[0] + sc*mfp->waf;
+		ci$put( point = b1 );
+		ci$put( response = RESET );
+		b1[0] = b1[0] + (sc*mfp->wfd-sc*mfp->waf)/2;
+		ci$put( point = b1 );
+		b1[1] = b1[1] - sc*mfp->wft;
+		ci$put( point = b1 );
+		ci$put( response = RESET );
+		b1[0] = b1[0] - sc*mfp->wfd;
+		ci$put( point = b1 );
+		b1[1] = b1[1] + sc*mfp->wft;
+		ci$put( point = b1 );
+	}
+	ci$put( response = RESET );
+	ci$put( response = TERMINATE );
+	endcmd();
+
+	headnum = headnum + 3;
+   }
+   else
+   {
+	begincmd(   "Place Arc by 3 Points");
+	if( subgad == NUTAC )
+	{
+		b1[0] = p1[0] - sc*mfp->wac/2;
+		b1[1] = p1[1] + d2;
+		ci$put( point = b1 );
+		b2[0] = b1[0] + w/2;
+		b2[1] = b1[1] - h2;
+		ci$put( point = b2 );
+		b1[0] = b1[0] + w;
+		ci$put( point = b1 );
+		ci$put( point = b1 );
+		b2[0] = p1[0];
+		ci$put( point = b2 );
+		b1[0] = p1[0] - w + sc*mfp->wac/2;
+		ci$put( point = b1 );
+		ci$put( point = b1 );
+		b2[0] = b1[0] + w/2;
+		ci$put( point = b2 );
+		b1[0] = b2[0] + w/2;
+		ci$put( point = b1 );
+		headnum = headnum + 3;
+	}
+	else
+	{
+		b1[0] = p1[0] - sc*mfp->waf/2;
+		b1[1] = p1[1] +d2+h2;
+		ci$put( point = b1 );
+		b2[0] = p1[0] - sc*mfp->waf/4;
+		b2[1] = b1[1] - h2;
+		ci$put( point = b2 );
+		b1[0] = p1[0];
+		ci$put( point = b1 );
+		ci$put( point = b1 );
+		b2[0] = p1[0] + sc*mfp->waf/4;
+		ci$put( point = b2 );
+		b1[0] = p1[0] + sc*mfp->waf/2;
+		ci$put( point = b1 );
+		headnum = headnum + 2;
+	}
+	ci$put( response = RESET );
+	ci$put( response = TERMINATE );
+	endcmd();
+   }
+
+ }
+
+   // read head objects and create head_cel
+
+   readrtree(headobj,headnum,0);
+
+   lastobj = place_group_temp( headobj , headnum );
+
+   // record a point for reference for rotating and copying etc
+
+   refpt1[0] = p1[0];
+   refpt1[1] = p1[1];
+   refpt1[2] = p1[2];
+
+
+   if ( sa != 0 )
+   {
+	begincmd( "rotate element  by 3 Points" );
+	ci$put( obj = lastobj );
+	ci$put( point = p1 );
+	dlfunc( 1.0 , 0.0 , 0.0 );
+	dlfunc( -1.0+cos(sa) , sin(sa) , 0.0 );
+	ci$put( response = RESET );
+	ci$put( response = TERMINATE );
+	endcmd();
+   }
+}
+
+
+screw()
+{
+GRobj	headobj[20],shankobj[20];
+int	i,shanknum,headnum;
+double  wac, ht1, r1, d1, d2, b1[3], b2[3], b3[3];
+
+   b1[2] = b2[2] = b3[2] = p1[2];
+
+   // create screw according to sub form selection
+
+   d2 = 0;
+
+   if ( mg == CHSCREW )
+   {
+	ht1 = fabs(sc*dia);
+	r1  = fabs(sc*mfp->chd/2);
+	d1  = fabs(sc*mfp->ruh);
+	wac = fabs(sc*mfp->chaf/cos(PI/6));
+   }
+   else
+   {
+	ht1 = fabs(sc*mfp->csht);
+	r1  = fabs(sc*mfp->cshd/2);
+	d1  = 0;
+	wac = fabs(sc*mfp->csaf/cos(PI/6));
+   }
+
+	#ifdef DEBUG
+	write("in screw d1=",d1,'\n');
+	#endif
+
+ if ( subgad == CHSTOP || subgad == CSSTOP )
+ {
+   headnum = 2;
+   b1[0] = p1[0] + wac/2;
+   b1[1] = p1[1];
+
+   begincmd( "place N-sided polygon by vertex" );
+   ci$put( value = 6 );
+   ci$put( point = p1 );
+   ci$put( point = b1 );
+   ci$put( response = RESET );
+   ci$put( response = TERMINATE );
+   endcmd();
+
+   begincmd( "place circle by center and edge point/diameter" );
+   ci$put( point = p1 );
+   b1[0] = p1[0] + r1;
+   b1[1] = p1[1];
+   ci$put( point = b1 );
+   if ( subgad == CHSTOP )
+   {
+      ci$put( point = p1 );
+      b1[0] = b1[0] - (0.1 * dia * sc);
+      ci$put( point = b1 );
+
+      headnum = 3;
+
+      if (washer == 1)
+      {
+	      ci$put( point = p1 );
+	      b1[0] = p1[0] - sc*mfp->wd/2;
+	      b1[1] = p1[1];
+	      ci$put( point = b1 );
+	      headnum = 4;
+      }
+
+   }
+   ci$put( response = RESET );
+   ci$put( response = TERMINATE );
+   endcmd();
+
+   // read head objects and create head_cel
+
+   readrtree(headobj,headnum,0);
+
+   head_cel = place_group_temp( headobj , headnum );
+
+   shanknum = 0;
+
+ }
+ else
+ {
+   // side view of screw
+
+   // create head according to sub form selection
+
+   if ( subgad == CHSSIDE )
+   {
+        // reduce the length and set d2 if a washer is used
+        d2 = fabs(washer*sc*mfp->wth);
+
+	#ifdef DEBUG
+	write("in screw before changing the size thlen=",thlen,'\n');
+	#endif
+
+        thlen = fabs(thlen - washer*mfp->wth);
+
+	#ifdef DEBUG
+	write("in screw after changing the size thlen=",thlen,
+		"\nmfp->wth=",mfp->wth,"\nwasher=",washer,'\n');
+	#endif
+
+	headnum = 5;
+
+	begincmd( "place line seg" );
+	b1[0] = p1[0] - r1;
+	b1[1] = p1[1] + d2;
+	ci$put( point = b1 );
+	b1[1] = b1[1] + 0.9*ht1;
+	ci$put( point = b1 );
+	b1[0] = b1[0] + 0.1*sc*dia;
+	b1[1] = b1[1] + 0.1*sc*dia;
+	ci$put( point = b1 );
+	b1[0] = p1[0] + r1 - 0.1*sc*dia;
+	ci$put( point = b1 );
+	b1[0] = b1[0] + 0.1*sc*dia;
+	b1[1] = b1[1] - 0.1*sc*dia;
+	ci$put( point = b1 );
+	b1[1] = p1[1] + d2;
+	ci$put( point = b1 );
+   
+        // add washer ?
+        if ( washer == 1 )
+        {
+	   ci$put( response = RESET );
+	   b1[0] = p1[0] - sc*mfp->wd/2;
+	   b1[1] = p1[1];
+	   ci$put( point = b1 );
+	   b1[1] = b1[1] + sc*mfp->wth;
+	   ci$put( point = b1 );
+	   b1[0] = b1[0] + sc*mfp->wd;
+	   ci$put( point = b1 );
+	   b1[1] = b1[1] - sc*mfp->wth;
+	   ci$put( point = b1 );
+	   headnum = headnum + 3;
+	}
+
+	ci$put( response = RESET );
+	ci$put( response = TERMINATE );
+	endcmd();
+   }
+   else
+   {
+	begincmd( "place line seg" );
+	b1[0] = p1[0] - sc*dia/2;
+	b1[1] = p1[1];
+	ci$put( point = b1 );
+	b1[0] = p1[0] - r1;
+	b1[1] = p1[1] + ht1;
+	ci$put( point = b1 );
+	b1[0] = p1[0] + r1;
+	ci$put( point = b1 );
+	b1[0] = p1[0] + sc*dia/2;
+	b1[1] = p1[1];
+	ci$put( point = b1 );
+	ci$put( response = RESET );
+	ci$put( response = TERMINATE );
+	endcmd();
+
+	headnum = 3;
+   }
+   // read head objects and create head_cel
+
+   readrtree(headobj,headnum,0);
+
+   head_cel = place_group_temp( headobj , headnum );
+
+   // create screw shank
+
+   shanknum = place_shank( d1 );
+
+ }
+
+ // group the two objects as a single group
+
+ if( shanknum == 0 )
+ {
+   lastobj = head_cel;
+ }
+ else
+ {
+   headobj[0] = head_cel;
+   headobj[1] = shank_cel;
+   headnum = 2;
+   lastobj = place_group_temp( headobj , headnum );
+ }
+
+   // record a point for reference for rotating and copying etc
+
+   refpt1[0] = p1[0];
+   refpt1[1] = p1[1];
+   refpt1[2] = p1[2];
+
+   if ( sa != 0 )
+   {
+	begincmd( "rotate element  by 3 Points" );
+	ci$put( obj = lastobj );
+	ci$put( point = p1 );
+	dlfunc( 1.0 , 0.0 , 0.0 );
+	dlfunc( -1.0+cos(sa) , sin(sa) , 0.0 );
+	ci$put( response = RESET );
+	ci$put( response = TERMINATE );
+	endcmd();
+   }
+
+}
+
+
+//******************************************************************* 
+
+// function for tapped holes - geometry creation only
+
+thole()
+{
+GRobj	hobj[20],hobj2[20];
+int	i,hnum;
+double	r1,r2,r3,tp1[3],ht1;
+double	ch,h0,h2,h3;
+double  b1[3], b2[3], b3[3], b4[3], b5[3], b6[3];
+
+   tp1[2] = b1[2] = b2[2] = b3[2] = b4[2] = b5[2] = p1[2];
+
+   r2 = sc*dia/2.0;
+   r1 = r2 - sc*mfp->ptch;
+
+   #ifdef DEBUG
+   write("I'm in thole() and dia=",dia,"\nr2=",r2,"\nholecbd=",holecbd,'\n');
+   #endif
+
+   switch( subgad )
+   {
+   case HOLECST:
+   case HOLECS:
+   	r1 = sc*mfp->holed/2;
+   	r2 = r1 + sc*csd;
+   	break;
+   case HOLECBT:
+   case HOLECB:
+   	r1 = sc*mfp->holed/2;
+   	r2 = sc*mfp->holecf/2;
+   	r3 = sc*holecbd/2;
+	ch = fabs(r2 - r1);
+	break;
+   case THCST:
+   case THCS:
+   	r3 = r2 + sc*csd;
+   	break;
+   case THCBT:
+   case THCB:
+   	r3 = sc*holecbd/2;
+   	break;
+   }
+   if ( holeflag == 1 )
+   {
+	// top view of holes
+
+	begincmd( "place circle by center and edge point/diameter" );
+	ci$put( point = p1 );
+	b1[0] = p1[0] + r1;
+	b1[1] = p1[1];
+	ci$put( point = b1 );
+	switch( subgad )
+	{
+	case HOLECST:
+		ci$put( point = p1 );
+		b1[0] = p1[0] + r2;
+		b1[1] = p1[1];
+		ci$put( point = b1 );
+		hnum = 2;
+		break;
+	case HOLECBT:
+		ci$put( point = p1 );
+		b1[0] = p1[0] + r2;
+		b1[1] = p1[1];
+		ci$put( point = b1 );
+		ci$put( point = p1 );
+		b1[0] = p1[0] + r3;
+		ci$put( point = b1 );
+		hnum = 3;
+		break;
+	case THPLNT:
+		hnum = 2;
+		break;
+	case THCST:
+	case THCBT:
+		ci$put( point = p1 );
+		b1[0] = p1[0] + r3;
+		ci$put( point = b1 );
+		hnum = 3;
+		break;
+	}
+	ci$put( response = RESET );
+	ci$put( response = TERMINATE );
+	endcmd();
+
+	if( subgad==THPLNT || subgad==THCST || subgad==THCBT )
+	{
+		begincmd( "place arc by center" );
+		ci$put( point = p1 );
+		b1[0] = p1[0] + r2*cos(165*PI/180);
+		b1[1] = p1[1] + r2*sin(165*PI/180);
+		ci$put( point = b1 );
+		b1[0] = p1[0] + r2*cos(125*PI/180);
+		b1[1] = p1[1] + r2*sin(125*PI/180);
+		ci$put( point = b1 );
+		ci$put( response = RESET );
+		ci$put( response = TERMINATE );
+		endcmd();
+	}
+   	readrtree(hobj,hnum,0);
+
+	// record a point for reference for rotating and copying etc
+
+	refpt1[0] = p1[0];
+	refpt1[1] = p1[1];
+	refpt1[2] = p1[2];
+
+	// create group
+
+	lastobj = place_group_temp( hobj , hnum );
+   }
+   else
+   {
+	// side view
+
+	b1[1] = p1[1];
+
+	switch( subgad )
+	{
+	case THPLN:
+		h0 = 0.0;
+		h2 = sc*drilld;
+		break;
+	case THCS:
+		h0 = sc*csd;
+		h2 = sc*drilld - h0;
+		break;
+	case THCB:
+		h0 = sc*cbd;
+		h2 = sc*drilld - h0;
+		break;
+	}
+	switch( subgad )
+	{
+	case HOLECS:
+		begincmd( "place line seg" );
+		b1[0] = p1[0] - r2;
+		ci$put( point = b1 );
+		b2[0] = p1[0] - r1;
+		b2[1] = p1[1] - sc*csd;
+		ci$put( point = b2 );
+		b3[0] = b2[0];
+		b3[1] = p1[1] - sc*len;
+		ci$put( point = b3 );
+		ci$put( response = RESET );
+		b1[0] = p1[0] + r2;
+		b2[0] = p1[0] + r1;
+		b3[0] = b2[0];
+		ci$put( point = b3 );
+		ci$put( point = b2 );
+		ci$put( point = b1 );
+		hnum = 4;
+		break;
+
+	case HOLECB:
+		begincmd( "place line seg" );
+		b1[0] = p1[0] - r3;
+		b2[0] = b1[0];
+		b2[1] = p1[1] - sc*cbd;
+		b3[0] = p1[0] - (r1 + ch);
+		b3[1] = b2[1];
+		b4[0] = p1[0] - r1;
+		b4[1] = b3[1] - ch;
+		b5[0] = b4[0];
+		b5[1] = p1[1] - sc*len;
+		ci$put( point = b1 );
+		ci$put( point = b2 );
+		ci$put( point = b3 );
+		ci$put( point = b4 );
+		ci$put( point = b5 );
+		ci$put( response = RESET );
+		b1[0] = p1[0] + r3;
+		b2[0] = b1[0];
+		b3[0] = p1[0] + r1 + ch;
+		b4[0] = p1[0] + r1;
+		b5[0] = b4[0];
+		ci$put( point = b5 );
+		ci$put( point = b4 );
+		ci$put( point = b3 );
+		ci$put( point = b2 );
+		ci$put( point = b1 );
+		hnum = 8;
+		break;
+		break;
+	case THPLN:
+	case THCS:
+	case THCB:
+		h3 = 0.6*r1;
+
+   		cnst_list.weight = 0;
+   		set_gal_symb();
+
+		begincmd( "place line seg" );
+		b1[0] = p1[0] - r1 - sc*mfp->ptch;
+		b1[1] = p1[1] - h0;
+		ci$put( point = b1 );
+		b1[1] = p1[1] - sc*threadd;
+		ci$put( point = b1 );
+		b1[0] = p1[0] + r1 + sc*mfp->ptch;
+		ci$put( point = b1 );
+		b1[1] = p1[1] - h0;
+		ci$put( point = b1 );
+		ci$put( response = RESET );
+		ci$put( response = TERMINATE );
+		endcmd();
+
+   		cnst_list.weight = wt1;
+   		set_gal_symb();
+
+		begincmd( "place line seg" );
+		b1[0] = p1[0] - r1;
+		b1[1] = p1[1] - h0 - sc*mfp->ptch;
+		ci$put( point = b1 );
+		b1[0] = b1[0] - sc*mfp->ptch;
+		b1[1] = b1[1] + sc*mfp->ptch;
+		ci$put( point = b1 );
+		ci$put( response = RESET );
+		b1[0] = p1[0] + r1 + sc*mfp->ptch;
+		b1[1] = p1[1] - h0;
+		ci$put( point = b1 );
+		b1[0] = p1[0] + r1;
+		b1[1] = b1[1] - sc*mfp->ptch;
+		ci$put( point = b1 );
+		b1[1] = p1[1] - sc*drilld + h3;
+		ci$put( point = b1 );
+		b1[0] = p1[0];
+		b1[1] = b1[1] - h3;
+		ci$put( point = b1 );
+		b1[0] = p1[0] - r1;
+		b1[1] = b1[1] + h3;
+		ci$put( point = b1 );
+		b1[1] = p1[1] - h0 - sc*mfp->ptch;
+		ci$put( point = b1 );
+		b1[0] = p1[0] + r1;
+		ci$put( point = b1 );
+		ci$put( response = RESET );
+		b1[0] = p1[0] - r1;
+		b1[1] = p1[1] - sc*drilld + h3;
+		ci$put( point = b1 );
+		b1[0] = p1[0] + r1;
+		ci$put( point = b1 );
+		hnum = 11;
+		break;
+	}
+	switch( subgad )
+	{
+	case THCS:
+		ci$put( response = RESET );
+		b1[0] = p1[0] - r3;
+		b1[1] = p1[1];
+		b2[0] = b1[0] + sc*csd;
+		b2[1] = b1[1] - sc*csd;
+		ci$put( point = b1 );
+		ci$put( point = b2 );
+		ci$put( response = RESET );
+		b1[0] = p1[0] + r3;
+		b2[0] = b1[0] - sc*csd;
+		ci$put( point = b1 );
+		ci$put( point = b2 );
+		hnum = 13;
+		break;
+	case THCB:
+		ci$put( response = RESET );
+		b1[0] = p1[0] - r3;
+		b1[1] = p1[1];
+		b2[0] = b1[0];
+		b2[1] = b1[1] - sc*cbd;
+		b3[0] = p1[0] - r1 - sc*mfp->ptch;
+		b3[1] = b2[1];
+		ci$put( point = b1 );
+		ci$put( point = b2 );
+		ci$put( point = b3 );
+		ci$put( response = RESET );
+		b1[0] = p1[0] + r3;
+		b2[0] = b1[0];
+		b3[0] = p1[0] + r1 + sc*mfp->ptch;
+		ci$put( point = b1 );
+		ci$put( point = b2 );
+		ci$put( point = b3 );
+		hnum = 15;
+		break;
+	}
+	ci$put( response = RESET );
+	ci$put( response = TERMINATE );
+	endcmd();
+
+   	readrtree(hobj,hnum,0);
+
+	// create composite of internal hole boundry
+
+	switch( subgad )
+	{
+	case THCB:
+		hobj2[0] = hobj[11];
+		hobj2[1] = hobj[12];
+		hobj2[2] = hobj[3];
+		hobj2[3] = hobj[8];
+		hobj2[4] = hobj[7];
+		hobj2[5] = hobj[6];
+		hobj2[6] = hobj[5];
+		hobj2[7] = hobj[4];
+		hobj2[8] = hobj[14];
+		hobj2[9] = hobj[13];
+		//make_composite_curve( hobj2 , 10 , &hobj[3] );
+		hobj[3] = make_composite_curve( hobj2 , 10 );
+
+		hobj[4] = hobj[9];
+		hobj[5] = hobj[10];
+		lastobj = place_group_temp( hobj , 6 );
+		break;
+	case THCS:
+		hobj2[0] = hobj[11];
+		hobj2[1] = hobj[3];
+		hobj2[2] = hobj[8];
+		hobj2[3] = hobj[7];
+		hobj2[4] = hobj[6];
+		hobj2[5] = hobj[5];
+		hobj2[6] = hobj[4];
+		hobj2[7] = hobj[12];
+		//make_composite_curve( hobj2 , 8 , &hobj[3] );
+		hobj[3] = make_composite_curve( hobj2 , 8 );
+		hobj[4] = hobj[9];
+		hobj[5] = hobj[10];
+		lastobj = place_group_temp( hobj , 6 );
+		break;
+	case THPLN:
+		hobj2[0] = hobj[3];
+		hobj2[1] = hobj[8];
+		hobj2[2] = hobj[7];
+		hobj2[3] = hobj[6];
+		hobj2[4] = hobj[5];
+		hobj2[5] = hobj[4];
+		//make_composite_curve( hobj2 , 6 , &hobj[3] );
+		hobj[3] = make_composite_curve( hobj2 , 6);
+		hobj[4] = hobj[9];
+		hobj[5] = hobj[10];
+		lastobj = place_group_temp( hobj , 6 );
+		break;
+	case HOLECS:
+		//make_composite_curve( hobj , 2 , &hobj2[0] );
+		hobj2[0] = make_composite_curve( hobj , 2 );
+		//make_composite_curve( &hobj[2] , 2 , &hobj2[1] );
+		hobj2[1] = make_composite_curve( &hobj[2] , 2 );
+		lastobj = place_group_temp( hobj2 , 2 );
+		break;
+	case HOLECB:
+		//make_composite_curve( hobj , 4 , &hobj2[0] );
+		hobj2[0] = make_composite_curve( hobj , 4);
+		//make_composite_curve( &hobj[4] , 4 , &hobj2[1] );
+		hobj2[1] = make_composite_curve( &hobj[4] , 4);
+		lastobj = place_group_temp( hobj2 , 2 );
+		break;
+	}
+
+	// record a point for reference for rotating and copying etc
+
+	refpt1[0] = p1[0];
+	refpt1[1] = p1[1];
+	refpt1[2] = p1[2];
+   }
+
+   if ( sa!=0 && holeflag!=1 )
+   {
+	begincmd( "rotate element  by 3 Points" );
+	ci$put( obj = lastobj );
+	ci$put( point = p1 );
+	dlfunc( 1.0 , 0.0 , 0.0 );
+	dlfunc( -1.0+cos(sa) , sin(sa) , 0.0 );
+	ci$put( response = RESET );
+	ci$put( response = TERMINATE );
+	endcmd();
+   }
+}
+//******************************************************************* 
+
+// function for studs
+
+stud()
+{
+GRobj	studobj[20];
+int	i,studnum;
+double	r1,d1;
+double  b1[3], b2[3], b3[3];
+
+   b1[2] = b2[2] = b3[2] = p1[2];
+
+   d1 = sc*mfp->ptch;
+   r1 = (sc*dia/2) - d1;
+
+
+   begincmd( "place line seg" );
+   b1[0] = p1[0] + r1;
+   b1[1] = p1[1];
+   ci$put( point = b1 );
+   b1[0] = b1[0] + d1;
+   b1[1] = b1[1] + d1;
+   ci$put( point = b1 );
+   b1[1] = b1[1] + sc*len - d1*2;
+   ci$put( point = b1 );
+   b1[0] = b1[0] - d1;
+   b1[1] = b1[1] + d1;
+   ci$put( point = b1 );
+   b1[0] = b1[0] - 2*r1;
+   ci$put( point = b1 );
+   b1[0] = b1[0] - d1;
+   b1[1] = b1[1] - d1;
+   ci$put( point = b1 );
+   b1[1] = b1[1] - sc*len + d1*2;
+   ci$put( point = b1 );
+   b1[0] = b1[0] + d1;
+   b1[1] = b1[1] - d1;
+   ci$put( point = b1 );
+   b1[0] = b1[0] + 2*r1;
+   ci$put( point = b1 );
+   ci$put( response = RESET );
+   b1[0] = p1[0] + sc*dia/2;
+   b1[1] = p1[1] + d1;
+   ci$put( point = b1 );
+   b1[0] = b1[0] - sc*dia;
+   ci$put( point = b1 );
+   ci$put( response = RESET );
+   b1[1] = p1[1] + sc*studtl1;
+   ci$put( point = b1 );
+   b1[0] = b1[0] + sc*dia;
+   ci$put( point = b1 );
+   ci$put( response = RESET );
+   b1[1] = p1[1] + sc*len -d1;
+   ci$put( point = b1 );
+   b1[0] = b1[0] - sc*dia;
+   ci$put( point = b1 );
+   ci$put( response = RESET );
+   b1[1] = b1[1] - sc*studtl2 + d1;
+   ci$put( point = b1 );
+   b1[0] = b1[0] + sc*dia;
+   ci$put( point = b1 );
+   ci$put( response = RESET );
+   ci$put( response = TERMINATE );
+   endcmd();
+
+   cnst_list.weight = 0;
+   set_gal_symb();
+
+/* the next code include thread run out and may be used in the future
+
+   begincmd( "place line seg" );
+   b1[0] = p1[0] + r1;
+   b1[1] = p1[1];
+   ci$put( point = b1 );
+   b1[1] = b1[1] + sc*studtl1;
+   ci$put( point = b1 );
+   b1[0] = b1[0] + d1;
+   b1[1] = b1[1] + sc*mfp->thro;
+   ci$put( point = b1 );
+   ci$put( response = RESET );
+   b1[0] = b1[0] - sc*dia;
+   ci$put( point = b1 );
+   b1[0] = b1[0] + d1;
+   b1[1] = b1[1] - sc*mfp->thro;
+   ci$put( point = b1 );
+   b1[1] = b1[1] - sc*studtl1;
+   ci$put( point = b1 );
+   ci$put( response = RESET );
+   b1[1] = b1[1] + len;
+   ci$put( point = b1 );
+   b1[1] = b1[1] - sc*studtl2;
+   ci$put( point = b1 );
+   b1[0] = b1[0] - d1;
+   b1[1] = b1[1] - sc*mfp->thro;
+   ci$put( point = b1 );
+   ci$put( response = RESET );
+   b1[0] = b1[0] + sc*dia;
+   ci$put( point = b1 );
+   b1[0] = b1[0] - d1;
+   b1[1] = b1[1] + sc*mfp->thro;
+   ci$put( point = b1 );
+   b1[1] = b1[1] + sc*studtl2;
+   ci$put( point = b1 );
+   ci$put( response = RESET );
+   ci$put( response = RESET );
+   ci$put( response = TERMINATE );
+   endcmd();
+
+*/
+// the next code is without thread runout
+
+   begincmd( "place line seg" );
+   b1[0] = p1[0] + r1;
+   b1[1] = p1[1];
+   ci$put( point = b1 );
+   b1[1] = b1[1] + sc*studtl1;
+   ci$put( point = b1 );
+   ci$put( response = RESET );
+   b1[0] = b1[0] - r1*2;
+   ci$put( point = b1 );
+   b1[1] = b1[1] - sc*studtl1;
+   ci$put( point = b1 );
+   ci$put( response = RESET );
+   b1[1] = b1[1] + sc*len;
+   ci$put( point = b1 );
+   b1[1] = b1[1] - sc*studtl2;
+   ci$put( point = b1 );
+   ci$put( response = RESET );
+   b1[0] = b1[0] + r1*2;
+   ci$put( point = b1 );
+   b1[1] = b1[1] + sc*studtl2;
+   ci$put( point = b1 );
+   ci$put( response = RESET );
+   ci$put( response = RESET );
+   ci$put( response = TERMINATE );
+   endcmd();
+
+   cnst_list.weight = wt1;
+   set_gal_symb();
+
+// end of code without runout
+
+   // read stud objects and create head_cel
+
+   readrtree( studobj , 16 , 0 );
+
+   lastobj = place_group_temp( studobj , 16 );
+
+   // record a point for reference for rotating and copying etc
+
+   refpt1[0] = p1[0];
+   refpt1[1] = p1[1];
+   refpt1[2] = p1[2];
+
+
+   if ( sa != 0 )
+   {
+	begincmd( "rotate element  by 3 Points" );
+	ci$put( obj = lastobj );
+	ci$put( point = p1 );
+	dlfunc( 1.0 , 0.0 , 0.0 );
+	dlfunc( -1.0+cos(sa) , sin(sa) , 0.0 );
+	ci$put( response = RESET );
+	ci$put( response = TERMINATE );
+	endcmd();
+   }
+}
+
+//******************************************************************* 
+ 
+// function to obtain fastener length 
+
+int fastlen(ln) 
+double *ln;
+{
+
+double flen, templen, tp2[3], tp3[3];
+char  buffer[80];
+
+
+      // set default fastener lengths
+      // for bolts/screws/studs - set = min standard length.
+      // for tapped holes - set = relative to diameter.
+
+   if ( *ln == 0.0 || mg == THOLE )
+   {
+	
+	#ifdef DEBUG
+	write("\n\nI'm in fastlen() and mg =",mg,"\nTHOLE=",THOLE,"\n");
+	#endif
+	if( mg == THOLE )
+	{
+		#ifdef DEBUG
+		write("I'm in fastlen() and inside THOLE set length\n");
+		#endif
+
+		switch ( thole_type )
+		{
+		case HOLECS:
+			*ln = 5*dia;
+			break;
+		case HOLECB:
+			*ln = 5*dia;
+			break;
+		case THPLN:
+			*ln = 2*dia;
+			break;
+		case THCS:
+			*ln = 2*dia+csd;
+			break;
+		case THCB:
+			*ln = 2*dia+cbd;
+			break;
+		}
+		#ifdef DEBUG
+		write("I'm in fastlen() and outside THOLE length=",*ln,"\n");
+		#endif
+        	FIfld_set_value(form[curfm],LENGTH,0,0,*ln,FALSE);
+
+	}
+	else if( mg == BOLT )
+	{
+		*ln = (double)mfp->blen[0];
+	}
+	else if( mg == STUD )
+	{
+		*ln = (double)mfp->slen[0];
+	}
+	else	// screws
+	{
+		*ln = (double)mfp->sclen[0];
+	}
+   }
+
+   if( mg == NUT) return 999;
+fastflen1:
+
+   if( subgad==THPLN || subgad==THCS || subgad==THCB )
+    {
+      ex$message( msgnumb = DM_P_EntrThrdLen, // Enter Thread length
+		  buff	  = strp );
+    }
+   else
+   {
+      #ifdef DEBUG 
+	write("dia = ",dia,'\n');
+      #endif
+      ex$message( msgnumb = DM_P_EntFstnrLen, // Enter fastener length
+		  buff    = strp );
+	if( met_imp == 1 || met_imp == 3 ) strcat(strp, " inch.");
+	else strcat(strp, " mm's.");
+   }
+   ex$message( msgnumb = DM_P_LenValDat, // length by value or DATA point
+	       buff    = buffer );
+   message1( buffer );
+   flen = *ln;
+   #ifdef 	DEBUG
+   write("flen =",flen,'\n');
+   #endif
+
+   if( flen == 0.0 ) return -1.0;
+
+   switch ( mg )
+   {
+   case CHSCREW:
+   case CSSCREW:
+	#ifdef DEBUG
+	write("scanning the screw lengths\n");
+	#endif
+	len_count = 10;
+        for( i=0 ; flen>mfp->sclen[i] && i<10 && mfp->sclen[i]!=0.0 ; i=i+1 )
+        ;                                   // empty search loop    
+   
+        // find closest length
+        // has exact value been found?
+
+        if( flen == mfp->sclen[i] )
+        {
+	   templen = flen;
+        }
+        else if( flen < mfp->sclen[i])
+        {
+	   if( i != 0 )
+             if( (flen-mfp->sclen[i]) > (flen-mfp->sclen[i-1]) )
+		 i=i-1;
+           templen = mfp->sclen[i];
+        }
+        else
+        {
+            // value greater than list - take last
+            if( i == 9 )
+               templen = mfp->sclen[i];
+            else
+               templen = mfp->sclen[i-1];
+        }
+	#ifdef DEBUG
+	write("screw length templen = ",templen,"\n");
+	#endif
+	
+	for( i=0; i<len_count; i=i+1)
+	{
+	   if( mfp->sclen[i] <= 0.0) break;
+	   FIfld_set_list_default_text(form[curfm],LENGTH,i,0,ftoa(mfp->sclen[i]),FALSE);	
+	}
+        FIfld_set_value(form[curfm],LENGTH,0,0,templen,FALSE);
+ 	FIfld_set_list_num_rows(form[curfm],LENGTH,1, i);
+	len = templen;
+
+	break;			// length found - end switch block
+
+	// screw length not found in first list - try in bolt list
+
+   case BOLT:
+	#ifdef DEBUG
+	write("scanning the bolt lengths\n");
+	#endif
+	len_count = 26;
+         for( i=0 ; flen>mfp->blen[i] && i<26 && mfp->blen[i]!=0.0 ; i=i+1 )
+         ;                                   // empty search loop    
+
+         if( flen == mfp->blen[i] )
+         {
+	     templen = flen;
+         }
+         else if( flen < mfp->blen[i])
+         {
+	     if( i != 0 )
+               if( (flen-mfp->blen[i]) > (flen-mfp->blen[i-1]) ) i=i-1;
+             templen = mfp->blen[i];
+         }
+         else
+         {
+            // value greater than list - take last
+            if( i == 25 )
+               templen = mfp->blen[i];
+            else
+               templen = mfp->blen[i-1];
+         }
+	#ifdef DEBUG
+	write("bolt length templen = ",templen,"\n");
+	#endif
+	for( i=0; i < len_count; i=i+1)
+	{
+	   if( mfp->blen[i] <= 0.0) break;
+	   FIfld_set_list_default_text(form[curfm],LENGTH,i,0,ftoa(mfp->blen[i]),FALSE);	
+	}
+        FIfld_set_value(form[curfm],LENGTH,0,0,templen,FALSE);
+ 	FIfld_set_list_num_rows(form[curfm],LENGTH,1, i);
+	len = templen;
+	
+	 break;			// length found - end switch block
+
+   case STUD:
+
+	len_count = 14;
+         for( i=0 ; flen>mfp->slen[i] && i<14 && mfp->slen[i]!=0.0 ; i=i+1 )
+         ;                                   // empty search loop    
+
+         if( flen == mfp->slen[i] )
+         {
+	     templen = flen;
+         }
+         else if( flen < mfp->slen[i])
+         {
+	     if( i != 0 )
+               if( (flen-mfp->slen[i]) > (flen-mfp->slen[i-1]) ) i=i-1;
+             templen = mfp->slen[i];
+         }
+         else
+         {
+            // value greater than list - take last
+            if( i == 13 )
+               templen = mfp->slen[i];
+            else
+               templen = mfp->slen[i-1];
+         }
+
+	 // get stud thread lenghts
+
+	 studtl1 = mfp->sthl1;
+	 studtl2 = mfp->sthl2[i];
+
+	#ifdef DEBUG
+	write("stud length templen = ",templen,"\n");
+	#endif
+	
+	for( i=0; i < len_count; i=i+1)
+	{
+	   if( mfp->slen[i] <= 0.0) break;
+	   #ifdef DEBUG
+	   write("stud len[",i,"]=",mfp->slen[i],'\n');
+	   #endif
+	   FIfld_set_list_default_text(form[curfm],LENGTH,i,0,ftoa(mfp->slen[i]),FALSE);	
+	}
+        FIfld_set_value(form[curfm],LENGTH,0,0,templen,FALSE);
+ 	FIfld_set_list_num_rows(form[curfm],LENGTH,1, i);
+	len = templen;
+
+	 break;			// length found - end switch block
+
+   }					// end of switch code block
+
+
+   // if length is non standard - present it to the user for correction etc
+
+   // this does not apply to tapped holes etc - ie allow any length
+
+   if( mg == THOLE )
+   {
+	message1( "" );  // no action taken as it is a tapped hole
+   }
+   else if( flen==templen )
+   {
+	ex$message( msgnumb = DM_P_LnEntStdLn, // Length entered is a standard length
+		    buff    = buffer );
+	message1( buffer );
+   }
+   else
+   {
+
+        // present standard length to the user. Allow user to use this
+        // standard length or his length 
+   
+	ex$message( msgnumb = DM_I_NrstStndrd, // Nearest standard=
+		    buff    = strp );
+	strcat(strp,itoa( (int)templen ) );
+	ex$message( msgnumb = DM_I_CurntLen, // Current length=
+		    buff    = strp );
+	if( flen == floor(flen) )
+	   strcat(strp,itoa((int)floor(flen)));
+	else
+	   strcat(strp,ftoa(flen));
+	strcat(strp,"mm");
+          
+fastflen2:
+    
+        //message1( strp );
+	ex$message( msgnumb = DM_P_AcptOrMvon, // ACCEPT (standard) / MOVE_ON..
+		    field   = 3 );
+	ci$put( response = DATA);
+	ex$message( msgnumb = DM_P_AcptOrMvon, //  //ACCEPT (standard) / MOVE_ON (current)
+		    buff    = buffer );
+        ci$getevent( event = &event1,
+		    stackable = 1,
+		    prompt = buffer ); //ACCEPT (standard) / MOVE_ON (current)
+	message1( "" );
+      
+        if ( event1.response == D_RESET )
+               goto fastflen1;                       // reject back  
+        else if ( event1.response == DATA )
+		flen = templen;
+	else if ( event1.response == RESET )
+	{
+	// use non standard value
+	}
+	else
+	{
+		ex$message( msgnumb = DM_P_InvldResp, // Invalid response - retry
+			    buff    = buffer );
+		message1( buffer );
+                goto fastflen2;
+        }
+
+   }
+   
+   *ln = flen;
+
+   return 999;	// to indicate success
+
+  message1("   ");
+}
+
+//****************************************************************
+
+wakeup()
+{
+int msgp, sizep, nretp;
+
+int ret;
+int fmi;
+IGRboolean loc_ass_flag;
+
+	loc_ass_flag = FALSE;
+
+	/** check assoc flag and set assoc mode to false **/	
+
+	if (!int_sleep)
+	{
+		gr$get_associative_flag (buffer = &assoc_flag);
+
+		if (assoc_flag)
+		{
+			gr$put_associative_flag (buffer = &loc_ass_flag);
+			GRdisplay_associative_button(FALSE);
+		}
+	}
+
+      if( my_wakeup != 0)
+      {
+      	FIg_erase(form[0],RETURN1);
+      	FIg_display(form[0],4);
+      	FIg_display(form[0],22);
+	FIg_display(form[0],23);
+      }
+      my_wakeup = 1;
+
+      // GET ACTIVE PARAMETERS   
+
+      #ifdef DEBUG
+      write("I'm waking up from a sleep\n");
+      #endif
+
+      get_symb();
+      savewt = cnst_list.weight;
+      savest = cnst_list.style;
+      savej  = cnst_list.just;
+      sizep = sizeof(savesc);
+      gr$get_active_scale(  msg = &msgp,
+                            sizbuf = &sizep,
+                            buffer = &savesc,
+                            nret = &nretp);
+
+      sc2 = savesc.Active_xscale;
+      set_scale(sc2, &sc);
+      #ifdef DEBUG 
+      write("scale=",sc,'\n');
+      #endif
+
+      if(test_wakeup != 1)
+      {
+      	sizep = sizeof(aa);
+      	gr$get_active_angle(  msg = &msgp,
+                            sizbuf = &sizep,
+                            buffer = &aa,
+		 	    nret = &nretp);
+	sa = aa;
+      }
+
+      // set line color etc  
+
+      // if active weight is 0 , set weight for 'thick' lines to 1, otherwise
+      // use the active weight
+
+      wt1 = savewt;
+      if ( wt1==0 ) wt1 = 1;
+
+      cnst_list.weight = wt1;
+      cnst_list.style  = 0;
+      cnst_list.just   = 11;
+      set_gal_symb();
+}
+
+
+sleep()
+{ 
+int fmi;
+
+	/** restore assoc flag if it was true **/	
+
+	if ((assoc_flag) && (!int_sleep))
+	{
+		gr$put_associative_flag (buffer = &assoc_flag);
+		GRdisplay_associative_button(FALSE);
+	}
+      	FIg_erase(form[0],4);
+      	FIg_erase(form[0],22);
+      	FIg_erase(form[0],23);
+	FIg_display(form[0],RETURN1);
+
+        my_wakeup = -1;
+
+        for( fmi=0 ; fmi<11 ; fmi=fmi+1 )
+        {
+	   if (form_flag[fmi] == 2)
+	   {
+	      form_flag[fmi] = 1;
+	   }
+        }
+}
+
+delete()
+{
+int msgp, sizep, nretp;
+int fmi;
+
+   // final exit from prog - reset coords and clean up 
+
+      // reset line color etc  
+
+      cnst_list.weight = orig_weight;
+      cnst_list.style  = savest;
+      cnst_list.just   = savej;
+      set_gal_symb();
+
+        for( fmi=0 ; fmi<11 ; fmi=fmi+1 )
+        {
+	   if (form_flag[fmi] != 0)
+	   {
+	        FIf_erase( form[fmi] );
+		FIf_delete(form[fmi]);
+	   }
+        }
+}
+ 
+//****************************************************************************
+
+// this function is used to scan through the data and set pointer mfp to
+// the data set that matches the diameter argument in the function call
+
+// Note:
+//	Not all diameter data sets are complete - eg there is bolt data for
+//	dia = 14mm but no caphead screw data.
+// 	Hence it also tests that there is valid data present matching diameter
+
+// Return status:
+
+//	0 - No dia match/data found. - pointer left where it was
+//	1 - Dia match & data found.  - pointer set to this data set (global)
+
+find_data(dd)
+double dd;
+{
+int  i,is,il;
+double td,td2,ds,dl;
+char	strm[80],strm2[10], buffer[80];
+struct	mfdata	*mfc;     // pointer to current structure type mfdata
+
+	// search the data for dia >= dd
+	// Note:
+	//	a diameter match is ok for nuts, bolts and tapped
+	//	holes, BUT there may not be matching data for studs,
+	//	or screws
+
+	td=0;
+	mfc = mfheader;
+	//write("TARGET DIA dd=",dd,'\n');
+        for( i=0 ; td<dd && i<numdia ; i=i+1 )
+	{
+		 
+		mfc = mfc->next;
+		td=mfc->dia;
+		switch( mg )
+		{
+		case BOLT:
+			if( mfc->bsa==0 ) td=0;
+			break;
+		case NUT:
+			if( mfc->nht==0 ) td=0;
+			break;
+		case CHSCREW:
+			if( mfc->chd==0 ) td=0;
+			break;
+		case CSSCREW:
+			if( mfc->cshd==0 ) td=0;
+			break;
+		case STUD:
+			if( mfc->sthl1==0 ) td=0;
+			break;
+		}
+	}
+
+	if( dd==mfc->dia && td != 0)
+       	{
+               	mfp=mfc;
+		diaflag = 1;
+		ex$message( msgnumb = DM_P_SlctOptns, // Select options or quit
+			    buff    = buffer );
+		message1(buffer);
+		#ifdef DEBUG
+		write(" diameter is ok in find data. Dia=",dd,'\n');
+		#endif
+               	return 1;
+       	}
+
+        // diameter not found 
+
+	diaflag = 0;
+	dl = mfc->dia;
+
+	switch( mg )
+	{
+        case BOLT:
+		ex$message( msgnumb = DM_I_NonStdBltDia, //Non Standard Bolt Diameter (try
+			    buff    = strm );
+                break;
+        case NUT:
+		ex$message( msgnumb = DM_I_NonStdNutDia, //Non Standard Nut Diameter (try
+			    buff    = strm );
+                break;
+        case THOLE:
+		ex$message( msgnumb = DM_I_NonStdHolDia, //Non Standard Hole Diameter (try
+			    buff    = strm );
+                break;
+	case CHSCREW:
+		ex$message( msgnumb = DM_I_NonStdCpHdDia, //Non Standard Cap Head Diameter (try
+			    buff    = strm );
+		break;
+	case CSSCREW:
+		ex$message( msgnumb = DM_I_NonStdCSnkDia, //Non Standard C'Sunk Diameter (try
+			    buff    = strm );
+		break;
+	case STUD:
+		ex$message( msgnumb = DM_I_NonStdStdDia, //Non Standard Stud Diameter (try
+			    buff    = strm );
+		break;
+	}
+	
+	// return the next largest
+	if( getvalid == 1)
+        {
+           mfp=mfc;
+	   dd = mfc->dia;
+	   return 2;
+	}
+
+	// the current value of mfc->dia is the next largest valid dia
+	// find next smallest
+	if( i==1 )
+	{
+	   ds = dl;
+	}
+	else
+	{
+	   il = i-1;
+	   td2 = 0;
+
+	   for ( is=il ; is>=0 && td2==0 ; is=is-1 )
+	   {
+		mfc = mfc->last;
+		td2=mfc->dia;
+		switch( mg )
+		{
+		case BOLT:
+			if( mfc->bsa==0 ) td2=0;
+			break;
+		case CHSCREW:
+			if( mfc->chd==0 ) td2=0;
+			break;
+		case CSSCREW:
+			if( mfc->cshd==0 ) td2=0;
+			break;
+		case STUD:
+			if( mfc->sthl1==0 ) td2=0;
+			break;
+		}
+	   }
+	   ds = mfc->dia;
+	   if( td2==0.0 )  ds=dl;
+	   if( dd>td )
+	   {
+		if( td==0.0 )
+			dl=ds;
+		else
+			ds=dl;
+	   }
+	}
+
+	//Non Standard Diameter
+
+	if( ds==floor(ds) )
+		strcpy( strm2 , itoa((int)floor(ds)) );
+	else
+		sprintf( strm2 , "%6.3lf" , ds );
+	strcat( strm2 , "," );
+	strcat( strm , strm2 );
+	if( dl==floor(dl) )
+		strcpy( strm2 , itoa((int)floor(dl)) );
+	else
+		sprintf( strm2 , "%6.3lf" , dl );
+	strcat( strm , strm2 );
+	strcat( strm , ")" );
+
+        message1( strm );
+
+		#ifdef DEBUG
+		write(" diameter is not ok in find data. Dia=",dd,'\n');
+		#endif
+return 0;
+}
+
+
+
+
+/*************************************************************************/
+// definition of form_input function to control the input of data from
+// the various forms called in this program
+/*************************************************************************/
+
+form_notification()
+{
+int	diasts,gads[10];
+int formlab;
+char buffer[80], SlOptBuff[80];
+
+   ex$message( msgnumb = DM_P_SlctOptnQt, //Select options or quit
+	       buff    = SlOptBuff );
+
+   // form processing depends on current form
+   // except exit on the main form ( form[0] )
+   // store gadget label in the global variable 
+   // in "mg" if main form or "subgad" if subform
+
+   if ( form_st.form_label == 0 && 
+	form_st.gadget_label < 22 && 
+	form_st.gadget_label > 4) mg = form_st.gadget_label;
+   else
+      subgad = form_st.gadget_label;
+
+   #ifdef DEBUG
+     write("\n\ncurfm________",curfm,
+	     "\nform_label___",form_st.form_label,
+   	     "\ngadget_label_",form_st.gadget_label,
+      	     "\nform_label___",form_st.form_label,
+	     "\nvalue________",form_st.value,
+	     "\nform_ptr_____",form_st.form_ptr,
+	     "\nmg___________",mg,'\n');
+   #endif
+   set_scale(sc2, &sc);
+
+// process exit gadget EEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE
+
+   switch ( form_st.gadget_label )
+   {
+   case RETURN1:
+	ci$put( response = TERMINATE ); 
+	junk = 1;
+	#ifdef DEBUG
+   	write("\n	my_wakeup=",my_wakeup,'\n');
+	#endif
+	break;
+
+   case CHECK:
+	if( form_st.form_label == 10)
+	{
+		FIf_erase( form[10] );
+        	form_flag[0] = 1;	// set to indicate form is erased
+		curfm = 7;
+		#ifdef DEBUG
+		write("checked off the beam list form\n");
+		#endif
+	} 
+	break;
+	
+   case FEXIT:
+	if( form_st.form_label == 0)
+	{
+			ci$put( response = TERMINATE ); 
+	}
+	else
+	{
+		ex$message( msgnumb = DM_P_FrmDismisd, //Form Dismissed
+			    buff    = buffer );
+		message1(buffer);
+		ci$put( response = MOVE_ON );
+	}
+      	break;
+
+// process gadgets on main form 00000000000000000000000000000000000
+
+   case ANGLE:
+
+      FIfld_get_value(form[0],form_st.gadget_label,0,0,&mydouble,&flag,&pos);
+	#ifdef DEBUG
+      write("\n\nangle=",mydouble,"\n\n\n");
+	#endif
+      sa = mydouble;
+      FIg_set_state_off(form[0],ANG0);
+      FIg_set_state_off(form[0],ANG90);
+      FIg_set_state_off(form[0],ANG180);
+      FIg_set_state_off(form[0],ANG270);
+      if( sa == 0 ) FIg_set_state_on(form[0],ANG0);
+      if( sa == 90 ) FIg_set_state_on(form[0],ANG90);
+      if( sa == 180 ) FIg_set_state_on(form[0],ANG180);
+      if( sa == 270 ) FIg_set_state_on(form[0],ANG270);
+      sa = sa * PI / 180.0;
+      rot_angle = mydouble;
+      message1( SlOptBuff );
+      break;
+
+   case ANG0:
+      sa = 0;
+      rot_angle = 0.0;
+      FIfld_set_value(form[0],ANGLE,0,0,sa,FALSE);
+      message1( SlOptBuff );
+      break;
+
+   case ANG90:
+      sa = PI / 2.0;
+      rot_angle = 90.0;
+      FIfld_set_value(form[0],ANGLE,0,0,90.0,FALSE);
+      message1( SlOptBuff );
+      break;   
+
+   case ANG180:
+      sa = PI;
+      rot_angle = 180.0;
+      FIfld_set_value(form[0],ANGLE,0,0,180.0,FALSE);
+      message1( SlOptBuff );
+      break;   
+
+   case ANG270:
+      sa = 3.0 * PI / 2.0;
+      rot_angle = 270;
+      FIfld_set_value(form[0],ANGLE,0,0,270.0,FALSE);
+      message1( SlOptBuff );
+      break;   
+
+   case SCALE:
+
+      FIfld_get_value(form[0],form_st.gadget_label,0,0,&mydouble,&flag,&pos);
+	#ifdef DEBUG
+      write("\n\nscale=",mydouble,"\n\n\n");
+	#endif
+	if( mydouble > 0 )
+	{
+	 	sc2 = mydouble;
+		set_scale(sc2,&sc);
+		#ifdef DEBUG
+		write("scale =",sc2,sc,'\n');
+		#endif
+		message1( SlOptBuff );
+	}
+	else
+	{
+		ex$message( msgnumb = DM_I_InvldEntry, // Invalid Entry
+			    buff    = buffer );
+		message1( buffer );
+		FIfld_set_value(form[curfm],form_st.gadget_label,0,0,sc2,FALSE);
+	}
+	break;
+
+   case BOLT:
+   case CHSCREW:
+   case CSSCREW:
+   case NUT:
+   case STUD:
+   case THOLE:
+   case SPRING:
+   case ORING:
+      message1( SlOptBuff );
+      ci$put( response = MOVE_ON );	// to bring up sub form
+      break;
+
+   case BEAM:
+      if(beam_type == -1) // if the first time initialize the form
+      {   
+	curfm = BEAM-12;
+        FIf_new( curfm,form_name[curfm].name , 
+		   ci_notification, &form[curfm] );
+        FIf_set_cmd_oid_os( form[curfm], MY_ID, OM_Gw_current_OS );
+	FIf_display( form[curfm] );
+	form_flag[curfm] = 2;
+	strcpy(list_f, "ibeam_list");
+	check_list(list_f,beam_type,3);
+	beam_type = 3;
+	profile = 0;
+      }
+      ci$put( response = MOVE_ON );	// to bring up sub form
+      message1( SlOptBuff );
+      break;
+// process gadgets on form 1 (bolts) 111111111111111111111111111111111
+
+   case BOLTAF:
+   case BOLTAC:
+   case BOLTTOP:
+	bolt_type = form_st.gadget_label;
+	message1( SlOptBuff );
+	break;
+
+// process gadgets on form 2 (nuts) 222222222222222222222222222222222
+
+   case NUTHIN:
+	nuthin = form_st.value;
+	break;
+   case NUTAF:
+   case NUTAC:
+   case NUTTOP:
+	nut_type = form_st.gadget_label;
+	message1( SlOptBuff );
+	break;
+
+// process gadgets on form 3 (cap head screws) 3333333333333333333
+
+   case CHSSIDE:
+   case CHSTOP:
+	cap_type = form_st.gadget_label;
+	message1( SlOptBuff );
+	break;
+
+// process gadgets on form 4 (counter sunk screws) 44444444444444444
+
+   case CSSSIDE:
+   case CSSTOP:
+	css_type = form_st.gadget_label;
+	message1( SlOptBuff );
+	break;
+
+// process gadgets on form 5 (plain/tapped hole) 5555555555555555555
+
+   case HOLECST:
+	FIg_erase(form[curfm],CBD);
+	FIg_erase(form[curfm],CBDTXT);
+	FIg_erase(form[curfm],CBDIA);
+	FIg_erase(form[curfm],CBDIATXT);
+	FIg_erase(form[curfm],DRILLD);
+	FIg_erase(form[curfm],DRILLDTXT);
+	FIg_display(form[curfm],CSD);
+	FIg_display(form[curfm],CSDTXT);
+  	goto set_flag1;
+   case HOLECBT:
+	FIg_erase(form[curfm],CSD);
+	FIg_erase(form[curfm],CSDTXT);
+	FIg_erase(form[curfm],DRILLD);
+	FIg_erase(form[curfm],DRILLDTXT);
+	FIg_display(form[curfm],CBD);
+	FIg_display(form[curfm],CBDTXT);
+	FIg_display(form[curfm],CBDIA);
+	FIg_display(form[curfm],CBDIATXT);
+  	goto set_flag1;
+   case THPLNT:
+	FIg_display(form[curfm],DRILLD);
+	FIg_display(form[curfm],DRILLDTXT);
+	FIg_erase(form[curfm],CSD);
+	FIg_erase(form[curfm],CSDTXT);
+	FIg_erase(form[curfm],CBD);
+	FIg_erase(form[curfm],CBDTXT);
+	FIg_erase(form[curfm],CBDIA);
+	FIg_erase(form[curfm],CBDIATXT);
+  	goto set_flag1;
+   case THCST:
+	FIg_display(form[curfm],DRILLD);
+	FIg_display(form[curfm],DRILLDTXT);
+	FIg_display(form[curfm],CSD);
+	FIg_display(form[curfm],CSDTXT);
+	FIg_erase(form[curfm],CBD);
+	FIg_erase(form[curfm],CBDTXT);
+	FIg_erase(form[curfm],CBDIA);
+	FIg_erase(form[curfm],CBDIATXT);
+  	goto set_flag1;
+   case THCBT:
+	FIg_display(form[curfm],DRILLD);
+	FIg_display(form[curfm],DRILLDTXT);
+	FIg_erase(form[curfm],CSD);
+	FIg_erase(form[curfm],CSDTXT);
+	FIg_display(form[curfm],CBD);
+	FIg_display(form[curfm],CBDTXT);
+	FIg_display(form[curfm],CBDIA);
+	FIg_display(form[curfm],CBDIATXT);
+set_flag1:
+	holeflag = 1;		// global variable to test view of hole
+	thole_type = form_st.gadget_label;
+	message1( SlOptBuff );
+	break;
+   case HOLECS:
+	FIg_erase(form[curfm],CBD);
+	FIg_erase(form[curfm],CBDTXT);
+	FIg_erase(form[curfm],CBDIA);
+	FIg_erase(form[curfm],CBDIATXT);
+	FIg_erase(form[curfm],DRILLD);
+	FIg_erase(form[curfm],DRILLDTXT);
+	FIg_display(form[curfm],CSD);
+	FIg_display(form[curfm],CSDTXT);
+  	goto set_flag;
+   case HOLECB:
+	FIg_erase(form[curfm],CSD);
+	FIg_erase(form[curfm],CSDTXT);
+	FIg_erase(form[curfm],DRILLD);
+	FIg_erase(form[curfm],DRILLDTXT);
+	FIg_display(form[curfm],CBD);
+	FIg_display(form[curfm],CBDTXT);
+	FIg_display(form[curfm],CBDIA);
+	FIg_display(form[curfm],CBDIATXT);
+  	goto set_flag;
+   case THPLN:
+	FIg_display(form[curfm],DRILLD);
+	FIg_display(form[curfm],DRILLDTXT);
+	FIg_erase(form[curfm],CSD);
+	FIg_erase(form[curfm],CSDTXT);
+	FIg_erase(form[curfm],CBD);
+	FIg_erase(form[curfm],CBDTXT);
+	FIg_erase(form[curfm],CBDIA);
+	FIg_erase(form[curfm],CBDIATXT);
+  	goto set_flag;
+   case THCS:
+	FIg_display(form[curfm],DRILLD);
+	FIg_display(form[curfm],DRILLDTXT);
+	FIg_display(form[curfm],CSD);
+	FIg_display(form[curfm],CSDTXT);
+	FIg_erase(form[curfm],CBD);
+	FIg_erase(form[curfm],CBDTXT);
+	FIg_erase(form[curfm],CBDIA);
+	FIg_erase(form[curfm],CBDIATXT);
+  	goto set_flag;
+   case THCB:
+	FIg_display(form[curfm],DRILLD);
+	FIg_display(form[curfm],DRILLDTXT);
+	FIg_erase(form[curfm],CSD);
+	FIg_erase(form[curfm],CSDTXT);
+	FIg_display(form[curfm],CBD);
+	FIg_display(form[curfm],CBDTXT);
+	FIg_display(form[curfm],CBDIA);
+	FIg_display(form[curfm],CBDIATXT);
+set_flag:
+	holeflag = 0;		// global variable to test view of hole
+	thole_type = form_st.gadget_label;
+	message1( SlOptBuff );
+	subgad = CSD;
+
+   case DIA:
+
+      	FIfld_get_value(form[curfm],DIA,0,0,&mydouble,&flag,&pos);
+	#ifdef DEBUG
+	write("case DIA: value=",form_st.value,"\n");
+        write("dia=",mydouble,"\n\n");
+	#endif
+
+      	// search data structures to check if diameter is acceptable  
+
+	/* If the initial value is bad select .10 */
+	if( mydouble <= 0.0 || mydouble >1000.0) mydouble = 1.0;
+	getvalid=1;
+	junkd = find_data(mydouble);
+        if( junkd == 0 )
+	{
+	    write("diameter not found\n");
+	}
+        else 
+	{
+	    dia = mfp->dia;
+	    message1( SlOptBuff );
+
+      	    // set hole counterbore diameter, thread depth
+	    holecbd = mfp->holecbd;
+	    cbd = dia+units;
+	    csd = mfp->csht+units; 
+   	    FIfld_set_value(form[curfm],DIA,0,0,dia,FALSE);
+	}
+	getvalid=0;
+	// set the length list up for the size
+        sts = fastlen(&len);
+	#ifdef DEBUG
+	write("Length= ",len,"\n");
+	#endif
+	if( mg == THOLE) len = -1; 
+	subgad = LENGTH;
+	diflg = 1;
+
+   case LENGTH:
+      	FIfld_get_value(form[curfm],LENGTH,0,0,&len,&flag,&pos);
+	if( len <= 0.0 )
+	{ 
+		len = dia;
+		FIfld_set_value(form[curfm],LENGTH,0,0,len,FALSE);
+	}
+	threadd = len;
+	mydouble = 0;
+        if( mg != THOLE) break; 
+	else
+	{ 
+		subgad = CSD; 
+      		if( diflg == 1)FIfld_set_value(form[curfm],subgad,0,0,0.0,FALSE);
+	}
+   case CSD:  // COUNTER BORE DEPTH
+      	FIfld_get_value(form[curfm],CSD,0,0,&mydouble,&flag,&pos);
+	#ifdef DEBUG
+	write("case CSD: value=",form_st.value,"\n");
+        write("csd=",mydouble,"\n\n");
+	#endif
+	csd = mydouble;
+	if( csd < mfp->csht+units ) csd = mfp->csht+units;
+	if( csd > len - units ) csd = len - units;
+	FIfld_set_value(form[curfm],CSD,0,0,csd,FALSE);
+	mydouble = 0;
+	subgad = CBDIA;
+      	if( diflg == 1)FIfld_set_value(form[curfm],subgad,0,0,0.0,FALSE);
+
+   case CBDIA:
+      	FIfld_get_value(form[curfm],CBDIA,0,0,&mydouble,&flag,&pos);
+	#ifdef DEBUG
+	write("case CBDIA: value=",form_st.value,"\n");
+        write("csd=",mydouble,"\n\n");
+	#endif
+	holecbd = mydouble;
+	if( holecbd < mfp->holecbd ) holecbd = mfp->holecbd;
+	FIfld_set_value(form[curfm],CBDIA,0,0,holecbd,FALSE);
+	mydouble = 0;
+	subgad = CBD;
+      	if( diflg == 1)FIfld_set_value(form[curfm],subgad,0,0,0.0,FALSE);
+
+   case CBD:   // COUNTER BORE DEPTH
+      	FIfld_get_value(form[curfm],CBD,0,0,&mydouble,&flag,&pos);
+	#ifdef DEBUG
+	write("case THRDL: value=",form_st.value,"\n");
+        write("CBD=",mydouble,"\n\n");
+	#endif
+	cbd = mydouble;
+	if( cbd < dia+units ) cbd = dia+units;
+	if( cbd > len - units ) cbd = len - units;
+	FIfld_set_value(form[curfm],CBD,0,0,cbd,FALSE);
+        mydouble = -1;
+	subgad = DRILLD;
+      	if( diflg == 1)FIfld_set_value(form[curfm],subgad,0,0,0.0,FALSE);
+
+   case DRILLD:
+      	FIfld_get_value(form[curfm],DRILLD,0,0,&mydouble,&flag,&pos);
+	#ifdef DEBUG
+	write("case DRILLD: value=",form_st.value,"\n");
+        write("drilld=",mydouble,"\n\n");
+	#endif
+	drilld = mydouble;
+	if( drilld < threadd + (dia/2 * .7071) ) drilld = threadd + (dia/2 * .7071);
+	FIfld_set_value(form[curfm], DRILLD,0,0,drilld,FALSE);
+	mydouble = -1;
+	diflg = 0;
+	break;
+
+// process gadgets on form 6 (stud) 6666666666666666666666666666
+
+   case STUD1:
+      	break;
+
+// process gadgets on form 7 (beams) 7777777777777777777777
+
+  case IBEAM:
+	strcpy(list_f, "ibeam_list");
+	check_list(list_f,beam_type,3);
+	beam_type = 3;
+	profile = 0;
+	break;
+  case IBEAMS:
+	strcpy(list_f, "ibeam_list");
+	check_list(list_f,beam_type,3);
+	beam_type = 3;
+	profile = 1;
+	break;
+  case CBEAM:
+	strcpy(list_f, "chan_list");
+	check_list(list_f,beam_type,1);
+	beam_type = 1;
+	profile = 0;
+	break;
+  case CBEAMS:
+	strcpy(list_f, "chan_list");
+	check_list(list_f,beam_type,1);
+	beam_type = 1;
+	profile = 1;
+	break;
+  case TBEAM:
+	strcpy(list_f, "tee_list");
+	check_list(list_f,beam_type,2);
+	beam_type = 2;
+	profile = 0;
+	break;
+  case TBEAMS:
+	strcpy(list_f, "tee_list");
+	check_list(list_f,beam_type,2);
+	beam_type = 2;
+	profile = 1;
+	break;
+  case ABEAM:
+	strcpy(list_f, "angle_list");
+	check_list(list_f,beam_type,0);
+	beam_type = 0;
+	profile = 0;
+	break;
+  case ABEAMS:
+	strcpy(list_f, "angle_list");
+	check_list(list_f,beam_type,0);
+	beam_type = 0;
+	profile = 1;
+	break;
+
+  case BEAMSEL:
+	FIfld_set_text( form[7], BEAMSZ , 0,0,"     ",FALSE);
+	subgad = BEAMSZ;
+	
+
+  case BEAMSZ:
+	FIfld_get_text( form[7], BEAMSZ, 0, 0, 15, beam_name,&flag,&pos);
+	#ifdef DEBUG
+	write("size keyin value=",beam_name,'\n');
+	#endif
+	curfm = 10;
+	// CHECK THE ACTIVE LIST TO SEE IF THERE IS A MATCH
+	// BETWEEN THE KEYED IN NAME AND THE LIST OF NAMES
+	// IF NO MATCH BRING UP THE FORM TO SELECT FROM.
+	Match =1;
+  	FIfld_get_num_rows(form[10], BEAMLIST, &j);
+	for(i=0; i<j; i=i+1)
+	{
+	   FIfld_get_text( form[10], BEAMLIST, i, 0, 15, fieldtxt,&flag,&pos);
+	   #ifdef DEBUG
+	   write("input=",beam_name," output=",fieldtxt,'\n');
+	   #endif
+	   Match = strcmp(fieldtxt,beam_name);
+	   if(Match == 0)
+	   {
+		FIfld_get_text( form[10], BEAMLIST, i, 0, 15, fieldtxt,&flag,&pos);
+		strcpy(beam_name,fieldtxt);
+		FIfld_get_text( form[10], BEAMLIST, i, 1, 15, fieldtxt,&flag,&pos);
+		web_height = atof(fieldtxt);
+		FIfld_get_text( form[10], BEAMLIST, i, 2, 15, fieldtxt,&flag,&pos);
+		web_thick = atof(fieldtxt);
+		FIfld_get_text( form[10], BEAMLIST, i, 3, 15, fieldtxt,&flag,&pos);
+		flange_length = atof(fieldtxt);
+		FIfld_get_text( form[10], BEAMLIST, i, 4, 15, fieldtxt,&flag,&pos);
+		flange_thick = atof(fieldtxt);
+		FIfld_set_text( form[7], BEAMSZ , 0,0,beam_name,FALSE);
+		#ifdef DEBUG 
+		write("matched at ",i,"match=",fieldtxt,'\n'); 
+		#endif
+		break;
+	   }
+	}
+	if( Match != 0)
+        {
+	        check_list(list_f,beam_type,-1);
+		msg = FIf_display( form[curfm] );
+	        form_flag[0] = 2; // indicate the form is displayed
+	}
+	curfm = 7;
+	break;
+
+  case BEAMLN:
+      	FIfld_get_value(form[7],form_st.gadget_label,0,0,&mydouble,&flag,&pos);
+	#ifdef DEBUG
+     	write("\n\nlength=",mydouble,"\n\n\n");
+	#endif
+      	beam_length = mydouble;
+      	break;	
+  case MIRR_NO:
+	message1("No mirror option");
+	mirrorx=0;
+	mirrory=0;
+	break;
+  case MIRR_Y:
+	message1("Mirror along Y");
+	mirrory=1;
+	mirrorx=0;
+	break;
+  case MIRR_X:
+	message1("Mirror along X");
+	mirrorx=1;
+	mirrory=0;
+	break;
+  case MIRR_XY:
+	message1("Mirror in both X & Y");
+	mirrorx=1;
+	mirrory=1;
+	break;
+
+// process gadgets on beam list form FFFFFFFFFFFFFFFFFFFFFF
+  case EDITLIST:
+	FIg_get_state(form[10], EDITLIST, &edit_state);
+	#ifdef DEBUG
+	write("got the edit beam toggle state=",edit_state,"\n");
+	#endif
+	if( edit_state == 1)
+	{
+  	   strcpy(ofile,mduenv);
+  	   strcat(ofile,"/ppl/bin/");
+  	   strcat(ofile,list_pre);
+  	   strcat(ofile,list_f);
+	   #ifdef DEBUG
+	   write("\ngoing into edit file filename=",ofile,'\n');
+	   #endif
+	   outfile = fopen( ofile, "r" );
+	   if ( outfile != NULL )
+	   {
+	      for(i=0;i<5;i=i+1) FIfld_set_mode(form[10],BEAMLIST,i,FI_INSERT);
+	      FIg_display(form[10],BEAMLIST);
+	   }
+	   else
+	   { 
+	      message1("file could not be opened");
+	      write("something went wrong in opening the file ",ofile,"\n");
+	      FIg_set_state_off(form[10],EDITLIST);
+	      edit_state = 0;
+	   }
+	   fclose( outfile );
+	}
+	else
+	{
+  	   strcpy(ofile,mduenv);
+  	   strcat(ofile,"/ppl/bin/");
+  	   strcat(ofile,list_pre);
+  	   strcat(ofile,list_f);
+
+	   #ifdef DEBUG
+	   write("\ngoing into edit file filename=",ofile,'\n');
+	   #endif
+   
+	   outfile = fopen( ofile, "w" );
+           i=0;
+  	   FIfld_get_num_rows(form[10], BEAMLIST, &j);
+	   while(i < j)
+	   {
+
+		FIfld_get_text( form[10], BEAMLIST, i, 0, 15, tx1, &flag,&pos);
+		FIfld_get_text( form[10], BEAMLIST, i, 1, 10, tx2, &flag,&pos);
+		FIfld_get_text( form[10], BEAMLIST, i, 2, 10, tx3, &flag,&pos);
+		FIfld_get_text( form[10], BEAMLIST, i, 3, 10, tx4, &flag,&pos);
+		FIfld_get_text( form[10], BEAMLIST, i, 4, 10, tx5, &flag,&pos);
+		if( strcmp(tx1, "") != 0)
+		{ 
+		   if( strlen(tx1) > 6 )
+			fprintf( outfile, " %s\t%3.3f\t%3.3f\t%3.3f\t%3.3f\n",
+			tx1,atof(tx2),atof(tx3),atof(tx4),atof(tx5));
+		   else
+			fprintf( outfile, " %s\t\t%3.3f\t%3.3f\t%3.3f\t%3.3f\n",
+			tx1,atof(tx2),atof(tx3),atof(tx4),atof(tx5));
+
+	   		#ifdef DEBUG
+			printf(" %s\t\t%3.3f\t%3.3f\t%3.3f\t%3.3f\n",
+			tx1,atof(tx2),atof(tx3),atof(tx4),atof(tx5));
+	   		#endif
+		}
+		i=i+1;	
+	   }
+	   #ifdef DEBUG
+	   write("exited the write form at i=",i,'\n');
+	   #endif
+	   fclose( outfile );
+	   FIfld_set_mode(form[10],BEAMLIST,0,2);
+	   for(i=1;i<5;i=i+1) FIfld_set_mode(form[10],BEAMLIST,i,FI_REVIEW);
+	   FIg_display(form[10],BEAMLIST);
+	}
+
+
+  case BEAMLIST:
+	#ifdef DEBUG
+	write("got the beam list form\n");
+	#endif
+	message1("Select a size and check off form");
+	flag = FALSE;
+  	FIfld_get_num_rows(form[10], BEAMLIST, &j);
+	for(i=0;i<j;i=i+1)
+ 	{
+	   FIfld_get_text( form[10], BEAMLIST, i, 0, 15, fieldtxt,&flag,&pos);
+	   if(strcmp(fieldtxt, "") == 0) break;
+	   #ifdef DEBUG
+	   write("field text=",fieldtxt,"\n"); 
+	   #endif
+	   if(flag == TRUE) { break;}
+	}
+	#ifdef DEBUG
+	write("\nselected field text=",fieldtxt,"\n\n"); 
+	#endif
+	FIfld_get_text( form[10], BEAMLIST, i, 0, 15, fieldtxt,&flag,&pos);
+	strcpy(beam_name,fieldtxt);
+	FIfld_get_text( form[10], BEAMLIST, i, 1, 15, fieldtxt,&flag,&pos);
+	web_height = atof(fieldtxt);
+	FIfld_get_text( form[10], BEAMLIST, i, 2, 15, fieldtxt,&flag,&pos);
+	web_thick = atof(fieldtxt);
+	FIfld_get_text( form[10], BEAMLIST, i, 3, 15, fieldtxt,&flag,&pos);
+	flange_length = atof(fieldtxt);
+	FIfld_get_text( form[10], BEAMLIST, i, 4, 15, fieldtxt,&flag,&pos);
+	flange_thick = atof(fieldtxt);
+	FIfld_set_text( form[7], BEAMSZ , 0,0,beam_name,FALSE);
+	#ifdef DEBUG
+	write("beam properties***************************\n",beam_name,web_height,flange_length,web_thick,flange_thick,'\n','\n');
+	#endif
+	break;
+
+// process gadgets on spring subforms 8888888888888888888888888
+   case SPRINGTOP:
+	spring_type = 0;
+	break;
+
+   case SPRINGSIDE:
+	spring_type = 1;
+	break;
+
+   case SPRINGTR:
+      	FIfld_get_value(form[curfm],form_st.gadget_label,0,0,&mydouble,&flag,&pos);
+	#ifdef DEBUG
+      	write("\n\ntop radius=",mydouble,"\n\n\n");
+	#endif
+      	top_rad = fabs(mydouble);
+	break;
+   case SPRINGBR:
+      	FIfld_get_value(form[curfm],form_st.gadget_label,0,0,&mydouble,&flag,&pos);
+	#ifdef DEBUG
+      	write("\n\nbottom radius=",mydouble,"\n\n\n");
+	#endif
+      	bot_rad = fabs(mydouble);
+	break;
+   case SPRINGMR:
+      	FIfld_get_value(form[curfm],form_st.gadget_label,0,0,&mydouble,&flag,&pos);
+	#ifdef DEBUG
+      	write("\n\nmaterial radius=",mydouble,"\n\n\n");
+	#endif
+      	mat_rad = fabs(mydouble);
+	if( mat_rad > pg/5)
+	{
+		mat_rad = pg/5;
+		FIfld_set_text( form[curfm], SPRINGMR, 0, 0, ftoa(mat_rad),FALSE);
+	}
+	break;
+   case SPRINGPG:
+      	FIfld_get_value(form[curfm],form_st.gadget_label,0,0,&mydouble,&flag,&pos);
+	#ifdef DEBUG
+      	write("\n\ntop pitch gap=",mydouble,"\n\n\n");
+	#endif
+      	pg = fabs(mydouble);
+	if( pg < 5*mat_rad )
+	{
+		pg = 5*mat_rad;
+		FIfld_set_text( form[curfm], SPRINGPG, 0, 0, ftoa(pg),FALSE);
+	}
+	break;
+   case SPRINGNP:
+      	FIfld_get_value(form[curfm],form_st.gadget_label,0,0,&mydouble,&flag,&pos);
+	#ifdef DEBUG
+      	write("\n\ntop number of pitches=",mydouble,"\n\n\n");
+	#endif
+      	np = fabs(mydouble);
+	break;
+
+// process gadgets on oring subforms 99999999999999999999999999
+
+   case ORINGT:
+	o_profile = 0;
+	break;
+   case ORINGS:
+	o_profile = 1;
+	break;
+   case ORINGID:
+      	FIfld_get_value(form[curfm],ORINGID,0,0,&mydouble,&flag,&pos);
+	#ifdef DEBUG
+      	write("\n\noringid=",mydouble,"\n\n\n");
+	#endif
+	if( mydouble < 0) oring_id = fabs(mydouble);
+	else if( mydouble == 0) oring_id = 1;
+      	else oring_id = (mydouble);
+	FIfld_set_value(form[curfm], ORINGID, 0, 0, oring_id, FALSE);
+        subgad = ORINGOD;
+
+   case ORINGOD:
+      	FIfld_get_value(form[curfm],ORINGOD,0,0,&mydouble,&flag,&pos);
+	#ifdef DEBUG
+      	write("\n\noringod=",mydouble,"\n\n\n");
+	#endif
+      	oring_od = fabs(mydouble);
+	if( oring_od <= oring_id  ) oring_od = oring_id + .125;
+	FIfld_set_value(form[curfm], ORINGOD, 0, 0, oring_od, FALSE);
+	break;
+
+// process gadgets common to fasteners subforms FFFFFFFFFFFFFFFFFFFFFF
+
+   case WASHER:
+	#ifdef DEBUG
+	write("case WASHER: value=",form_st.value,"\n");
+	#endif
+	washer = form_st.value;
+	break;
+
+   case WASHFC:
+	#ifdef DEBUG
+	write("case WASHFC: value=",form_st.value,'\n');
+	#endif
+	wface = form_st.value;
+	break;
+
+   case METRIC:
+	#ifdef DEBUG
+	write("case METRIC: value=",form_st.value,"\nmet_imp =",met_imp,'\n');
+	#endif
+	strcpy(data_file,mduenv);
+	strcat(data_file,"/ppl/bin/mm_fast_list");
+	if( met_imp == 1 || met_imp > 2) met_imp1 = 1; else met_imp1 = 0;
+	met_imp_set_up();
+	met_imp = 2;
+	set_scale(sc2,&sc);
+	strcpy(list_pre,"mm_");
+	check_list(list_f,beam_type,-1);
+	break; // end of case METRIC
+
+   case IMP:
+	#ifdef DEBUG
+	write("case IMP: value=",form_st.value,"\nmet_imp =",met_imp,'\n');
+	#endif
+	strcpy(data_file,mduenv);
+	strcat(data_file,"/ppl/bin/in_fast_list");
+	if( met_imp > 1) met_imp1 = 1; else met_imp1 = 0;
+	met_imp_set_up();
+	met_imp = 1;
+	set_scale(sc2,&sc);
+	strcpy(list_pre,"in_");
+	check_list(list_f,beam_type,-1);
+	break; // end of case IMP
+   } // end of switch( form_st.gadget_label )
+}// end of form_notification()
+
+
+//*****************************************************************************
+// THIS FUNCTION CHECKS THE BEAM TYPES AND WILL FILL IN THE FORM
+// WITH THE CORRECT DATA
+//*****************************************************************************
+
+check_list( ifile, beam_type, altbeam)
+char	ifile[14];
+int	beam_type, altbeam;
+{
+	char myfile[132];
+
+	strcpy(myfile,list_pre);
+	strcat(myfile, ifile);
+
+	#ifdef DEBUG
+	write("check_list() file name=",myfile,'\n');
+	#endif
+
+	if( beam_type != altbeam)
+	{
+		// FILL IN THE LIST IN THE BEAM SIZE FORM
+		read_beam_data(myfile);
+		FIfld_get_text( form[10], BEAMLIST, 0, 0, 15, fieldtxt,&flag,&pos);
+		strcpy(beam_name,fieldtxt);
+		FIfld_get_text( form[10], BEAMLIST, 0, 1, 15, fieldtxt,&flag,&pos);
+		web_height = atof(fieldtxt);
+		FIfld_get_text( form[10], BEAMLIST, 0, 2, 15, fieldtxt,&flag,&pos);
+		web_thick = atof(fieldtxt);
+		FIfld_get_text( form[10], BEAMLIST, 0, 3, 15, fieldtxt,&flag,&pos);
+		flange_length = atof(fieldtxt);
+		FIfld_get_text( form[10], BEAMLIST, 0, 4, 15, fieldtxt,&flag,&pos);
+		flange_thick = atof(fieldtxt);
+		FIfld_set_text( form[7], BEAMSZ , 0,0,beam_name,FALSE);
+		#ifdef DEBUG
+		write("beam properties***************************\n",beam_name,web_height,flange_length,web_thick,flange_thick,'\n','\n');
+		#endif
+	}
+
+
+}
+
+/****************************************************************/
+/**************** read in beam data *****************************/
+/****************************************************************/
+
+read_beam_data(filename)
+char	filename[14];
+
+{
+   FILE	*fp;
+  char	s0[15],s1[15],s2[15],s3[15],s4[15],ifile[132];
+  int	ok,j;
+
+  strcpy(ifile,mduenv);
+  strcat(ifile,"/ppl/bin/");
+  strcat(ifile,filename);
+
+  #ifdef DEBUG
+  write("in read_beam_data file =",ifile,'\n');
+  #endif
+
+  if( form_flag[10] == 0)
+  {
+	msg = FIf_new( 10,form_name[10].name , 
+		   ci_notification, &form[10] );
+	form_flag[10] = 1;
+	msg = FIf_set_cmd_oid_os( form[10], MY_ID, OM_Gw_current_OS );
+  }
+
+  fp = fopen( ifile, "r" );
+
+  if ( fp == NULL )
+  {
+	strcpy(s1,"cannot open file: ");
+	strcat(s1,ifile);
+	message1(s1);
+  #ifdef DEBUG
+  write(s1,'\n');
+  #endif
+	exit;
+  }
+
+  i=0;
+
+  do
+  {
+	ok=fscanf(fp,"%s",s1);
+	i=i+1;
+  }while( ok > 0 );
+  fclose( fp );
+
+  FIfld_set_list_num_rows(form[10], BEAMLIST, i/5);
+  fp = fopen( ifile, "r" );
+
+  #ifdef DEBUG
+  write("reading file=",ifile,'\n');
+  write("the number of entries in the beam size file=",i/5,',',i,'\n');
+  #endif
+
+  for(j=0;j<i/5;j=j+1)
+  {
+	ok=fscanf(fp,"%s %s %s %s %s",s0,s1,s2,s3,s4);
+	FIfld_set_text( form[10], BEAMLIST, j,0,s0,FALSE);
+	FIfld_set_text( form[10], BEAMLIST, j,1,s1,FALSE);
+	FIfld_set_text( form[10], BEAMLIST, j,2,s2,FALSE);
+	FIfld_set_text( form[10], BEAMLIST, j,3,s3,FALSE);
+	FIfld_set_text( form[10], BEAMLIST, j,4,s4,FALSE);
+  }
+  fclose( fp );
+  FIfld_set_num_rows(form[10], BEAMLIST, j);
+  #ifdef DEBUG
+  write("finished reading file=",ifile,'\n');
+  #endif
+
+}
+
+
+
+/****************************************************************/
+/************* initialize the fastener data *********************/
+/****************************************************************/
+init_data(fp)
+FILE	*fp;
+
+{
+struct	mfdata	*mfc;     // pointer to current structure type mfdata
+struct	mfdata	*mftmp;   // temp pointer to structure type mfdata
+int	i;
+double	testdia;
+char	teststr[180];
+
+  for( strcpy(teststr,"!") ; teststr[0]=='!' ; )
+  {
+    fgets(teststr,130,fp);
+  }
+    fscanf( fp , "%s %s %s %s %s",bpn,npn,chspn,csspn,spn );
+
+    if( mfheader != 0)
+    { 
+		#ifdef DEBUG
+		write("I'm about to free(mfheader)\n");
+		#endif
+		free(mfheader);
+		#ifdef DEBUG
+		write("free(mfheader) done!!!\n");
+		#endif
+    }
+
+    mfheader = (struct mfdata *)malloc( sizeof(struct mfdata) );
+    mfc = mfheader;
+
+    testdia = 99;
+    for( i=0 ; testdia!=0 ; i=i+1 )
+    {
+      fscanf( fp, "%lf ", &testdia );
+      strcpy(tx1,ftoa(testdia));
+//      write("In init_data() testdia=",testdia,tx1,'\n');
+
+      if( testdia!=0 )
+      {
+	if( form_flag[curfm] > 0 )
+	{
+	   FIfld_set_list_default_text(form[curfm],DIA,i,0,tx1,FALSE);
+	}
+
+  	mftmp = (struct mfdata *)malloc( sizeof(struct mfdata) );
+  	mfc->next = mftmp;
+  	mftmp->last = mfc;
+  	mfc = mftmp;
+  	mfc->dia = testdia;
+
+  	fscanf( fp ,  "%s", mfc->part );
+
+  	fscanf( fp ,  "  %lf %lf %lf %lf %lf %lf %lf ",
+	&mfc->ht,&mfc->waf,&mfc->wac,&mfc->wfd,&mfc->wft,&mfc->ruh,&mfc->ptch );
+	fscanf( fp ,  "%lf %lf %lf",
+	&mfc->nht,&mfc->nhtt,&mfc->thro );
+
+	fscanf( fp ,  "  %lf %lf %lf",
+	&mfc->thl1,&mfc->thl2,&mfc->thl3 );
+
+	fscanf( fp ,  "  %lf %lf %lf %lf %lf %lf %lf ",
+	&mfc->bsa,&mfc->chd,&mfc->chaf,&mfc->chs,&mfc->cshd,&mfc->csaf,&mfc->css );
+	fscanf( fp ,  "%lf %lf %lf",
+	&mfc->csht,&mfc->wd,&mfc->wth );
+
+	fscanf( fp ,  " %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf",
+	&mfc->sclen[0],&mfc->sclen[1],&mfc->sclen[2],&mfc->sclen[3],
+	&mfc->sclen[4],&mfc->sclen[5],&mfc->sclen[6],&mfc->sclen[7],
+	&mfc->sclen[8],&mfc->sclen[9] );
+
+	fscanf( fp ,  " %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf",
+	&mfc->blen[0],&mfc->blen[1],&mfc->blen[2],&mfc->blen[3],&mfc->blen[4],
+	&mfc->blen[5],&mfc->blen[6],&mfc->blen[7],&mfc->blen[8],&mfc->blen[9] );
+
+	fscanf( fp ,  " %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf",
+	&mfc->blen[10],&mfc->blen[11],&mfc->blen[12],&mfc->blen[13],
+	&mfc->blen[14],&mfc->blen[15],&mfc->blen[16],&mfc->blen[17],
+	&mfc->blen[18],&mfc->blen[19] );
+
+	fscanf( fp ,  " %lf %lf %lf %lf %lf %lf",
+	&mfc->blen[20],&mfc->blen[21],&mfc->blen[22],&mfc->blen[23],
+	&mfc->blen[24],&mfc->blen[25] );
+
+	fscanf( fp ,  " %lf %lf %lf %lf %lf %lf %lf %lf",
+	&mfc->slen[0],&mfc->slen[1],&mfc->slen[2],&mfc->slen[3],
+	&mfc->slen[4],&mfc->slen[5],&mfc->slen[6],&mfc->slen[7] );
+
+	fscanf( fp ,  " %lf %lf %lf %lf %lf %lf",
+	&mfc->slen[8],&mfc->slen[9],&mfc->slen[10],&mfc->slen[11],
+	&mfc->slen[12],&mfc->slen[13] );
+
+	fscanf( fp ,  " %lf %lf %lf %lf %lf %lf %lf %lf %lf",
+	&mfc->sthl1,&mfc->sthl2[0],&mfc->sthl2[1],&mfc->sthl2[2],&mfc->sthl2[3],
+	&mfc->sthl2[4],&mfc->sthl2[6],&mfc->sthl2[6],&mfc->sthl2[7] );
+
+	fscanf( fp ,  " %lf %lf %lf %lf %lf %lf",
+	&mfc->sthl2[8],&mfc->sthl2[9],&mfc->sthl2[10],&mfc->sthl2[11],
+	&mfc->sthl2[12],&mfc->sthl2[13] );
+
+	fscanf( fp , "  %lf %lf %lf",&mfc->holed,&mfc->holecf,&mfc->holecbd );
+       }
+     }
+
+     	numdia = i-1;
+
+	#ifdef DEBUG
+	write("\nnumdia=",numdia,". ",i," = total data sets read\n" );
+	#endif
+
+   if( form_flag[curfm] > 0 ) FIfld_set_list_num_rows(form[curfm],DIA,1,numdia);
+}
+
+
+
+
+/****************************************************************/
+/****************** set the user data ? *************************/
+/****************************************************************/
+
+#include "partdef.h"
+#include "part.h"
+#include "partmacros.h"
+
+extern int	COpart_construct_func();
+
+set_UDdata()
+{
+     struct GRmd_env	MOD_ENV;
+
+   // set partnumber and description
+
+   switch( mg )
+   {
+   case BOLT:
+	strcpy( UDdata.part, bpn );
+	strcat( UDdata.part , mfp->part);
+	if( met_imp == 2) strcpy( UDdata.desc , "Metric Bolt" );
+	else strcpy( UDdata.desc , "Imperial Bolt" );
+        break;
+   case CHSCREW:
+	strcpy( UDdata.part, chspn );
+	strcat( UDdata.part , mfp->part);
+	if( met_imp == 2)strcpy( UDdata.desc , "Metric Cap Head Screw" );
+	else strcpy( UDdata.desc , "Imperial Cap Head Screw" );
+        break;
+   case CSSCREW:
+	strcpy( UDdata.part , csspn );
+	strcat( UDdata.part , mfp->part);
+	if( met_imp == 2)strcpy( UDdata.desc , "Metric Countersunk Screw" );
+	else strcpy( UDdata.desc , "Imperial Countersunk Screw" );
+        break;
+   case NUT:
+	strcpy( UDdata.part, npn );
+	strcat( UDdata.part , mfp->part);
+	if( met_imp == 2)strcpy( UDdata.desc , "Metric Nut" );
+	else strcpy( UDdata.desc , "Imperial  Nut" );
+        break;
+   case STUD:
+	strcpy( UDdata.part, spn );
+	strcat( UDdata.part , mfp->part);
+	if( met_imp == 2)strcpy( UDdata.desc , "Metric Stud" );
+	else strcpy( UDdata.desc, "Imperial Stud " );
+        break;
+   case THOLE:
+        break;
+   }
+
+   if( mg != THOLE)
+   {
+	ci$get_module_info( md_env = &MOD_ENV);
+	objects[0].obj_id.objid  = lastobj;
+	objects[0].obj_id.osnum  = MOD_ENV.md_id.osnum;
+	objects[0].mod_env = MOD_ENV;
+
+	attr[0] = "NUMBER";
+	value[0] =  UDdata.part;
+	type[0] = GR_STATIC_ATTR;
+
+	attr[1] = "NAME";
+	value[1] = UDdata.desc;  
+	type[1] = GR_STATIC_ATTR;
+
+	strcpy(tx1, ftoa(dia));
+	attr[2] = "Diameter";
+	value[2] = tx1;
+	type[2] = GR_STATIC_ATTR;
+
+	strcpy(tx2, ftoa(len));
+	attr[3] = "Length";
+	value[3] = tx2;
+	type[3] = GR_DYNAMIC_ATTR;
+	
+	co$part_construct ( msg = &msg,
+                            part = &part_id,
+                 	    attr = attr,
+                            value = value,
+                            type = type,
+                            num = 4,
+                            object = objects,
+                            num_objects = 1);
+
+    }
+}
+
+
+
+
+//*****************************************************************************
+// start of main
+//*****************************************************************************
+int	imp_file;
+extern  int	GRcvt_value_to_value();
+
+//main( argc, argv, env ) int argc; char **argv; pplargs *env;
+main()
+{
+
+   // define variables local to function main()
+
+   int    itmp,itmp2, msg1, sts;
+   double  valin, valout, dtmp;
+   char   ctmp[20], buffer[80], *path;
+
+   // set flag for wakeup    
+   sts = 1;
+   path = NULL;
+   test_wakeup = 1;
+	int_sleep = FALSE;
+   // read in the prompts file
+   mduenv[0]='\0';
+
+/* 
+   Instead of this function get grnuc path using ex$get_product_data
+   find_package ( "Grnuc", mduenv );
+*/
+
+   sts=ex$get_product_data(in_runname="Grnuc", config_path=&path);
+   if ( sts )
+	strcpy( mduenv, path );
+
+   if ( !mduenv[0] )
+   {
+        message1( "Grnuc entry missing in product_data file" );
+	printf( "fastener: Grnuc entry missing in product_data file\n");
+	exit;
+   }
+
+/*
+   strcpy(prompts_file,mduenv);
+   strcat(prompts_file,"/ppl/bin/fstnr.prompts");
+
+   if ( fp =  fopen(prompts_file,"r")  )
+   {
+   }
+   else
+   {
+        message1( "prompt file not found" );
+	#ifdef DEBUG
+        write( "prompt file not found\n" );
+	#endif
+        exit;
+   }
+
+   for( i=0 ; i<53 ; i=i+1 )
+   {
+        fgets(strp,80,fp);
+        strncpy(stp[i].p,strp,strlen(strp)-1);
+   }
+   fclose( fp );
+*/
+
+   // CHECK THE BASE UNITS OF THE FILE AND SET THE BASIC CONVERSION FOR 
+   // DRAWING THE GRAPHICS.
+
+   valin = 10.1;
+   co$cvt_value_to_value(msg =  &msg,
+                         osnum = 2,
+                         unit_type = GRIO_DISTANCE ,
+                         alias_to_cvt_from = "inch",
+                         num_vals = 1,
+                         values_in = &valin,
+                         values_out = &valout);
+
+   #ifdef DEBUG 
+   write("valin,valout",valin,valout,'\n');
+   #endif
+
+   if( valin == valout ) 
+   {
+	units = 1/25.4;
+	#ifdef DEBUG 
+	write("inch file\n");
+	#endif
+   }
+   else
+   {
+	units = 1;
+	#ifdef DEBUG 
+	write("mm file\n");
+	#endif
+   }
+
+   // read in the data file jkdraw.dat
+
+   strcpy(data_file,mduenv);
+   if(units == 1)
+   {
+	met_imp = 4;
+	strcpy(list_pre,"mm_");
+	strcat(data_file,"/ppl/bin/mm_fast_list");
+   }
+   else
+   {  
+	met_imp = 3;
+	strcpy(list_pre,"in_");
+	strcat(data_file,"/ppl/bin/in_fast_list");
+   }
+   if ( fp = fopen(data_file,"r")  ){}
+   else
+   {
+        message1( "data file not found" );
+	#ifdef DEBUG
+        write( "data file not found\n" );
+	#endif
+        exit;
+   }
+
+   sc2 = savesc.Active_xscale;
+   set_scale(sc2, &sc);
+   #ifdef DEBUG 
+   write("MAIN\nscale	=",sc2,"\nscale	=",sc,'\n');
+   #endif
+
+   UDdata.qty = 1;
+   strcpy( UDdata.mdcflag , "ON" );
+   strcpy( UDdata.mat , "Steel" );
+/********************** initilaise mfp form default dia eg 1.0 ******/
+			init_data(fp);
+			fclose(fp);
+			mfp = mfheader;
+/*****************************************************************/
+   if ( fp = fopen(data_file,"r")  ){}
+   else
+   {
+        message1( "data file not found" );
+	#ifdef DEBUG
+        write( "data file not found\n" );
+	#endif
+        exit;
+   }
+   dia = 1;
+   mfp->dia = 1;
+   holecbd = mfp->holecbd;
+   csd = mfp->csht+units;
+   cbd = dia+units;
+   // define the form names:
+
+   strcpy( form_name[0].name , "DMDraw" );
+   strcpy( form_name[1].name , "DMDrawSbBolt" );
+   strcpy( form_name[2].name , "DMDrawSbNut" );
+   strcpy( form_name[3].name , "DMDrawSbCap" );
+   strcpy( form_name[4].name , "DMDrawSbCsk" );
+   strcpy( form_name[5].name , "DMDrwSbThole" );
+   strcpy( form_name[6].name , "DMDrawSbStud" );
+   strcpy( form_name[7].name , "DMDrawSbBeam" );
+   strcpy( form_name[8].name , "DMDrwSbSprng" );
+   strcpy( form_name[9].name , "DMDrawSbOring" );
+   strcpy( form_name[10].name ,"DMDrwSbBSize" );
+	
+  // SET UP THE INITIAL VALUES FOR THE FORMS
+
+   beam_type = -1;
+   beam_length = 1;
+   bolt_type = 112;
+   nut_type = 212;
+   cap_type = 312;
+   css_type = 412;
+   thole_type = 517;
+   holeflag = 0;
+   stud_type = 612;
+   spring_type = 0;
+   top_rad = 1;
+   bot_rad = 1;
+   mat_rad = .1;
+   pg = 1;
+   np = 1;
+   // present fastener construction options to the user      
+   // redisplay main form
+
+form0:	//00000000000000000000000000000000000000000000000000000000
+
+   //message1(stp[0].p); //Select options and accept or quit
+
+   // if form has been displayed once it only needs redisplaying
+   // if it is the firt time it needs to be initialised 
+   // otherwise it is assumed to be currently displayed 
+
+   // set current form flag and loop until form is dismissed
+   curfm = 0;
+
+   if ( form_flag[0] == 0 )
+   {
+      // this is the first time this form is to be displayed
+
+      // initialise the main menu form
+
+      msg = FIf_new( 0,form_name[0].name , ci_notification, &form[0] );
+
+      if(msg)
+      {
+	  #ifdef DEBUG
+	  ex$message( msgnumb = DM_E_ErrFrmNtIntlz, //Error - form 0  did not initialise
+		      buff    = buffer );
+	  write(buffer, "\n" );
+  	  write("error initializing form\n");
+	  #endif
+          goto endprog;
+      }
+
+      if(form[0])
+      {
+   	msg = FIf_set_cmd_oid_os( form[0], MY_ID, OM_Gw_current_OS );
+   	if ( msg )
+   	{
+		#ifdef DEBUG
+		write("FIf_set_cmd_oid_os msg=",msg,'\n');
+		#endif
+        	goto endprog;
+   	}
+
+   	msg = FIf_display( form[0] );
+   	if( msg)
+   	{
+		#ifdef DEBUG
+		write("FIf_display msg=",msg,'\n');
+		#endif
+        	goto endprog;
+   	}
+   	form_flag[0] = 2;
+      }
+   }
+   else if ( form_flag[0] == 1 )
+   {
+      // form has been initialised then erased - redisplay it
+      FIf_display( form[0] );
+
+      // set flag to indicate it has been displayed
+      form_flag[0] = 2;
+   }
+
+   // put current values into some fields
+   FIfld_set_value(form[0],ANGLE,0,0,sa*180/PI,FALSE);
+   FIfld_set_value(form[0],SCALE,0,0,sc2,FALSE);
+
+   #ifdef DEBUG
+   write("going into main and the diameter =",dia,'\n');
+   #endif
+
+   while(1)
+   {
+      ex$message( msgnumb = DM_P_SelFrmGdgt, //Select form gadget
+		  buff    = buffer );
+      ci$get(response = &main_resp,
+	     prompt   = buffer);
+      if (main_resp == MOVE_ON) break;
+   }
+   #ifdef DEBUG
+   write("out of main and the diameter =",dia,'\n');
+   #endif
+
+   /* main form loop has been exited
+      possible outcomes are:
+         exit selected	- erase form
+         subform called	- leave form
+   
+      if exit was selected erase the form and terminate the program
+   */
+   curfm = 0;			// reset current form flag
+
+   if ( mg == FEXIT )
+   {
+	FIf_erase( form[0] );
+        form_flag[0] = 1;	// set to indicate form is erased
+	goto endprog;
+   }
+
+
+   // sub form activated 
+
+   curfm = mg-12;
+
+form1:
+
+   //message1(stp[3].p); //Select options or quit
+
+   /* if form has been displayed once it only needs redisplaying
+      if it is the firt time it needs to be initialised 
+      otherwise it is assumed to be currently displayed */
+
+   if ( form_flag[curfm] == 0 )
+   {
+      // this is the first time this form is to be displayed
+      // initialise the bolt menu form
+
+      msg = FIf_new( curfm,form_name[curfm].name , 
+		   ci_notification, &form[curfm] );
+
+      if(msg)
+      {
+	#ifdef DEBUG
+	ex$message( msgnumb = DM_E_SbFmNtIntlzd, //Error - sub form did not initialise
+		    buff    = buffer );
+	write( buffer, "\n" );
+  	write("error initializing form\n");
+	#endif
+	goto endprog;
+      }
+
+      if(form[curfm])
+      {
+        msg = FIf_set_cmd_oid_os( form[curfm], MY_ID, OM_Gw_current_OS );
+        if ( msg )
+        {
+	  #ifdef DEBUG
+	  write("FIf_set_cmd_oid_os msg=",msg,'\n');
+	  ex$message( msgnumb = DM_E_SbFmNtIntlzd, //Error - sub form did not initialise
+		      buff    = buffer );
+	  write( buffer, "\n" );
+	  #endif
+          goto endprog;
+        }
+
+        msg = FIf_display( form[curfm] );
+        if( msg)
+        {
+	   #ifdef DEBUG
+	   write("FIf_display msg=",msg,'\n');
+	   ex$message( msgnumb = DM_E_SbFmNtIntlzd, //Error - sub form did not initialise
+		       buff    = buffer );
+	   write( buffer, "\n" );
+	   #endif
+           goto endprog;
+        }
+        form_flag[curfm] = 2;
+      }
+   }
+   else if ( form_flag[curfm] == 1 )
+   {
+	// form has been initialised then erased - redisplay it
+	FIf_display( form[curfm] );
+	// set flag to indicate it has been displayed
+	form_flag[curfm] = 2;
+   }
+
+   // put initial values into some fields
+   // this depends on the form initialised
+ 
+   if( met_imp == 4 || met_imp == 2 )
+   {
+	#ifdef DEBUG
+	write("\n\nI'm pushing the METRIC button\n");
+	#endif
+	data_st.label = METRIC;
+	data_st.type = EXFI_STATE;
+	data_st.index = 1;
+	data_st.max_index = 0;
+	data_st.select_flag = EXFI_EDIT_NOSELECT;
+	data_st.sts = 0;
+	data_st.value.state = 1;
+	ci$put (form = form_name[curfm].name,
+		gadget = &data_st);
+   }
+   else
+   {
+	#ifdef DEBUG
+	write("\n\nI'm pushing the IMP button\n");
+	#endif
+	data_st.label = IMP;
+	data_st.type = EXFI_STATE;
+	data_st.index = 1;
+	data_st.max_index = 0;
+	data_st.select_flag = EXFI_SELECTED;
+	data_st.sts = 0;
+	data_st.value.state = 1;
+	ci$put (form = form_name[curfm].name,
+		gadget = &data_st);
+   }
+   if ( mg==BOLT || mg==NUT || mg==CHSCREW)
+   {
+	if( wface != 0)FIg_set_state_on(form[curfm],WASHFC);
+	else FIg_set_state_off(form[curfm],WASHFC);
+	if( washer != 0)FIg_set_state_on(form[curfm],WASHER);
+	else FIg_set_state_off(form[curfm],WASHER);
+   }
+   if ( mg == BEAM || mg == SPRING)
+   {
+	if(mirrorx == 0 && mirrory == 0 )FIg_set_state_on(form[curfm],MIRR_NO);
+	if(mirrorx == 0 && mirrory == 1 )FIg_set_state_on(form[curfm],MIRR_Y);
+	if(mirrorx == 1 && mirrory == 0 )FIg_set_state_on(form[curfm],MIRR_X);
+	if(mirrorx == 1 && mirrory == 1 )FIg_set_state_on(form[curfm],MIRR_XY);
+   }
+
+   // test for a valid diameter
+
+ #ifdef DEBUG
+ write("GOING INTO FORM1LOOP dia=",dia,'\n');
+ #endif
+ if ( mg != ORING && mg != SPRING && mg != BEAM)
+ {  
+ 	#ifdef DEBUG
+ 	write("GOING INTO find_data=\n");
+ 	#endif
+	find_data( dia );
+ }
+form1loop:
+   while(1)
+   {
+
+      ex$message( msgnumb = DM_P_IdtfyPnt, // Identify point/ backup to exit
+		  buff    = buffer );
+
+      ci$getevent(event        = &jimbo,
+		 response     = &sub_resp,
+		 prompt       = buffer,
+		 window_id    = &WINDOW.objid,
+		 window_osnum = &WINDOW.osnum,
+		 stackable    = 1);
+
+      junkd = curfm + 12; // KEEPS TRACK OF THE CURRENT FORM
+
+      if( sub_resp == MOVE_ON) break;
+
+      if(sub_resp ==  DATA ) 
+      {
+   	p1[0] = jimbo.event.button.x;
+   	p1[1] = jimbo.event.button.y;
+    	p1[2] = jimbo.event.button.z;
+
+    	if(curfm == 7) // if beam form is up
+    	{
+    	  if( profile == 0)
+    	  {
+       		push 	beam_type, web_height, flange_length,
+	    		web_thick, flange_thick, p1,
+			rot_angle, WINDOW, mirrorx,
+			mirrory, sc, (char *) &TEMP_GRID;
+
+       		ci$exec(file_name = "struct.u",
+	        	entry     = "struct_profile" );
+      	  }
+      	  else 
+      	  {
+		if( beam_length == 0.0 ) beam_length = 1;
+       		push 	beam_type, web_height, beam_length,
+	    		flange_thick, p1, rot_angle, 
+			WINDOW, mirrorx, mirrory, sc, (char *) &TEMP_GRID;
+
+       		ci$exec(file_name = "struct.u",
+	        	entry     = "struct_length" );
+       	  } // end of if(profile)
+
+	ci$get_module_info( md_env = &MOD_ENV);
+	objects[0].obj_id = TEMP_GRID;
+	objects[0].mod_env = MOD_ENV;
+
+	attr[0] = "NUMBER";
+	value[0] = beam_name;
+	type[0] = GR_STATIC_ATTR;
+
+	attr[1] = "NAME";
+	if( beam_type == 0)value[1] = "ANGLE";  
+	if( beam_type == 1)value[1] = "CHANNEL";  
+	if( beam_type == 2)value[1] = "T cut from I-BEAM";  
+	if( beam_type == 3)value[1] = "I-BEAM";  
+	type[1] = GR_STATIC_ATTR;
+
+	strcpy(tx1, ftoa(web_height));
+	attr[2] = "Height";
+	value[2] = tx1;
+	type[2] = GR_STATIC_ATTR;
+
+	strcpy(tx2, ftoa(flange_length));
+	attr[3] = "Width";
+	value[3] = tx2;
+	type[3] = GR_STATIC_ATTR;
+
+	strcpy(tx3, ftoa(web_thick));
+	attr[4] = "Web thickness";
+	value[4] = tx3;
+	type[4] = GR_STATIC_ATTR;
+
+	strcpy(tx4, ftoa(flange_thick));
+	attr[5] = "Flange thickness";
+	value[5] = tx4;
+	type[5] = GR_STATIC_ATTR;
+
+	strcpy(tx5, ftoa(beam_length));
+	attr[6] = "Length";
+	value[6] = tx5;
+	type[6] = GR_DYNAMIC_ATTR;
+	
+	co$part_construct ( msg = &msg,
+                            part = &part_id,
+                 	    attr = attr,
+                            value = value,
+                            type = type,
+                            num = 7,
+                            object = objects,
+                            num_objects = 1);
+
+
+
+      }      
+      else if(curfm == 8) // if spring form is up
+      {
+		if( mat_rad <= 0.0) mat_rad = .1;
+		if( top_rad <= mat_rad) top_rad = mat_rad + .1;
+		if( bot_rad <= mat_rad) bot_rad = mat_rad + .1;
+		if( np < 1) np=1;
+		if( pg < 5*mat_rad) pg = 5*mat_rad;
+
+    		push 	spring_type, top_rad, bot_rad, 
+			mat_rad, pg, np, p1, rot_angle, 
+			WINDOW, mirrorx, mirrory, sc, (char *) &TEMP_GRID;
+
+       		ci$exec(file_name = "struct.u",
+	        	entry     = "spring" );
+
+
+	ci$get_module_info( md_env = &MOD_ENV);
+	objects[0].obj_id = TEMP_GRID;
+	objects[0].mod_env = MOD_ENV;
+
+	attr[0] = "NUMBER";
+	sprintf( tx1, "%3.1f x %3.1f x %3.3f",top_rad, bot_rad, mat_rad);
+	value[0] = tx1;
+	type[0] = GR_STATIC_ATTR;
+
+	attr[1] = "NAME";
+	value[1] = "COIL SPRING";  
+	type[1] = GR_STATIC_ATTR;
+
+	strcpy(tx2, ftoa(top_rad));
+	attr[2] = "Top Radius";
+	value[2] = tx2;
+	type[2] = GR_STATIC_ATTR;
+
+	strcpy(tx3, ftoa(bot_rad));
+	attr[3] = "Bottom Radius";
+	value[3] = tx3;
+	type[3] = GR_STATIC_ATTR;
+
+	strcpy(tx4, ftoa(mat_rad));
+	attr[4] = "Wire Radius";
+	value[4] = tx4;
+	type[4] = GR_STATIC_ATTR;
+
+	strcpy(tx5, ftoa(pg));
+	attr[5] = "Pitch Gap";
+	value[5] = tx5;
+	type[5] = GR_DYNAMIC_ATTR;
+
+	strcpy(tx6, ftoa(np));
+	attr[6] = "Number of Turns";
+	value[6] = tx6;
+	type[6] = GR_DYNAMIC_ATTR;
+
+	strcpy(tx5, ftoa(beam_length));
+	attr[7] = "Length";
+	value[7] = tx5;
+	type[7] = GR_DYNAMIC_ATTR;
+	
+	co$part_construct ( msg = &msg,
+                            part = &part_id,
+                 	    attr = attr,
+                            value = value,
+                            type = type,
+                            num = 8,
+                            object = objects,
+                            num_objects = 1);
+
+      }      
+      else if(curfm == 9) // oring 
+      {
+	if( oring_id == 0) oring_id = 1;
+	if( oring_od == 0) oring_od = 1.25;
+	if( oring_id > oring_od )
+	{
+		dtemp = oring_id;
+		oring_id = oring_od;
+		oring_od = dtemp;
+	}
+		
+       	push 	o_profile, oring_id, oring_od, p1, rot_angle,
+			WINDOW, mirrorx,sc, (char *) &TEMP_GRID;
+
+       	ci$exec(file_name = "struct.u",
+	        	entry     = "orings" );
+
+	ci$get_module_info( md_env = &MOD_ENV);
+	objects[0].obj_id = TEMP_GRID;
+	objects[0].mod_env = MOD_ENV;
+
+	attr[0] = "NUMBER";
+	sprintf( tx1, "O-%3.3f",oring_id);
+	value[0] = tx1;
+	type[0] = GR_STATIC_ATTR;
+
+	attr[1] = "NAME";
+	value[1] = "O-RING";  
+	type[1] = GR_STATIC_ATTR;
+
+	strcpy(tx2, ftoa(oring_id));
+	attr[2] = "Inside Diameter";
+	value[2] = tx2;
+	type[2] = GR_STATIC_ATTR;
+
+	strcpy(tx3, ftoa(oring_od));
+	attr[3] = "Outside Diameter";
+	value[3] = tx3;
+	type[3] = GR_DYNAMIC_ATTR;
+	
+	co$part_construct ( msg = &msg,
+                            part = &part_id,
+                 	    attr = attr,
+                            value = value,
+                            type = type,
+                            num = 4,
+                            object = objects,
+                            num_objects = 1);
+
+
+
+    }
+    else 
+    { 
+      // feature placement selected - check diameter is ok - if not tell user
+
+      if( diaflag == 0 )
+      {
+		FIfld_get_value(form[curfm],DIA,0,0,&dtmp,&flag,&pos);
+		#ifdef DEBUG
+		write("\n\ndia=",dtmp,"\n\n\n");
+		#endif
+		getvalid = 1;
+		find_data( dtmp );
+		getvalid = 0;
+		diaflag = 1;
+		//goto form1loop;
+      }
+
+      switch( mg )
+      {
+	case BOLT:
+	  subgad = bolt_type;
+	  #ifdef DEBUG
+	  write("bolt subgad =",subgad,'\n');
+	  #endif
+	  break;	
+	case NUT:
+	  subgad = nut_type;
+	  #ifdef DEBUG
+	  write("nut subgad =",subgad,'\n');
+	  #endif
+	  break;	
+	case CHSCREW:
+	  subgad = cap_type;
+	  #ifdef DEBUG
+	  write("chscrew subgad =",subgad,'\n');
+	  #endif
+	  break;	
+	case CSSCREW:
+	  subgad = css_type;
+	  #ifdef DEBUG
+	  write("csscrew subgad =",subgad,'\n');
+	  #endif
+	  break;	
+	case THOLE:
+	  subgad = thole_type;
+	  #ifdef DEBUG
+	  write("thole subgad =",subgad,'\n');
+	  #endif
+	  break;	
+	case STUD:
+	  subgad = 612;
+	  #ifdef DEBUG
+	  write("stud subgad =",subgad,'\n');
+	  #endif
+	  break;	
+      }
+
+      // create fastener geometry                                   
+      // bolt/screw/tapped holes - requires length
+      //       - no length required for top view 
+
+    switch ( subgad )
+    {
+      case BOLTAF:
+      case BOLTAC:
+      case CHSSIDE:
+      case CSSSIDE:
+      case HOLECS:
+      case HOLECB:
+      case THPLN:
+      case THCS:
+      case THCB:
+      case STUD1:
+
+      // if a bolt/screw look up the thread length 
+
+      if ( mg==BOLT || mg==CHSCREW || mg==CSSCREW )
+      {
+         if( len<125.0 )
+            thlen = mfp->thl1;
+         else
+         {
+            if( len<200.0 )
+              thlen = mfp->thl2;
+            else
+              thlen = mfp->thl3;
+         }
+
+         if ( mg != BOLT )
+         {
+            if ( fabs(thlen)+mfp->thro+mfp->ruh > len )
+	      thlen = fabs(len - mfp->ruh - mfp->thro);
+         }
+      }
+      break;
+    }
+
+    // if a plain/tapped hole - get user to confirm dimensions
+
+    if ( mg==THOLE )
+    {
+     switch( subgad )
+     {
+     case HOLECST:
+     case HOLECS:
+     case THCST:
+     case THCS:
+        break;
+
+     case HOLECBT:
+     case HOLECB:
+     case THCBT:
+     case THCB:
+        break;
+     }
+     switch( subgad )
+     {
+     case THPLN:
+     case THCS:
+     case THCB:
+	threadd = len;
+	break;
+     }
+   }
+
+   // call function for geometry creation
+	/*** setting global flag for assoc ***/
+	int_sleep = TRUE;
+   switch( mg )
+   {
+   case BOLT:
+        bolt();
+        break;
+
+   case CHSCREW:
+   case CSSCREW:
+        screw();
+        break;
+
+   case NUT:
+        nut();
+        break;
+
+   case STUD:
+	stud();
+        break;
+
+   case THOLE:
+	thole();
+        break;
+   }
+
+	int_sleep = FALSE;
+
+   // attach mdu attributes if running with mdu turnned on
+
+
+   switch( mg )
+   {
+   case BOLT:
+   case CHSCREW:
+   case CSSCREW:
+   case NUT:
+   case STUD:
+
+   // set up the User Data for the GRpart creation
+	set_UDdata();
+        break;
+
+   case THOLE:
+        break;
+   }
+
+       } // end of if( curfm == 7)
+      } // end of if(sub_resp == DATA)
+     } // end of while
+
+	if ( subgad == FEXIT )
+	{
+		FIf_erase( form[curfm] );
+		form_flag[curfm] = 1;	// to indicate form is erased
+		goto form0;
+	}
+
+endprog:
+
+// final exit -
+
+	begincmd( "sc" );
+	ci$put( value = 1.0 );
+	endcmd();
+
+// delete the form if it exists
+
+   if ( form_flag[0] == 2 )
+   {
+	FIf_erase( form[0] );
+	form_flag[0] = 0;
+   }
+
+ex$message( msgnumb = DM_E_PrgrmTrmntd, // program terminated
+	    buff    = buffer );
+message1( buffer );
+
+}
+
+/********************************
+	This function is not being used now as we are getting the
+	path for grnuc using ex$get_product_data call.
+
+int find_package ( package, location )
+  char		*package;
+  char		*location;
+{
+  char		c1[128], c2[128], c3[128], c4[128], c5[128];
+  char		tmp[130];
+  char		pd_path[EXFI_STRLEN];
+  FILE		*fp;
+
+    strcpy (pd_path, getenv("INGRHOME")); 
+    strcat(pd_path, "/product_data");
+
+    if((fp = fopen ( pd_path, "r" ))==0)
+    goto quit;
+
+  tmp[0] = '"';
+  strcpy ( &tmp[1], package );
+  strcat ( tmp, "\"" );
+  location[0] = '\0';
+  while ( fscanf(fp, "%s %s %s %s %s", c1, c2, c3, c4, c5) == 5 )
+    if (  strcmp ( tmp, c1 ) == 0 ) {
+      strcpy ( location, c5 );
+      break;
+    }
+
+  if(fp != 0)
+     fclose(fp);
+quit:
+  return ( location[0] );
+}
+********************************/
+
+set_scale(isc,osc)
+double	isc,osc[1];
+{
+if     ( units == 1  && met_imp == 2) osc[0] = isc;      // mm file, mm data
+else if( units == 1  && met_imp == 1) osc[0] = isc*25.4; // mm file, in data
+else if( units == 1/25.4  && met_imp == 1) osc[0] = isc;      // in file, in data
+else osc[0] = isc/25.4;                                  // in file, mm data
+#ifdef DEBUG
+write("scale in=",isc," scale out=",osc[0],'\n');
+#endif
+}
+
+prompt1( text)
+char	text[132];
+{
+  prompt( text);
+  //if(my_wakeup == 1 && form_flag[curfm] > 0)FIfld_set_text( form[curfm], PROMPT, 0, 0, text, FALSE);
+}
+
+message1( text)
+char	text[132];
+{
+//  message( text);
+    #ifdef DEBUG
+    write("This is the message\n",text,'\n');
+    #endif
+  //if(my_wakeup == 1 && form_flag[curfm] > 0)FIfld_set_text( form[curfm], MESS, 0, 0, text, FALSE);
+}
+
+
+// redundant stuff in both METRIC and IMP buttons
+met_imp_set_up()
+{
+
+ if ( mg != ORING && mg != SPRING && mg != BEAM)
+ {
+	if ( fp = fopen(data_file,"r")  )
+	{
+			init_data(fp);
+			fclose( fp );
+		if( met_imp1 == 1)
+		{
+			mfp = mfheader->next->next;
+			dia = mfp->dia;       // initial diameter shown on form
+			#ifdef DEBUG
+			write("read new data file\ndia=",dia,"\ncurfm=",curfm,'\n');
+			#endif
+	        	holecbd = mfp->holecbd;
+			csd = mfp->csht + units;
+			cbd = dia + units;
+		}
+		set_dia_list();
+	}
+	else
+	{
+        	message1( "data file not found" );
+		#ifdef DEBUG
+        	write( "data file not found\n" );
+		#endif
+        	exit;
+	}
+  }
+}
+
+set_dia_list()
+{
+		j=0;
+		for(i=0;i<numdia; i=i+1)
+		{
+		  FIfld_get_list_text(form[curfm],DIA,i,0,7,tx1,&flag);
+		  mydouble = atof(tx1);
+		  if(find_data(mydouble) == 1)
+		  {
+	   	    FIfld_set_list_default_text(form[curfm],DIA,j,0,tx1,FALSE);	
+		    j=j+1;
+		  }	
+		}
+ 		FIfld_set_list_num_rows( form[curfm], DIA, 1, j);
+	
+		data_st.label = DIA;
+		data_st.type = EXFI_DOUBLE;
+		data_st.index = 0;
+		data_st.max_index =0;
+		data_st.select_flag = EXFI_EDIT_NOSELECT;
+		data_st.sts = 0;
+		data_st.value.dvalue = dia;
+		ci$put (form = form_name[curfm].name, gadget = &data_st);
+}
+
+place_group_temp( obj , numobj )
+GRobj	*obj;
+int	numobj;
+{
+int	i;
+struct GRmd_env	 mod_12;
+
+	ci$get_module_info( md_env = &mod_12);
+	for(i=0;i<numobj;i=i+1)
+	{
+		TEMP_GRIDS[i].objid = obj[i];
+		TEMP_GRIDS[i].osnum = mod_12.md_id.osnum;
+	}
+
+	TEMP_GRIDS[i].objid = NULL_OBJID;
+	TEMP_GRIDS[i].osnum = mod_12.md_id.osnum;
+
+	gr$create_graphic_group(
+			msg = &msg,
+			object_ids = TEMP_GRIDS,	
+			gg_id = &TEMP_GRID,
+			num_objects = numobj);
+
+	return TEMP_GRID.objid;
+}
+
+make_composite_curve( obj1, count)
+GRobj			*obj1;      /* IN : input objects 	*/
+int			count	 ;  /* IN : Number of curves	*/ 
+{
+	int	i;
+	struct GRmd_env	mod_12;
+	long long_rc;
+
+	ci$get_module_info( md_env = &mod_12);
+	for(i=0;i<count;i=i+1)
+	{
+		TEMP_GRIDS[i].objid = obj1[i];
+		TEMP_GRIDS[i].osnum = mod_12.md_id.osnum;
+	}
+	TEMP_GRIDS[i].objid = NULL_OBJID;
+	TEMP_GRIDS[i].osnum = mod_12.md_id.osnum;
+
+ 	gr$make_composite_curve(
+			GRids_in = TEMP_GRIDS,
+			GRid_out = TEMP_GRID,
+			name     = "0");
+
+/* BEGIN code */
+        add_component(&long_rc,TEMP_GRID,&mod_12);
+/* end code */
+
+	return TEMP_GRID.objid;
+}
+
+add_component(imsg,out_obj,mod_env)
+IGRlong *imsg;
+struct GRid out_obj;
+struct GRmd_env *mod_env;
+{
+  
+  long long_rc;
+  int status;
+  long msg,OMmsg;
+  struct GRid act_own_id;
+  GRclassid        classid, GRdrawview_class_id;
+  int one;
+  struct GRobj_env  obj_l[1];
+  
+  *imsg = 1; 
+
+  status =
+  gr$get_active_owner(
+	msg = &long_rc,
+        mod_id =&mod_env->md_id,
+        active_owner = &act_own_id);
+  if (status & long_rc & 1)
+  {
+
+        /* check for active drawing view */
+        status =
+	om$get_classid (
+		osnum = act_own_id.osnum,
+                objid = act_own_id.objid,
+                p_classid = &classid);
+
+        status =
+	om$get_classid(classname = "GRdrawview",
+		p_classid = &GRdrawview_class_id);
+
+        if (classid == GRdrawview_class_id)
+	{
+             one = 1;
+             obj_l[0].obj_id.objid = out_obj.objid;
+             obj_l[0].obj_id.osnum = out_obj.osnum;
+             obj_l[0].mod_env = *mod_env;
+
+             status =
+	     ci$send(msg = message GRdrawview.GRadd_components(
+						&long_rc,
+                                                mod_env,
+                                                &one,
+                                                obj_l,
+                                                NULL,
+                                                NULL),
+                   targetid = act_own_id.objid);
+         }
+     } 
+     return(TRUE);
+}
+

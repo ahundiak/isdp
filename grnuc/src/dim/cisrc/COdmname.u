@@ -1,0 +1,89 @@
+#include "cieveryone.h"
+#include "cievent.h"
+#include "cilocate.h"
+#include "cisend.h"
+
+#include "dimdef.h"
+#include "dim.h"
+#include "dimmacros.h"
+#include "dm_status.h"
+#include "dimdload.h"
+#include "msdef.h"
+#include "msmacros.h"
+#include "DMmessages.h"
+
+main()
+{
+	int sts, response;
+	struct GRmd_env md_env;
+	struct GRid dim;
+	int geom_type;
+        char  prompt_buff[MS_MAX_MSG_LENGTH];
+
+        ex$message(msgnumb = DMC_M_TgDmNmVl);
+/*	message("Toggle Dimension Name/Value"); */
+	
+	STATE_1:
+
+	do
+	{
+                ex$message(msgnumb = DM_P_IdDimNmVl,
+                           buff = prompt_buff);
+
+		sts =
+		ci$locate(
+			prompt = prompt_buff,
+			response = &response,
+			classes = "DMdim",
+			md_env = &md_env,
+			obj = &dim.objid,
+			osnum = &dim.osnum);
+		if (response == RESET) goto STATE_3;
+	} while (!sts);
+
+	STATE_2:
+
+	sts =
+	ci$send(msg = message DMroot.set_geom_type(BIT_OR, DIM_BY_NAME),
+		targetid = dim.objid,
+		targetos = dim.osnum);
+	dm$status(sts = sts, action = RET_STATUS);
+
+	dm$change_node(
+		as_grid = dim,
+		md_env = &md_env,
+		exec_batch = TRUE);
+
+	goto STATE_1;
+
+	STATE_3:
+
+	do
+	{
+                ex$message(msgnumb = DM_P_IdDimToDisp, buff = prompt_buff);
+
+		sts =
+		ci$locate(
+			prompt = prompt_buff,
+			response = &response,
+			classes = "DMdim",
+			obj = &dim.objid,
+			osnum = &dim.osnum);
+		if (response == RESET) goto STATE_1;
+	} while (!sts);
+
+	STATE_4:
+
+	sts =
+	ci$send(msg = message DMroot.set_geom_type(BIT_CLEAR, DIM_BY_NAME),
+		targetid = dim.objid,
+		targetos = dim.osnum);
+	dm$status(sts = sts, action = RET_STATUS);
+
+	dm$change_node(
+		as_grid = dim,
+		md_env = &md_env,
+		exec_batch = TRUE);
+
+	goto STATE_3;
+}

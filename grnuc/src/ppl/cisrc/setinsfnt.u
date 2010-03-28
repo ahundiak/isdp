@@ -1,0 +1,183 @@
+#include "ciminimum.h"
+#include "cimacros.h"
+#include "igrtypedef.h"
+#include "igr.h"
+#include "igrdef.h"
+#include "igrdp.h"
+#include "gr.h"
+#include "ex.h"
+#include "exmacros.h"
+#include "igrdp.h"
+#include "godef.h"
+#include "go.h"
+#include "igr.h"
+#include "dp.h"
+#include "dpmacros.h"
+#include "grdpbdef.h"
+#include "grdpb.h"
+#include "grdpbmacros.h"
+#include "gotextdef.h"
+#include "fontdef.h"
+#include "font.h"
+#include "griodef.h"
+#include "grio.h"
+#include "griomacros.h"
+#include "msdef.h"
+#include "msmacros.h"
+#include "grmessage.h"
+
+extern int EX_get_super(), EX_findmod(), MSmessage(), GRcvt_to_var(),
+           GRaddvar(), MS_init(), /*MS_fix_type(),*/ MS_out_msg(), sprintf();
+
+/*  re-define this macro to use it in ci
+ */
+#omdef
+    ex$message (field=0, msgnumb = MS_NO_MSG, msgname = NULL,
+                justification=0, buff=NULL, type=NULL,
+                var=NULL, in_buff=NULL, time = MS_IMMEDIATE,
+                seconds = MS_IMMEDIATE)
+#if om$specified (type)
+  {
+    if (MS_init ( (&MS_msg), (msgnumb), (msgname), (in_buff), (field),
+                  (justification) ) )
+     {
+        MS_fix_type( (&MS_msg), (type) );
+        sprintf( (MS_msg.variables), (MS_msg.for_type), var );
+        MS_out_msg ( (&MS_msg), (buff), (field), (justification),
+                     (time), (seconds) );
+     }
+  }
+#else
+    MSmessage ( (field), (msgnumb), (msgname), (justification), (buff),
+                (type), (var), (in_buff), (time), (seconds) );
+#endif
+#endomdef
+
+
+main()
+{
+    int                sts, msg, not_finished;
+    short              font_index;
+    char               vfont_name[64];
+    struct GRid        fontmgr;
+    struct GRIOvar_def var_struct;
+    struct MS_sd_msg   MS_msg; 
+    OM_S_OBJID         mod_id;
+    OMuword            mod_osnum;
+
+    /* initialize */
+
+    sts = ex$get_cur_mod(id = &mod_id,
+                         osnum = &mod_osnum );
+
+    /* get objid and osnum of the Font Manager */
+
+    sts = ex$get_super(mod_id = mod_id,
+                       mod_osnum = mod_osnum,
+                       super_name = FONTMGR_NO_NAME,
+                       super_class = "GRfm",
+                       super_id = &fontmgr.objid,
+                       super_osnum = &fontmgr.osnum);
+
+    /*
+     * display the current "insert" font name if there is one defined or a
+     * message informing them there is not one
+     */
+
+    sts = co$cvtvar(msg = &msg,
+                    alias = "Insert_font",
+                    osnum = mod_osnum,
+                    var = &var_struct);
+
+    if (sts & msg & 1)
+    {
+        /*
+         * convert the font number to the local font name
+         */
+
+        font_index = (short) var_struct.contents.ivalue;
+
+        sts = ci$send(msg = message GRfm.GRvirt_search(&msg, vfont_name,
+                                                       &font_index),
+                      targetid = fontmgr.objid,
+                      targetos = fontmgr.osnum);
+
+        if (sts & msg & 1)
+        {
+            ex$message(msgnumb = GR_I_ActFt,
+                       type = "%s",
+                       var = `vfont_name`,
+                       justification = CENTER_JUS);
+        }
+        else
+        {
+            ex$message(msgnumb = GR_E_NoActInsFt,
+                       justification = CENTER_JUS);
+        }
+    }
+    else  /* variable not yet defined */
+    {
+        ex$message(msgnumb = GR_E_NoActInsFt,
+                   justification = CENTER_JUS);
+    }
+    not_finished = 1;
+
+    while (not_finished)
+    {
+        ex$message(field         = MESSAGE_FIELD,
+                   msgnumb       = GRC_M_SetActInsFt,
+                   justification = CENTER_JUS );
+
+        ci$get(string = vfont_name,
+               msgnum = GR_P_EntInsFtNme);
+
+        if (vfont_name[0] == '\0')
+        {
+            not_finished = 0;
+        }
+        else
+        {
+            /*
+             * try to get a font index from the font name
+             */
+
+            font_index = -1;
+
+            sts = ci$send(msg = message GRfm.GRvirt_search(&msg, vfont_name,
+                                                           &font_index),
+                          targetid = fontmgr.objid,
+                          targetos = fontmgr.osnum);
+
+            if (sts & msg & 1)
+            {
+                var_struct.type = GRIO_VAR_INT;
+                var_struct.contents.ivalue = (int) font_index;
+
+                sts = co$addvar(msg = &msg,
+                                input_alias = "Insert_font",
+                                osnum = mod_osnum,
+                                input_string = &var_struct);
+
+                if (sts & msg & 1)
+                {
+                    ex$message(msgnumb = GR_I_ActFt,
+                               type = "%s",
+                               var = `vfont_name`,
+                               seconds = 25,
+                               justification = CENTER_JUS);
+                    not_finished = 0;
+                }
+                else
+                {
+                    ex$message(msgnumb = GR_E_ErrEncCmdRst,
+                               justification = CENTER_JUS);
+                }
+            }
+            else
+            {
+                ex$message(msgnumb = GR_E_FtNotFnd,
+                           justification = CENTER_JUS);
+            }
+        }
+    }
+}
