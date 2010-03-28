@@ -4,8 +4,9 @@
 #define _CHARMAP	0
 
 
-#include "FSTypes.h"
-#include "FS.h"
+#include "../hfiles/FSTypes.h"
+#include "../hfiles/FS.h"
+#include "../hfiles/FSUtil.h"
 
 
 #define CHARMAP_MAGIC	0x50414D43	/* "CMAP" */
@@ -66,6 +67,22 @@ extern char	_FSCMExtension[];
 /** Routines **/
 extern	Char16	_FSCharMapBsNbr ();
 extern	CharId	_FSCharMapCharId ();
+extern  int     _FSCacheCharMapFile (FileRef *cmRef, CharMapStruct **cachePtr);
+extern  int     _FSCacheCharMap (CharMapSpec *charMapSpec, int numChar,
+        CharId missingChar, Int32 flags, uInt32 tag, CharMapStruct **cachePtr);
+extern  int     _FSAddCharMapId (CharMapId *charMapId, int useId,
+        char *fileName, CharMapStruct *cachePtr);
+extern  Int     FSReadCharMapFile (char *fileName, CharMapId *charMapId);
+extern  int     _FSReadCharMapHeader (FILE *file, CharMapHeader *header);
+extern  int     _FSReadCharMapChars (FILE *file, CharMapSpec *charMap,
+        int numChar);
+extern  int     _FSWriteCharMapChars (FILE *file, CharMapSpec *charMap,
+        int numChar);
+extern  int     _FSWriteCharMapHeader (FILE *file, CharMapHeader *header);
+extern  int     _FSInitCharMap (void);
+extern  int     _FSDisposeCharMap (void);
+extern  int     _FSGetCharMapRef (char *charMap, FileRef *cmRef);
+extern  int     _FSGetCharMap (FileRef *cmRef, CharMapStruct **cachePtr);
 
 
 #endif

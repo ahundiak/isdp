@@ -4,7 +4,7 @@
 #define _DEFINES	0
 
 
-#include "FSTypes.h"
+#include "../hfiles/FSTypes.h"
 
 #ifndef O_WRONLY
 #include <fcntl.h>

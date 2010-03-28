@@ -7,6 +7,7 @@
 #include "FSTypes.h"
 #include "FS.h"
 #include "FSTypeface.h"
+#include "FSUtil.h"
 
 
 #define	TF_CACHE_SIZE	4		/* size of typeface cache */
@@ -51,6 +52,10 @@ extern TFEntry	_FSTFCache[];
 extern char	_FSTFPathVar[];		/* tf search path env variable	*/
 extern char	_FSTFDefPath[];		/* tf default path		*/
 extern char	_FSTFExtension[];	/* typeface file extension	*/
+extern int      _FSInitTF (void);
+extern int      _FSDisposeTF (void);
+extern int      _FSGetTFRef (char *typeface, FileRef *tfRef);
+extern int      _FSGetTF (FileRef *tfRef, TFStruct **cachePtr);
 
 
 #endif

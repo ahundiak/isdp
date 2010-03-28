@@ -25,6 +25,8 @@ extern	int	_GCLocked ();
 extern	void	_GCSetPurge ();
 extern	int	_GCGetPurge ();
 extern	void	_GCPurge ();
+extern  void    _GCShExit (void);
+extern  Int     _GCShEnter (int ownerFlag);
 
 
 #endif

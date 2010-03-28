@@ -3,7 +3,7 @@
 #ifndef _ALLOC
 #define	_ALLOC	0
 
-#include "FSTypes.h"
+#include "../hfiles/FSTypes.h"
 
 
 /** Substitutes for malloc, realloc, & free **/
@@ -14,7 +14,8 @@ extern	void	_FSFree ();
 
 /** Temporary memory allocation routines **/
 extern	void	_FSFreeAlloc ();
-extern	char	*_FSAlloc ();
-
+extern  Int     _FSDealloc (char *p);
+extern  Int     _FSInitAlloc (void);
+extern  char    *_FSAlloc (uInt32 n);
 
 #endif

@@ -4,7 +4,7 @@
 #define _FS	0
 
 
-#include "FSTypes.h"
+#include "../hfiles/FSTypes.h"
 
 
 /*********************************
@@ -96,6 +96,7 @@ extern void _FSDrawRLE8();		/* bitmaps stored as 8-bit RLE	*/
 extern void _FSDrawRLE16();		/* bitmaps stored as 16-bit RLE	*/
 extern void _FSDrawOutline ();		/* outlines			*/
 extern void _FSDrawOutline3D ();	/* 3D outlines			*/
+extern int  _FSDaemonAcknowledge (void);
 
 
 #endif
