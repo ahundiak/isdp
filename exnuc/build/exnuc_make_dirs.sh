@@ -1,7 +1,8 @@
 #!/bin/sh
 # This script creates the directories, required for building a new version of EXNUC
 #
-USR2=$HOME/usr2
+USR2=$ISDP_TARGET
+mkdir -p $USR2/tmp
 mkdir -p $USR2/exnuc34
 mkdir -p $USR2/exnuc34/intel5
 mkdir -p $USR2/exnuc34/intel5/bin

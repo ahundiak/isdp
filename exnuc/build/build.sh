@@ -13,20 +13,21 @@ fi
 
 ###############################################################################
 
-echo "\n\tThe build environment needs to have EXNUC,BASE & TARGET defined."
-echo "\tThe values should be:"
-echo "\t\tEXNUC\tLocation of EXNUC source."
-echo "\t\tBASE\tLocation of EXNUC basic executables."
-echo "\t\tTARGET\tLocation of EXNUC target."
+# echo "\n\tThe build environment needs to have EXNUC,BASE & TARGET defined."
+# echo "\tThe values should be:"
+# echo "\t\tEXNUC\tLocation of EXNUC source."
+# echo "\t\tBASE\tLocation of EXNUC basic executables."
+# echo "\t\tTARGET\tLocation of EXNUC target."
 ###############################################################################
 
-echo "\nBuild Menu\n"
+# echo "\nBuild Menu\n"
 
 #	Kick off the makefile
 
 PS3="
 enter selection: "
 
+# SunOS
 OS=$(uname -s)
 
 case $OS in
@@ -71,45 +72,64 @@ case $OS in
      exit 2;;
 esac
 
+# Prompts the user for the platform to build, just hard code for now
 
-OIFS=$IFS
-IFS="	"
-select BUILD in $BUILD_LIST	quit
-do
-	IFS=$OIFS
-	case $BUILD
-	in
-	"c100 EXNUC")	export BUILD=c1EXNUC;;
-	"c100 EXNUCX")	export BUILD=c1EXNUCX;;
-	"c400 EXNUC")	export BUILD=c4EXNUC;;
-	"c400 EXNUCX")	export BUILD=c4EXNUCX;;
-	"sun4 EXNUC")	export BUILD=s4EXNUC;;
-	"sun5 EXNUC")	export BUILD=s5EXNUC;;
-	"sun6 EXNUC")	export BUILD=s6EXNUC;;
-	"intel5 EXNUC")	export BUILD=i5EXNUC;;
-	"sgi4 EXNUC")	export BUILD=m4EXNUC;;
-	"sgi5 EXNUC")	export BUILD=m5EXNUC;;
-	"quit"|*)	exit 0;;
-	esac
+# echo $BUILD_LIST  = intel5 EXNUC
 
-	. $EXNUC/build/getBuildNum.sh
-	. $EXNUC/build/exnucenv
+
+#OIFS=$IFS
+#IFS="	"
+#select BUILD in $BUILD_LIST	quit
+#do
+#	IFS=$OIFS
+#	case $BUILD
+#	in
+#	"c100 EXNUC")	export BUILD=c1EXNUC;;
+#	"c100 EXNUCX")	export BUILD=c1EXNUCX;;
+#	"c400 EXNUC")	export BUILD=c4EXNUC;;
+#	"c400 EXNUCX")	export BUILD=c4EXNUCX;;
+#	"sun4 EXNUC")	export BUILD=s4EXNUC;;
+#	"sun5 EXNUC")	export BUILD=s5EXNUC;;
+#	"sun6 EXNUC")	export BUILD=s6EXNUC;;
+#	"intel5 EXNUC")	export BUILD=i5EXNUC;;
+#	"sgi4 EXNUC")	export BUILD=m4EXNUC;;
+#	"sgi5 EXNUC")	export BUILD=m5EXNUC;;
+#	"quit"|*)	exit 0;;
+#	esac
+
+export BUILD=i5EXNUC
+
+# This just prompts the user for the build number and stores in exnucbuild
+# Just hard code for now
+# . $EXNUC/build/getBuildNum.sh
+
+# Comment this one out, needed to have already sourced it to get this far
+# . $EXNUC/build/exnucenv
 
 ###############################################################################
-echo "\n\tThe values arc:"
-echo "\t\tEXNUC\t$EXNUC"
-echo "\t\tBASE\t$BASE"
-echo "\t\tTARGET\t$TARGET"
+#echo "\n\tThe values arc:"
+#echo "\t\tEXNUC\t$EXNUC"
+#echo "\t\tBASE\t$BASE"
+#echo "\t\tTARGET\t$TARGET"
 ###############################################################################
 
-	echo
-	echo "Starting makefile ..."
+#	echo
+#	echo "Starting makefile ..."
 
-	make -e
+#	make -e
 
-	break
-done
+#	break
+# done
 
+# Kick off the makefile
+export BUILD=i5EXNUC
+echo "Starting makefile ..."
+
+build/exnuc_make_dirs.sh
+
+make -e
+
+exit 0
 if [ "$OS" = "SunOS" ]
 then
   cd $EXTARG/lib
