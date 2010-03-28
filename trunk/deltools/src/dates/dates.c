@@ -1,7 +1,7 @@
 // From the INTEL_SOLARIS MakeFile
 // -DSYSV -DSVR4 -DNEWDIRS -DL_ENDIAN
-#define SYSV
-#define SVR4
+// #define SYSV
+// #define SVR4
 #define NEWDIRS
 #define L_ENDIAN
 

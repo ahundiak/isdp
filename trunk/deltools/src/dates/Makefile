@@ -9,9 +9,15 @@
 
 
 #### Compiler and tool definitions shared by all build targets #####
-CC = cc
-BASICOPTS = -g
-CFLAGS = $(BASICOPTS) -xCC -Xa
+# CC = cc
+# BASICOPTS = -g
+# CFLAGS = $(BASICOPTS) -xCC -Xa
+ISDP_C_EXEC    = cc
+ISDP_C_FLAGS   = -xCC -Xa -g -Kpic
+ISDP_C_DEFINES = -DRUN_X -DX11 -DLITTLE_ENDIAN -DSYSV -DSYS5 -DSVR4 -DSUNOS -DSUNOS5 -DSUNOS58 -Di386 -D__i386 -D__i386__ -DINTEL -DUNIX -D__BUILTIN_VA_ARG_INCR
+
+CC = $(ISDP_C_EXEC)
+CFLAGS = $(ISDP_C_FLAGS) $(ISDP_C_DEFINES)
 
 # Define the target directories.
 ISDP_TARGET   = $(HOME)/target
@@ -20,7 +26,7 @@ TARGETDIR_OBJ = $(TARGETDIR)/obj
 TARGETDIR_LIB = $(TARGETDIR)/lib
 TARGETDIR_BIN = $(TARGETDIR)/bin
 
-ISDP_INSTALL   = $(HOME)/ingr_install
+ISDP_INSTALL   = $(HOME)/ingr
 INSTALLDIR_LIB = $(ISDP_INSTALL)/lib
 INSTALLDIR_BIN = $(ISDP_INSTALL)/bin
 
@@ -36,7 +42,7 @@ LDLIBS_dates = $(USERLIBS_dates)
 
 # Link or archive
 $(TARGETDIR_BIN)/dates: $(OBJS_dates) $(DEPLIBS_dates)
-	$(LINK.c) $(CFLAGS_dates) $(CPPFLAGS_dates) -o $@ $(OBJS_dates) $(LDLIBS_dates)
+	$(CC) $(CFLAGS) -o $@ $(OBJS_dates) $(LDLIBS_dates)
 	rm -f $(TARGETDIR_BIN)/prodinfo
 	rm -f $(TARGETDIR_BIN)/proddata
 	ln -s $(TARGETDIR_BIN)/dates $(TARGETDIR_BIN)/prodinfo
@@ -44,7 +50,7 @@ $(TARGETDIR_BIN)/dates: $(OBJS_dates) $(DEPLIBS_dates)
 
 # Compile source files into .o files
 $(TARGETDIR_OBJ)/dates.o: dates.c
-	$(COMPILE.c) $(CFLAGS_dates) $(CPPFLAGS_dates) -o $@ dates.c
+	$(CC) $(CFLAGS) -o $@ -c dates.c
 
 
 #### Clean target deletes all generated files ####
