@@ -19,21 +19,6 @@
 #define	OutlCharDir	FontCharDir
 
 
-/* These functions provide access to outline fonts (see FSOutlCach.c).	*/
-
-extern	OutlCharInfo	*_FSOutlCharInfo ();
-extern	OutlPolySize	*_FSOutlCharPSize ();
-extern	OutlVertex	*_FSOutlCharVert ();
-extern	OutlCharNode	**_FSOutlFirstChar ();
-extern	OutlCharNode	**_FSOutlNextChar ();
-extern	OutlCharNode	**_FSOutlNewDirRec ();
-extern	OutlCharNode	**_FSOutlInsertDirRec ();
-extern	OutlPolySize	**_FSOutlNewPSize ();
-extern	OutlVertex	**_FSOutlNewVert ();
-extern	Outl3DVertex	**_FSOutlNew3DVert ();
-extern	OutlNode	**_FSOutlCreateOutl ();
-
-
 /* These #defines are for generic font access functions that are used	*/
 /* for outline fonts (see FSFontCach.c).				*/
 
@@ -63,9 +48,9 @@ extern	OutlNode	**_FSOutlCreateOutl ();
 #define	_FSOutlLockKernPairs		_FSFontLockKernPairs
 #define	_FSOutlUnlockKernPairs		_FSFontUnlockKernPairs
 #define	_FSOutlAppendCharDir		_FSFontAppendCharDir
-#define	_FSOutlGetChar			_FSFontGetChar
-#define	_FSOutlLockCharInfo		_FSFontLockCharInfo
-#define	_FSOutlUnlockCharInfo		_FSFontUnlockCharInfo
+#define	_FSOutlGetChar(x,y,z)		_FSFontGetChar (x, (FontCharNode **) y, z)
+#define	_FSOutlLockCharInfo(x)		_FSFontLockCharInfo ((FontCharNode **) x)
+#define	_FSOutlUnlockCharInfo(x)	_FSFontUnlockCharInfo ((FontCharNode **) x)
 #define	_FSOutlLockModes		_FSFontLockModes
 #define	_FSOutlUnlockModes		_FSFontUnlockModes
 #define	_FSOutlLockCharDir		_FSFontLockCharDir
@@ -75,5 +60,28 @@ extern	OutlNode	**_FSOutlCreateOutl ();
 #define	_FSOutlNewKernPairs		_FSFontNewKernPairs
 #define	_FSOutlKernValue		_FSFontKernValue
 
+
+/* These functions provide access to outline fonts (see FSOutlCach.c).	*/
+
+extern	OutlCharInfo	*_FSOutlCharInfo ();
+extern	OutlPolySize	*_FSOutlCharPSize ();
+extern	OutlVertex	*_FSOutlCharVert ();
+extern	OutlCharNode	**_FSOutlNewDirRec ();
+extern	OutlCharNode	**_FSOutlInsertDirRec ();
+extern	OutlPolySize	**_FSOutlNewPSize ();
+extern	OutlVertex	**_FSOutlNewVert ();
+extern	Outl3DVertex	**_FSOutlNew3DVert ();
+extern	OutlNode	**_FSOutlCreateOutl ();
+extern  Int             _FSOutlLockCharVert (OutlCharNode **charNode);
+extern  Int             _FSOutlUnlockCharVert (OutlCharNode **charNode);
+extern  Int             _FSOutlLockCharPSize (OutlCharNode **charNode);
+extern  Int             _FSOutlUnlockCharPSize (OutlCharNode **charNode);
+extern  Int             _FSOutlFont (OutlNode **outlNode);
+extern  Int             _FSOutlUpdateHeader (OutlNode **outlNode);
+extern  Int             _FSOutlFree (OutlNode **outlNode);
+extern  Int             _FSOutlAutosetHeader (OutlNode **outlNode);
+extern  Int             _FSOutlPurgeChar (OutlCharNode **charNode);
+extern  Int             _FSOutlPurgeableChar (OutlCharNode **charNode);
+extern  Int             _FSOutlHierarchicalUpdate (OutlNode **outlNode);
 
 #endif

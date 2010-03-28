@@ -3,8 +3,8 @@
 #ifndef DAEMON
 #define DAEMON
 
-#include "FS.h"
-#include "FSFontCach.h"
+#include "../hfiles/FS.h"
+#include "../hfiles/FSFontCach.h"
 
 
 #define	MSG_SND_KEY	0x48515346	/* send msg queue key ("FSQ0") */
@@ -172,5 +172,14 @@ typedef struct
     FontCharNode	**charNode[1];
 } UsedCharsSnd;
 
+extern  int     _FSDaemonUsedChars (FontCharNode ***charList, int numChars);
+extern  int     _FSDaemonDeleteFont (FontNode **fontNode);
+extern  int     _FSDaemonAppendChar (FontNode **fontNode, CharId character);
+extern  int     _FSDaemonAppendFont (FontNode **fontNode, RangeSpec *rangeSpec);
+extern  int     _FSDaemonNewFont (FontSpec *fontSpec, RangeSpec *rangeSpec, FontNode *fontNode);
+extern  int     _FSDaemonExit (void);
+extern  int     _FSDaemonEnter (void);
+extern  int     _FSDaemonInit (void);
+extern  int     _FSDaemonReadFontFile (char *fileName, FontNode ***fontNode);
 
 #endif

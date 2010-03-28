@@ -91,5 +91,13 @@ typedef struct
     Real	xHtAdj;		/* x-height adj factor (always 1.0) */
 }   CompCharDesc;		/* character attributes for scan conversion */
 
+extern  Int     _FSSearchCharOff (Char16 bsNbr);
+extern  Int     _FSUpdateFont (FontNode **fontNode);
+extern  Int     _FSConvertToFont (FontNode **fontNode);
+extern  Int     _FSSetGenericStuff (FontNode **fontNode);
+extern  int     _FSUnmakeFont (FontNode **fontNode);
+extern  int     _FSMakeFont (FontNode ***fontNode);
+extern  Int     _FSExitMF (void);
+extern  Int     _FSEnterMF (void);
 
 #endif

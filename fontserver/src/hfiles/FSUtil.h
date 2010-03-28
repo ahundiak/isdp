@@ -17,6 +17,7 @@ extern	uInt32	_FSGetFileTag ();
 extern	char	*_FSGetFileFullPath ();
 extern	char	*_FSFindFile ();
 extern	char	*_FSGetBaseName ();
+extern  int     _FSMemCopy (char *to, char *from, int count);
 
 
 #endif

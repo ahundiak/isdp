@@ -1,5 +1,6 @@
 /* $RCSfile: import.h $$Revision: 1.2 $$Date: 1994/12/14 19:43:20 $ Copyright (c) 1990 Intergraph Corp. */
 
+#if 0
 #ifdef IMPORTS
 
 #define	abs		(*_libFSabs_)
@@ -288,3 +289,8 @@ extern int	vfork();
 extern int	wait();
 extern int	write();
 extern void	_assert();
+#else
+extern int	draw();
+extern int	drawbitmap();
+extern int	move();
+#endif

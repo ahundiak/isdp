@@ -19,18 +19,6 @@
 #define	BmapCharDir	FontCharDir
 
 
-/* These functions provide access to bitmap fonts (see FSBmapCach.c).	*/
-
-extern	BmapCharInfo	*_FSBmapCharInfo ();
-extern	BmapBitmap	*_FSBmapCharBitmap ();
-extern	BmapCharNode	**_FSBmapFirstChar ();
-extern	BmapCharNode	**_FSBmapNextChar ();
-extern	BmapCharNode	**_FSBmapNewDirRec ();
-extern	BmapCharNode	**_FSBmapInsertDirRec ();
-extern	BmapBitmap	**_FSBmapNewMap ();
-extern	BmapNode	**_FSBmapCreateBmap ();
-
-
 /* These #defines are for generic font access functions that are used	*/
 /* for bitmap fonts (see FSFontCach.c).					*/
 
@@ -61,9 +49,9 @@ extern	BmapNode	**_FSBmapCreateBmap ();
 #define	_FSBmapLockKernPairs		_FSFontLockKernPairs
 #define	_FSBmapUnlockKernPairs		_FSFontUnlockKernPairs
 #define	_FSBmapAppendCharDir		_FSFontAppendCharDir
-#define	_FSBmapGetChar			_FSFontGetChar
-#define	_FSBmapLockCharInfo		_FSFontLockCharInfo
-#define	_FSBmapUnlockCharInfo		_FSFontUnlockCharInfo
+#define	_FSBmapGetChar(x,y,z)		_FSFontGetChar (x, (FontCharNode **) y, z)
+#define	_FSBmapLockCharInfo(x)		_FSFontLockCharInfo ((FontCharNode **) x)
+#define	_FSBmapUnlockCharInfo(x)	_FSFontUnlockCharInfo ((FontCharNode **) x)
 #define	_FSBmapLockModes		_FSFontLockModes
 #define	_FSBmapUnlockModes		_FSFontUnlockModes
 #define	_FSBmapLockCharDir		_FSFontLockCharDir
@@ -73,5 +61,24 @@ extern	BmapNode	**_FSBmapCreateBmap ();
 #define	_FSBmapNewKernPairs		_FSFontNewKernPairs
 #define	_FSBmapKernValue		_FSFontKernValue
 
+
+/* These functions provide access to bitmap fonts (see FSBmapCach.c).	*/
+
+extern	BmapCharInfo	*_FSBmapCharInfo ();
+extern	BmapBitmap	*_FSBmapCharBitmap ();
+extern	BmapCharNode	**_FSBmapNewDirRec ();
+extern	BmapCharNode	**_FSBmapInsertDirRec ();
+extern	BmapBitmap	**_FSBmapNewMap ();
+extern	BmapNode	**_FSBmapCreateBmap ();
+extern  Int             _FSBmapLockCharBitmap (BmapCharNode **charNode);
+extern  Int             _FSBmapUnlockCharBitmap (BmapCharNode **charNode);
+extern  Int             _FSBmapFont (BmapNode **bmapNode);
+extern  Int             _FSBmapUpdateHeader (BmapNode **bmapNode);
+extern  Int             _FSBmapFree (BmapNode **bmapNode);
+extern  Int             _FSBmapAutosetHeader (BmapNode **bmapNode);
+extern  Int             _FSBmapPurgeChar (BmapCharNode **charNode);
+extern  Int             _FSBmapPurgeableChar (BmapCharNode **charNode);
+extern  Int             _FSBmapDeleteChar (BmapNode *bmapNode, CharId character);
+extern  Int             _FSBmapHierarchicalUpdate (BmapNode **bmapNode);
 
 #endif

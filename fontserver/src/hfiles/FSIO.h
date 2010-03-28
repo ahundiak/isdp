@@ -25,5 +25,24 @@
 #define	_FSWriteOutlKernPair	_FSWriteFontKernPair
 #define	_FSWriteOutlLigature	_FSWriteFontLigature
 
+extern  int     _FSReadBmapHeader (FILE *file, BmapHeader *hdr);
+extern  int     _FSReadFontInfo (FILE *file, FontInfo *info, int version);
+extern  int     _FSReadFontKernPair (FILE *file, FontKernPair *kernPair, int version);
+extern  int     _FSReadBmapCharInfo (FILE *file, BmapCharInfo *info, int version);
+extern  int     _FSReadOutlHeader (FILE *file, OutlHeader *hdr);
+extern  int     _FSReadOutlCharInfo (FILE *file, OutlCharInfo *info, int version);
+extern  int     _FSReadOutlPolySize (FILE *file, OutlPolySize *pSize, int count, int version);
+extern  int     _FSReadOutl3DVertex (FILE *file, Outl3DVertex *vert, int count, int version);
+extern  int     _FSReadOutlVertex (FILE *file, OutlVertex *vert, int count, int version);
+extern  int     _FSWriteOutlHeader (FILE *file, OutlHeader *hdr);
+extern  int     _FSWriteOutlCharInfo (FILE *file, OutlCharInfo *info);
+extern  int     _FSWriteOutlPolySize (FILE *file, OutlPolySize *pSize, int count);
+extern  int     _FSWriteOutl3DVertex (FILE *file, Outl3DVertex *vert, int count);
+extern  int     _FSWriteOutlVertex (FILE *file, OutlVertex *vert, int count);
+extern  int     _FSWriteBmapHeader (FILE *file, BmapHeader *hdr);
+extern  int     _FSWriteFontInfo (FILE *file, FontInfo *info);
+extern  int     _FSWriteFontKernPair (FILE *file, FontKernPair *kernPair);
+extern  int     _FSWriteBmapCharInfo (FILE *file, BmapCharInfo *info);
+extern  int     _FSWriteBmapBitmap (FILE *file, BmapBitmap *bitmap, int size);
 
 #endif

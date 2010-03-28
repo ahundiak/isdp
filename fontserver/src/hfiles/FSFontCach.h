@@ -4,11 +4,11 @@
 #define _FONTCACH	0
 
 
-#include "FSDef.h"
-#include "FSUtil.h"
-#include "FSBmap.h"
-#include "FSOutl.h"
-#include "FSFont.h"
+#include "../hfiles/FSDef.h"
+#include "../hfiles/FSUtil.h"
+#include "../hfiles/FSBmap.h"
+#include "../hfiles/FSOutl.h"
+#include "../hfiles/FSFont.h"
 
 
 /** Font node structures that are identical for all fonts:		**/
@@ -116,12 +116,30 @@ extern	Real64		_FSFontKernValue ();
 extern	FontCharNode	**_FSFontFirstChar ();
 extern	FontCharNode	**_FSFontNextChar ();
 extern	FontCharNode	***_FSFontCharDirEntry ();
-extern	FontCharNode	**_FSFontCharNode ();
+extern	FontCharNode	**_FSFontCharNode (FontNode **fontNode, CharId *character, Boolean missFlag);
 extern	FontModes	*_FSFontModes ();
 extern	FontRegen	*_FSFontRegen ();
 extern	FontCharDir	*_FSFontCharDir ();
 extern	FontCharNode	***_FSFontCharDirTable ();
 extern	FontNode	**_FSFontCreate ();
+extern  Int             _FSFontLockHeader (FontNode **);
+extern  Int             _FSFontUnlockHeader (FontNode **);
+extern  Int             _FSFontLockFont (FontNode **);
+extern  Int             _FSFontUnlockFont (FontNode **);
+extern  Int             _FSFontFree (FontNode **);
+extern  Int             _FSFontGetChar (FontNode **, FontCharNode **charNode, CharId);
+extern  Int             _FSFontLockCharInfo (FontCharNode **charNode);
+extern  Int             _FSFontUnlockCharInfo (FontCharNode **charNode);
+extern  Int             _FSFontUnlockCharDirTable (FontNode **fontNode);
+extern  Int             _FSFontLockCharDirTable (FontNode **fontNode);
+extern  Int             _FSComparePairChar (CharId char11, CharId char12, CharId char21, CharId char22);
+extern  Int             _FSFontLockKernPairs (FontNode **fontNode);
+extern  Int             _FSFontUnlockKernPairs (FontNode **fontNode);
+extern  Int             _FSFontLockInfo (FontNode **fontNode);
+extern  Int             _FSFontUnlockInfo (FontNode **fontNode);
+extern  Int             _FSFontAppendCharDir (FontNode **fontNode, CharId *characters, int numChars);
+extern  Int             _FSFontAutosetInfo (FontInfo *info);
+extern  Int             _FSFontNewKernPairs (FontNode **fontNode, FontKernPair **kernPair, Int numPair);
 
 
 /* These #defines are for locking and unlocking parts of a font that	*/

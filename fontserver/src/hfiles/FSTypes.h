@@ -2,7 +2,7 @@
 
 #ifndef _TYPES
 #define _TYPES	0
-
+#include <sys/types.h>
 
 /**********************************
 * Generic scalar type definitions *
@@ -10,19 +10,19 @@
 
 typedef char		Int8;
 typedef short		Int16;
-typedef int		Int32,
-			Int,
-			Boolean;
-typedef unsigned char	uInt8,
-			Char8,
-			Char;
-typedef unsigned short	uInt16,
-			Char16;
-typedef unsigned int	uInt32,
-			uInt;
+typedef int		Int;
+typedef int		Boolean;
+typedef int32_t         Int32;
+typedef uchar_t 	uInt8;
+typedef uchar_t 	Char8;
+typedef uchar_t 	Char;
+typedef uint16_t	uInt16;
+typedef uint16_t	Char16;
+typedef uint_t      	uInt;
+typedef uint32_t        uInt32;
 typedef float		Real32;
-typedef double		Real64,
-			Real;
+typedef double		Real64;
+typedef double		Real;
 
 
 /*********************************
