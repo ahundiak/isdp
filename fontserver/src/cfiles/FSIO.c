@@ -82,10 +82,7 @@
 * Font independent structures *
 ******************************/
 
-int _FSReadFontInfo (file, info, version)
-FILE		*file;
-FontInfo	*info;
-int		version;
+int _FSReadFontInfo (FILE *file, FontInfo *info, int version)
 {
     int numItems = 0;
 
@@ -108,7 +105,7 @@ int		version;
 	numItems += fread (&charMapId, sizeof(CharMapId), 1, file) + 14;
 
 	/** Convert the char map id into a char map file name, if possible **/
-	if (_FSGetCharMapRef (charMapId, &cmRef) == FS_NO_ERROR)
+	if (_FSGetCharMapRef ((char *)charMapId, &cmRef) == FS_NO_ERROR)
 	{
 	    int		length;
 	    char	*ptr;
@@ -139,10 +136,7 @@ int		version;
 }
 
 /*ARGSUSED*/
-int _FSReadFontKernPair (file, kernPair, version)
-FILE		*file;
-FontKernPair	*kernPair;
-int		version;
+int _FSReadFontKernPair (FILE *file, FontKernPair *kernPair, int version)
 {
     int	numItems = 0;
 
@@ -181,9 +175,7 @@ int		version;
 * Bitmap font structures *
 *************************/
 
-int _FSReadBmapHeader (file, hdr)
-FILE		*file;
-BmapHeader	*hdr;
+int _FSReadBmapHeader (FILE *file, BmapHeader *hdr)
 {
     int	numItems = 0;
 
@@ -219,10 +211,7 @@ BmapHeader	*hdr;
 }
 
 /*ARGSUSED*/
-int _FSReadBmapCharInfo (file, info, version)
-FILE		*file;
-BmapCharInfo	*info;
-int		version;
+int _FSReadBmapCharInfo (FILE *file, BmapCharInfo *info, int version)
 {
     int	numItems = 0;
 
@@ -265,9 +254,7 @@ int		version;
 * Outline font structures *
 **************************/
 
-int _FSReadOutlHeader (file, hdr)
-FILE		*file;
-OutlHeader	*hdr;
+int _FSReadOutlHeader (FILE *file, OutlHeader *hdr)
 {
     int	numItems = 0;
 
@@ -307,10 +294,7 @@ OutlHeader	*hdr;
 }
 
 /*ARGSUSED*/
-int _FSReadOutlCharInfo (file, info, version)
-FILE		*file;
-OutlCharInfo	*info;
-int		version;
+int _FSReadOutlCharInfo (FILE *file, OutlCharInfo *info, int version)
 {
     int	numItems = 0;
 
@@ -333,11 +317,7 @@ int		version;
 }
 
 /*ARGSUSED*/
-int _FSReadOutlPolySize (file, pSize, count, version)
-FILE		*file;
-OutlPolySize	*pSize;
-int		count;
-int		version;
+int _FSReadOutlPolySize (FILE *file, OutlPolySize *pSize, int count, int version)
 {
     int	numItems = 0;
 
@@ -350,11 +330,7 @@ int		version;
 }
 
 /*ARGSUSED*/
-int _FSReadOutlVertex (file, vert, count, version)
-FILE		*file;
-OutlVertex	*vert;
-int		count;
-int		version;
+int _FSReadOutlVertex (FILE *file, OutlVertex *vert, int count, int version)
 {
     int	numItems = 0;
 
@@ -367,11 +343,7 @@ int		version;
 }
 
 /*ARGSUSED*/
-int _FSReadOutl3DVertex (file, vert, count, version)
-FILE		*file;
-Outl3DVertex	*vert;
-int		count;
-int		version;
+int _FSReadOutl3DVertex (FILE *file, Outl3DVertex *vert, int count, int version)
 {
     int	numItems = 0;
 
@@ -429,9 +401,7 @@ int		version;
 * Font independent structures *
 ******************************/
 
-int _FSWriteFontInfo (file, info)
-FILE		*file;
-FontInfo	*info;
+int _FSWriteFontInfo (FILE *file, FontInfo *info)
 {
     int	numItems = 0;
 
@@ -460,9 +430,7 @@ FontInfo	*info;
 	return (FS_ERROR);
 }
 
-int _FSWriteFontKernPair (file, kernPair)
-FILE		*file;
-FontKernPair	*kernPair;
+int _FSWriteFontKernPair (FILE *file, FontKernPair *kernPair)
 {
     int	numItems = 0;
 
@@ -499,9 +467,7 @@ FontLigature	*lig;
 * Bitmap font structures *
 *************************/
 
-int _FSWriteBmapHeader (file, hdr)
-FILE		*file;
-BmapHeader	*hdr;
+int _FSWriteBmapHeader (FILE *file, BmapHeader *hdr)
 {
     int	numItems = 0;
 
@@ -536,9 +502,7 @@ BmapHeader	*hdr;
 	return (FS_ERROR);
 }
 
-int _FSWriteBmapCharInfo (file, info)
-FILE		*file;
-BmapCharInfo	*info;
+int _FSWriteBmapCharInfo (FILE *file, BmapCharInfo *info)
 {
     int	numItems = 0;
 
@@ -558,10 +522,7 @@ BmapCharInfo	*info;
 	return (FS_ERROR);
 }
 
-int _FSWriteBmapBitmap (file, bitmap, size)
-FILE		*file;
-BmapBitmap	*bitmap;
-int		size;
+int _FSWriteBmapBitmap (FILE *file, BmapBitmap *bitmap, int size)
 {
     int	numItems = 0;
 
@@ -579,9 +540,7 @@ int		size;
 * Outline font structures *
 **************************/
 
-int _FSWriteOutlHeader (file, hdr)
-FILE		*file;
-OutlHeader	*hdr;
+int _FSWriteOutlHeader (FILE *file, OutlHeader *hdr)
 {
     int	numItems = 0;
 
@@ -620,9 +579,7 @@ OutlHeader	*hdr;
 	return (FS_ERROR);
 }
 
-int _FSWriteOutlCharInfo (file, info)
-FILE		*file;
-OutlCharInfo	*info;
+int _FSWriteOutlCharInfo (FILE *file, OutlCharInfo *info)
 {
     int	numItems = 0;
 
@@ -644,10 +601,7 @@ OutlCharInfo	*info;
 	return (FS_ERROR);
 }
 
-int _FSWriteOutlPolySize (file, pSize, count)
-FILE		*file;
-OutlPolySize	*pSize;
-int		count;
+int _FSWriteOutlPolySize (FILE *file, OutlPolySize *pSize, int count)
 {
     int	numItems = 0;
 
@@ -659,10 +613,7 @@ int		count;
 	return (FS_ERROR);
 }
 
-int _FSWriteOutlVertex (file, vert, count)
-FILE		*file;
-OutlVertex	*vert;
-int		count;
+int _FSWriteOutlVertex (FILE *file, OutlVertex *vert, int count)
 {
     int	numItems = 0;
 
@@ -674,10 +625,7 @@ int		count;
 	return (FS_ERROR);
 }
 
-int _FSWriteOutl3DVertex (file, vert, count)
-FILE		*file;
-Outl3DVertex	*vert;
- int		count;
+int _FSWriteOutl3DVertex (FILE *file, Outl3DVertex *vert, int count)
 {
     int	numItems = 0;
 

@@ -36,7 +36,7 @@ static	char	*allocPtr;		/* next free position */
 static	uInt32	mem = 0;		/* amount of free space */
 
 
-Int _FSInitAlloc ()
+Int _FSInitAlloc (void)
 /* routine to initialize dynamic memory
  *
  * NOTE: this routine should only be called once at the start of the 
@@ -69,8 +69,7 @@ void _FSFreeAlloc ()
 }
 
 
-char *_FSAlloc (n)	/* return pointer to n bytes */
-uInt32	n;
+char *_FSAlloc (uInt32 n)	/* return pointer to n bytes */
 {
     n = DOUBLE (n);		/* assign on 64-bit boundaries */
     if (n <= mem)		/* if enough mem left */

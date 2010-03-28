@@ -49,9 +49,9 @@
 #include "../hfiles/FSDef.h"
 #include "../hfiles/FSTypes.h"
 
+// XXX - Most, if not all, of these functions are of type int, but never return a value.  Make void.
 
-_FSDoCO(stack)
-Real **stack;
+int _FSDoCO(Real **stack)
 /* A CO function takes three arguments from the execution stack and returns a whole
    number of pixels.  The three arguments (in the order pushed onto the stack)
    are threshold, fpixelsSelf and pixelsOther.  If fpixelsSelf differs from
@@ -74,8 +74,7 @@ Real **stack;
 }
 
 
-_FSDoCF(stack)
-Real **stack;
+int _FSDoCF(Real **stack)
 /*  A CF function takes three arguments from the execution stack and returns a whole
     number of pixels.  The three arguments (in the order pushed onto the stack) are
     threshold, fpixelsSelf and fpixelsOther.  If fpixelsSelf differs from
@@ -127,8 +126,7 @@ Real **stack;
 }
 
 
-_FSDoRRFS(stack)
-Real **stack;
+int _FSDoRRFS(Real **stack)
 /*  An RRFS function takes three arguments from the execution stack and returns a
     whole number of pixels.  The three arguments (in the order pushed onto the
     stack) are pixelsOtherFootspace, pixelsMyHeight, pixelsOtherHeight.  The
@@ -149,8 +147,7 @@ Real **stack;
 }
 
 
-_FSDoRRFS1(stack)
-Real **stack;
+int _FSDoRRFS1(Real **stack)
 /*  An RRFS1 function takes three arguments from the execution stack and returns a
     whole number of pixels.  The three arguments (in the order pushed onto the
     stack) are pixelsOtherFootspace, pixelsMyHeight, pixelsOtherHeight.  The
@@ -171,8 +168,7 @@ Real **stack;
 }
 
 
-_FSDoRRHS(stack)
-Real **stack;
+int _FSDoRRHS(Real ** stack)
 /*  An RRHS function takes three arguments from the execution stack and returns a
     whole number of pixels.  The three arguments (in the order pushed onto the
     stack) are pixelsOtherHeadspace, pixelsMyHeight, pixelsOtherHeight.  The
@@ -193,8 +189,7 @@ Real **stack;
 }
 
 
-_FSDoRRHS1(stack)
-Real **stack;
+int _FSDoRRHS1(Real **stack)
 /*  An RRHS1 function takes three arguments from the execution stack and returns a
     whole number of pixels.  The three arguments (in the order pushed onto the
     stack) are pixelsOtherHeadspace, pixelsMyHeight, pixelsOtherHeight.  The
@@ -215,8 +210,7 @@ Real **stack;
 }
 
 
-_FSDoBZON(stack)
-Real **stack;
+int _FSDoBZON(Real **stack)
 /*  A BZON function takes two arguments from the execution stack and returns a
     whole number of pixels.  The two arguments (in the order pushed onto the
     stack) are fpixelsSelf and fpixelsOther.
@@ -242,8 +236,7 @@ Real **stack;
 }
 
 
-_FSDoBZON1(stack)
-Real **stack;
+int _FSDoBZON1(Real **stack)
 /*  A BZON1 function takes three arguments from the execution stack and returns
     a whole number of pixels.  The three arguments (in the order pushed onto the
     stack) are fpixelsSelf, fpixelsOther and threshold.
@@ -269,8 +262,7 @@ Real **stack;
 }
 
 
-_FSDoLZON(stack)
-Real **stack;
+int _FSDoLZON(Real **stack)
 /*  A LZON function takes two arguments from the execution stack and returns a
     whole number of pixels.  The two arguments (in the order pushed onto the
     stack) are fpixelsSelf and fpixelsOther.
@@ -296,8 +288,7 @@ Real **stack;
 }
 
 
-_FSDoLZON1(stack)
-Real **stack;
+int _FSDoLZON1(Real **stack)
 /*  A LZON1 function takes three arguments from the execution stack and returns
     a whole number of pixels.  The three arguments (in the order pushed onto the
     stack) are fpixelsSelf, fpixelsOther and threshold.
@@ -323,8 +314,7 @@ Real **stack;
 }
 
 
-_FSDoCFFLB(stack)
-Real **stack;
+int _FSDoCFFLB(Real **stack)
 /*  A CFFLB function takes five arguments from the execution stack and returns a
     whole number of pixels.  The five arguments (in the order pushed onto the
     stack) are threshold, fpixelsFirstLB, fpixelsFirstRB, fpixelsSecondLB,
@@ -381,8 +371,7 @@ Real **stack;
 }
 
 
-_FSDoCFFRB(stack)
-Real **stack;
+int _FSDoCFFRB(Real **stack)
 /*  A CFFRB function takes five arguments from the execution stack and returns a
     whole number of pixels.  The five arguments (in the order pushed onto the
     stack) are threshold, fpixelsFirstLB, fpixelsFirstRB, fpixelsSecondLB,
@@ -440,8 +429,7 @@ Real **stack;
 }
 
 
-_FSDoCFSLB(stack)
-Real **stack;
+int _FSDoCFSLB(Real **stack)
 /*  A CFSLB function takes five arguments from the execution stack and returns a
     whole number of pixels.  The five arguments (in the order pushed onto the
     stack) are threshold, fpixelsFirstLB, fpixelsFirstRB, fpixelsSecondLB,
@@ -499,8 +487,7 @@ Real **stack;
 }
 
 
-_FSDoCFSRB(stack)
-Real **stack;
+int _FSDoCFSRB(Real **stack)
 /*  A CFSRB function takes five arguments from the execution stack and returns a
     whole number of pixels.  The five arguments (in the order pushed onto the
     stack) are threshold, fpixelsFirstLB, fpixelsFirstRB, fpixelsSecondLB,
@@ -559,8 +546,7 @@ Real **stack;
 }
 
 
-_FSDoFix(stack)
-Real **stack;
+int _FSDoFix(Real **stack)
 /*  A FIX function takes one argument from the execution stack, rounds it down to
     the next whole number and pushes the result back onto the stack.  */
 {
@@ -571,8 +557,7 @@ Real **stack;
 }
 
 
-_FSDoFixR(stack)
-Real **stack;
+int _FSDoFixR(Real **stack)
 /*  A FIXR function takes one argument from the execution stack, rounds it to the
     nearest whole number and pushes the result back onto the stack.  */
 {
@@ -583,8 +568,7 @@ Real **stack;
 }
 
 
-_FSDoAdd(stack)
-Real **stack;
+int _FSDoAdd(Real **stack)
 /*  An addition function takes two arguments from the execution stack, adds them
     together and pushes the result back onto the stack.  */
 {
@@ -596,8 +580,7 @@ Real **stack;
 }
 
 
-_FSDoSub(stack)
-Real **stack;
+int _FSDoSub(Real **stack)
 /*  A subtraction function takes two arguments from the execution stack, subtracts
     the top of the stack from the next value and pushes the result back onto the
     stack.  */
@@ -610,8 +593,7 @@ Real **stack;
 }
 
 
-_FSDoMul(stack)
-Real **stack;
+int _FSDoMul(Real **stack)
 /*  A multiplication function takes two arguments from the execution stack,
     multiplies them together and pushes the result back onto the stack.  */
 {
@@ -623,8 +605,7 @@ Real **stack;
 }
 
 
-_FSDoDiv(stack)
-Real **stack;
+int _FSDoDiv(Real **stack)
 /*  A division function takes two arguments from the execution stack, divides
     the top of the stack into the next value and pushes the result back onto the
     stack.  */
@@ -638,15 +619,12 @@ Real **stack;
 
 
 /*ARGSUSED*/
-_FSDoPrint(stack)
-Real **stack;
+int _FSDoPrint(Real **stack)
 /*  A PRINT function has no effect on the execution stack.  */
 {
 }
 
-_FSDoXHtAdj (xhtAdj, stack)
-Real   xhtAdj;
-Real **stack;
+int _FSDoXHtAdj (Real xhtAdj, Real **stack)
 /*  An xhtAdj function takes no arguments from the execution stack,
     and pushes the value onto the stack. */
 {

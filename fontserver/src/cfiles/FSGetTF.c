@@ -4,6 +4,7 @@
 #include <sys/types.h>
 #include <dirent.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <memory.h>
 #include "../hfiles/FSDef.h"
@@ -14,10 +15,8 @@
 #include "../hfiles/FSTypeface.h"
 #include "../hfiles/FSTFCache.h"
 #include "../hfiles/FSAlloc.h"
-
-
-FILE	*_FSOpenTFFile ();
-
+#include "../hfiles/FSLoadTF.h"
+#include "../hfiles/FSGetTF.h"
 
 /************************************************************************/
 /*									*/
@@ -428,12 +427,6 @@ int		*size;
 /*									*/
 /************************************************************************/
 
-typedef struct _FSName
-{
-    char		*name;
-    struct _FSName	*next;
-} FSName;
-
 int FSGetTypefaces (typeface, count)
 char	(**typeface)[15];
 int	*count;
@@ -529,14 +522,13 @@ int	*count;
 }
 
 
-_FSDeallocName (tfNamePtr)	/* recursively deallocate names */
-FSName	*tfNamePtr;
+void _FSDeallocName (FSName *tfNamePtr)	/* recursively deallocate names */
 {
     if (tfNamePtr->next != NULL)
 	_FSDeallocName (tfNamePtr->next);
 
     _FSDealloc (tfNamePtr->name);
-    _FSDealloc (tfNamePtr);
+    _FSDealloc ((char *) tfNamePtr);
 }
 
 
@@ -559,8 +551,7 @@ FSName	*tfNamePtr;
 /*									*/
 /************************************************************************/
 
-FILE *_FSOpenTFFile (typeface)
-char	*typeface;
+FILE *_FSOpenTFFile (char *typeface)
 {
     char	*name;
 

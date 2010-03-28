@@ -1,10 +1,12 @@
 /* $RCSfile: fscnvrt.c $$Revision: 1.2 $$Date: 1991/02/28 13:52:27 $ Copyright (c) 1990 Intergraph Corp. */
 
-#include "../hfiles/import.h"
 #include <memory.h>
+#include "../hfiles/import.h"
+#pragma dumpmacros
 #include "../hfiles/FSTypes.h"
 #include "../hfiles/FSBmap.h"
 #include "../hfiles/FSDef.h"
+#include "../hfiles/FSConvert.h"
 
 
 static uInt8	solidBitArray[9] = { 0, 1, 3, 7, 15, 31, 63, 127, 255 };
@@ -34,10 +36,11 @@ static uInt8	singleBitArray[8] = { 1, 2, 4, 8, 16, 32, 64, 128 };
 /*									*/
 /************************************************************************/
 
-_FSConvertRLE8 (source, dest, width, height)
-uInt8 *source;		/* Beginning of RLE data */
-BmapBitmap *dest;	/* Place to put the bitmap */
-int  width, height;	/* Size of bitmap (in pixels) */
+int _FSConvertRLE8 (
+    uInt8 *source,	/* Beginning of RLE data */
+    BmapBitmap *dest,	/* Place to put the bitmap */
+    int width,
+    int height)		/* Size of bitmap (in pixels) */
 {
     BmapBitmap	*place;
     uInt8	start, length, runs;
@@ -64,10 +67,11 @@ int  width, height;	/* Size of bitmap (in pixels) */
     }
 }
 
-_FSConvertRLE16 (source, dest, width, height)
-Int16 *source;		/* Where RLE data is */
-BmapBitmap *dest;	/* Where to put the bitmap */
-int  width, height;	/* Size of bitmap (in pixels) */
+int _FSConvertRLE16 (
+    Int16 *source,	/* Where RLE data is */
+    BmapBitmap *dest,	/* Where to put the bitmap */
+    int width,
+    int height)		/* Size of bitmap (in pixels) */
 {
     Int16	start, length, runs;	/* From RLE data */
     int		i, j, size, bytesPerRow;
@@ -119,10 +123,7 @@ int  width, height;	/* Size of bitmap (in pixels) */
 /*									*/
 /************************************************************************/
 
-int _FSUnconvertRLE8 (source, dest, width, height)
-BmapBitmap *source;
-uInt8 *dest;
-int width, height;
+int _FSUnconvertRLE8 (BmapBitmap *source, uInt8 *dest, int width, int height)
 {
     Int16 array[5000], *place;
     int bytesPerRow, i, j, count;
@@ -150,10 +151,7 @@ int width, height;
     return (dest - start);	/* return size in bytes */
 }
 
-int _FSUnconvertRLE16 (source, dest, width, height)
-BmapBitmap *source;
-Int16 *dest;
-int width, height;
+int _FSUnconvertRLE16 (BmapBitmap *source, Int16 *dest, int width, int height)
 {
     int bytesPerRow, i, count;
     Int16 *start;
@@ -191,10 +189,9 @@ int width, height;
 /*									*/
 /************************************************************************/
 
-_FSPlaceRun (start, length, place)
-Int16	start, length;
-uInt8	*place;
+int _FSPlaceRun (Int16 start, Int16 length, uInt8 *place)
 {
+#pragma end_dumpmacros
     if (start > 7)		/* Move to first byte where something goes */
     {
 	place += start >> 3;
@@ -251,10 +248,7 @@ uInt8	*place;
 /*									*/
 /************************************************************************/
 
-int	_FSFindRuns (start, length, place)
-uInt8	*start;
-int	length;
-Int16	*place;
+int	_FSFindRuns (uInt8 *start, int length, Int16 *place)
 {
     register uInt8	*bitPtr, *bitEnd;
     register int	i, in, run=0, data=0, count;

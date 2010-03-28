@@ -6,6 +6,8 @@
 #include "../hfiles/FS.h"
 #include "../hfiles/FSFont.h"
 #include "../hfiles/FSFontCach.h"
+#include "../hfiles/FSNewFont.h"
+#include "../hfiles/FSGenCache.h"
 
 
 /************************************************************************/

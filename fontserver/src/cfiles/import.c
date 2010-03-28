@@ -1,5 +1,8 @@
 /* $RCSfile: import.c $$Revision: 1.1 $$Date: 1990/07/02 16:07:11 $ Copyright (c) 1990 Intergraph Corp. */
 
+#include <stdio.h>
+#include "../hfiles/import.h"
+
 #ifdef IMPORTS
 
 /* Declarations for each imported symbol present in the shared library.	*/
@@ -142,8 +145,7 @@ char	*_libFSabs_ = 0,
 	*_libFS_ctype_ = 0,
 	*_libFSiob_ = 0;
 
-#else
-#ifdef SHLIB
+#elifdef SHLIB
 char	
 	*_libFSacos_ = 0,
 	*_libFSasin_ = 0,
@@ -220,5 +222,8 @@ char
 	*_libFS_assert_	= 0,
 	*_libFS_ctype_	= 0,
 	*_libFSiob_	= 0;
-#endif
+#else
+int	draw() {printf("WARNING: draw() called!!!\n"); return -1;}
+int	drawbitmap() {printf("WARNING: drawbitmap() called!!!\n"); return -1;}
+int	move() {printf("WARNING: move() called!!!\n"); return -1;}
 #endif

@@ -28,6 +28,8 @@
 #include <malloc.h>
 #include <string.h>
 #include <memory.h>
+#include <unistd.h>
+#include <stdlib.h>
 #include "../hfiles/FSTypes.h"
 #include "../hfiles/FSDef.h"
 #include "../hfiles/FSUtil.h"
@@ -147,10 +149,7 @@ char *ptr;
 /*									*/
 /************************************************************************/
 
-_FSMemCopy (to, from, count)
-char	*to;
-char	*from;
-int	count;
+int _FSMemCopy (char *to, char *from, int count)
 {
     char	*endTo, *endFrom;
 

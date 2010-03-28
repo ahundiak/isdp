@@ -17,6 +17,7 @@
 #include "../hfiles/FSGenCache.h"
 #include "../hfiles/FSCharMap.h"
 #include "../hfiles/FSAlloc.h"
+#include "../hfiles/FSNewFont.h"
 
 
 
@@ -94,8 +95,7 @@ FontNode	**fontNode;
 
 /* This routine locks the info handle of the specified font.		*/
 
-Int _FSFontLockInfo (fontNode)
-FontNode	**fontNode;
+Int _FSFontLockInfo (FontNode **fontNode)
 {
     _GCLock ((*fontNode)->info);
     return (FS_NO_ERROR);
@@ -105,8 +105,7 @@ FontNode	**fontNode;
 
 /* This routine unlocks the info handle of the specified font.		*/
 
-Int _FSFontUnlockInfo (fontNode)
-FontNode	**fontNode;
+Int _FSFontUnlockInfo (FontNode **fontNode)
 {
     _GCUnlock ((*fontNode)->info);
     return (FS_NO_ERROR);
@@ -129,8 +128,7 @@ FontNode	**fontNode;
 /* This routine initializes some of the members of the info structure	*/
 /* of the specified font.						*/
 
-Int _FSFontAutosetInfo (info)
-FontInfo	*info;
+Int _FSFontAutosetInfo (FontInfo *info)
 {
     info->rotationSin = (Real64) sin (info->rotation * M_PI / 180.0);
 
@@ -148,8 +146,7 @@ FontInfo	*info;
 
 /* This routine locks the kern pair table handle of the specified font.	*/
 
-Int _FSFontLockKernPairs (fontNode)
-FontNode	**fontNode;
+Int _FSFontLockKernPairs (FontNode **fontNode)
 {
     _GCLock ((*fontNode)->kernPair);
     return (FS_NO_ERROR);
@@ -160,8 +157,7 @@ FontNode	**fontNode;
 /* This routine unlocks the kern pair table handle of the specified	*/
 /* font.								*/
 
-Int _FSFontUnlockKernPairs (fontNode)
-FontNode	**fontNode;
+Int _FSFontUnlockKernPairs (FontNode **fontNode)
 {
     _GCUnlock ((*fontNode)->kernPair);
     return (FS_NO_ERROR);
@@ -312,10 +308,10 @@ CharId		character;
 /* TRUE, a handle to the character designated as the missing character	*/
 /* (if present) is returned; otherwise, NULL is returned.		*/
 
-FontCharNode **_FSFontCharNode (fontNode, character, missFlag)
-FontNode	**fontNode;
-CharId		*character;	/* char to look for		*/
-Boolean		missFlag;	/* substitute missing char?	*/
+FontCharNode **_FSFontCharNode (
+    FontNode            **fontNode,
+    CharId		*character,	/* char to look for		*/
+    Boolean		missFlag)	/* substitute missing char?	*/
 {
     FontInfo		*info;
     FontCharDir		*charDir;
@@ -375,10 +371,7 @@ FontCharNode	**charNode;	/* handle to xxxxCharNode */
 /* called whenever a character is needed (e.g., for drawing), since the	*/
 /* character may have been purged or may not have been created yet.	*/
 
-Int _FSFontGetChar (fontNode, charNode, character)
-FontNode	**fontNode;
-FontCharNode	**charNode;
-CharId		character;
+Int _FSFontGetChar (FontNode **fontNode, FontCharNode **charNode, CharId character)
 {
     if (*charNode == NULL)	/* is it purged? */
 	_FSAppendChar (fontNode, character);
@@ -433,8 +426,7 @@ FontNode	**fontNode;
 
 /* This routine locks the character table handle of the specified font.	*/
 
-Int _FSFontLockCharDirTable (fontNode)
-FontNode	**fontNode;
+Int _FSFontLockCharDirTable (FontNode **fontNode)
 {
     _GCLock ((*fontNode)->charDir.table);
     return (FS_NO_ERROR);
@@ -445,8 +437,7 @@ FontNode	**fontNode;
 /* This routine unlocks the character table handle of the specified	*/
 /* font.								*/
 
-Int _FSFontUnlockCharDirTable (fontNode)
-FontNode	**fontNode;
+Int _FSFontUnlockCharDirTable (FontNode **fontNode)
 {
     _GCUnlock ((*fontNode)->charDir.table);
     return (FS_NO_ERROR);
@@ -484,8 +475,7 @@ FontKernPair	*pair2;
 
 /* This function compares the two specified kern pairs.			*/
 
-Int _FSComparePairChar (char11, char12, char21, char22)
-CharId	char11, char12, char21, char22;
+Int _FSComparePairChar (CharId char11, CharId char12, CharId char21, CharId char22)
 {
     if (char11 < char21)
 	return (-1);
@@ -504,10 +494,7 @@ CharId	char11, char12, char21, char22;
 /* specified size for the specified font.  The specified kern pair	*/
 /* table (already sorted) is copied into the new memory.		*/
 
-Int _FSFontNewKernPairs (fontNode, kernPair, numPair)
-FontNode	**fontNode;
-FontKernPair	*kernPair;
-Int		numPair;
+Int _FSFontNewKernPairs (FontNode **fontNode, FontKernPair **kernPair, Int numPair)
 {
     FontKernPair	**kernTable;
 
@@ -589,10 +576,7 @@ FontNode	**fontNode;
 /* directory for the specified font.  This should be done before the	*/
 /* routine that allocate space for a new character are called.		*/
 
-Int _FSFontAppendCharDir (fontNode, characters, numChars)
-FontNode	**fontNode;
-CharId		*characters;
-int		numChars;
+Int _FSFontAppendCharDir (FontNode **fontNode, CharId *characters, int numChars)
 {
     FontCharNode	***table, ***tablePtr;
     FontCharDir		*charDir;

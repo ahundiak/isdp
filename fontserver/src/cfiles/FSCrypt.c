@@ -41,7 +41,7 @@
 /*									*/
 /************************************************************************/
 
-_FSEncryptBuff (buff, numWords)
+int _FSEncryptBuff (buff, numWords)
 Char16	*buff;
 int	numWords;
 {
@@ -72,9 +72,7 @@ int	numWords;
 /*									*/
 /************************************************************************/
 
-_FSDecryptBuff (buff, numWords)
-Int16	*buff;
-int	numWords;
+int _FSDecryptBuff (Int16 *buff, int numWords)
 {
     Int16	*endBuff;
 

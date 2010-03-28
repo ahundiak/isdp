@@ -74,11 +74,16 @@
 #include "../hfiles/FSGenCache.h"
 #include "../hfiles/FSSize.h"
 #include "../hfiles/FSPolyFill.h"
-
+#include "../hfiles/FSPixCache.h"
+#include "../hfiles/FSLoadTF.h"
+#include "../hfiles/FSAlloc.h"
+#include "../hfiles/FSOutlCach.h"
+#include "../hfiles/FSGetRec.h"
+#include "../hfiles/FSConvert.h"
+#include "../hfiles/FSScanConv.h"
 
 /* this should be defined as a compilation argument */
 /* #define  CONVERTDBG */	/* prints gobs of debugging data */
-
 
 /***** DEFINITIONS *****/
 
@@ -279,8 +284,8 @@ CompCharDesc	*compc;
 	_GCSetPurge (charNode, TRUE);
 
 	_FSOutlLockCharInfo (charNode);
-	_FSOutlLockCharPSize (charNode);
-	_FSOutlLockCharVert (charNode);
+	_FSOutlLockCharPSize ((OutlCharNode **)charNode);
+	_FSOutlLockCharVert ((OutlCharNode **)charNode);
 	outlInfo = _FSOutlCharInfo (charNode);
 
 	freePSize = PSPACE;
@@ -306,7 +311,7 @@ CompCharDesc	*compc;
 	_GCSetPurge (charNode, TRUE);
 
 	_FSBmapLockCharInfo (charNode);
-	_FSBmapLockCharBitmap (charNode);
+	_FSBmapLockCharBitmap ((BmapCharNode **)charNode);
 	bmapInfo = _FSBmapCharInfo (charNode);
 
 	freeSpace = ISPACE;
@@ -462,7 +467,7 @@ CompCharDesc	*compc;
 		y2p = vectr[vectorCount].yy;
 		y2pI = m2;
 		x2pI = m1;
-		_FSDealloc (vectr);
+		_FSDealloc ((char *)vectr);
 
 		break;
 
@@ -714,8 +719,8 @@ DONE:	/* done with character */
 	}
 
 	_FSOutlUnlockCharInfo (charNode);
-	_FSOutlUnlockCharPSize (charNode);
-	_FSOutlUnlockCharVert (charNode);
+	_FSOutlUnlockCharPSize ((OutlCharNode **)charNode);
+	_FSOutlUnlockCharVert ((OutlCharNode **)charNode);
     }
     else
     {
@@ -775,7 +780,7 @@ DONE:	/* done with character */
 	_FSAssert (rval);
 
 	_FSBmapUnlockCharInfo (charNode);
-	_FSBmapUnlockCharBitmap (charNode);
+	_FSBmapUnlockCharBitmap ((BmapCharNode **)charNode);
     }
 
     /* free all the memory that was used */
@@ -1267,9 +1272,9 @@ Boolean  _FSConvertLists ()
     if (allBitmaps)
 	return (TRUE);
 
-    sizeRLE = _FSUnconvertRLE8 (bitmap, bmapRLE, rWid, rHgt);
+    sizeRLE = _FSUnconvertRLE8 (bitmap, (uInt8 *)bmapRLE, rWid, rHgt);
     if (run16 = (sizeRLE < 0))
-	sizeRLE = _FSUnconvertRLE16 (bitmap, bmapRLE, rWid, rHgt);
+	sizeRLE = _FSUnconvertRLE16 (bitmap, (Int16 *)bmapRLE, rWid, rHgt);
     sizeRLE = BMAP_BMAP_SIZE (sizeRLE);
 
     if (allRLE || (sizeRLE < sizeBmap))
@@ -1294,7 +1299,7 @@ Boolean  _FSConvertLists ()
     bmapInfo->flags = theFlags;
     bmapInfo->nMap = theSize;
 
-    _FSDealloc (bitmap);
+    _FSDealloc ((char *)bitmap);
 
     return(TRUE);
 }
@@ -1428,8 +1433,8 @@ Int		dimension;	/* 0=X, 1=Y */
 }
 	
 
-Int  _FSGetCompToken (coord)
-ArcType	*coord;	/* arc data type, endpoint + bulge factor */
+Int  _FSGetCompToken (
+    ArcType	*coord)	/* arc data type, endpoint + bulge factor */
 
 /*  Reads compressed outline data records using _FSGetRec()
  *  Returns data in 'coord'

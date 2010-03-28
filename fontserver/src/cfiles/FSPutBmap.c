@@ -2,12 +2,21 @@
 
 #include "../hfiles/import.h"
 #include <memory.h>
+#include <stdlib.h>
 #include "../hfiles/FSTypes.h"
 #include "../hfiles/FS.h"
 #include "../hfiles/FSBmap.h"
 #include "../hfiles/FSBmapCach.h"
 #include "../hfiles/FSSize.h"
+#include "../hfiles/FSNewFont.h"
 
+/*
+ * XXX - Routines in this module incompatibly call library routines with integers
+ * when they need pointers.  So we are allowing this to build with the errors,
+ * because we probably do not use them.  These routines only seem to be called
+ * from the fontserver/other/util section of code modules.  Casts are being used
+ * to prevent warnings from being output by the compiler.
+ */
 
 /************************************************************************/
 /*									*/
@@ -35,11 +44,11 @@ BmapHeader	*header;
     int	rval;
 
     rval = FS_NO_ERROR;
-    if (_FSBmapFont (bmap) && !_FSSharedFont (bmap))
+    if (_FSBmapFont ((BmapNode **)bmap) && !_FSSharedFont ((FontNode **)bmap))
     {
-	_FSBmapLockHeader (bmap);
+	_FSBmapLockHeader ((FontNode **)bmap);
 	memcpy (_FSBmapHeader (bmap), header, sizeof (BmapHeader));
-	_FSBmapUnlockHeader (bmap);
+	_FSBmapUnlockHeader ((FontNode **)bmap);
     }
     else
 	rval = FS_INVALID_FONT;
@@ -73,11 +82,11 @@ BmapInfo	*info;
     int	rval;
 
     rval = FS_NO_ERROR;
-    if (_FSBmapFont (bmap) && !_FSSharedFont (bmap))
+    if (_FSBmapFont ((BmapNode **)bmap) && !_FSSharedFont ((FontNode **)bmap))
     {
-	_FSBmapLockInfo (bmap);
+	_FSBmapLockInfo ((FontNode **)bmap);
 	memcpy (_FSBmapInfo (bmap), info, sizeof (BmapInfo));
-	_FSBmapUnlockInfo (bmap);
+	_FSBmapUnlockInfo ((FontNode **)bmap);
     }
     else
 	rval = FS_INVALID_FONT;
@@ -115,15 +124,15 @@ int		numPairs;
     int			_FSComparePair ();
 
     rval = FS_NO_ERROR;
-    if (_FSBmapFont (bmap) && !_FSSharedFont (bmap))
+    if (_FSBmapFont ((BmapNode **)bmap) && !_FSSharedFont ((FontNode **)bmap))
     {
-	_FSBmapNewKernPairs (bmap, kernTable, numPairs);
+	_FSBmapNewKernPairs ((FontNode **)bmap, (FontKernPair **)kernTable, numPairs);
 
 	/** Make sure the table is sorted **/
-	_FSBmapLockKernPairs (bmap);
-	kernPtr = _FSBmapKernPairs (bmap);
+	_FSBmapLockKernPairs ((FontNode **)bmap);
+	kernPtr = _FSBmapKernPairs ((FontNode **)bmap);
 	qsort (kernPtr, numPairs, sizeof (BmapKernPair), _FSComparePair);
-	_FSBmapUnlockKernPairs (bmap);
+	_FSBmapUnlockKernPairs ((FontNode **)bmap);
     }
     else
 	rval = FS_INVALID_FONT;
@@ -190,9 +199,9 @@ BmapCharInfo	*charInfo;
     BmapCharInfo	*newCharInfo;
 
     rval = FS_NO_ERROR;
-    if (_FSBmapFont (bmap) && !_FSSharedFont (bmap))
+    if (_FSBmapFont ((BmapNode **)bmap) && !_FSSharedFont ((FontNode **)bmap))
     {
-	if ((charNode = _FSBmapCharNode (bmap, &character, FALSE)) == NULL)
+	if ((charNode = _FSBmapCharNode ((FontNode **)bmap, &character, FALSE)) == NULL)
 	{
 	    if (charInfo != NULL)	/* create a new character */
 	    {
@@ -207,7 +216,7 @@ BmapCharInfo	*charInfo;
 	{
 	    if (charInfo == NULL)	/* delete the existing character */
 	    {
-		_FSBmapDeleteChar (bmap, character);
+		_FSBmapDeleteChar ((BmapNode *)bmap, character);
 	    }
 	    else	/* replace the existing char info */
 	    {
@@ -258,11 +267,11 @@ int		size;
     BmapBitmap		**newBitmap;
 
     rval = FS_NO_ERROR;
-    if (_FSBmapFont (bmap) && !_FSSharedFont (bmap))
+    if (_FSBmapFont ((BmapNode **)bmap) && !_FSSharedFont ((FontNode **)bmap))
     {
-	if ((charNode = _FSBmapCharNode (bmap, &character, FALSE)) != NULL)
+	if ((charNode = _FSBmapCharNode ((FontNode **)bmap, &character, FALSE)) != NULL)
 	{
-	    _FSBmapGetChar (bmap, charNode, character);
+	    _FSBmapGetChar ((FontNode **)bmap, charNode, character);
 
 	    _FSBmapLockCharInfo (charNode);
 	    charInfo = _FSBmapCharInfo (charNode);
@@ -305,8 +314,8 @@ BmapId	bmap;
     int	rval;
 
     rval = FS_NO_ERROR;
-    if (_FSBmapFont (bmap) && !_FSSharedFont (bmap))
-	_FSUpdateFont (bmap);
+    if (_FSBmapFont ((BmapNode **)bmap) && !_FSSharedFont ((FontNode **)bmap))
+	_FSUpdateFont ((FontNode **)bmap);
     else
 	rval = FS_INVALID_FONT;
 

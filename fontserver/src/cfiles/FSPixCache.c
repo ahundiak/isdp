@@ -49,6 +49,8 @@
 #include "../hfiles/FSTypeface.h"
 #include "../hfiles/FSMakeFont.h"
 #include "../hfiles/FSAlloc.h"
+#include "../hfiles/FSGetRec.h"
+#include "../hfiles/FSPixCache.h"
 
 
 
@@ -90,8 +92,7 @@ Real32	_FSFPixelsCache[MAX_CACHE_ZONES] = { 0 };	/* Unrounded number of pixels a
 Real32	_FSScaledFPixelsCache[MAX_CACHE_ZONES] = { 0 };	/* Unrounded number of pixels at cache[XY]Scale */
 
 
-_FSNewCache (numChars)
-Int	numChars;		/* number of characters */
+void _FSNewCache (int numChars)
 
 /* Called by main to initialize cache to empty condition before first use
    and after change of font */
@@ -122,7 +123,7 @@ Int	numChars;		/* number of characters */
 }
 
 
-_FSDeleteCache ()
+void _FSDeleteCache (void)
 {
     /** Free the arrays if they were allocated **/
     if (cacheXOffsets != NULL)
@@ -132,8 +133,7 @@ _FSDeleteCache ()
 }
 
 
-_FSInitCache (pixemX, pixemY)
-Real	pixemX, pixemY;	/* x, y pixels per em */
+void _FSInitCache (Real pixemX, Real pixemY)
 
 /* Called by main to initialize cache to empty condition before first use
    and after change of font */
@@ -266,7 +266,7 @@ Real	arot, aobl;		/* rotation & obliquing angles */
 }
 
 
-_FSOpenPutCacheData()
+void _FSOpenPutCacheData(void)
 /* Called by _FSCharScanConvert() to prepare cache to accept zone data with
    _FSPutCacheData() calls */
 {
@@ -277,7 +277,7 @@ _FSOpenPutCacheData()
 
 
 
-_FSClosePutCacheData()
+void _FSClosePutCacheData(void)
 /* Called by _FSSetupTrans() to terminate input of zone data
    Also called by _FSPutCacheData() to terminate input of zone data in one
    dimension when change of dimension is detected */
@@ -305,13 +305,13 @@ _FSClosePutCacheData()
 
 
 
-_FSPutCacheData(charNum, dimension, from, to, flags, pfunct)
-uInt16	charNum;	/* Character offset */
-Int16	dimension;	/* 0 if x zone, 1 if y zone */
-Int32	from;		/* zone start coordinate */
-Int32	to;		/* zone end coordinate */
-uInt16	flags;		/* zone flags */
-uInt16	*pfunct;	/* pointer to constraint function if any */
+void _FSPutCacheData(
+    uInt16	charNum,	/* Character offset */
+    Int16	dimension,	/* 0 if x zone, 1 if y zone */
+    Int32	from,		/* zone start coordinate */
+    Int32	to,		/* zone end coordinate */
+    uInt16	flags,		/* zone flags */
+    uInt16	*pfunct)	/* pointer to constraint function if any */
 /* Called by _FSCharScanConvert() to add zone data to cache */
 {
     Int16 offset;
@@ -468,12 +468,12 @@ uInt16		*pfirstRec;	/* pointer to first record in font outline data */
 }
 
 
-_FSCachePixels(charNum, dimension, zoneNum, pixels, scale)
-uInt16	charNum;	/* Character offset */
-Int16	dimension;	/* 0 if x zone, 1 if y zone */
-Int16	zoneNum;	/* Zone number */
-Int16	pixels;		/* Number of pixels */
-Real	scale;		/* Scale factor for dimension */
+void _FSCachePixels(
+    uInt16	charNum,	/* Character offset */
+    Int16	dimension,	/* 0 if x zone, 1 if y zone */
+    Int16	zoneNum,	/* Zone number */
+    Int16	pixels,		/* Number of pixels */
+    Real	scale)		/* Scale factor for dimension */
 /* Called by _FSGetPixels() to save a rounded number of pixels for the specified
    zone in the specified dimension of the specified character. If the scale
    factor is 1.0, the data is saved in the main cache.  If the scale factor is
@@ -537,12 +537,12 @@ Real	scale;		/* Scale factor for dimension */
 }
 
 
-_FSCacheFPixels(charNum, dimension, zoneNum, fpixels, scale)
-uInt16	charNum;	/* Character offset */
-Int16	dimension;	/* 0 if x zone, 1 if y zone */
-Int16	zoneNum;	/* Zone number */
-Real	fpixels;	/* Unrounded number of pixels */
-Real	scale;		/* Scale factor for dimension */
+void _FSCacheFPixels(
+    uInt16	charNum,	/* Character offset */
+    Int16	dimension,	/* 0 if x zone, 1 if y zone */
+    Int16	zoneNum,	/* Zone number */
+    Real	fpixels,	/* Unrounded number of pixels */
+    Real	scale)		/* Scale factor for dimension */
 /* Called by allocPixels() and _FSGetFPixels() to save an unrounded number of
    pixels for the specified zone in the specified dimension of the specified
    character. If the scale factor is 1.0, the data is saved in the main cache.
@@ -611,7 +611,7 @@ Real	scale;		/* Scale factor for dimension */
 }
 
 
-_FSClearXCache()
+void _FSClearXCache(void)
 /* Called by _FSReinitCache() to clear cached values of pixels and fpixels in
    X dimension.	*/
 {
@@ -639,7 +639,7 @@ _FSClearXCache()
 }
 
 
-_FSClearYCache()
+void _FSClearYCache(void)
 /* Called by _FSReinitCache() to clear cached values of pixels and fpixels in
    Y dimension.	*/
 {
@@ -667,7 +667,7 @@ _FSClearYCache()
 }
 
 
-_FSClearScaledXCache()
+void _FSClearScaledXCache(void)
 /* Called by _FSCachePixels() and _FSCacheFPixels() to clear scaled pixels and
    scaled fpixels cache in X dimension.	*/
 {
@@ -695,7 +695,7 @@ _FSClearScaledXCache()
 }
 
 
-_FSClearScaledYCache()
+void _FSClearScaledYCache(void)
 /* Called by _FSCachePixels() and _FSCacheFPixels() to clear scaled pixels and
    scaled fpixels cache in Y dimension.	*/
 {
@@ -723,10 +723,10 @@ _FSClearScaledYCache()
 }
 
 
-_FSGetCacheNoZones(charNum, dimension, pnoZones)
-uInt16	charNum;	/* Character offset */
-Int16	dimension;	/* 0 if x zone, 1 if y zone */
-Int16	*pnoZones;
+void _FSGetCacheNoZones(
+    uInt16	charNum,	/* Character offset */
+    Int16	dimension,	/* 0 if x zone, 1 if y zone */
+    Int16	*pnoZones)
 /* Called by _FSMakeEdgeList() and _FSAllocPixels() to get the number of zones
    in the specified dimension of the specified character. The zone data is
    assumed to be cached if it exists. If the specified character/dimension
@@ -754,14 +754,14 @@ Int16	*pnoZones;
 }
 
 
-_FSGetCacheData(charNum, dimension, zoneNum, pfrom, pto, pflags, ppfunct)
-uInt16	charNum;	/* Character offset */
-Int16	dimension;	/* 0 if x zone, 1 if y zone */
-Int16	zoneNum;	/* Zone number */
-Int32	*pfrom;
-Int32	*pto;
-uInt16	*pflags;
-uInt16	**ppfunct;
+void _FSGetCacheData(
+    uInt16	charNum,	/* Character offset */
+    Int16	dimension,	/* 0 if x zone, 1 if y zone */
+    Int16	zoneNum,	/* Zone number */
+    Int32	*pfrom,
+    Int32	*pto,
+    uInt16	*pflags,
+    uInt16	**ppfunct)
 /* Called by _FSMakeEdgeList(), _FSAllocPixels(), _FSGetFPixels(), _FSGetPixels() and
    _FSMakePathMask() to extract all zone data for the specified zone in the specified
    dimension of the specified character. The zone data is assumed to be in the

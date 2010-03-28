@@ -7,8 +7,9 @@
 #include <string.h>
 #include <ftw.h>
 #include <memory.h>
-#include "../hfiles/FSAlloc.h"
+#include <stdlib.h>
 #include "../hfiles/FSTypes.h"
+#include "../hfiles/FSAlloc.h"
 #include "../hfiles/FS.h"
 #include "../hfiles/FSDef.h"
 #include "../hfiles/FSUtil.h"
@@ -40,7 +41,7 @@ int _FSAllocCharMap ();
 /*									*/
 /************************************************************************/
 
-int _FSInitCharMap ()
+int _FSInitCharMap (void)
 {
     CharMapEntry	*tablePtr, *tableEnd;
     CharMapStruct	*cPtr, *cEnd;
@@ -77,7 +78,7 @@ int _FSInitCharMap ()
 /*									*/
 /************************************************************************/
 
-int _FSDisposeCharMap ()
+int _FSDisposeCharMap (void)
 {
     CharMapEntry	*tablePtr, *tableEnd;
     CharMapStruct	*cPtr, *cEnd;
@@ -139,12 +140,12 @@ CharMapId	*charMapId;
 
     /** Put it in the cache and lock it, since it has no file yet **/
     if ((rval = _FSCacheCharMap (charMapSpec, numChar, missingChar,
-				 flags | FS_CM_LOCKED, 0,
-				 &cachePtr)) != FS_NO_ERROR)
+				 (Int32) (flags | FS_CM_LOCKED), 0,
+				 (CharMapStruct **)&cachePtr)) != FS_NO_ERROR)
 	return (rval);
 
     /** Add it to the char map id/file xref table **/
-    return (_FSAddCharMapId (charMapId, flags & FS_CHARMAP_ID, NULL, cachePtr));
+    return (_FSAddCharMapId (charMapId, (int) (flags & FS_CHARMAP_ID), NULL, (CharMapStruct *)cachePtr));
 }
 
 
@@ -215,9 +216,7 @@ int		mode;
 /*									*/
 /************************************************************************/
 
-int _FSGetCharMapRef (charMap, cmRef)
-char	*charMap;
-FileRef	*cmRef;
+int _FSGetCharMapRef (char *charMap, FileRef *cmRef)
 {
     char		*cmFile;
     CharMapId		charMapId;
@@ -275,9 +274,7 @@ FileRef	*cmRef;
 /*									*/
 /************************************************************************/
 
-int _FSGetCharMap (cmRef, cachePtr)
-FileRef		*cmRef;
-CharMapStruct	**cachePtr;
+int _FSGetCharMap (FileRef *cmRef, CharMapStruct **cachePtr)
 {
     int			rval;
     CharMapEntry	*tablePtr;
@@ -291,7 +288,7 @@ CharMapStruct	**cachePtr;
 	if (tablePtr->refCount > 0)	/* is it in use? */
 	{
 	    if (tablePtr->cachePtr == NULL)	/* must be from a file */
-		rval = _FSCacheCharMapFile (tablePtr->fileName, cachePtr);
+		rval = _FSCacheCharMapFile ((FileRef *)tablePtr->fileName, cachePtr);
 	    else
 		*cachePtr = tablePtr->cachePtr;
 	}
@@ -359,13 +356,13 @@ CharMapStruct	**cachePtr;
 	    FS_NO_ERROR)
 	{
 	    rval = _FSCacheCharMap (charMapPtr, header.numChar,
-				    header.missingChar, header.flags,
+				    header.missingChar, (Int32) header.flags,
 				    cmRef->tag, cachePtr);
 	}
 	else
 	    rval = FS_INVALID_CM_FILE;
 
-	_FSDealloc (charMapPtr);
+	_FSDealloc ((char *)charMapPtr);
     }
     else
 	rval = FS_INVALID_CM_FILE;
@@ -447,14 +444,8 @@ CharMapSpec	*char2;
 /*									*/
 /************************************************************************/
 
-int _FSCacheCharMap (charMapSpec, numChar, missingChar, flags,
-			    tag, cachePtr)
-CharMapSpec	*charMapSpec;
-int		numChar;
-CharId		missingChar;
-Int32		flags;
-uInt32		tag;
-CharMapStruct	**cachePtr;
+int _FSCacheCharMap (CharMapSpec *charMapSpec, int numChar, CharId missingChar,
+    Int32 flags, uInt32 tag, CharMapStruct **cachePtr)
 {
     uInt32		minTime;
     CharMapStruct	*cPtr, *cEnd, *minSlot = NULL;
@@ -492,8 +483,10 @@ Found:
     /** Copy the two tables and sort them **/
     memcpy (cPtr->charId, charMapSpec, numChar * sizeof (CharMapSpec));
     memcpy (cPtr->bsNbr, charMapSpec, numChar * sizeof (CharMapSpec));
-    qsort (cPtr->charId, numChar, sizeof (CharMapSpec), _FSBsNbrCompare);
-    qsort (cPtr->bsNbr, numChar, sizeof (CharMapSpec), _FSCharIdCompare);
+    qsort (cPtr->charId, numChar, sizeof (CharMapSpec),
+        (int (*) (const void *, const void *))_FSBsNbrCompare);
+    qsort (cPtr->bsNbr, numChar, sizeof (CharMapSpec),
+        (int (*) (const void *, const void *))_FSCharIdCompare);
 
     *cachePtr = cPtr;
 

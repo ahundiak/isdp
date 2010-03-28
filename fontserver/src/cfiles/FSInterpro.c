@@ -55,7 +55,7 @@ Int32  _FSIproClockHigh32 ()
 
 
 
-void  _FSIproMemoryInit()
+void  _FSIproMemoryInit(void)
 {
     return;
 }

@@ -11,6 +11,12 @@
 #include "../hfiles/FSMakeFont.h"
 #include "../hfiles/FSFontCach.h"
 #include "../hfiles/FSAlloc.h"
+#include "../hfiles/FSNewFont.h"
+#include "../hfiles/FSBmapCach.h"
+#include "../hfiles/FSGenCache.h"
+#include "../hfiles/FSDaemon.h"
+#include "../hfiles/FSOutl.h"
+#include "../hfiles/FSOutlCach.h"
 
 
 /** Globals for _FSMakeFont () **/
@@ -86,8 +92,7 @@ FontNode	**_FSFindNFSharedFont ();
 /*									*/
 /************************************************************************/
 
-_FSEnterNF (flags)
-uInt32	flags;
+int _FSEnterNF (uInt32 flags)
 {
     _FSDaemon = flags & 0x1;
 
@@ -119,7 +124,7 @@ uInt32	flags;
 /*									*/
 /************************************************************************/
 
-_FSExitNF ()
+int _FSExitNF (void)
 {
     int	i;
 
@@ -155,7 +160,7 @@ _FSExitNF ()
 /*									*/
 /************************************************************************/
 
-int _FSShEnter ()
+int _FSShEnter (void)
 {
     int	rval;
 
@@ -210,7 +215,7 @@ int _FSShEnter ()
 /*									*/
 /************************************************************************/
 
-_FSShExit ()
+void _FSShExit (void)
 {
     if (_GCShInited ())
     {
@@ -270,7 +275,7 @@ FontNode	***font;
     _FSSubset.list = NULL;
 
     if (shared && !_FSDaemon)
-	rval = _FSDaemonNewFont (fontSpec, rangeSpec, font);
+	rval = _FSDaemonNewFont (fontSpec, rangeSpec, (FontNode *)font); // XXX - Bad pointer passed in original code?
     else
     {
 	/** Get the typeface reference **/
@@ -392,7 +397,7 @@ RangeSpec	*rangeSpec;
 	    /** Initialize fontware globals **/
 	    _FSInitGlobals (&regen->sourceRef, NULL, info->bodySize,
 			    info->resFactor, info->aspect, info->rotation,
-			    info->slant, &regen->cmRef, info->charMap,
+			    info->slant, &regen->cmRef, (char *)info->charMap,
 			    info->flags);
 	    _FSAddCharacters = TRUE;
 
@@ -441,9 +446,7 @@ RangeSpec	*rangeSpec;
 /*									*/
 /************************************************************************/
 
-int _FSAppendChar (fontNode, character)
-FontNode	**fontNode;
-CharId		character;
+int _FSAppendChar (FontNode **fontNode, CharId character)
 {
     int		rval, shared;
     FontInfo	*info;
@@ -471,7 +474,7 @@ CharId		character;
 	    /** Initialize fontware globals **/
 	    _FSInitGlobals (&regen->sourceRef, NULL, info->bodySize,
 			    info->resFactor, info->aspect, info->rotation,
-			    info->slant, &regen->cmRef, info->charMap,
+			    info->slant, &regen->cmRef, (char *)info->charMap,
 			    info->flags);
 	    _FSDemandFlag = FALSE;
 	    _FSAddCharacters = FALSE;
@@ -519,18 +522,17 @@ CharId		character;
 /*									*/
 /************************************************************************/
 
-int _FSInitGlobals (tfRef, tfName, bodySize, resFactor, aspect,
-			   rotation, slant, cmRef, cmName, flags)
-FileRef	*tfRef;
-char	*tfName;
-Real64	bodySize;
-Real64	resFactor;
-Real64	aspect;
-Real64	rotation;
-Real64	slant;
-FileRef	*cmRef;
-char	*cmName;
-Int32	flags;
+int _FSInitGlobals (
+    FileRef	*tfRef,
+    char	*tfName,
+    Real64	bodySize,
+    Real64	resFactor,
+    Real64	aspect,
+    Real64	rotation,
+    Real64	slant,
+    FileRef	*cmRef,
+    char	*cmName,
+    Int32	flags)
 {
     /** Initialize the pertinent _FSMakeFont() globals **/
     _FSTypefaceRef = tfRef;
@@ -581,9 +583,7 @@ Int32	flags;
 /*									*/
 /************************************************************************/
 
-int _FSMakeSubset (rangeSpec, subset)
-RangeSpec	*rangeSpec;
-SubsetList	*subset;
+int _FSMakeSubset (RangeSpec *rangeSpec, SubsetList *subset)
 {
     int		numChar;
     char	*table, *tPtr, *tEnd;
@@ -654,8 +654,7 @@ SubsetList	*subset;
 /*									*/
 /************************************************************************/
 
-int FSDeleteFont (fontNode)
-FontNode	**fontNode;
+int FSDeleteFont (FontNode **fontNode)
 {
     int	i, owners, rval, shared, unmake;
 
@@ -731,8 +730,7 @@ FontNode	**fontNode;
 /*									*/
 /************************************************************************/
 
-_FSAddUnsharedFont (fontNode)
-FontNode	**fontNode;
+void _FSAddUnsharedFont (FontNode **fontNode)
 {
     int		i, listSize;
 
@@ -780,8 +778,7 @@ FontNode	**fontNode;
 /*									*/
 /************************************************************************/
 
-int _FSSharedFont (fontNode)
-FontNode	**fontNode;
+int _FSSharedFont (FontNode **fontNode)
 {
 #ifdef SHFONT
     return (_GCSharedAddr (fontNode));
@@ -810,9 +807,7 @@ FontNode	**fontNode;
 /*									*/
 /************************************************************************/
 
-_FSUpdateCharTime (fontNode, charNode)
-FontNode	**fontNode;
-FontCharNode	**charNode;
+int _FSUpdateCharTime (FontNode **fontNode, FontCharNode **charNode)
 {
     static uInt32	lastTime = 0;
 
@@ -860,8 +855,7 @@ FontCharNode	**charNode;
 /*									*/
 /************************************************************************/
 
-_FSLinkSharedFont (fontNode)
-FontNode	**fontNode;
+void _FSLinkSharedFont (FontNode **fontNode)
 {
     FontNode	**fontList;
 
@@ -964,13 +958,8 @@ int		*genChars;
 /*									*/
 /************************************************************************/
 
-int _FSFontMatch (fontNode, fontSpec, subset, tfRef, cmRef, genChars)
-FontNode	**fontNode;
-FontSpec	*fontSpec;
-SubsetList	*subset;
-FileRef		*tfRef;
-FileRef		*cmRef;
-int		*genChars;
+int _FSFontMatch (FontNode **fontNode, FontSpec *fontSpec, SubsetList *subset,
+        FileRef *tfRef, FileRef *cmRef, int *genChars)
 {
 #ifdef SHFONT
 
@@ -1049,7 +1038,7 @@ int		*genChars;
 		}
 	}
 
-	_FSDealloc (flags);
+	_FSDealloc ((char *)flags);
     }
 
     _FSFontUnlockInfo (fontNode);
@@ -1130,9 +1119,9 @@ int	size;		/* purge this much */
 
 		timeStamp = (*charNode)->timeStamp;
 		if (bmap)
-		    purgeable = _FSBmapPurgeableChar (charNode);
-		else
-		    purgeable = _FSOutlPurgeableChar (charNode);
+		    purgeable = _FSBmapPurgeableChar ((BmapCharNode **)charNode);
+                else
+		    purgeable = _FSOutlPurgeableChar ((OutlCharNode **)charNode);
 
 		if (purgeable)
 		{
@@ -1186,9 +1175,9 @@ int	size;		/* purge this much */
 	     ((purged < size) && (cPtr < cStop)); cPtr++, bPtr++)
 	{
 	    if (*bPtr)
-		purged += _FSBmapPurgeChar (*cPtr);
+		purged += _FSBmapPurgeChar ((BmapCharNode **)*cPtr);
 	    else
-		purged += _FSOutlPurgeChar (*cPtr);
+		purged += _FSOutlPurgeChar ((OutlCharNode **)*cPtr);
 	}
     } while ((purged < size) && (pCount > 0));
 
