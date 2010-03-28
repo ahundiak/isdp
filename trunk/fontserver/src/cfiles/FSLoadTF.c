@@ -79,15 +79,17 @@
 #include "../hfiles/FS.h"
 #include "../hfiles/FSTypeface.h"
 #include "../hfiles/FSTFCache.h"
+#include "../hfiles/FSCrypt.h"
+#include "../hfiles/FSLoadTF.h"
 
 
 #define	SIZE_BH	sizeof(TFBlockHeader)	/* # bytes in block header record */
 
 
 
-Int  _FSCFTLoad(fontStr, cmfont)
-FILE		*fontStr;	/* font stream pointer */
-TFStruct	*cmfont;	/* ptr to font data descriptor */
+Int  _FSCFTLoad(
+    FILE	*fontStr,	/* font stream pointer */
+    TFStruct	*cmfont)	/* ptr to font data descriptor */
 
 /*  _FSCFTLoad is responsible for initializing a font data structure.
  *  It assumes that the font file has been opened, and that 'fontStr' is
@@ -124,8 +126,7 @@ TFStruct	*cmfont;	/* ptr to font data descriptor */
 
 
 
-Int  _FSCFTUnload (cmfont)
-TFStruct	*cmfont;
+Int  _FSCFTUnload (TFStruct *cmfont)
 
 /*  _FSCFTUnload deallocates memory that has been allocated for the
  *  compressed font read in by _FSCFTLoad().
@@ -172,9 +173,9 @@ TFBlockHeader	*blockHdr;	/* ptr to block header data descriptor */
 
 
 
-Int  _FSBlockHSLoad(fontStr, cmfont)
-FILE		*fontStr;	/* font stream pointer	*/
-TFStruct	*cmfont;	/* ptr to font data descriptor */
+Int  _FSBlockHSLoad(
+FILE		*fontStr,	/* font stream pointer	*/
+TFStruct	*cmfont)	/* ptr to font data descriptor */
 
 /*  _FSBlockHSLoad loads the block headers for the kerning pairs, kerning
  *  tracks, character directories, and outline data into the data structure,
@@ -224,10 +225,7 @@ TFBlockHeader	*infoHdr;	/* ptr to block header data descriptor */
 
 
 
-Int  _FSCFTLoadInfo(fontStr, infoHdr, info)
-FILE		*fontStr;	/* font stream pointer */
-TFBlockHeader	*infoHdr;	/* ptr to block header data descriptor */
-TFInfo		*info;		/* ptr to font information data descriptor */
+Int  _FSCFTLoadInfo(FILE *fontStr, TFBlockHeader *infoHdr, TFInfo *info)
 
 /*  _FSCFTLoadInfo loads the font information block header and the font
  *  font information section. It assumes that the font file has been opened,
@@ -235,6 +233,9 @@ TFInfo		*info;		/* ptr to font information data descriptor */
  *  to structures which which have been declared in the calling module.
  *  Note:  this is an entry point into this Module.
  *  Called by:  Another module
+ *  FILE		*fontStr;	font stream pointer
+ *  TFBlockHeader	*infoHdr;	ptr to block header data descriptor
+ *  TFInfo		*info;		ptr to font information data descriptor
  *  Returns:	FS_NO_ERROR if font looks OK, else an error if it's not a
  *		compressed font or cannot load it
  */
@@ -256,9 +257,9 @@ TFInfo		*info;		/* ptr to font information data descriptor */
 
 
 
-Int  _FSLoadInfo(fontStr, cmfont)
-FILE		*fontStr;	/* font stream pointer	*/
-TFStruct	*cmfont;	/* ptr to font data descriptor */
+Int  _FSLoadInfo(
+FILE		*fontStr,	/* font stream pointer	*/
+TFStruct	*cmfont)	/* ptr to font data descriptor */
 
 /*  _FSLoadInfo is responsible for reading the header record into the
  *  font data structure, pointed to by 'cmfont->info'.
@@ -277,10 +278,10 @@ TFStruct	*cmfont;	/* ptr to font data descriptor */
 
 
 
-Int  _FSLoadXInfo(fontStr, infoHdr, info)
-FILE		*fontStr;	/* font stream pointer	*/
-TFBlockHeader	*infoHdr;	/* ptr to font info blk header structure */
-TFInfo		*info;		/* ptr to font information structure */
+Int  _FSLoadXInfo(
+FILE		*fontStr,	/* font stream pointer	*/
+TFBlockHeader	*infoHdr,	/* ptr to font info blk header structure */
+TFInfo		*info)		/* ptr to font information structure */
 
 /*  _FSLoadXInfo does the nitty-gritty of loading the font information
  *  section into the data structure 'info'
@@ -415,10 +416,10 @@ TFInfo		*info;		/* ptr to font information structure */
 
 
 
-Int  _FSLoadKernPrHdr (fontStr, info, kernPairHdr)
-FILE		*fontStr;	/* font stream pointer */
-TFInfo		*info;		/* ptr to info */
-TFBlockHeader	*kernPairHdr;	/* ptr to block header data descriptor */
+Int  _FSLoadKernPrHdr (
+FILE		*fontStr,	/* font stream pointer */
+TFInfo		*info,		/* ptr to info */
+TFBlockHeader	*kernPairHdr)	/* ptr to block header data descriptor */
 {
     int	rval;
 
@@ -437,11 +438,11 @@ TFBlockHeader	*kernPairHdr;	/* ptr to block header data descriptor */
 
 
 
-Int  _FSCFTLoadKernPrs(fontStr, info, kernPairHdr, kernPair)
-FILE		*fontStr;	/* font stream pointer	*/
-TFInfo		*info;		/* ptr to info */
-TFBlockHeader	*kernPairHdr;	/* ptr to kern pair block header */
-TFKernPair	**kernPair;	/* ptr to ptr to kern pair array */
+Int  _FSCFTLoadKernPrs(
+FILE		*fontStr,	/* font stream pointer	*/
+TFInfo		*info,		/* ptr to info */
+TFBlockHeader	*kernPairHdr,	/* ptr to kern pair block header */
+TFKernPair	**kernPair)	/* ptr to ptr to kern pair array */
 
 /*  _FSCFTLoadKernPrs reads the kerning pairs & header from the font and
  *  puts them into an array of data structures.
@@ -462,9 +463,9 @@ TFKernPair	**kernPair;	/* ptr to ptr to kern pair array */
 
 
 
-Int  _FSLoadKernPrs(fontStr, cmfont)
-FILE		*fontStr;	/* font stream pointer	*/
-TFStruct	*cmfont;	/* ptr to font data descriptor */
+Int  _FSLoadKernPrs(
+FILE		*fontStr,	/* font stream pointer	*/
+TFStruct	*cmfont)	/* ptr to font data descriptor */
 
 /*  _FSLoadKernPrs reads the kerning pairs from the font and puts them into
  *  an array of data structures. A pointer to these is in the font data
@@ -479,11 +480,11 @@ TFStruct	*cmfont;	/* ptr to font data descriptor */
 
 
 
-Int  _FSLoadXKernPrs(fontStr, info, pairHdr, kernPair)
-FILE		*fontStr;	/* font stream pointer	*/
-TFInfo		*info;		/* ptr to info */
-TFBlockHeader	*pairHdr;	/* ptr to kern pair block header */
-TFKernPair	*kernPair;	/* ptr to kern pair array */
+Int  _FSLoadXKernPrs(
+FILE		*fontStr,	/* font stream pointer	*/
+TFInfo		*info,		/* ptr to info */
+TFBlockHeader	*pairHdr,	/* ptr to kern pair block header */
+TFKernPair	*kernPair)	/* ptr to kern pair array */
 
 /*  _FSLoadXKernPrs reads the kerning pairs from the font and puts them into
  *  an array of data structures.
@@ -535,10 +536,10 @@ TFKernPair	*kernPair;	/* ptr to kern pair array */
 
 
 
-Int  _FSLoadKernTrkHdr (fontStr, info, kernTrackHdr)
-FILE		*fontStr;	/* font stream pointer */
-TFInfo		*info;		/* ptr to info */
-TFBlockHeader	*kernTrackHdr;	/* ptr to block header data descriptor */
+Int  _FSLoadKernTrkHdr (
+FILE		*fontStr,	/* font stream pointer */
+TFInfo		*info,		/* ptr to info */
+TFBlockHeader	*kernTrackHdr)	/* ptr to block header data descriptor */
 {
     int	rval;
 
@@ -557,11 +558,11 @@ TFBlockHeader	*kernTrackHdr;	/* ptr to block header data descriptor */
 
 
 
-Int  _FSCFTLoadKernTrks(fontStr, info, kernTrackHdr, kernTrack)
-FILE		*fontStr;	/* font stream pointer	*/
-TFInfo		*info;		/* ptr to info */
-TFBlockHeader	*kernTrackHdr;	/* ptr to kern track block header */
-TFKernTrack	**kernTrack;	/* ptr to ptr to kern track array */
+Int  _FSCFTLoadKernTrks(
+FILE		*fontStr,	/* font stream pointer	*/
+TFInfo		*info,		/* ptr to info */
+TFBlockHeader	*kernTrackHdr,	/* ptr to kern track block header */
+TFKernTrack	**kernTrack)	/* ptr to ptr to kern track array */
 
 /*  _FSCFTLoadKernTrks reads the kerning tracks & header from the font and
  *  puts them into an array of data structures.
@@ -581,9 +582,9 @@ TFKernTrack	**kernTrack;	/* ptr to ptr to kern track array */
 
 
 
-Int  _FSLoadKernTrks(fontStr, cmfont)
-FILE		*fontStr;	/* font stream pointer	*/
-TFStruct	*cmfont;	/* ptr to font data descriptor */
+Int  _FSLoadKernTrks(
+FILE		*fontStr,	/* font stream pointer	*/
+TFStruct	*cmfont)	/* ptr to font data descriptor */
 
 /*  _FSLoadKernTrks reads the kerning tracks from the font and puts them into
  *  an array of data structures. A pointer to these is in the font data
@@ -598,11 +599,11 @@ TFStruct	*cmfont;	/* ptr to font data descriptor */
 
 
 
-Int  _FSLoadXKernTrks(fontStr, info, trackHdr, kernTrack)
-FILE		*fontStr;	/* font stream pointer	*/
-TFInfo		*info;		/* ptr to info */
-TFBlockHeader	*trackHdr;	/* ptr to kern track block header */
-TFKernTrack	*kernTrack;	/* ptr to kern track array */
+Int  _FSLoadXKernTrks(
+FILE		*fontStr,	/* font stream pointer	*/
+TFInfo		*info,		/* ptr to info */
+TFBlockHeader	*trackHdr,	/* ptr to kern track block header */
+TFKernTrack	*kernTrack)	/* ptr to kern track array */
 
 /*  _FSLoadXKernTrks reads the kerning tracks from the font and puts them into
  *  an array of data structures.
@@ -654,10 +655,10 @@ TFKernTrack	*kernTrack;	/* ptr to kern track array */
 
 
 
-Int  _FSLoadCharDirHdr (fontStr, info, charDirHdr)
-FILE		*fontStr;	/* font stream pointer */
-TFInfo		*info;		/* ptr to info */
-TFBlockHeader	*charDirHdr;	/* ptr to block header data descriptor */
+Int  _FSLoadCharDirHdr (
+FILE		*fontStr,	/* font stream pointer */
+TFInfo		*info,		/* ptr to info */
+TFBlockHeader	*charDirHdr)	/* ptr to block header data descriptor */
 {
     int	rval;
 
@@ -676,11 +677,11 @@ TFBlockHeader	*charDirHdr;	/* ptr to block header data descriptor */
 
 
 
-Int  _FSCFTLoadCharDirs(fontStr, info, charDirHdr, charDir)
-FILE		*fontStr;	/* font stream pointer	*/
-TFInfo		*info;		/* ptr to info */
-TFBlockHeader	*charDirHdr;	/* ptr to char dir block header */
-TFCharInfo	**charDir;	/* ptr to ptr to char dir array */
+Int  _FSCFTLoadCharDirs(
+FILE		*fontStr,	/* font stream pointer	*/
+TFInfo		*info,		/* ptr to info */
+TFBlockHeader	*charDirHdr,	/* ptr to char dir block header */
+TFCharInfo	**charDir)	/* ptr to ptr to char dir array */
 
 /*  _FSCFTLoadCharDirs reads the char dirs & header from the font and
  *  puts them into an array of data structures.
@@ -700,9 +701,9 @@ TFCharInfo	**charDir;	/* ptr to ptr to char dir array */
 
 
 
-Int  _FSLoadCharDirs(fontStr, cmfont)
-FILE		*fontStr;	/* font stream pointer	*/
-TFStruct	*cmfont;	/* ptr to font data descriptor */
+Int  _FSLoadCharDirs(
+FILE		*fontStr,	/* font stream pointer	*/
+TFStruct	*cmfont)	/* ptr to font data descriptor */
 
 /*  _FSLoadXCharDirs reads the character directories from the font and puts
  *  them into an array of data structures. A pointer to these is in the font
@@ -717,11 +718,11 @@ TFStruct	*cmfont;	/* ptr to font data descriptor */
 
 
 
-Int  _FSLoadXCharDirs(fontStr, info, dirHdr, charDir)
-FILE		*fontStr;	/* font stream pointer	*/
-TFInfo		*info;		/* ptr to info structure */
-TFBlockHeader	*dirHdr;	/* ptr to char dir block header */
-TFCharInfo	*charDir;	/* ptr to char dir array */
+Int  _FSLoadXCharDirs(
+FILE		*fontStr,	/* font stream pointer	*/
+TFInfo		*info,		/* ptr to info structure */
+TFBlockHeader	*dirHdr,	/* ptr to char dir block header */
+TFCharInfo	*charDir)	/* ptr to char dir array */
 
 /*  _FSLoadCharDirs reads the character directories from the font and puts
  *  them into an array of data structures.
@@ -786,10 +787,10 @@ TFCharInfo	*charDir;	/* ptr to char dir array */
 
 
 
-Int  _FSLoadOutlDataHdr (fontStr, info, outlDataHdr)
-FILE		*fontStr;	/* font stream pointer */
-TFInfo		*info;		/* ptr to info */
-TFBlockHeader	*outlDataHdr;	/* ptr to block header data descriptor */
+Int  _FSLoadOutlDataHdr (
+FILE		*fontStr,	/* font stream pointer */
+TFInfo		*info,		/* ptr to info */
+TFBlockHeader	*outlDataHdr)	/* ptr to block header data descriptor */
 {
     int	rval;
 
@@ -808,8 +809,8 @@ TFBlockHeader	*outlDataHdr;	/* ptr to block header data descriptor */
 
 
 
-Int  _FSOutlDataSize (outlDataHdr)
-TFBlockHeader	*outlDataHdr;	/* ptr to outlines block header */
+Int  _FSOutlDataSize (
+TFBlockHeader	*outlDataHdr)	/* ptr to outlines block header */
 {
     if (strncmp ((char *)outlDataHdr->blockId, "O2", 2) == 0)   /* > 64K wds? */
 	return ((outlDataHdr->recSize << 16) + outlDataHdr->nrDataWds);
@@ -819,11 +820,11 @@ TFBlockHeader	*outlDataHdr;	/* ptr to outlines block header */
 
 
 
-Int  _FSCFTLoadOutlData(fontStr, info, outlDataHdr, outlData)
-FILE		*fontStr;	/* font stream pointer	*/
-TFInfo		*info;		/* ptr to info */
-TFBlockHeader	*outlDataHdr;	/* ptr to outlines block header */
-TFOutlines	**outlData;	/* ptr to ptr to outlines */
+Int  _FSCFTLoadOutlData(
+FILE		*fontStr,	/* font stream pointer	*/
+TFInfo		*info,		/* ptr to info */
+TFBlockHeader	*outlDataHdr,	/* ptr to outlines block header */
+TFOutlines	**outlData)	/* ptr to ptr to outlines */
 
 /*  _FSCFTLoadOutlData reads the outlines & header from the font.
  *  Called by:  Another module.
@@ -842,9 +843,9 @@ TFOutlines	**outlData;	/* ptr to ptr to outlines */
 
 
 
-Int  _FSLoadOutlData(fontStr, cmfont)
-FILE		*fontStr;	/* font stream pointer	*/
-TFStruct	*cmfont;	/* ptr to font data descriptor */
+Int  _FSLoadOutlData(
+FILE		*fontStr,	/* font stream pointer	*/
+TFStruct	*cmfont)	/* ptr to font data descriptor */
 
 /*  _FSLoadOutlData reads the outline data block from the font and puts the
  *  data in an array. A pointer to the data is in the font data structure
@@ -859,11 +860,11 @@ TFStruct	*cmfont;	/* ptr to font data descriptor */
 
 
 
-Int  _FSLoadXOutlData(fontStr, info, outlinesHdr, outlines)
-FILE		*fontStr;	/* font stream pointer	*/
-TFInfo		*info;		/* ptr to info */
-TFBlockHeader	*outlinesHdr;	/* ptr to outlines block header */
-TFOutlines	*outlines;	/* ptr to outlines */
+Int  _FSLoadXOutlData(
+FILE		*fontStr,	/* font stream pointer	*/
+TFInfo		*info,		/* ptr to info */
+TFBlockHeader	*outlinesHdr,	/* ptr to outlines block header */
+TFOutlines	*outlines)	/* ptr to outlines */
 
 /*  _FSLoadXOutlData reads the outline data block from the font and puts the
  *  data in an array.
@@ -876,11 +877,11 @@ TFOutlines	*outlines;	/* ptr to outlines */
     outlinesSize = _FSOutlDataSize (outlinesHdr);
 
     fseek(fontStr, info->offsOutlData * 2 + SIZE_BH, 0);
-    if ((rval = _FSReadChk (fontStr, outlines, outlinesSize * 2)) !=
+    if ((rval = _FSReadChk (fontStr, (char *)outlines, outlinesSize * 2)) !=
 	FS_NO_ERROR)
 	return (rval);
 
-    _FSDecryptBuff (outlines, outlinesSize);	/* Decrypt the data */
+    _FSDecryptBuff ((Int16 *) outlines, outlinesSize);	/* Decrypt the data */
 
     return (FS_NO_ERROR);
 }
@@ -889,10 +890,10 @@ TFOutlines	*outlines;	/* ptr to outlines */
 
 
 
-Int _FSReadChk (str, buffer, count)
-FILE	*str;		/* stream pointer */
-char	*buffer;	/* buffer for read() */
-Int32	count;		/* # bytes read */
+Int _FSReadChk (
+FILE	*str,		/* stream pointer */
+char	*buffer,	/* buffer for read() */
+Int32	count)		/* # bytes read */
 
 /*  _FSReadChk verifies that the number of bytes read from a file is the same
  *  as the number requested.
@@ -911,8 +912,7 @@ Int32	count;		/* # bytes read */
 
 
 
-Int  _FSTFCheck (fontStr)
-FILE	*fontStr;	/* stream pointer */
+Int  _FSTFCheck (FILE *fontStr)
 {
     char	buff[8];
     int		rval;
@@ -932,8 +932,8 @@ FILE	*fontStr;	/* stream pointer */
 
 
 
-Int  _FSMemoryAlloc(cmfont)
-TFStruct	*cmfont;	/* ptr to font data descriptor */
+Int  _FSMemoryAlloc(
+TFStruct	*cmfont)	/* ptr to font data descriptor */
 
 /*  _FSMemoryAlloc take a pointer to a compressed font structure 'cmfont'
  *    Memory is allocated for kerning pairs, kerning tracks, character

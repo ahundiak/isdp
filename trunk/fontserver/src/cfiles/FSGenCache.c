@@ -22,11 +22,13 @@
 #include <stdio.h>
 #include <memory.h>
 #include <malloc.h>
+#include <unistd.h>
 #include "../hfiles/FSAlloc.h"
 #include "../hfiles/FSDef.h"
 #include "../hfiles/FSTypes.h"
 #include "../hfiles/FSGenCache.h"
 #include "../hfiles/FS.h"
+#include "../hfiles/FSUtil.h"
 
 
 #ifndef	NDEBUG
@@ -39,7 +41,7 @@
 #define	SEM_KEY		0x4D535346	/* "FSSM"			*/
 #define	SHM_KEY		0x48535346	/* "FSSH"			*/
 
-#define	SHM_ADDR	0xF1000000	/* shm address (must be fixed)	*/
+#define	SHM_ADDR	((void *)0xF1000000)	/* shm address (must be fixed)	*/
 #define	SHM_SIZE	0x400000	/* shm size (4M)		*/
 #define	SHM_HEAP_OFFSET	0x400		/* offset to heap (size=4M-1K)	*/
 
@@ -198,7 +200,7 @@ static GCFunctions	*GCFunc = &_GCMemFunc;	/* current functions	*/
 /* "Public" GC routines */
 /************************/
 
-_GCIpcRm()
+int _GCIpcRm(void)
 {
 
 	struct shmid_ds buf;
@@ -225,8 +227,7 @@ _GCIpcRm()
 /*									*/
 /************************************************************************/
 
-Int _GCShEnter (ownerFlag)
-int	ownerFlag;
+Int _GCShEnter (int ownerFlag)
 {
     struct shmid_ds	shmStat;
 
@@ -306,7 +307,7 @@ int	ownerFlag;
 /*									*/
 /************************************************************************/
 
-void _GCShExit ()
+void _GCShExit (void)
 {
     shmdt (GCShmAddr);
     ShInit = FALSE;
@@ -1244,7 +1245,7 @@ int	oldSize;
 Found:
     /** Copy the data if necessary **/
     if ((ptr != NULL) && (ptr != ((char *) p + 1)))
-	_FSMemCopy (p + 1, ptr, oldSize);
+	_FSMemCopy ((char *) (p + 1), ptr, oldSize);
 
     GCShMemHdr->usedMemory += size + sizeof (GCStore);
 
@@ -1415,7 +1416,7 @@ void _GCShCompact ()
 		if ((h != NULL) && !_GCLocked (h))
 		{
 		    size = (char *) q->d.next - (char *) q;
-		    _FSMemCopy (p, q, size);
+		    _FSMemCopy ((char *) p, (char *) q, size);
 		    r = (GCStore *) ((char *) p + size);
 		    r->d.next = p->d.next;
 		    p->d.next = r;

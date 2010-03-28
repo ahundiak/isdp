@@ -5,7 +5,6 @@
 
 /** The following routines provide access to bitmap fonts. **/
 
-
 #include "../hfiles/import.h"
 #include <string.h>
 #include "../hfiles/FSDef.h"
@@ -15,7 +14,7 @@
 #include "../hfiles/FSBmap.h"
 #include "../hfiles/FSBmapCach.h"
 #include "../hfiles/FSGenCache.h"
-
+#include "../hfiles/FSBmapCach.h"
 
 Char8	_FSBmapMagic[] = "FSBF";	/* bitmap font magic number	*/
 Char8	_FSBmapFmtVersn[] = "V2.2";	/* current bitmap font version	*/
@@ -24,8 +23,7 @@ Char8	_FSBmapFmtVersn[] = "V2.2";	/* current bitmap font version	*/
 
 /* This function returns TRUE iff the specified font is a bitmap font.	*/
 
-Int _FSBmapFont (bmapNode)
-BmapNode	**bmapNode;
+Int _FSBmapFont (BmapNode **bmapNode)
 {
     return ((*bmapNode)->type == 0x50414D42);	/* "BMAP" */
 }
@@ -51,8 +49,7 @@ BmapNode	**bmapNode;
 /* This routine initializes some of the members of the header of the	*/
 /* specified font.							*/
 
-Int _FSBmapAutosetHeader (bmapNode)
-BmapNode	**bmapNode;
+Int _FSBmapAutosetHeader (BmapNode **bmapNode)
 {
     BmapHeader	*header;
     Char8	date[12], copyrightNotice[80];
@@ -110,8 +107,7 @@ BmapCharNode	**charNode;
 /* This routine locks the bitmap handle for the specified character	*/
 /* node.								*/
 
-Int _FSBmapLockCharBitmap (charNode)
-BmapCharNode	**charNode;
+Int _FSBmapLockCharBitmap (BmapCharNode **charNode)
 {
     _GCLock ((*charNode)->bits);
     return (FS_NO_ERROR);
@@ -122,8 +118,7 @@ BmapCharNode	**charNode;
 /* This routine unlocks the bitmap handle for the specified character	*/
 /* node.								*/
 
-Int _FSBmapUnlockCharBitmap (charNode)
-BmapCharNode	**charNode;
+Int _FSBmapUnlockCharBitmap (BmapCharNode **charNode)
 {
     _GCUnlock ((*charNode)->bits);
     return (FS_NO_ERROR);
@@ -201,21 +196,19 @@ Int32		size;
 /* This routine releases the memory occupied by the specified character	*/
 /* in the specified font.						*/
 
-Int _FSBmapDeleteChar (bmapNode, character)
-BmapNode	**bmapNode;
-CharId		character;
+Int _FSBmapDeleteChar (BmapNode *bmapNode, CharId character)
 {
     BmapCharNode	***charNodePtr, **charNode;
 
-    charNodePtr = _FSBmapCharDirEntry (&(*bmapNode)->charDir, character);
+    charNodePtr = _FSBmapCharDirEntry (&(*bmapNode).charDir, character);
     charNode = *charNodePtr;
     *charNodePtr = NULL;
 
     if (*charNode != NULL)	/* is this character purged? */
-	_GCRelease ((*charNode)->bits);
+	_GCRelease ((**charNode).bits);
     _GCRelease (charNode);
 
-    (*bmapNode)->numChar--;
+    (*bmapNode).numChar--;
 
     return (FS_NO_ERROR);
 }
@@ -260,8 +253,8 @@ BmapNode **_FSBmapCreateBmap ()
 
 /* This routine releases the memory occupied by the specified font.	*/
 
-Int _FSBmapFree (bmapNode)
-BmapNode	**bmapNode;	/* ptr to font control structure */
+Int _FSBmapFree (
+BmapNode	**bmapNode)	/* ptr to font control structure */
 {
     CharId		character;
     BmapCharNode	**thisChar, **nextChar;
@@ -289,8 +282,7 @@ BmapNode	**bmapNode;	/* ptr to font control structure */
 /* that is used when the font is written to a file.  It is called	*/
 /* only when the font is written to a file.				*/
 
-Int _FSBmapHierarchicalUpdate (bmapNode)
-BmapNode	**bmapNode;
+Int _FSBmapHierarchicalUpdate (BmapNode **bmapNode)
 {
     uInt32		bmapOffset;
     CharId		character;
@@ -329,8 +321,7 @@ BmapNode	**bmapNode;
 /* that is used when the font is written to a file.  It is called	*/
 /* before the font is written to a file.				*/
 
-Int _FSBmapUpdateHeader (bmapNode)
-BmapNode	**bmapNode;
+Int _FSBmapUpdateHeader (BmapNode **bmapNode)
 {
     BmapHeader		*header;
 
@@ -354,8 +345,7 @@ BmapNode	**bmapNode;
 /* This function returns TRUE iff the specified character node is	*/
 /* purgeable.								*/
 
-Int _FSBmapPurgeableChar (charNode)
-BmapCharNode	**charNode;
+Int _FSBmapPurgeableChar (BmapCharNode **charNode)
 {
     /** A character is purgeable iff it is not already purged and no	**/
     /** part of it is currently locked					**/
@@ -371,8 +361,7 @@ BmapCharNode	**charNode;
 /* released and may later be reallocated if the character is needed for	*/
 /* drawing or if the font is written to a file.				*/
 
-Int _FSBmapPurgeChar (charNode)
-BmapCharNode	**charNode;
+Int _FSBmapPurgeChar (BmapCharNode **charNode)
 {
     int	size;
 

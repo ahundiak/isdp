@@ -13,7 +13,11 @@
 #include "../hfiles/FSFontCach.h"
 #include "../hfiles/FSIO.h"
 #include "../hfiles/FSAlloc.h"
-
+#include "../hfiles/FSNewFont.h"
+#include "../hfiles/FSMakeFont.h"
+#include "../hfiles/FSGenCache.h"
+#include "../hfiles/FSDaemon.h"
+#include "../hfiles/FSReadFont.h"
 
 extern	int	_FSDaemon;
 
@@ -121,7 +125,7 @@ FontNode	***font;
 	memcpy (info, infoPtr, sizeof (BmapInfo));
 
 	/** Create the kern pair table **/
-	_FSBmapNewKernPairs (bmapFont, kernPtr, headerPtr->nbrKernRec);
+	_FSBmapNewKernPairs (bmapFont, (FontKernPair **)kernPtr, headerPtr->nbrKernRec); // XXX - Bad pointer being passed?
 
 	/** Create the char dir table **/
 	charIdTable = (CharId *) _FSAlloc (numChars * sizeof (CharId));
@@ -131,8 +135,8 @@ FontNode	***font;
 	    *charIdPtr = charDirPtr->charId;
 	    charDirPtr++;
 	}
-	_FSBmapAppendCharDir (bmapFont, charIdTable, numChars);
-	_FSDealloc (charIdTable);
+	_FSBmapAppendCharDir ((FontNode **)bmapFont, charIdTable, numChars);
+	_FSDealloc ((char *)charIdTable);
 	charDirPtr -= numChars;
 
 	/** Copy the char dirs & bitmaps **/
@@ -222,7 +226,7 @@ FontNode	***font;
 	memcpy (info, infoPtr, sizeof (OutlInfo));
 
 	/** Create the kern pair table **/
-	_FSOutlNewKernPairs (outlFont, kernPtr, headerPtr->nbrKernRec);
+	_FSOutlNewKernPairs (outlFont, (FontKernPair **)kernPtr, headerPtr->nbrKernRec); // XXX - Bad pointer being passed?
 
 	/** Create the char dir table **/
 	charIdTable = (CharId *) _FSAlloc (numChars * sizeof (CharId));
@@ -233,7 +237,7 @@ FontNode	***font;
 	    charDirPtr++;
 	}
 	_FSOutlAppendCharDir (outlFont, charIdTable, numChars);
-	_FSDealloc (charIdTable);
+	_FSDealloc ((char *)charIdTable);
 	charDirPtr -= numChars;
 
 	/** Copy the char dirs, poly sizes, & vertices **/
@@ -331,10 +335,7 @@ Done:
 /*									*/
 /************************************************************************/
 
-int _FSReadFontFile (fileName, fontPtr, type)
-char	*fileName;
-char	**fontPtr;
-int	*type;
+int _FSReadFontFile (char *fileName, char **fontPtr, int *type)
 {
     char magic[4];
     FILE *file;
@@ -381,9 +382,7 @@ int	*type;
 /*									*/
 /************************************************************************/
 
-int _FSReadBmapFile (file, fontPtr)
-FILE	*file;
-char	**fontPtr;
+int _FSReadBmapFile (FILE *file, char **fontPtr)
 {
     int		i, version;
     long	fSize;
@@ -424,7 +423,7 @@ char	**fontPtr;
     /** Next, the BmapInfo section **/
     fseek (file, hdr->startGenSec, 0);
     hdr->startGenSec = sizeof (BmapHeader);
-    if (_FSReadBmapInfo (file, (char *)fPtr + hdr->startGenSec, version) !=
+    if (_FSReadBmapInfo (file, (FontInfo *)((char *)fPtr + hdr->startGenSec), version) !=
 	FS_NO_ERROR)
     {
 	fclose (file);
@@ -496,9 +495,7 @@ char	**fontPtr;
 /*									*/
 /************************************************************************/
 
-int _FSReadOutlFile (file, fontPtr)
-FILE	*file;
-char	**fontPtr;
+int _FSReadOutlFile (FILE *file, char **fontPtr)
 {
     int		i, rval, version;
     long	fSize;
@@ -552,7 +549,7 @@ char	**fontPtr;
     /** Next, the OutlInfo section **/
     fseek (file, hdr->startGenSec, 0);
     hdr->startGenSec = sizeof (OutlHeader);
-    if (_FSReadOutlInfo (file, (char *)fPtr + hdr->startGenSec, version) !=
+    if (_FSReadOutlInfo (file, (FontInfo *)((char *)fPtr + hdr->startGenSec), version) !=
 	FS_NO_ERROR)
     {
 	fclose (file);
@@ -590,7 +587,7 @@ char	**fontPtr;
     fseek (file, hdr->startPSizeSec, 0);
     hdr->startPSizeSec = hdr->startDirSec +
 		       (hdr->nbrDirRec * sizeof (OutlCharInfo));
-    if (_FSReadOutlPolySize (file, fPtr + hdr->startPSizeSec,
+    if (_FSReadOutlPolySize (file, (OutlPolySize * )(fPtr + hdr->startPSizeSec),
 			     hdr->nbrPSizeRec, version))
     {
 	fclose (file);
@@ -602,10 +599,10 @@ char	**fontPtr;
     hdr->startVertSec = hdr->startPSizeSec +
 		       (hdr->nbrPSizeRec * sizeof (OutlPolySize));
     if (fontInfo.flags & FS_3D)
-	rval = _FSReadOutl3DVertex (file, fPtr + hdr->startVertSec,
+	rval = _FSReadOutl3DVertex (file, (Outl3DVertex *)(fPtr + hdr->startVertSec),
 				    hdr->nbrVertRec, version);
     else
-	rval = _FSReadOutlVertex (file, fPtr + hdr->startVertSec,
+	rval = _FSReadOutlVertex (file, (OutlVertex *)(fPtr + hdr->startVertSec),
 				  hdr->nbrVertRec, version);
     if (rval)
     {

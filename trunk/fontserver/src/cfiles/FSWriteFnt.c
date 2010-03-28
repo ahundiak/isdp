@@ -14,7 +14,8 @@
 #include "../hfiles/FSBmapCach.h"
 #include "../hfiles/FSOutlCach.h"
 #include "../hfiles/FSIO.h"
-
+#include "../hfiles/FSNewFont.h"
+#include "../hfiles/FSGenCache.h"
 
 /************************************************************************/
 /*									*/
@@ -212,7 +213,7 @@ char		*fileName;
 	    charInfo = _FSOutlCharInfo (thisChar);
 	    vert = _FSOutlCharVert (thisChar);
 	    if (info->flags & FS_3D)
-		_FSWriteOutl3DVertex (file, vert, charInfo->nVert);
+		_FSWriteOutl3DVertex (file, (Outl3DVertex *)vert, charInfo->nVert);
 	    else
 		_FSWriteOutlVertex (file, vert, charInfo->nVert);
 	    _FSOutlUnlockCharVert (thisChar);

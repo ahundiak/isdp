@@ -13,7 +13,10 @@
 #include "../hfiles/FSOutlCach.h"
 #include "../hfiles/FSFontCach.h"
 #include "../hfiles/FSSize.h"
-
+#include "../hfiles/FSNewFont.h"
+#include "../hfiles/FSGenCache.h"
+#include "../hfiles/FSConvert.h"
+#include "../hfiles/FSDraw.h"
 
 static int	_FSProcessChar();
 static int	_FSProcessText();
@@ -564,7 +567,7 @@ int		drawFlag;
 	    BmapBitmap		*bitmap;
 
 	    _FSBmapLockCharInfo (thisChar);
-	    _FSBmapLockCharBitmap (thisChar);
+	    _FSBmapLockCharBitmap ((BmapCharNode **)thisChar);
 	    charInfo = _FSBmapCharInfo (thisChar);
 	    bitmap = _FSBmapCharBitmap (thisChar);
 
@@ -593,7 +596,7 @@ int		drawFlag;
 	    setWidth = charInfo->setWid;
 
 	    _FSBmapUnlockCharInfo (thisChar);
-	    _FSBmapUnlockCharBitmap (thisChar);
+	    _FSBmapUnlockCharBitmap ((BmapCharNode **)thisChar);
 	}
 	else if (_FSOutlFont (font))		/* outline font? */
 	{
@@ -602,8 +605,8 @@ int		drawFlag;
 	    OutlVertex		*vert;
 
 	    _FSOutlLockCharInfo (thisChar);
-	    _FSOutlLockCharPSize (thisChar);
-	    _FSOutlLockCharVert (thisChar);
+	    _FSOutlLockCharPSize ((OutlCharNode **)thisChar);
+	    _FSOutlLockCharVert ((OutlCharNode **)thisChar);
 	    charInfo = _FSOutlCharInfo (thisChar);
 	    pSize = _FSOutlCharPSize (thisChar);
 	    vert = _FSOutlCharVert (thisChar);
@@ -622,8 +625,8 @@ int		drawFlag;
 	    setWidth = charInfo->setWid;
 
 	    _FSOutlUnlockCharInfo (thisChar);
-	    _FSOutlUnlockCharPSize (thisChar);
-	    _FSOutlUnlockCharVert (thisChar);
+	    _FSOutlUnlockCharPSize ((OutlCharNode **)thisChar);
+	    _FSOutlUnlockCharVert ((OutlCharNode **)thisChar);
 	}
     
 	/** Calculate the new position **/
@@ -853,7 +856,7 @@ int		drawFlag;
 	    _FSOutlUnlockCharVert (thisChar);
 	}
     }
-    _FSDealloc (newText);
+    _FSDealloc ((char *)newText);
 
     /** Return the next positions if necessary **/
     if (nx)  *nx = xPos;
@@ -890,12 +893,7 @@ int		drawFlag;
 /*									*/
 /************************************************************************/
 
-int _FSDrawBmapChar (window, charInfo, bitmap, bx, by, drawFunc)
-int		window;
-BmapCharInfo	*charInfo;
-BmapBitmap	*bitmap;
-Real64		bx, by;
-void		(*drawFunc) ();
+int _FSDrawBmapChar (int window, BmapCharInfo *charInfo, BmapBitmap *bitmap, Real64 bx, Real64 by, void (*drawFunc)())
 {
     double	bx2, by2;
     int		x, y;
@@ -995,7 +993,7 @@ BmapCharInfo	*charInfo;
 
 	(*FSBmapDrawFunc) (window, x, y, width, height, bitmap, bx, by,
 				charInfo);
-	_FSDealloc (bitmap);
+	_FSDealloc ((char *)bitmap);
     }
 }
 
@@ -1039,11 +1037,11 @@ BmapCharInfo	*charInfo;
     if (bmapSize > 0)
     {
 	bitmap = (BmapBitmap *) _FSAlloc (bmapSize);
-	_FSConvertRLE16 (RLE16, bitmap, width, height);
+	_FSConvertRLE16 ((Int16 *)RLE16, bitmap, width, height);
 
 	(*FSBmapDrawFunc) (window, x, y, width, height, bitmap, bx, by,
 				charInfo);
-	_FSDealloc (bitmap);
+	_FSDealloc ((char *)bitmap);
     }
 }
 
@@ -1070,13 +1068,7 @@ BmapCharInfo	*charInfo;
 /*									*/
 /************************************************************************/
 
-int _FSDrawOutlChar (window, charInfo, pSize, vert, x, y, drawFunc)
-int		window;
-OutlCharInfo	*charInfo;
-OutlPolySize	*pSize;
-OutlVertex	*vert;
-Real64		x, y;
-void		(*drawFunc) ();
+int _FSDrawOutlChar (int window, OutlCharInfo *charInfo, OutlPolySize *pSize, OutlVertex *vert, Real64 x, Real64 y, void (*drawFunc)())
 {
     /** Draw the character **/
     (*drawFunc) (window, x, y, vert, pSize, charInfo->nPSize, charInfo);

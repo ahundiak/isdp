@@ -7,7 +7,9 @@
 #include "../hfiles/FS.h"
 #include "../hfiles/FSBmap.h"
 #include "../hfiles/FSBmapCach.h"
-
+#include "../hfiles/FSGenCache.h"
+#include "../hfiles/FSNewFont.h"
+#include "../hfiles/FSConvert.h"
 
 /************************************************************************/
 /*									*/
@@ -51,15 +53,16 @@ char	*fileName;
 
     rval = FS_NO_ERROR;
 
-    shared = _FSSharedFont (font);
+    shared = _FSSharedFont ((FontNode **)font); // XXX - Possible bad pointer being passed?
     _GCLockSem (shared);
 
     /** Make sure it is a bitmap font **/
-    if (_FSBmapFont (font))
+    // XXX - Possible bad pointers?  I had to cast "font" in several places here.
+    if (_FSBmapFont ((BmapNode **)font))
     {
-	_FSBmapLockHeader (font);
-	_FSBmapLockInfo (font);
-	_FSBmapLockCharDir (font);
+	_FSBmapLockHeader ((FontNode **)font);
+	_FSBmapLockInfo ((FontNode **)font);
+	_FSBmapLockCharDir ((FontNode **)font);
 	header = _FSBmapHeader (font);
 	info = _FSBmapInfo (font);
 	charDir = _FSBmapCharDir (font);
@@ -68,7 +71,7 @@ char	*fileName;
 	for (thisChar = _FSBmapFirstChar (font, &character); thisChar != NULL;
 	     thisChar = _FSBmapNextChar (font, &character))
 	{
-	    _FSBmapGetChar (font, thisChar, character);
+	    _FSBmapGetChar ((FontNode **)font, thisChar, character);
 	    _FSBmapLockCharInfo (thisChar);
 	}
 
@@ -187,12 +190,12 @@ INVALID:
 
 		case FS_RUNLENGTH_8:
 		    wPtr = (BmapBitmap *) ptr2;
-		     _FSConvertRLE8 (ptr, ptr2, charInfo->rWid, charInfo->rHgt);
+		     _FSConvertRLE8 (ptr, (uInt8 *)ptr2, charInfo->rWid, charInfo->rHgt);
 		    break;
 
 		case FS_RUNLENGTH_16:
 		    wPtr = (BmapBitmap *) ptr2;
-		    _FSConvertRLE16 (ptr, ptr2, charInfo->rWid, charInfo->rHgt);
+		    _FSConvertRLE16 ((Int16 *)ptr, (BmapBitmap *)ptr2, charInfo->rWid, charInfo->rHgt);
 		    break;
 
 		default:
@@ -210,9 +213,9 @@ DONE:
 	     thisChar = _FSBmapNextChar (font, &character))
 	    _FSBmapUnlockCharInfo (thisChar);
 
-	_FSBmapUnlockHeader (font);
-	_FSBmapUnlockInfo (font);
-	_FSBmapUnlockCharDir (font);
+	_FSBmapUnlockHeader ((FontNode **)font);
+	_FSBmapUnlockInfo ((FontNode **)font);
+	_FSBmapUnlockCharDir ((FontNode **)font);
     }
     else
 	rval = FS_INVALID_FONT;

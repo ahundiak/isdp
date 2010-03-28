@@ -65,7 +65,9 @@
 #include "../hfiles/FSDef.h"
 #include "../hfiles/FSTypeface.h"
 #include "../hfiles/FSMakeFont.h"
-
+#include "../hfiles/FSPixCache.h"
+#include "../hfiles/FSDoFunc.h"
+#include "../hfiles/FSRules.h"
 
 
 /** Some of the following arrays are not declared as static due to their **/
@@ -353,8 +355,7 @@ CompCharDesc *compc;	/* scan conversion parameters */
 }
 
 
-_FSSetupXXTrans(direction)
-Int16	direction;
+void _FSSetupXXTrans(Int16 direction)
 /* Called by _FSSetupTrans() to set up zoned transformation for x as a
    function of x only.
    Direction may be positive (+1) or negative (-1). */
@@ -379,8 +380,7 @@ Int16	direction;
 }
 
 
-_FSSetupXYTrans(direction)
-Int16	direction;
+void _FSSetupXYTrans(Int16 direction)
 /* Called by _FSSetupTrans() to set up zoned transformation for x as a
    function of y only.
    Direction may be positive (+1) or negative (-1). */
@@ -405,7 +405,7 @@ Int16	direction;
 }
 
 
-_FSSetupXXYTrans()
+void _FSSetupXXYTrans(void)
 /* Called by _FSSetupTrans() to set up general transformation for x as a
    function of both x and y. */
 {
@@ -417,8 +417,7 @@ _FSSetupXXYTrans()
 }
 
 
-_FSSetupYXTrans(direction)
-Int16	direction;
+void _FSSetupYXTrans(Int16 direction)
 /* Called by _FSSetupTrans() to set up zoned transformation for y as a
    function of x only.
    Direction may be positive (+1) or negative (-1). */
@@ -443,8 +442,7 @@ Int16	direction;
 }
 
 
-_FSSetupYYTrans(direction)
-Int16	direction;
+void _FSSetupYYTrans(Int16 direction)
 /* Called by _FSSetupTrans() to set up zoned transformation for y as a
    function of y only.
    Direction may be positive (+1) or negative (-1). */
@@ -469,7 +467,7 @@ Int16	direction;
 }
 
 
-_FSSetupYXYTrans()
+void _FSSetupYXYTrans(void)
 /* Called by _FSSetupTrans() to set up general transformation for y as a
    function of both x and y. */
 {
@@ -1072,11 +1070,11 @@ Real	scale;
 }
 
 
-_FSMakePathMask (charNum, dimension, zoneNo, mask)
-uInt16	charNum;	/* Character number */
-Int16	dimension;	/* 0 if x zone, 1 if y zone */
-Int16	zoneNo;	/* Zone number */
-Boolean	mask[];		/* mask[i] is true if pixel value required for zone i */
+void _FSMakePathMask (
+    uInt16	charNum,	/* Character number */
+    Int16	dimension,	/* 0 if x zone, 1 if y zone */
+    Int16	zoneNo,		/* Zone number */
+    Boolean	mask[])		/* mask[i] is true if pixel value required for zone i */
 /* Finds a path from the root zone of the specified dimension of the specified
    character to the specified target zone.
    Each truth value in the updated mask array indicates if the number of pixels
@@ -1189,11 +1187,7 @@ Real	scale;
 }
 
 
-_FSMakeEdgeList(charNum, dimension, scale, pn)
-uInt16	charNum;
-Int16	dimension;
-Real	scale;
-Int16 *pn;
+void _FSMakeEdgeList(uInt16 charNum, Int16 dimension, Real scale, Int16 *pn)
 /* Called by _FSSetup...Trans() to build a sorted list of zone edges and
    corresponding pixel allocations in _FSEdges[] and _FSPixels[].
    Sets *pn to number of edges generated (zero if no zone data) */
@@ -1266,11 +1260,11 @@ Int16 *pn;
 }
 
 
-_FSMakeXTransList(n, direction, a, b)
-Int16	n;	/* Number of edges */
-Int16	direction; /* +1 indicated increasing pixel values, -1 decreasing values */
-Real	a[];	/* Generated list of edge coordinates in outline resolution units */
-Int16	b[];	/* Corresponding list of coordinates in pixel space */
+void _FSMakeXTransList(
+    Int16	n,	/* Number of edges */
+    Int16	direction, /* +1 indicated increasing pixel values, -1 decreasing values */
+    Real	a[],	/* Generated list of edge coordinates in outline resolution units */
+    Int16	b[])	/* Corresponding list of coordinates in pixel space */
 /* Called by _FSSetupXXTrans() and _FSSetupYYTrans() to generate a list of outline
    x coordinates and their corresponding transformed pixel coordinates from
    _FSEdges[] and _FSPixels[]. */
@@ -1330,11 +1324,11 @@ Int16	b[];	/* Corresponding list of coordinates in pixel space */
 }
 
 
-_FSMakeYTransList(n, direction, a, b)
-Int16	n;	/* Number of edges */
-Int16	direction; /* +1 indicated increasing pixel values, -1 decreasing values */
-Real	a[];	/* Generated list of edge coordinates in outline resolution units */
-Int16	b[];	/* Corresponding list of coordinates in pixel space */
+void _FSMakeYTransList(
+    Int16	n,	/* Number of edges */
+    Int16	direction, /* +1 indicated increasing pixel values, -1 decreasing values */
+    Real	a[],	/* Generated list of edge coordinates in outline resolution units */
+    Int16	b[])	/* Corresponding list of coordinates in pixel space */
 /* Called by _FSSetupXYTrans() and _FSSetupYYTrans() to generate a list of outline
    y coordinates and their corresponding transformed pixel coordinates from _FSEdges[]
    and _FSPixels[]. */
@@ -1406,18 +1400,17 @@ Int16	b[];	/* Corresponding list of coordinates in pixel space */
 }
 
 
-_FSMakeTransTable (pixelsPerEm, scale, pos, direction, orusTbl,
-			   pixelsTbl, n, multTbl, offsetTbl, pnoTransforms)
-Real	pixelsPerEm;	/* pixels per em */
-Real	scale;		/* scale factor */
-Real	pos;		/* position */
-Int16	direction;	/* +1 indicated increasing pixel values, -1 decreasing values */
-Real	orusTbl[];	/* table of oru values */
-Int16	pixelsTbl[];	/* table of corresponding pixel values */
-Int16	n;		/* number of entries in orus/pixels tables */
-Real	multTbl[];	/* Transformation multiplier */
-Real	offsetTbl[];	/* Transformation constants */
-Int16	*pnoTransforms;	/* (output) number of multipliers/constants */
+void _FSMakeTransTable (
+    Real	pixelsPerEm,	/* pixels per em */
+    Real	scale,		/* scale factor */
+    Real	pos,		/* position */
+    Int16	direction,	/* +1 indicated increasing pixel values, -1 decreasing values */
+    Real	orusTbl[],	/* table of oru values */
+    Int16	pixelsTbl[],	/* table of corresponding pixel values */
+    Int16	n,		/* number of entries in orus/pixels tables */
+    Real	multTbl[],	/* Transformation multiplier */
+    Real	offsetTbl[],	/* Transformation constants */
+    Int16	*pnoTransforms)	/* (output) number of multipliers/constants */
 
 /* Called by _FSSetup...Trans() to generate interpolation function coefficients
    from list of zone edge values and their corresponding unrounded pixel values.

@@ -23,8 +23,7 @@ Char8	_FSOutlFmtVersn[] = "V2.2";	/* current outline font version	*/
 
 /* This function returns TRUE iff the specified font is a outline font.	*/
 
-Int _FSOutlFont (outlNode)
-OutlNode	**outlNode;
+Int _FSOutlFont (OutlNode **outlNode)
 {
     return ((*outlNode)->type == 0x4C54554F);	/* "OUTL" */
 }
@@ -50,8 +49,7 @@ OutlNode	**outlNode;
 /* This routine initializes some of the members of the header of the	*/
 /* specified font.							*/
 
-Int _FSOutlAutosetHeader (outlNode)
-OutlNode	**outlNode;
+Int _FSOutlAutosetHeader (OutlNode **outlNode)
 {
     OutlHeader	*header;
     Char8	date[12], copyrightNotice[80];
@@ -109,8 +107,7 @@ OutlCharNode	**charNode;
 /* This routine locks the pSize handle for the specified character	*/
 /* node.								*/
 
-Int _FSOutlLockCharPSize (charNode)
-OutlCharNode	**charNode;
+Int _FSOutlLockCharPSize (OutlCharNode **charNode)
 {
     _GCLock ((*charNode)->pSize);
     return (FS_NO_ERROR);
@@ -121,8 +118,7 @@ OutlCharNode	**charNode;
 /* This routine unlocks the pSize handle for the specified character	*/
 /* node.								*/
 
-Int _FSOutlUnlockCharPSize (charNode)
-OutlCharNode	**charNode;
+Int _FSOutlUnlockCharPSize (OutlCharNode **charNode)
 {
     _GCUnlock ((*charNode)->pSize);
     return (FS_NO_ERROR);
@@ -145,8 +141,7 @@ OutlCharNode	**charNode;
 /* This routine locks the vertex handle for the specified character	*/
 /* node.								*/
 
-Int _FSOutlLockCharVert (charNode)
-OutlCharNode	**charNode;
+Int _FSOutlLockCharVert (OutlCharNode **charNode)
 {
     _GCLock ((*charNode)->vert);
     return (FS_NO_ERROR);
@@ -157,8 +152,7 @@ OutlCharNode	**charNode;
 /* This routine unlocks the vertex handle for the specified character	*/
 /* node.								*/
 
-Int _FSOutlUnlockCharVert (charNode)
-OutlCharNode	**charNode;
+Int _FSOutlUnlockCharVert (OutlCharNode **charNode)
 {
     _GCUnlock ((*charNode)->vert);
     return (FS_NO_ERROR);
@@ -342,8 +336,8 @@ OutlNode **_FSOutlCreateOutl ()
 
 /* This routine releases the memory occupied by the specified font.	*/
 
-Int _FSOutlFree (outlNode)
-OutlNode	**outlNode;	/* ptr to font control structure */
+Int _FSOutlFree (
+OutlNode	**outlNode)	/* ptr to font control structure */
 {
     CharId		character;
     OutlCharNode	**thisChar, **nextChar;
@@ -374,8 +368,7 @@ OutlNode	**outlNode;	/* ptr to font control structure */
 /* that is used when the font is written to a file.  It is called	*/
 /* only when the font is written to a file.				*/
 
-Int _FSOutlHierarchicalUpdate (outlNode)
-OutlNode	**outlNode;
+Int _FSOutlHierarchicalUpdate (OutlNode **outlNode)
 {
     uInt32		pSizeOffset, vertOffset;
     CharId		character;
@@ -417,8 +410,7 @@ OutlNode	**outlNode;
 /* that is used when the font is written to a file.  It is called	*/
 /* before the font is written to a file.				*/
 
-Int _FSOutlUpdateHeader (outlNode)
-OutlNode	**outlNode;
+Int _FSOutlUpdateHeader (OutlNode **outlNode)
 {
     OutlHeader		*header;
 
@@ -442,8 +434,7 @@ OutlNode	**outlNode;
 /* This function returns TRUE iff the specified character node is	*/
 /* purgeable.								*/
 
-Int _FSOutlPurgeableChar (charNode)
-OutlCharNode	**charNode;
+Int _FSOutlPurgeableChar (OutlCharNode **charNode)
 {
     /** a character is purgeable iff it is not already purged and no	**/
     /** part of it is currently locked					**/
@@ -459,8 +450,7 @@ OutlCharNode	**charNode;
 /* the character is released and may later be reallocated if the	*/
 /* character is needed for drawing or if the font is written to a file.	*/
 
-Int _FSOutlPurgeChar (charNode)
-OutlCharNode	**charNode;
+Int _FSOutlPurgeChar (OutlCharNode **charNode)
 {
     int	size;
 

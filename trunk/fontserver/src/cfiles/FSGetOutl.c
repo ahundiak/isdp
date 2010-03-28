@@ -10,6 +10,9 @@
 #include "../hfiles/FSOutlCach.h"
 #include "../hfiles/FSSize.h"
 #include "../hfiles/FSAlloc.h"
+#include "../hfiles/FSGetFont.h"
+#include "../hfiles/FSNewFont.h"
+#include "../hfiles/FSGenCache.h"
 
 
 /************************************************************************/

@@ -7,11 +7,15 @@
 #include <string.h>
 #include <memory.h>
 #include <errno.h>
+#include <stdlib.h>
+#include <unistd.h>
 #include "../hfiles/FSDef.h"
 #include "../hfiles/FSTypes.h"
 #include "../hfiles/FS.h"
 #include "../hfiles/FSCharMap.h"
 #include "../hfiles/FSFontCach.h"
+#include "../hfiles/FSGenCache.h"
+#include "../hfiles/FSAlloc.h"
 #include "../hfiles/FSDaemon.h"
 
 
@@ -40,7 +44,7 @@ static	int	msgQRcv;		/* message queue from daemon	*/
 /*									*/
 /************************************************************************/
 
-int _FSDaemonInit ()
+int _FSDaemonInit (void)
 {
 #ifdef SHFONT
 
@@ -106,7 +110,7 @@ int _FSDaemonInit ()
 /*									*/
 /************************************************************************/
 
-int _FSDaemonAcknowledge ()
+int _FSDaemonAcknowledge (void)
 {
 #ifdef SHFONT
 
@@ -160,7 +164,7 @@ int _FSDaemonAcknowledge ()
 /*									*/
 /************************************************************************/
 
-int _FSDaemonEnter ()
+int _FSDaemonEnter (void)
 {
 #ifdef SHFONT
 
@@ -202,7 +206,7 @@ int _FSDaemonEnter ()
 /*									*/
 /************************************************************************/
 
-int _FSDaemonExit ()
+int _FSDaemonExit (void)
 {
 #ifdef SHFONT
 
@@ -269,10 +273,7 @@ int _FSDaemonExit ()
 /*									*/
 /************************************************************************/
 
-int _FSDaemonNewFont (fontSpec, rangeSpec, fontNode)
-FontSpec	*fontSpec;
-RangeSpec	*rangeSpec;
-FontNode	***fontNode;
+int _FSDaemonNewFont (FontSpec *fontSpec, RangeSpec *rangeSpec, FontNode *fontNode)
 {
 #ifdef SHFONT
 
@@ -357,7 +358,7 @@ FontNode	***fontNode;
 			size - sizeof (long), 0);
 #endif
 
-    _FSDealloc (nfSnd);
+    _FSDealloc ((char *)nfSnd);
 
 
     /** Wait for a reply from the daemon **/
@@ -373,7 +374,9 @@ FontNode	***fontNode;
 
     rval = nfRcv.rval;
     if (rval == FS_NO_ERROR)
-	*fontNode = nfRcv.fontNode;
+//	*fontNode = nfRcv.fontNode; // XXX - Bad pointer assignment in original code?
+        memcpy(fontNode, *nfRcv.fontNode, sizeof(*fontNode));
+//	fontNode = *nfRcv.fontNode;
 
     _GCUnlockSem (TRUE);
     return (rval);
@@ -402,9 +405,7 @@ FontNode	***fontNode;
 /*									*/
 /************************************************************************/
 
-int _FSDaemonAppendFont (fontNode, rangeSpec)
-FontNode	**fontNode;
-RangeSpec	*rangeSpec;
+int _FSDaemonAppendFont (FontNode **fontNode, RangeSpec *rangeSpec)
 {
 #ifdef SHFONT
 
@@ -447,7 +448,7 @@ RangeSpec	*rangeSpec;
     msgsnd (msgQSnd, (struct msgbuf *)afSnd, size - sizeof (long), 0);
 #endif
 
-    _FSDealloc (afSnd);
+    _FSDealloc ((char *)afSnd);
 
 
     /** Wait for a reply from the daemon **/
@@ -466,7 +467,9 @@ RangeSpec	*rangeSpec;
 
     _GCUnlockSem (TRUE);
     return (afRcv.rval);
-
+#else
+    printf ("_FSDaemonAppendFont() in FSDaemon.c being called but not used.\n");
+    return -1
 #endif
 }
 
@@ -491,9 +494,7 @@ RangeSpec	*rangeSpec;
 /*									*/
 /************************************************************************/
 
-int _FSDaemonAppendChar (fontNode, character)
-FontNode	**fontNode;
-CharId		character;
+int _FSDaemonAppendChar (FontNode **fontNode, CharId character)
 {
 #ifdef SHFONT
 
@@ -539,7 +540,9 @@ CharId		character;
 
     _GCUnlockSem (TRUE);
     return (acRcv.rval);
-
+#else
+    printf ("_FSDaemonAppendChar() in FSDaemon.c being called but not used.\n");
+    return -1
 #endif
 }
 
@@ -563,9 +566,7 @@ CharId		character;
 /*									*/
 /************************************************************************/
 
-int _FSDaemonReadFontFile (fileName, fontNode)
-char		*fileName;
-FontNode	***fontNode;
+int _FSDaemonReadFontFile (char *fileName, FontNode ***fontNode)
 {
 #ifdef SHFONT
 
@@ -606,7 +607,7 @@ FontNode	***fontNode;
     msgsnd (msgQSnd, (struct msgbuf *)rfSnd, size - sizeof (long), 0);
 #endif
 
-    _FSDealloc (rfSnd);
+    _FSDealloc ((char *)rfSnd);
 
 
     /** Wait for a reply from the daemon **/
@@ -648,8 +649,7 @@ FontNode	***fontNode;
 /*									*/
 /************************************************************************/
 
-int _FSDaemonDeleteFont (fontNode)
-FontNode	**fontNode;
+int _FSDaemonDeleteFont (FontNode **fontNode)
 {
 #ifdef SHFONT
 
@@ -717,9 +717,7 @@ FontNode	**fontNode;
 /*									*/
 /************************************************************************/
 
-int _FSDaemonUsedChars (charList, numChars)
-FontCharNode	***charList;
-int		numChars;
+int _FSDaemonUsedChars (FontCharNode ***charList, int numChars)
 {
 #ifdef SHFONT
 
@@ -750,7 +748,7 @@ int		numChars;
 			size - sizeof (long), 0);
 #endif
 
-    _FSDealloc (ucSnd);
+    _FSDealloc ((char *)ucSnd);
 
     return (FS_NO_ERROR);
 

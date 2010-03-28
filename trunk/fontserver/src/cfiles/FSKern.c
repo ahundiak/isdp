@@ -29,7 +29,7 @@
 
  ****************************************************************************/
 
-
+#include <stdlib.h>
 #include "../hfiles/import.h"
 #include "../hfiles/FSDef.h"
 #include "../hfiles/FSTypes.h"
@@ -41,7 +41,8 @@
 #include "../hfiles/FSFontCach.h"
 #include "../hfiles/FSMakeFont.h"
 #include "../hfiles/FSAlloc.h"
-
+#include "../hfiles/FSKern.h"
+#include "../hfiles/FSOutlCach.h"
 
 
 /***** EXTERNAL GLOBAL VARIABLES *****/
@@ -53,9 +54,7 @@ extern	Real	_FSResH;		/* horiz output device resolution */
 extern	CharMapStruct *_FSCharMapPtr;
 
 
-Int  _FSDoKernTracks (font, cmfont)
-FontNode	*font;
-TFStruct	*cmfont;
+Int  _FSDoKernTracks (FontNode *font, TFStruct *cmfont)
 
 /* _FSDoKernTracks -- Adds kerning tracks to font
  *
@@ -69,7 +68,7 @@ TFStruct	*cmfont;
     Real		trk0, trk1, trk2, trk3;	/* kerning track values */
     FontInfo		*info;
 
-    _FSFontLockInfo (font);
+    _FSFontLockInfo ((FontNode **)font);
     info = _FSFontInfo (font);
 
     /* get kerning tracks */
@@ -80,14 +79,12 @@ TFStruct	*cmfont;
     info->track[2] = (Real64) trk2;
     info->track[3] = (Real64) trk3;
 
-    _FSFontUnlockInfo (font);
+    _FSFontUnlockInfo ((FontNode **)font);
     return (FS_NO_ERROR);
 }
 
 
-Int  _FSDoKernPairs (font, cmfont)
-FontNode	*font;
-TFStruct	*cmfont;
+Int  _FSDoKernPairs (FontNode *font, TFStruct *cmfont)
 
 /* _FSDoKernPairs -- Adds kerning pairs to font
  *
@@ -172,11 +169,11 @@ TFStruct	*cmfont;
 
     /** Sort the table and add it to the font **/
     qsort (kernPair, numKernPair, sizeof (FontKernPair), _FSComparePair);
-    rval = _FSFontNewKernPairs (font, kernPair, numKernPair);
+    rval = _FSFontNewKernPairs ((FontNode **)font, (FontKernPair **)kernPair, numKernPair); // XXX - Possible bug.  Wrong pointers?
 
-    _FSDealloc (kernPair);
+    _FSDealloc ((char *)kernPair);
     if (charList2 != NULL)
-	_FSDealloc (charList2);
+	_FSDealloc ((char *)charList2);
 
     return (rval);
 }
@@ -222,10 +219,7 @@ Char16	*charList2;
 }
 
 
-Int  _FSReadCharMapBsNbrs (cPtr, charList1, charList2)
-CharMapStruct	*cPtr;
-Int8		*charList1;
-Char16		**charList2;
+Int  _FSReadCharMapBsNbrs (CharMapStruct *cPtr, Int8 *charList1, Char16 **charList2)
 
 /* _FSReadCharMapBsNbrs -- returns all Bitstream ids in specified char map.
  * Input argument:
@@ -261,12 +255,7 @@ Char16		**charList2;
 }
 
 
-Int  _FSTrackPix (cmfont, track1, track2, track3, track4)
-TFStruct	*cmfont;
-Real		*track1;
-Real		*track2;
-Real		*track3;
-Real		*track4;
+Int  _FSTrackPix (TFStruct *cmfont, Real *track1, Real *track2, Real *track3, Real *track4)
 
 /* _FSTrackPix -- calculates track kerning adjustment in pixels
  *

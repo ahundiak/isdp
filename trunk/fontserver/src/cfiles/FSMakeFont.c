@@ -18,6 +18,12 @@
 #include "../hfiles/FSFontCach.h"
 #include "../hfiles/FSTFCache.h"
 #include "../hfiles/FSCharMap.h"
+#include "../hfiles/FSAlloc.h"
+#include "../hfiles/FSNewFont.h"
+#include "../hfiles/FSOutlCach.h"
+#include "../hfiles/FSKern.h"
+#include "../hfiles/FSGenCache.h"
+#include "../hfiles/FSPixCache.h"
 
 
 /***** GLOBALS *****/
@@ -75,8 +81,7 @@ static Real	lastLinesPerEmX = 0.0;
 /* *fontNode.  The parameters for making the font are specified by the	*/
 /* huge list of globals above.						*/
 
-int _FSMakeFont (fontNode)
-FontNode	***fontNode;	/* ptr to font node handle */
+int _FSMakeFont (FontNode ***fontNode)
 {
     Int		rval;
     Boolean	tfChanged;
@@ -148,8 +153,7 @@ FontNode	***fontNode;	/* ptr to font node handle */
 
 /* This routine deletes the specified font. */
 
-int _FSUnmakeFont (fontNode)
-FontNode	**fontNode;
+int _FSUnmakeFont (FontNode **fontNode)
 {
     if (_FSBmapFont (fontNode))		/* bitmap font? */
     {
@@ -170,7 +174,7 @@ FontNode	**fontNode;
 /* This routine initializes the MakeFont module.  Many of the above	*/
 /* globals are initilized to default values.				*/
 
-Int _FSEnterMF ()
+Int _FSEnterMF (void)
 {
     /** Create the font cache **/
     _GCEnter ();
@@ -200,7 +204,7 @@ Int _FSEnterMF ()
 
 /* This routine deallocates memory used by the MakeFont module.		*/
 
-Int _FSExitMF ()
+Int _FSExitMF (void)
 {
     _FSDeleteCache ();
     _GCExit ();
@@ -214,8 +218,7 @@ Int _FSExitMF ()
 /* regeneration information, kerning pair table, and font info		*/
 /* structure.								*/
 
-Int _FSSetGenericStuff (fontNode)
-FontNode	**fontNode;
+Int _FSSetGenericStuff (FontNode **fontNode)
 {
     int			i, allChars, length;
     char		*ptr;
@@ -225,7 +228,7 @@ FontNode	**fontNode;
 
     /** Kerning tracks & pairs **/
     if (_FSKerningFlag)
-	_FSDoKernPairs (fontNode, _FSTypefacePtr);
+	_FSDoKernPairs ((FontNode *)fontNode, _FSTypefacePtr); // XXX - Possible bad pointer being passed?
 
     /** Set the modes to default values **/
     _FSFontLockModes (fontNode);
@@ -293,7 +296,7 @@ FontNode	**fontNode;
 	}
     }
 
-    _FSDoKernTracks (fontNode, _FSTypefacePtr);
+    _FSDoKernTracks ((FontNode *)fontNode, _FSTypefacePtr);
 
     _FSFontAutosetInfo (info);
     _FSFontUnlockInfo (fontNode);
@@ -372,8 +375,8 @@ OutlNode **_FSCreateOutlFont ()
 /* This routine updates sections of the header that depend on parts of	*/
 /* the font that were calculated as the font was being created.		*/
 
-Int  _FSUpdateFont (fontNode)
-FontNode **fontNode;	/* handle to font node */
+Int  _FSUpdateFont (
+FontNode **fontNode)	/* handle to font node */
 {
     if (_FSBmapFont (fontNode))
 	_FSBmapUpdateHeader (fontNode);
@@ -384,8 +387,7 @@ FontNode **fontNode;	/* handle to font node */
 }
 
 
-Int  _FSConvertToFont (fontNode)
-FontNode **fontNode;
+Int  _FSConvertToFont (FontNode **fontNode)
 
 /* Procedure to read an entire typeface and convert the appropriate chars into
  *   bitmaps or outlines. '_FSCharScanConvert' does the conversion for each
@@ -541,16 +543,15 @@ FontNode **fontNode;
 	}
     }
 
-    _FSDealloc (charOffTable);
-    _FSDealloc (charIdTable);
+    _FSDealloc ((char *)charOffTable);
+    _FSDealloc ((char *)charIdTable);
 
     return (FS_NO_ERROR);
 }
 
 
 
-Int  _FSSearchCharOff (bsNbr)
-Char16	bsNbr;
+Int  _FSSearchCharOff (Char16 bsNbr)
 
 /*  _FSSearchCharOff -- returns a character offset number.
  *  Input argument:  bsNbr is a Bitstream number.

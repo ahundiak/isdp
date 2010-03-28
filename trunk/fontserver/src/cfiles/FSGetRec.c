@@ -52,6 +52,7 @@
 #include "../hfiles/import.h"
 #include "../hfiles/FSDef.h"
 #include "../hfiles/FSTypes.h"
+#include "../hfiles/FSGetRec.h"
 
 
 static uInt32  state[2];  /* Determines internal state of _FSGetRec channel n
@@ -82,7 +83,7 @@ uInt16 n;
     currentX[n] = currentY[n] = 0;
 }
 
-_FSSaveRecState(n)
+int _FSSaveRecState(n)
 uInt16 n;
 /* Saves _FSGetRec state for channel n */
 {
@@ -96,7 +97,7 @@ uInt16 n;
     savedPYEdges = pYEdges[n];
 }
 
-_FSRestoreRecState(n)
+int _FSRestoreRecState(n)
 uInt16 n;
 /* Restores _FSGetRec state for channel n */
 {
@@ -110,14 +111,14 @@ uInt16 n;
     pYEdges[n] = savedPYEdges;
 }
 
-_FSGetRec(n, record, dataOrigin, type, x, y, beta)
-uInt16 n;		/* Environment number */
-uInt16 **record;	/* Current record in character data */ 
-uInt16 *dataOrigin;	/* First data record in character data */
-Int16  *type;		/* Returned record type */
-Int32  *x;		/* Returned value x */
-Int32  *y;		/* Returned value y */
-Int32  *beta;		/* Returned value beta */
+void _FSGetRec(
+    uInt16 n,		/* Environment number */
+    uInt16 **record,	/* Current record in character data */
+    uInt16 *dataOrigin,	/* First data record in character data */
+    Int16  *type,	/* Returned record type */
+    Int32  *x,		/* Returned value x */
+    Int32  *y,		/* Returned value y */
+    Int32  *beta)	/* Returned value beta */
 /* _FSGetRec fetches the next logical step from compressed outline data.	*/
 /* Sets *type to indicate type of step read.				*/
 /*   -1: erroneous step read.						*/
@@ -680,9 +681,7 @@ Error:
 }
 
 
-_FSNextStep(record, dataOrigin, n, wordCount)
-uInt16 **record, *dataOrigin, n;
-Int16 wordCount;
+void _FSNextStep(uInt16 **record, uInt16 *dataOrigin, uInt16 n, Int16 wordCount)
 /* Updates *record to point to next record. */
 /* n = number of words in current record */
 /* Tracks repeat subroutine and inserts return when appropriate. */
@@ -940,7 +939,7 @@ uInt16 *lastItem;
 }
 
 
-_FSInitAcc()
+int _FSInitAcc(void)
 /* Initializes the decimal to binary conversion accumulator		*/
 {
     accMantissa = 0;
@@ -951,8 +950,7 @@ _FSInitAcc()
 }
 
 
-_FSAccDigit(digit)
-uInt16 digit;
+int _FSAccDigit(uInt16 digit)
 /* Accumulates the digit into the decimal to binary conversion accumulator */
 {
     if (digit < 0xa)

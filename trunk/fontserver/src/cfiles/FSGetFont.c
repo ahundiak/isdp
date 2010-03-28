@@ -7,9 +7,11 @@
 #include "../hfiles/FSTypes.h"
 #include "../hfiles/FS.h"
 #include "../hfiles/FSFont.h"
+#include "../hfiles/FSNewFont.h"
 #include "../hfiles/FSFontCach.h"
 #include "../hfiles/FSSize.h"
 #include "../hfiles/FSAlloc.h"
+#include "../hfiles/FSGenCache.h"
 
 
 /************************************************************************/
@@ -30,9 +32,7 @@
 /*									*/
 /************************************************************************/
 
-int _FSGetFontInfo (font, info)
-FontNode	**font;
-FontInfo	*info;
+int _FSGetFontInfo (FontNode **font, FontInfo *info)
 {
     int	shared;
 
@@ -72,10 +72,7 @@ FontInfo	*info;
 /*									*/
 /************************************************************************/
 
-int _FSGetFontKernTable (font, kernTable, numKerns)
-FontNode	**font;
-FontKernPair	**kernTable;
-int		*numKerns;
+int _FSGetFontKernTable (FontNode **font, FontKernPair **kernTable, int *numKerns)
 {
     int	shared;
 
@@ -123,10 +120,7 @@ int		*numKerns;
 /*									*/
 /************************************************************************/
 
-int _FSGetFontLigTable (font, ligTable, numLigs)
-FontNode	**font;
-FontLigature	**ligTable;
-int		*numLigs;
+int _FSGetFontLigTable (FontNode **font, FontLigature **ligTable, int *numLigs)
 {
     int	shared;
 

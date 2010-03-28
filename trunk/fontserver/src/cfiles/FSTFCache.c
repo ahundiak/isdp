@@ -9,6 +9,7 @@
 #include "../hfiles/FS.h"
 #include "../hfiles/FSUtil.h"
 #include "../hfiles/FSTypeface.h"
+#include "../hfiles/FSLoadTF.h"
 #include "../hfiles/FSTFCache.h"
 
 
@@ -34,7 +35,7 @@ static uInt32	TFTime = 0;	/* typeface cache time stamp */
 /*									*/
 /************************************************************************/
 
-int _FSInitTF ()
+int _FSInitTF (void)
 {
     TFEntry	*cPtr, *cEnd;
 
@@ -63,7 +64,7 @@ int _FSInitTF ()
 /*									*/
 /************************************************************************/
 
-int _FSDisposeTF ()
+int _FSDisposeTF (void)
 {
     TFEntry	*cPtr, *cEnd;
 
@@ -106,9 +107,7 @@ int _FSDisposeTF ()
 /*									*/
 /************************************************************************/
 
-int _FSGetTFRef (typeface, tfRef)
-char	*typeface;
-FileRef	*tfRef;
+int _FSGetTFRef (char *typeface, FileRef *tfRef)
 {
     char	*tfFile;
 
@@ -144,9 +143,7 @@ FileRef	*tfRef;
 /*									*/
 /************************************************************************/
 
-int _FSGetTF (tfRef, cachePtr)
-FileRef		*tfRef;
-TFStruct	**cachePtr;
+int _FSGetTF (FileRef *tfRef, TFStruct **cachePtr)
 {
     int		rval;
     uInt32	minTime;

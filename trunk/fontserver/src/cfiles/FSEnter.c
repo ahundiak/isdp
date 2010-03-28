@@ -6,7 +6,11 @@
 #include "../hfiles/FSAlloc.h"
 #include "../hfiles/FS.h"
 #include "../hfiles/FSGenCache.h"
-
+#include "../hfiles/FSInterpro.h"
+#include "../hfiles/FSTFCache.h"
+#include "../hfiles/FSNewFont.h"
+#include "../hfiles/FSCharMap.h"
+#include "../hfiles/FSEnter.h"
 
 /************************************************************************/
 /*									*/
@@ -28,8 +32,7 @@
 /*									*/
 /************************************************************************/
 
-Int FSEnter (flags)
-uInt32	flags;
+Int FSEnter (uInt32 flags)
 {
     _FSIproMemoryInit ();
 
