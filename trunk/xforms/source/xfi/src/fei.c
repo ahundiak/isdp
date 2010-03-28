@@ -74,6 +74,17 @@ int FSXDrawText(/*Display display, int screen, Window window, GC gc,
 int FSGetBmapInfo(BmapId bmap, BmapInfo *info)
 {
 }
+
+#else
+
+int FSXDrawText(/*Display display, int screen, Window window, GC gc,
+	FontId font, char *text, int length, double x, double y,
+	double *nx, double *ny*/)
+{
+    printf("FSXDrawText() at line %d in %s is being called.\n", __LINE__, __FILE__);
+    return 0;   // XXX - Stubbed FSXDrawText() out for now.
+}
+
 #endif
 
 
