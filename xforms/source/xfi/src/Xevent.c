@@ -1,10 +1,10 @@
 
-#include "FImin.h"
-#include "FIseq.h"
+#include "../include/FImin.h"
+#include "../include/FIseq.h"
 #include <stdio.h>
 
-#include "XFIproto_pri.h"
-#include "XFIproto_pub.h"
+#include "../include/XFIproto_pri.h"
+#include "../include/XFIproto_pub.h"
 
 
 

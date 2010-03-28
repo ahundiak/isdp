@@ -13,43 +13,40 @@
 #define XFIPROTO_PRI_H_INCLUDED 1
 
 #include <X11/Xlib.h>
-
-#include <FIbezel.h>
-#include <FIbtn.h>
-#include <FIcklst.h>
-#include <FIdial.h>
-#include <FIdyn.h>
-#include <FIext.h>
-#include <FIfield.h>
-#include <FIgauge.h>
-#include <FIgraphic.h>
-#include <FIgroup.h>
-#include <FIimport.h>
-#include <FIline.h>
-#include <FImacros.h>
-#include <FImcf.h>
-#include <FImgt.h>
-#include <FImin.h>
-#include <FIread.h>
-#include <FIrect.h>
-#include <FIscroll.h>
-#include <FIseq.h>
-#include <FIslider.h>
-#include <FIsym.h>
-#include <FItext.h>
-#include <FItog.h>
-
-#include <MI.h>
-#include <MIdef.h>
-#include <MIext.h>
-#include <MS.h>
-#include <MSext.h>
-
-#include <FSTypes.h>   /* dmb:01/11/93: Was FSXTypes.h */
-
 #include <setjmp.h>
 
+#include "../include/FIbezel.h"
+#include "../include/FIbtn.h"
+#include "../include/FIcklst.h"
+#include "../include/FIdial.h"
+#include "../include/FIdyn.h"
+#include "../include/FIext.h"
+#include "../include/FIfield.h"
+#include "../include/FIgauge.h"
+#include "../include/FIgraphic.h"
+#include "../include/FIgroup.h"
+#include "../include/FIimport.h"
+#include "../include/FIline.h"
+#include "../include/FImacros.h"
+#include "../include/FImcf.h"
+#include "../include/FImgt.h"
+#include "../include/FImin.h"
+#include "../include/FIread.h"
+#include "../include/FIrect.h"
+#include "../include/FIscroll.h"
+#include "../include/FIseq.h"
+#include "../include/FIslider.h"
+#include "../include/FIsym.h"
+#include "../include/FItext.h"
+#include "../include/FItog.h"
 
+#include "../include/MI.h"
+#include "../include/MIdef.h"
+#include "../include/MIext.h"
+#include "../include/MS.h"
+#include "../include/MSext.h"
+
+#include "../fs_include/FSTypes.h"   /* dmb:01/11/93: Was FSXTypes.h */
 
     /*********************************/
     /***  X/Fontserver Functions  ***/

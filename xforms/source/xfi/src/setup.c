@@ -6,8 +6,8 @@
 #include <sys/utsname.h>  /* add for ingr root (moved for ISL only) */
 #endif
 
-#include "FImin.h"
-#include "FEI.h"
+#include "../include/FImin.h"
+#include "../include/FEI.h"
 
 #include <stdio.h>
 #include <ctype.h> /*** need this for isspace() ***/
@@ -15,11 +15,11 @@
 #define NDEBUG 1
 #include <assert.h> 
 
-#include "FS.h"        /* dmb:01/11/93: Was FSX.h */
-#include "FSBmap.h"    /* dmb:01/11/93: Was FSXBmap.h */
+#include "../fs_include/FS.h"        /* dmb:01/11/93: Was FSX.h */
+#include "../fs_include/FSBmap.h"    /* dmb:01/11/93: Was FSXBmap.h */
 
-#include "XFIproto_pri.h"
-#include "XFIproto_pub.h"
+#include "../include/XFIproto_pri.h"
+#include "../include/XFIproto_pub.h"
 
 #if !defined(i86pc)
 #include <sys/utsname.h>  /* add for ingr root */
@@ -2467,7 +2467,8 @@ int FI_enter (Display  *display,
     struct utsname name;
     uname(&name);
     if ( (strcmp(name.sysname, "HP-UX") == 0) ||
-	 (strcmp(name.machine, "i386") == 0))
+	 (strcmp(name.machine, "i386") == 0) ||
+	 (strcmp(name.machine, "i86pc") == 0)) // i386 was changed to i86pc for Solaris 10
     {
       FI_select_X_fonts_first();
     }
