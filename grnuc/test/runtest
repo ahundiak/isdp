@@ -1,0 +1,355 @@
+ # set -x
+ # Carlos Diaz (October 91)
+ ####################################################################
+ # DESCRIPTION
+ #  This shell script runs test routines on Grnuc/Model/Mds 
+ #  by executing commands which in turn dynamically load and execute
+ #  either 'c' object files (.o) or 'ppl' object files (.e).
+ #  Such commands will execute any function in the .o files whose
+ #  name is of the form main_xxxxx, the rest is dynamically loaded.
+ ####################################################################
+ # INSTRUCTIONS:
+ #   HOW TO SELECT :
+ #   - DIRECTORIES TO TEST: (optional, default is all directories
+ #       whose names end in .I, .C, .c, .S, at any level under the 
+ #       current directory.)
+ #     by passing arguments. Directories whose names match 
+ #     the arguments and are under the current directory 
+ #     will be part of the test. Give ONLY the directory 
+ #     NAME (no path).  
+ #   
+ #   - PRODUCT TO RUN: (optional, default is Grnuc)
+ #     by including a file called "ccteston" in your directory
+ #     whose first word is the name of the product to run. It
+ #     is not case sensitive (i.e.: moDel, GRNuc, MdS.).
+ #   
+ #   - MODE (optional, default is batch mode):
+ #     by having a file called "cclistlib" which contains the
+ #     string $GRNUC/test/lib/GRstrktst.o.
+ #
+ #   - DESIGN FILE: 
+ #     it is not an option yet.
+ #
+ #   - COMMANDS EXECUTED:
+ #     DESCRIPTION:
+ #      -the command cc dynamically loads the files listed in the
+ #      file 'cclistlib' (optional) and then executes the function 
+ #       main_xxxx in the .o passed as argument to it.
+ #      -the command ci runs the .e file passed as argument to it.
+ #     SELECTION:
+ #      The shell script calls either cc, ci or both depending on
+ #      what is in your directory. If you want to:
+ #	- pass your own string to the executable, put a string
+ #	  after the product name, in the file 'ccteston',i.e.: 
+ #	         model -cf tmp.dgn -C"cc=cfile.o ci=pplfile exit=n"
+ #	- execute one or several ppl macros:
+ #		- put the .e files in your directory.
+ #	- execute a ppl macro which contains a call to DEcheck_display:
+ #		- put the .e file in your directory
+ #		- put a file 'cclistlib' which contains the files 
+ #		  needed to use the display function (they will be
+ #		  dynamically loaded).
+ #	- execute one/several .o files:
+ #		- put them in your directory. If there is a file 'testlist',
+ #		  then only the files listed in it will be executed.
+ #		  If 'cclistlib' is present the files in it will be 
+ #		  dynamically loaded.
+ #
+ #   - OUTPUT REDIRECTION:
+ #      it is not an option yet.	  
+ #
+ ####################################################################
+ # ERRORS: If there are any errors, they will be reflected in ./testlog.                 
+ #  The way this script determines whether something went wrong is by:
+ #   - comparing output files to master output files, if any such files
+ #     are used. The files should be under your directory, and they are
+ #      for input : ./input/infile, 
+ #      for output: ./output/masterout
+ #		    ./output/newout. 
+ #   - collecting standard error and standard output into a file and
+ #     filtering out non-error messages.
+ ####################################################################
+ # NOTE:
+ # When writing a test routine, only print messages if it is to signal errors.
+ # Any output generated will be sent to the log file which is assumed to contain
+ # only error messages.
+ ####################################################################
+ # PROGRAM:
+ #
+ #
+ # Initialize variables for the session
+
+TestDir=`pwd`
+echo "Starting at directory: " $TestDir
+Logfile=$TestDir/testlog
+
+GRNUCEX="$MODEL/bin/Model -p Emspp"
+MODELEX="$MODEL/bin/Model -p Emspp"
+MDSEX="$MDS/bin/Mds"
+
+ # Remove old logfile (move it to temp directory)
+ 
+if [ -s $Logfile ]
+then
+  mv $Logfile /usr/tmp
+fi
+
+ # Find directories to test.
+  # If arguments are given, 
+if [ $# -ge 1 ];
+  then # then reduce the search to the directories given as arguments
+    FILTER=\"dummy\"
+    for i in $*
+      do
+        FILTER="$FILTER -o -name $i"
+      done
+    list=`find . \( -name $FILTER \) -type d -print | \
+          egrep -v ".record|input|output|\/test"`
+    if [ `echo $list | wc -c` -eq 1 ];
+      then 
+        print "None of the directories or directory could be found"
+        exit
+      else
+        if [ `echo $list | wc -w` -lt "$#" ]; 
+          then
+            print "NOTE: One or more of the supplied directories could not be found,"
+            print "just found the following:"
+            echo $list | sed 'y| |\n|'
+        fi
+    fi
+  else # else find everything ending in S, C, c, I
+    list=`find . -type d -print | egrep -v ".record|input|output|\/test" | \
+          egrep "\.S|\.I|\.C|\.c"`
+fi
+print "=========================================================="
+ # For every directory found
+for directory in $list
+do 
+  # do
+  # go to the directory
+  \cd $TestDir
+  \cd $directory
+  # initialize variables for this directory
+  USERSTRING="0"
+  FILESE=""
+  FILESO=""
+  # if there is a "ccteston" file
+  if [ -s ccteston ]
+    then # then 
+      if [ `cat ccteston | wc -w` -gt 1 ]
+           # if it contains more than one word
+       then # then read everything but first word as user string
+        USERSTRING=`cat ccteston | cut -d" " -f2-`
+      fi
+      if grep -i "model" ccteston 2>/dev/null 1>&2  
+            # see if Grnuc, Model or Mds were specified 
+        then 
+          PRODUCT=$MODELEX
+        else
+          if grep -i "mds" ccteston
+             then
+              PRODUCT=$MDSEX
+             else
+               PRODUCT=$GRNUCEX 
+          fi
+      fi         
+    else    # (Grnuc by default)
+      PRODUCT=$GRNUCEX
+  fi
+
+  # if there is a "testlist" file 
+  if [ -s testlist ]
+   then # then make list of files in it
+    FILES=`cat testlist`
+  else # else make 2 lists of .o and .e files found in the directory.
+    FILESO=*.o
+    FILESE=*.e
+             # if .e list contains one word
+    if [ `echo $FILESE | wc -w` -eq 1 ]
+     then      # then if the word is a file (not "*.e")
+      if \ls *.e 2>/dev/null 1>&2 
+       then       # then make list of files out of it
+        FILES=$FILESE
+       else       # else if .o list contains one word
+        if [ `echo $FILESO | wc -w` -eq 1 ]
+         then              # then if the word is a file (not "*.o")
+          if ! \ls *.o 2>/dev/null 1>&2 
+           then                 # then make list
+             FILES=$FILESO
+                                # else do nothing (no .e or .o)
+           fi
+          else             # else it is a list of .o files 
+           FILES=$FILESO
+         fi
+      fi
+    else          # else it is a list of .e files
+      FILES=$FILESE
+    fi
+      FILES=$FILESO
+  fi
+  # if there are files in the list
+  if [ -s $FILES ]
+   then # then for each file in the list 
+      for routine in $FILES
+      do # do
+	if [ `echo $routine | cut -d"." -f2` = e ]
+          then routine=`echo $routine | cut -d"." -f1`
+        fi 
+         # if "cclistlib" file exists
+        if [ -s cclistlib ]
+          then # then if contains library GRstrktst.o
+            fgrep GRstrktst cclistlib >/tmp/t
+            if [ -s /tmp/t ]
+              then     # then mode is interactive
+                MODE=
+                print "Executing file $routine for $directory (Interactive Mode)"
+              else     # else mode is batch
+                MODE=-b
+                print "Executing file $routine for $directory (Batch Mode)"
+            fi
+	    rm /tmp/t
+          else # else mode is batch (by default)
+            print "Executing file $routine for $directory (Batch Mode)"
+            MODE=-b
+        fi
+         # move "newout" to temporary place if it exists
+        if [ -s output/newout ];
+          then 
+             mv output/newout /usr/tmp
+         fi
+
+         # if user string
+         if ! [ $USERSTRING -eq "0" ]
+          then # then pass it to executable arguments
+           COMMLINE="$PRODUCT $MODE $USERSTRING 2>test_file 1>&2"
+          else # else if there are ppl files
+           if [ -s $FILESE ]
+            then      # then put ci in arguments
+             if [ $MODE = i ]
+                           # if mode is interactive
+              then            # then also call cc with the loader
+               MODE=
+               COMMLINE="$PRODUCT $MODE -cf new.dgn -C \"cc=/usr/ip32/grnuc/test/lib/loader.o ci=$routine exit=n\" 2>test_file 1>&2"
+              else            # else don't call cc
+               COMMLINE="$PRODUCT $MODE -cf new.dgn -C \"ci=$TestDir/$directory/$routine exit=n\" 2>test_file 1>&2"
+             fi
+            else      # else put cc in arguments
+             COMMLINE="$PRODUCT $MODE -cf new.dgn -C \"cc=$TestDir/$directory/$routine exit=n\" 2>test_file 1>&2"
+           fi
+         fi
+        print $COMMLINE
+         # Execute product and if ran with errors (it returned a non-zero)...
+        echo $COMMLINE | ksh
+        if [ $? -eq 0 ]
+          then # then (product returned a zero,ok)
+                       # if old diffreport is there, remove it
+            if [ -s diffreport ];
+              then 
+                  rm diffreport
+            fi
+                        # filter out messages returned by product and place resulting
+                        # in test_file2
+            cat test_file | egrep -v "DOMAIN|EMS|cmdserver|stub|I/MODEL|I/GRNUC|I/MDS|I/EMS|DLOAD-W|^$|Interactive" >test_file2
+
+                       # if test_file2 exists, then there have been errors, so send the contents of
+                       # test_file (which contains all kinds of output) to the log file
+
+            if [ -s test_file2 ]
+              then
+                echo $routine for $directory >> $Logfile
+                cat test_file >> $Logfile
+            fi
+                       # if both masterout and newout exist
+            if ([ -s output/masterout ] && [ -s output/newout ]);
+              then        # then compare them and write any differences found to diffreport,
+                cmp output/masterout output/newout > diffreport
+               else
+                           # else see what the problem is and report.
+                           #  ( either one or both don't exist...)
+                                # if masterout exists 
+                  if [ -s output/masterout ];
+                    then           # then newout does not
+                      print "WARNING: master output file has just been created,"   | tee -a $Logfile
+                      print "need to check it before running again runtest. From"  | tee -a $Logfile
+                      print "this point on, this file will be considered to be"    | tee -a $Logfile
+                      print "correct, and succesive runs of the test will check"   | tee -a $Logfile
+                      print "new output against this file. (This applies only to"  | tee -a $Logfile
+                      print "routines using -masterout- and -newout- as output"    | tee -a $Logfile
+                      print "files)"                                                       | tee -a $Logfile
+                    else           # else either both don't exist or masterout does't exist
+                                        # if newout exists
+                      if [ -s output/newout ];
+                        then               # then masterout does not
+                           print "WARNING: Masterout file is missing, new output"  | tee -a $Logfile 
+                           print "can not be checked. Need to create and verify a" | tee -a $Logfile
+                           print "master output file"                                     | tee -a $Logfile
+                                           # else neither one exist...do nothing
+                      fi
+                  fi
+            fi
+
+                       # if diffreport and test_file2 are empty remove them, otherwise there are 
+                       #  discrepancies between the new output generated (newout) and the master
+                       #  output (masterout), or the test routine generated messages (test_file2)
+
+            if ([ ! -s diffreport ] && [ ! -s test_file2 ]);
+              then        # then remove them and say OK
+                print "ok" $routine
+                  print "============================================================"
+              else        # else see what happened and say there are ERRORS
+                                 # if diffreport
+                if [ -s diffreport ];
+                  then              # then masterout/newput different
+                    print "Error: newout and masterout are different." | tee -a $Logfile
+                    cat diffreport >> $Logfile
+                    rm diffreport
+                  else              # else the routine generated error messages
+                    print "Error: the routine has generated error messages." | tee -a $Logfile
+                  fi
+                print "" | tee -a $Logfile
+                print "=====================================================" | tee -a $Logfile
+            fi
+          else # else product returned a non-zero (error code)
+            print "$routine for $directory:" >> $Logfile | tee -a $Logfile
+            print "$PRODUCT returned a non-zero value, it has probably crashed." | tee -a $Logfile
+            print "Running through the debugger now..." | tee -a $Logfile
+            echo "go\n stack/20\n quit\n" | \
+            dbg $PRODUCT -cf new.dgn -C"cc=$routine exit=n" $MODE >> $Logfile          
+            print "" | tee -a $Logfile
+            print "=========================================================" | tee -a $Logfile
+        fi # end of product return condition 
+	killipcs > /dev/null
+        if [ -s test_file2 ]; 
+          then mv test_file2 /usr/tmp
+          else rm -f test_file2
+        fi
+        mv test_file /usr/tmp 
+        done 
+        # done: no more test routines in the directory
+    else 
+    # else no test routines found in this directory
+      print "No test routine found for directory $directory" | tee -a $Logfile
+      print "" | tee -a $Logfile
+      print "===============================================================" | tee -a $Logfile
+  fi
+done
+# done: no more directories found
+if [ ! -s $Logfile ];
+  then
+    print
+    print
+    print
+    print "********** No problems found ***********"
+  else
+    print
+    print
+    print
+    print "******** Errors have been detected, see log file ***********"
+    print "******** $TestDir/testlog             ***********"
+    print "******** for more details.                       ***********"
+fi 
+print
+print
+print
+print
+

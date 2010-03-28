@@ -1,0 +1,172 @@
+/*
+   PROGRAM:  uicreatepmnu.u
+ 
+   HISTORY:  Name		Date	   Note
+	     ---------------------------------------------
+	     Laura A. Foote     1-89	   Initial Version
+	     Bryan Layton       2-89	   Initial Version
+	     Joe Wagner		5-89	   Version 1.2.0
+             Mike Mathis        2-92       Fixed assumptions about whether
+                                           the located object is a graphic
+                                           set, generalized some of the
+                                           code
+*/
+
+#include <stdio.h>
+#include "ciminimum.h"
+#include "cimacros.h"
+#include "OMprimitives.h"
+#include "OMerrordef.h"
+#include "grgsmacros.h"
+#include "var.h"
+#include "vardef.h"
+#include "grsymdef.h"
+#include "growner.h"
+
+extern OMuword OPP_GRsmhdr_class_id, OPP_GRclhdr_class_id;
+
+main()
+{
+    char menu_name[128];
+    char cell_name[128];
+    int pnt1[3], pnt2[3];
+    int index, is_cell, is_symbol;
+    int msg, ii_count, size, sts;
+    int bytes1, bytes2;
+    double range[6];
+    GRobj setid;
+    OMuword test_classid, temp_osnum;
+    IGRboolean world;
+    struct GRid setGRid;
+    struct GRobj_env *array;
+    struct GRmd_env mod;
+    struct GRvar_list varlist[2];
+    FILE *menu_file;
+
+    message("Create Paper Menu ASCII File");
+    status("");
+    ci$get(string = menu_name,
+           prompt = "Enter the paper menu filename");
+
+    menu_file = fopen(menu_name, "w");
+    fprintf(menu_file,"17500,12000\n");
+
+    ci$get_module_info(md_env = &mod);
+
+    ci$locate(obj = &setid, 
+              prompt = "Identify cells/symbols via Input Generators");
+
+    setGRid.objid = setid;
+    setGRid.osnum = mod.md_id.osnum;
+
+    gr$gsis_graphics_set(msg = &msg,
+                         senderid = MY_ID,
+                         senderos = mod.md_id.osnum,
+                         object_id = &setGRid);
+  
+    if (msg & 1)
+    {
+        /* located a graphic set */
+
+        gr$gsinqcount(msg = &msg, count = &ii_count, object_id= &setGRid, 
+                      senderid = MY_ID);
+
+        size = ii_count * sizeof(struct GRobj_env);
+        array = (struct GRobj_env *)malloc(size);
+        if (array == 0)
+        {
+            status("Failed to allocate dynamic memory for cell/symbol list");
+            goto finish;
+        }
+	
+        gr$gsget_objects (msg = &msg,
+                          array = array,
+                          size = size, 
+                          count = &ii_count,
+                          senderid = MY_ID, 
+                          object_id = &setGRid);
+    }
+    else
+    {
+        /* located a single object */
+
+        ii_count = 1;
+        size = sizeof(struct GRobj_env);
+        array = (struct GRobj_env *)malloc(size);
+        if (array == 0)
+        {
+            status("Failed to allocate dynamic memory for cell/symbol list");
+            goto finish;
+        }
+
+        array[0].obj_id = setGRid;
+        array[0].mod_env = mod;
+    }
+
+    status("Writing the Paper Menu ASCII file");
+    world = FALSE;
+    varlist[0].var = GR_SYMBOL_NAME;
+    varlist[0].var_ptr = cell_name;
+    varlist[0].num_bytes = 128;
+    varlist[0].bytes_returned = &bytes1;
+    varlist[1].var  = END_PARAM;
+
+    for (index = 0 ; index < ii_count ; index = index + 1)
+    {
+        om$get_classid(osnum = mod.md_id.osnum,
+                       objid = array[index].obj_id.objid,
+                       p_classid = &test_classid);
+
+        is_cell = om$is_ancestry_valid(superclassid = test_classid,
+                                       subclassid = OPP_GRclhdr_class_id);
+
+        is_symbol = om$is_ancestry_valid(superclassid = test_classid,
+                                         subclassid = OPP_GRsmhdr_class_id);
+
+        if ((is_cell == OM_S_SUCCESS) || (is_symbol == OM_S_SUCCESS))
+        {
+            ci$send(msg = message GRsymbol.GRset_inq_symbol(&msg, 0, varlist),
+                    targetid = array[index].obj_id.objid, 
+                    targetos = array[index].obj_id.osnum);
+
+            sts = strcmp(cell_name, "border");
+            if (sts != 0)
+            {
+                ci$send(msg = message GRgraphics.GRgetrang
+                             (&msg, 0, 0, &world, range),
+                        targetid = array[index].obj_id.objid, 
+                        targetos = array[index].obj_id.osnum);
+
+                pnt1[0] = range[0] * 1000;
+                pnt1[1] = range[1] * 1000;
+                pnt1[2] = range[2] * 1000;
+                pnt2[0] = range[3] * 1000;
+                pnt2[1] = range[4] * 1000;
+                pnt2[2] = range[5] * 1000;
+
+		fprintf(menu_file,"%d,%d,%d,%d,23,%s\n",
+                        pnt1[0], pnt1[1], pnt2[0], pnt2[1], cell_name);
+            }
+        }
+    }
+
+    status("Createpmnu Finished");
+
+    free(array);
+
+finish:
+
+    fclose(menu_file);
+    exit;
+}
+/** end program **/
+
+/*
+ * Copyright Intergraph Corporation, 1988,1989.
+ * All Rights Reserved.
+
+ * Intergraph Corporation
+ * One Madison Industrial Park
+ * Huntsville, AL 35807
+ * (205) 730-2000
+ */

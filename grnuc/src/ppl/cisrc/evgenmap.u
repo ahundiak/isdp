@@ -1,0 +1,237 @@
+/*
+Name
+        evgenmap
+
+Description
+        This code drives the Event Generator Mapping form.  It presents
+        a form containing icons for various event generators which may
+        be mapped to a double click of the middle mouse button.
+        Selecting one of the icons maps that command to the mouse, and
+        changes the icon on the menu bar to reflect the current mapping.
+
+History
+        mrm     08/05/91    creation
+                09/05/91    do not hardcode the menu bar button label
+                11/22/91    handle the command not being on the menu bar
+        elp     01/17/93    erase form in notification "dimiss" logic
+*/
+
+#include <FI.h>
+#include "ciminimum.h"
+#include "cimacros.h"
+#include "CIforms.h"
+#include "msdef.h"
+#include "msmacros.h"
+#include "execmsg.h"
+#include "grmessage.h"
+
+/* selection form label */
+#define MAP_FORM                100
+
+/* commands mapped onto the selection form */
+#define TANGENT_TO_BUTTON               12
+#define PERP_TO_BUTTON                  14
+#define POINT_PARAMETER_BUTTON          13
+#define AXIS_PARAMETER_BUTTON           15
+#define PROJECT_POINT_BUTTON            16
+#define CENTER_POINT_BUTTON             17
+#define INTERSECTION_POINT_BUTTON       18
+#define MID_POINT_BUTTON                19
+#define KEY_POINT_BUTTON                20
+#define END_POINT_BUTTON                21
+#define SNAP_POINT_BUTTON               23
+#define TENTATIVE_POINT_BUTTON          22
+
+/* symbol indices in GRbar.sym */
+#define TANGENT_TO_SYMBOL               6
+#define PERP_TO_SYMBOL                  8
+#define POINT_PARAMETER_SYMBOL          42
+#define AXIS_PARAMETER_SYMBOL           52
+#define PROJECT_POINT_SYMBOL            4
+#define CENTER_POINT_SYMBOL             1
+#define INTERSECTION_POINT_SYMBOL       2
+#define MID_POINT_SYMBOL                5
+#define KEY_POINT_SYMBOL                3
+#define END_POINT_SYMBOL                12
+#define SNAP_POINT_SYMBOL               40
+#define TENTATIVE_POINT_SYMBOL          39
+
+/* ci notification function */
+extern int ci_notification();
+
+/* selection form */
+Form map_form;
+
+/* menu bar form */
+Form menu_bar;
+int button_label;
+
+/* structure required for form notification */
+struct CIform_st form_st;
+
+init()
+{
+    map_form = NULL;
+    menu_bar = NULL;
+    button_label = -1;
+}
+
+wakeup()
+{
+    if (map_form) FIf_display(map_form);
+}
+
+sleep()
+{
+    if (map_form)
+    {
+        FIf_erase(map_form);
+        if (menu_bar)
+        {
+            FIg_display(menu_bar, button_label);
+        }
+    }
+}
+
+delete()
+{
+    if (map_form) FIf_delete(map_form);
+}
+
+main()
+{
+    int response, sts;
+
+    ex$message(msgnumb = GRC_M_MpEvGn);
+
+    /*
+        Get the menu bar form id and the label of the button for this
+        command.  If this fails, then the command is not on the menu bar
+        and no icon adjustment will be necessary.  This is checked by
+        setting the form pointer to NULL.
+    */
+    if (!GRfind_button_on_menu_bar("GREvGnBt", &menu_bar, &button_label))
+    {
+        menu_bar = NULL;
+    }
+
+    /* create the mapping selection form */
+
+    map_form = NULL;
+    sts = FIf_new(MAP_FORM, "GREvntGenPal", ci_notification, &map_form);
+    if ((sts != FI_SUCCESS) || (map_form == NULL))
+    {
+        ex$message(msgnumb = GR_E_FailGREvntGenPal);
+/*        status("Failed to create form GREvntGenPal"); */
+        exit;
+    }
+
+    /* associate the icon with this command object */
+
+    FIf_set_cmd_oid_os(map_form, MY_ID, OM_Gw_current_OS);
+
+    /* display the form */
+
+    FIf_display(map_form);
+
+    /* wait for the user to select the desired button */
+
+    while (1)
+    {
+        ci$getevent(response = &response,
+                    stackable = TRUE,
+                    msgnum = EX_P_SelCmd);
+
+        if ((response == EX_FORM_FINISHED) || (response == EX_RJT_MOVEON))
+        {
+            break;
+        }
+        else
+        {
+            ex$message(msgnumb = GR_I_InpDiscard);
+        }
+    }
+}
+
+form_notification()
+{
+    int mode, symbol_index;
+    char *command_key;
+
+    command_key = NULL;
+
+    switch (form_st.gadget_label)
+    {
+      case TANGENT_TO_BUTTON:
+        symbol_index = TANGENT_TO_SYMBOL;
+        command_key = "GRSlPnTnT";
+        break;
+      case PERP_TO_BUTTON:
+        symbol_index = PERP_TO_SYMBOL;
+        command_key = "GRSlPnPrT";
+        break;
+      case POINT_PARAMETER_BUTTON:
+        symbol_index = POINT_PARAMETER_SYMBOL;
+        command_key = "GRPnPr";
+        break;
+      case AXIS_PARAMETER_BUTTON:
+        symbol_index = AXIS_PARAMETER_SYMBOL;
+        command_key = "GRAxPr";
+        break;
+      case PROJECT_POINT_BUTTON:
+        symbol_index = PROJECT_POINT_SYMBOL;
+        command_key = "GRSlPnPrPn";
+        break;
+      case CENTER_POINT_BUTTON:
+        symbol_index = CENTER_POINT_SYMBOL;
+        command_key = "GRSlPnCn";
+        break;
+      case INTERSECTION_POINT_BUTTON:
+        symbol_index = INTERSECTION_POINT_SYMBOL;
+        command_key = "GRSlPnIn";
+        break;
+      case MID_POINT_BUTTON:
+        symbol_index = MID_POINT_SYMBOL;
+        command_key = "GRSlPnMd";
+        break;
+      case KEY_POINT_BUTTON:
+        symbol_index = KEY_POINT_SYMBOL;
+        command_key = "GRSlPnKyp";
+        break;
+      case END_POINT_BUTTON:
+        symbol_index = END_POINT_SYMBOL;
+        command_key = "GRSlPnEn";
+        break;
+      case SNAP_POINT_BUTTON:
+        symbol_index = SNAP_POINT_SYMBOL;
+        command_key = "GRPnSnPn";
+        break;
+      case TENTATIVE_POINT_BUTTON:
+        symbol_index = TENTATIVE_POINT_SYMBOL;
+        command_key = "GRSlTnPnKy";
+        break;
+      default:
+        ex$message(msgnumb = GR_I_InpDiscard);
+        break;
+    }
+    if (command_key)
+    {
+        /* map the new icon onto the button on the menu bar */
+        if (menu_bar)
+            FIg_set_symbol_index(menu_bar, button_label, symbol_index);
+
+        /* change the mapping for the mouse */
+
+        mode = EX_CMD_KEY;
+        EX_define_input_generator(&mode, command_key);
+
+        /* terminate this command */
+
+        ci$put(response = EX_FORM_FINISHED);
+        FIf_erase(map_form);
+
+        /* put the requested command on the queue */
+
+        ci$put(cmd_key = command_key);
+    }
+}

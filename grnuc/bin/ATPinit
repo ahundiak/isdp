@@ -1,0 +1,186 @@
+# This ATPinit file has been modified so that most users can use it
+# without modifying it. The exceptions are:
+#
+#   o If your RUSER is not the same as your LOGNAME. For example:
+#     you may log on your own system as ige, which is not your definition
+#     of RUSER.
+#
+#   o Your LTEMP directory (local temp) is not /tmp.
+#
+# PRODUCT, WRKTREE, and LTREE take predefined values, if any so that
+# they can be provided in the user's profile before ATPinit is executed.
+#
+# NOTE: LTREE and WRKTREE must reside on the same file system.
+#
+
+OVERRIDE=1
+PRMT_PASS="no"
+desc_file=`dirname \`whence fetchatp\``/ATPdata
+
+while [ $# -gt 0 ]
+do
+case $# in
+0)
+    :;;
+*)
+    case $1 in
+    -s) 
+        PRMT_PASS="yes"
+        shift;;
+    -p)
+        export PRODUCT=$2
+        shift 2;;
+    -n)
+        OVERRIDE=0; shift;;
+    *)
+        if [ "$1" = "-?" ]
+        then
+        echo "\nATPinit                                ATPVersion:  01.00.00
+   
+    This command is used to initialize the ATP environment. It must be
+    run in the current shell.
+
+    Options
+        -s              Prompt for RPASSWD
+
+        -p <prodname>   Defines the product for which the environment
+                        is desired. Valid prodnames are:
+
+                            GRNUC, MODEL, EMS, MDS, DRAFT
+
+        -n              Prevents pre-defined values from being
+                        redefined. Does not apply to definitions that
+                        are tied to products.
+
+    Usage: . SCinit [-p <prodname>] [-n]\n"
+    exit
+        else echo SCinit: Invalid Option \( $1 \); fi
+        shift;;
+    esac;;
+esac
+done
+
+#
+# product definition
+#
+if [ "${PRODUCT}" = "" ]
+then
+    echo SCinit: "Product not defined. Use -p <prodname> or define PRODUCT."
+fi
+
+product_found=0
+while read line
+do
+    set $line blap
+    if [ $# != 1 ]
+    then
+        if [ "$1" = "$PRODUCT" ]
+        then
+            product_found=1
+            if [ "${REVISION}" = "" -o ${OVERRIDE} = 1 ]
+            then
+                export REVISION=$2
+            fi
+            if [ "${RNODE}" = "" -o ${OVERRIDE} = 1 ]
+            then
+                export RNODE=$3
+            fi
+            if [ "${RCSTREE}" = "" -o ${OVERRIDE} = 1 ]
+            then
+                export RCSTREE=$4
+            fi
+            if [ "${INTEGRATOR}" = "" -o ${OVERRIDE} = 1 ]
+            then
+                export INTEGRATOR=$5
+            fi
+            if [ "${WRKTREE}" = "" -o ${OVERRIDE} = 1 ]
+            then
+                export WRKTREE=$6
+            fi
+        fi
+    fi
+done < $desc_file
+
+#
+# Check error conditions
+#
+if [ $product_found = 1 ]
+then
+  if [ "${WRKTREE}" != "" ]
+  then
+    mkdir ${WRKTREE} > /dev/null 2>&1
+    if [ -d $WRKTREE ]
+    then
+
+#
+#     Local system definitions
+#
+      export LNODE=`uname -n`
+      export LUSER=$LOGNAME
+      export LTEMP=/tmp
+
+      if [ "${LTREE}" = "" -o ${OVERRIDE} = 1 ]
+      then
+        export LTREE=`dirname $WRKTREE`/lia/$PRODUCT
+      fi
+
+      export PWDIR=notset
+
+#
+#     Remote system definitions
+#
+      export RUSER=$LOGNAME
+      export RTREE=./rtree
+      export RTEMP=/tmp
+
+#
+#     Insure existence of LTREE
+#
+      if [ ! -d $LTREE ]
+      then 
+        echo ". . . making " $LTREE
+        mkdir -p $LTREE > /dev/null 2>&1
+      fi
+
+#
+#     Mail information (assumes elm if it is installed on your node)
+#
+    if [ -x /usr/bin/elm ]
+    then
+        MAILER=elm
+    else
+        MAILER=mailx
+    fi
+    export MAILER
+
+if [ $PRMT_PASS = "yes" ]
+ then
+  echo "Enter your password for "$RNODE
+  stty -echo
+  read RPASSWD; : ${RPASSWD:='none'}
+  if [ $RPASSWD = 'none' ]
+   then
+    RPASSWD=""
+  else
+    RPASSWD='.'$RPASSWD
+  fi
+  export RPASSWD
+  stty echo
+  echo
+fi
+
+#
+#     Output for failed error checks
+#
+    else
+      echo "SCinit: WARNING - $WRKTREE does not exist."
+    fi
+
+  else
+    echo "$"$PRODUCT" not defined in .profile"
+    echo "* * * CORRECT immediately!!!"
+  fi
+
+else
+  echo "$PRODUCT not found in description file ($desc_file)"
+fi

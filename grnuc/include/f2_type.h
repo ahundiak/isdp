@@ -1,0 +1,69 @@
+#define LINE_SEGMENT 1
+#define LINESTRING 2
+#define CIRCLE 3
+#define ARC 4
+#define POINT 5
+#define ELLIPSE 6
+#define INFINITE_LINE 7
+#define PLANAR_LINESTRING 8
+#define ORTH_LINESTRING 9
+#define ELLIPTICAL_ARC 10
+#define ORTH_POLYGON 11
+#define POLYGON 12
+#define CIRCULAR_ARC 10
+
+#define TEXT 99
+
+#define CELL 101
+#define GRAPHIC_GROUP 102
+#define SYMBOL 103
+#define CROSSHATCH 104
+#define SOLID_CYLINDER 105
+#define CYLINDER 106
+#define COMPOSITE_CURVE 107
+#define B_SPLINE_CURVE 108
+#define SOLID_COMP_SURFACE 109
+#define COMPOSITE_SURFACE 110
+#define SURFACE_OF_PROJ 111
+#define PLANE 112
+#define SOLID_BLOCK 113
+#define SOLID_SPHERE 114
+#define SPHERE 115
+#define SOLID_CONE 116
+#define CONE 117
+#define SOLID_ELLIPSOID 118
+#define ELLIPSOID 119
+#define SOLID_TORUS 120
+#define TORUS 121
+#define GLOBALLY_MOD_SOLID 122
+#define FENCE 123
+#define PATTERN 124
+
+#define SOLID_RIGHT_ANGLE_WEDGE 130
+#define GENERAL_SURFACE 131
+#define SOLID_POLYHEDRON 132
+#define SOLID_ELLIP_CYLINDER 133
+#define ELLIPTICAL_CYLINDER 134
+#define SOLID_ELLIP_CONE 135
+#define ELLIPTICAL_CONE 136
+#define SOLID_GEN_SURFACE 137
+
+#define SOLID_SURF_OF_REV 138
+#define SURFACE_OF_REVOLUTION 139
+#define LOCALLY_MOD_SOLID 140
+#define SOLID_SURF_OF_PROJ 141
+#define GENERAL_SOLID 142
+/*
+#define 
+#define 
+#define 
+
+#define 
+*/
+/*
+#define 
+#define 
+*/
+
+#define NUMBER_OF_TYPES 200
+

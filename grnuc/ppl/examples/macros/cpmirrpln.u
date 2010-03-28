@@ -1,0 +1,165 @@
+/************************************************************************/
+/*									*/
+/*  Program: cpmirrpln.u	    Macro: ems$place_mirror_copy	*/
+/*									*/
+/*  Defined in: EMSascmacros.h						*/
+/*									*/
+/************************************************************************/
+#include <stdio.h>
+#include "ciminimum.h"
+#include "cimacros.h"
+#include "ci_easy.h"
+#include "go.h"
+#include "grdpbmacros.h"
+#include "dpmacros.h"
+#include "lcdef.h"
+#include "exdef.h"
+
+#include "EMSascmacros.h"
+#include "EMSasnuc.h"
+#include "EMSasopts.h"
+
+#define TRUE  1
+#define FALSE 0
+
+extern GRclassid OPP_EMSsubbs_class_id;
+extern GRclassid OPP_EMSdatpln_class_id;
+extern memcpy();
+
+extern	int	DPmacupdate();
+extern	int	GRdpb_get();
+ 
+main ()
+{
+    /* Declare variables here : */
+    struct GRvg_construct    const_list;
+    struct IGRdisplay        disp_buffer;
+    struct GRlc_info         elem_info[30];
+    struct GRlc_info         ref_pln_info;
+    struct GRlc_info         tmp_obj_info;
+    OM_S_OBJID               res_obj;
+
+    IGRshort                 disp_level;
+    IGRboolean               assoc_placement;
+    IGRushort                options;
+    IGRint                   sts,num_bytes,elem_count,res,i;
+    IGRlong                  msg_loc, nbytes_ret;
+    IGRchar                  prompt_str[50];
+    GRobjid                  objid,tmp_objid;
+    IGRboolean               located_flag;
+
+    OM_S_CLASSLIST           elig_classes;
+    GRclassid                eli_classes[3];
+
+    /* End of variable declarations */
+
+    elig_classes.w_count = 2;
+    eli_classes[1] = OPP_EMSsubbs_class_id;
+    eli_classes[0] = OPP_EMSdatpln_class_id;
+    elig_classes.w_flags = OM_CLST_subclass;
+    elig_classes.p_classes = eli_classes;
+
+    
+    message (" Copy and Mirror about Plane ") ;
+
+    /*Get the object */
+
+    ci$locate ( obj              = &objid,
+                lc_info          = &ref_pln_info,
+                prompt           = "Identify planar face or reference plane",
+                acc_prompt       = "Accept/Reject ",
+                relocate_prompt  = "Element not Found",
+                owner_action     = LC_RIGID_COMP | LC_FLEX_COMP|
+                                   LC_NO_REF_HEADER | LC_REF_OBJECTS |
+                                   LC_HANDLES | LC_LOCALMOD,
+                eligible_classes = &elig_classes
+              );
+    elem_count = 0;
+
+    /* Go into infinite loop to select as many elements required */
+
+    while (TRUE)
+    {
+       located_flag = FALSE;
+       if ( elem_count == 0)
+            strcpy ( prompt_str,"Identify next element/Reject");
+       else
+            strcpy ( prompt_str,"Identify next element/Moveon");
+
+       ci$locate ( obj            = &tmp_objid,
+                   lc_info        = &tmp_obj_info,
+                   prompt         = prompt_str,
+                   acc_prompt     = "Accept/Reject ",
+                   relocate_prompt= "Identify next Element/Reject",
+                   classes        = "GRgraphics",
+                   owner_action   = LC_RIGID_COMP | LC_FLEX_COMP,
+                   response       = &res
+                 );
+       /* Store the locate information for each element,
+	  if same element, do not store it
+       */
+       if( res == EX_DATA) 
+       {
+               for ( i = 0; i < elem_count ; i = i + 1 )
+               {
+                  if (tmp_objid == elem_info[i].located_obj.objid )
+                  {
+                     status ( " This element has been located already ");
+                     located_flag = 1;
+                     break;
+                  }
+                  else
+                     located_flag = 0;
+               }
+               if ( !located_flag )
+               {
+	         memcpy ( &elem_info[elem_count], &tmp_obj_info, sizeof(struct GRlc_info));
+                 elem_count = elem_count + 1;
+               }
+       }
+       else if ( res == EX_RJT_MOVEON )
+           break;
+    }
+
+    /* Prepare the construction list */
+
+    num_bytes = sizeof(struct IGRdisplay);
+    gr$get_active_display ( msg = &msg_loc, sizbuf = &num_bytes,
+			    nret= &nbytes_ret, buffer = &disp_buffer );
+    gr$get_active_level   ( buffer = &disp_level );
+    
+    const_list.msg        = &msg_loc;
+    const_list.env_info   = &elem_info[0].module_info;
+    const_list.display    = &disp_buffer;
+    const_list.properties = GRIS_LOCATABLE | GRIS_DISPLAYABLE;
+    const_list.newflag    = FALSE;
+    const_list.level      = disp_level;
+    const_list.class_attr = NULL;
+    const_list.name       = NULL;
+    const_list.geometry   = NULL;
+
+    gr$get_associative_flag ( buffer = &assoc_placement );
+    
+    if ( ! assoc_placement )
+         options = EMSasconst_notassociative;
+    else
+         options = NULL;
+
+    /* Repetitively call the macro to mirror and copy the elements */
+
+    for ( i = 0; i < elem_count; i = i + 1 )
+    {
+      sts = ems$place_mirror_copy ( msg               = &msg_loc,
+                                    ref_pln_info      = &ref_pln_info,
+                                    elem_info         = &elem_info[i],
+		                    options           = options,
+                                    construction_list = &const_list,
+                                    resultant_obj     = &res_obj);
+     }
+    if (!(sts & msg_loc & 1)) goto wrapup;
+
+    dp$update ( msg   = &msg_loc);
+    exit;
+wrapup:
+    status(" Severe failure ");
+}

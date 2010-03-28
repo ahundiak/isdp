@@ -1,0 +1,83 @@
+/*
+Name
+        exswapmenu
+
+Description
+        This command is an override of the EXNUC Attach Bar Menu and Attach
+        Panel Menu commands.  They are overridden so that the intercept
+        routines necessary for popup menus may be installed.  The code here is
+        patterned after exnuc/exec/execco/EX_swapmenui.I.  This could probably
+        be called a kludge.
+
+History
+        mrm     02/20/92    creation
+*/
+
+#include <MS.h>
+#include "ciminimum.h"
+#include "cimacros.h"
+#include "msdef.h"
+#include "msmacros.h"
+#include "ex.h"
+#include "exmacros.h"
+#include "execmsg.h"
+#include "execcmd.h"
+#include "grmsg.h"
+
+main(argc, argv, info)
+int argc;
+char **argv, **info;
+{
+    int menu_type, sts, c, m;
+    char string[128];
+    struct EX_cmd cmd;
+
+    /* get mytype */
+    sts = ex$get_cmd_info(string = info[1],
+                          mode = EX_CMD_KEY,
+                          cmdstr = &cmd);
+    if (!(sts & 1))
+    {
+        ex$message(msgnumb = GR_E_ErrEnc);
+        exit;
+    }
+
+    /* prompt */
+    switch (cmd.type)
+    {
+      case EX_MENU_PANEL: 
+        c = EXC_M_AtPnMn;
+        m = EX_P_GetPanel;
+        menu_type = PANEL_MENU;
+        break;
+
+      case EX_MENU_BAR: 
+        c = EXC_M_AtBrMn;
+        m = EX_P_GetStrip;
+        menu_type = BAR_MENU;
+        break;
+
+      default:
+        printf("Unknown command type: %d\n", cmd.type);
+        exit;
+    }
+
+    /* get the menu name */
+    ex$message(msgnumb = c);
+    ci$get(msgnum = m, string = string);
+
+    /* load the menu */
+    if (string[0])
+    {
+        ex$message(msgnumb = EX_S_Loading);
+        sts = MS_swap_menu(menu_type, string);
+        if (sts == MS_SUCCESS)
+        {
+            m = EX_S_Clear;
+            GRcustomize_menus();
+        }
+        else
+            m = GR_E_ErrEnc;
+        ex$message(msgnumb = m);
+    }
+}

@@ -1,0 +1,210 @@
+/************************************************************************/
+/*									*/
+/*  Program: impose.u	    	    Macro: ems$impose_boundaries	*/
+/*									*/
+/*  Defined in: EMSascmacros.h						*/
+/*									*/
+/*  Comments  : Impose boundary on single surface only.  Acceptance of  */
+/*		the surface must be done by picking the first boundary  */
+/*		curve.  Later when choosing 'Point-in-area' do so with  */
+/*		respect to this boundary curve.				*/
+/*									*/
+/************************************************************************/
+#include <stdio.h>
+#include "ciminimum.h"
+#include "ci_surface.h"
+#include "go.h"
+#include "grwireframe.h"
+#include "grmacros.h"
+#include "grdpbmacros.h"
+#include "dpmacros.h"
+#include "lcdef.h"
+#include "exdef.h"
+
+#include "EMSascmacros.h"
+#include "EMSasnuc.h"
+#include "EMSasopts.h"
+
+#define FALSE 0
+#define TRUE 1
+
+extern memcpy();
+extern GRproject_point_on_element();
+
+extern	int	DPmacupdate();
+extern	int	GRdpb_get();
+
+main ()
+{
+  /* Declare variables here : */
+     struct GRvg_construct    const_list;
+     struct IGRdisplay        disp_buffer;
+
+     struct GRlc_info         surface;
+     struct GRlc_info         bdrys[30];
+     IGRint                   num_bdrys;
+     IGRdouble                point[3];
+     IGRdouble                cv_point[3];
+     IGRdouble                uv_point[2];
+     IGRboolean               point_in_area;
+     IGRboolean               reverse;
+     IGRdouble                dist_along_vect;
+     IGRlong                  num_out_pts;
+     IGRpoint                 **out_pts;
+     IGRlong                  num_bad_crvs;
+     IGRlong                  *bad_crvs;
+     struct GRid              res_surface;
+     struct GRid              surf_id;
+
+     struct GRlc_info         tmp_curves;
+     struct GRparms           proj_parms;
+
+     GRobjid                  tmp_objid;
+
+     IGRshort                 disp_level;
+     IGRboolean               assoc_placement;
+     IGRushort                options;
+     IGRint                   sts,num_bytes,curve_count,res,i;
+     IGRlong                  msg_loc, nbytes_ret;
+     IGRchar                  prompt_str[50];
+     IGRdouble                proj_pt[3];
+     IGRboolean               located_flag;
+
+  /* End of variable declarations */
+    res_surface.objid = NULL_OBJID;
+    
+    message (" Impose Surface Boundaries ") ;
+
+    /*Get the object */
+
+        ci$locate ( obj            = &surf_id.objid,
+		    osnum          = &surf_id.osnum,
+		    lc_info        = &surface,
+	            prompt         = "Identify surface",
+	            acc_prompt     = "Accept on boundary curve(area vs hole)/Reject",
+	            relocate_prompt= "Surface not Found",
+		    accept_point   = point,
+		    classes        = "EMSsubbs",
+		    owner_action   = LC_RIGID_COMP | LC_FLEX_COMP,
+	          );
+
+        curve_count = 0;
+        while (TRUE)
+        {
+	   located_flag = FALSE;
+           if ( curve_count == 0)
+                strcpy ( prompt_str,"Identify boundary curve 1");
+           else
+                sprintf( prompt_str,"Identify boundary curve %d/Moveon",(curve_count + 1));
+
+           ci$locate ( obj            = &tmp_objid,
+		       lc_info        = &tmp_curves,
+	               prompt         = prompt_str,
+	               acc_prompt     = "Accept/Reject ",
+	               relocate_prompt= prompt_str,
+		       classes        = "GRcurve",
+		       owner_action   = LC_RIGID_COMP | LC_FLEX_COMP,
+                       response       = &res
+	             );
+
+           if( res == EX_DATA) 
+           {
+               for ( i = 0; i < curve_count ; i = i + 1 )
+               {
+                  if ( tmp_objid == bdrys[i].located_obj.objid )
+                  {
+                     status ( " This element has been located already ");
+                     located_flag = TRUE;
+                     break;
+                  }
+                  else
+                     located_flag = FALSE;
+               }
+               if ( !located_flag )
+               {
+	         memcpy( &bdrys[curve_count], &tmp_curves, sizeof(struct GRlc_info));
+                 curve_count = curve_count + 1;
+               }
+           }
+	   else if ( res == EX_RJT_MOVEON )
+		break;
+        }
+	num_bdrys = curve_count;
+
+    gr$project_pnt_on_element( msg = &msg,
+				md_env = &surface.module_info.md_env,
+				object_id = &surface.located_obj,
+				point = point,
+				proj_pt = proj_pt,
+				u_parm = &proj_parms.u,
+				v_parm = &proj_parms.v );
+
+				
+    uv_point[0] = proj_parms.u;
+    uv_point[1] = proj_parms.v;
+
+    ci$get ( value  = point_in_area,
+             prompt = " Point in area? Yes = 1 auto_nest = 0"
+           );
+
+    reverse = FALSE;
+
+    ci$get ( value = reverse,
+             prompt = " Reverse area and hole parts ? Yes = 1 No = 0"
+           );
+
+    if ( ! point_in_area )
+    {
+      uv_point[0] = -1.0;
+      uv_point[1] = -1.0;
+      reverse = FALSE;
+    }
+
+    dist_along_vect = 0.002; /* chtol */
+
+    num_bytes = sizeof(struct IGRdisplay);
+    gr$get_active_display ( msg = &msg_loc, sizbuf = &num_bytes,
+			    nret= &nbytes_ret, buffer = &disp_buffer );
+    gr$get_active_level   ( buffer = &disp_level );
+    
+    const_list.msg        = &msg_loc;
+    const_list.env_info   = &surface.module_info;
+    const_list.display    = &disp_buffer;
+    const_list.properties = GRIS_LOCATABLE | GRIS_DISPLAYABLE;
+    const_list.newflag    = FALSE;
+    const_list.level      = disp_level;
+    const_list.class_attr = NULL;
+    const_list.name       = NULL;
+    const_list.geometry   = NULL;
+
+    gr$get_associative_flag ( buffer = &assoc_placement );
+    
+    if ( ! assoc_placement )
+         options = EMSasconst_notassociative;
+    else
+         options = NULL;
+
+    sts = ems$impose_boundaries(msg               = &msg_loc,
+                                surface           = &surface,
+                                num_bdrys         = num_bdrys,
+                                bdrys             = &bdrys[0],
+                                point             = &uv_point[0],
+                                point_in_area     = point_in_area,
+                                reverse           = reverse,
+                                dist_along_vect   = dist_along_vect,
+                                options           = options,
+                                construction_list = &const_list,
+                                num_out_points    = &num_out_pts,
+                                out_points        = out_pts,
+                                num_bad_crvs      = &num_bad_crvs,
+                                bad_crvs          = bad_crvs,
+                                resultant_surface = &res_surface
+                               );
+
+    if (!(sts & msg_loc & 1)) goto wrapup;
+
+    dp$update ( msg   = &msg_loc );
+    exit;
+wrapup:
+          status (" No loops to impose " );
+}
