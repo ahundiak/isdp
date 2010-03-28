@@ -161,6 +161,7 @@ strip_bin:
 #					strip $$FILE; \
 # To enable strip, insert previous line (without #) AFTER line: Temporarily do NOT strip
 
+# 25 Mar 2010 - ah - Looks like the compiled files are in source control
 config: \
 	MSGSRC \
 	$(TARGET)/config/command.cmp

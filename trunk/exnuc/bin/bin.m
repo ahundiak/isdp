@@ -43,6 +43,8 @@ XLIB    =
 XSTUB   =
 
 UMSLIB   = $(UMS_LIB_PATH)/libUMS.a
+UMSLIB   = -lUMS
+        
 #if defined (XGL)
 XGLLIB = /opt/SUNWits/Graphics-sw/xgl/lib/libxgl.so
 SYSXLIB  = $(FORMS_LIB_PATH)/libforms_s.a $(FONTSERVE_LIB_PATH)/libXFS_s.a -lgpipe_s -ltools_s $(FORMS_LIB_PATH)/libhelp.a
