@@ -3,16 +3,17 @@
 #include <math.h>
 #include <errno.h>
 
-#include "FI.h"
-#include "FEI.h"
+#include "../include/FI.h"
+#include "../include/FEI.h"
 
 #include <X11/Xatom.h>
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
 
-#include "XFIproto_pub.h"
+#include "../include/XFIproto_pub.h"
 
 extern void exit ();
+extern int FSEnter ();
 
 #define USHRT_MAX 65355
 #define SLOTS 32
@@ -175,7 +176,7 @@ int Sync_off (void)
 
 /*=================================== MAIN ===========================*/
 
-main (int  argc,
+int main (int  argc,
       char *argv[])
 {
   char		*display_name = "", *ptr, *search_path = ".";
@@ -183,6 +184,7 @@ main (int  argc,
   XEvent	event;
   double	scale_factor_x = 0.0;
   double	scale_factor_y = 0.0;
+  Display       **displayPtr = &display;
 
    /** Find the display argument after 0th argument **/
 
@@ -204,7 +206,7 @@ main (int  argc,
 	      Syntax ( argv[0], argv[ii] );
 	    }
 
-	  switch ( argv[ii++][1] )
+	  switch ( argv[ii][1] )
 	  {
 	  case 'd':
 		 display_name = argv[ii];
@@ -306,4 +308,5 @@ main (int  argc,
     }
 
   XCloseDisplay (display);
+  return 0;
 }
