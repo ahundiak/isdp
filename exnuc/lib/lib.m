@@ -8,6 +8,7 @@ POST_SPECIAL
 include $(TARGET)/lib/exnucobjects
 
 ARCHIVE=libexnuc.a
+ARCHIVE_SO=`basename $(ARCHIVE) .a`.so
 
 #if defined(CLIX)
 $(TARGET)/$(LIBLOC)/$(ARCHIVE): $(objects)
@@ -35,10 +36,12 @@ $(TARGET)/lib/$(ARCHIVE): $(objects)
 $(TARGET)/lib/$(ARCHIVE): $(objects)
 	$(MAKE) env
 	$(MAKE) applverfile
-	rm -f $(TARGET)/lib/$(ARCHIVE)
+	rm -f $(TARGET)/lib/$(ARCHIVE) $(TARGET)/lib/$(ARCHIVE_SO)
 	xargs ar q $(TARGET)/lib/$(ARCHIVE) < $(TARGET)/lib/objectlist
-	@ls -ls $(TARGET)/lib/$(ARCHIVE)
-	@echo
+	cc -o $(TARGET)/lib/$(ARCHIVE_SO).1 $(objects) EXNUCver.o -g -G -norunpath -h $(ARCHIVE_SO).1
+	ln -s $(TARGET)/lib/$(ARCHIVE_SO).1 $(TARGET)/lib/$(ARCHIVE_SO)
+	@ls -ls $(TARGET)/lib/$(ARCHIVE) $(TARGET)/lib/$(ARCHIVE_SO)*
+	@echo "Created "$(TARGET)/lib/$(ARCHIVE)" and "$(TARGET)/lib/$(ARCHIVE_SO)
 #endif
 
 env:
