@@ -8,19 +8,9 @@
 #ifndef _BLKINFO_H
 #define	_BLKINFO_H
 
-#ifdef	__cplusplus
-extern "C" {
-#endif
+#include "block.h"
 
-#ifdef __STDC__
 extern int blkinfo(BLOCK *);
-#else
-extern int blkinfo();
-#endif
-
-#ifdef	__cplusplus
-}
-#endif
 
 #endif	/* _BLKINFO_H */
 

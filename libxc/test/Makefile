@@ -1,62 +1,98 @@
-#
-# 24 Mar 2010 - New make for Solaris 10
-#
-.SUFFIXES: .c .o .so
+## -*- Makefile -*-
+##
+## User: impd
+## Time: Mar 25, 2010 9:27:43 AM
+## Makefile created by Sun Studio.
+##
+## This file is generated automatically.
+##
+## And was then massaged by hand for the impd set of projects.
 
-INC_PVT	= ../inc.pvt
-INC_PUB = ../include
+#### Makefile for objtester in the libxc project in libxc/test directory.
 
-XCLIBS	= -lxc -lxcmalloc
-DOPT=-DRUN_X=1 -DX11=1 -DLITTLE_ENDIAN=1 -DSYSV=1 -DSYS5=1 -DSVR4=1 -DSUNOS=1 -DSUNOS5=1 -DSUNOS58=1 -Di386=1 -D__i386=1 -DINTEL=1 -DUNIX=1 -DSunOS_5x=1 -D__i386__=1 -DSunOS=1
-COPT	= -g -Xa -xCC -m32 -Kpic -c -I$(INC_PVT) -I$(INC_PUB) $(DOPT)
 
-ISDP_TARGETDIR= $(HOME)/target
-TARGETDIR     = $(ISDP_TARGETDIR)/libxc
-TARGETDIR_OBJ = $(TARGETDIR)/obj
+#### Compiler and tool definitions shared by all build targets #####
+# CC = cc
+# BASICOPTS = -g
+# CFLAGS = $(BASICOPTS) -xCC -Xa
+ISDP_C_CC      = cc
+ISDP_C_FLAGS   = -xCC -Xa -g -Kpic
+ISDP_C_DEFINES = -DRUN_X -DX11 -DLITTLE_ENDIAN -DSYSV -DSYS5 -DSVR4 -DSUNOS -DSUNOS5 -DSUNOS58 -Di386 -D__i386 -D__i386__ -DINTEL -DUNIX -D__BUILTIN_VA_ARG_INCR
+CC = $(ISDP_C_CC)
+CPPFLAGS	= -I../inc.pvt -I ../include
+CFLAGS = $(ISDP_C_FLAGS) $(ISDP_C_DEFINES)
+
+# Define the target directories.
+ISDP_TARGET   = $(HOME)/target
+TARGETDIR     = $(ISDP_TARGET)/libxc
+TARGETDIR_OBJ = $(TARGETDIR)/test/obj
 TARGETDIR_LIB = $(TARGETDIR)/lib
-TARGETDIR_BIN = $(TARGETDIR)/bin
+TARGETDIR_BIN = $(TARGETDIR)/test/bin
 
-# Main target
+ISDP_INSTALL   = $(HOME)/install
+INSTALLDIR_LIB = $(ISDP_INSTALL)/lib
+INSTALLDIR_BIN = $(ISDP_INSTALL)/bin
 
-TARGET: objtester testdrive DLtest_1.so DLtest_2.so DLtest_2A.so DLtest_2B.so DLtest_3.so DLtest_4.so DLtest_4A.so DLtest_4B.so DLtest_5.so DLtest_5A.so DLtest_5B.so DLtest_6.so
+## Target: objtester
+OBJS_objtester =  \
+	objtester.o
+USERLIBS_objtester = $(SYSLIBS_objtester)
+DEPLIBS_objtester =
+LDLIBS_objtester = $(USERLIBS_objtester)
+TARGET		= objtester
 
-objtester: objtester.o
-	$(CC) -g -o objtester objtester.o -L $(TARGETDIR_LIB) $(XCLIBS)
+ISDP_libXFS_DIR		= $(ISDP_TARGET)/fontserver/src/lib
+ISDP_libXFS		= -L $(ISDP_libXFS_DIR) -lXFS
+ISDP_libXFI_DIR		= $(ISDP_TARGET)/xforms/xfi/lib
+ISDP_libXFI		= -L $(ISDP_libXFI_DIR) -lXFI
+ISDP_libxc_DIR		= $(ISDP_TARGET)/libxc/lib
+ISDP_libxc		= -L $(ISDP_libxc_DIR)/ -lxc
+ISDP_libxcmalloc	= -L $(ISDP_libxc_DIR) -lxcmalloc
+ISDP_libxcmalloc_debug	= -L $(ISDP_libxc_DIR) -lxcmalloc_debug
 
-testdrive: testdrive.o
-	$(CC) -g -o testdrive testdrive.o -L $(TARGETDIR_LIB) $(XCLIBS)
+all: $(TARGETDIR_OBJ) $(TARGETDIR_BIN) $(TARGETDIR_BIN)/$(TARGET)
 
-# Dependencies
 
-objtester.o: \
-	objtester.c
+# Link or archive
+$(TARGETDIR_BIN)/$(TARGET): Makefile $(OBJS_tester) $(DEPLIBS_objtester)
+	$(CC) -o $@ $(OBJS_objtester) $(LDLIBS_objtester) \
+	$(ISDP_libxc) \
+	$(ISDP_libxcmalloc) 
+	
+# Compile source files into .o files
+.c.o: Makefile
+	$(COMPILE.c) $< -o $@
 
-testdrive.o: \
-	testdrive.c
-
-# Rules
-
-.c.o:
-	$(CC) $(COPT) -c $*.c
-
-.o.so:	DLtest_1.o DLtest_2.o DLtest_2A.o DLtest_2B.o DLtest_3.o DLtest_4.o DLtest_4A.o DLtest_4B.o DLtest_5.o DLtest_5A.o DLtest_5B.o DLtest_6.o
-	$(LD) -G $< -o $@
-
-# Clean up
+#### Clean target deletes all generated files ####
 clean:
-#	rm -f \
-#		 $(TARGETDIR_LIB)/libxc.so \
-#		 $(TARGETDIR_LIB)/libxcmalloc.so \
-#		 $(TARGETDIR_LIB)/libxcmalloc_debug.so
-#	rm -f -r $(TARGETDIR_OBJ)
-	rm -f *.o *.so testdrive objtester core
-
+	rm -f $(TARGETDIR_BIN)/$(TARGET)
+	rm -f -r $(TARGETDIR_OBJ)
 
 # Create the target directory (if needed)
-$(TARGETDIR_OBJ):
+$(TARGETDIR_OBJ):  $(TARGETDIR)
 	mkdir -p $(TARGETDIR_OBJ)
 
-$(TARGETDIR_LIB):
+$(TARGETDIR_BIN):  $(TARGETDIR)
 	mkdir -p $(TARGETDIR_BIN)
 
-# Need the newline
+$(TARGETDIR): $(ISDP_TARGET)
+	mkdir -p $(TARGETDIR)
+
+$(INSTALLDIR_BIN):  $(INSTALL_DIR)
+	mkdir -p $(INSTALLDIR_BIN)
+
+$(INSTALLDIR):
+	mkdir -p $(INSTALLDIR)
+
+# Install it
+install: \
+	all \
+	$(INSTALLDIR_BIN) \
+	$(INSTALLDIR_BIN)/$(TARGET)
+
+$(INSTALLDIR_BIN)/$(TARGET):
+	cp $(TARGETDIR_BIN)/$(TARGET) $(INSTALLDIR_BIN)/$(TARGET)
+
+# Enable dependency checking
+.KEEP_STATE:
+.KEEP_STATE_FILE:.make.state.Sun-x86-Solaris
