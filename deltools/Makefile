@@ -3,4 +3,4 @@ all:
 
 
 install:
-	cd src/dates; make -e; cd
+	cd src/dates; make -e install
