@@ -162,10 +162,8 @@ BLOCK *blk;
                                hinfo[index].spacebusy;
   }
 }
-
-void get_page_info (blk)
 
-BLOCK *blk;
+void get_page_info (BLOCK *blk)
 {
   PAGE *page;
   int   index;
@@ -180,10 +178,8 @@ BLOCK *blk;
     pinfo[index].spacetotal = page->capacity * sizeof (FCD);
   }
 }
-
-int blkinfo (blk)
 
-BLOCK *blk;
+int blkinfo (BLOCK *blk)
 {
   int totals[7];
   int index;
