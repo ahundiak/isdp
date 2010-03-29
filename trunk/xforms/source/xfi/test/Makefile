@@ -1,41 +1,41 @@
 ## -*- Makefile -*-
 ##
 ## User: impd
-## Time: Mar 23, 2010 10:07:11 AM
+## Time: Mar 25, 2010 9:27:43 AM
 ## Makefile created by Sun Studio.
 ##
 ## This file is generated automatically.
 ##
 ## And was then massaged by hand for the impd set of projects.
 
-#### Makefile for the xforms project in source/xfi/test directory.
+#### Makefile for Xmain in the xforms project in source/xfi/test directory.
 
 
 #### Compiler and tool definitions shared by all build targets #####
-CC = cc
-AS = as
-BASICOPTS = -g
-# NOTE: Sun cc will auto-define macros 'sun' & 'sparc' (SPARC only) and 'i386'
-CFLAGS_libXFI_test =
-CPPFLAGS_libXFI_test = \
-	-I../include \
-	-I../fs_include
-CFLAGS = $(BASICOPTS) $(CFLAGS_libXFI_test) $(CPPFLAGS_libXFI_test) -xCC -Xa -DSYSV
-SHAREDLIB_FLAGS_libXFI_test = -norunpath
-
+# CC = cc
+# BASICOPTS = -g
+# CFLAGS = $(BASICOPTS) -xCC -Xa
+ISDP_C_CC      = cc
+ISDP_C_FLAGS   = -xCC -Xa -g -Kpic
+ISDP_C_DEFINES = -DSYSV
+CC = $(ISDP_C_CC)
+CPPFLAGS	= -I../inc.pvt -I ../include
+CFLAGS = $(ISDP_C_FLAGS) $(ISDP_C_DEFINES)
 
 # Define the target directories.
-ISDP_TARGET = $(HOME)/target
-TARGETDIR_XFORMS_libXFI		= $(ISDP_TARGET)/xforms/xfi
-TARGETDIR_XFORMS_libXFI_LIB	= $(TARGETDIR_XFORMS_libXFI)/lib
-TARGETDIR_XFORMS_libXFS_LIB	= $(ISDP_TARGET)/fontserver/src/lib
-TARGETDIR_XFORMS_libXFI_test    = $(TARGETDIR_XFORMS_libXFI)/test
-TARGETDIR_XFORMS_libXFI_test_OBJ= $(TARGETDIR_XFORMS_libXFI_test)/obj
-TARGETDIR_XFORMS_libXFI_test_BIN= $(TARGETDIR_XFORMS_libXFI)/bin
+ISDP_TARGET		= $(HOME)/target
+TARGETDIR		= $(ISDP_TARGET)/xforms/xfi
+TARGETDIR_OBJ		= $(TARGETDIR)/test/obj
+TARGETDIR_LIB		= $(TARGETDIR)/lib
+TARGETDIR_BIN		= $(TARGETDIR)/test/bin
+TARGETDIR_XFS_LIB	= $(ISDP_TARGET)/fontserver/src/lib
 
-## Target: XFS
+ISDP_INSTALL   = $(HOME)/install
+INSTALLDIR_LIB = $(ISDP_INSTALL)/lib
+INSTALLDIR_BIN = $(ISDP_INSTALL)/bin
 
-OBJS_TEST =  \
+## Target: objtester
+OBJS_Xmain =  \
 	Xmain.o
 
 Xmain_FILES = \
@@ -45,38 +45,66 @@ Xmain_FILES = \
 	X_form		\
 	X_formSR
 
-all: $(TARGETDIR_XFORMS_libXFI_test_OBJ) $(TARGETDIR_XFORMS_libXFI_test_BIN) Xmain
+USERLIBS_Xmain = $(SYSLIBS_Xmain)
+DEPLIBS_Xmain =
+LDLIBS_Xmain = $(USERLIBS_Xmain)
+TARGET		= Xmain
 
+ISDP_libXFS_DIR		= -$(ISDP_TARGET)/fontserver/src/lib
+ISDP_libXFS		= -L $(ISDP_libXFS_DIR) -lXFS
+ISDP_libXFI_DIR		= $(ISDP_TARGET)/xforms/xfi/lib
+ISDP_libXFI		= -L $(ISDP_libXFI_DIR) -lXFI
+ISDP_libxc_DIR		= $(ISDP_TARGET)/libxc/lib
+ISDP_libxc		= -L $(ISDP_libxc_DIR) -lxc
+ISDP_libxcmalloc	= -L $(ISDP_libxc_DIR) -lxcmalloc
+ISDP_libxcmalloc_debug	= -L $(ISDP_libxc_DIR) -lxcmalloc_debug
+
+all: $(TARGETDIR_OBJ) $(TARGETDIR_BIN) $(TARGETDIR_BIN)/$(TARGET)
 
 # Link or archive
-Xmain: Makefile $(OBJS_TEST)
-	$(CC) -g -o $@ $(OBJS_TEST) $(CFLAGS_libXFI_test) $(SHAREDLIB_FLAGS_libXFI_test) $(LDLIBS_libXFS) \
-		-L $(TARGETDIR_XFORMS_libXFI_LIB) -L $(TARGETDIR_XFORMS_libXFS_LIB) \
-		-R ../lib:/opt/ingr/lib -lXFI -lXFS -lX11 -lm $(SYSLIBS_xfi_test_link)
-	mv $(OBJS_TEST) $(TARGETDIR_XFORMS_libXFI_test_OBJ)
-	mv $@ $(TARGETDIR_XFORMS_libXFI_test_BIN)
-	cp $(Xmain_FILES) $(TARGETDIR_XFORMS_libXFI_test_BIN)
+$(TARGETDIR_BIN)/$(TARGET): Makefile $(OBJS_Xmain) $(DEPLIBS_Xmain)
+	$(CC) -o $@ $(OBJS_Xmain) $(LDLIBS_Xmain) \
+		$(ISDP_C_FLAGS)
+		-R $(ISDP_libXFI_DIR):$(INSTALLDIR_LIB) \
+		$(ISDP_libXFI) \
+		$(ISDP_libXFS) \
+		-lX11 -lm
+	mv $(OBJS_Xmain) $(TARGETDIR_OBJ)
+	cp $(Xmain_FILES) $(TARGETDIR_BIN)
 
 # Compile source files into .o files
-Xmain.o: Makefile Xmain.c
+.c.o: Makefile
 	$(COMPILE.c) $< -o $@
-
 
 #### Clean target deletes all generated files ####
 clean:
-	rm -f	$(TARGETDIR_XFORMS_libXFI_test_BIN)/Xmain
-
+	rm -f $(TARGETDIR_BIN)/$(TARGET)
+	rm -f -r $(TARGETDIR_OBJ)
 
 # Create the target directory (if needed)
-$(TARGETDIR_XFORMS_libXFI_test):
-	mkdir -p $(TARGETDIR_XFORMS_libXFI_test)
+$(TARGETDIR_OBJ):  $(TARGETDIR)
+	mkdir -p $(TARGETDIR_OBJ)
 
-$(TARGETDIR_XFORMS_libXFI_test_OBJ):
-	mkdir -p $(TARGETDIR_XFORMS_libXFI_test_OBJ)
+$(TARGETDIR_BIN):  $(TARGETDIR)
+	mkdir -p $(TARGETDIR_BIN)
 
-$(TARGETDIR_XFORMS_libXFI_test_BIN):
-	mkdir -p $(TARGETDIR_XFORMS_libXFI_test_BIN)/Xmain
+$(TARGETDIR): $(ISDP_TARGET)
+	mkdir -p $(TARGETDIR)
 
+$(INSTALLDIR_BIN):  $(INSTALL_DIR)
+	mkdir -p $(INSTALLDIR_BIN)
+
+$(INSTALLDIR):
+	mkdir -p $(INSTALLDIR)
+
+# Install it
+install: \
+	all \
+	$(INSTALLDIR_BIN)/$(TARGET)
+
+$(INSTALLDIR_BIN)/$(TARGET): $(INSTALLDIR_BIN)
+	cp $(TARGETDIR_BIN)/$(TARGET) $(INSTALLDIR_BIN)/$(TARGET)
+	cp $(Xmain_FILES) $(INSTALLDIR_BIN)
 
 # Enable dependency checking
 .KEEP_STATE:

@@ -8,65 +8,92 @@
 ##
 ## And was then massaged by hand for the impd set of projects.
 
-#### Makefile for the xforms project in source/xfi/test_lnk directory.
+#### Makefile for xfi_test_link in the xforms project in source/xfi/testlnk directory.
 
 #### Compiler and tool definitions shared by all build targets #####
-CC = cc
-BASICOPTS = -g
-CFLAGS = $(BASICOPTS) -xCC
+ISDP_C_CC	= cc
+ISDP_C_FLAGS	= -xCC -Xa -g -Kpic
+ISDP_C_DEFINES	= -DSYSV
+CC		= $(ISDP_C_CC)
+CPPFLAGS	= -I../include
+CFLAGS		= $(ISDP_C_FLAGS) $(ISDP_C_DEFINES)
 
 
 # Define the target directories.
-ISDP_TARGET = $(HOME)/target
-TARGETDIR_XFORMS_XFI		= $(ISDP_TARGET)/xforms/xfi
-TARGETDIR_XFORMS_XFI_SRC	= $(TARGETDIR_XFORMS_XFI)/test_link
-TARGETDIR_XFORMS_XFI_LIB	= $(TARGETDIR_XFORMS_XFI)/lib
-TARGETDIR_XFORMS_XFI_BIN	= $(TARGETDIR_XFORMS_XFI)/bin
-TARGETDIR_FONTSERVER_SRC	= $(ISDP_TARGET)/fontserver/src
-TARGETDIR_FONTSERVER_SRC_LIB	= $(TARGETDIR_FONTSERVER_SRC)/lib
+ISDP_TARGET	= $(HOME)/target
+TARGETDIR	= $(ISDP_TARGET)/xforms/xfi/test_link
+TARGETDIR_OBJ	= $(TARGETDIR)/obj
+TARGETDIR_BIN	= $(TARGETDIR)/bin
+
+ISDP_INSTALL   = $(HOME)/install
+INSTALLDIR_LIB = $(ISDP_INSTALL)/lib
+INSTALLDIR_BIN = $(ISDP_INSTALL)/bin
+
+ISDP_libXFS_DIR		= $(ISDP_TARGET)/fontserver/src/lib
+ISDP_libXFS		= -L $(ISDP_libXFS_DIR) -lXFS
+ISDP_libXFI_DIR		= $(ISDP_TARGET)/xforms/xfi/lib
+ISDP_libXFI		= -L $(ISDP_libXFI_DIR) -lXFI
+ISDP_libxc_DIR		= $(ISDP_TARGET)/libxc/lib
+ISDP_libxc		= -L $(ISDP_libxc_DIR)/ -lxc
+ISDP_libxcmalloc	= -L $(ISDP_libxc_DIR) -lxcmalloc
+ISDP_libxcmalloc_debug	= -L $(ISDP_libxc_DIR) -lxcmalloc_debug
 
 
 ## Target: xfi_test_link
-CPPFLAGS_xfi_test_link = \
-	-I../include
 OBJS_xfi_test_link =  \
-	main.o
-SYSLIBS_xfi_test_link = -lm -lX11
-USERLIBS_xfi_test_link = -L $(TARGETDIR_XFORMS_XFI_LIB) -L $(TARGETDIR_FONTSERVER_SRC_LIB) -R ../lib:/opt/ingr/lib -lXFI -lXFS $(SYSLIBS_xfi_test_link)
-DEPLIBS_xfi_test_link =   
-LDLIBS_xfi_test_link = $(USERLIBS_xfi_test_link)
+	$(TARGETDIR_OBJ)/main.o
+USERLIBS_xfi_test_link	= $(SYSLIBS_Xmain)
+DEPLIBS_xfi_test_link	=
+LDLIBS_xfi_test_link	= $(USERLIBS_Xmain)
+TARGET			= xfi_test_link
 
 
-all: $(TARGETDIR_XFORMS_XFI_SRC) $(TARGETDIR_XFORMS_XFI_BIN) xfi_test_link
+all: $(TARGETDIR_OBJ) $(TARGETDIR_BIN) $(TARGETDIR_BIN)/$(TARGET)
 
 
 # Link or archive
-xfi_test_link: $(OBJS_xfi_test_link) $(DEPLIBS_xfi_test_link)
-	$(LINK.c) $(CFLAGS_xfi_test_link) \
-		$(CPPFLAGS_xfi_test_link) -o $@ \
-		$(OBJS_xfi_test_link) \
-		$(LDLIBS_xfi_test_link)
-	mv main.o $(TARGETDIR_XFORMS_XFI_SRC)
-	mv xfi_test_link $(TARGETDIR_XFORMS_XFI_BIN)
+$(TARGETDIR_BIN)/$(TARGET): Makefile $(OBJS_xfi_test_link) $(DEPLIBS_xfi_test_link)
+	$(CC) -o $@ $(OBJS_xfi_test_link) $(LDLIBS_xfi_test_link) \
+		-R $(ISDP_libXFI_DIR):$(INSTALLDIR_LIB) \
+		$(ISDP_libXFI) \
+		$(ISDP_libXFS) \
+		-lX11 -lm
 
 
 # Compile source files into .o files
-main.o: main.c
-	$(COMPILE.c) $(CFLAGS_xfi_test_link) $(CPPFLAGS_xfi_test_link) -o $@ main.c
+$(TARGETDIR_OBJ)/main.o: main.c
+	$(COMPILE.c) main.c -o $@
 
 
 #### Clean target deletes all generated files ####
 clean:
-	rm -f $(TARGETDIR_XFORMS_XFI_BIN)/xfi_test_link
-	rm -f -r $(TARGETDIR_XFORMS_XFI_SRC)
+	rm -f $(TARGETDIR_BIN)/$(TARGET)
+	rm -f -r $(TARGETDIR_OBJ)
 
 
 # Create the target directory (if needed)
-$(TARGETDIR_XFORMS_XFI_SRC):
-	mkdir -p $(TARGETDIR_XFORMS_XFI_SRC)
+$(TARGETDIR_OBJ):  $(TARGETDIR)
+	mkdir -p $(TARGETDIR_OBJ)
 
-$(TARGETDIR_XFORMS_XFI_BIN):
-	mkdir -p $(TARGETDIR_XFORMS_XFI_BIN)
+$(TARGETDIR_BIN):  $(TARGETDIR)
+	mkdir -p $(TARGETDIR_BIN)
+
+$(TARGETDIR): $(ISDP_TARGET)
+	mkdir -p $(TARGETDIR)
+
+$(INSTALLDIR_BIN):  $(INSTALL_DIR)
+	mkdir -p $(INSTALLDIR_BIN)
+
+$(INSTALLDIR):
+	mkdir -p $(INSTALLDIR)
+
+# Install it
+install: \
+	all \
+	$(INSTALLDIR_BIN)/$(TARGET)
+
+$(INSTALLDIR_BIN)/$(TARGET): $(INSTALLDIR_BIN)
+	cp $(TARGETDIR_BIN)/$(TARGET) $(INSTALLDIR_BIN)
 
 # Enable dependency checking
 .KEEP_STATE:
