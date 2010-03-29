@@ -36,6 +36,7 @@ INSTALLDIR_BIN = $(ISDP_INSTALL)/bin
 TARGET		= dates
 OBJS_dates =  \
 	$(TARGETDIR_OBJ)/dates.o
+OBJS_dates =  dates.o
 USERLIBS_dates = $(SYSLIBS_dates) 
 DEPLIBS_dates =  
 LDLIBS_dates = $(USERLIBS_dates)
@@ -65,6 +66,9 @@ clean:
 	rm -f -r $(TARGETDIR_OBJ)
 
 # Create the target directory (if needed)
+$(ISDP_TARGET):
+	mkdir -p $(ISDP_TARGET)
+
 $(TARGETDIR_OBJ):  $(TARGETDIR)
 	mkdir -p $(TARGETDIR_OBJ)
 
