@@ -6,12 +6,18 @@
 ##
 ## This file is generated automatically.
 ##
+## And was then massaged by hand for the impd set of projects.
+
+#### Makefile for the ums project in src/cfiles directory to create libUMS.so
 
 
 #### Compiler and tool definitions shared by all build targets #####
-CC = cc
-BASICOPTS = -g
-CFLAGS = $(BASICOPTS) -xCC
+ISDP_C_CC	= cc
+ISDP_C_DEFINES	= -Di86pc
+ISDP_C_FLAGS	= -g -xCC -Xa -Kpic -m32
+CC		= $(ISDP_C_CC)
+CPPFLAGS	= -I../include
+CFLAGS		= $(CPPFLAGS) $(ISDP_C_FLAGS) $(ISDP_C_DEFINES)
 
 
 # Define the target directories.
@@ -20,87 +26,42 @@ TARGETDIR     = $(ISDP_TARGET)/ums
 TARGETDIR_OBJ = $(TARGETDIR)/obj
 TARGETDIR_LIB = $(TARGETDIR)/lib
 
-ISDP_INSTALL   = $(HOME)/ingr
+ISDP_INSTALL   = $(HOME)/install
 INSTALLDIR_LIB = $(ISDP_INSTALL)/lib
 
 SHAREDLIB_NAME      = libUMS.so
 SHAREDLIB_NAME_VER  = libUMS.so.1
-SHAREDLIB_FLAGS     = -G -norunpath -h $(SHAREDLIB_NAME_VER)
+ISDP_SHAREDLIB_FLAGS= -g -G -norunpath
+SHAREDLIB_FLAGS     = $(ISDP_SHAREDLIB_FLAGS) -h $(SHAREDLIB_NAME_VER)
+
+## Target: UMS
+OBJS_UMS =  \
+	COMPcall.o \
+	COMPmsg.o \
+	COMPread.o \
+	COMPwrit.o \
+	UMSfile.o \
+	UMSgbkey.o \
+	UMSgbnum.o \
+	UMSinitm.o \
+	UMSkeyby.o \
+	UMSmsgco.o \
+	UMSmsgfm.o \
+	UMSnumby.o \
+	UMSrbkey.o \
+	UMSrbnum.o \
+	getopt.o
 
 all: $(TARGETDIR_LIB) $(TARGETDIR_OBJ) $(TARGETDIR_LIB)/$(SHAREDLIB_NAME_VER)
 
-## Target: UMS
-CFLAGS_UMS = -Kpic 
-OBJS_UMS =  \
-	$(TARGETDIR_OBJ)/COMPcall.o \
-	$(TARGETDIR_OBJ)/COMPmsg.o \
-	$(TARGETDIR_OBJ)/COMPread.o \
-	$(TARGETDIR_OBJ)/COMPwrit.o \
-	$(TARGETDIR_OBJ)/UMSfile.o \
-	$(TARGETDIR_OBJ)/UMSgbkey.o \
-	$(TARGETDIR_OBJ)/UMSgbnum.o \
-	$(TARGETDIR_OBJ)/UMSinitm.o \
-	$(TARGETDIR_OBJ)/UMSkeyby.o \
-	$(TARGETDIR_OBJ)/UMSmsgco.o \
-	$(TARGETDIR_OBJ)/UMSmsgfm.o \
-	$(TARGETDIR_OBJ)/UMSnumby.o \
-	$(TARGETDIR_OBJ)/UMSrbkey.o \
-	$(TARGETDIR_OBJ)/UMSrbnum.o \
-	$(TARGETDIR_OBJ)/getopt.o
-
-CPPFLAGS_UMS = -I../include
-
 # Link or archive
-$(TARGETDIR_LIB)/$(SHAREDLIB_NAME_VER): $(OBJS_UMS) $(DEPLIBS_UMS)
-	$(LINK.c) $(CFLAGS_UMS) $(CPPFLAGS_UMS) -o $@ $(OBJS_UMS) $(SHAREDLIB_FLAGS) $(LDLIBS_UMS)
+$(TARGETDIR_LIB)/$(SHAREDLIB_NAME_VER): \
+		Makefile \
+		$(OBJS_UMS)
+	$(CC) -o $@ $(OBJS_UMS) $(SHAREDLIB_FLAGS)
+	mv $(OBJS_UMS) $(TARGETDIR_OBJ)
 	rm -f $(TARGETDIR_LIB)/$(SHAREDLIB_NAME)
 	ln -s $(TARGETDIR_LIB)/$(SHAREDLIB_NAME_VER) $(TARGETDIR_LIB)/$(SHAREDLIB_NAME)
-
-# Compile source files into .o files
-$(TARGETDIR_OBJ)/COMPcall.o: COMPcall.c
-	$(COMPILE.c) $(CFLAGS_UMS) $(CPPFLAGS_UMS) -o $@ COMPcall.c
-
-$(TARGETDIR_OBJ)/COMPmsg.o:  COMPmsg.c
-	$(COMPILE.c) $(CFLAGS_UMS) $(CPPFLAGS_UMS) -o $@ COMPmsg.c
-
-$(TARGETDIR_OBJ)/COMPread.o: COMPread.c
-	$(COMPILE.c) $(CFLAGS_UMS) $(CPPFLAGS_UMS) -o $@ COMPread.c
-
-$(TARGETDIR_OBJ)/COMPwrit.o: COMPwrit.c
-	$(COMPILE.c) $(CFLAGS_UMS) $(CPPFLAGS_UMS) -o $@ COMPwrit.c
-
-$(TARGETDIR_OBJ)/UMSfile.o: UMSfile.c
-	$(COMPILE.c) $(CFLAGS_UMS) $(CPPFLAGS_UMS) -o $@ UMSfile.c
-
-$(TARGETDIR_OBJ)/UMSgbkey.o: UMSgbkey.c
-	$(COMPILE.c) $(CFLAGS_UMS) $(CPPFLAGS_UMS) -o $@ UMSgbkey.c
-
-$(TARGETDIR_OBJ)/UMSgbnum.o: UMSgbnum.c
-	$(COMPILE.c) $(CFLAGS_UMS) $(CPPFLAGS_UMS) -o $@ UMSgbnum.c
-
-$(TARGETDIR_OBJ)/UMSinitm.o: UMSinitm.c
-	$(COMPILE.c) $(CFLAGS_UMS) $(CPPFLAGS_UMS) -o $@ UMSinitm.c
-
-$(TARGETDIR_OBJ)/UMSkeyby.o: UMSkeyby.c
-	$(COMPILE.c) $(CFLAGS_UMS) $(CPPFLAGS_UMS) -o $@ UMSkeyby.c
-
-$(TARGETDIR_OBJ)/UMSmsgco.o: UMSmsgco.c
-	$(COMPILE.c) $(CFLAGS_UMS) $(CPPFLAGS_UMS) -o $@ UMSmsgco.c
-
-$(TARGETDIR_OBJ)/UMSmsgfm.o: UMSmsgfm.c
-	$(COMPILE.c) $(CFLAGS_UMS) $(CPPFLAGS_UMS) -o $@ UMSmsgfm.c
-
-$(TARGETDIR_OBJ)/UMSnumby.o: UMSnumby.c
-	$(COMPILE.c) $(CFLAGS_UMS) $(CPPFLAGS_UMS) -o $@ UMSnumby.c
-
-$(TARGETDIR_OBJ)/UMSrbkey.o: UMSrbkey.c
-	$(COMPILE.c) $(CFLAGS_UMS) $(CPPFLAGS_UMS) -o $@ UMSrbkey.c
-
-$(TARGETDIR_OBJ)/UMSrbnum.o: UMSrbnum.c
-	$(COMPILE.c) $(CFLAGS_UMS) $(CPPFLAGS_UMS) -o $@ UMSrbnum.c
-
-$(TARGETDIR_OBJ)/getopt.o: getopt.c
-	$(COMPILE.c) $(CFLAGS_UMS) $(CPPFLAGS_UMS) -o $@ getopt.c
 
 # Install
 install: \
@@ -108,31 +69,41 @@ install: \
 	$(INSTALLDIR_LIB) \
 	$(INSTALLDIR_LIB)/$(SHAREDLIB_NAME_VER)
 
-$(INSTALLDIR_LIB)/$(SHAREDLIB_NAME_VER) : $(TARGETDIR_LIB)/$(SHAREDLIB_NAME_VER)
-	cp -p $(TARGETDIR_LIB)/$(SHAREDLIB_NAME_VER)  $(INSTALLDIR_LIB)
+$(INSTALLDIR_LIB)/$(SHAREDLIB_NAME_VER) : $(TARGETDIR_LIB)/$(SHAREDLIB_NAME_VER) $(INSTALLDIR_LIB)
+	cp $(TARGETDIR_LIB)/$(SHAREDLIB_NAME_VER)  $(INSTALLDIR_LIB)
 	rm -f $(INSTALLDIR_LIB)/$(SHAREDLIB_NAME)
 	ln -s $(INSTALLDIR_LIB)/$(SHAREDLIB_NAME_VER) $(INSTALLDIR_LIB)/$(SHAREDLIB_NAME)
 
 
 # Clean up
 clean:
-	rm -f \
-		 $(TARGETDIR_LIB)/$(SHAREDLIB_NAME_UMS)* \
-		 $(TARGETDIR_OBJ)/*.o
+	rm -f $(TARGETDIR_LIB)/$(SHAREDLIB_NAME)*
 	rm -f -r $(TARGETDIR_OBJ)
 
 
 # Create the target directory (if needed)
-$(TARGETDIR_OBJ):
+$(TARGETDIR_OBJ): $(TARGETDIR)
 	mkdir -p $(TARGETDIR_OBJ)
 
-$(TARGETDIR_LIB):
+$(TARGETDIR_LIB): $(TARGETDIR)
 	mkdir -p $(TARGETDIR_LIB)
 
-$(INSTALLDIR_LIB):
+$(TARGETDIR): $(ISDP_TARGET)
+	@mkdir -p $(TARGETDIR)
+
+$(ISDP_TARGET):
+	@mkdir -p $(ISDP_TARGET)
+
+$(INSTALLDIR_LIB): $(INSTALLDIR)
 	mkdir -p $(INSTALLDIR_LIB)
+
+$(INSTALLDIR):
+	mkdir -p $(INSTALLDIR)
+
+# Compile source files into .o files
+.c.o:
+	$(COMPILE.c) $< -o $@
 
 # Enable dependency checking
 .KEEP_STATE:
 .KEEP_STATE_FILE:.make.state.Sun-x86-Solaris
-

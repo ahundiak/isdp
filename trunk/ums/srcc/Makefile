@@ -6,6 +6,9 @@
 ##
 ## This file is generated automatically.
 ##
+## And was then massaged by hand for the impd set of projects.
+
+#### Makefile for umscompile in the ums project in ums/srcc directory.
 
 
 #### Compiler and tool definitions shared by all build targets #####
@@ -21,7 +24,7 @@ TARGETDIR_OBJ = $(TARGETDIR)/obj
 TARGETDIR_LIB = $(TARGETDIR)/lib
 TARGETDIR_BIN = $(TARGETDIR)/bin
 
-ISDP_INSTALL   = $(HOME)/ingr
+ISDP_INSTALL   = $(HOME)/install
 INSTALLDIR_LIB = $(ISDP_INSTALL)/lib
 INSTALLDIR_BIN = $(ISDP_INSTALL)/bin
 
@@ -77,4 +80,3 @@ $(INSTALLDIR_BIN):
 # Enable dependency checking
 .KEEP_STATE:
 .KEEP_STATE_FILE:.make.state.Sun-x86-Solaris
-
