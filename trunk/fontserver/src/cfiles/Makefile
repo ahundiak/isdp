@@ -12,11 +12,13 @@
 
 #### Compiler and tool definitions shared by all build targets #####
 ISDP_C_CC	= cc
-ISDP_C_DEFINES	= -DSHFONT -DNDEBUG
+ISDP_C_DEFINES	=
+C_DEFINES	= $(ISDP_C_DEFINES) -DSHFONT -DSHLIB -DNDEBUG
+# Additional defines that can be used: GC_DEBUG MEM_DEBUG
 ISDP_C_FLAGS	= -g -xCC -Xa -Kpic -m32
 CC		= $(ISDP_C_CC)
 CPPFLAGS	= -I../hfiles
-CFLAGS		= $(CPPFLAGS) $(ISDP_C_FLAGS) $(ISDP_C_DEFINES)
+CFLAGS		= $(CPPFLAGS) $(ISDP_C_FLAGS) $(C_DEFINES)
 
 
 # Define the target directories.
