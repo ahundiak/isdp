@@ -8,16 +8,17 @@
 ##
 ## And was then massaged by hand for the impd set of projects.
 
-#### Makefile for the xforms project in src/cfiles directory to create libXFI.so
+#### Makefile for the xforms project in xforms/source/xfi/src directory to create libXFI.so
 
 
 #### Compiler and tool definitions shared by all build targets #####
 ISDP_C_CC	= cc
-ISDP_C_DEFINES	= -DSHFONT -DNDEBUG
+ISDP_C_DEFINES	= -Di86pc -Di386 -DSYSV
+C_DEFINES	= $(ISDP_C_DEFINES) -DSHFONT -DNDEBUG
 ISDP_C_FLAGS	= -g -xCC -Xa -Kpic -m32
 CC		= $(ISDP_C_CC)
 CPPFLAGS	= -I../include -I../fs_include
-CFLAGS		= $(CPPFLAGS) $(ISDP_C_FLAGS) $(ISDP_C_DEFINES)
+CFLAGS		= $(CPPFLAGS) $(ISDP_C_FLAGS) $(C_DEFINES)
 
 
 # Define the target directories.
