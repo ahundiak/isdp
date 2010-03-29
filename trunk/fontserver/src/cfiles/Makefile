@@ -8,30 +8,34 @@
 ##
 ## And was then massaged by hand for the impd set of projects.
 
-#### Makefile for the fontserver project in src/cfiles directory to create libXFS.so.
+#### Makefile for the fontserver project in src/cfiles directory to create libXFS.so
 
 #### Compiler and tool definitions shared by all build targets #####
-BASICOPTS = -g
-CFLAGS_libXFS = -Kpic
-CPPFLAGS_libXFS = \
-	-I../hfiles
-CFLAGS = $(BASICOPTS) $(CFLAGS_libXFS) $(CPPFLAGS_libXFS) -xCC -Xa -DSHFONT -DNDEBUG
+ISDP_C_CC	= cc
+ISDP_C_DEFINES	= -DSHFONT -DNDEBUG
+ISDP_C_FLAGS	= -g -xCC -Xa -Kpic -m32
+CC		= $(ISDP_C_CC)
+CPPFLAGS	= -I../hfiles
+CFLAGS		= $(CPPFLAGS) $(ISDP_C_FLAGS) $(ISDP_C_DEFINES)
 
 
 # Define the target directories.
-ISDP_TARGET = $(HOME)/target
-TARGETDIR_FONTSERVER_SRC	= $(ISDP_TARGET)/fontserver/src
-TARGETDIR_FONTSERVER_SRC_OBJ	= $(TARGETDIR_FONTSERVER_SRC)/obj
-TARGETDIR_FONTSERVER_SRC_LIB	= $(TARGETDIR_FONTSERVER_SRC)/lib
-#TARGETDIR_FONTSERVER_SRC_BIN = $(TARGETDIR_FONTSERVER_SRC)/bin
+ISDP_TARGET	= $(HOME)/target
+TARGETDIR	= $(ISDP_TARGET)/fontserver/src
+TARGETDIR_OBJ	= $(TARGETDIR)/obj
+TARGETDIR_LIB	= $(TARGETDIR)/lib
+
+ISDP_INSTALL   = $(HOME)/install
+INSTALLDIR_LIB = $(ISDP_INSTALL)/lib
+
+SHAREDLIB_NAME      = libXFS.so
+SHAREDLIB_NAME_VER  = libXFS.so.1.1
+ISDP_SHAREDLIB_FLAGS= -g -G -norunpath
+SHAREDLIB_FLAGS     = $(ISDP_SHAREDLIB_FLAGS) -h $(SHAREDLIB_NAME_VER)
 
 
-# Link or archive
-SHAREDLIB_FLAGS_libXFS =  -g -G -norunpath -h libXFS.so.1.1
-
-
-
-OBJS_libXFS =  \
+# Target: XFS
+OBJS_XFS =  \
 	FSAlloc.o	\
 	FSBitmap.o	\
 	FSBmapCach.o	\
@@ -69,7 +73,7 @@ OBJS_libXFS =  \
 	FSWriteFnt.o	\
 	import.o
 
-SRCS_libXFS = \
+SRCS_XFS = \
 	FSAlloc.c \
 	FSBitmap.c \
 	FSBmapCach.c \
@@ -111,44 +115,58 @@ SRCS_libXFS = \
 #	FSDaemon.c \	Not included because we are not building the daemon
 #	version.c \	Not included because there is no version.h for Solaris
 
-all: libXFS.so
+all: $(TARGETDIR_LIB) $(TARGETDIR_OBJ) $(TARGETDIR_LIB)/$(SHAREDLIB_NAME_VER)
 
-libXFS.so:	Makefile \
-		$(OBJS_libXFS) \
-		$(DEPLIBS_libXFS) \
-		$(TARGETDIR_FONTSERVER_SRC_LIB) \
-		$(TARGETDIR_FONTSERVER_SRC_OBJ)
-	cc -o $@ $(OBJS_libXFS) $(SHAREDLIB_FLAGS_libXFS) $(LDLIBS_libXFS)
-	mv $(OBJS_libXFS) $(TARGETDIR_FONTSERVER_SRC_OBJ)
-	ln -s libXFS.so libXFS.so.1.1
-	mv libXFS.so libXFS.so.1.1 $(TARGETDIR_FONTSERVER_SRC_LIB)
+$(TARGETDIR_LIB)/$(SHAREDLIB_NAME_VER): \
+		Makefile \
+		$(OBJS_XFS)
+	$(CC) -o $@ $(OBJS_XFS) $(SHAREDLIB_FLAGS)
+	mv $(OBJS_XFS) $(TARGETDIR_OBJ)
+	rm -f $(TARGETDIR_LIB)/$(SHAREDLIB_NAME)
+	ln -s $(TARGETDIR_LIB)/$(SHAREDLIB_NAME_VER) $(TARGETDIR_LIB)/$(SHAREDLIB_NAME)
+
+
+# Install
+install: \
+	all \
+	$(INSTALLDIR_LIB) \
+	$(INSTALLDIR_LIB)/$(SHAREDLIB_NAME_VER)
+
+$(INSTALLDIR_LIB)/$(SHAREDLIB_NAME_VER): $(TARGETDIR_LIB)/$(SHAREDLIB_NAME_VER) $(INSTALLDIR_LIB)
+	cp $(TARGETDIR_LIB)/$(SHAREDLIB_NAME_VER)  $(INSTALLDIR_LIB)
+	rm -f $(INSTALLDIR_LIB)/$(SHAREDLIB_NAME)
+	ln -s $(INSTALLDIR_LIB)/$(SHAREDLIB_NAME_VER) $(INSTALLDIR_LIB)/$(SHAREDLIB_NAME)
 
 
 #### Clean target deletes all generated files ####
 clean:
-	rm -f *.o
-	rm -f -r $(TARGETDIR_FONTSERVER_SRC_LIB)
-	rm -f -r $(TARGETDIR_FONTSERVER_SRC_OBJ)
+	rm -f $(TARGETDIR_LIB)/$(SHAREDLIB_NAME)*
+	rm -f -r $(TARGETDIR_OBJ)
 
 
 # Create the target directory (if needed)
-$(TARGETDIR_FONTSERVER_SRC_OBJ): $(TARGETDIR_FONTSERVER_SRC)
-	@mkdir -p $(TARGETDIR_FONTSERVER_SRC_OBJ)
+$(TARGETDIR_OBJ): $(TARGETDIR)
+	@mkdir -p $(TARGETDIR_OBJ)
 
-$(TARGETDIR_FONTSERVER_SRC_LIB): $(TARGETDIR_FONTSERVER_SRC)
-	@mkdir -p $(TARGETDIR_FONTSERVER_SRC_LIB)
+$(TARGETDIR_LIB): $(TARGETDIR)
+	@mkdir -p $(TARGETDIR_LIB)
 
-$(TARGETDIR_FONTSERVER_SRC): $(ISDP_TARGET)
-	@mkdir -p $(TARGETDIR_FONTSERVER_SRC)
+$(TARGETDIR): $(ISDP_TARGET)
+	mkdir -p $(TARGETDIR)
 
 $(ISDP_TARGET):
-	@mkdir -p $(ISDP_TARGET)
+	mkdir -p $(ISDP_TARGET)
+
+$(INSTALLDIR_LIB): $(INSTALLDIR)
+	mkdir -p $(INSTALLDIR_LIB)
+
+$(INSTALLDIR):
+	mkdir -p $(INSTALLDIR)
 	
 # Compile source files into .o files
 version.o: \
 	version.c
 	$(COMPILE.c) $< -o $@
-	@mv $@ $(TARGETDIR_FONTSERVER_SRC_OBJ)/$@
 
 Daemon.o: \
 	./../hfiles/FS.h \
