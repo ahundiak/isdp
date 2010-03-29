@@ -14,9 +14,10 @@
 ISDP_C_CC	= cc
 ISDP_C_FLAGS	= -xCC -Xa -g -Kpic
 ISDP_C_DEFINES	= -DSYSV
+C_DEFINES	= $(ISDP_C_DEFINES)
 CC		= $(ISDP_C_CC)
 CPPFLAGS	= -I../include
-CFLAGS		= $(ISDP_C_FLAGS) $(ISDP_C_DEFINES)
+CFLAGS		= $(ISDP_C_FLAGS) $(C_DEFINES)
 
 
 # Define the target directories.
