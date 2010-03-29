@@ -37,7 +37,7 @@ ARCHIVE = libexnuc.a
 EXOBJECTS = \
 	$(TARGET)/lib/igefei.o \
 	$(TARGET)/lib/exforceref.o \
-	$(TARGET)/$(LIBLOC)/$(ARCHIVE)
+        $(TARGET)/$(LIBLOC)/$(ARCHIVE)
 
 XLIB    =
 XSTUB   =
@@ -84,7 +84,8 @@ $(TARGET)/bin/Exnuc: $(EXOBJECTS) $(OBJECTS) $(TARGET)/lib/OMapplinit.o $(XSTUB)
 	$(TARGET)/lib/rapstub.o \
 	-lfpstub \
 	$(XSTUB) \
-	$(EXOBJECTS) \
+	$(TARGET)/lib/igefei.o \
+	-L $(TARGET)/$(LIBLOC) -lXexnuc \
 	$(SYSLIB)
 	@echo
 	@ls -ls $(TARGET)/bin/Exnuc
