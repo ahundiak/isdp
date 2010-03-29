@@ -12,9 +12,13 @@
 
 
 #### Compiler and tool definitions shared by all build targets #####
-CC = cc
-BASICOPTS = -g
-CFLAGS = $(BASICOPTS) -xCC
+ISDP_C_CC	= cc
+ISDP_C_DEFINES	= -Di86pc
+C_DEFINES	= $(ISDP_C_DEFINES)
+ISDP_C_FLAGS	= -g -xCC -Xa -Kpic -m32
+CC		= $(ISDP_C_CC)
+CPPFLAGS	= -I../include
+CFLAGS		= $(CPPFLAGS) $(C_FLAGS) $(C_DEFINES)
 
 
 # Define the target directories.
@@ -28,14 +32,13 @@ ISDP_INSTALL   = $(HOME)/install
 INSTALLDIR_LIB = $(ISDP_INSTALL)/lib
 INSTALLDIR_BIN = $(ISDP_INSTALL)/bin
 
-EXEC_NAME = umscompile
+TARGET = umscompile
 
-all: $(TARGETDIR_BIN) $(TARGETDIR_OBJ) $(TARGETDIR_BIN)/$(EXEC_NAME)
+all: $(TARGETDIR_BIN) $(TARGETDIR_OBJ) $(TARGETDIR_BIN)/$(TARGET)
 
 ## Target: umscompile
 OBJS_umscompile =  \
 	$(TARGETDIR_OBJ)/UMScomp.o
-CPPFLAGS_umscompile = -I../include
 SYSLIBS_umscompile = -lm 
 USERLIBS_umscompile = $(SYSLIBS_umscompile) -L $(TARGETDIR_LIB) -lUMS
 DEPLIBS_umscompile =  
@@ -43,22 +46,22 @@ LDLIBS_umscompile = $(USERLIBS_umscompile)
 
 
 # Link or archive
-$(TARGETDIR_BIN)/$(EXEC_NAME): $(OBJS_umscompile) $(DEPLIBS_umscompile)
+$(TARGETDIR_BIN)/$(TARGET): $(OBJS_umscompile) $(DEPLIBS_umscompile)
 	$(LINK.c) $(CFLAGS_umscompile) $(CPPFLAGS_umscompile) -o $@ $(OBJS_umscompile) $(LDLIBS_umscompile)
 
 
 # Compile source files into .o files
 $(TARGETDIR_OBJ)/UMScomp.o: UMScomp.c
-	$(COMPILE.c) $(CFLAGS_umscompile) $(CPPFLAGS_umscompile) -o $@ UMScomp.c
+	$(COMPILE.c) $(CFLAGS) -o $@ UMScomp.c
 
 # Install it
 install: \
 	all \
 	$(INSTALLDIR_BIN) \
-	$(INSTALLDIR_BIN)/$(EXEC_NAME)
+	$(INSTALLDIR_BIN)/$(TARGET)
 
-$(INSTALLDIR_BIN)/$(EXEC_NAME) : $(TARGETDIR_BIN)/$(EXEC_NAME)
-	cp -p $(TARGETDIR_BIN)/$(EXEC_NAME)  $(INSTALLDIR_BIN)
+$(INSTALLDIR_BIN)/$(TARGET) : $(TARGETDIR_BIN)/$(TARGET)
+	cp -p $(TARGETDIR_BIN)/$(TARGET)  $(INSTALLDIR_BIN)
 
 #### Clean target deletes all generated files ####
 clean:
