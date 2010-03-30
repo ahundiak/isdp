@@ -61,7 +61,7 @@ $(GRLIB)/libgpipe.a
 #ifdef SUNOS5
 $(GRLIB)/src/fontbuilder/fconv/UT_src/UTsun_conv.o
 -lXFS -lXFI -lm
-/usr/openwin/lib/libXt.a /usr/openwin/lib/libX11.a /usr/openwin/lib/libXext.a
+-lXt -lX11 -lXext
 -ldl -lw -lnsl -lsocket -lxc -lxcmalloc
 #endif
 #ifdef IRIX
