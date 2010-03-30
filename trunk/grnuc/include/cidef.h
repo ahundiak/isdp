@@ -17,6 +17,14 @@
 #	include <limits.h>
 #	undef  _POSIX_SOURCE
 #	undef  _POSIX_C_SOURCE
+
+/* ---------------------
+ * TODO Figure out limits nonsense
+ */
+#ifndef _POSIX_NAME_MAX
+#define _POSIX_NAME_MAX 14
+#endif
+
 #       define CI_PATH_MAX  MAXPATHLEN
 #       define CI_NAME_MAX  _POSIX_NAME_MAX
 #elif (defined(NT))
