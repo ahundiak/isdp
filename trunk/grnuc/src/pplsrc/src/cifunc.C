@@ -76,6 +76,13 @@ extern  char	*CIexmessage();
 double	(* Ci_math_f)();	/* pointer on functions in math. lib. */
 double  ci_give_value();
 
+/* -------------------------------
+ * 03-17-2010 ah
+ * gamma is deprectatd in sol 10, might need to change to lgamma
+ * not sure why hypot does not get picked up
+ */
+extern double gamma(double);
+extern double hypot(double, double);
 
 int cifcall(instr, evdata, runenv, state )
 struct ci_instruction	*instr	;
