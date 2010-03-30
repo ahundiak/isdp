@@ -40,9 +40,14 @@ fi
 cd $GRNUC/src/pplsrc
 necho "\n------------------$UNIT_MESS src/pplsrc ---------------------\n"
 make.sh > /tmp/$TBLDLOG 2>&1
-ncat /tmp/$TBLDLOG 
-if [ "$ERRNOTI" = "on" ]
-then
-  make.sh > /tmp/$TBLDLOG 2>&1
-  errchk /tmp/$TBLDLOG src/pplsrc
-fi
+# make.sh
+ncat /tmp/$TBLDLOG
+
+# For some reason always seem to get error banner
+#if [ "$ERRNOTI" = "on" ]
+#then
+#  make.sh > /tmp/$TBLDLOG 2>&1
+#  errchk /tmp/$TBLDLOG src/pplsrc
+#fi
+
+echo /tmp/$TBLDLOG

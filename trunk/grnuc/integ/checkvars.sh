@@ -44,6 +44,7 @@ fi
 # checked on a regular basis.
 
 ENV_VAR_FILE="$HOME/integ/integ.env"
+ENV_VAR_FILE=$ISDP_SOURCE/grnuc/integ/grnuc.env
 
 echo " checking build environment...."
 for var in `cat ${ENV_VAR_FILE} | grep \^export | cut -d= -f1 | cut -d " " -f2` 
