@@ -276,16 +276,19 @@ struct Type_Info merge_type_info(ta, tb, dcltr_merge)
     file_traceback ();
    }
   else if (!ta.std_class) tc.std_class = tb.std_class;
-
   if (ta.std_size && tb.std_size)
    {
-    printerr (ta.std_size != tb.std_size);
-    fprintf (stderr, " size attribute ");
-    print_size (stderr, ta);
-    fprintf (stderr, "already declared - ");
-    print_size (stderr, tb);
-    fprintf (stderr, "ignored.\n");
-    file_traceback ();
+    // XXX - Allow "long double", where (I think) ta.size_type == long_size && tb.std_size == long_size && tb.std_type == char_type
+    if (ta.std_size != ta.std_size)
+     {
+      printerr (ta.std_size != tb.std_size);
+      fprintf (stderr, " size attribute ");
+      print_size (stderr, ta);
+      fprintf (stderr, "already declared - ");
+      print_size (stderr, tb);
+      fprintf (stderr, "ignored.\n");
+      file_traceback ();
+     }
    }
   else if (!ta.std_size) tc.std_size = tb.std_size;
 
