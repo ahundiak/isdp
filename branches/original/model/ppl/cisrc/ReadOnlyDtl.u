@@ -1,0 +1,121 @@
+/*
+Name
+
+    Enable Read-Only Detailing command
+
+Abstract
+
+        This command sets a bit in the dpb and creates the necessary objects
+    to enable the master file to be used as a read-only model file for
+    read-only detailing.
+
+Description
+
+        This command sets the bit in the dpb that indicates that the
+    model space counterparts and pointers that are needed to support
+    detailing to read-only reference files should be created as new objects
+    are created.  It also calls a function that creates the necessary
+    model space counterparts and pointers for existing objects in the
+    active module.
+
+Keywords
+
+    modelspace-counterparts
+
+History
+
+    07/27/93 : WBC : Creation.
+    06/21/94 : WBC : Now checking to see if both the "read-only detailing
+                     enabled" bit is set in the dpb and the variable
+                     EMSread_only_dtl_ver is current before
+                     processing.  If the bit is not set or the variable either
+                     does not exit or is not up to date, processing will take
+                     place and the bit is set and the variable is created or
+                     updated.
+    07/18/94 : WBC : Process the file unconditionally.  This is necessary
+                     because EMSpointers and MSCs are no longer created at
+                     display time.  This means that just because the enable
+                     read-only bit is set, the file does not necessarily have
+                     all the necessary EMSpointers and MSCs needed for read
+                     only detailing.
+*/
+
+#include "ciminimum.h"
+#include "cimacros.h"
+#include "OMprimitives.h"
+#include "igrtypedef.h"
+#include "EMSopt.h"
+#include "grdpbdef.h"
+#include "grdpbmacros.h"
+#include "msdef.h"
+#include "msmacros.h"
+#include "ECcmd.h"
+#include "ECmsg.h"
+#include "gr.h"
+#include "igr.h"
+#include "igrdp.h"
+#include "go.h"
+#include "exdef.h"
+#include "exmacros.h"
+#include "griodef.h"
+#include "grio.h"
+#include "griomacros.h"
+
+#define  EMS_READ_ONLY_DETAILING_VER_NUM  0x1
+#define  EMS_RO_DETAILING_VAR_NAME        "EMSread_only_dtl_ver"
+
+extern IGRint EFmake_os_read_only_assoc();
+
+
+main()
+{
+    IGRlong     msg;
+    IGRint      options,
+                sts;
+    struct      GRIOvar_def var_def;
+    GRspacenum  cur_mod_osnum;
+    IGRboolean  create;
+
+    ex$message(msgnumb = EM_M_EnableReadOnlyDtl);
+
+    create = TRUE;
+    gr$put_assoc_ro_reffile(buffer = &create);
+
+    sts = ex$get_cur_mod(osnum = &cur_mod_osnum);
+
+    if (1 & sts)
+    {
+        /* if the version variable does not exist or is not up to date,
+         * create it or update it to the current version, respectively
+         */
+
+        co$cvtvar(msg = &msg,
+                  alias = EMS_RO_DETAILING_VAR_NAME,
+                  osnum = cur_mod_osnum,
+                  var = &var_def);
+
+        if ((!(1 & msg)) ||
+            (var_def.contents.ivalue != EMS_READ_ONLY_DETAILING_VER_NUM))
+        {
+   	    var_def.type = GRIO_VAR_INT;
+            var_def.contents.ivalue = EMS_READ_ONLY_DETAILING_VER_NUM;
+
+            co$addvar(msg = &msg,
+                      input_alias = EMS_RO_DETAILING_VAR_NAME,
+                      osnum = cur_mod_osnum,
+                      input_string = &var_def);
+        }
+    }
+
+    /* create model space counterparts for all "active" edges and
+     * loops in the current module's object space; also create
+     * pointers for the components of objects subclassed from
+     * EMScompsurf, EMSagrp and ACconst
+     */
+
+    options = EMS_CREATE_MSCS | EMS_CREATE_POINTERS;
+
+    EFmake_os_read_only_assoc(&msg, options);
+
+    ex$message(msgnumb = EMS_I_ProcessingComplete);
+}

@@ -1,0 +1,143 @@
+#!/bin/ksh
+#   NAME
+#
+#   ems - invoke Ems via drive
+#
+#   SYNOPSIS
+#
+#   ems [Ems arguments]
+#
+#   DESCRIPTION
+#
+#   This script allows one to invoke Ems with drive in order to
+#   ease the memory requirements of forking up subprocesses.
+#
+#   NOTE
+#
+#   This script works only with shells compatible with ksh.
+#
+#   However, this script could be easily modified to run under sh
+#   -- although the result would be somewhat more verbose.
+#
+
+export THIN_BEZEL=1	# KLUDGE until EXNUC hardcodes thin bezels
+
+if [ "$EX_ENABLE_SCALE" = "" ]
+ then
+   export EX_ENABLE_SCALE=1
+fi
+
+TARGET_OS=`uname -s`
+
+case ${TARGET_OS} in
+CLIX)
+   export INGRHOME=${INGRHOME:-/usr/ip32}
+;; # End of CLIX
+SunOS)
+   OSver="$(uname -r | cut -c1-3)"
+   case $OSver in
+   4.1)
+     export INGRHOME=${INGRHOME:-/usr/ip32}
+   ;;
+   5.[1-9])
+     export INGRHOME=${INGRHOME:-/opt/ingr}
+   ;;
+   *)
+     echo
+     echo "Unsupported SunOS version $OSver"
+     echo
+     exit 1
+     ;;
+   esac
+;; # End of SunOS
+IRIX)
+   OSver="$(uname -r | cut -c1)"
+   case $OSver in
+   5|6)
+     export INGRHOME=${INGRHOME:-/var/opt/ingr}
+     ;;
+   *)
+     echo
+     echo "Unsupported IRIX version $OSver"
+     echo
+     exit 1
+     ;;
+   esac
+;; # End of IRIX
+*)
+   echo
+   echo "Unknown TARGET Operation System \"$TARGET_OS\""
+   echo
+   exit 1
+;;
+esac  # End of TARGET_OS case
+
+
+pd=${INGRHOME}/product_data
+
+if [ ! -r $pd ]
+then
+    if [ -f $pd ]
+    then
+        echo $0: $pd not readable. 1>&2
+        exit 1
+    else
+        echo $0: $pd not found. 1>&2
+        exit 2
+    fi
+fi
+
+EXNUC=`echopath EXNUC`
+
+MODEL=`echopath MODEL`
+
+DASHP=`echo "$@" | grep '\-p'`
+if [ "$DASHP" = "" ]
+then
+  for EMSPROD in `grep EMS_[PCFML] $pd | sort | cut -d " " -f1 | tr -d '"'` 
+  do
+    if [ "$EMSPROD" = "Emspp" ] 
+    then 
+      break
+    elif [ "$EMSPROD" = "Emscs" ]
+    then 
+      break
+    elif [ "$EMSPROD" = "Emslt" ]
+    then 
+      break
+    elif [ "$EMSPROD" = "Emsfd" ]
+    then 
+      break
+    elif [ "$EMSPROD" = "Emsm" ]
+    then 
+      break
+    else
+      EMSPROD=""
+    fi
+  done
+
+  if [ "$EMSPROD" = "" ] 
+  then
+    if [ "$(grep I/MDS $pd | cut -d " " -f1 | tr -d '"')" != "" ]
+    then
+      EMSPROD=$(grep I/MDS $pd | cut -d " " -f1 | tr -d '"')
+    fi
+  fi
+
+  if [ "$EMSPROD" = "" ] 
+  then
+    echo "$0: No EMS product found in $pd."
+    exit 3
+  elif [ "`echopath noerror $EMSPROD`" = "" ]
+  then
+    echo "$0: $EMSPROD cannot be found on device specified in $pd."
+    echo "     Possible causes: Improper removal has caused an invalid entry"
+    echo "     in $pd or the device specified in $pd"
+    echo "     is not mounted."
+    exit 3
+  fi
+  ${EXNUC}/bin/drive ${MODEL}/bin/Model -p $EMSPROD "$@"
+else
+  ${EXNUC}/bin/drive ${MODEL}/bin/Model "$@"
+fi
+exit $?

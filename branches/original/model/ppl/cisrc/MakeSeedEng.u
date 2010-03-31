@@ -1,0 +1,512 @@
+#include "OMlimits.h"
+#include "OMminimum.h"
+#include "OMerrordef.h"
+#include "OMprimitives.h"
+#include "exfi.h"
+#include "ciminimum.h"
+#include "cimacros.h"
+#include "igewindef.h"
+#include "DItypedef.h"
+#include "DIdef.h"
+#include "DIglob.h"
+#include "DIprims.h"
+#include "ds.h"
+#include "dsdef.h"
+#include "dsmacros.h"
+#define	STD1 "ANSI"
+
+#define	METRIC	 0x00000001	
+#define	IMPERIAL 0x00000000
+
+#define SUP_IMPERIAL 0x00000002
+#define NO_IMPERIAL  0x00000000
+
+#define SUP_METRIC 0x00000004
+#define NO_METRIC  0x00000000
+
+#define FIRST_ANGLE 0x00000008
+#define THIRD_ANGLE 0x00000000
+
+
+#define SUP_THIRD 0x00000010
+#define NO_THIRD  0x00000000
+
+#define SUP_FIRST 0x00000020
+#define NO_FIRST  0x00000000
+#define	IMPERIAL_FOR_SHEET	0x00000000 
+#define METRIC_FOR_SHEET	0x00000001
+
+#define THIRD_ANGLE_FOR_SHEET	0x00000000
+#define FIRST_ANGLE_FOR_SHEET	0x00000002
+
+#define CELL_FOR_SHEET		0x00000000
+#define REFERENCE_FOR_SHEET	0x00000004
+
+
+
+struct standard	{IGRchar		name[MAX_STANDARD_LEN];
+		 unsigned IGRint  	mask;
+		};
+
+
+struct sheet	{
+		IGRchar			name[MAX_SHEET_LEN];
+     		IGRchar			standard[MAX_STANDARD_LEN];
+     		IGRchar			file[MAX_FILE_LEN]; 
+     		IGRchar			view[MAX_CELL_LEN]; 
+     		unsigned IGRint		mask;                   
+     		IGRdouble		width;            
+     		IGRdouble		height; 
+		};
+
+
+char		**gadget_names;
+
+int		num_entries;
+
+DIgrid		*gadget_ids;
+
+extern char	*strrchr ();
+extern int	printf (),
+		DIstmocpy (),
+		DIfind ();
+extern void	free (),
+		DIfrees ();
+extern	int	_ds_do();
+
+delete ()
+{
+	if (gadget_ids)
+		free (gadget_ids);
+	if (gadget_names)
+	{
+		di$free
+		(
+			lines = gadget_names,
+			count = num_entries
+		);
+	}
+}
+
+main ()
+{
+	   
+	char		current_dir[DI_PATH_MAX],
+			*window_name;
+
+	int		msg,
+			sts,
+			i;
+
+	double		min_x,
+			min_y,
+			max_x,
+			max_y;
+
+	struct EXFI_data_st formData;
+	struct standard  ISO;
+	struct sheet	MY_sheet; 			
+	
+	
+	gadget_ids = NULL;
+	gadget_names = NULL;
+
+	message ("Create windows");
+
+	// Delete all existing windows
+	ci$exec (file_name="Del_windows");
+
+	if (DIstmocpy (current_dir, "views", "regviews", "GRviews", 0, 2) != DIR_S_SUCCESS)
+	{
+		(void) printf ("ERROR: DIstmocpy ()\n");
+		exit;
+	}
+
+/* Changed order in which windows are created. Was topm front, right, iso.
+   AIC */
+	begincmd ("create window");
+		ci$put (string="top");
+		ci$put (string="iso");
+		ci$put (string="front");
+		ci$put (string="right");
+		ci$put (response=TERMINATE);
+	endcmd ();
+
+/* Added tile in place of hardcoded placements below. AIC */
+	begincmd ("tile");
+	endcmd ();
+
+/* Added co=green. AIC */
+	begincmd ("co");
+		ci$put (string="green");
+	endcmd ();
+
+/* Do not turn on grids. AIC
+	begincmd ("grid on/off");
+		ci$put (string="top");
+		ci$put (string="front");
+		ci$put (string="right");
+		ci$put (string="iso");
+		ci$put (response=TERMINATE);
+	endcmd ();
+*/
+	begincmd ("set view rotation");
+		ci$put (string="top");
+		ci$put (string="top");
+		ci$put (response=RESET);
+		ci$put (string="front");
+		ci$put (string="front");
+		ci$put (response=RESET);
+		ci$put (string="right");
+		ci$put (string="right");
+		ci$put (response=RESET);
+		ci$put (string="iso");
+		ci$put (string="iso");
+		ci$put (response=TERMINATE);
+	endcmd ();
+
+/* Do not place the windows by hardcoded values. Tile, above, does this. AIC
+	if
+	(
+		di$find
+		(
+			start_dir = current_dir,
+			ptr = &num_entries,
+			regexp = "*",
+			grids = &gadget_ids,
+			lines = &gadget_names
+		)
+		!= DIR_S_SUCCESS
+	)
+	{
+		(void) printf ("ERROR: di$find\n");
+		exit;
+	}
+
+	for (i=0; i<num_entries; i=i+1)
+	{
+		window_name = strrchr (gadget_names[i], ':') + 1;
+/ *
+.004	.430
+.085	.085
+.413	.839
+.476	.476
+
+.004	for IGE_INDEPENDENT
+.531
+.413
+.922
+* /
+		if (!strcmp(window_name, "top"))
+		{
+			min_x = 5.;
+			min_y = 132.;
+			max_x = 488.;
+			max_y = 482.;
+		}
+		else if (!strcmp(window_name, "front"))
+		{
+			min_x = 5.;
+			min_y = 527.;
+			max_x = 488.;
+			max_y = 877.;
+		}
+		else if (!strcmp(window_name, "right"))
+		{
+			min_x = 505.;
+			min_y = 527.;
+			max_x = 993.;
+			max_y = 877.;
+		}
+		else if (!strcmp(window_name, "iso"))
+		{
+			min_x = 505.;
+			min_y = 132.;
+			max_x = 993.;
+			max_y = 482.;
+		}
+
+		if
+		(
+			ci$send
+			(
+				msg = message IGEgadget.change_gadget_size
+				(
+					&msg,
+					IGE_DEPENDENT,
+					min_x ,
+					min_y,
+					max_x,
+					max_y
+				),
+				channame = "to_parent",
+				targetid = gadget_ids[i].objid,
+				targetos = gadget_ids[i].osnum
+			)
+			!= 1
+		)
+		{
+			(void) printf("ERROR: ci$send IGEgadget.change_gadget_size\n");
+			exit;
+		}
+	}
+*/
+
+	begincmd ("window area");
+		ci$put (string="xy=-4,-2,0");
+		ci$put (string="xy=4,2,0");
+		ci$put (string="top");
+		ci$put (response=RESET);
+
+		ci$put (string="xy=-4,0,-2");
+		ci$put (string="xy=4,0,2");
+		ci$put (string="front");
+		ci$put (response=RESET);
+
+		ci$put (string="xy=0,-4,-2");
+		ci$put (string="xy=0,4,2");
+		ci$put (string="right");
+		ci$put (response=RESET);
+
+		ci$put (string="xy=-2,-6,-4");
+		ci$put (string="xy=2,6,4");
+		ci$put (string="iso");
+		ci$put (response=TERMINATE);
+	endcmd ();
+
+	ci$put(response = CLEAR_STACK);
+
+	ci$put(string = "cht=.001");
+	//"EMSChHgTl" "cht"
+
+	ci$put(response = CLEAR_STACK);
+
+	ci$put(string = "offtol=.001");
+	//"EMSOfTl" "offtol"
+
+	ci$put(response = CLEAR_STACK);
+
+	ci$put(string = "arctol=.001");
+	//"EMSArLnTl" "arctol"
+
+	ci$put(response = CLEAR_STACK);
+	ci$put(string = "bastol=.000001");
+	//"EMSBsTl" "bastol"
+
+	ci$put(response = CLEAR_STACK);
+
+	ci$put(cmd_key = "GRSDsMjGrD");	//"GRSDsMjGrD" "Set Distance Between Reference Grid"
+
+	ci$put(string = "1");
+
+	ci$put(string = "1");
+
+	ci$put(string = "*");
+
+	ci$put(cmd_key = "GRSMnGrDvM");	//"GRSMnGrDvM" "Set Number Grid Pts per Ref Grid"
+
+	ci$put(string = "10");
+
+	ci$put(string = "10");
+
+	ci$put(string = "*");
+
+	ci$put(cmd_key = "GRSVDsDp");	//"GRSVDsDp" "Set Display Depths"
+
+	ci$put(string = "-1000,1000");
+
+	ci$put(string = "*");
+
+	ci$put(cmd_key = "GRSZDp");	//"GRSZDp" "Set Active Z Depth"
+
+	ci$put(string = "xy=0,0,0");
+	//"GRSlPnKyn" "xy"
+
+	ci$put(string = "*");
+
+	ci$put(cmd_key = "GRSVDsDp");	//"GRSVDsDp" "Set Display Depths"
+
+	ci$put(string = "-1000,1000");
+
+	ci$put(string = "*");
+
+	ci$put(cmd_key = "GRSZDp");	//"GRSZDp" "Set Active Z Depth"
+
+	ci$put(string = "xy=0,0,0");
+	//"GRSlPnKyn" "xy"
+
+	ci$put(string = "*");
+
+	ci$put(response = CLEAR_STACK);
+
+	ci$put(string = "tx=1");
+	//"GRSTxSz" "tx"
+
+	ci$put(string = "lv=1");
+	//"GRSLy" "lv"
+
+/* This is set above. AIC
+	ci$put(string = "co=4"); */
+	//"GRSCl" "co"
+
+	ci$put(string = "wt=0");
+	//"GRSWg" "wt"
+
+	ci$put(string = "st=0");
+	//"GRSSt" "st"
+
+	ci$put(string = "aa=0");
+	//"GRSAn" "aa"
+
+       ci$put(string = "ma=d");    /* added TGM 2/4/92 */
+        //"GRSAnMsUn" "ma"
+
+	ci$put(string = "mar=sq_inch");
+
+	ci$put(cmd_key = "GRTrOnRFLc");	//"GRTrOnRFLc" "Turn On Reference File Locate"
+
+	ci$put(cmd_key = "GRCSpAnCr");	//"GRCSpAnCr" "XH (Change crosshatch spacing and angle)"
+
+	ci$put(string = ".25");
+
+	ci$put(string = "45");
+
+	ci$put(cmd_key = "GRSEdPtDl");	//"GRSEdPtDl" "ep"
+
+	ci$put(string = ".25");
+
+
+	ci$put(cmd_key = "GRSArPtDl");	//"GRSArPtDl" "ap"
+
+	ci$put(string = ".25,.25");
+
+        ci$put(cmd_key = "GRTrOfApPr"); //"GRTrOfApPr" "apparent projection off"
+
+	ci$put(cmd_key = "HSSShPrMd");	//"HSSShPrMd" "Set shading parameter modes"
+
+	formData.label = 1;
+	formData.type = EXFI_STATE;
+	formData.index = 1;
+	formData.max_index = 0;
+	formData.select_flag = EXFI_EDIT_NOSELECT;
+	formData.sts = 0;
+	formData.value.state = 1;
+	ci$put (form = "HSSShPrMd",
+		gadget = &formData);
+
+	ci$put(cmd_key = "HSSClTbPr");	//"HSSClTbPr" "Set color table parameters"
+
+	formData.label = 25;
+	formData.type = EXFI_STATE;
+	formData.index = 0;
+	formData.max_index = 0;
+	formData.select_flag = EXFI_EDIT_NOSELECT;
+	formData.sts = 0;
+	formData.value.state = 0;
+	ci$put (form = "HSSClTbPr",
+		gadget = &formData);
+
+	formData.label = 1;
+	formData.type = EXFI_STATE;
+	formData.index = 1;
+	formData.max_index = 0;
+	formData.select_flag = EXFI_EDIT_NOSELECT;
+	formData.sts = 0;
+	formData.value.state = 1;
+	ci$put (form = "HSSClTbPr",
+		gadget = &formData);
+
+
+
+
+/************************************************************************
+Creating Drawing statdard and drawing sheets.
+************************************************************************/
+
+	
+	strcpy(ISO.name,STD1);
+	//printf("ISO.name=%s\n",ISO.name);	
+
+	ISO.mask=IMPERIAL|
+		SUP_IMPERIAL|
+		NO_METRIC|
+		THIRD_ANGLE|
+		SUP_THIRD|
+		NO_FIRST; 
+		
+	//printf("ISO.mask=%ld\n",ISO.mask);
+
+	
+	
+	sts=gr$add_standard(msg=&msg,standard = &ISO);
+		//printf("gr$add_standard,sts=%d,msg=%d\n",sts,msg);
+
+
+	sts=gr$set_default_standard ( msg = &msg,
+                               standard = &ISO);
+		//printf("gr$set_default_standard,sts=%d,msg=%d\n",sts,msg);
+
+	strcpy(MY_sheet.name,"A size");
+	strcpy(MY_sheet.standard, ISO.name);
+
+	strcpy(MY_sheet.file,"config/ANSI_Borders");
+	strcpy(MY_sheet.view,"ANSI_A");
+ 	MY_sheet.mask=IMPERIAL_FOR_SHEET|
+		  THIRD_ANGLE_FOR_SHEET|
+		  CELL_FOR_SHEET;
+
+	MY_sheet.height=8.5;
+	MY_sheet.width=11.0;
+	
+
+	gr$add_sheet(msg=&msg,sheet=&MY_sheet);
+		//printf("gr$add_sheet,sts=%d,msg=%d\n",sts,msg);
+	
+
+	strcpy(MY_sheet.name,"A size (vertical)");
+	strcpy(MY_sheet.view,"ANSI_A_v");
+	MY_sheet.height=11.0;
+	MY_sheet.width= 8.5;
+	
+	gr$add_sheet(msg=&msg,sheet=&MY_sheet);
+	
+
+	strcpy(MY_sheet.name,"B size");
+	strcpy(MY_sheet.view,"ANSI_B");
+	MY_sheet.height=11.0;
+	MY_sheet.width=17.0;
+	
+	gr$add_sheet(msg=&msg,sheet=&MY_sheet);
+	
+	strcpy(MY_sheet.name,"C size");
+	strcpy(MY_sheet.view,"ANSI_C");
+	MY_sheet.height=17.0;
+	MY_sheet.width=22.0;
+	
+	gr$add_sheet(msg=&msg,sheet=&MY_sheet);
+	
+	strcpy(MY_sheet.name,"D size");
+	strcpy(MY_sheet.view,"ANSI_D");
+	MY_sheet.height=22.0;
+	MY_sheet.width=34.0;
+	
+	gr$add_sheet(msg=&msg,sheet=&MY_sheet);
+	
+	strcpy(MY_sheet.name,"E size");
+	strcpy(MY_sheet.view,"ANSI_E");
+	MY_sheet.height=34.0;
+	MY_sheet.width=44.0;
+	
+	gr$add_sheet(msg=&msg,sheet=&MY_sheet);
+	
+	strcpy(MY_sheet.name,"F size");
+	strcpy(MY_sheet.view,"ANSI_F");
+	MY_sheet.height=28.0;
+	MY_sheet.width=40.0;
+	
+	gr$add_sheet(msg=&msg,sheet=&MY_sheet);
+
+
+
+
+}

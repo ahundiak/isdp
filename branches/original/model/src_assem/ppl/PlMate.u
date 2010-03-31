@@ -1,0 +1,310 @@
+#include "ciminimum.h"
+#include "cimacros.h"
+#include "cieveryone.h"
+#include "msdef.h"
+#include "growner.h"
+#include "grgsdef.h"
+#include "grgs.h"
+#include "grgsmacros.h"
+#include "grsymdef.h"
+#include "grsym.h"
+#include <grerr.h>
+#include "grsymmacros.h"
+#include "nddef.h"
+#include "ndmacros.h"
+#include "dpdef.h"
+#include "dp.h"
+#include "dpmacros.h"
+#include "refdef.h"
+#include "assemdef.h"
+#include "assem.h"
+#include "assemmacros.h"
+
+#define FINISHED       -1
+#define START           0
+#define GET_INST1       1
+#define GET_INST2       2
+#define PLACE_MATE      3
+#define CLEANUP         4
+
+IGRint                  om_msg, msg, ok;
+struct GRevent          event;
+struct GRmd_env         mod_env, lc_mod_env;
+struct GRid             inst1_id, inst2_id, geom1_id, geom2_id;
+struct GRid             window_id, * ids, constraint_id;
+IGRint                  num_ids;
+IGRint                  state, response;
+IGRdouble               accept_point[3];
+IGRchar                 buffer[256];
+IGRint                  i, count;
+IGRint                  batch_mode;
+IGRint                  part_type;
+IGRuint                 props;
+
+extern char * strcpy();
+extern char * strcat();
+extern char * strchr();
+extern int GRdpb_get();
+extern int printf();
+extern int sprintf();
+
+main ()
+{
+    om_msg = OM_S_SUCCESS;
+    msg = MSSUCC;
+    
+    message("Place Part Mate Constraint");
+
+    /*
+     * Get the current module environment.
+     */	
+    ci$get_module_info( md_env = &mod_env );
+
+    state = START;
+    
+    /*
+     * Loop until the state is set to FINISHED.
+     */
+    while (state != FINISHED)
+    {
+        /*
+         * Goto the appropriate state.
+         */                
+        switch (state)
+        {
+            /*
+             * (Re)initialize the command.
+             */
+        case START:
+            inst1_id.objid = NULL_OBJID;
+            inst2_id.objid = NULL_OBJID;
+
+            geom1_id.objid = NULL_OBJID;
+            geom2_id.objid = NULL_OBJID;
+
+            ids = NULL;
+            num_ids = 0;
+            
+            state = GET_INST1;
+
+            break;
+
+        case GET_INST1:
+            /*
+             * Locate graphics ...
+             */
+            ci$locate (obj = &geom1_id.objid,
+                       osnum = &geom1_id.osnum,
+                       prompt = "Select 1st Part with Element to Mate",
+                       acc_prompt = "Accept w/element to align to/Reject",
+                       relocate_prompt = "Element not found",
+                       classes = "EMSplane",
+                       md_env = &lc_mod_env,
+                       accept_point = accept_point,
+                       window_id = &window_id.objid,
+                       window_osnum = &window_id.osnum,
+                       stackable = 1,
+                       owner_action = LC_RIGID_COMP    | LC_FLEX_COMP   |
+                                      LC_NO_REF_HEADER | LC_REF_OBJECTS |
+                                      LC_INTERMIDIATE  | LC_ASSOCIATIVE |
+                                      LC_EXTERN_CONSTRAINED,
+                       response = &response );
+
+            switch (response)
+            {
+            case EX_DATA:
+                om_msg = asm$get_feature_instance (msg = &msg,
+                                                   feature_loc_env = &lc_mod_env,
+                                                   feature_id = &geom1_id,
+                                                   instance_id = &inst1_id);
+                
+                if (om_msg & msg & 1)
+                {
+                    ci$put (point = accept_point);
+                    state = GET_INST2;
+                }
+                else
+                {
+                    status ("Part not defined for element");
+                }
+                break;
+                
+            case EX_RJT_MOVEON:
+                break;
+
+            case EX_BACK_UP:
+                break;
+            }
+            break;
+
+        case GET_INST2:
+            /*
+             * Locate graphics ...
+             */
+            ci$locate (obj = &geom2_id.objid,
+                       osnum = &geom2_id.osnum,
+                       prompt = "Select 2nd Part with Element to Mate",
+                       acc_prompt = "Accept w/element to align to/Reject",
+                       relocate_prompt = "Element not found",
+                       classes = "EMSplane",
+                       md_env = &lc_mod_env,
+                       accept_point = accept_point,
+                       window_id = &window_id.objid,
+                       window_osnum = &window_id.osnum,
+                       stackable = 1,
+                       owner_action = LC_RIGID_COMP    | LC_FLEX_COMP   |
+                                      LC_NO_REF_HEADER | LC_REF_OBJECTS |
+                                      LC_INTERMIDIATE  | LC_ASSOCIATIVE |
+                                      LC_EXTERN_CONSTRAINED,
+                       response = &response );
+
+            switch (response)
+            {
+            case EX_DATA:
+                om_msg = asm$get_feature_instance(msg = &msg,
+                                                  feature_loc_env = &lc_mod_env,
+                                                  feature_id = &geom2_id,
+                                                  instance_id = &inst2_id);
+
+                if (om_msg & msg & 1)
+                {
+                    if ((inst1_id.objid == inst2_id.objid) &&
+                        (inst1_id.osnum == inst2_id.osnum))
+                    {
+                        status ("Mating elements belong to the same part, try again.");
+                    }
+                    else
+                    {
+                        state = PLACE_MATE;
+                    }
+                }
+                else
+                {
+                    status ("Part not defined for element");
+                }
+                break;
+                
+            case EX_RJT_MOVEON:
+                break;
+
+            case EX_BACK_UP:
+                state = GET_INST1;                
+                break;
+            }
+            break;
+
+        case PLACE_MATE:
+            ids = NULL;
+
+            om_msg = asm$add_constraint (msg = &msg,
+                                         type = EM_MATE,
+                                         instance1_id = &inst1_id,
+                                         instance2_id = &inst2_id,
+                                         feature1_id = &geom1_id,
+                                         feature2_id = &geom2_id,
+                                         constraint_id = &constraint_id,
+                                         num_ids = &num_ids,
+                                         ids = &ids);
+
+            state = START;
+            break;
+            
+            if (!(om_msg & msg & 1))
+            {
+                if (msg == ASM_E_OVERCONSTRAINED)
+                {
+                    status ("Conflicts with existing constraints.");
+
+                    for (i=0; i<num_ids; i=i+1)
+                    {
+                        dp$display (msg = &msg,
+                                    mode = GRhd,
+                                    osnum= mod_env.md_id.osnum,
+                                    oids = &ids[i]);
+                    }
+                }
+                else
+                {
+                    om_msg = OM_S_SUCCESS;
+                    msg = ASM_S_SUCCESS;
+                    status ("Error encountered command restarted."); 
+                }
+
+                state = START;
+            }
+            else
+            {
+                /*
+                 * Undisplay the any affected instances.
+                 */
+                for (i=0; i<num_ids; i=i+1)
+                {
+                    dp$display (msg = &msg,
+                                mode = GRbehe,
+                                osnum= ids[i].osnum,
+                                oids = &(ids[i].objid));
+                }
+                
+                /*  
+                 * Trigger the modify batch if necessary.
+                 */
+                nd$mod_batch (request = ND_INQ, 
+                              p_ret_mode = &batch_mode);
+                
+                if (batch_mode == ND_IMMEDIATE)
+                {
+                    nd$exec_batch ();
+                }
+
+                /*
+                 * Redisplay the affected instances in their new positions.
+                 */
+                for (i=0; i<num_ids; i=i+1)
+                {
+                    dp$display (msg = &msg,
+                                mode = GRbd,
+                                osnum= ids[i].osnum,
+                                oids = &(ids[i].objid));
+                }
+
+                /*
+                 * Display the constraint.
+                 */
+                dp$display (msg = &msg,
+                            mode = GRbd,
+                            osnum= mod_env.md_id.osnum,
+                            oids = &constraint_id);
+            }
+
+            if (ids)
+            {
+                free (ids);
+                ids = NULL;
+            }
+            break;
+                
+        case CLEANUP:
+            state = FINISHED;
+            break;
+        }
+    }
+}
+    
+init ()
+{
+}
+
+wakeup()
+{
+}
+
+sleep()
+{
+    dp$erase_hilite (msg = &msg);
+}
+
+delete()
+{
+    dp$erase_hilite (msg = &msg);
+}
+

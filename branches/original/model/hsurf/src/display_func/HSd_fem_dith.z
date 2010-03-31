@@ -1,0 +1,452 @@
+
+/*
+$Author: hans $
+$Revision: 1.1.1.1 $
+$Date: 2001/12/17 22:40:36 $
+$Locker:  $
+*/
+
+/* Apogee  compliant */
+
+#include "stdio.h"
+#include "igrtypedef.h"
+#include "igr.h"
+
+#include "hsmath.h"
+#include "HStl_global.h"
+#include "HStl_window.h"
+#include "HStl_element.h"
+#include "hsdisplay.h"
+#include "HSd_fixedpt.h"
+#include "HSd_macros.h"
+
+#include "HSpr_display.h"
+
+extern unsigned char pattern[4][4];
+
+static int   count = 0;
+
+/*---GET_PIXEL_COLOR------------------------------------------------------*/
+#if RAMP
+#define GET_PIXEL_COLOR( cb, x, y, rsc )						\
+{									\
+	(cb) = ((rsc >> 16) % 16) <= pattern[(y)%4][(x)%4] ? 				\
+		(tiling_parms.start_slot_fem + (rsc >> 20))   : 			\
+		(tiling_parms.start_slot_fem + (rsc >> 20) + 1);			\
+}
+#else
+#define GET_PIXEL_COLOR( cb, x, y, rsc )                                                                         \
+                                                                                                                 \
+{                                                                                                                \
+   shade = rsc >> 20;                                                                                            \
+                                                                                                                 \
+   /*   this will only use the colors in the column provided   */                                                \
+   /*   4x4 ordered dither                                     */                                                \
+   /*      static int   dither_mat[16] = {  0,  8,  2, 10,     */                                                \
+   /*                                      12,  4, 14,  6,     */                                                \
+   /*                                       3, 11,  1,  9,     */                                                \
+   /*                                      15,  7, 13,  5 };   */                                                \
+   /*      register int   dither_val;                          */                                                \
+   /*      dither_val = dither_mat[((y & 3) << 2) | (x & 3)];  */                                                \
+   /*      if (((rsc&0xfffff)>>16)<=dither_val)                */                                                \
+   /*         return (fem_column[rsc>>20].slot);               */                                                \
+   /*      else                                                */                                                \
+   /*         return (fem_column[(rsc>>20)+1].slot);           */                                                \
+                                                                                                                 \
+   /* this will return a white pixel in the spots where there is a problem (if uncommented) */                   \
+/*                                                                                                               \
+   if ( (shade >= MAX_NUM_FEM_SHADES) || shade < 0 )                                                             \
+   {                                                                                                             \
+      printf( "HRget_fem_pixel_color:Error index out of range index = %d rsc = %#X\n",                           \
+          shade, rsc );                                                                                          \
+      return(7);                                                                                                 \
+   }                                                                                                             \
+                                                                                                                 \
+   count++;                                                                                                      \
+   if( (count & 0x3) == 1 )                                                                                      \
+   {                                                                                                             \
+      fprintf( stderr, "x, y, rsc, rgb: %d %d - %d - %d %d %d - %d %d %d\n",                                     \
+         x, y,                                                                                                   \
+         rsc,                                                                                                    \
+         fem_column[shade+1].red, fem_column[shade+1].green, fem_column[shade+1].blue,                           \
+         fem_column[shade].red, fem_column[shade].green, fem_column[shade].blue );                               \
+   }                                                                                                             \
+*/                                                                                                               \
+                                                                                                                 \
+   if ( (shade >= MAX_NUM_FEM_SHADES) || (shade < 0) )                                                           \
+   {                                                                                                             \
+      /* there is sometimes a problem (due to precision error probably) on the last pixel in a row */            \
+      /* being -1, we will keep this here til fixed */                                                           \
+      if (shade < 0 )                                                                                            \
+      {                                                                                                          \
+         rsc = shade = 0;                                                                                        \
+      }                                                                                                          \
+      else                                                                                                       \
+      {                                                                                                          \
+         shade = MAX_NUM_FEM_SHADES - 1;                                                                         \
+         rsc = ((MAX_NUM_FEM_SHADES - 1) << 20) - 1;                                                             \
+      }                                                                                                          \
+   }                                                                                                             \
+   /*  This will return the smoothest possible transition    */                                                  \
+   /*  between the colors.                                   */                                                  \
+                                                                                                                 \
+   percent = (IGRdouble)(rsc & 0xfffff)/1048576.0; /* (IGRdouble)(0x100000)= 1048576.0 */                        \
+   one_minus_percent = 1.0 - percent;                                                                            \
+   shade_plus_one = shade + 1;                                                                                   \
+                                                                                                                 \
+   (cb) =  IGErgb_to_index( active_window->context_no, x, y,                                                     \
+      (IGRint)(fem_column[shade_plus_one].red   * percent + fem_column[shade].red   * (one_minus_percent) ),     \
+      (IGRint)(fem_column[shade_plus_one].green * percent + fem_column[shade].green * (one_minus_percent) ),     \
+      (IGRint)(fem_column[shade_plus_one].blue  * percent + fem_column[shade].blue  * (one_minus_percent) ));    \
+}
+
+#endif		
+/*---FILL_UP-------------------------------------------------------------------*/
+
+#define FILL_UP( y )								\
+										\
+	{									\
+	if( rxb < rxa && ((y)-1) != tile->ya )					\
+		{								\
+	 	if( (dxc = rxa - rxb) == 0 )					\
+			{							\
+			dsc = 0;						\
+										\
+			rzc.sign = 1;						\
+			rzc.d_whole = 0;					\
+			rzc.d_fract = 0;					\
+			}							\
+		else								\
+			{							\
+			dsc = ( rsa - rsc ) / dxc;				\
+										\
+			fixed_divide(	(rza.active - rzb.active),		\
+					dxc,					\
+					&rzc.sign,				\
+					&rzc.d_whole,				\
+					&rzc.d_fract );				\
+			}							\
+										\
+		rzc.running = 0x40000000;					\
+		rzc.active = rzb.active;					\
+										\
+		xleft = rxb >> 16;						\
+		xright = rxa >> 16;						\
+										\
+		zb = active_window->zbuf +					\
+			(offset = y * active_window->x_dits + xleft);		\
+		cb = active_window->cbuf + offset;				\
+		}								\
+	}
+	
+#define	MARK									\
+	{									\
+	if (*zb >= rzc.active)							\
+		{								\
+		if (((*zb - rzc.active) > 1) || (*cb != fem_background))	\
+			{							\
+			*cb = fem_meshcolor;					\
+			*zb = rzc.active;					\
+			}							\
+		}								\
+	}
+
+#define SHADE									\
+	{  									\
+	if (*zb >= rzc.active)							\
+		{								\
+		if (((*zb - rzc.active) > 1) || (*cb != fem_meshcolor)) 	\
+			{							\
+			GET_PIXEL_COLOR(*cb, x, y, rsc)		         	\
+			*zb = rzc.active;					\
+			}							\
+		}								\
+	}
+
+#define TOP_FEM_SHADE								\
+	{									\
+	INIT_SHADE_VARIABLES_FEM						\
+	INIT_Z_VARIABLES							\
+	INIT_X_VARIABLES							\
+										\
+	CALC_DZ_DX								\
+	CALC_FEM_DX								\
+										\
+	CALC_BUFFER_ADDRESSES							\
+										\
+	if (tile->id & TOP_EDGE)						\
+		{								\
+		for (x = xleft; x <= xright; x++)				\
+			{							\
+			MARK							\
+			MOVE_NEXT_PIXEL						\
+			}							\
+		}								\
+	else									\
+		{								\
+		x = xleft;							\
+										\
+		if (tile->id & LEFT_EDGE)					\
+			{							\
+			MARK							\
+			MOVE_NEXT_PIXEL_FEM					\
+			x++;							\
+			}							\
+										\
+		for (/*x=x*/; x < xright; x++)					\
+			{							\
+			SHADE							\
+			MOVE_NEXT_PIXEL_FEM					\
+			}							\
+										\
+		if (tile->id & RIGHT_EDGE)					\
+			{							\
+			MARK							\
+			}							\
+		else								\
+			{							\
+			SHADE							\
+			}							\
+		}								\
+	}
+	
+#define BOTTOM_FEM_SHADE							\
+	{									\
+	INIT_SHADE_VARIABLES_FEM        					\
+	INIT_Z_VARIABLES							\
+	INIT_X_VARIABLES							\
+										\
+	CALC_DZ_DX								\
+	CALC_FEM_DX								\
+										\
+	CALC_BUFFER_ADDRESSES							\
+										\
+	if (tile->id & BOTTOM_EDGE)						\
+		{								\
+		if (old_xleft < xleft)						\
+			{							\
+			x = old_xleft + 1;					\
+			MOVE_BACKWARDS(xleft, x)				\
+			}							\
+		else								\
+			x = xleft;						\
+										\
+		if (old_xright > xright)					\
+			end_mesh_line = old_xright;				\
+		else								\
+			end_mesh_line = xright + 1;				\
+										\
+		for (/*x=x*/; x < end_mesh_line; x++)				\
+			{							\
+			MARK							\
+			MOVE_NEXT_PIXEL						\
+			}							\
+		}								\
+	else									\
+		{								\
+		if (tile->id & LEFT_EDGE)					\
+			{							\
+			if (old_xleft > xleft)					\
+				{						\
+				for (x=xleft; x < old_xleft; x++)		\
+					{					\
+					MARK					\
+					MOVE_NEXT_PIXEL_FEM			\
+					}					\
+				}						\
+			else if (old_xleft == xleft)				\
+				{						\
+				x = xleft;					\
+				MARK						\
+				MOVE_NEXT_PIXEL_FEM				\
+				x++;						\
+				}						\
+			else							\
+				{						\
+				MOVE_BACKWARDS(xleft, old_xleft + 1)		\
+				for(x = old_xleft + 1; x < xleft; x++)		\
+					{					\
+					MARK					\
+					MOVE_NEXT_PIXEL				\
+					}					\
+				MARK						\
+				MOVE_NEXT_PIXEL_FEM				\
+				x++;						\
+				}						\
+			}							\
+		else								\
+			x = xleft;						\
+										\
+		if ((tile->id & RIGHT_EDGE) && (old_xright < xright))		\
+			start_mesh_line = old_xright + 1;			\
+		else								\
+			start_mesh_line = xright;				\
+										\
+		for( /*x=x*/; x < start_mesh_line; x++ )				\
+			{							\
+			SHADE							\
+			MOVE_NEXT_PIXEL_FEM					\
+			}							\
+										\
+		if (tile->id & RIGHT_EDGE)					\
+			{							\
+			if (old_xright > xright)				\
+				end_mesh_line = old_xright - 1;			\
+			else							\
+				end_mesh_line = xright;				\
+										\
+			for (/*x=x*/; x < end_mesh_line; x++ )			\
+				{						\
+				MARK						\
+				MOVE_NEXT_PIXEL					\
+				}						\
+										\
+			MARK							\
+			}							\
+		else								\
+			{							\
+			SHADE							\
+			}							\
+		}								\
+	}
+	
+
+/*---HSfem_dithered------------------------------------------------------------*/
+
+#if RAMP
+	void HSfem_dithered_ramp( struct hsfem_trapezoid *tile )
+#else
+	void HSfem_dithered( struct hsfem_trapezoid *tile )
+#endif
+
+	{
+	int			rxa, rxb, dxa, dxb;		
+	int			rsa, rsb;		
+								
+	int			dxc;			
+	int			rsc, dsc;			
+	int			dx, dy;			
+								
+	int			offset;				
+								
+	struct HSfixedpt	rza, rzb, rzc;			
+								
+	register int		x, y;				
+	register int		xleft, xright;			
+								
+	register HSzbuf		*zb;				
+	register HScbuf		*cb;
+
+	int			rua=0, rub=0, dua=0, dub=0, duc;	
+	int			rva=0, rvb=0, dva=0, dvb=0, dvc;	
+	int			fdx, fd2x, fdy=0, fd2y=0;		
+
+	register int	start_mesh_line, end_mesh_line;
+	register int	old_xleft, old_xright;
+#if RAMP == 0
+        IGRdouble   percent, one_minus_percent;      
+        IGRint      shade, shade_plus_one;           
+#endif
+	MIN_MAX_TEST
+
+	/*
+	 *  Scale the shade (divide by 255 and shift left 16).  
+	 */
+
+	rsa = (int)(((tile->shade2 * 65536.0 / 255.0) + 0.5) * tiling_parms.apparent_shades_fem);
+	rsb = (int)(((tile->shade3 * 65536.0 / 255.0) + 0.5) * tiling_parms.apparent_shades_fem);
+	
+	CALC_DXDY_DZDY_FEMDY
+	
+	y = tile->yb;
+	
+	TOP_FEM_SHADE
+	old_xleft = xleft;
+	old_xright = xright;
+	MOVE_TO_NEXT_ROW_FEM
+	for( y++; y < tile->ya; y++ )
+		{
+		INIT_SHADE_VARIABLES_FEM
+		INIT_Z_VARIABLES
+		INIT_X_VARIABLES
+
+		CALC_DZ_DX
+		CALC_FEM_DX
+
+		CALC_BUFFER_ADDRESSES
+
+		if (tile->id & LEFT_EDGE)
+			{
+			if (old_xleft > xleft)
+				{
+				for (x = xleft; x < old_xleft; x++)
+					{
+					MARK
+					MOVE_NEXT_PIXEL_FEM
+					}
+				}
+			else if (old_xleft == xleft)
+				{
+				x = xleft;
+				MARK
+				MOVE_NEXT_PIXEL_FEM
+				x++;
+				}
+			else
+				{
+				MOVE_BACKWARDS(xleft, old_xleft + 1)
+				for(x = old_xleft + 1; x < xleft; x++)
+					{
+					MARK
+					MOVE_NEXT_PIXEL
+					}
+				MARK
+				MOVE_NEXT_PIXEL_FEM
+				x++;
+				}
+			}
+		else
+			{
+			x = xleft;
+			}
+
+
+		if ((tile->id & RIGHT_EDGE) && (old_xright < xright))
+			start_mesh_line = old_xright + 1;
+		else
+			start_mesh_line = xright;
+
+		for( /*x=x*/; x < start_mesh_line; x++ )
+			{
+			SHADE
+			MOVE_NEXT_PIXEL_FEM
+			}
+
+		if (tile->id & RIGHT_EDGE)
+			{
+			if (old_xright > xright)
+				end_mesh_line = old_xright - 1;
+			else
+				end_mesh_line = xright;
+
+			for (/*x=x*/; x < end_mesh_line; x++ )
+				{
+				MARK
+				MOVE_NEXT_PIXEL
+				}
+
+			MARK
+			}
+		else 
+			{
+			SHADE
+			}
+
+		old_xleft = xleft;
+		old_xright = xright;
+		MOVE_TO_NEXT_ROW_FEM		
+		}
+
+	if( y <= tile->ya )	
+		BOTTOM_FEM_SHADE
+	}

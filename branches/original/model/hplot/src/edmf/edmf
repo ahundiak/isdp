@@ -1,0 +1,78 @@
+# ------- EMS Plotting Metafile System -----------------------------------------
+#
+# ------- edit metafile
+#
+# check usage
+
+if [ $# -lt 1 ]
+then echo "usage: ${0} <metafile>"
+else
+
+# make temp directory if it does not exist
+  if [ ! -d /tmp/~edmf ]
+  then mkdir /tmp/~edmf
+  fi
+
+# make temp file in temp directory by same name as input file
+  tmpfile="/tmp/~edmf/`basename ${1}`"
+
+# get path to input file and make a temp file for output
+  meta_path=`dirname ${1}`
+  outfile="${meta_path}/~edmf.edmf~"
+
+# get path to me (and presumably the other metafile tools)
+  thing=`whence $0`
+  my_path=`dirname ${thing}`
+
+# make metafile readable by humans, quit if error
+  if [ -f "${1}" ]
+  then thing="${my_path}/dump_mf.x ${1} ${tmpfile}"
+  else thing="sed s/filename/`basename ${1}`/ ${my_path}/edmf.seed >${tmpfile}"
+  fi
+
+  if eval ${thing}
+  then
+    touch 0707070777 ${tmpfile}
+    tmpdate1=`\ls -l ${tmpfile}`
+    while true
+    do
+
+# invoke user's favorite editor on temp file
+      if [ "${MYEDITOR}" ]
+      then ${MYEDITOR} ${tmpfile}
+      elif [ "${EDITOR}" ]
+      then ${EDITOR} ${tmpfile}
+      elif [ "${VISUAL}" ]
+      then ${VISUAL} ${tmpfile}
+      elif [ "${FCEDIT}" ]
+      then ${FCEDIT} ${tmpfile}
+      else
+        echo "set MYEDITOR or EDITOR or VISUAL or FCEDIT for choice of editor"
+        break
+      fi
+
+# done if temp file was not written
+      tmpdate2=`\ls -l ${tmpfile}`
+      if [ "$tmpdate1" = "$tmpdate2" ]
+      then
+        echo "no change"
+        rm ${tmpfile}
+        break
+      fi
+
+# if edited temp file loads ok, move temp output file to input file and stop
+      if ${my_path}/load_mf.x ${tmpfile} ${outfile}
+      then
+        mv ${outfile} ${1}
+        rm ${tmpfile}
+        break
+
+# error loading file, give user a chance to read error messages
+      else
+        echo "error loading metafile."
+        read thing?"return to continue >> "
+      fi
+    done
+  else echo "error creating edit file"
+  fi
+fi

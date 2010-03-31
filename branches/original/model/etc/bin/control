@@ -1,0 +1,90 @@
+#   SYNOPSIS
+#
+#   control makefiledir variable filelist
+#
+#   sectotime seconds
+#
+#   DESCRIPTION
+#
+#   Control gets the date of the most recent file in filelist.
+#   This date plus one second is the control number.  Said number
+#   is output to standard out, and the makefile in directory
+#   makefiledir is modified to change the current assignment of
+#   variable to reflect the new control number.
+#
+#   Sectotime takes a control number as an argument.  The control
+#   number is the number of seconds since midnight GMT on the
+#   morning of 1 January 1970, I believe.  Sectotime translates
+#   this number into a human-readable local time and date.
+#
+#   HISTORY
+# 
+#   30 Dec 1988 jBk Changed use of ed to be explicitly /bin/ed
+#                   because some developers alias "ed" to be
+#                   things other than the standard ed.
+#   13 May 1988 jBk Modified to work with dummies for arguments
+#                   makefiledir and variable.
+#   23 Mar 1988 jBk Changed references to makeapp to be makefile.
+#   29 Feb 1988 jBk made invocation of lastmod relative to
+#               invocation of this script.
+#   22 Feb 1988 jBk added makefiledir parameter.
+#   15 Feb 1988 jBk Genesis.
+
+zero=$0
+
+# error if no arguments
+if [ $# -lt 3 ]
+then
+    echo $zero: insufficient arguments 1>&2
+    exit 1
+fi
+
+makefiledir=$1
+shift
+
+if [ "${makefiledir}" = "" ]
+then
+    makefiledir=/dev/null
+fi
+
+makefile=${makefiledir}/makefile
+
+variable=$1
+shift
+
+for file in $*
+do
+#   error if file is neither a file nor a directory
+    if [ ! -f "$file" -a ! -d "$file" ]
+    then
+        echo $zero: \"$file\" is neither a file nor a directory 1>&2
+        exit 2
+    fi
+done
+
+list=`/bin/ls -dt $*`
+set $list blap
+
+# error if there are no arguments
+if [ $# -eq 0 ]
+then
+    echo $zero: there are no arguments 1>&2
+    exit 3
+fi
+
+# lastmod ought to be in the same directory as this script
+bin=`dirname $zero`
+seconds=`${bin}/lastmod $1`
+
+if [ -f ${makefile} ]
+then
+    /bin/ed ${makefile} > /dev/null 2>&1 << EO
+1,\$s/^$variable =.*\$/$variable = $seconds/
+w
+q
+EO
+fi
+
+retval=$?
+echo $variable = $seconds
+exit $retval

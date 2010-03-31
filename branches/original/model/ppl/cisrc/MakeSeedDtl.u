@@ -1,0 +1,191 @@
+#include "OMlimits.h"
+#include "OMminimum.h"
+#include "OMerrordef.h"
+#include "OMprimitives.h"
+#include "ciminimum.h"
+#include "cimacros.h"
+#include "igewindef.h"
+#include "DItypedef.h"
+#include "DIdef.h"
+#include "DIglob.h"
+#include "DIprims.h"
+#include "ds.h"
+#include "dsdef.h"
+#include "dsmacros.h"
+#include "exfi.h"
+#include "dimdef.h"
+#include "dim.h"
+#include "dimmacros.h"
+
+
+char		**gadget_names;
+
+int		num_entries;
+
+DIgrid		*gadget_ids;
+
+extern char	*strrchr ();
+extern int	printf (),
+		DIstmocpy (),
+		DIfind ();
+extern void	free (),
+		DIfrees ();
+extern	int	_ds_do();
+
+delete ()
+{
+	if (gadget_ids)
+		free (gadget_ids);
+	if (gadget_names)
+	{
+		di$free
+		(
+			lines = gadget_names,
+			count = num_entries
+		);
+	}
+}
+
+main ()
+{
+	   
+	char		current_dir[DI_PATH_MAX],
+			*window_name;
+
+	int		msg,
+			sts,
+			i;
+
+        long            long_msg;
+
+	double		min_x,
+			min_y,
+			max_x,
+			max_y;
+
+	struct EXFI_data_st formData;
+        struct DMenv_param     frm_env;	
+	
+	gadget_ids = NULL;
+	gadget_names = NULL;
+
+	message ("Create detailing seed file");
+
+	begincmd ("create window");
+		ci$put (string="top");
+		ci$put (response=TERMINATE);
+	endcmd ();
+
+	begincmd ("set view rotation");
+		ci$put (string="top");
+		ci$put (string="top");
+		ci$put (response=RESET);
+		ci$put (response=TERMINATE);
+	endcmd ();
+
+	if (DIstmocpy (current_dir, "views", "regviews", "GRviews", 0, 2) != DIR_S_SUCCESS)
+	{
+		(void) printf ("ERROR: DIstmocpy ()\n");
+		exit;
+	}
+
+	if
+	(
+		di$find
+		(
+			start_dir = current_dir,
+			ptr = &num_entries,
+			regexp = "*",
+			grids = &gadget_ids,
+			lines = &gadget_names
+		)
+		!= DIR_S_SUCCESS
+	)
+	{
+		(void) printf ("ERROR: di$find\n");
+		exit;
+	}
+
+	for (i=0; i<num_entries; i=i+1)
+	{
+		window_name = strrchr (gadget_names[i], ':') + 1;
+/*
+.004	.430
+.085	.085
+.413	.839
+.476	.476
+
+.004	for IGE_INDEPENDENT
+.531
+.413
+.922
+*/
+		if (!strcmp(window_name, "top"))
+		{
+			min_x = 5.;
+			min_y = 134.;
+			max_x = 991.;
+			max_y = 877.;
+		}
+
+		if
+		(
+			ci$send
+			(
+				msg = message IGEgadget.change_gadget_size
+				(
+					&msg,
+					IGE_DEPENDENT,
+					min_x ,
+					min_y,
+					max_x,
+					max_y
+				),
+				channame = "to_parent",
+				targetid = gadget_ids[i].objid,
+				targetos = gadget_ids[i].osnum
+			)
+			!= 1
+		)
+		{
+			(void) printf("ERROR: ci$send IGEgadget.change_gadget_size\n");
+			exit;
+		}
+	}
+
+	begincmd ("window area");
+		ci$put (string="xy=-4,-2,0");
+		ci$put (string="xy=4,2,0");
+		ci$put (string="top");
+		ci$put (response=RESET);
+		ci$put (response=TERMINATE);
+	endcmd ();
+
+	ci$put(response = CLEAR_STACK);
+
+/* Set to detailing mode (instead of modelling mode).  WBC */
+
+	ci$put(string = "dm=mode=detail");
+
+/* Set dimension display to all (instead of default).  WBC */
+
+	ci$put(string = "dm=dimension display=all");
+
+/* Set text size to the same size as dimensioning text.  WBC */
+
+        dm$get_dim_param(type = DM_ENV_PARAM, p_data = &frm_env);
+
+	ci$put(string = "tx");
+	//"GRSTxSz" "tx"
+
+        ci$put(value = frm_env.txt_heig);
+
+/* Turn reference plane display off.  WBC */
+
+        ci$put(cmd_key = "MDTrOfRfDs");
+        ci$put (response=RESET);
+
+/* Turn surface boundary locate on.  WBC */
+
+        EFset_locate_eligibility(&long_msg, 1, "EMSedge");
+}

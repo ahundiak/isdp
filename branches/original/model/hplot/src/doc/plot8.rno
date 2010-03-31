@@ -1,0 +1,2002 @@
+.nnm
+.sthl 3,1,6,7,7,2,1,7,2
+.nj
+.rm 79
+.lm 4
+_ _ _ 
+.b 10
+.c;Intergraph Graphics Metafile
+.b
+.c;(InterScript)
+.b 5
+.c;Specification
+.b 5
+.c;Version 1.3.0
+.b 5
+.c;Sepr 6, 1989
+.b 7
+.c;This document describes the design of the
+.c;Intergraph Graphics Metafile (InterScript)
+.c;plotting metafile and interpreter (IGMplot).
+.b
+.c;This product was formerly called EMSplot.
+.pg
+.c;Changes
+.b3
+September 6, 1989
+.b
+.ls 0 'o'
+.le;Add definition for a post rotation matrix and perspective flag. (ML)
+.els
+.b3
+September 5, 1989
+.b
+.ls 0 'o'
+.le;Under basic setup commands, I change _#7 to be _"set a window light source_" _(was
+_"set a light source direction_"_) and changed _#8 to be _"set a global light source_" _(was
+_"set a point light source_"_).  Added _#13, defined to be "_set an ambient light source_".
+(ML)
+.els
+.b3
+December 9, 1988
+.b
+.ls 0 'o'
+.le;Cleaned up descriptions of character mappings, matrices, and raster formats.
+.le;Added table of defaults for active values.
+.els
+.b2
+October 27, 1988
+.b
+.ls 0 'o'
+.le;Added drawing primitive commands for dependent, abbreviated dependent,
+and scale independent 16-bit text strings.
+.le;Added drawing primitive command with range for dependent
+16-bit text strings.
+.els
+.b2
+September 22, 1988
+.b
+.ls 0 'o'
+.le;Added basic attribute command "set active rotation matrix" which is
+required for shading.
+.els
+.b2
+September 8, 1988
+.b
+.ls 0 'o'
+.le;Added 3d drawing primitive commands with range to allow stroking and
+tiling in bands.
+.els
+.b2
+August 18, 1988
+.b
+.ls 0 'o'
+.le;Added basic attribute command "set active text justification".
+.le;Added section on plot symbology files and substitution.
+.els
+.b2
+July 25, 1988
+.b
+.ls 0 'o'
+.le;Changed system name to Intergraph Graphics Metafile since the design of
+the metafile and interpreter is no longer driven exclusively by I/EMS but
+is intended for general applications use.
+.le;Added basic set-up command "create a font from temporary file".
+.els
+.pg
+.req 'plot8.rnt'
+.pg
+.nmpg 1
+.hl 1 Introduction
+.nj
+InterPlot is a standalone or distributed plotting system servicing
+Intergraph Unix-based applications such as I/EMS and DP/Publisher.
+In the InterPlot methodology,
+workstation application programs submit plot requests by
+creating device-independent "picture files"
+called metafiles and transfering them to plot node workstations to be plotted.
+When a plot node receives a metafile and a plot request file from another
+workstation node, it performs all necessary queuing, metafile interpretation,
+and device driving required to plot the metafile on the specified output
+device.
+.b
+The IGDS plotting metafile format that was used initially by I/EMS
+for plotting is proving unsatisfactory.
+Therefore, a new metafile format and the corresponding metafile interpreter
+known as the Intergraph Graphics Metafile or InterScript
+have been developed to address the specific needs for
+generating plots for I/EMS, DP/Publisher and DP/Presenter.
+.hl 2 Design Goals
+.nj
+There are 4 goals the IGM plotting metafile project plans to meet.
+They are listed here in order of priority.
+.ls 'o'
+.le;The first goal is to design a metafile format and a metafile interpreter
+for plotting graphics and text data.
+The metafile consists of relatively low-level commands
+to which an application can convert easily.
+This device-independent metafile is translated by the metafile interpreter
+to primitives that ODI (the virtual Output Device Interface)
+understands in order to plot.
+Applications based upon the I/EMS platform will inherit this plotting
+capability.
+.le;The second goal is to satisfy the plotting needs of
+Intergraph workstation applications not based on the I/EMS platform.
+The IGM plotting interpreter
+supports several commands not directly used by I/EMS
+such as "3D Rectangular Drawing Primitive Commands".
+These commands provide a general graphics capability
+not based upon the NURB representation.
+This allows an application to use a format similar to its
+own representation for creating a plotting metafile
+which the IGM interpreter understands.
+.le;The third goal is to use the metafile as a
+transfer format for I/EMS elements
+to other Intergraph workstation applications such as DP/Publisher.
+The IGM metafile and interpreter have been designed by a cooperative effort
+of the I/EMS, DP/Publisher and DP/Presenter groups.
+.le;The fourth goal is to provide a means to pass data from
+non-I/EMS based workstation applications into I/EMS.
+Again, the elements which do not use the NURB representation
+make it easier for applications to format data for I/EMS use.
+.els
+.hl 2 Scope
+.nj
+The scope of IGM plotting is to provide the definition of a stable
+metafile format and an interpreter to plot metafiles in this format
+on output devices.
+.b
+Each individual application that uses the IGM plotting metafile format
+is responsible for providing the plotting methods or functions
+that create these metafiles.
+.b
+The transfer of intelligent data across applications will be accomplished
+through some means other than the IGM plotting metafile
+(via PDES or IGES, for example).
+.b
+The elements defined for the IGM plotting metafile provide
+an efficient means for transferring and plotting the metafiles.
+The metafiles are not supposed to be a completely general graphics
+database, so:
+.ls 'o'
+.le;Only a few relatively low-level primitives are defined.
+.le;The standard units of measure in the metafile are meters
+(e.g. line width and line style definition).
+.le;Element types are limited to those which are
+easily transformed into the NURB format.
+.le;The number of options for command formats is limited.
+For example, raster data formats are limited to a few
+of the most useful SDN 84-007 formats.
+.le;The translation of input data into ODI output calls
+is straightforward.
+.els
+.hl 2 Plotting Philosophy
+.nj
+The basic philosophy that guides IGM plotting is
+WYSIWYG (What You See Is What You Get).
+This philosophy implies that you cannot plot anything that you cannot
+display on the screen.
+.hl 1 Metafile Interpreter
+.nj
+The conversion of device-independent metafile primitives
+into device-specific commands is accomplished through a combination
+of the metafile interpreter and ODI (the virtual Output Device Interface)
+software, formerly known as VDI.
+The ODI software provides the metafile interpreter with
+a functional interface which acts like an intelligent
+device driver that can drive a variety of devices.
+The IGM interpreter will interpret the plotting metafiles
+and produce ODI commands to drive the plotters.
+.hl 2 Functionality
+.nj
+The basic functionality of the
+metafile interpreter is to convert the metafile commands
+to ODI primitives and send the primitives to ODI functions,
+with device- and plot-specific parameters (e.g., plot size)
+specified by the plotting parameters file.
+.b
+The metafile and metafile interpreter both reside on a plotting node,
+which is assumed to have enough resources to do the requested plot.
+Queueing of plots and queue management resources is provided by
+InterPlot.
+.b
+Input to the metafile interpreter consists of:
+.ls 'o'
+.le;the submitted workstation metafile (which consists of device-independent
+plot data -
+see metafile format below), and
+.le;the submitted
+plotting request file (which specifies all device-specific parameters
+- see Appendix C).
+.le;optional temporary font definition files which must be sent
+by the application.
+.le;an optional plot symbology substitution file.
+.els
+Output from the interpreter goes to ODI
+which accepts the following primitives in plotting device coordinates:
+.b
+.ls 0 'o'
+.le;2D linestrings
+.le;2D polygons or polygon sets
+.le;2D text
+.le;2D raster data (and, internally, pixmaps)
+.els
+All z-buffered hidden surface shading and raster hidden line processing is
+performed by the IGM interpreter on the plotting node.
+Such processing
+should not be performed by the application (e.g., I/EMS) since to do so
+would require prior knowledge about plotter device resolution, etc. and
+would require network transfers of large amounts of raster data.
+.hl 2 Structure of Metafile Interpreter
+.nj
+The metafile interpreter is a non-object oriented program
+which:
+.ls 'o'
+.le;makes calls to GPIPE with feedback buffers to accomplish stroking of
+NURB surfaces and NURB curves,
+.le;makes calls to hidden surface shading functions (non-object)
+"pulled out of I/EMS" with feedback buffers
+to accomplish hidden surface shading activities, and
+.le;makes calls to ODI which calls Font Server
+to accomplish most text processing.
+.els
+Error detection and recovery for such problems as the plotter not
+being ready (e.g., paper out) is handled by the InterPlot queuing services,
+not by the metafile interpreter.
+.hl 1 Metafile Format
+.nj
+The metafile is essentially a display list for plotters.
+Parameter specification is modal.
+In other words, "active" parameters such as display symbology
+are set by change "active" parameter commands.
+These parameters remain active until changed.
+Some parameters are stack-oriented, with "push" and "pop"
+command syntax.
+Transformation matrices have their own stack,
+for example, to accomodate nested transformations.
+.b
+All data for a particular plot or data transfer resides
+in the same physical metafile.
+Thus, for example, all reference file attachments
+must be consolidated into a single metafile at metafile creation time.
+.b
+The metafile format consists of a 1-block header, followed by various
+metafile commands.
+.b
+For metafile commands,
+a command identifier (1 short treated as 2 unsigned bytes)
+specifies what action is to be taken
+with the variable length data that immediately follows the identifier:
+.b
+.tp 16
+.lit
+  high byte    low byte    command set
+
+      0         0..255     basic set-up commands
+                  0          - set color table R-G-B values
+                  1          - set line style table values
+                  2          - create a font
+                  3          - read and load a resident font file
+                  4          - start new page
+                  5          - set translucency grid
+                  6          - set depth cue intensities
+(5-9-89)          7          - set a window light source
+(5-9-89)          8          - set a global light source
+                  9          - define binary polygon fill pattern
+                 10          - set character code mapping
+                 11          - set view orientation and range
+                 12          - create a font from temporary file
+(5-9-89)         13          - set an ambient light source
+(MADHU)          14          - set paper origin
+(MADHU)          15          - set plot area color
+(6-9-89)         16          - set view in parallel (non-perspective)
+(6-9-89)         17          - set view in perspective
+.end lit
+.b
+.tp 3
+.lit
+      1         0..255     segment definition commands
+                  0          - begin drawing primitive segment definition
+                  1          - end drawing primitive segment definition
+.end lit
+.b
+.tp 23
+.lit
+      2         0..255     basic attribute commands
+                  0          - set active color index -- foreground
+                  1          - set active color index -- background
+                  2          - set active color index -- transparent
+                  3          - set active color index -- polygon border
+                  4          - set active color (R-G-B) -- foreground
+                  5          - set active color (R-G-B) -- background
+                  6          - set active color (R-G-B) -- transparent
+                  7          - set active color (R-G-B) -- polygon border
+                  8          - set active line style
+                  9          - set active line width
+                 10          - set active text character spacing
+                 11          - set active polygon fill mode
+                 12          - set active polygon fill pattern
+                 13          - set active rendering mode
+                 14          - set active translucency
+                 15          - set active polygon border style
+                 16          - set active polygon border width
+                 17          - set active raster orientation
+                 18          - set active font number
+                 19          - set active view number
+                 20          - set active text justification
+                 21          - set active rotation matrix
+(6-9-89)         22          - set active post rotation matrix
+.end lit
+.b
+.tp 5
+.lit
+      3         0..255     stack-oriented attribute commands
+                  0          - push active transformation matrix
+                  1          - pop active transformation matrix
+                  2          - push active clipping plane elements
+                  3          - pop active clipping plane elements
+.end lit
+.b
+.tp 15
+.lit
+      4         0..255     3D drawing primitive commands
+                  0          - draw 3D linestring
+                  1          - draw 3D polygon
+                  2          - draw 3D NURB curve
+                  3          - draw 3D view-dependent text string
+                  4          - draw 3D abbreviated view-dependent text string
+                  5          - draw 3D planar raster image
+                  6          - draw 3D NURB surface
+                  7          - draw defined drawing primitive segment
+                                 by identifier
+                  8          - draw 3D scale-independent text string
+                  9          - draw 3D view-dependent 16-bit text string
+                  10         - draw 3D abbreviated view-dependent 16-bit
+                                 text string
+                  11         - draw 3D scale-independent 16-bit text string
+.end lit
+.b
+.tp 5
+.lit
+      5         0..255     3D rectangular drawing primitive commands
+                  0          - draw 3D rectangle
+                  1          - draw 3D enclosed ellipse or circle
+                  2          - draw 3D arc (of enclosed ellipse or circle)
+                  3          - draw 3D wedge (arc with radial lines)
+.end lit
+.b
+.tp 3
+.lit
+      6         0..255     application-specific commands (ignored by
+                                 metafile interpreter)
+                  0          - draw reference file
+.end lit
+.tp 6
+.lit
+      7         0..255     3D drawing primitive commands with range
+                  0          - draw 3D NURB curve with range
+                  1          - draw 3D NURB surface with range
+                  2          - draw 3D view-dependent text string with range
+                  3          - draw 3D view-dependent 16-bit text string
+                                 with range
+.end lit
+.tp 19
+.hl 2 Metafile Header
+.nj
+The metafile header is 1 block (512 bytes) of information as follows:
+.b
+.lit
+    char fileType[2];    - type identifier that indicates IGM metafile.
+                             The interpreter checks these characters which
+                             must be the letters "EP".
+    uint16 version;      - metafile version number allocated in 4-bit pieces
+                             as (major, minor, release, sequence).
+                             Recognized values for I/EMS release 1.2.0 are
+                             4608 (1.2.0.0) and 4609 (1.2.0.1)
+                             The interpreter validates this field.
+    double worldScale;   - the factor to convert from world units to meters.
+                             For example, 0.0254 for world units in inches.
+    char master[80];     - parent object space or database master file name.
+                             This field is not checked by the interpreter.
+    char comment[80];    - file description.
+                             This field is not checked by the interpreter.
+    uint8 reserved[340]; - reserved for expansion
+.end lit
+.hl 2 Basic Set-up Commands
+.nj
+Basic set-up commands create global resources like the color table
+and they affect overall aspects of the plot such as "start new page".
+.tp 9
+.hl 3 set color table R-G-B values
+.nj
+.b
+.lit
+    uint8 commandID[2]; - 0:0
+    uint16 numEntries;  - number of entries in the color table, n, which
+                            means the color table indices are 0 to n-1.
+    uint16 values[];    - array of R-G-B values, 16 bits per primary.
+                            (R0, G0, B0, R1, G1, B1, ... Rn-1, Gn-1, Bn-1)
+                            Size of array is 3 X numEntries.
+.end lit
+.tp 10
+.hl 3 set line style table values
+.nj
+.b
+.lit
+    uint8 commandID[2]; - 0:1
+    uint16 numEntries;  - number of entries in the line style table, n,
+                            which means the style indices are 0 to n-1.
+    uint16 numRuns[];   - array of size numEntries which contains the
+                            number of "on" and "off" runs per entry
+    double runs[];      - arrays of sizes numRuns[i] which contain the
+                            length of each run in meters
+.end lit
+.b
+.tp 6
+.lit
+    For example, a table with 3 line styles (solid, dashed, and dotted)
+    might be defined by:
+        command      0:1
+        numEntries   3
+        numRuns      1, 2, 2
+        runs         1.0, 0.002, 0.001, 0.0001, 0.0009
+.end lit
+.tp 11
+.hl 3 create a font
+.nj
+.b
+.lit
+    uint8 commandID[2]; - 0:2
+    uint16 fontNum      - number used to specify the font in a set command
+    char typefaceID[];  - name of typeface file, null terminated
+    double height;      - height of font in print type points
+    double aspect;      - aspect ratio
+    double rotation;    - counter-clockwise rotation angle in degrees
+    double slant;       - counter-clockwise slant angle in degrees
+    uint16 mapping;     - number to select a character code mapping
+.end lit
+.b
+Note: This command creates an entry in the interpreter font table which
+may be referred to in subsequent "set active font number" commands.
+The font created by this command becomes the active font.
+.b
+A type point is precisely one 72.27-th of an inch.
+.b
+The typefaceID must be established by the application program
+at metafile creation time.
+All typefaces appear as "filled" if the output device supports it.
+.b
+The height, aspect, rotation and slant angles defined with the font are
+all used unmodified for scale-independent text.
+Abbreviated view-dependent text modifies height according to the view scale.
+View-dependent text computes all these font attributes
+from the direction and up vectors.
+.tp 6
+.hl 3 read and load a resident font file
+.nj
+.b
+.lit
+    uint8 commandID[2]; - 0:3
+    uint16 fontNum      - number used to specify the font in a set command
+    char filename[];    - Unix path name of font file, null terminated
+.end lit
+.b
+Note:  This command requires the metafile interpreter to know enough
+device-specific information to determine whether it is appropriate
+to download a device-specific resident font file.
+.tp 4
+.hl 3 start new page
+.nj
+.b
+.lit
+    uint8 commandID[2]; - 0:4
+.end lit
+.b
+This command finishes printing the plot as defined
+up to this point and starts a new page on the output device.
+The plot surface is cleared and set to the default plot surface color.
+Various internal tables in the interpreter are cleared.
+.tp 5
+.hl 3 set translucency grid
+.nj
+.b
+.lit
+    uint8 commandID[2]; - 0:5
+    uint8 gridsize;     - 1 = 1x1 grid; 3 = 3x3 grid
+.end lit
+.b
+Note: This command applies to hidden surface shading only.
+.tp 6
+.hl 3 set depth cue intensities
+.nj
+.b
+.lit
+    uint8 commandID[2]; - 0:6
+    uint8 near;         - intensity (0%-100%) at near Z
+    uint8 far;          - intensity at far Z clipping plane
+.end lit
+.b
+Note: This command applies to hidden surface shading only.
+.tp 9
+.hl 3 set a window light source(1)
+.footnote
+(1) Taken from the HSURF structure HS_light_source in hsurf.h
+.end footnote
+.nj
+.b
+.lit
+    uint8   commandID[2]   - 0:7
+    IGRint  index          - logical light source number
+    IGRint  type           - light source type ()
+    IGRdouble x, y, z      - light source location or delta
+    IGRdouble radius       - point light source radius
+    IGRint red, green, blue- light source RGB (0-255)
+.end lit
+.b
+Note: This command applies to hidden surface shading only.
+.tp 9
+.hl 3 set a global light source(1)
+.nj
+.b
+.lit
+    uint8   commandID[2]   - 0:8
+    IGRint  index          - logical light source number
+    IGRint  type           - light source type ()
+    IGRdouble x, y, z      - light source location or delta
+    IGRdouble radius       - point light source radius
+    IGRint red, green, blue- light source RGB (0-255)
+.end lit
+.b
+Note: This command applies to hidden surface shading only.
+.tp 9
+.hl 3 define binary polygon fill pattern
+.nj
+.b
+.lit
+    uint8 commandID[2]; - 0:9
+    uint16 patternNum;  - number used to specify the polygon fill pattern
+    uint16 bitsPerRow;  - the number of bits per fill pattern row
+    uint16 numRows;     - the number of rows in the fill pattern
+    uint8 pattern[];    - array of binary fill pattern bits where
+                            1 means foreground and 0 means background
+.end lit
+.b
+Note: Polygon fill patterns which use the transparent option
+are not supported in this release.
+.tp 10
+.hl 3 set character code mapping
+.nj
+.b
+.lit
+    uint8 commandID[2]; - 0:10
+    uint16 mapping;     - number used to specify this mapping for a font
+    uint16 missingChar; - the character to use when a code is not defined
+    uint16 flags;       - flags: sixteen bit mapping (1)
+    uint16 numPairs;    - number of pairs in the mapping
+    uint16 pairs[];     - array of input:output character codes
+                            size of array is 2 X numPairs
+.end lit
+.b
+Note: A sixteen bit mapping is one where one or more of the input
+character codes is greater than 255.
+.b
+A character code mapping determines the order of the characters in a font.
+The mapping may contain only a subset of the characters available in the font.
+The only default mapping supported is ASCII, mapping number 0.
+See the Font Server documentation for more details.
+.tp 13
+.hl 3 set view orientation and range
+.nj
+.b
+.lit
+    uint8 commandID[2]; - 0:11
+    uint8 viewNumber;   - number used to specify this view
+    double matrix[16];  - 4x4 view orientation matrix in row major order.
+                            The interpreter expects this to be a valid
+                            matrix which should default to a unit matrix:
+                            (1 0 0 0, 0 1 0 0, 0 0 1 0, 0 0 0 1).
+    double range[6];    - range diagonal of viewport in view coordinates.
+                            The interpreter uses this information to
+                            determine clipping and scaling of elements.
+                            (X0, Y0, Z0, X1, Y1, Z1)
+.end lit
+.b
+Note: A view must be specified before any elements are drawn.
+Defining a view makes it the active view or a view may be selected
+at a later time with the command "set active view number".
+.b
+Multiple views are provided for plots which have multiple pages.
+Each page may have a different view.
+More than one view on a single page is not meaningful.
+.tp 11
+.hl 3 create a font from temporary file
+.nj
+.b
+.lit
+    uint8 commandID[2]; - 0:12
+    uint16 fontNum      - number used to specify the font in a set command
+    char typefaceID[];  - name of typeface file, null terminated
+    double height;      - height of font in print type points
+    double aspect;      - aspect ratio
+    double rotation;    - counter-clockwise rotation angle in degrees
+    double slant;       - counter-clockwise slant angle in degrees
+    uint16 mapping;     - number to select a character code mapping
+.end lit
+.b
+Note:  The typefaceID is assumed to be a temporary file send to the plot
+node for use by a single plot only.
+The typefaceID file will be removed when plotting is complete.
+.b
+Other restrictions are discussed above with the "create a font" command.
+.tp 9
+.hl 3 set an anbient light source(1)
+.nj
+.b
+.lit
+    uint8   commandID[2]   - 0:13
+    IGRint  index          - logical light source number
+    IGRint  type           - light source type ()
+    IGRdouble x, y, z      - light source location or delta
+    IGRdouble radius       - point light source radius
+    IGRint red, green, blue- light source RGB (0-255)
+.end lit
+.b
+Note: This command applies to hidden surface shading only.
+.tp 9
+.hl 3 set paper origin
+.nj
+.b
+.lit
+    uint8   commandID[2]   - 0:14
+.end lit
+.b
+.tp 9
+.hl 3 set plot area color
+.nj
+.b
+.lit
+    uint8   commandID[2]   - 0:15
+.end lit
+.b
+.tp 9
+.hl 3 set view in parallel (non-perspective)
+.nj
+.b
+.lit
+    uint8   commandID[2]   - 0:16
+.end lit
+.b
+.tp 9
+.hl 3 set view in perspective
+.nj
+.b
+.lit
+    uint8   commandID[2]   - 0:17
+.end lit
+.b
+Note: This command applies to hidden surface shading only.
+.hl 2 Segment Definition Commands
+.b
+.nj
+A segment is a series of commands which can be referred to by identifier.
+Defined segments are used to create associations and
+to draw a series of commands more than once by using the
+"draw defined drawing primitive segment by identifier" command.
+The metafile interpreter maintains a table of known segment identifiers.
+Each application is responsible for
+any significance attached to an association other than
+the fact it represents several graphic elements to draw.
+.b
+Drawing primitive segments are drawn as they are being defined.
+Thus, the first instance of a drawing primitive segment
+in the metafile should be its definition
+while all other instances are drawn by the
+"draw defined drawing primitive segment by identifier" command.
+.b
+Segment definitions may be nested but all identifiers are defined
+globally and must be unique within the metafile.
+This is to allow the definition of elements within an association
+and the definition of repeated segments within a complex element.
+.b
+When using the "draw defined drawing primitive segment by identifier" command,
+the metafile interpreter pushes all active values on a segment
+invocation stack and restores them when the command is finished.
+.b
+Recursive segment definition is not supported.
+.tp 5
+.hl 3 begin drawing primitive segment definition
+.nj
+.b
+.lit
+    uint8 commandID[2]; - 1:0
+    int32 segmentID;    - identifier used to specify this segment
+.end lit
+.b
+Note: This command should occur in the metafile immediately before the
+first command to be included in the definition of a drawing primitive segment.
+.tp 4
+.hl 3 end drawing primitive segment definition
+.nj
+.b
+.lit
+    uint8 commandID[2]; - 1:1
+.end lit
+.b
+Note: This command should occur in the metafile immediately after the
+last command to be included in the definition of a drawing primitive segment.
+.hl 2 Basic Attribute Commands
+.b
+.nj
+Most attributes (e.g., display symbology)
+of the drawing primitives are mode switches.
+In other words, these attributes are "active parameters" until changed.
+.tp 9
+.hl 3 set active color index
+.nj
+.b
+.lit
+    uint8 commandID[2]; - 2:0 -- foreground
+                          2:1 -- background
+                          2:2 -- transparent
+                          2:3 -- polygon border
+    uint16 colorIndex;  - color table index in the range 0 to n-1 where
+                            n is the defined color table size
+.end lit
+.b
+Note:  Foreground color is used to represent the "active" drawing
+color.
+Foreground color and background color together specify
+binary raster image color attributes.
+Transparent color applies to raster images if transparency mode is on.
+Polygon border color is the color of polygon borders if one of the
+border modes is on.
+Active color may be set by color table index or by R-G-B values
+(see Set Active Color command).
+.tp 10
+.hl 3 set active color (R-G-B)
+.nj
+.b
+.lit
+    uint8 commandID[2]; - 2:4 -- foreground
+                          2:5 -- background
+                          2:6 -- transparent
+                          2:7 -- polygon border
+    uint16 red;
+    uint16 green;       - R-G-B values
+    uint16 blue;
+.end lit
+.b
+Note: Active color may be set by R-G-B values or by color table index
+(see Set Active Color Index command).
+.tp 6
+.hl 3 set active line style
+.nj
+.b
+.lit
+    uint8 commandID[2]; - 2:8
+    uint16 styleIndex;  - line style index in the range 0 to n-1 where
+                            n is the line-style table size
+.end lit
+.tp 5
+.hl 3 set active line width
+.nj
+.b
+.lit
+    uint8 commandID[2]; - 2:9
+    double width;       - line width in meters on the output device
+.end lit
+.tp 6
+.hl 3 set active text character spacing
+.nj
+.b
+.lit
+    uint8 commandID[2]; - 2:10
+    double scale;       - scale value used to increase/decrease
+                            the space between characters
+.end lit
+.tp 12
+.hl 3 set active polygon fill mode
+.nj
+.b
+.lit
+    uint8 commandID[2]; - 2:11
+    uint8 mode;         - polygon fill mode as follows:
+                            0 = polygon fill mode off
+                            1 = border only (*)
+                            2 = solid fill
+                            3 = solid fill with border (*)
+                            4 = pattern fill
+                            5 = pattern fill with border (*)
+                            6 = erase
+.end lit
+.b
+A polygon is any "planar, physically closed" NURB curve or
+any of the "rectangular drawing primitives" which is closed
+(i.e. rectangle, ellipse, or wedge).
+.b
+Fill mode "off" means polygons are drawn as outlines in
+the active foreground color, style and width.
+"Border only" mode is similar except that the active border color is used.
+.b
+"Solid fill" draws the entire area of the polygon
+in the active foreground color.
+"Pattern fill" draws the entire area of the polygon
+in the active polygon fill pattern using the foreground, background and
+transparent colors.
+A border of the active border color may be added to solid and pattern filled
+polygons.
+.b
+"Erase" mode means solid fill in background color.
+.b
+The fill modes with border, marked with (*) above, use the
+active border style and border width.
+.tp 5
+.hl 3 set active polygon fill pattern
+.nj
+.b
+.lit
+    uint8 commandID[2]; - 2:12
+    uint16 patternNum;  - number of the polygon fill pattern
+.end lit
+.b
+Note: The pattern number must be defined at the time this command is executed.
+.tp 11
+.hl 3 set active rendering mode
+.nj
+.b
+.lit
+    uint8 commandID[2]; - 2:13
+    uint8 renderMode;   - rendering mode, identified as follows:
+                            0 - wireframe
+                            1 - z-buffered smooth shading
+                            2 - z-buffered constant shading
+                            3 - z-buffered raster hidden line
+                            4 - z-buffered filled raster hidden line
+                            5 - z-buffered area fill
+.end lit
+.b
+Elements that appear first in the metafile are displayed
+first and may be overwritten by subsequent elements.
+For example, an application that deals with both vector and raster data
+in the same scene can control the priority of the displayed elements
+by their ordinal placement in the metafile.
+.b
+If an application "mixes _& matches" z-buffered rendering modes
+with other rendering modes, the display will be a combination of
+z-buffered display and "first come, first served" display.
+.tp 5
+.hl 3 set active translucency
+.nj
+.b
+.lit
+    uint8 commandID[2]; - 2:14
+    uint8 translucency; - 0 = opaque; 127 = translucent
+.end lit
+.b
+Note: This command applies to smooth or constant shading only.
+.tp 6
+.hl 3 set active polygon border style
+.nj
+.b
+.lit
+    uint8 commandID[2]; - 2:15
+    uint16 styleIndex;  - polygon border style index in the range 0 to n-1
+                            where n is the line-style table size
+.end lit
+.tp 5
+.hl 3 set active polygon border width
+.nj
+.b
+.lit
+    uint8 commandID[2]; - 2:16
+    double width;       - polygon border width in meters on output device
+.end lit
+.tp 8
+.hl 3 set active raster orientation
+.nj
+.b
+.lit
+    uint8 commandID[2]; - 2:17
+    double origin[3];   - x,y,z of origin of raster data
+    double rotation;    - rotation angle of raster in degrees
+    double Xscale;      - scale factor of raster in X direction
+    double Yscale;      - scale factor of raster in Y direction
+.end lit
+.b
+Note: In this release, rotations are restricted to 0 or 90 degrees
+(positive or negative).
+Releases using ODI will support arbitrary rotation.
+.b
+Scaling of raster data (which implies re-sampling) can be performed
+at metafile creation time or at metafile interpretation time.
+.tp 5
+.hl 3 set active font number
+.nj
+.b
+.lit
+    uint8 commandID[2]; - 2:18
+    uint16 fontNum;     - font number to become the active font
+.end lit
+.b
+Note: The font number must be defined at the time this command is executed.
+.tp 5
+.hl 3 set active view number
+.nj
+.b
+.lit
+    uint8 commandID[2]; - 2:19
+    uint8 viewNumber;   - number of the view to be the active view
+.end lit
+.tp 21
+.hl 3 set active text justification
+.nj
+.b
+.lit
+    uint8 commandID[2];  - 2:20
+    uint8 justification; - text justification mode, identified as follows:
+                              0 - left bottom
+                              1 - left baseline
+                              2 - left center
+                              3 - left cap
+                              4 - left top
+                              5 - center bottom
+                              6 - center baseline
+                              7 - center center
+                              8 - center cap
+                              9 - center top
+                             10 - right bottom
+                             11 - right baseline
+                             12 - right center
+                             13 - right cap
+                             14 - right top
+.end lit
+.b
+Note: Justification applies to an entire text string.
+That is, the origin of the string is placed at the left baseline,
+center baseline, etc.
+Default justification is 1, left baseline.
+.tp 5
+.hl 3 set active rotation matrix
+.nj
+.b
+.lit
+    uint8 commandID[2]; - 2:21
+    double matrix[9];-  - 3x3 rotation matrix, row major order
+.end lit
+.b
+Note: The rotation matrix which corresponds to the rotation component of the
+active transformation is used by the shading functions of the metafile
+interpreter for computing normals.
+In this release, the rotation matrix is required only for commands which
+draw shaded elements when the active rendering mode is
+one of the shaded z-buffered modes.
+The rotation matrix is not used when the active rendering mode is wireframe.
+.tp 5
+.hl 3 set active post rotation matrix
+.nj
+.b
+.lit
+    uint8 commandID[2]; - 2:22
+    double matrix[16];-  - 4x4 post rotation matrix, row major order
+.end lit
+.b
+Note: The post rotation matrix which corresponds to the post rotation component of the
+active transformation is used by the shading functions of the metafile
+interpreter for perspective display.
+In this release, the post rotation matrix is required only for commands which
+draw shaded elements when the active rendering mode is
+one of the shaded z-buffered modes.
+The post rotation matrix is not used when the active rendering mode is wireframe.
+.hl 3 table of default attribute values (Initial Values)
+.nj
+.b
+.lit
+    color table indices
+        foreground        1
+        background        0
+        transparent       1
+        polygon border    1
+
+    line width            0
+    line style index      0
+    border width          0
+    border style index    0
+
+    character spacing     1
+    justification         1  (left baseline)
+
+    polygon fill pattern  0
+    polygon fill mode     0  (off)
+
+    rendering mode        0  (wireframe)
+    translucency          0  (opaque)
+    translucency grid     1  (1x1)
+
+    font number           0
+    view number           0
+
+    raster orientation
+        origin           (0  0  0)
+        rotation angle    0
+        scale  x          1
+               y          1
+
+    rotation matrix
+        1  0  0
+        0  1  0
+        0  0  1
+
+    Note:
+        no defaults exist for the following tables even though
+        there may be a default table index defined above:
+
+        color table R-G-B values
+        line style table values
+        character fonts
+        depth cue intensities
+        light sources
+        polygon fill patterns
+        view orientation and range
+.end lit
+.hl 2 Stack-oriented Attribute Commands
+.nj
+.tp 5
+.hl 3 push active transformation matrix
+.nj
+.b
+.lit
+    uint8 commandID[2]; - 3:0
+    double matrix[16];  - 4x4 transformation matrix, row major order
+.end lit
+.b
+The coordinate system of the IGM plotting metafile is a 3D double
+precision master file coordinate system, as reflected in the matrix definition.
+The initial active transformation is set by the "set view orientation and range"
+or "set active view number" command for the current page or plot.
+This command concatenates (pre-multiplies) the matrix given in the command
+by the current active transformation to get the resultant matrix.
+That is, ActiveMatrix = CommandMatrix X ActiveMatrix.
+.b
+All raster elements are treated as
+view-independent (they always lie in the view plane) in this release;
+specifically, their origins are transformed,
+and then they are optionally scaled and/or rotated about the z-axis.
+.b
+This release does not deal with perspective.
+A definition of what perspective means for 3D planar elements
+(e.g., text and raster)
+will be defined when this is handled in subsequent releases.
+.tp 7
+.hl 3 push active clipping plane elements
+.nj
+.b
+.lit
+    uint8 commandID[2]; - 3:2
+    double clips[6];    - an array which implies a view-aligned clipping
+                            box whose range diagonal in view coordinates
+                            is (X0, Y0, Z0, X1, Y1, Z1)
+.end lit
+.b
+Note:
+This command replaces the active clipping range with the given range.
+The coordinates of the range box are specified in view coordinates
+which are determined by the active view ("set active view number" or
+"set active view orientation and range").
+.b
+A definition of perspective clipping planes must be defined to support
+perspective.
+This issue will be considered in a later release.
+.tp 5
+.hl 3 pop active transformation or clipping elements
+.nj
+.b
+.lit
+    uint8 commandID[2]; - 3:1 -- transformation matrix
+                          3:3 -- clipping plane elements
+.end lit
+.b
+Note: The commands to pop the top of each of the attribute stacks
+for transformation matrix and clipping plane elements
+require only the command identifier.
+The active transformation matrix or clipping range is set to what is was
+before the most recent push matrix or clipping command, respectively.
+.hl 2 3D Drawing Primitive Commands
+.nj
+Commands to draw the following 3D primitive elements are provided in the
+metafile interpreter.
+The levelNum in drawing primitives is provided for applications to
+implement levels or graphic group capabilities.
+The interpreter uses the levelNum only for symbology substitution.
+.tp 10
+.hl 3 draw 3D linestring and draw 3D polygon
+.nj
+.b
+.lit
+    uint8 commandID[2]; - 4:0 -- linestring
+                          4:1 -- polygon
+    uint16 levelNum;    - level number
+    uint32 numPoints;   - number of points, n
+    double 3dPoints[];  - array of 3D points
+                            (X0, Y0, Z0, X1, Y1, Z1, ..., Xn-1, Yn-1, Zn-1)
+                            size of array is 3 X numPoints
+.end lit
+.b
+Note: The 3dPoints of a polygon are the vertices.
+The interpreter draws the edge that closes the polygon from the last vertex
+to the first vertex.
+.b
+The linestring element is not closed.
+The polygon element is closed and
+is subject to polygon fill characteristics.
+.tp 16
+.hl 3 draw 3D NURB curve
+.nj
+.b
+.lit
+    uint8 commandID[2]; - 4:2
+    uint16 levelNum;    - level number
+    uint16 order;       - spline order
+    uint16 flags;       - periodic (1), non-uniform (2), rational (4),
+                            planar (8), physically closed (16)
+    uint32 numPoles;    - number of poles, n
+    double 3dPoles[];   - array of 3D poles
+                            (X0, Y0, Z0, X1, Y1, Z1, ..., Xn-1, Yn-1, Zn-1)
+                            size of array is 3 X numPoles
+    double knots[];     - array of knots - IF NON-UNIFORM
+                            size of array is order + numPoles
+    double weights[];   - array of weights - IF RATIONAL
+                            size of array is numPoles
+.end lit
+.b
+The number of knots is always (order + numPoles).
+If the curve is uniform, knots may be calculated, so they are not stored.
+If the curve is non-rational, weights are not stored.
+.b
+Curve SOOs (symbology override elements) will be represented in
+the metafile by separate curves.
+.tp 15
+.hl 3 draw 3D view-dependent text string
+.nj
+.b
+.lit
+    uint8 commandID[2];  - 4:3
+    uint16 levelNum;     - level number
+    double origin[3];    - x,y,z of origin
+    double direction[3]; - components of the direction vector, relative
+                             to the origin, which determines the aspect
+                             ratio and direction of the text baseline
+    double up[3];        - components of the "up vector", relative to the
+                             origin, which determines the height and
+                             slant angle of the text
+    uint32 numChars;     - number of characters in text string
+    char string[];       - string of characters which has a length of
+                             exactly numChars, no terminator
+.end lit
+.b
+This command provides arbitrary view-dependent text.
+.b
+The origin point and direction vector point determine the baseline of the text
+(the direction of writing) and the aspect ratio.
+The direction vector is a unit vector along the baseline scaled by the
+aspect ratio.
+For example, horizontal, wide-body text might be specified by (1.5, 0, 0),
+i.e. (1, 0, 0) X 1.5.
+.b
+The origin point and up vector determine the height and slant angle of the text.
+The up vector is a unit vector in the up direction (initially perpendicular
+to the baseline) rotated by the slant angle and scaled by the text height.
+For example, suppose the database coordinates are in meters which implies
+that the header value for worldScale is 1.0.
+In this world, text that should be 1 centimeter high
+and not slanted would be specified by an up vector of
+(0, 0.01, 0), i.e. (0, 1, 0) X 0.01.
+The actual size of the text on the plotter output would not necessarily be
+1 centimeter, of course, but would depend on the total range being plotted.
+.b
+The two vectors determine the plane the text lies in,
+subject to any active transformation.
+The text height, aspect, rotation and slant are all determined
+by the up and direction vectors and not by the active font.
+The active font determines the typeface and character mapping.
+.b
+The plot node must maintain unique mappings to all possible text
+typefaces.
+.b
+Currently, ODI does not support hardware ellipse generators or
+hardware character generators, so no attention
+will be given to this capability.
+.b
+Character spacing and color are set by active parameter commands
+in the metafile.
+.b
+Justification of text is performed by the interpreter according to the
+active text justification.
+The entire text string is placed at the origin according this mode
+(left baseline, centered, etc.).
+.b
+Line spacing of text elements is resolved at metafile creation time
+by breaking up the text element into single line text elements.
+Text elements containing escape sequences
+must be broken up into individual text commands.
+.tp 9
+.hl 3 draw 3D abbreviated view-dependent text string
+.nj
+.b
+.lit
+    uint8 commandID[2]; - 4:4
+    uint16 levelNum;    - level number
+    double origin[3];   - x,y,z of origin
+    uint32 numChars;    - number of characters in text string
+    char string[];      - string of characters which has a length of
+                            exactly numChars, no terminator
+.end lit
+.b
+This command provides an abbreviated means to draw view-dependent text strings.
+Text typeface, aspect, slant and mapping are determined by the active font.
+The active transformation matrix affects the height, origin, and
+initial baseline of the text.
+Since no direction or up vector is specified, the text baseline is
+initially aligned with the transformed x-axis and then rotated
+by the active font rotation.
+The text is placed in the view plane.
+.b
+The restrictions on text string content (escape sequences) and
+spacing discussed under view-dependent text strings also apply here.
+.tp 6
+.hl 3 draw 3D planar raster image
+.nj
+.b
+.lit
+    uint8 commandID[2]; - 4:5
+    uint16 levelNum;    - level number
+    char rasterData[];  - raster header and pixel data
+.end lit
+.b
+The raster data contains a header and pixel data as described in the
+Appendix A and raster format documents.
+The raster data is the same as an entire "grid file".
+.b
+Raster data in this release will be in the view plane.
+In later releases, other transformations of raster data may be considered.
+The raster data is scaled to the active view scale.
+.tp 27
+.hl 3 draw 3D NURB surface
+.nj
+.b
+.lit
+    uint8 commandID[2];   - 4:6
+    uint16 levelNum;      - level number
+    uint16 order[2];      - u and v order
+    uint16 flags;         - u and v periodic (1,2), u and v non-uniform (4,8),
+                              rational (16), planar (32), u and v physically
+                              closed (64,128), orientation indicator (256),
+                              origin solid/hole indicator (512)
+    uint16 surfaceType;   - reserved -- for storing primitive surface type
+                              such as cylinder, cone, etc.
+    uint32 numPoles[2];   - u and v number of poles, nu, nv
+    uint16 numBoundaries; - number of boundaries
+    double 3dPoles[];     - column major matrix of 3D poles (XYZu:v)
+                              (X0:0, Y0:0, Z0:0, X1:0, Y1:0, Z1:0, ...
+                                   Xnu-1:0, Ynu-1:0, Znu-1:0,
+                               X0:1, Y0:1, Z0:1, ...
+                                   Xnu-1:nv-1, Ynu-1:nv-1, Znu-1:nv-1)
+                              size of array is 3 X nu X nv
+    double uknots[];      - array of u direction knots - IF U NON-UNIFORM
+                              size of array is order[u] + numPoles[u]
+    double vknots[];      - array of v direction knots - IF V NON-UNIFORM
+                              size of array is order[v] + numPoles[v]
+    double weights[];     - column major matrix of weights - IF RATIONAL,
+                              ordering is the same as for 3dPoles,
+                              size of array is numPoles[u] X numPoles[v]
+.end lit
+.tp 12
+.lit
+    set of surface boundary curve definitions:
+      uint16 cv_order;     - spline order of boundary curve
+      uint16 cv_flags;     - periodic (1), non-uniform (2), rational (4),
+                               planar (8), physically closed (16)
+      uint32 cv_numPoles;  - number of poles, n
+      double uvPoles[];    - array of u/v poles
+                               (u0, v0, u1, v1, ..., un-1, vn-1)
+                               size of array is 2 X cv_numPoles
+      double knots[];      - array of knots - IF NON-UNIFORM
+                               size of array is cv_order + cv_numPoles
+      double cv_weights[]; - array of weights - IF RATIONAL
+                               size of array is cv_numPoles
+.end lit
+.b
+This command draws a NURB surface defined with NURB curve boundaries.
+.b
+The number of knots (numKnots[i]) is always (order[i] + numPoles[i]),
+where i represents either the u-parameter or the v-parameter.
+If the surface is uniform in u,
+knots may be calculated for that dimension, so they are not stored;
+the same holds for the v direction.
+If the surface is non-rational, weights are not stored.
+.b
+Wire-frame display of surfaces will be accomplished by the
+"draw 3D NURB curve" command.
+The "draw 3D NURB surface" command
+is used for rendering modes other than wireframe.
+.tp 7
+.hl 3 draw defined primitive segment by identifier
+.nj
+.b
+.lit
+    uint8 commandID[2]; - 4:7
+    uint16 levelNum;    - level number
+    int32 segmentID;    - the identifier of the drawing primitive segment
+                            to draw
+.end lit
+.b
+Note: The segment must be defined at the time this command is executed.
+.tp 9
+.hl 3 draw 3D scale-independent text string
+.nj
+.b
+.lit
+    uint8 commandID[2]; - 4:8
+    uint16 levelNum;    - level number
+    double origin[3];   - x,y,z of origin
+    uint32 numChars;    - number of characters in text string
+    char string[];      - string of characters which has a length of
+                            exactly numChars, no terminator
+.end lit
+.b
+Note: This command provides text strings that are completely view-independent.
+Only the origin is moved by the active transformation.
+All text attributes are determined by the active font and no scaling is done.
+The text height will be the same on any output device, i.e. 12 point text will
+be 12 points high on any device, any medium.
+.tp 15
+.hl 3 draw 3D view-dependent 16-bit text string
+.nj
+.b
+.lit
+    uint8 commandID[2];  - 4:9
+    uint16 levelNum;     - level number
+    double origin[3];    - x,y,z of origin
+    double direction[3]; - components of the direction vector, relative
+                             to the origin, which determines the aspect
+                             ratio and direction of the text baseline
+    double up[3];        - components of the "up vector", relative to the
+                             origin, which determines the height and
+                             slant angle of the text
+    uint32 numChars;     - number of characters in text string
+    uint16 string[];     - string of characters, each 16 bits, which has a
+                             length of exactly numChars, no terminator
+.end lit
+.b
+This command provides arbitrary view-dependent text using 16 bit characters.
+Except for the size of the characters, this commands operates the same as
+"draw 3D view-dependent text string".
+.tp 9
+.hl 3 draw 3D abbreviated view-dependent 16-bit text string
+.nj
+.b
+.lit
+    uint8 commandID[2]; - 4:10
+    uint16 levelNum;    - level number
+    double origin[3];   - x,y,z of origin
+    uint32 numChars;    - number of characters in text string
+    uint16 string[];    - string of characters, each 16 bits, which has a
+                            length of exactly numChars, no terminator
+.end lit
+.b
+This command provides an abbreviated means to draw view-dependent text strings
+using 16 bit characters.
+See the command "draw 3D abbreviated view-dependent text string" above.
+.tp 9
+.hl 3 draw 3D scale-independent 16-bit text string
+.nj
+.b
+.lit
+    uint8 commandID[2]; - 4:8
+    uint16 levelNum;    - level number
+    double origin[3];   - x,y,z of origin
+    uint32 numChars;    - number of characters in text string
+    uint16 string[];    - string of characters, each 16 bits, which has a
+                            length of exactly numChars, no terminator
+.end lit
+.b
+This command provides view-independent text strings using 16 bit characters.
+See the command "draw 3D scale-independent text string" above.
+.hl 2 3D Rectangular Drawing Primitive Commands
+.nj
+A 3D rectangular drawing primitive defines a graphic shape
+that can be characterized by a planar rectangle.
+The shape is either the rectangle itself or related to the
+enclosed ellipse (or circle if the rectangle is a square).
+.b
+.tp 6
+The 4 types of rectangular drawing primitive are:
+.b
+.ls 0 '-'
+.le;rectangle or square
+.le;enclosed ellipse of rectangle or enclosed circle of square
+.le;arc of enclosed ellipse or circle
+.le;wedge (arc with radial lines, i.e. a pie piece)
+.els
+Each of these commands has the rectangle definition fields in common.
+.tp 10
+.hl 3 draw 3D rectange and draw 3D ellipse
+.nj
+.b
+.lit
+    uint8 commandID[2];    - 5:0 -- rectangle
+                             5:1 -- ellipse
+    uint16 levelNum;       - level number
+    double origin[3];      - the origin (X0, Y0, Z0), first diagonal point
+    double diagonal[3];    - the other diagonal point (X1, Y1, Z1)
+    double direction[3];   - a point (X2, Y2, Z2), relative to the origin,
+                               that defines the direction of one side
+.end lit
+.b
+Note: Both of these elements are closed and
+are subject to polygon fill characteristics.
+.tp 11
+.hl 3 draw 3D arc and draw 3D wedge
+.nj
+.b
+.lit
+    uint8 commandID[2];    - 5:2 -- arc
+                             5:3 -- wedge
+    uint16 levelNum;       - level number
+    double origin[3];      - the origin (X0, Y0, Z0), first diagonal point
+    double diagonal[3];    - the other diagonal point (X1, Y1, Z1)
+    double direction[3];   - a point (X2, Y2, Z2), relative to the origin,
+                               that defines the direction of one side
+    double angle[2];       - start and arc angles in degrees
+.end lit
+.b
+Note: The arc element is not closed.
+The wedge element is closed and
+is subject to polygon fill characteristics.
+.hl 2 Application Specific Commands
+.nj
+There are some commands provided in the metafile for
+use by applications and for the exchange of graphic information.
+The interpreter correctly reads each of these commands
+but otherwise they are ignored.
+.tp 10
+.hl 3 draw reference file
+.nj
+.b
+.lit
+    uint8 commandID[2]; - 6:0
+    double matrix[16];  - 4x4 transformation matrix, row major order
+    double clips[6];    - an array which implies a view-aligned
+                            clipping box whose range diagonal is
+                            (X0, Y0, Z0, X1, Y1, Z1)
+    char filename[];    - Unix path name of reference file,
+                            null terminated
+.end lit
+.hl 2 3D Drawing Primitive Commands with Range
+.nj
+3D drawing primitive commands with range give the metafile interpreter
+the ability to provide acceptable performance of
+stroking and tiling operations using banding techniques.
+Each element must have a range to determine if it falls in the current
+band being processed.
+.b
+The data required for these commands is discussed above in the section
+"3D Drawing Primitive Commands".
+.tp 20
+.hl 3 draw 3D NURB curve with range
+.nj
+.b
+.lit
+    uint8 commandID[2]; - 7:0
+    uint16 levelNum;    - level number
+    double range[6];    - an array which implies a view-aligned range
+                            box whose diagonal in view coordinates
+                            is (X0, Y0, Z0, X1, Y1, Z1)
+    uint16 order;       - spline order
+    uint16 flags;       - periodic (1), non-uniform (2), rational (4),
+                            planar (8), physically closed (16)
+    uint32 numPoles;    - number of poles, n
+    double 3dPoles[];   - array of 3D poles
+                            (X0, Y0, Z0, X1, Y1, Z1, ..., Xn-1, Yn-1, Zn-1)
+                            size of array is 3 X numPoles
+    double knots[];     - array of knots - IF NON-UNIFORM
+                            size of array is order + numPoles
+    double weights[];   - array of weights - IF RATIONAL
+                            size of array is numPoles
+.end lit
+.b
+See the command "draw 3D NURB curve" for a discussion of the parameters.
+.tp 31
+.hl 3 draw 3D NURB surface with range
+.nj
+.b
+.lit
+    uint8 commandID[2];   - 7:1
+    uint16 levelNum;      - level number
+    double range[6];      - an array which implies a view-aligned range
+                              box whose diagonal in view coordinates
+                              is (X0, Y0, Z0, X1, Y1, Z1)
+    uint16 order[2];      - u and v order
+    uint16 flags;         - u and v periodic (1,2), u and v non-uniform (4,8),
+                              rational (16), planar (32), u and v physically
+                              closed (64,128), orientation indicator (256),
+                              origin solid/hole indicator (512)
+    uint16 surfaceType;   - reserved -- for storing primitive surface type
+                              such as cylinder, cone, etc.
+    uint32 numPoles[2];   - u and v number of poles, nu, nv
+    uint16 numBoundaries; - number of boundaries
+    double 3dPoles[];     - column major matrix of 3D poles (XYZu:v)
+                              (X0:0, Y0:0, Z0:0, X1:0, Y1:0, Z1:0, ...
+                                   Xnu-1:0, Ynu-1:0, Znu-1:0,
+                               X0:1, Y0:1, Z0:1, ...
+                                   Xnu-1:nv-1, Ynu-1:nv-1, Znu-1:nv-1)
+                              size of array is 3 X nu X nv
+    double uknots[];      - array of u direction knots - IF U NON-UNIFORM
+                              size of array is order[u] + numPoles[u]
+    double vknots[];      - array of v direction knots - IF V NON-UNIFORM
+                              size of array is order[v] + numPoles[v]
+    double weights[];     - column major matrix of weights - IF RATIONAL,
+                              ordering is the same as for 3dPoles,
+                              size of array is numPoles[u] X numPoles[v]
+.end lit
+.tp 12
+.lit
+    set of surface boundary curve definitions:
+      uint16 cv_order;     - spline order of boundary curve
+      uint16 cv_flags;     - periodic (1), non-uniform (2), rational (4),
+                               planar (8), physically closed (16)
+      uint32 cv_numPoles;  - number of poles, n
+      double uvPoles[];    - array of u/v poles
+                               (u0, v0, u1, v1, ..., un-1, vn-1)
+                               size of array is 2 X cv_numPoles
+      double knots[];      - array of knots - IF NON-UNIFORM
+                               size of array is cv_order + cv_numPoles
+      double cv_weights[]; - array of weights - IF RATIONAL
+                               size of array is cv_numPoles
+.end lit
+.b
+See command "draw 3D NURB surface" for a discussion of the parameters.
+.tp 19
+.hl 3 draw 3D view-dependent text string with range
+.nj
+.b
+.lit
+    uint8 commandID[2];  - 7:2
+    uint16 levelNum;     - level number
+    double range[6];     - an array which implies a view-aligned range
+                             box whose diagonal in view coordinates
+                             is (X0, Y0, Z0, X1, Y1, Z1)
+    double origin[3];    - x,y,z of origin
+    double direction[3]; - components of the direction vector, relative
+                             to the origin, which determines the aspect
+                             ratio and direction of the text baseline
+    double up[3];        - components of the "up vector", relative to the
+                             origin, which determines the height and
+                             slant angle of the text
+    uint32 numChars;     - number of characters in text string
+    char string[];       - string of characters which has a length of
+                             exactly numChars, no terminator
+.end lit
+.b
+See the command "draw 3D view-dependent text string"
+for a discussion of the parameters.
+.tp 19
+.hl 3 draw 3D view-dependent 16-bit text string with range
+.nj
+.b
+.lit
+    uint8 commandID[2];  - 7:3
+    uint16 levelNum;     - level number
+    double range[6];     - an array which implies a view-aligned range
+                             box whose diagonal in view coordinates
+                             is (X0, Y0, Z0, X1, Y1, Z1)
+    double origin[3];    - x,y,z of origin
+    double direction[3]; - components of the direction vector, relative
+                             to the origin, which determines the aspect
+                             ratio and direction of the text baseline
+    double up[3];        - components of the "up vector", relative to the
+                             origin, which determines the height and
+                             slant angle of the text
+    uint32 numChars;     - number of characters in text string
+    uint16 string[];     - string of characters, each 16 bits, which has a
+                             length of exactly numChars, no terminator
+.end lit
+.b
+See the command "draw 3D view-dependent text string"
+for a discussion of the parameters.
+.hl 1 Metafile Methods and Functions
+.hl 2 Metafile Creation (Plotting)
+.nj
+Methods on objects and/or non-object based functions to produce the metafile
+must be written by the applications (e.g., I/EMS).
+The metafile consists of relatively low-level commands to
+which a workstation application can convert easily.
+.b
+Methods on objects to produce the plotting parameters file should already exist.
+.b
+See Appendix B for a discussion of metafile creation (plotting) methods.
+.b
+.tp 19
+.lit
+    +-------+  plotting  ++----------++        +--------------+
+    | I/EMS |----------->||   IGM    ||<------>| DP/Publisher |
+    +-------+  methods   || metafile ||        | DP/Presenter |
+                         ++----------++        +--------------+
+                                |
+                                V
+                         +-------------+
+                         |   IGMplot   |<-----> GPIPE
+                         | interpreter |
+                         +-------------+
+                                |
+                                V
+                             +-----+
+                             | ODI |----------> plotter
+                             +-----+
+.end lit
+.b
+.c;Figure A.  Metafile Interpretation Flow
+.hl 2 Metafile Import Methods
+.nj
+Methods on objects to accept non-intelligent pictures (metafiles)
+or low-level graphics elements
+must be written by other groups which need to input metafiles.
+.hl 1 Plot Symbology Substitution
+.nj
+Display symbology may be changed at metafile interpretation time
+by using the IGM plot symbology file.
+Users who wish to tailor plotter output or who use a variety of
+plotters may wish to use this feature.
+.b
+Plot symbology substitution is invoked by giving the IGM interpreter
+the plot symbology file name on the command line by using the
+-s option as follows:
+.b
+_ _ _ _ -s <plot symbology file name>
+.b
+The interpreter reads the file and sets up the symbology substitution
+table which is checked before each element is drawn.
+.hl 2 symbology keywords
+.nj
+The symbologies which may be changed are line and border styles, line and
+border widths, colors and fonts.
+Keywords are used to identify plotting symbology variables by name.
+The keywords and meanings are:
+.b
+.lit
+    style         - line style table index for lines
+    border_style  - line style table index for polygon borders
+    width         - width of lines in meters
+    border_width  - width of polygon borders in meters
+    color         - foreground color R-G-B
+    bg_color      - background color R-G-B
+    border_color  - polygon border color R-G-B
+    trans_color   - transparent color R-G-B
+    index         - foreground color table index
+    bg_index      - background color table index
+    border_index  - polygon border color table index
+    trans_index   - transparent color table index
+    level         - element levelNum, may be used for comparison only
+    font          - text font number or file name
+.end lit
+.hl 2 plot symbology file format
+.nj
+The plot symbology file is a text file which contains statements and comments.
+Statements are free format, may begin anywhere on a line and are not
+limited to a single line.
+.b
+Comments are indicated by putting a "pound sign" or "sharp", _#,
+anywhere on a line.
+The interpreter will ignore the "_#" and all characters on the line after it.
+.hl 2 statement syntax
+.nj
+The syntax of statements in the symbology substitution
+language is (informally):
+.b
+.tp 6
+.lit
+    if:            if (expression) statement
+                   [else if (expression) statement]
+                    ...
+                   [else statement]
+
+    assignment:    keyword = expression ;
+.end lit
+.b
+.tp 6
+.lit
+    statement:     if
+                   assignment
+                   { statements }
+
+    expression:    primary
+                   expression operator expression
+.end lit
+.b
+.tp 7
+.lit
+    operator:      (highest precedence first)
+                   ! -              (unary operators: not, minus)
+                   * / %            (multiply, divide, modulo)
+                   + -              (add, subtract)
+                   < <= == >= > !=  (comparison)
+                   &&               (Boolean and)
+                   ||               (Boolean or)
+.end lit
+.b
+.tp 8
+.lit
+    primary:       keyword
+                   value
+                   ( expression )
+
+    value:         integer         (e.g. 1, 23, 1988)
+                   real            (e.g. 1.0, 0.1, 3.14e6)
+                   "string"        (e.g. "swiss742.tf", for font only)
+                   [int, int, int] (an R-G-B color value)
+.end lit
+.b
+For example, suppose we want to use only 3 of the available line styles
+for levels over 50 as follows:
+the first 4 styles will be one style; the next 4 will be another style;
+the rest will be a third style.
+.b
+.tp 7
+.lit
+    if (level > 50)        # for levels over 50
+      if (style <= 3)      # first 4 styles the same
+        style = 0;
+      else if (style <= 7) # next 4 styles the same
+        style = 1;
+      else                 # last n styles the same
+        style = 2;
+.end lit
+.pg
+.hl 1 Appendix A - 3D Raster Element Format
+.nj
+This appendix is a summary of the supported raster formats.
+Readers interested in the actual details of raster formats should
+read the specification documents, SDN 84-007 and revisions.
+.b
+A "transparency" option for raster data is provided to selectively
+overwrite existing data.
+.b
+The 3D raster element consists of
+raster data in one of the basic formats:
+.b
+.ls 0 'o'
+.le;"packed binary" (raster type 1)
+.le;"byte integers" (raster type 2)
+.le;"word integers" (raster type 3)
+.le;"binary run length" data (raster type 9)
+.le;"simple, variable run length" data (raster type 10)
+.le;"simple, 24-bit R-G-B run length" data (raster type 25)
+.le;"variable run length" data (raster type 26)
+.els
+.hl 2 packed binary format
+.nj
+The "packed binary" format (raster type 1)
+consists of 1-bit binary values packed into words.
+.hl 2 byte integers format
+.nj
+The "byte integers" format (raster type 2) consists of 8-bit color indices.
+.hl 2 word integers format
+.nj
+The "word integers" format (raster type 3) consists of 16-bit color indices.
+.hl 2 Binary Run Length Format
+.nj
+The "binary run length" format (raster type 9)
+consists of 8-bit run lengths that alternate foreground and background.
+.hl 2 Simple, Variable Run Length Format
+.nj
+The "simple, variable run length" format (raster type 10)
+consists (basically) of an 8-bit color and 8-bit shade value with
+a 16-bit run length.
+Long run lengths (greater than 15-bits) are handled as a special case in
+this format.
+.hl 2 Simple, 24-bit R-G-B Run Length Format
+.nj
+The "simple, 24-bit R-G-B run length" format (raster type 25) is essentially
+a sequence of:
+.b
+.ls 0 'o'
+.le;run length
+.le;24-bits of R-G-B value, 8 bits per color.
+.els
+.hl 2 Variable Run Length Format
+.nj
+The "variable run length" format (raster type 26) is essentially
+a sequence of 16-bit words
+consisting of:
+.b
+.ls 0 'o'
+.le;n (=0..15) bits of run length, and
+.le;16-n bits of data (typically,
+a color table index value)
+.els
+The features of this format are as follows:
+.ls 'o'
+.le;The first 16-bit word in the the raster element tells where the
+"dividing point" is between run-length value and data value.
+.le;A typical set-up might be an 8-bit run-length and an 8-bit data value.
+.le;If the run-length field is 0 length, the raster data is essentially
+color table indices, one per pixel.
+.le;If the data field is 0 length, the raster data is assumed to be
+binary value oriented, with the first value = "off".
+.le;If a run-length VALUE is 0, then the next 16-bit word is interpreted
+as a 16-bit unsigned run-length value.
+.els
+.hl 2 Color separated R-G-B Run Length Format
+.nj
+A "color separated R-G-B" format for run-length data has been studied
+by several groups within Intergraph and seems to be optimal
+in a large number of cases such as shaded surfaces and digitized images.
+The prototype for this format is being used by mapping to store
+raster image files.
+Here we propose to augment their design with an
+"adjacent atom repeated intensity scheme" to handle more efficiently
+long run lengths which occur frequently in raster elements.
+.b
+A raster element is broken up into scanlines which consist of
+a position, a length for this scanline and
+three value lines, one each for red, green and blue intensities.
+The position specifies the scanline and offset of the first pixel
+on the line with a value to be written.
+The length specifies how many pixels to write on this scanline.
+Each value line consists of a series of intensity atoms
+representing one or more pixels
+until "scanline length" pixels are processed.
+Each atom is a header byte (8 bits) followed by one or more intensity bytes.
+.b
+.lit
+    raster element:  scanline-1, scanline-2, ..., scanline-n
+    scanline:        position, length, red-line, green-line, blue-line
+    line:            atom, atom, ... until length pixels are processed
+    atom:            8-bit header byte determines size of atom
+                     8-bit intensity value(s) for red, green or blue
+.end lit
+.b
+.tp 8
+.lit
+The header byte is a length and determines the atom format as follows:
+
+   header value    intensity field(s)    usage
+
+    1 ... +127      i1, i2, ..., in      string of intensities of length
+                                           "header value"
+    0 ... -128      i                    constant intensity for run of
+                                           length -(header value)
+.end lit
+.b
+Long run lengths are handled by setting intensity fields for adjacent
+run-length atoms to the same value.
+If 2 adjacent run-length atoms do have the same value
+for their intensity fields,
+it is interpreted as higher order run-length for the same value.
+This step may be repeated to produce up to 31-bits for a run-length value.
+That is:
+.b
+.tp 6
+.lit
+   header value    intensity field       usage
+
+    0 ... -127      value x              constant: length = -(header value)
+    0 ... 255       value x              higher order length (8 more bits)
+    0 ... 255       value x              even higher order length
+    0 ... 255       value x              highest order length
+.end lit
+.b
+.tp 4
+.lit
+For example, to represent a run length of exactly 256 bytes:
+
+    0               value x
+    2               value x
+.end lit
+.b
+.tp 4
+.lit
+Or, to represent a run length of 1234 (= 9 X 128 + 82) bytes:
+
+    -82             value x
+    9               value x
+.end lit
+.b
+For this scheme to work with mixed atom types,
+the first intensity field of a "string of intensities" atom may not be
+the same value as the "run-length" atom which it follows.
+This should not be the case if the application's output functions
+properly generate a run-length span by
+including all the pixels with the same intensity value.
+For example, in pseudo-code:
+.b
+.tp 6
+.lit
+    find the length of run with intensity the same as current pixel
+    if (length > 1)
+        generate a "run-length" atom with length found above
+            if length > 128, will need a more than 1 run-length atom
+        set current pixel to first one with different intensity
+    else generate a "string of intensities" atom
+.end lit
+.pg
+.hl 1 Appendix B - Issues for Metafile Creation
+.nj
+.hl 2 Handling Active Parameters
+.nj
+A set of global "active parameter" variables is established when
+the plot command is executed.
+These active parameter variables are intialized to the
+corresponding values in the first graphics element encountered;
+then the corresponding metafile commands for these
+active parameter values
+and the corresponding drawing primitive command are written
+to the metafile.
+.b
+For every element that is encountered after this first one,
+the element's values are checked against those values stored in the
+"active parameter" variables.
+If they are different, the active parameter variables are set to
+the new values, and the corresponding metafile commands for
+these active parameter values are added to the metafile.
+Then the corresponding drawing primitive command is written
+to the metafile.
+.b
+This process repeats until all relevant geometry elements have been
+processed.
+.pg
+.hl 1 Appendix C - Plotting Request File Format
+.nj
+A request file is a Unix shell script which invokes a metafile
+interpreter to produce a plot.  It is created and
+placed in a plotter queue at
+the time the plot is submitted.
+When a request file reaches the front of the queue, it is executed,
+causing the metafile interpreter to be invoked to produce a plot.
+.b
+Request files have the following format:
+.ls 'o'
+.le;line 1 - the name of the request file
+.le;line 2 - the size, in bytes, of the metafile being submitted
+.le;line 3 - the node name of the application node and the name of the
+user who submitted the plot, separated by white space.
+.le;line 4 - the name of the destination queue (plotter)
+.le;remaining lines - executable shell commands which invoke the metafile
+interpreter (see below) or cancel a plot request.
+.els
+.tp 9
+All metafile interpreters are invoked by command lines of the following
+form:
+.b
+.lit
+  IGMplot  <metafile name>  <ODI device name>  <output file>
+    -m <length in meters>x<width in meters> OR
+    -e <length in inches>x<width in inches> OR
+    -a <engineering drawing size identifier, e.g. D>
+    -c <number of copies>
+.end lit
+.b
+where
+.b
+.ls 0 'o'
+.le;"IGMplot" is the name of the metafile interpreter for IGM metafiles.
+Other interpreters are IGDSplot, GKSplot, SCplot, etc.
+.le;<metafile name> is the name of the metafile to be plotted.
+.le;<ODI device name> is the name of a plotter supported by ODI.
+.le;<output file> is the name of a spool file or a device file specifier
+such as /dev/tty00 or the port number if a mux is installed.
+.le;"-m..." is an optional argument specifying the size of the plot
+in meters.
+.le;"-e..." is an optional argument specifying the size of the plot
+in English units (inches).
+.le;"-a..." is an optional argument specifying the size of the plot
+in standard engineering terms.
+For example, A or B or ....
+.le;"-c..." is an optional argument specifying the
+number of copies of the plot to make (default 1).
+.els
+.tp 3
+.lit
+For example:
+
+    IGMplot some.mtf ILP811 p0 -e 11x8.5 -c 1
+.end lit

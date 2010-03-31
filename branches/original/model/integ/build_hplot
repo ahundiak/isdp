@@ -1,0 +1,121 @@
+# first make sure all that is needed is there
+# make the hplot_func directory
+# make the hplot directory which creates the executable
+
+if [ $# -lt 1 ]
+ then
+   echo "Must include the cpu series (C100 or C400)"
+   exit 9
+fi
+
+
+if [ $1 = "C400" ]
+ then
+  LIBODI=/usr/lib/libodiC4_s.a 
+  LIBRCE=/usr/lib/libRCEC4.a 
+  LIBBEAM=/usr/lib/libdbeamC4.a 
+  LIBSCREEN=/usr/lib/libscreenC4.a 
+  LIBXC=/usr/lib/c400/libxc.a
+else
+  LIBODI=/usr/lib/libodiC1_s.a 
+  LIBRCE=/usr/lib/libRCEC1.a 
+  LIBBEAM=/usr/lib/libdbeamC1.a 
+  LIBSCREEN=/usr/lib/libscreenC1.a 
+  LIBXC=/usr/lib/c100/libxc.a
+fi
+shift
+
+
+check_dependencies ()
+   {
+      
+   # Loop through the arguments, accumulating a list of
+   # missing dependencies.
+   
+   MISSING_DEPS=""
+   NUM_MISSING=0
+
+   while [ $# -gt 0 ]
+      do
+      DEPENDENCY=$1
+
+      # Get the dependency's product directory from the "ingrconfig" file.
+      # If the dependency has several entries, use the last one.
+
+      if ! test -r $1
+         then
+
+         MISSING_DEPS="${MISSING_DEPS}\t$DEPENDENCY\n"
+         NUM_MISSING=`expr $NUM_MISSING + 1`
+
+      fi
+      
+      # Get the next argument.
+      shift
+   done
+
+   if [ $NUM_MISSING -gt 0 ]
+      then
+         echo
+         echo "*****************************************************************"
+         echo "HSplot requires the following for building"
+         echo
+         echo "$MISSING_DEPS\c"
+         echo
+         echo "you must resolve these before continuing"
+         echo "*****************************************************************"
+         
+         exit 1
+   fi
+   
+   STATUS=NUM_MISSING
+
+   return $STATUS
+   }
+   
+check_dependencies \
+	$MDTARG/hsurf/src/driver_func/HSasap_intfc.o \
+	$MDTARG/hsurf/src/driver_func/HSckzrange.o \
+	$MDTARG/hsurf/src/display_func/HSd_drawtrap.o \
+	$MDTARG/hsurf/src/display_func/HSd_fixedpt.o \
+	$MDTARG/hsurf/src/tiler_func/tiler_func.o \
+	$MDTARG/hsurf/src/pbust_func/HStl_maketrp.o \
+	$MDTARG/hsurf/src/pbust_func/HStl_pbust.o \
+	$MDTARG/hsurf/src/hplot_imp/HPf_attach.o \
+	$MDTARG/hsurf/src/make_sh/hsurf_global.o \
+	$BS/lib/bnfc_ap.a \
+	$BS/lib/bsem_ap.a \
+	$BS/lib/bsma_ap.a \
+	$BS/lib/bsmd_ap.a \
+	$LIBODI \
+	$LIBRCE \
+	$LIBBEAM \
+	$LIBSCREEN \
+	/usr/lib/libFS_s.a \
+	/usr/lib/libgpipe_s.a \
+	/usr/lib/libtools_s.a \
+	/lib/libm.a \
+	$LIBXC \
+	/usr/lib/libix.a \
+	/usr/lib/libbsd.a \
+	/lib/libc_s.a \
+	$EXNUC/include \
+	$GRNUC/include \
+	$MODEL/include 
+
+
+
+echo "making hplot_func"
+cd $MODEL/hplot/src/hplot_func
+$EXTARG/bin/makemake ${MKMKOPT} hplot_func.m $MDTARG/hplot/src/hplot_func/makefile 2>&1 | tee hplot.make.log
+cd $MDTARG/hplot/src/hplot_func
+grmake -r 2>&1 | tee -a hplot.make.log 
+
+echo "making hplot"
+cd $MODEL/hplot/src/hplot
+$EXTARG/bin/makemake ${MKMKOPT} hplot.m $MDTARG/hplot/src/hplot/makefile 2>&1 | tee hplot.make.log 
+cd $MDTARG/hplot/src/hplot
+grmake -r 2>&1 | tee -a hplot.make.log
+
+echo "done..."
+

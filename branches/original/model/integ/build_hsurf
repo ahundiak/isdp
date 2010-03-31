@@ -1,0 +1,127 @@
+#
+# BUILD_HSURF
+#
+# This shell script compile either the Hidden Surface source in
+# a specified directory on your machine and builds the non-shared library
+# 
+
+# SOURCE_DIRS should be assigned a list of the source directories to compile
+
+# COB_DIRS should be assigned the list of source directories that have .sl files
+# which need to be "slic"ed
+
+# MAKE_DIR should be assigned the source directory that contains the files
+# necessary to build the non-shared library
+
+echo " "
+echo "Hidden Surface Build Script"
+echo " "
+
+PACKAGE_DIR="hsurf"
+PACKAGE_PREFIX="hsurf"
+DELETE_LIBS="hsurf_spec.a hsurf.o"
+SOURCE_DIRS="spec co_func co_imp dpb_imp gragad_imp render_imp driver_func tiler_func pbust_func display_func ncv_func hplot_imp lvhl bundle_imp"
+COB_DIRS="cob"
+MAKE_DIR="make_sh"
+
+cd $MODEL/hsurf/src/spec
+ln -f *.S $MODEL/spec
+
+if [ "$1" != "-n" ]
+then
+  echo "Source platform [$PWD]: \c"
+  read SOURCE_PLATFORM
+else
+  SOURCE_PLATFORM=$MODEL
+  ln -f $MODEL/hsurf/src/include/*.h $MODEL/include 2> /dev/null
+fi
+test -z "${SOURCE_PLATFORM}" && SOURCE_PLATFORM="$PWD"
+
+cd $MODEL
+
+#
+# DELETE THE OLD LIBRARIES
+#
+
+if [ ! -w ${SOURCE_PLATFORM}/${PACKAGE_DIR}/lib ]
+   then
+      echo "Directory: ${SOURCE_PLATFORM}/${PACKAGE_DIR}/lib doesn't exist.  Creating..."
+      mkdir ${SOURCE_PLATFORM}/${PACKAGE_DIR}/lib
+      if ! test -w ${SOURCE_PLATFORM}/${PACKAGE_DIR}/lib
+         then
+            echo "Error: Couldn't create: ${SOURCE_PLATFORM}/${PACKAGE_DIR}/lib"
+            exit 1
+         fi
+   fi
+
+if [ -n "${DELETE_LIBS}" ]
+   then
+      echo "Removing old libraries..."
+
+      cd ${SOURCE_PLATFORM}/${PACKAGE_DIR}/lib
+      for lib in ${DELETE_LIBS}
+         do
+            if test -w $lib
+               then
+                  rm $lib
+            fi
+         done
+
+      echo " "
+   fi
+
+#
+# SLIC THE FILES THAT NEED IT
+#
+
+if [ -n "${COB_DIRS}" ]
+   then
+      cd ${SOURCE_PLATFORM}/${PACKAGE_DIR}/src
+
+      echo "Slic-ing ..."
+      for dir in ${COB_DIRS}
+         do
+            cd $dir
+            make -rk CC="$COMPILER" COPT="$COMPOPT" DOPT="$MKDOPT"
+            cd ..
+         done
+
+      echo " "
+   fi
+
+#
+# COMPILE THE SOURCE
+#
+
+echo "Compiling ..."
+
+cd ${SOURCE_PLATFORM}/${PACKAGE_DIR}/src
+
+for dir in ${SOURCE_DIRS}
+   do
+      echo "   $dir"
+      cd $dir
+      $EXTARG/bin/makemake $MKMKOPT $dir.m makefile
+      make -rk CC="$COMPILER" COPT="$COMPOPT" DOPT="$MKDOPT"
+      cd ..
+   done
+
+echo " "
+
+
+if [ -n "${MAKE_DIR}" ]
+   then
+      MAKEFILE="${PACKAGE_PREFIX}.m"
+
+      cd ${SOURCE_PLATFORM}/${PACKAGE_DIR}/src/${MAKE_DIR}
+
+      # MAKE THE LIBRARY
+      $EXTARG/bin/makemake $MKMKOPT ${MAKEFILE} makefile
+      make -rk CC="$COMPILER" COPT="$COMPOPT" DOPT="$MKDOPT"
+   fi
+
+cd $OLDPWD
+
+echo " "
+echo "Hidden Surface Build Completed"
+echo " "
