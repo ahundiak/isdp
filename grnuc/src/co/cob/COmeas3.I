@@ -50,9 +50,13 @@ class implementation COmeasure;
 #include "codef.h"
 #include "msmacros.h"
 #include "madef.h"
+#ifdef ENABLE_MATH_H
 %safe
 #include <math.h>
 %endsafe
+#else
+#include <math.h>
+#endif
 #include <ctype.h>
 #include <stdio.h>
 #include <errno.h>

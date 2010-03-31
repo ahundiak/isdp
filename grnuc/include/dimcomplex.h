@@ -17,7 +17,9 @@
 
 /* - Actions for "insert_into_cpx" - */
 
+#ifndef  NO_ACTION
 #define NO_ACTION		0
+#endif
 #define ADJUST_TRAK_DIST	1
 #define SWAP_TRAK_DIST		2
 

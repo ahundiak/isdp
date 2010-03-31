@@ -18,7 +18,9 @@ class implementation COref;
 #define DIRSIZ 50
 
 #ifdef SUNOS5
-#define DIRSIZ 14
+//#define DIRSIZ 14 XXX - Use the macro for Solaris
+#include <sys/fs/ufs_fsdir.h>
+#define DIRSIZ  MAXNAMLEN
 #endif
 
 #define FILNAME_OPT  222
@@ -49,7 +51,7 @@ method construct_reference_file ( long * sts )
     struct GRid             ref_id;
     unsigned int         properties;
 
-    /*
+    /*  
      * Set up the construct arguments.
      */
     properties = 0;
@@ -98,7 +100,7 @@ method construct_reference_file ( long * sts )
     }
     else
     {
-        /*
+        /* 
          * Load identity matrix.
          */
         MAidmx(&msg,lbsys.matrix);
@@ -133,15 +135,15 @@ method construct_reference_file ( long * sts )
 
                 win_id.objid = me->origin_event.event.button.objid;
                 win_id.osnum = me->origin_event.event.button.osnum;
-
+    
                 /*
-                 * Activate any symbology overrides attached to
+                 * Activate any symbology overrides attached to 
                  * the reference file's saved view.
                  */
-                DEref_view_recalled ( &msg,
-                                      &ref_id,
+                DEref_view_recalled ( &msg, 
+                                      &ref_id, 
                                       &win_id );
-            }
+            }   
 
 
             if(me->ref_properties & GRRF_SHRINK_WRAP)
@@ -155,13 +157,13 @@ method construct_reference_file ( long * sts )
              * Display the constructed object.
              */
             me->DisplayMode = GRbd;
-
+            
             om$send ( mode = OM_e_wrt_object,
                       msg = message GRgraphics.GRdisplay
                                         ( &msg,
 			                  &me->ModuleInfo.md_env.matrix_type,
                                           me->ModuleInfo.md_env.matrix,
-                                          &me->DisplayMode,
+                                          &me->DisplayMode, 
                                           &me->ModuleInfo.md_id ),
                       senderid = my_id,
                       targetid = ref_id.objid,
@@ -182,10 +184,10 @@ method construct_reference_file ( long * sts )
            *sts = MSFAIL;
 
         if (msg1 == GRNAMEDUPLICATED) me->name[0] = '\0';
-
+            
     }
     else
-    {
+    { 
         me->name[0] = '\0';
     }
 
@@ -290,13 +292,8 @@ method options_mode (int mode; char * info)
                      *       chars. If a directory name is 14 chars there will
                      *       be NO NULL at the end.
                      */
-#if defined SUNOS && defined XYXYX
-               strncpy(name, entry->d_name, DIRSIZ(entry));
-                        name[DIRSIZ(entry)] = '\0';
-#else
                  strncpy(name, entry->d_name, DIRSIZ);
                         name[DIRSIZ] = '\0';
-#endif
                         strcpy (path, directory);
                         strcat (path, "/");
                         strcat (path, name);
@@ -446,7 +443,7 @@ method options_mode (int mode; char * info)
         	properties = GRIS_MODEL_ATTACHMENT;
         	rf_info.scale = "1:1";
 
-        /*
+        /* 
          * Load identity matrix.
          */
         MAidmx(&msg,lbsys.matrix);
@@ -458,9 +455,9 @@ method options_mode (int mode; char * info)
         lbsys.diag_pt2[0] = lbsys.diag_pt2[1] = lbsys.diag_pt2[2] = (double)(GRDGNLIMITS_MAX_D - 1.0);
 
         active = GRactive_owner_temp_clear (0);
-
+        
         /*
-         * Make the query file the same mode as the
+         * Make the query file the same mode as the 
          * drawview that is being constructed.
          */
         ex$message ( msgnumb = GR_I_WRITE1, buff = &write [0] );
@@ -471,7 +468,7 @@ method options_mode (int mode; char * info)
         else
             properties |= GRRF_IS_READ_ONLY;
 
-        /*
+        /* 
          * Construct the query file.
          */
         status = om$construct( osnum = me->ModuleInfo.md_id.osnum,
@@ -492,7 +489,7 @@ method options_mode (int mode; char * info)
                 (msg1 != GRFILENOTFOUND)    &&
                 (msg1 != GRSDGNEXCEED)      &&
                 (msg1 != OM_E_NO_OS_AVAIL))
-            {
+            {   
                  msg1 = MSFAIL;
             }
         }
@@ -637,7 +634,7 @@ method options_mode (int mode; char * info)
             break;
        }
      }
-
+         
         if( me->option != -1 )
         {
        om$send( msg = message CEO.display_form_by_label( STATUS_FORM, &msg ),
@@ -738,20 +735,20 @@ method modify_clippoly ( long * sts )
   me->to_point[1] = me->event1.event.button.y;
   me->to_point[2] = me->event1.event.button.z;
 
-  /*
-    Construct the boreline
+  /* 
+    Construct the boreline 
   */
   boreline.point1 = pts[0];
   boreline.point2 = pts[1];
 
   GRbrlnconstr(&msg, &me->event1.event.button.x, me->ModuleInfo.md_env.matrix,
                      &boreline);
-
-  /*
+   
+  /* 
    * Modify the clipping polygon
    */
   OMmsg = om$send(msg = message GRclippoly.GRmodify_height(&msg,
-                     &me->ModuleInfo,
+                     &me->ModuleInfo, 
                      &me->clippoly_parms,
                      me->from_point,
                      &boreline),
@@ -765,17 +762,17 @@ method drop_ref_symbology ( long * sts )
 {
   int		  status = OM_S_SUCCESS;
 
-  long            chng_msg;
-  short           action;
+  long            chng_msg;            
+  short           action; 
   IGRulong        properties;
   long            OMmsg = OM_S_SUCCESS;
 
   action = 0;                             /* Set flag to clear input word */
-  properties = GROVERRIDE_SYMBOLOGY;
+  properties = GROVERRIDE_SYMBOLOGY; 
 
   /*
     Change the properties of the reffile.
-  */
+  */      
   OMmsg = gr$gspass ( msg = sts,
                       pass_msg = message GRreffile.GRchgrfprops(
                                    &chng_msg,
@@ -831,7 +828,7 @@ method echo_mode ( long * sts )
 
             if (buffer[0] != '\0')
             {
-                /*
+                /* 
                  * Construct a full pathname.
                  */
                 strcat (buffer, &me->filename[0]);
@@ -846,8 +843,8 @@ method echo_mode ( long * sts )
         {
             basename = &(me->filename [strlen ( &me->filename[0] ) - 1]);
 
-            /* let's try the base name */
-            for (; (*basename != '/') && (basename != &(me->filename [0]));
+            /* let's try the base name */  
+            for (; (*basename != '/') && (basename != &(me->filename [0])); 
                  basename--);
         }
 
@@ -858,7 +855,7 @@ method echo_mode ( long * sts )
       {
         GRcheckref ( &msg, NULL, NULL, NULL, &osnum );
 
-        if (msg != MSSUCC)
+        if (msg != MSSUCC) 
         {
             me->mode = 'W';
         }
@@ -866,7 +863,7 @@ method echo_mode ( long * sts )
         {
             IGRlong status, ok;
 
-            status = GRis_nested_writable (&ok, me->filename);
+            status = GRis_nested_writable (&ok, me->filename); 
 
             me->mode =  (status & ok & 1) ? 'W' : 'R';
         }
@@ -880,7 +877,7 @@ method echo_mode ( long * sts )
       if (assoc_flag)
       {
         FILE *fet;
-
+        
         /* in order for the file to be read/write, we must have the write permission */
         fet = fopen ( me->filename, "r+" );
         if (!fet)
@@ -897,7 +894,7 @@ method echo_mode ( long * sts )
              me->mode = 'W';
           fclose ( fet );
         }
-      }
+      }       
       else
       {
         if(me->ref_mode == 'W')
@@ -921,7 +918,7 @@ method echo_mode ( long * sts )
       }
 
   ex$message ( msgnumb = me->mode == 'W' ? GR_I_RWFILE : GR_I_ROFILE,
-               type = "%s",
+               type = "%s",  
                buff = tmp,
                var = `me->filename` );
   UI_status ( tmp );
@@ -973,7 +970,7 @@ method file_mode ( long * sts )
 
             if (buffer[0] != '\0')
             {
-                /*
+                /* 
                  * Construct a full pathname.
                  */
                 strcat (buffer, &me->filename[0]);
@@ -988,8 +985,8 @@ method file_mode ( long * sts )
         {
             basename = &(me->filename [strlen ( &me->filename[0] ) - 1]);
 
-            /* let's try the base name */
-            for (; (*basename != '/') && (basename != &(me->filename [0]));
+            /* let's try the base name */  
+            for (; (*basename != '/') && (basename != &(me->filename [0])); 
                  basename--);
         }
 
@@ -1000,7 +997,7 @@ method file_mode ( long * sts )
       {
         GRcheckref ( &msg, NULL, NULL, NULL, &osnum );
 
-        if (msg != MSSUCC)
+        if (msg != MSSUCC) 
         {
             me->mode = 'W';
         }
@@ -1008,7 +1005,7 @@ method file_mode ( long * sts )
         {
             IGRlong status, ok;
 
-            status = GRis_nested_writable (&ok, me->filename);
+            status = GRis_nested_writable (&ok, me->filename); 
 
             me->mode =  (status & ok & 1) ? 'W' : 'R';
         }
@@ -1022,7 +1019,7 @@ method file_mode ( long * sts )
       if (assoc_flag)
       {
         FILE *fet;
-
+        
         /* in order for the file to be read/write, we must have the write permission */
         fet = fopen ( me->filename, "r+" );
         if (!fet)
@@ -1039,7 +1036,7 @@ method file_mode ( long * sts )
              me->mode = 'W';
           fclose ( fet );
         }
-      }
+      }       
       else
       {
         if(me->ref_mode == 'W')
@@ -1085,7 +1082,7 @@ quit:
 }
 
 method assign_scale ( char *scale )
-{
+{ 
   int		  status = OM_S_SUCCESS;
 
   IGRlong om_msg;
@@ -1161,9 +1158,9 @@ method assign_scale ( char *scale )
             sts = om$send(msg = message CEO.erase_form_by_label
                                     (me->token, 0, &msg),
                          targetid = my_id);
-
+           
            me->form_requested = FALSE;
-  }
+  } 
 quit:
   return OM_S_SUCCESS;
 }
@@ -1263,7 +1260,7 @@ method set_gadgets ()
   else
    {
      if(me->ref_mode == 'W')
-       assoc_flag = 1;
+       assoc_flag = 1; 
    }
 
   if(assoc_flag)
@@ -1293,7 +1290,7 @@ method set_gadgets ()
      FIg_set_state_off(me->status_display_form_ptr,BACKGROUND);
    }
 
-   FIfld_set_text (me->status_display_form_ptr, ATTACHNAME,
+   FIfld_set_text (me->status_display_form_ptr, ATTACHNAME, 
                    0, 0, me->name, FALSE);
 quit:
   return OM_S_SUCCESS;
@@ -1339,16 +1336,16 @@ method form_notification (int form_label;
    FIfld_set_text(me->status_display_form_ptr,FI_MSG_FIELD,0,0,"",0);
    switch(gadget_label)
    {
-      case ATTACHNAME:
-        FIfld_get_text (form_ptr,
-                        gadget_label,
-                        0, 0,
-                        DI_PATH_MAX,
-                        buffer,
+      case ATTACHNAME:      
+        FIfld_get_text (form_ptr, 
+                        gadget_label, 
+                        0, 0, 
+                        DI_PATH_MAX, 
+                        buffer, 
                         &sel, &pos);
 
-        if (strchr(buffer, '*') ||
-            strchr(buffer, '[') ||
+        if (strchr(buffer, '*') || 
+            strchr(buffer, '[') || 
             strchr(buffer, ']'))
         {
             ex$message (msgnumb = GR_E_InvNme, buff = buffer);
@@ -1365,7 +1362,7 @@ method form_notification (int form_label;
             gr$get_module_env (buffer = &mod_env);
             DIstmocpy (path, "ref", "refnames", 0, mod_env.md_id.osnum);
             DIstrcat (path, buffer);
-            om_msg = di$translate (objname = path,
+            om_msg = di$translate (objname = path, 
                                    p_objid = &objid,
                                    p_osnum = &osnum);
 
@@ -1376,19 +1373,19 @@ method form_notification (int form_label;
                 FIfld_set_text (form_ptr, ATTACHNAME, 0, 0, "", FALSE);
             }
         }
-
+        
         break;
 
       case UPDATE:
 
            FIg_get_state(me->status_display_form_ptr, UPDATE, &update_state);
-
+           
            if(me->filename[0] != NULL)
             {
               if(update_state == 0)
                {
                  FILE *fet;
-
+ 
                  fet = fopen(me->filename,"r+");
                  if(!fet)
                   {
@@ -1420,7 +1417,7 @@ method form_notification (int form_label;
                 }
                }
            break;
-
+      
        case FILNAME_OPT:
        {
        IGRchar buffer[1024];
@@ -1431,13 +1428,13 @@ method form_notification (int form_label;
        IGRlong buffersize;
        IGRint  response;
 
-	   FIfld_get_text ( form_ptr,
+	   FIfld_get_text ( form_ptr, 
 			    gadget_label,
-			    (int)value,
-			    0,
-			    EXFI_STRLEN,
-			    text,
-			    &sel_flag,
+			    (int)value, 
+			    0, 
+			    EXFI_STRLEN, 
+			    text, 
+			    &sel_flag, 
 			    &r_pos );
 
 	   if (me->option == FILENAME_MODE)
@@ -1453,7 +1450,7 @@ method form_notification (int form_label;
 	   }
 	   else strcpy(buffer, text);
 
-
+      
  if(me->option == SCALE_MODE)
  {
   FIg_get_state(me->status_display_form_ptr, BACKGROUND, &back_state);
@@ -1516,7 +1513,7 @@ method form_notification (int form_label;
                          targetid = my_id);
 
            me->form_requested = FALSE;
-       }
+       }        
 	   /*
 	    * Set the text justification.
 	    */
@@ -1541,9 +1538,9 @@ method form_notification (int form_label;
            FIg_get_state(me->status_display_form_ptr, CLIPPING, &clip_state);
            FIg_get_state(me->status_display_form_ptr, UPDATE, &update_state);
 
-           FIfld_get_text (me->status_display_form_ptr,ATTACHNAME, 0, 0,
+           FIfld_get_text (me->status_display_form_ptr,ATTACHNAME, 0, 0, 
                            DI_PATH_MAX, (unsigned char *)attach_name, &sel, &i);
-
+       
            if(back_state == 0)
             {
               me->ref_properties = me->ref_properties & ~GRRF_BACKGROUND;
@@ -1597,7 +1594,7 @@ method form_notification (int form_label;
                          targetid = my_id);
 
            me->form_requested = FALSE;
-
+        
            break;
 
      case FI_CANCEL:
@@ -1610,7 +1607,7 @@ method form_notification (int form_label;
 
            break;
 
-
+           
    }
 
 
@@ -1650,12 +1647,12 @@ method is_associative ()
         sts = om$send(msg = message GRgraphics.GRisparent(&rc, &assoc),
                       targetid = list[i].obj_id.objid,
                       targetos = list[i].obj_id.osnum);
-
+        
         if (!(sts & rc & 1))
         {
             continue;
         }
-
+        
         if (assoc)
         {
             me->ret = MSSUCC;

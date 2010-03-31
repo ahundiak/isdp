@@ -33,6 +33,10 @@ Notes:
 
 class implementation COtools;
 
+// Prevent the Solaris wait() function definition from being defined.
+#define	_WAIT_H
+#define _SYS_WAIT_H
+
 #include <FI.h>
 #include <coimport.h>
 #include <exmacros.h>

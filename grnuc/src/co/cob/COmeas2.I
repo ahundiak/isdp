@@ -45,9 +45,13 @@ class implementation COmeasure;
 #include "codef.h"
 #include "msmacros.h"
 #include "madef.h"
+#ifdef ENABLE_MATH_H
 %safe
 #include <math.h>
 %endsafe
+#else
+#include <math.h>
+#endif
 #include <stdio.h>
 #include "csdef.h"
 #include "grcoordsys.h"
