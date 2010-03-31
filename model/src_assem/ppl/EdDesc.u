@@ -1,0 +1,525 @@
+#include "ciminimum.h"
+#include "cimacros.h"
+#include "cieveryone.h"
+#include "FI.h"
+#include "CIforms.h"
+#include "msdef.h"
+#include "growner.h"
+#include "grgsdef.h"
+#include "grgs.h"
+#include "grgsmacros.h"
+#include "grsymdef.h"
+#include "grsym.h"
+#include <grerr.h>
+#include "grsymmacros.h"
+#include "nddef.h"
+#include "ndmacros.h"
+#include "dpdef.h"
+#include "dp.h"
+#include "dpmacros.h"
+#include "refdef.h"
+#include "DItypedef.h"
+#include "DIdef.h"
+#include "DIglob.h"
+#include "DIprims.h"
+#include "assemdef.h"
+#include "assem.h"
+#include "assemmacros.h"
+
+#define FINISHED           -1
+#define START               0
+#define GET_FEATURE         1
+#define EDIT_DESCRIPTION    2
+#define CLEANUP             4
+
+#define DESCRIBE_FORM   2
+#define NAME            25
+#define ATTRS           15
+#define MESSAGE         10
+#define ACCEPT          1
+#define CANCEL          4
+#define TITLE           11
+
+IGRint                  om_msg, msg, ok;
+struct GRevent          event;
+struct GRmd_env         mod_env, lc_mod_env;
+struct GRid             gr_id;
+struct GRid             win_id, desc_id;
+IGRint                  state, response;
+IGRchar                 buffer[256], name[MAX_NAME], path[DI_PATH_MAX];
+IGRint                  i, j, count, sel, pos;
+IGRuint                 props;
+EMattr                * attrs, attr;
+IGRint                  num_attrs, num_rows;
+struct CIform_st        form_st;
+char                  * form_ptr;
+int                     form_displayed, attr_found;
+IGRint                  batch_mode;
+
+extern char * strcpy();
+extern char * strcat();
+extern char * strchr();
+extern int    GRdpb_get();
+extern int    printf();
+extern int    sprintf();
+extern int    FIf_new();
+extern int    FIfld_set_text();
+extern int    FIfld_get_text();
+extern int    FIfld_set_cmd_oid_os();
+extern int    FIf_display();
+extern int    FIf_erase();
+extern int    FIfld_get_num_rows();
+extern int    FIf_delete();
+extern int    Wait_timer();
+extern int    ci_notification();
+extern int    FIf_set_cmd_oid_os();
+extern int    FIf_reset();
+extern int    FIfld_set_list_default_text();
+extern int    FIf_is_displayed();
+extern int    FIfld_get_mode();
+extern int    FIfld_set_mode();
+extern int    FIfld_get_active_row();
+extern int    FIg_get_state();
+extern int    FIfld_get_num_rows ();
+extern int    FIg_display();
+
+form_update ()
+{
+    FIg_reset (form_ptr, ATTRS);
+    FIg_reset (form_ptr, NAME);
+    
+    if (desc_id.objid != NULL_OBJID)
+    {
+        /*
+         * Update the name.
+         */
+        di$untranslate (objid = desc_id.objid,
+                        osnum = desc_id.osnum,
+                        objname = path);
+
+        di$split (pathname = path,
+                  name = name);
+
+        FIfld_set_text (form_ptr, NAME, 0, 0, name, FALSE);
+
+        /*
+         * Display the attributes.
+         */
+        om_msg = asm$attribute_count (msg = &msg,
+                                      id = &desc_id,
+                                      count = &num_attrs);
+        
+        if (om_msg & msg & 1)
+        {
+            if (attrs == NULL)
+            {
+                attrs = (EMattr *)malloc (num_attrs * sizeof(EMattr));
+            }
+            else
+            {
+                attrs = (EMattr *)realloc (attrs, num_attrs * sizeof(EMattr));
+            }
+        
+            for (i=0; i<num_attrs; i=i+1)
+            {
+                om_msg = asm$get_attribute (msg = &msg,
+                                            id = &desc_id,
+                                            index = i,
+                                            attribute = &attrs[i]);
+
+                if (!(om_msg & msg & 1))
+                {
+                    status ("ERROR: asm$get_attribute");
+                }
+                
+                FIfld_set_text (form_ptr,
+                                ATTRS,
+                                i, 0,
+                                attrs[i].info.name,
+                                FALSE);
+                FIfld_set_text (form_ptr,
+                                ATTRS,
+                                i, 1,
+                                attrs[i].value.syntax,
+                                FALSE);
+                FIfld_set_text (form_ptr,
+                                ATTRS,
+                                i, 2,
+                                attrs[i].info.desc,
+                                FALSE);
+            }
+        }
+    }
+}
+
+main ()
+{
+    om_msg = OM_S_SUCCESS;
+    msg = MSSUCC;
+
+    name[0] = '\0';
+    attrs = NULL;
+    num_attrs = 0;
+    
+    message("Edit Feature Description");
+
+    /*
+     * Get the current module environment.
+     */	
+    ci$get_module_info( md_env = &mod_env );
+
+    state = START;
+    
+    /*  
+     * Create the form.
+     */
+    form_ptr = NULL;
+    FIf_new (DESCRIBE_FORM, "EdDesc", ci_notification, &form_ptr);
+    
+    if (!(int)form_ptr)
+    {
+        status ("Couldn't create form EdDesc");
+        state = FINISHED;
+    }
+    else
+    {
+        /*
+         * Associate the form with this command object.
+         */
+        FIf_set_cmd_oid_os( form_ptr, MY_ID, OM_Gw_current_OS );
+        state = START;
+    }
+
+    /*
+     * Loop until the state is set to FINISHED.
+     */
+    while (state != FINISHED)
+    {
+        /*
+         * Goto the appropriate state.
+         */                
+        switch (state)
+        {
+            /*
+             * (Re)initialize the command.
+             */
+        case START:
+            gr_id.objid = NULL_OBJID;
+            desc_id.objid = NULL_OBJID;
+
+            FIf_erase (form_ptr);
+            FIf_reset (form_ptr);
+            
+            FIg_set_text (form_ptr, TITLE, "Edit Description");
+            
+            state = GET_FEATURE;
+
+            break;
+
+        case GET_FEATURE:
+            /*
+             * Locate feature ...
+             */
+            ci$locate (obj = &gr_id.objid,
+                       osnum = &gr_id.osnum,
+                       prompt = "Select feature to describe",
+                       acc_prompt = "Accept/Reject",
+                       relocate_prompt = "Element not found",
+                       classes = "GRgraphics",
+                       md_env = &lc_mod_env,
+                       window_id = &win_id.objid,
+                       window_osnum = &win_id.osnum,
+                       stackable = 1,
+                       owner_action = LC_RIGID_COMP    | LC_FLEX_COMP      |
+                                      LC_NO_REF_HEADER | LC_NO_REF_OBJECTS |
+                                      LC_INTERMIDIATE  | LC_ASSOCIATIVE    |
+                                      LC_EXTERN_CONSTRAINED,
+                       response = &response );
+
+            switch (response)
+            {
+            case EX_DATA:
+                om_msg = asm$get_feature_description (msg = &msg,
+                                                      feature_id = &gr_id,
+                                                      description_id = &desc_id);
+                
+                if (om_msg & msg & 1)
+                {
+                    state = EDIT_DESCRIPTION;
+                }
+                else
+                {
+                    status ("Feature has no description.");
+                }
+                break;
+                
+            case EX_RJT_MOVEON:
+                break;
+
+            case EX_BACK_UP:
+                break;
+            }
+            break;
+
+        case EDIT_DESCRIPTION:
+            FIf_is_displayed (form_ptr, &form_displayed);
+            
+            if (!(int)form_displayed) FIf_display(form_ptr);
+            
+            form_update ();
+            
+            while (state == EDIT_DESCRIPTION)
+            {
+                ci$getevent (response = &response,
+                             prompt = "Edit description on form");
+                
+                if (response = EX_RJT_MOVEON)
+                {
+                    state = START;
+                }
+            }
+            
+            break;
+            
+        case CLEANUP:
+            if (form_ptr)
+            {
+                FIf_delete (form_ptr);
+            }
+            
+            if (attrs)
+            {
+                free (attrs);
+                attrs = NULL;
+            }
+
+            state = FINISHED;
+            break;
+        }
+    }
+}
+
+form_notification()
+{
+    switch ( form_st.gadget_label )
+    {
+    case ACCEPT:
+
+        om_msg = OM_S_SUCCESS;
+        msg = MSSUCC;
+
+        /*
+         * See if the name changed.
+         */
+        FIfld_get_text (form_ptr, NAME, 0, 0, 40, buffer, &sel, &pos);
+
+        if (strcmp(buffer, name))
+        {
+            /* KLUDGE: DON'T ALLOW THIS YET! */
+        }
+
+        /*
+         * See if any attributes have been deleted ...
+         */
+        FIfld_get_num_rows( form_ptr, ATTRS, &num_rows );
+
+        for (i=0; i<num_rows; i=i+1)
+        {
+            attr_found = FALSE;
+            
+            for (j=0; j<num_attrs; j=j+1)
+            {
+                buffer[0] = '\0';
+                
+                FIfld_get_text (form_ptr,
+                                ATTRS,
+                                j,0,256,
+                                buffer,
+                                &sel,&pos );
+
+                if (!strcmp(buffer, attrs[i].info.name))
+                {
+                    attr_found = TRUE;
+                    break;
+                }
+            }
+                
+            if (attr_found == FALSE)
+            {
+                om_msg = asm$rem_attribute (msg = &msg,
+                                            id = &desc_id,
+                                            name = attrs[i].info.name);
+
+                if (!(om_msg & msg & 1))
+                {
+                    sprintf (buffer, 
+                             "Couldn't remove attribute %s",
+                             attrs[i].info.name);
+                    
+                    FIfld_set_text (form_ptr,
+                                    MESSAGE,
+                                    0, 0,
+                                    buffer,
+                                    FALSE);
+                    
+                    om_msg = OM_S_SUCCESS;
+                    msg = MSSUCC;
+                }
+            }
+        }            
+
+        /*
+         * Modify/add any other attributes ...
+         */
+        for (i=0; i<num_rows; i=i+1)
+        {
+            FIfld_get_text (form_ptr,
+                            ATTRS,
+                            i,0,MAX_NAME,
+                            buffer,
+                            &sel,&pos );
+
+            if (buffer[0] != '\0')
+            {
+                strcpy(attr.info.name, buffer);
+                attr.info.type = EM_ATTRIBUTE;
+                attr.value.type = EM_CALCULATED;
+                
+                FIfld_get_text (form_ptr,
+                                ATTRS,
+                                i,1,MAX_VALUE,
+                                attr.value.syntax,
+                                &sel,&pos );
+                
+                FIfld_get_text (form_ptr,
+                                ATTRS,
+                                i,2,MAX_DESC,
+                                attr.info.desc,
+                                &sel,&pos );
+
+                attr_found = 0;
+                    
+                for (j=0; j<num_attrs; j=j+1)
+                {
+                    if (!strcmp(buffer, attrs[j].info.name))
+                    {
+                        attr_found = 1;
+                        break;
+                    }
+                }
+
+                if (attr_found == 1)
+                {
+                    om_msg = asm$mod_attribute (msg = &msg,
+                                                id = &desc_id,
+                                                name = attrs[j].info.name,
+                                                attribute = &attr);
+
+                    if (!(om_msg & msg & 1))
+                    {
+                        sprintf (buffer, 
+                                 "Couldn't update attribute %s",
+                                 attrs[j].info.name);
+                        
+                        FIfld_set_text (form_ptr,
+                                        MESSAGE,
+                                        0, 0,
+                                        buffer,
+                                        FALSE);
+
+                        FIfld_set_text (form_ptr,
+                                        ATTRS,
+                                        i, 1,
+                                        attrs[j].value.syntax,
+                                        FALSE);
+
+                        FIfld_set_text (form_ptr,
+                                        ATTRS,
+                                        i, 2,
+                                        attrs[j].info.desc,
+                                        FALSE);
+
+                        om_msg = OM_S_SUCCESS;
+                        msg = MSSUCC;
+                    }            
+                }
+                else /* Add the new attribute */
+                {
+                    om_msg = asm$add_attribute (msg = &msg,
+                                                id = &desc_id,
+                                                attribute = &attr);
+                    
+                    if (!(om_msg & msg & 1))
+                    {
+                        sprintf (buffer, 
+                                 "Couldn't add attribute %s",
+                                 attr.info.name);
+
+                        FIfld_set_text (form_ptr,
+                                        MESSAGE,
+                                        0, 0,
+                                        buffer,
+                                        FALSE);
+                    
+                        FIfld_delete_rows (form_ptr, ATTRS, i, 1);
+
+                        om_msg = OM_S_SUCCESS;
+                        msg = MSSUCC;
+                    }
+                }                        
+            }
+        }
+
+        /*
+         * Update the modify batch if requested.
+         */
+        nd$mod_batch (request = ND_INQ, p_ret_mode = &batch_mode);
+        
+        if (batch_mode == ND_IMMEDIATE)
+        {
+            nd$exec_batch ();
+        }
+        
+        FIf_erase (form_ptr);
+        FIf_reset (form_ptr);
+        ci$put( response = EX_RJT_MOVEON );
+        break;
+
+    case CANCEL:
+        FIf_erase (form_ptr);
+        FIf_reset (form_ptr);
+        ci$put( response = EX_RJT_MOVEON);
+        break;
+    }
+}
+    
+init ()
+{
+}
+
+wakeup()
+{
+}
+
+sleep()
+{
+    dp$erase_hilite (msg = &msg);
+}
+
+delete()
+{
+    dp$erase_hilite (msg = &msg);
+    
+    if (form_ptr)
+    {
+        FIf_delete (form_ptr);
+    }
+    
+    if (attrs)
+    {
+        free (attrs);
+        attrs = NULL;
+    }
+}
+
+

@@ -1,0 +1,122 @@
+
+#include <stdio.h>
+#include "ciminimum.h"
+#include "cimacros.h"
+#include "igr.h"
+#include "igrdp.h"
+#include "igetypedef.h"
+#include "godef.h"
+#include "go.h"
+#include "gr.h"
+#include "griodef.h"
+#include "ex.h"
+#include "grio.h"
+#include "dp.h"
+#include "csmacros.h"
+#include "stdio.h"
+#include "msdef.h"
+#include "grgsmacros.h"
+#include "OMerrordef.h"
+#include "OMprimitives.h"
+#include "EMSmsgdef.h"
+#include "emsdef.h"
+
+extern IGRboolean EFisAncestryValid();
+extern IGRboolean EFis_objid_below();
+extern OMuword    OPP_EMSsfdlift_class_id;
+extern int        EMmake_chanselect();
+extern int        EFtoggle_lift_to_other_surf();
+
+main()
+{
+  IGRlong           OM_stat, EMmsg;
+  IGRint            ii;
+  struct GRmd_env   env; 
+  GRobjid           lift_id, surf_id, surf_to_lift_id;
+  OM_S_CHANSELECT   to_owners, to_comps;
+  OMuword           surf_os;
+
+
+  OM_stat = OM_S_SUCCESS;
+  EMmsg = EMS_S_Success;
+
+  message("Z flip lift");
+
+  ci$get_module_info(md_env=&env);
+
+  lift_id = NULL_OBJID;
+
+  EMmake_chanselect(GRconnector_to_owners, &to_owners);
+
+  while (1)
+  {
+    ci$locate(obj = &surf_id,
+              osnum = &surf_os, 
+              prompt = "Identify (incorrectly) lifted planar surface",
+              classes = "EMSsubbs",
+              owner_action = LC_RIGID_COMP | LC_NO_REF_HEADER |
+                             LC_REF_OBJECTS, 
+              properties = LC_LC_ONLY | LC_DP_ONLY | 
+                           LC_WRITE_ONLY | LC_PLANAR_ONLY);
+
+    OM_stat = om$get_objid_at_index(objid = surf_id,
+                                    osnum = surf_os, 
+                                    p_chanselect = &to_owners,
+                                    index = 0,
+                                    objidaddr = &lift_id,
+                                    osnumaddr = &surf_os);
+  
+    if ((1 & OM_stat) && (lift_id != NULL_OBJID) && 
+        EFisAncestryValid(&EMmsg, lift_id, surf_os, OPP_EMSsfdlift_class_id,
+                          FALSE)) break;
+    else status("Surface identified is not part of a lift state");
+  }                          
+
+  status("");
+  
+  EMmake_chanselect(GRcmpowner_to_components, &to_comps);  
+
+  while(1)
+  {
+    ci$locate(obj = &surf_to_lift_id,
+              osnum = &surf_os, 
+              prompt ="Identify (correct) planar surface to lift",
+              classes = "EMSsubbs",
+              owner_action = LC_RIGID_COMP | LC_NO_REF_HEADER |
+                             LC_REF_OBJECTS, 
+              properties = LC_LC_ONLY | LC_DP_ONLY | 
+                           LC_WRITE_ONLY | LC_PLANAR_ONLY);
+  
+    OM_stat = om$is_objid_on_channel(objid_c = lift_id,
+                                     osnum_c = surf_os,
+                                     p_chanselect = &to_comps,
+                                     objid = surf_to_lift_id,
+                                     osnum2 = surf_os);
+    if (OM_stat == OM_W_NOTONCHAN)                                         
+    {
+      /*Verify that the surf_to_lift_id is part of the lift_id model and exists
+       * BELOW the lift_id.
+       */
+      if (EFis_objid_below(&EMmsg, lift_id, surf_os, surf_to_lift_id, NULL))
+        break;
+      else status("Identified surface was placed after lift operation.");
+    }
+    else 
+      status("Identified a surface part of the same lift operation");
+  }
+
+  OM_stat = EFtoggle_lift_to_other_surf(&EMmsg, lift_id, surf_os,
+                                        surf_to_lift_id, &env, NULL);
+  if (!(1 & OM_stat & EMmsg) || EMmsg == EMS_I_InvalidCase)
+  {
+    UI_status("Lift could not be flipped");
+  }
+
+wrapup:
+  if (!(1 & OM_stat & EMmsg))
+  {
+    EFprintcode(0, OM_stat);
+    EFprintcode(0, EMmsg);
+  }
+  return(0);
+}

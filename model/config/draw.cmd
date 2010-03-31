@@ -1,0 +1,31 @@
+#include "ECcmd.h"
+#include "grcmd.h"
+EM_M_MakeCompositeCurve,EMPCmCr,ECmkcompcv,0,
+EM_M_AutoLinkCurves,EMPCmCrAt,EClink,0,
+EM_M_MesTanNrmCur,EMMNrTnCr,ECtanorm,0,
+EM_M_MeasRadofCurve,EMMRCrCr,ECrdofcrv,0,
+EM_M_Chmf,EMPCh,ECchamfer,0,
+EM_M_DropComposite,EMDrAlPrCm,ECdrop,0,
+EM_M_MesTanNrmCur,EMMNrTnCr,ECtanorm,0,
+GRC_M_CnvIGDSCelLib,MDCnIGClLb,ECigdscell
+GRC_M_CnvtoEMS,MDCnIGFlMc,ECigdsiems
+EM_M_AutoFilt,EMPFlAt,ECfilletcv,0,
+EM_M_TrimCurEle,EMDlCrTIn,ECtrmdrvr,0,
+EM_M_TrimCur,EMDlCr,ECtrmcrvele,0,
+EM_M_0022,EMPRhCn,ECconstruct,22,
+EM_M_0063,EMSChHgTl,ECattr,0,0,1
+EM_M_0064,EMSOfTl,ECattr,1,0,1
+EM_M_0065,EMSArLnTl,ECattr,2,0,1
+EM_M_0066,EMSBsTl,ECattr,3,0,1
+EM_M_0067,EMSChHgTl,ECattr,0,0,1
+EM_M_0068,EMSOfTl,ECattr,1,0,1
+EM_M_0069,EMSArLnTl,ECattr,2,0,1
+EM_M_0070,EMSBsTl,ECattr,3,0,1
+EM_M_0085,EMInE,ECconstruct,85,
+EM_M_0087,EMAl2Cr,ECalign,87,
+EM_M_0093,EMPCnLn,ECconstruct,93,
+EM_M_0106,EMMdCrSh,ECmodify,106
+EM_M_0116,EMPFtCr,ECfitcur,116
+EM_M_DiffCvSfSl,EMDfE,ECboolean,4
+EM_M_Intx2CvSfSl,EMIn2E,ECboolean,0
+EM_M_UnionCvSfSl,EMUnE,ECboolean,3

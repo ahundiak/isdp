@@ -1,0 +1,369 @@
+/* 
+          chiru     creation  02-Dec-90
+	  linarcfc.u
+          PPL to approximate a B-spline to linesegments and arcs.  
+
+*/
+
+#define DEBUG 0
+#include      "stdio.h"
+#include "ciminimum.h"
+#include "cimacros.h"
+#include "grdpbdef.h"
+#include "grdpbmacros.h"
+#include "bserr.h"
+#include "bstypes.h"
+#include "lcdef.h"
+
+struct IGRdisplay
+{
+        int     rgb_value;
+        short   color;
+        char    weight;
+        char    style;
+};
+
+#include "msdef.h"
+#include "msmacros.h"
+#include "igrtypedef.h"
+#include "gr.h"
+#include "growner.h"
+#include "grgsmacros.h"
+#include "godef.h"
+#include "go.h"
+#include "ex.h"
+#include "griodef.h"
+#include "grio.h"
+#include "OMprimitives.h"
+enum  GRdpmode  {GRbd, GRbe, GRhd, GRhe, GRbdhd, GRbehe,
+                 GRbdhe, GRbehd, GRhhd, GRhdo, GRhhdo, GRheo, GRbdheo,
+GRbeheo};
+
+
+
+IGRint j, count;
+IGRchar *ptr;
+IGRlong msg;
+
+IGRboolean              stat_func, *ln_arc;
+IGRshort                i, level, k;
+IGRint                  dp_mode,num_crvs, num_lst_pts, n,
+                        num_lins,num_arcs, *inds;
+IGRlong                 stat_om, srf_siz, msg_loc, rc,  bufsiz, nret, 
+                        cst_msg_loc, err_crv_num;
+IGRdouble               mindst_arc, err_tol;
+IGRdouble               *lst_pts, *pars;
+IGRmatrix               mat;
+IGRchar                 msgbuf[80];
+struct GRid             crv_grid, arc_grid, lin_grid, 
+                        comp_crv_grid, set_id;
+struct GRmd_env         md_env;
+struct IGRdisplay       display_attr;
+struct GRlc_info        *lc_info;
+struct GRvg_construct   cst_list;
+struct IGRbsp_curve     *crv_geom, **curves;
+struct GRobj_env *if_obj;
+
+extern                  printf(), sprintf();
+extern   char           *malloc();                          
+extern                  GRdpb_get();
+extern BSftptlnarc(),BSchtptstcv(),prtbspc();
+
+extern GRgs_fun();
+extern free();
+extern GRgsremove_fence();
+
+main()
+{
+   
+   message("Approximate B-spline curve to lines and arcs");
+
+/*    old locate for single object
+   ci$locate(obj = &crv_grid.objid,
+             osnum = &crv_grid.osnum, 
+             prompt = "Identify Curve",
+             owner_action = LC_RIGID_COMP | LC_FLEX_COMP, 
+             classes = "GRbcsubbc");
+*/
+  
+   ci$get( value = level,
+          prompt = " Keyin layer for output results");
+ 
+   ci$get( value = err_tol,
+          prompt = " Keyin error tol.");
+ 
+   ci$get( value = mindst_arc,
+          prompt = " Keyin min. arc dist  tol.");
+    
+   prompt( "       Processing .."); 
+
+   ci$get_module_info( md_env = &md_env );
+
+   ci$put(string="Elements Inside Fence");
+
+                    if  (  !ci$locate
+                                (
+                                classes = "GRbcsubbc",
+                                obj = &set_id.objid,
+                                osnum = &set_id.osnum,
+                                owner_action=LC_EXTERN_CONSTRAINED |
+                                                LC_RIGID_COMP,
+                                relocate_prompt = CI_NULL
+
+                                ) & 1
+                        )
+                            {
+                                status("ERROR: No Objects Found\n");
+                                exit;
+                            }
+/*
+printf("set_id.objid=%d set_id.osnum=%d\n",set_id.objid, set_id.osnum);
+*/
+
+// Remove the fence object itself
+
+                gr$gsremove_fence( msg = &msg,
+                                        senderid = NULL_OBJID,
+                                        senderos = OM_Gw_current_OS,
+                                        object_id = &set_id );
+
+// Read number of elements in the set
+
+                gr$gsinqcount
+                (
+                        msg = &msg,
+                        count = &count,
+                        senderid = NULL_OBJID,
+                        senderos = OM_Gw_current_OS,
+                        object_id = &set_id
+                );
+/*
+printf("count = %d\n",count);
+*/
+                if (msg != MSSUCC)
+                {
+                        (void) printf ("ERROR: gr$gsinqcount\n");
+                        exit;
+                }
+
+                if((ptr = malloc (count * sizeof (struct GRobj_env))) ==
+NULL)
+                {
+                        printf ( "ERROR: malloc for ptr () FAILED\n" );
+                        exit;
+                }
+
+
+                if_obj = (struct GRobj_env *) ptr;
+
+// Load elements
+                gr$gsget_objects
+                (
+                        msg = &msg,
+                        array = if_obj,
+                        size = count * sizeof (struct GRobj_env),
+                        count = &count,
+                        from_obj = 0,
+                        to_obj  = count - 1,
+                        senderid = NULL_OBJID,
+                        object_id = &set_id
+                );
+                if (msg != MSSUCC)
+                {
+                        (void) printf ("ERROR: gr$gsget_objects\n");
+                        exit;
+                }
+
+  /* fill construct list  to be used later in displaying the geodesic*/
+  bufsiz = sizeof(struct GRmd_env);
+  gr$get_module_env(msg = &msg_loc, sizbuf = &bufsiz, 
+                    buffer = &md_env, nret = &nret);
+
+  bufsiz = sizeof(struct IGRdisplay);
+  gr$get_active_display(msg = &msg_loc, sizbuf = &bufsiz, 
+                        buffer = &display_attr, nret = &nret);
+
+/*
+  bufsiz = sizeof(IGRshort);
+  gr$get_active_level(msg = &msg_loc, sizbuf = &bufsiz, 
+                        buffer = &level, nret = &nret);
+*/
+
+  cst_list.msg = &cst_msg_loc;
+  cst_list.env_info = &md_env;
+  cst_list.display = &display_attr;
+  cst_list.newflag = FALSE;
+  cst_list.level = level;
+  cst_list.properties = GRIS_LOCATABLE | GRIS_DISPLAYABLE;
+  cst_list.class_attr = NULL;
+  cst_list.name = NULL;
+
+  /* get the curve geometry  */
+
+// Print out all the objects found in the graphic set.
+
+for (j=0; j<count; j=j+1)
+   {
+        //
+       // Do all your processing on individual objects here inside the loop.
+        //
+/*
+        write("j=",j," objid=",if_obj[j].obj_id.objid,
+                                " osnum=",if_obj[j].obj_id.osnum,"\n");
+*/
+        crv_grid.objid = if_obj[j].obj_id.objid;
+        crv_grid.osnum = if_obj[j].obj_id.osnum;
+
+  stat_om = ci$send(msg = message GRvg.GRgetsize(&msg_loc,
+                         &md_env.md_env.matrix_type, /* *mat_type */
+                         md_env. md_env.matrix, /* matrix */
+                         &bufsiz),
+          targetid = crv_grid.objid,
+          targetos = crv_grid.osnum);
+
+  crv_geom = (struct IGRbsp_curve *) om$malloc (size = bufsiz);
+  
+
+  stat_om = ci$send(msg = message GRvg.GRgetgeom(&msg_loc, /* *msg */
+                         &md_env.md_env.matrix_type, /* *mat_type */
+                         md_env .md_env.matrix, /* matrix */
+                        (IGRchar *)crv_geom),
+          targetid = crv_grid.objid,
+          targetos = crv_grid.osnum);
+
+  /* stroke the curve using cht */
+  BSchtptstcv(crv_geom,&num_lst_pts,&lst_pts,&pars,&rc);        
+
+  if( rc != BSSUCC ){
+     status( " Error in stroking the curve ");
+     goto ret_end;
+  };
+
+  /* approximate the curve into linesegments and arcs */
+   
+  BSftptlnarc( num_lst_pts,  lst_pts,  mindst_arc, err_tol, 
+               &num_crvs ,  &curves ,  &inds ,  &ln_arc, &rc);
+
+  if( rc != BSSUCC ){
+     status( " Math failed ");
+     goto ret_end;
+  };
+
+  
+#if DEBUG
+  printf( "BSftptlnarc: rc %ld\n", rc);
+  printf( "BSftptlnarc: # output curves : %ld\n" ,num_crvs);
+  
+#endif
+
+  lc_info = NULL;
+  lc_info = (struct GRlc_info *) malloc( num_crvs*sizeof(struct GRlc_info));
+
+  num_lins = 0;
+  num_arcs = 0;
+
+  for( i=0;i<num_crvs;i=i+1){
+        
+       if( ln_arc[i] == 1 ){
+        
+          /* construct an arc */
+
+            cst_list.geometry = ( IGRchar * )curves[i];
+            arc_grid.osnum = crv_grid.osnum;
+            ci$send(msg = message GR3dcirarc.GRconstruct(&cst_list),
+                    construct = 1, 
+                    targetid = arc_grid.objid,
+                    targetos = arc_grid.osnum);
+#if DEBUG
+            printf( "linarc: arc id %ld %ld \n", arc_grid.objid, 
+                                                 arc_grid.osnum);
+#endif                                          
+            lc_info[i].located_obj = arc_grid;
+            lc_info[i].module_info = md_env;
+
+            dp_mode = GRbd;
+            ci$send(msg = message GRgraphics.GRdisplay(&msg_loc,
+                                            &md_env.md_env.matrix_type,
+                                            md_env.md_env.matrix,
+                                            &dp_mode, &md_env.md_id),
+                    targetid = arc_grid.objid, 
+                    targetos = arc_grid.osnum);
+
+            num_arcs = num_arcs+1;
+
+       } else {
+        
+            num_lins = num_lins+1;
+
+            /* construct a line */
+            cst_list.geometry = ( IGRchar *)curves[i];
+            lin_grid.osnum = crv_grid.osnum;
+            ci$send(msg = message GR3dlinestr.GRconstruct(&cst_list),
+                    construct = 1, 
+                    targetid = lin_grid.objid,
+                    targetos = lin_grid.osnum);
+
+          lc_info[i].located_obj = lin_grid;
+          lc_info[i].module_info = md_env;
+
+           dp_mode = GRbd;
+           ci$send(msg = message GRgraphics.GRdisplay(&msg_loc,
+                                            &md_env.md_env.matrix_type,
+                                            md_env.md_env.matrix,
+                                            &dp_mode, &md_env.md_id),
+                   targetid = lin_grid.objid, 
+                   targetos = lin_grid.osnum);
+
+
+
+      };
+
+  }; /* for */
+
+#if DEBUG
+  printf( "# lines : %ld\n", num_lins);
+  printf( "# arcs  : %ld\n", num_arcs);       
+#endif
+
+  sprintf(msgbuf, " #Arcs :%d ,  #Lines : %d ", num_arcs, num_lins);
+  status(msgbuf);
+
+   /* make a composite of the curves */
+   comp_crv_grid.osnum = crv_grid.osnum;
+   cst_list.geometry = NULL;
+   ci$send(msg = message GRcompcurve.GRconstruct(&cst_list),
+            construct = 1, 
+            targetid = comp_crv_grid.objid,
+            targetos = comp_crv_grid.osnum);
+
+   stat_om = ci$send( msg = message GRcompcurve.EMmakecomp( &msg_loc, 
+                                                  &md_env, 
+                                                  num_crvs, 
+                                                  lc_info, 
+                                                  &err_crv_num), 
+            targetid = comp_crv_grid.objid, 
+            targetos = comp_crv_grid.osnum);
+   
+   if( !(stat_om  & 1) ){
+      om$report_error( sts = stat_om);
+      goto ret_end;
+   };
+
+   dp_mode = GRbd;
+   ci$send(msg = message GRgraphics.GRdisplay(&msg_loc,
+                                              &md_env.md_env.matrix_type,
+                                              md_env.md_env.matrix,
+                                              &dp_mode, &md_env.md_id),
+            targetid = comp_crv_grid.objid, 
+            targetos = comp_crv_grid.osnum);
+
+
+ret_end:
+;
+   }
+
+ free( ptr );
+
+}  /* end of main() */
+
+/* ----------------------------------------------------------------------- */
