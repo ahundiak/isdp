@@ -1,0 +1,26 @@
+#include "ECcmd.h"
+EM_M_PlaceProfile,GRPlPf,ECdraw,2
+EM_M_EditProfile,GREdPf,ECdraw,3
+EM_M_CalculateProfile,GRRcPf,ECskmgr,0
+EM_M_UndoProfile,GRUnPf,ECskmgr,1
+EM_M_ShowUnderConstrainedProfile,GRRvUnGm,ECskmgr,2
+EM_M_ConvertToProfile,GRCrAdTPf,ECskmgr,3
+EM_M_CloseProfile,GRClPr,ECskmgr,4
+EM_M_ToggleGeometricConstraintDisplay,GRTgGmCnDs,ECskmgr,5
+EM_M_ToggleDimensionDrivenDriving,GRTgDmDrDv,ECtogdim,0
+EM_M_PlaceStackedLinearConstraint,GRPScLnDmC,ECdmcnstr,0
+EM_M_PlaceStringLinearConstraint,GRPSrLnDmC,ECdmcnstr,1
+EM_M_PlaceSingleParallelConstraint,GRPSnPrDmC,ECdmcnstr,3
+EM_M_PlaceStackedAngularConstraint,GRPScAnDmC,ECdmcnstr,6
+EM_M_PlaceStringAngularConstraint,GRPSrAnDmC,ECdmcnstr,7
+EM_M_PlaceRadialConstraint,GRPRdDmCn,ECdmcnstr,8
+EM_M_PlaceHzVtConstraint,GRPlHrVrCn,EC1elecnstr,0
+EM_M_PlaceTangencyConstraint,GRPlTnCn,EC1elecnstr,1
+EM_M_PlaceGroundConstraint,GRPlGrCn,EC1elecnstr,2
+EM_M_PlaceParallelConstraint,GRPlPrCn,EC2elecnstr,0
+EM_M_PlacePerpendicularConstraint,GRPlNrCn,EC2elecnstr,1
+EM_M_PlaceCoincidentConstraint,GRPlCnCn,EC2elecnstr,2
+EM_M_PlacePointOnElementConstraint,GRPlPnOnCn,EC2elecnstr,3
+EM_M_PlaceEqualityConstraint,GRPlEqCn,ECnelecnstr,0
+EM_M_PlaceCollinearConstraint,GRPlClCn,ECnelecnstr,1
+EM_M_EditDimensionalValue,GREdDmVl,ECeditdim,0

@@ -1,0 +1,25 @@
+SRC
+$(MODEL)/src_path/cvcre
+OPP
+$(EXTARG)/bin/opp
+OMCPP
+$(EXTARG)/bin/omcpp
+INCLUDE
+$(INGRHOME)/include
+$(XINC)
+#ifdef XGL
+$(XINC)/xgl
+#endif
+$(MODEL)/include
+$(EXNUC)/include
+$(GRNUC)/include
+$(BS)/include
+$(BS)/include/prototypes
+SPEC
+$(GRNUC)/spec
+$(MODEL)/spec
+$(EXNUC)/spec
+LIB
+$(MDTARG)/src_lib/PWcvcre.o
+SOURCE
+cvcons.I

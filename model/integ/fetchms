@@ -1,0 +1,103 @@
+REVISION=""
+SYMBNAME=""
+VERSION=no
+while [ $# -gt 0 ]
+do
+   case $1 in
+ 
+      -n) SYMBNAME=$2
+            shift
+            shift;;
+      -v) VERSION=yes
+                  shift;;
+      -f) FILELIST=$2
+          shift 2;;
+       *) echo 'Usage fetchsrc [-v] -f filelist'
+          exit 9 ;;
+   esac 
+done
+
+# always fetch by version number
+VERSION=yes
+
+rootsetuid "/etc/mount -f NFS,soft starbase:/usr/sc/IDmakesys_200/rcs_files /${PROD}RCS"
+
+RCSTREE=/${PROD}RCS
+
+WRKTREE=$WRKTREE/freeform
+
+cd $WRKTREE
+
+echo "fetching : "
+echo "--------"
+
+while read file vers
+do
+   if [ "$file" != "" ]
+   then
+      echo $file $vers
+      dname=`dirname $file`
+      if [ ! -d $dname ]
+      then
+         echo "$dname is not a directory!, creating directory . . . "
+         mkdir -p $dname
+      fi
+      if [ ! -d `dirname ${LTREE}/${file}` ]
+       then
+       mkdir -p `dirname ${LTREE}/${file}`
+      fi
+      if [ $VERSION = yes ]
+      then
+         REVISION=$vers
+      else
+         REVISION=""
+      fi
+
+      cp ${RCSTREE}/${file},v /tmp/${LOGNAME}.lck,v
+
+      LOCKED=`rlog /tmp/${LOGNAME}.lck,v | grep "locked by" | cut -d' ' -f2,4`
+      if [ "${LOCKED}"  != "" ] 
+       then
+         VERSNUM=`echo $LOCKED | cut -d' ' -f1`
+         USEID=`echo $LOCKED | cut -d' ' -f3 | tr ";" ":"`
+         sed s/${USEID}${VERSNUM}/${LOGNAME}\:${VERSNUM}/1 /tmp/${LOGNAME}.lck,v > /usr2/tmp/${LOGNAME},v
+         rm /tmp/${LOGNAME}.lck,v
+      else
+         mv /tmp/${LOGNAME}.lck,v /usr2/tmp/${LOGNAME},v
+      fi
+   
+      if [ "${SYMBNAME}" != "" ]
+         then
+       /usr/bin/co -u${SYMBNAME} /usr2/tmp/${LOGNAME},v /usr2/tmp/${LOGNAME}
+      else
+       if [ "${REVISION}" != "" ]
+        then
+         /usr/bin/co -u${REVISION} /usr2/tmp/${LOGNAME},v /usr2/tmp/${LOGNAME}
+       else
+         /usr/bin/co /usr2/tmp/${LOGNAME},v /usr2/tmp/${LOGNAME}
+       fi
+      fi
+
+      RETFILE=`basename ${file}`
+      RET=`egrep '^begin [0124567][0124567][0124567] ' /usr2/tmp/${LOGNAME} | grep -c $RETFILE`
+      if [ $RET != 0 ]
+      then
+         echo "Binary File....decoding "`basename ${file}`
+         uudecode /usr2/tmp/${LOGNAME}
+         cat $file | compress -d > /tmp/$RETFILE
+         cp /tmp/$RETFILE $file
+         rm /tmp/$RETFILE
+      else
+         cp /usr2/tmp/${LOGNAME} ${WRKTREE}/$file
+         rm /usr2/tmp/${LOGNAME},v /usr2/tmp/${LOGNAME}
+      fi
+
+      chmod +w ${WRKTREE}/${file}
+      if [ "`echo ${WRKTREE}/${file} | cut -d. -f2`" = "S" ]
+       then
+        ln ${WRKTREE}/${file} $WRKTREE/spec
+      fi
+   fi
+done < ${FILELIST}
+
+rootsetuid "/etc/umount /${PROD}RCS"

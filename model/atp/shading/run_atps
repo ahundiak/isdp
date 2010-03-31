@@ -1,0 +1,327 @@
+#  NAME
+#	run_atps
+#
+#  DESCRIPTION
+#	Processes all hsurf and ve atp's for commands specified in 
+#	atp.list
+#
+#  PARAMETERS
+#	None
+#
+#  GLOBALS USED
+#	ATP_RUN	    - flag to run atp's
+#	ATP_SI      - flag to snapshot display using "save image"
+#	ATP_DIFF    - flag to difference snapshot data with control data
+#       ATP_DSGN    - flag to use default design file "shapes"
+#	DESIGN_FILE - the EMS design file to use when testing the atps
+#       ECHO_DEBUG  - set to 1 if want debugging messages displayed to screen
+#
+#  FUNCTIONS CALLED
+#       proc_atp (command script)
+#       gen_report (command script)
+#
+#  HISTORY
+#    	7/1/92	Yvonne Chu
+#	   Created
+#
+
+#  HELP messages for the script
+
+help="\n\
+USAGE:  run_atps [ [-f filename] [-h] [-d] ] [-s] [-v] [-n]\n\
+         -f filename\t: Read atp and testfile locations from file <filename>.\n\
+         -h \t\t: Show help screen.\n\
+         -d \t\t: Execute default atps and testfile. \n\
+         -v \t\t: Verbose.  This option will output differnces between the\n\
+            \t\t\tgenerated output and the contol data. Optional.\n\
+         -s \t\t: Save.  This option wil save screen dumps in the form of \n\
+            \t\t\trgb files. Optional.\n\
+         -n \t\t: None.  Do not save or compare results.\n"
+
+help2="\nType:\trun_atps -h \tfor help information.\n"
+
+help_run="\n\
+ATP_RUN     \t Type 'n' if you do not want to process atp's.\n"
+
+help_si="\n\
+ATP_SI    \t\t Type 'y' if you want to generate screen dumps of results.\n\
+          \t\t If ATP_DIFF has been set, the dumps will be compared with\n\
+          \t\t the control images.\n"
+
+help_diff="\n\
+ATP_DIFF    \t Type 'y' if control data is present and you want to compare\n\
+          \t\t your results with them.\n"
+
+help_default="\n\
+DEFAULT DESIGN FILE \t Type 'y' if you want the default design file 'shapes'.\n\
+          \t\t\tType 'n' if you want to specify another design file.\n"
+
+
+#  set up global and local variable definitions and default values
+prompt_override=0    # override the on screen prompts = false
+export ATP_SI=0      # generate screen dumps of results = false
+export ATP_DIFF=0    # compare control results with most recent results = false
+export ATP_RUN=1     # run the ATPS = true
+export ECHO_DEBUG=0  # do not show debugging messages
+
+#  Process the atp list.  If the -f option is used, then the atps to be run
+#  are defined in the file; set USER_DEFINED to reflect this.  If the -d option
+#  is used, the default atps in the command directories are used.
+
+flag1=$1
+name_of_file=$2
+flag2=$3
+flag3=$4
+#flag4=$5   #for later use if more options added
+
+case $flag1 in
+-f) file=$name_of_file
+    export USER_DEFINED=1
+    ;;
+-d) file=atp.list
+#    flag4=$flag3
+    flag3=$flag2
+    flag2=$name_of_file
+    export USER_DEFINED=0 
+    ;;
+-h) echo $help 
+    exit 0
+    ;;
+*)  echo $help2 
+    exit 0 
+    ;;
+esac
+
+case $flag2 in
+-s) export ATP_SI=1
+    prompt_override=1
+    ;; 
+-v) export ATP_DIFF=1
+    prompt_override=1
+    ;;
+-n) prompt_override=1
+    ;;
+*)  ;;
+esac
+
+case $flag3 in
+-s) export ATP_SI=1
+    prompt_override=1
+    ;;
+-v) export ATP_DIFF=1
+    prompt_override=1
+    ;;
+-n) prompt_override=1
+    ;;
+*)  ;;
+esac
+
+if [ "$ECHO_DEBUG" = "1" ]
+then
+echo "prompt_override = $prompt_override"
+fi
+
+if [ "$prompt_override" = "0" ]
+then
+
+#
+#  Start to get user options for the ATPs
+#
+
+    echo
+    echo "Edit list of commands to test? [y/n] \c"
+    read atp_edit
+
+    if [ ! "$atp_edit" = "n" ]
+    then
+        echo "Emacs or vi? [e/v] \c"
+        read atp_editor
+
+        if [ "$atp_editor" = "v" ]
+        then
+            vi $file
+        else
+            emacs $file
+        fi
+    fi
+
+    done=0
+    until test "$done" = 1 
+    do
+       echo "Run atp's? [y/n/h] \c" 
+       read atp_run
+       if [ "$atp_run" = "h" ]
+       then
+          echo $help_run
+       else
+          done=1
+       fi
+    done
+    
+    if [ "${atp_run}" = "n" ]
+    then
+       export ATP_RUN=0
+       exit 0
+    else
+       export ATP_RUN=1
+    fi
+
+    done=0
+    until test "$done" = 1 
+    do
+       echo "Save/compare screen dumps of atp results? [y/n/h] \c" 
+       read atp_si
+       if [ "$atp_si" = "h" ]
+       then
+          echo $help_si
+       else
+          done=1
+       fi
+    done
+
+    if [ "${atp_si}" = "n" ]
+    then
+       export ATP_SI=0
+    else
+       export ATP_SI=1
+    fi
+
+    done=0
+    until test "$done" = 1 
+    do
+       echo "Compare results? [y/n/h] \c" 
+       read atp_diff
+       if [ "$atp_diff" = "h" ]
+       then
+          echo $help_diff
+       else
+          done=1
+       fi
+    done
+
+    if [ "${atp_diff}" = "n" ]
+    then
+       export ATP_DIFF=0
+    else
+       export ATP_DIFF=1
+    fi
+
+#
+#  If the default option has been chosen, check to see if the default design
+#  file "shapes" is to be used or a user specified design file.
+#
+    if [ "${flag1}" = "-d" ]
+    then
+       done=0
+       until test "$done" = 1 
+       do
+           echo "Use default design file ? [y/n/h] \c" 
+           read atp_diff
+           if [ "${atp_diff}" = "h" ]
+           then
+               echo $help_default
+           else
+               done=1
+           fi
+       done
+
+       if [ "${atp_diff}" = "n" ]
+       then
+           echo "Enter the design file to use: \c"
+           read design_file
+           export DESIGN_FILE=$design_file
+           export ATP_DSGN=0
+       else
+           design_file=../shapes/shapes
+           export DESIGN_FILE=$design_file
+           export ATP_DSGN=1
+       fi
+    fi
+elif [ "${flag1}" = "-d" ]
+then
+    design_file=../shapes/shapes
+    export DESIGN_FILE=$design_file
+    export ATP_DSGN=1
+fi
+
+
+#
+#  check to see if Create Shaded Plot File is a command to be tested
+#
+    grep cspf $file > /dev/null 2>&1
+    if [ $? = 0 ]
+    then
+        echo "Note: \c"
+        echo "Plotter queue must be set for Create Shaded Plot File atp's to run.\n"
+    fi
+
+#
+#  process the atp lists
+#
+
+if [ ! -w tmp ]
+then
+   echo "Making tmp directory"
+   mkdir tmp
+fi
+
+echo "AUTOMATIC TEST OF EMS HSURF AND VE COMMANDS" > tmp/atp.rpt
+
+#
+#    The testing phase begins...
+#
+
+if [ "$file" = "" ]  #if a blank filename
+then 
+    exit 0
+else
+    cat $file
+fi |
+while read command_name atp_name design_file etc
+do
+
+#
+#  If a user specified file is being used, we need to export the specific 
+#  design file and the pathway to the atp to be run.
+#
+    if [ "$flag1" =  "-f" ]
+    then
+        export DESIGN_FILE=$design_file
+        export ATP_PATH=$atp_name
+    fi
+
+#
+#  Debugging echos 
+#
+if [ "$ECHO_DEBUG" = "1" ]
+then
+    echo
+    echo DESIGN_FILE  = $DESIGN_FILE
+    echo ATP_PATH     = $ATP_PATH
+    echo command_name = $command_name
+    echo
+    echo flag1 = $flag1
+    echo flag2 = $flag2
+    echo flag3 = $flag3
+    echo
+fi
+
+    if [ ! -w $command_name/tmp ]
+    then
+        echo "Making $command_name/tmp directory"
+        mkdir $command_name/tmp
+    fi 
+
+    if [ "${ATP_DIFF}" = "1" -o "${ATP_SI}" = "1" ]
+    then
+        if [ ! -w $command_name/data ]
+        then
+            echo "Making $command_name/data directory"
+            mkdir $command_name/data
+        fi 
+    fi
+
+    proc_atp $command_name 2>$command_name/tmp/$command_name.log
+
+    gen_report $command_name >> tmp/atp.rpt
+done

@@ -1,0 +1,709 @@
+#include "ciminimum.h"
+#include "cimacros.h"
+#include "cieveryone.h"
+#include "FI.h"
+#include "CIforms.h"
+#include "msdef.h"
+#include "growner.h"
+#include "grgsdef.h"
+#include "grgs.h"
+#include "grgsmacros.h"
+#include "grsymdef.h"
+#include "grsym.h"
+#include <grerr.h>
+#include "grsymmacros.h"
+#include "nddef.h"
+#include "ndmacros.h"
+#include "assemdef.h"
+#include "assem.h"
+#include "assemmacros.h"
+
+#define FINISHED       -1
+#define START           0
+#define GET_PART_INFO   1
+#define CLEANUP         5
+
+#define PART_FORM   2
+
+#define SEED_PART   18
+#define SEARCH_PART 24
+#define PART_ATTRS  12
+#define INST_ATTRS  15
+#define FROM_LAYER  32
+#define TO_LAYER    36
+#define ON_LAYERS   38
+#define TEXT        25
+#define DIMENSION   26
+#define CONSTRAINT  27
+#define REFPLANE    28
+#define WIREFRAME   29
+#define SOLIDS      30
+#define MESSAGE     10
+#define ACCEPT      1
+#define EXECUTE     2
+#define CANCEL      4   
+#define TITLE       11
+
+IGRint                  om_msg, msg, ok;
+struct GRevent          event;
+struct GRmd_env         mod_env;
+struct GRid             file_part_id, part_id;
+IGRint                  state, response;
+IGRint                  num_attrs, num_part_attrs, num_inst_attrs;
+EMattr                * attrs, attr;
+IGRint                  attrs_buffer_size;
+struct CIform_st        form_st;
+char                  * form_ptr;
+int                     form_displayed;
+IGRint                  sel, pos, i, j, size, mode, count, gadget_state;
+IGRint                  delete_state, part_row, inst_row, delete_row, num_rows;
+IGRint                  display_props;
+IGRint                  gadget_mask;
+IGRboolean              part_created, attr_found;
+IGRboolean              part_changed;
+IGRchar                 buffer[256], number[40], revision[20], layers[2048];
+IGRlong                 onlayers[32], first_layer, last_layer;
+
+extern int GRdpb_get();
+extern int FIf_new();
+extern int FIfld_set_text();
+extern int FIfld_get_text();
+extern int FIfld_set_cmd_oid_os();
+extern int FIf_display();
+extern int FIf_erase();
+extern int FIfld_get_num_rows();
+extern int FIf_delete();
+extern int Wait_timer();
+extern int ci_notification();
+extern int FIf_set_cmd_oid_os();
+extern int FIf_reset();
+extern int FIfld_set_list_default_text();
+extern int FIf_is_displayed();
+extern int FIfld_get_mode();
+extern int FIfld_set_mode();
+extern int FIfld_get_active_row();
+extern int FIg_get_state();
+extern int FIg_display();
+extern int printf();
+extern int sprintf();
+extern long EXgetcwd();
+extern char * strcpy ();
+extern char * strcat ();
+
+form_update ()
+{
+    FIfld_set_text (form_ptr, SEED_PART, 0, 0, "", FALSE);
+
+    FIg_set_state (form_ptr, TEXT,       TRUE);
+    FIg_set_state (form_ptr, DIMENSION,  TRUE);
+    FIg_set_state (form_ptr, CONSTRAINT, TRUE);
+    FIg_set_state (form_ptr, REFPLANE,   TRUE);
+    FIg_set_state (form_ptr, WIREFRAME,  TRUE);
+    FIg_set_state (form_ptr, SOLIDS,     TRUE);
+
+    FIg_reset (form_ptr, PART_ATTRS);
+    FIg_reset (form_ptr, INST_ATTRS);
+    
+    FIfld_set_text (form_ptr, PART_ATTRS, 0, 0, "number", FALSE);
+    FIfld_set_text (form_ptr, PART_ATTRS, 0, 1, "", FALSE);
+    FIfld_set_text (form_ptr, PART_ATTRS, 0, 2, "", FALSE);
+
+    FIfld_set_text (form_ptr, PART_ATTRS, 1, 0, "revision", FALSE);
+    FIfld_set_text (form_ptr, PART_ATTRS, 1, 1, "", FALSE);
+    FIfld_set_text (form_ptr, PART_ATTRS, 1, 2, "", FALSE);
+
+    if (EMnext_part_layer_set (&msg, 20, &first_layer, &last_layer, NULL) & 1)
+    {
+        sprintf(buffer, "%d", first_layer);
+        
+        FIfld_set_text (form_ptr, FROM_LAYER, 0, 0, buffer, FALSE);
+        
+        sprintf(buffer, "%d", last_layer);
+        
+        FIfld_set_text (form_ptr, TO_LAYER, 0, 0, buffer, FALSE);
+    }
+}
+    
+main ()
+{
+    attrs = NULL;
+    attrs_buffer_size = 0;
+    num_attrs = 0;
+    
+    message("Define Local Part");
+
+    /*
+     * Get the current module enviroment.
+     */	
+    ci$get_module_info( md_env = &mod_env );
+
+    /*
+     * Read in the form. EMDfLocPrt must reside in one of the product
+     * "config/english/forms" directories to be found.
+     */
+    form_ptr = NULL;
+    FIf_new( PART_FORM, "EMDfLocPrt", ci_notification, &form_ptr);
+
+    if (!(int)form_ptr)
+    {
+        status ("Could not create the form DfLocPrt");
+        msg = MSFAIL;
+    }
+    else
+    {
+        /*
+         * Associate the form with this command object.
+         */
+        FIf_set_cmd_oid_os( form_ptr, MY_ID, OM_Gw_current_OS );
+        state = START;
+    }
+
+    /*
+     * Loop until the state is set to FINISHED.
+     */
+    while (state != FINISHED)
+    {
+        /*
+         * Goto the appropriate state.
+         */                
+        switch (state)
+        {
+            /*
+             * (Re)initialize the command.
+             */
+        case START:
+            om_msg = OM_S_SUCCESS;
+            msg = MSSUCC;
+            part_created = FALSE;
+            part_id.objid = NULL_OBJID;
+            
+            number[0] = '\0';
+            revision[0] = '\0';
+            
+            /*
+             * Reset all gadgets on the form. This will clear out
+             * all fields.
+             */
+              FIf_reset(form_ptr);
+
+            /*
+             * Get the file part.
+             */
+            om_msg = asm$get_file_part (msg = &msg, 
+                                        mod_env = &mod_env,
+                                        part_id = &file_part_id);
+                
+            /*
+             * If the file part for this file doesn't already
+             * exits create a default part.
+             */
+            if (!(om_msg & msg & 1))
+            {
+                om_msg = asm$create_file_part (msg = &msg,
+                                               mod_env = &mod_env,
+                                               number = "new_part",
+                                               revision = "a",
+                                               part_id = &file_part_id);
+                    
+                if (!(om_msg & msg & 1))
+                {
+                    status ("Could not define active file as a part.");
+                }
+            }
+
+            if (om_msg & msg & 1)
+            {
+                form_update ();
+                
+                state = GET_PART_INFO;
+            }
+            else
+            {
+                state = CLEANUP;
+            }
+
+            break;
+
+        case GET_PART_INFO:
+
+            /*                
+             * (Re)display the form.
+             */
+            FIf_is_displayed (form_ptr, &form_displayed);
+            
+            if (!(int)form_displayed) FIf_display( form_ptr );
+
+            /*
+             * Wait for the user to input the part
+             * attributes on the form.
+             */
+            while (state == GET_PART_INFO)
+            {
+                ci$getevent(response = &response, 
+                            prompt = "Enter part info on form" );
+
+                if (!(om_msg & msg & 1))
+                {
+                    state = CLEANUP;
+                }
+            }
+            break;
+
+        case CLEANUP:
+            if ( form_ptr ) 
+            {
+                FIf_delete( form_ptr );
+                form_ptr = NULL;
+            }
+    
+            if (part_created)
+            {
+                ci$send (msg = message GRgraphics.GRdelete (&msg, &mod_env),
+                         targetid = part_id.objid,
+                         targetos = part_id.osnum);
+                part_created = FALSE;
+            }
+
+            if (attrs)
+            {
+                free (attrs);
+                
+                attrs = NULL;
+            }
+
+            state = START;
+            break;
+        }
+    }
+}
+
+form_notification()
+{
+  IGRint count,i,j,sts;
+  IGRint part_row,inst_row;
+  struct GRid partid;
+  EMattr attr1,attr2;
+  IGRchar **loc_parts;
+  IGRchar seed_text[DI_PATH_MAX];
+
+    switch ( form_st.gadget_label )
+    {
+    case SEARCH_PART:
+
+        om_msg = asm$part_count (msg = &msg,
+                                 type = EM_LOCAL_PART,
+                                 count = &count);
+
+        if (!(om_msg & msg & 1) || !count)
+         {
+            FIg_set_state_off(form_ptr,SEARCH_PART);
+            break;
+         }
+
+        loc_parts = (IGRchar **)malloc(sizeof(char *) * count);
+
+        for (i=0; i<count; i=i+1)
+         {
+            om_msg = asm$get_part (msg = &msg,
+                                   type = EM_LOCAL_PART,
+                                   index = i,
+                                   part_id = &part_id);
+
+            if (!(om_msg & msg & 1))
+             {
+               break;
+             }
+          
+            loc_parts[i] = (IGRchar *)malloc(sizeof(char) * DI_PATH_MAX);
+
+            om_msg = asm$get_attribute (msg = &msg,
+                                        id = &part_id,
+                                        name = "number",
+                                        attribute = &attr1);
+
+           if(!(om_msg & msg & 1)) 
+            {
+               break;
+            }
+            om_msg = asm$get_attribute (msg = &msg,
+                                        id = &part_id,
+                                        name = "revision",
+                                        attribute = &attr2);
+
+           if(!(om_msg & msg & 1))
+            {
+               break;
+            }
+
+          strcpy(loc_parts[i],attr1.value.data.s);
+          strcat(loc_parts[i],"|");
+          strcat(loc_parts[i],attr2.value.data.s);
+
+          om_msg = asm$get_attribute (msg = &msg,
+                                      id = &part_id,
+                                      name = "description",
+                                      attribute = &attr2);
+
+         if(om_msg & msg & 1)
+          {
+            strcat(loc_parts[i],"|");
+            strcat(loc_parts[i],attr2.value.data.s);
+          }
+         else
+          {
+            om_msg = msg = 1;
+          }
+          
+        }
+
+        if(!(om_msg & msg & 1))
+          break;
+        pull_main (form_st.form_label, form_ptr, SEED_PART, 0, 0, loc_parts,
+                           count, 0, 0, 10, &sts, &i);
+        if( sts )
+         {
+           j = 0;
+           while(loc_parts[i][j] != (char)'|')
+              {
+                seed_text[j] = loc_parts[i][j]; 
+                j = j +1;
+              }
+    
+           seed_text[j] = '\0';
+
+           FIfld_set_text (form_ptr, SEED_PART, 0, 0,seed_text,FALSE);
+
+           for(j = 0; j < count; j = j + 1)
+           free(loc_parts[j]);
+           free(loc_parts); 
+           FIg_reset (form_ptr, PART_ATTRS);
+           FIg_reset (form_ptr, INST_ATTRS);
+
+           om_msg = asm$get_part (msg = &msg,
+                                  type = EM_LOCAL_PART,
+                                  index = i,
+                                  part_id = &part_id);
+
+           om_msg = asm$attribute_count(msg = &msg,
+                                        id = &part_id,
+                                        count = &count);
+           part_row = 0;
+           inst_row = 0;
+           for(j=0; j < count; j = j + 1)
+            {
+               om_msg = asm$get_attribute(msg = &msg,
+                                          id = &part_id,
+                                          index = j,
+                                          attribute = &attr1);
+               if(!(om_msg & msg & 1))
+                 break;
+
+             if((attr1.info.type & EM_PART_ATTR)) 
+     //           (attr1.info.type & EM_COMMON_ATTR))
+             {
+               FIfld_set_text(form_ptr,PART_ATTRS,part_row,0,attr1.info.name,
+                               FALSE);
+               FIfld_set_text(form_ptr,PART_ATTRS,part_row,1,attr1.info.desc,
+                               FALSE);
+
+               if (strcmp(attr1.info.name, "number") != 0 && 
+                    strcmp(attr1.info.name, "revision") != 0 )
+               {
+                 FIfld_set_text(form_ptr,PART_ATTRS,part_row,2,
+                                 attr1.value.syntax,FALSE);
+               }
+              part_row = part_row + 1;
+             }
+           else if(attr1.info.type & EM_INSTANCE_ATTR)
+             {
+              FIfld_set_text(form_ptr,INST_ATTRS,inst_row,0,attr1.info.name,
+                               FALSE);
+              FIfld_set_text(form_ptr,INST_ATTRS,inst_row,1,attr1.info.desc,
+                               FALSE);
+              FIfld_set_text(form_ptr,INST_ATTRS,inst_row,2,attr1.value.syntax,
+                               FALSE);
+              inst_row = inst_row + 1;
+             }
+           }
+         }
+
+        FIg_set_state_off(form_ptr,SEARCH_PART);
+       break;
+
+    case EXECUTE:
+    case ACCEPT:
+        msg = MSSUCC;
+        
+        /*
+         * Build the layers string.
+         */
+        FIfld_get_text (form_ptr,
+                        FROM_LAYER,
+                        0, 0, 256,
+                        buffer,
+                        &sel, &pos);
+
+        strcpy (layers, buffer);
+        
+        FIfld_get_text (form_ptr,
+                        TO_LAYER,
+                        0, 0, 256,
+                        buffer,
+                        &sel, &pos);
+
+        strcat (layers, "-");
+        strcat (layers, buffer);
+
+        /* 
+         * Get the on layers.
+         */
+        FIfld_get_text(form_ptr,
+                       ON_LAYERS,
+                       0,0,256,
+                       buffer,
+                       &sel,&pos);
+
+       if(buffer[0] != '\0')
+        {
+         EMconvert_layer_string_to_mask(&msg,buffer,onlayers);
+        }
+       else
+        {
+         EMconvert_layer_string_to_mask(&msg,layers,onlayers);
+        }
+        /*
+         * Get the display properties.
+         */
+        display_props = EM_GRAPHIC_DISPLAYED;
+        
+        FIg_get_state (form_ptr, TEXT, &gadget_state);
+        
+        if (gadget_state)
+        {
+            display_props = display_props | EM_TEXT_DISPLAYED;
+        }
+        
+        FIg_get_state (form_ptr, DIMENSION, &gadget_state);
+        
+        if (gadget_state)
+        {
+            display_props = display_props | EM_DIMENSION_DISPLAYED;
+        }
+        
+        FIg_get_state (form_ptr, CONSTRAINT, &gadget_state);
+        
+        if (gadget_state)
+        {
+            display_props = display_props | EM_CONSTRAINT_DISPLAYED;
+        }
+        
+        FIg_get_state (form_ptr, REFPLANE, &gadget_state);
+        
+        if (gadget_state)
+        {
+            display_props = display_props | EM_REFPLANE_DISPLAYED;
+        }
+        
+        FIg_get_state (form_ptr, WIREFRAME, &gadget_state);
+        
+        if (gadget_state)
+        {
+            display_props = display_props | EM_WIREFRAME_DISPLAYED;
+        }
+        
+        FIg_get_state (form_ptr, SOLIDS, &gadget_state);
+        
+        if (gadget_state)
+        {
+            display_props = display_props | EM_SOLIDSURF_DISPLAYED;
+        }
+        
+        /*
+         * Get the number of attributes.
+         */
+        FIfld_get_num_rows( form_ptr, PART_ATTRS,  &num_part_attrs );
+        FIfld_get_num_rows( form_ptr, INST_ATTRS, &num_inst_attrs );
+        num_attrs = num_part_attrs + num_inst_attrs; 
+        
+        if (attrs == NULL)
+        {
+            /*
+             * Malloc some space for the attributes.
+             */
+            attrs = (EMattr *)om$malloc (size = num_attrs * sizeof(EMattr));
+            attrs_buffer_size = num_attrs;
+        }
+        else if (attrs_buffer_size < num_attrs)
+        {
+            attrs = (EMattr *)om$realloc(ptr = attrs, 
+                                         size = num_attrs * sizeof(EMattr));
+            attrs_buffer_size = num_attrs;                
+        }   
+        
+        /*
+         * Get all the part attributes.
+         */
+        num_attrs = 0;
+        
+        for (i=0; i<num_part_attrs; i=i+1)
+        {
+            attrs[num_attrs].info.type = EM_PART_ATTR;
+            
+            FIfld_get_text (form_ptr,
+                            PART_ATTRS,
+                            i, 0, MAX_VALUE,
+                            attrs[num_attrs].info.name,
+                            &sel, &pos);
+
+            if (attrs[num_attrs].info.name[0] != '\0')
+            {
+                FIfld_get_text (form_ptr,
+                                PART_ATTRS,
+                                i, 1, MAX_VALUE,
+                                attrs[num_attrs].info.desc,
+                                &sel, &pos);
+                
+                FIfld_get_text (form_ptr,
+                                PART_ATTRS,
+                                i, 2, MAX_VALUE,
+                                attrs[num_attrs].value.syntax,
+                                &sel, &pos);
+                
+                if (!strcmp(attrs[num_attrs].info.name, "number"))
+                {
+                    strcpy (number, attrs[num_attrs].value.syntax);
+                }
+                else if (!strcmp(attrs[num_attrs].info.name, "revision"))
+                {
+                    strcpy (revision, attrs[num_attrs].value.syntax);
+                }
+                    
+                num_attrs = num_attrs + 1;
+            }
+        }
+
+        /*  
+         * Get all the instance attributes.
+         */
+        for (i=0; i<num_inst_attrs; i=i+1)
+        {
+            attrs[num_attrs].info.type = EM_INSTANCE_ATTR;
+            
+            FIfld_get_text (form_ptr,
+                            INST_ATTRS,
+                            i, 0, MAX_VALUE,
+                            attrs[num_attrs].info.name,
+                            &sel, &pos);
+            
+            if (attrs[num_attrs].info.name[0] != '\0')
+            {
+                FIfld_get_text (form_ptr,
+                                INST_ATTRS,
+                                i, 1, MAX_VALUE,
+                                attrs[num_attrs].info.desc,
+                                &sel, &pos);
+                
+                FIfld_get_text (form_ptr,
+                                INST_ATTRS,
+                                i, 2, MAX_VALUE,
+                                attrs[num_attrs].value.syntax,
+                                &sel, &pos);
+
+                num_attrs = num_attrs + 1;
+            }
+        }
+
+        if (msg & 1)
+        {
+            /*
+             * Create the part.
+             */
+            om_msg = asm$create_local_part (msg = &msg,
+                                            mod_env = &mod_env,
+                                            display = display_props,
+                                            number = number,
+                                            revision = revision,
+                                            num_attributes = num_attrs,
+                                            attributes = attrs,
+                                            layers_string = layers,
+                                            part_id = &part_id);
+       }
+        
+        if (om_msg & msg & 1)
+        {
+            om_msg = ci$send(msg = message EMlocalpart.EMset_layers(&msg,
+                                                                NULL, 
+                                                                onlayers,
+                                                                NULL),
+                             targetid = part_id.objid, 
+                             targetos = part_id.osnum);
+              
+            if (form_st.gadget_label == ACCEPT)
+            {
+                state = FINISHED;
+                FIf_erase (form_ptr);
+                ci$put( response = EX_RJT_MOVEON );
+            }
+            else
+            {
+                form_update ();
+            }
+
+            FIfld_set_text (form_ptr, MESSAGE, 0, 0, "Part created", FALSE);
+        }
+        else
+        {
+            FIfld_set_text (form_ptr, MESSAGE, 0, 0, 
+                            "Couldn't create part", FALSE);
+        }
+        
+        msg = MSSUCC;
+        break;
+
+    case CANCEL:
+        state = FINISHED;
+        FIf_erase (form_ptr);
+        ci$put( response = EX_FORM_FINISHED );
+        break;
+
+    case PART_ATTRS:
+    case INST_ATTRS:
+        break;
+    }
+}
+
+init ()
+{
+    form_ptr = NULL;
+}
+
+wakeup()
+{
+    if ( form_ptr )
+    {
+        if (form_displayed == 1) FIf_display( form_ptr );
+    }
+}
+
+sleep()
+{
+    if ( form_ptr )
+    {
+        FIf_is_displayed (form_ptr, &form_displayed);
+        if (form_displayed == 1) FIf_erase( form_ptr );
+    }
+}
+
+delete()
+{
+    if ( form_ptr ) 
+    {
+        FIf_delete( form_ptr );
+    }
+    
+    if ( attrs ) 
+    {
+        free (attrs);
+    }
+}
+
