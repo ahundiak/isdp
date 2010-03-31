@@ -26,7 +26,7 @@
  * compilingunder STDC (standard C).  14-Sep-92
  */
 #if defined (__STDC__) && !defined(__clipper__) || defined(__mips__)
-#ifndef IRIX5
+#if !defined(IRIX5)  && !defined(SUNOS58)
 struct exception {
         int type;
         char *name;

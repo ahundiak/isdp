@@ -450,7 +450,9 @@
 #define CLOCK_DIR	1
 #define ANTI_CLOCK_DIR  2
 
+#ifndef  NO_ACTION
 #define NO_ACTION       0x0000
+#endif
 #define COMPUTE_DIM     0x0001
 #define PARTIAL_UPDATE  0x0002
 #define UPDATE_BOX      0x0004

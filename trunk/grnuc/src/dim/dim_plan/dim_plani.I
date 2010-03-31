@@ -2,9 +2,13 @@ class implementation dim_plan;
 
 #define AS_DEBUG 1
 
+#ifdef ENABLE_MATH_H
 %safe
 #include "math.h"
 %endsafe
+#else
+#include <math.h>
+#endif
 
 #include "OMminimum.h" 
 #include "OMerrordef.h"

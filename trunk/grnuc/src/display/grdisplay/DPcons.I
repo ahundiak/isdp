@@ -60,10 +60,13 @@
 class implementation IGEgragad;
 
 #define DEBUG 1
-
+#ifdef ENABLE_MATH_H
 %safe
 #include <math.h>
 %endsafe
+#else
+#include <math.h>
+#endif
 #include <string.h>
 
 #include "grimport.h"

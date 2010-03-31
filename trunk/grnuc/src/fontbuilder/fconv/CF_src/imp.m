@@ -72,7 +72,7 @@ $(GRLIB)/libgpipe.a
 $(GRLIB)/src/fontbuilder/fconv/EX_src/Sunstub.o
 $(GRLIB)/src/fontbuilder/fconv/UT_src/UTsun_conv.o
 -lXFS -lXFI -lm
-/usr/openwin/lib/libXt.a /usr/openwin/lib/libX11.a /usr/openwin/lib/libXext.a
+-lXt -lX11 -lXext
 /usr/lib/libdl.so.1
 /usr/lib/libw.so.1
 /usr/lib/libnsl.so.1

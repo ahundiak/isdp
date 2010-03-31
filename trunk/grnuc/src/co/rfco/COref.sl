@@ -106,7 +106,9 @@ implementation
 #define DIRSIZ 50
 
 #ifdef SUNOS5
-#define DIRSIZ 14
+//#define DIRSIZ 14 XXX - Use the macro for Solaris
+#include <sys/fs/ufs_fsdir.h>
+#define DIRSIZ  MAXNAMLEN
 #endif
 
 #define FILNAME_OPT  222
@@ -372,13 +374,8 @@ action options_mode (int mode; char * info)
                      *       chars. If a directory name is 14 chars there will
                      *       be NO NULL at the end.
                      */
-#ifdef SUNOS
-               strncpy(name, entry->d_name, DIRSIZ(entry));
-                        name[DIRSIZ(entry)] = '\0';
-#else
                  strncpy(name, entry->d_name, DIRSIZ);
                         name[DIRSIZ] = '\0';
-#endif
                         strcpy (path, directory);
                         strcat (path, "/");
                         strcat (path, name);

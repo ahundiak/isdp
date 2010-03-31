@@ -16,9 +16,12 @@ Notes
 class implementation FIdirform;
 
 
+#ifdef ENABLE_MATH_H
 %safe
 #include <math.h>
 %endsafe
+#endif
+
 #include "coimport.h"
 #include "OMerrordef.h"
 #include "DItypedef.h"

@@ -1,6 +1,6 @@
 #include <stdio.h>
 #include <sys/types.h>
-#include <sys/dir.h>
+#include <sys/fs/ufs_fsdir.h>
 #include <fcntl.h>
 
 
