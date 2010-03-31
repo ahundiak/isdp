@@ -1,0 +1,27 @@
+SRC
+$(MODEL)/src_drawvw/imp
+OPP
+$(EXTARG)/bin/opp
+OMCPP
+$(EXTARG)/bin/omcpp
+INCLUDE
+$(XINC)
+$(INGRHOME)/include
+$(GRNUC)/ingrsys
+$(MODEL)/include
+$(EXNUC)/include
+$(GRNUC)/include
+$(BS)/include
+$(BS)/include/prototypes
+#if defined (XGL)
+$(XGLHOME)/include
+$(XGLHOME)/include/xgl
+#endif
+SPEC
+$(EXNUC)/spec
+$(GRNUC)/spec
+$(MODEL)/spec
+LIB
+$(MDTARG)/src_lib/EMSdrawvwI.o
+SOURCE
+EMdvxformown.I

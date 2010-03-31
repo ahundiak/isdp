@@ -1,0 +1,341 @@
+#include "ciminimum.h"
+#include "cimacros.h"
+#include "cieveryone.h"
+#include "FI.h"
+#include "CIforms.h"
+#include "msdef.h"
+#include "growner.h"
+#include "grgsdef.h"
+#include "grgs.h"
+#include "grgsmacros.h"
+#include "grsymdef.h"
+#include "grsym.h"
+#include <grerr.h>
+#include "grsymmacros.h"
+#include "nddef.h"
+#include "ndmacros.h"
+#include "dpdef.h"
+#include "dp.h"
+#include "dpmacros.h"
+#include "refdef.h"
+#include "assemdef.h"
+#include "assem.h"
+#include "assemmacros.h"
+
+#define FINISHED           -1
+#define START               0
+#define GET_FEATURE         1
+#define GET_ATTRIBUTES      2
+#define DESCRIBE_FEATURE    3
+#define CLEANUP             4
+
+#define DESCRIBE_FORM   2
+#define NAME            25
+#define ATTRS           15
+#define MESSAGE         10
+#define ACCEPT          1
+#define CANCEL          4
+#define TITLE           11
+
+IGRint                  om_msg, msg, ok;
+struct GRevent          event;
+struct GRmd_env         mod_env, lc_mod_env;
+struct GRid             gr_id;
+struct GRid             win_id, desc_id;
+IGRint                  state, response;
+IGRchar                 buffer[256], name[MAX_NAME];
+IGRint                  i, count, sel, pos;
+IGRuint                 props;
+EMattr                * attrs;
+IGRint                  num_attrs, num_rows;
+struct CIform_st        form_st;
+char                  * form_ptr;
+int                     form_displayed;
+
+extern char * strcpy();
+extern char * strcat();
+extern char * strchr();
+extern int    GRdpb_get();
+extern int    printf();
+extern int    sprintf();
+extern int    FIf_new();
+extern int    FIfld_set_text();
+extern int    FIfld_get_text();
+extern int    FIfld_set_cmd_oid_os();
+extern int    FIf_display();
+extern int    FIf_erase();
+extern int    FIfld_get_num_rows();
+extern int    FIf_delete();
+extern int    Wait_timer();
+extern int    ci_notification();
+extern int    FIf_set_cmd_oid_os();
+extern int    FIf_reset();
+extern int    FIfld_set_list_default_text();
+extern int    FIf_is_displayed();
+extern int    FIfld_get_mode();
+extern int    FIfld_set_mode();
+extern int    FIfld_get_active_row();
+extern int    FIg_get_state();
+extern int    FIfld_get_num_rows ();
+extern int    FIg_display();
+
+main ()
+{
+    om_msg = OM_S_SUCCESS;
+    msg = MSSUCC;
+
+    name[0] = '\0';
+    attrs = NULL;
+    num_attrs = 0;
+    
+    message("Add Feature Description");
+
+    /*
+     * Get the current module environment.
+     */	
+    ci$get_module_info( md_env = &mod_env );
+
+    state = START;
+    
+    /*  
+     * Create the form.
+     */
+    form_ptr = NULL;
+    FIf_new (DESCRIBE_FORM, "EdDesc", ci_notification, &form_ptr);
+    
+    if (!(int)form_ptr)
+    {
+        status ("Couldn't create form EdDesc");
+        state = FINISHED;
+    }
+    else
+    {
+        /*
+         * Associate the form with this command object.
+         */
+        FIf_set_cmd_oid_os( form_ptr, MY_ID, OM_Gw_current_OS );
+        state = START;
+    }
+
+    /*
+     * Loop until the state is set to FINISHED.
+     */
+    while (state != FINISHED)
+    {
+        /*
+         * Goto the appropriate state.
+         */                
+        switch (state)
+        {
+            /*
+             * (Re)initialize the command.
+             */
+        case START:
+            gr_id.objid = NULL_OBJID;
+            desc_id.objid = NULL_OBJID;
+
+            FIf_erase (form_ptr);
+            FIf_reset (form_ptr);
+            
+            FIg_set_text (form_ptr, TITLE, "Describe Feature");
+            
+            state = GET_FEATURE;
+
+            break;
+
+        case GET_FEATURE:
+            /*
+             * Locate feature ...
+             */
+            ci$locate (obj = &gr_id.objid,
+                       osnum = &gr_id.osnum,
+                       prompt = "Select feature to describe",
+                       acc_prompt = "Accept/Reject",
+                       relocate_prompt = "Element not found",
+                       classes = "GRgraphics",
+                       md_env = &lc_mod_env,
+                       window_id = &win_id.objid,
+                       window_osnum = &win_id.osnum,
+                       stackable = 1,
+                       owner_action = LC_RIGID_COMP    | LC_FLEX_COMP      |
+                                      LC_NO_REF_HEADER | LC_NO_REF_OBJECTS |
+                                      LC_INTERMIDIATE  | LC_ASSOCIATIVE    |
+                                      LC_EXTERN_CONSTRAINED,
+                       response = &response );
+
+            switch (response)
+            {
+            case EX_DATA:
+                state = GET_ATTRIBUTES;
+                break;
+                
+            case EX_RJT_MOVEON:
+                break;
+
+            case EX_BACK_UP:
+                break;
+            }
+            break;
+
+        case GET_ATTRIBUTES:
+            FIf_is_displayed (form_ptr, &form_displayed);
+            
+            if (!(int)form_displayed) FIf_display(form_ptr);
+            
+            while (state == GET_ATTRIBUTES)
+            {
+                ci$getevent (response = &response,
+                             prompt = "Describe feature on form");
+                
+                if (response == EX_FORM_FINISHED)
+                {
+                    state = DESCRIBE_FEATURE;
+                }
+                else if (response = EX_RJT_MOVEON)
+                {
+                    state = START;
+                }
+            }
+            
+            break;
+            
+        case DESCRIBE_FEATURE:
+            om_msg = asm$add_feature_description (msg = &msg,
+                                                  name = name,
+                                                  feature_id = &gr_id,
+                                                  num_attributes = num_attrs,
+                                                  attributes = attrs,
+                                                  description_id = &desc_id);
+            if (om_msg & msg & 1)
+            {
+                status ("Feature described.");
+                state = START;
+            }
+            else
+            {
+                status ("Error encountered command restarted.");
+                state = START;
+            }
+            
+            break;
+                
+        case CLEANUP:
+            if (form_ptr)
+            {
+                FIf_delete (form_ptr);
+            }
+            
+            if (attrs)
+            {
+                free (attrs);
+                attrs = NULL;
+            }
+
+            state = FINISHED;
+            break;
+        }
+    }
+}
+
+form_notification()
+{
+    switch ( form_st.gadget_label )
+    {
+    case ACCEPT:
+        om_msg = OM_S_SUCCESS;
+        msg = MSSUCC;
+
+        /*
+         * Get the name.
+         */
+        FIfld_get_text (form_ptr, NAME, 0, 0, 40, name, &sel, &pos);
+
+        /*
+         * Get the attributes ...
+         */
+        FIfld_get_num_rows( form_ptr, ATTRS, &num_rows );
+
+        if (attrs == NULL)
+        {
+            attrs = (EMattr *)malloc(num_rows * sizeof(EMattr));
+        }
+        else
+        {
+            attrs = (EMattr *)realloc(attrs, num_rows * sizeof(EMattr));
+        }
+            
+        num_attrs = 0;
+        
+        for (i=0; i<num_rows; i=i+1)
+        {
+            FIfld_get_text (form_ptr,
+                            ATTRS,
+                            i,0,MAX_NAME,
+                            buffer,
+                            &sel,&pos );
+
+            if (buffer[0] != '\0')
+            {
+                strcpy (attrs[num_attrs].info.name, buffer);
+                attrs[num_attrs].info.type = EM_ATTRIBUTE;
+                attrs[num_attrs].value.type = EM_CALCULATED;
+                
+                FIfld_get_text (form_ptr,
+                                ATTRS,
+                                i,1,MAX_VALUE,
+                                attrs[num_attrs].value.syntax,
+                                &sel,&pos );
+                
+                FIfld_get_text (form_ptr,
+                                ATTRS,
+                                i,2,MAX_DESC,
+                                attrs[num_attrs].info.desc,
+                                &sel,&pos);
+
+                num_attrs = num_attrs + 1;
+            }
+        }
+
+        FIf_erase (form_ptr);
+        FIf_reset (form_ptr);
+        ci$put( response = EX_FORM_FINISHED);
+        break;
+
+    case CANCEL:
+        FIf_erase (form_ptr);
+        FIf_reset (form_ptr);
+        ci$put( response = EX_RJT_MOVEON);
+        break;
+    }
+}
+    
+init ()
+{
+}
+
+wakeup()
+{
+}
+
+sleep()
+{
+    dp$erase_hilite (msg = &msg);
+}
+
+delete()
+{
+    dp$erase_hilite (msg = &msg);
+    
+    if (form_ptr)
+    {
+        FIf_delete (form_ptr);
+    }
+    
+    if (attrs)
+    {
+        free (attrs);
+        attrs = NULL;
+    }
+}
+
+

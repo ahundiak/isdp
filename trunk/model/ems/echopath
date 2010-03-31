@@ -1,0 +1,101 @@
+#
+# echopath - extract the path for a module from the product data file
+#
+# Synospsis
+#
+#   echopath [noerror] <product_specification> [<product_data>]
+#
+#       Product specification must be present. The I/ protion of the
+#       product name can not be included in the product specification.
+#
+#       If noerror is specified, no output occurs on error.
+#
+#       If the product_data file is not specified, /usr/ip32/product_data
+#       is used.
+#
+#   ex.     echopath EMS
+#
+# History
+#
+#   11 November 1989        Allen Clark
+#
+
+if [ $# = 0 ]; then echo $0: No product specified; exit 1; fi
+
+noerror=$1
+if [ $noerror = noerror ]; then shift; fi
+
+if [ $# = 0 ]; then echo $0: No product specified; exit 1; fi
+
+TARGET_OS=`uname -s`
+
+case ${TARGET_OS} in
+CLIX)
+   export INGRHOME=${INGRHOME:-/usr/ip32}
+;; # End of CLIX
+SunOS)
+   OSver="$(uname -r | cut -c1-3)"
+   case $OSver in
+   4.1)
+     export INGRHOME=${INGRHOME:-/usr/ip32}
+   ;;
+   5.[1-9])
+     export INGRHOME=${INGRHOME:-/opt/ingr}
+   ;;
+   *)
+     echo
+     echo "Unsupported SunOS version $OSver"
+     echo
+     exit 1
+     ;;
+   esac
+;; # End of SunOS
+IRIX)
+   OSver="$(uname -r | cut -c1)"
+   case $OSver in
+   5|6)
+     export INGRHOME=${INGRHOME:-/var/opt/ingr}
+     ;;
+   *)
+     echo
+     echo "Unsupported IRIX version $OSver"
+     echo
+     exit 1
+     ;;
+   esac
+;; # End of IRIX
+*)
+   echo
+   echo "Unknown TARGET Operation System \"$TARGET_OS\""
+   echo
+   exit 1
+;;
+esac  # End of TARGET_OS case
+
+item=$1
+if [ $# = 2 ]; then pdata=$2; else pdata=$INGRHOME/product_data; fi
+me=$0
+
+path=`egrep -v '^#' $pdata | awk '/ 'I\\\/$item' / {print $5}' | sort -u`
+
+if [ -d "$path" ]
+then
+    echo $path
+    exit 0
+else
+    set blap $path
+    if [ $# -gt 2 ]
+    then
+        echo $me:  found more than one path for $item: 1>&2
+        for p in $path
+        do
+            echo \\t$p 1>&2
+        done
+    else
+        if [ $noerror != noerror ]
+        then
+            echo $me: \"$path\" no path for $item 1>&2
+        fi
+    fi
+    exit 1
+fi
