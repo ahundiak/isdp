@@ -84,12 +84,16 @@ int BSCreduce( t1, t2, t3, reduced )	PCItype *t1, *t2, *t3, *reduced ; {
 	{	N,	E,	E,	N	},
 /*	Equivalent of double 						*/
 	{	D,	E,	E,	D	},
+	{	L,	D,	E,	D	},
 /*	Equivalent of GRobj 						*/
 	{	G,	E,	E,	G	},
 /*	Equivalent of unsigned 						*/
 	{	U,	E,	E,	I	},
+	{	L,	L,	U,	I	},
+	{	U,	L,	L,	I	},
 /*	Equivalent of long						*/
 	{	L,	E,	E,	I	},
+        {	L,	L,	E,	I	},
 /*	Equivalent of float						*/
 	{	F,	E,	E,	I	},
 /*	Equivalent of void						*/
