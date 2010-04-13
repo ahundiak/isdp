@@ -1,0 +1,97 @@
+#
+#	shell front end for mkmk
+#
+TMPDIR=${TMPDIR:-/usr/tmp}
+trap "rm -f $TMPDIR/DES$$ $MAKEFILE" 1 2 3 15
+
+USAGE="Usage: $0 [-D var] [-i ignorefile] [-v] [-w] specfile [makefile]\n"
+
+MAKEMAKEPATH=`dirname $0`
+if test "$MAKEMAKEPATH" = "."
+then
+	MKMK=mkmk
+else
+	MKMK=$MAKEMAKEPATH/mkmk
+fi
+
+set -- `getopt vwD:i: $* `
+if [ $# -lt 1 ]
+then
+   echo "$USAGE" >&2
+   exit 2
+fi
+
+DOPT=
+IGNORE=
+VERBOSE=
+NOWHY=
+for i in $*
+do
+   case $i in
+    -D) DOPT="$DOPT -D$2";	shift 2;;
+    -i) IGNORE=-i$2;		shift 2;;
+    -v) VERBOSE="-v";		shift;;
+    -w) NOWHY="-w";		shift;;
+    --) shift;			break;;
+   esac
+done
+
+case $# in
+  0) echo "$USAGE" >&2; exit 2;;
+  1) DESCRIPT=$1;
+     MAKEFILE="makefile";
+     if test -r makefile
+     then 
+            echo "Overwrite makefile ? \c";
+            read ans;
+            if [ "$ans" = y ]
+            then
+               cp makefile makefile~;
+            else
+               echo "Enter name of makefile to be created:  \\c";
+               # if user keys in "makefile" he overwrites makefileanyway
+               read MAKEFILE;
+            fi;
+      fi;
+      if test ! -r $DESCRIPT
+      then
+	 echo "$0: $DESCRIPT not found" >&2;
+	 exit 2;
+      fi;;
+
+   2) DESCRIPT=$1;
+      MAKEFILE=$2;
+
+      if test ! -r $DESCRIPT
+      then
+	 echo "$0: $DESCRIPT not found" >&2;
+	 exit 2;
+      fi;;
+esac
+
+DESCRIP1=$TMPDIR/DES$$
+
+# Modify the path so that /usr/lib/cpp will be run instead of /usr/bin/cpp
+# on Clix (doesn't matter which is used on other systems)
+
+PATH=/usr/lib:$PATH
+
+set -e
+if test -z "$DOPT"
+then
+cpp -P $DESCRIPT $DESCRIP1          
+else     
+cpp -P $DOPT $DESCRIPT $DESCRIP1          
+fi
+set +e
+
+if $MKMK $IGNORE $VERBOSE $NOWHY -o $MAKEFILE $DESCRIP1
+then
+	true
+else
+	rm -f $MAKEFILE
+	rm -f $TMPDIR/DES$$
+	exit 2
+fi
+
+#rm -f $TMPDIR/DES$$
