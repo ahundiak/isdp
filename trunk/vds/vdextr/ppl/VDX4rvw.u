@@ -1,0 +1,3036 @@
+/* $Id: VDX4rvw.u,v 1.2 2001/01/19 21:44:31 jayadev Exp $  */
+
+/***************************************************************************
+ * I/VDS
+ *
+ * File:	vds/vdextr/ppl/VDX4rvw.u
+ *
+ * Description:
+ *
+ * Dependencies:
+ *		I/VDS parameters routine.
+ *
+ * Revision History:
+ *	$Log: VDX4rvw.u,v $
+ *	Revision 1.2  2001/01/19 21:44:31  jayadev
+ *	changes in SP by andy
+ *	
+# Revision 1.2  2000/08/08  18:28:48  pinnacle
+# Replaced: vds/vdextr/ppl/VDX4rvw.u for:  by aharihar for Service Pack
+#
+# Revision 1.1  2000/07/17  21:13:44  pinnacle
+# Created: vds/vdextr/ppl/VDX4rvw.u by rchennup for Service Pack
+#
+# Revision 1.1  1999/04/19  14:02:00  pinnacle
+# for dynapipe
+#
+ *
+ * History:
+ *	MM/DD/YY	AUTHOR		DESCRIPTION
+ *	02/03/00 	adz		Base CS setting at intialization. 179900960
+ *	Aug 7 2k 	Anand		Fixed a "crash" due to cs$make_active
+ *
+ ***************************************************************************/
+#include "VDX4_inc.h"
+/*
+#define DEBUG           1
+#define vdsDEBUG        1
+*/
+#include "csdef.h"
+#include "csmacros.h"
+#include "grdpbdef.h"
+#include "grdpbmacros.h"
+#include "v_dbgmacros.h"
+
+extern	int	VDGetRefFiles ();
+extern		GRdpb_get();
+extern		EX_get_oid_nodname ();
+extern		DPinq_level ();
+extern		DPlev_num_to_name ();
+extern		DPlevel ();
+extern		DPgetggid ();
+extern		DPdisbyoid ();
+extern		GRdisplay_object ();
+extern		GRchange_properties ();
+extern		GRget_properties ();
+extern		DPmacupdate ();
+extern		VDXconvert_lev_string ();
+extern		VDX_getProdInfo();
+extern		GRcsmake_active();
+extern	int	EX_is_batch();
+
+extern	int	EX_filename1 __((char *result, int len)); 
+extern	int	UI_status();
+extern	char	*malloc();
+extern	char	*realloc();
+extern	void	free();
+extern	int	*open();
+extern	int	close();
+
+/* jvh added for chord height tol on form */
+#define VDX_TOL		14
+#define	BSTOLCHRDHT	10
+extern 		BSxtractpar();
+extern		BSchangepar();
+IGRdouble	VDXcht, VDXold_cht;
+char		VDXstring_cht[25];
+
+/*
+ * Globals in design file ....
+ */
+char		VDXdesign_filename[256];
+char		VDXoutput_filename[256];
+char		VDXmsg_str[256];
+
+extern VDXglobals		VDXform_info;
+extern VDXreference_files	*VDXref_files; /* use only once malloc & free */
+struct GRmd_env			VDXmod_info; 
+int				VDX_mode ;
+
+int VDXcre_loaded;
+
+#define VDX_ON_DEBUG 1
+
+struct CIform_st form_st;
+extern ci_notification ();
+
+return_error ()
+{
+  /*
+   * before exiting the program we clean-up the message and prompt field
+   */
+  message ("");
+  prompt ("");
+
+  if (VDXform_info.main_form_exists == TRUE) 
+   {
+      FIf_delete (VDXform_info.main_form); 
+      VDXform_info.main_form_exists = FALSE;
+      VDXform_info.main_form_displayed = FALSE;
+   }
+
+  if (VDXform_info.ref_form_exists == TRUE) 
+   {
+      FIf_delete (VDXform_info.ref_form); 
+      VDXform_info.ref_form_exists = FALSE;
+      VDXform_info.ref_form_displayed = FALSE;
+   }
+
+  exit;
+}
+
+
+wakeup ()
+{
+IGRlong		sts , msg;
+IGRchar		path[200];
+struct GRid	csObj ;
+IGRlong     NumberOfBytes;
+IGRlong     BytesReceived;
+struct GRmd_env myEnv;
+
+ /*
+  * check during wakeup if form is already active.
+  */
+
+ if ((VDXform_info.ref_form_exists == TRUE) &&
+     (VDXform_info.ref_form_displayed != TRUE)) 
+ {
+      FIf_display (VDXform_info.ref_form); 
+      VDXform_info.ref_form_displayed = TRUE;
+ }
+ else if ( ((VDXform_info.main_form_displayed != TRUE) && 
+             (VDXform_info.ref_form_displayed != TRUE)) && 
+            (VDXform_info.main_form_exists == TRUE) )
+ {
+      FIf_display (VDXform_info.main_form); 
+      VDXform_info.main_form_displayed = TRUE;
+ }
+
+
+ path[0] = '\0' ;
+ NumberOfBytes = sizeof(myEnv);
+ gr$get_module_env( msg    = &msg,
+            sizbuf = &NumberOfBytes,
+            buffer = &myEnv,
+            nret   = &BytesReceived);
+ if(!(msg&1)){
+	printf("error gr$get_module_env\n"); return ;
+ }
+
+ sts = di$give_pathname(osnum = myEnv.md_id.osnum, pathname = path );
+ if(sts != DIR_S_SUCCESS){
+	printf("error di$give_pathname\n"); return;
+ }
+
+ /*
+  * set BASEcoord as active coordinate system.
+  */
+ if( (sts&1) && path[0] != '\0' ){
+    strcat( path, ":usr:BASEcoordsys" );
+    sts = di$translate( objname = path,
+    	                 p_objid = &csObj.objid,
+       		             p_osnum = &csObj.osnum);
+    if(sts&1){
+	/* This condition was never reached until the string "usr" was added in
+	 * the above path. As a result, a glitch in the call to the macro
+	 * cs$make_active was never discovered until this instant.
+	 * The following has been done:
+	 * 		[ i] Added csObj.objid instead of csObj
+	 * 		[ii] Added module = &myEnv.
+	 * 							- Anand */
+      sts = cs$make_active ( msg = &msg,
+			     objid = csObj.objid,
+			     module = &myEnv,
+			     display_old = TRUE,
+			     display_new = TRUE);
+    }
+  }
+}
+
+
+sleep ()
+{
+   if ( VDXform_info.main_form_displayed == TRUE) 
+   {
+       if (VDXform_info.ref_form_exists == TRUE)
+        {
+           FIf_erase (VDXform_info.ref_form); 
+           VDXform_info.ref_form_displayed = FALSE;
+        }
+   }
+   
+   if (VDXform_info.ref_form_displayed == TRUE) 
+   {
+       FIf_erase (VDXform_info.main_form); 
+       VDXform_info.main_form_displayed = FALSE;
+   }
+   
+}
+
+
+delete ()
+{
+
+IGRint	msg;
+  /*
+   * in the termination state of the command object we erase/delete the form
+   */
+
+ if (VDXform_info.main_form_exists == TRUE) 
+  {
+      FIf_delete (VDXform_info.main_form); 
+      VDXform_info.main_form_exists = FALSE;
+      VDXform_info.main_form_displayed = FALSE;
+  }
+
+ if (VDXform_info.ref_form_exists == TRUE) 
+  {
+      FIf_delete (VDXform_info.ref_form); 
+      VDXform_info.ref_form_exists = FALSE;
+      VDXform_info.ref_form_displayed = FALSE;
+  }
+  /* set the chord height tol back to the original */
+  BSchangepar( &msg, BSTOLCHRDHT, VDXold_cht);
+  //printf("BSchangepar cht=%.4f, msg=%d\n",VDXold_cht, msg);
+
+
+  prompt(" ");
+  message (" ");
+/**
+  status(" ");
+**/
+}
+
+
+
+IGRint VDXget_arrange_name( refname )
+IGRchar	*refname;
+{
+int	i;
+int     j;
+
+	SetProc( VDXget_arrange_name ); Begin
+
+	__DBGpr_str(" ref_name ", refname );
+
+	j = strlen (refname);
+	for ( i=j; i>0; i = i - 1 ){
+
+	  if( refname[i] == ',' ){
+	    refname[i] = '\0';
+	    break;
+	  }
+	}
+
+	End
+	return ( OM_S_SUCCESS );
+}
+
+IGRint	VDXget_ref_info( mod_env, refcount, reftab )
+struct GRmd_env		*mod_env;
+IGRlong			*refcount;
+struct VDX_reffile	**reftab;
+{
+long		sts, status;
+OM_S_OBJID	Super_id;
+IGRshort	count_nested;
+GRobjid		*objlist;
+GRspacenum	*oslist;
+int             on_off; 
+IGRint		i,j;
+IGRint          msg;
+IGRlong		count;
+IGRulong	prop_mask, props;
+unsigned short  properties;
+IGRchar         buffer[512];
+struct GRobj_info	refinfo;
+struct VDX_reffile	*curref, *ref;
+struct GRid     ref_object;
+
+  objlist = (GRobjid *)(NULL);
+  oslist  = (GRspacenum *)(NULL);
+  *refcount = 0;
+  count = 0;
+
+  /*| Get id of ref manager */
+  status = ex$get_objid_from_NOD(
+                        NODname         = "IGENOD",
+                        objname         = "Ref Mgr",
+                        pobjid          = &Super_id,
+                        modid           = mod_env->md_id.objid,
+                        mod_osnum       = mod_env->md_id.osnum);
+  if(!(status&1)) goto wrapup ;
+
+  /*"Ref Mgr id = %d\n", Super_id */
+  /*| Get count of reference file */
+  prop_mask = 0;
+  count_nested = 0;
+  status = ci$send(msg	   = message Super_rfmgr.GRget_channel_count
+                                   (&sts, &prop_mask, &count_nested, &count),
+	  targetid = Super_id,
+	  targetos = mod_env->md_id.osnum );
+
+  if(!(status&1)) goto wrapup ;
+  /*"Ref count = %d\n", count*/
+
+  __DBGpr_int("channel count =", count);
+
+  /*| Get reference file objects */
+  i = (int)count;
+  objlist = om$calloc( num = i, structure = GRobjid );
+  oslist  = om$calloc( num = i, structure = GRspacenum );
+
+  prop_mask = 0; count_nested = 0;
+  status =
+  ci$send(msg      = message Super_rfmgr.GRget_channel_objects
+                                     (&sts, &prop_mask, &count_nested, &count,
+                                      objlist, oslist, &count),
+	  targetid = Super_id,
+	  targetos = mod_env->md_id.osnum );
+  if(!(status&1)) goto wrapup ;
+
+  i = (int) count;
+  *reftab = om$calloc( num = i, structure = struct VDX_reffile );
+
+  __DBGpr_int(" Channel objects retrieved ", count);
+
+  /*
+   * For all reference files, get the object space and filename
+   */
+  curref = *reftab;
+  *refcount = count;
+  j = 0;
+  for( i=0; i<count ; i = i + 1 ) {
+    status =
+    ci$send(msg      = message GRreffile.GRgetobjinfo( &sts, &refinfo ),
+	    targetid = objlist[i],
+	    targetos = oslist[i] );
+    if(!(status&1)) continue;
+
+    status =
+    ci$send(msg      = message GRreffile.GRgetenvironment
+                                          ( &sts, mod_env, &(curref->md_env) ),
+	    targetid = objlist[i],
+	    targetos = oslist[i] );
+    if(!(status&sts&1)) continue;
+
+    curref->osnum = curref->md_env.md_id.osnum;
+
+    VDXget_arrange_name( refinfo.type );
+    strcpy( curref->ref_name, refinfo.type );
+    curref->ctx_id.objid = objlist[i];
+    curref->ctx_id.osnum = oslist[i];
+
+    __DBGpr_str(" refinfo.type ", refinfo.type );
+    __DBGpr_obj(" Cur Refernce ", curref->md_env.md_id );
+
+    on_off = 0 ;
+
+    status =
+    ci$send(msg = message GRreffile.GRgetrfprops
+                                          ( &sts, &props ),
+	    targetid = objlist[i],
+	    targetos = oslist[i] );
+
+
+    ref_object.objid = objlist[i];
+    ref_object.osnum = oslist[i];
+    gr$get_properties( object_id = &ref_object,
+                       properties_mask = &properties);
+
+    curref->properties = props;
+
+    if ( properties & GRIS_DISPLAYABLE )   
+         on_off = 1;
+
+    __DBGpr_int("on_off ", on_off);
+
+    curref->display = on_off;
+
+    j = j + 1;
+    curref = curref + 1;
+
+  }  /*** for ***/
+
+  if (j <= 0)
+   {
+      *refcount = 0;
+      goto wrapup;
+   }
+
+  if( j < count )
+   {
+      i = j;
+      *refcount = j;
+      i = i * sizeof(struct VDX_reffile);
+      *reftab = (struct VDX_reffile *)om$realloc( ptr  = (char *)*reftab,
+                                                  size = i );
+   }
+   __DBGpr_int("refcount ", *refcount);
+
+  /*| Free locals allocated ptrs */
+  if( objlist ) om$dealloc( ptr = objlist );
+  if( oslist )  om$dealloc( ptr = oslist );
+
+  return( OM_S_SUCCESS );
+
+wrapup:
+  /*| Free locals allocated ptrs */
+  
+  if( objlist ) om$dealloc( ptr = objlist );
+  if( oslist )  om$dealloc( ptr = oslist );
+  if( *reftab ) om$dealloc( ptr = *reftab );
+  *refcount = 0;
+  return( OM_S_SUCCESS );
+}
+
+
+
+int VDXprocess_attached_file (mod_env, osnum, ref_ctx_id, on_off)
+  struct GRmd_env *mod_env;
+  GRspacenum  osnum;
+  struct GRid *ref_ctx_id;
+  int  on_off;
+{
+  IGRlong msg, status, sts;
+  IGRulong prop_mask;
+  IGRshort flag;
+
+  SetProc( VDXprocess_attached_file ); Begin
+
+  prop_mask = GRIS_DISPLAYABLE | GRIS_LOCATABLE;
+
+  if (on_off == 1)
+   {
+       /** turn the display on in all windows **/
+
+       gr$display_object (object_id = ref_ctx_id,
+			  md_env = mod_env,
+			  mode = GRbd);
+
+       dp$display (msg = &msg,
+                   objid = VDXmod_info.md_id,
+	           mode = GRbd,
+                   oids = ref_ctx_id);
+
+       gr$put_properties (object_id = ref_ctx_id,
+                          action = 1,
+                          properties_mask = prop_mask);
+
+       /*** Call GRchgrfprops to change the properties mask **/ 
+
+       flag = 1;
+       status =
+       ci$send(msg = message GRreffile.GRchgrfprops
+                                             ( &sts, 
+                                               &flag,
+                                               &prop_mask ),
+	       targetid = ref_ctx_id->objid,
+	       targetos = ref_ctx_id->osnum );
+   }
+  else
+   {
+       /** turn the display off in all windows **/
+
+       gr$display_object (object_id = ref_ctx_id,
+ 		          md_env = mod_env,
+	                  mode = GRbe);
+
+       dp$display (msg = &msg,
+                   objid = VDXmod_info.md_id,
+		   mode = GRbe,
+                   oids = ref_ctx_id);
+
+       gr$put_properties (object_id = ref_ctx_id,
+                          action = 0,
+                          properties_mask = prop_mask);
+
+       /*** Call GRchgrfprops to change the properties mask **/ 
+
+       flag = 0;
+       status =
+       ci$send(msg = message GRreffile.GRchgrfprops
+                                             ( &sts, 
+                                               &flag,
+                                               &prop_mask ),
+	       targetid = ref_ctx_id->objid,
+	       targetos = ref_ctx_id->osnum );
+   }
+
+  End 
+  return (0);
+}
+
+
+int VDXprocess_request (form)
+  Form form;
+{
+   int d_state;
+   int m_state;
+   int status, sel_flag, r_pos;
+   int i, j, k, n, num_rows, num_levels;
+   int upd;
+   int selected;
+   int  color, dlevel[1024], d_level[1];
+   char ref_file[256];
+   char level [256];
+   IGRlong msg, sts;
+   IGRint levels[32];
+   IGRshort flags;
+
+   SetProc( VDXprocess_request ); Begin
+
+   num_rows = 0;
+   status = FIfld_get_num_rows (form, VDX_REF_FILES_SCF, &num_rows); 
+   if (status != FI_SUCCESS)
+      return (status);
+
+   /**  Get the display state from the VDX_DISPLAY_TOGGLE **/
+
+   d_state = 0;
+   FIg_get_state (form, VDX_DISPLAY_TOGGLE, &d_state);
+   if (d_state == 1)
+   {
+	__DBGpr_com(" Display OFF ");
+       /** The user can only turn on/off reference files **/
+       /**  Get the Selected file(s) from the VDX_REF_FILES_SCF **/
+
+       selected = 0;
+
+       for (i = 0; i < num_rows; i = i + 1)
+        {
+           status = FIfld_get_select (form, VDX_REF_FILES_SCF, i,0, &sel_flag);
+            if (status != FI_SUCCESS)
+               return (status);
+      
+            if (sel_flag == TRUE)
+             {
+                 selected = 1;
+
+                status = FIfld_get_text (form, VDX_REF_FILES_SCF, i, 0, 255,
+                                         ref_file, &sel_flag, &r_pos);
+                if (status != FI_SUCCESS)
+                   return (status);
+
+#ifdef VDX_ON_DEBUG
+                printf ("VDXprocess_request: selected_file = <%s>\n", ref_file);
+#endif
+
+                /**  find the reference file in the VDXref_files array  **/
+
+                for (j = 0; j < VDXform_info.ref_count; j = j + 1)
+                 {
+                    if ( (strcmp (ref_file, VDXref_files[j].ref_file) == 0) &&
+                         (VDXref_files[j].level == VDXform_info.cur_ref_idx) )
+                     {
+                        VDXref_files[j].on_off = 0;  
+                        if (VDXref_files[j].display == 1)
+                         {
+                            sprintf (VDXmsg_str, 
+                                     "Turning display off for file <%s>",
+                                     VDXref_files[j].ref_file);
+                            VDXcenter_message (VDXform_info.ref_form,
+                                               FI_MSG_FIELD, VDXmsg_str);
+
+                            /** turn off the reference file display **/
+                            VDXref_files[j].display = 0;  
+                            VDXprocess_attached_file (&VDXref_files[j].md_env,
+                                                  VDXref_files[j].osnum,
+                                                  &(VDXref_files[j].ctx_id), 0);
+                            FIfld_set_line_color (form, VDX_REF_FILES_SCF,
+                                                  i, 0, FI_RED);
+                            selected = 1;
+                         }
+                        else
+                         {
+                            sprintf (VDXmsg_str, 
+                                     "Display of file <%s> is already off",
+                                     VDXref_files[j].ref_file);
+                            VDXcenter_message (VDXform_info.ref_form,
+                                               FI_MSG_FIELD, VDXmsg_str);
+                         }
+                        break;
+                     }
+                 } /** for j **/          
+             } /** If sel_flag **/
+        }
+
+       if (!selected)
+        {
+          strcpy (VDXmsg_str, "No files selected. Push Cancel to exit");
+          VDXcenter_message (VDXform_info.ref_form, FI_PROMPT_FIELD,
+                             VDXmsg_str);
+        } 
+       dp$update (msg = &msg);
+
+       for (i = 0; i < num_rows; i = i + 1)
+        {
+           FIfld_set_select (form, VDX_REF_FILES_SCF, i,0, FALSE);
+        }
+
+       return (0); 
+    }
+
+   /** get the VDX_ON_OFF_LAY_TOGGLE state from the gadget **/
+
+   d_state = 0;
+   FIg_get_state (form, VDX_ON_OFF_LAY_TOGGLE, &d_state);
+
+   /** get the mode state from the VDX_SEL_MODE_TOGGLE.   **/
+
+   m_state = 0;
+   FIg_get_state (form, VDX_SEL_MODE_TOGGLE, &m_state);
+
+   selected = -1;
+   upd = -1;
+
+   /*** Get the selected file(s) from the Attached Files list ***/ 
+
+   __DBGpr_com ("Display ON\n");
+   for (i = 0; i < num_rows; i = i + 1)
+    {
+       status = FIfld_get_select (form, VDX_REF_FILES_SCF, i, 0,
+                                  &sel_flag);
+        if (status != FI_SUCCESS)
+           return (status);
+  
+        if (sel_flag == TRUE)
+         {
+            status = FIfld_get_text (form, VDX_REF_FILES_SCF, i, 0, 255,
+                                     ref_file, &sel_flag, &r_pos);
+            if (status != FI_SUCCESS)
+               return (status);
+
+            /**  find the reference file in the VDXref_files array  **/
+
+            for (j = 0; j < VDXform_info.ref_count; j = j + 1)
+             {
+                if ( (strcmp (ref_file, VDXref_files[j].ref_file) == 0) &&
+                     (VDXref_files[j].level == VDXform_info.cur_ref_idx) )
+                 {
+                    selected = j;
+                    VDXref_files[j].on_off = 0;  
+
+                    /*** If it is off, turn it on.  ***/ 
+
+                    if (VDXref_files[j].display == 0)
+                     {
+                        sprintf (VDXmsg_str, 
+                                 "Turning display on for file <%s>",
+                                 VDXref_files[j].ref_file);
+                        VDXcenter_message (VDXform_info.ref_form,
+                                           FI_MSG_FIELD, VDXmsg_str);
+                        VDXref_files[j].display = 1;  
+                        VDXprocess_attached_file (&VDXref_files[j].md_env,
+                                                  VDXref_files[j].osnum, 
+                                                &VDXref_files[j].ctx_id, 1);
+                        FIfld_set_line_color (form, VDX_REF_FILES_SCF,
+                                              i, 0, FI_GREEN);
+                        upd = j;
+                        break;
+                     }
+                 }  /** if  **/
+             }  /** for j **/
+            if (m_state == 0)   /** single select **/
+               break;
+            else 
+             {
+                /** see if we need to turn levels on/off for this file **/
+
+                status = FIfld_get_text (form, VDX_KEYIN_LAYER_FIELD, 0, 0,
+                                         255, level, &sel_flag, &r_pos);
+                if (status != FI_SUCCESS)
+                   continue;
+
+#ifdef VDX_ON_DEBUG
+ printf ("level = <%s>\n", level);
+#endif
+                if (strcmp (level, "") == 0)
+                   continue;
+                else if ( (strcmp (level, "*") == 0) ||
+                   (strcmp (level,"all") == 0) || (strcmp (level,"ALL") == 0) ||
+                   (strcmp (level,"All") == 0) || (strcmp (level,"aLL") == 0) ) 
+                    strcpy (level, "0-1023");
+                 
+
+                 /*** convert the level string in level array ***/
+
+                 VDXconvert_lev_string (&msg, level, levels);  
+                 if ((msg != OM_S_SUCCESS) && (msg != MSSUCC))
+                  {
+                     printf ("VDXconvert_lev_string: msg = <%ld>\n", msg);
+                      continue;
+                  }
+
+                 if (d_state == 1)   /** display off ***/
+                    flags = 0;
+                 else
+                    flags = 1;
+
+                 upd = 0;
+                 status =
+                    ci$send(msg = message GRreffile.GRchglevels
+                                       ( &sts, &flags, levels ),
+                            targetid = VDXref_files[selected].ctx_id.objid,
+                            targetos = VDXref_files[selected].ctx_id.osnum );
+                 if(!(status&sts&1))
+                  {
+                      printf ("GRchglevels failed : status = <%d>,  sts = <%d>\n",
+                              status, sts );
+                      continue;
+                  }
+             }
+         }
+    }  /** for i **/
+   if ( (selected != -1) && (upd != -1) )
+       dp$update (msg = &msg);
+
+
+   for (i = 0; i < num_rows; i = i + 1)
+    {
+       FIfld_set_select (form, VDX_REF_FILES_SCF, i,0, FALSE);
+    }
+
+#ifdef VDX_ON_DEBUG
+   printf ("Check for layers\n");
+   printf ("m_state = <%d>\n", m_state);
+   printf ("d_state = <%d>\n", d_state);
+#endif
+
+   if (selected == -1)
+      return (0);       /** Should not happen, but just in case. **/
+
+
+   if (m_state == 0)
+    {
+       /**  retrieve the selected layers from the VDX_LAYERS_MCF and turn
+            them off/on based on the Layer Display toggle.                ***/
+
+       num_levels = 0;
+       status = FIfld_get_num_rows (form, VDX_LAYERS_MCF, &num_levels); 
+       if (status != FI_SUCCESS)
+          return (0);  /** This is ok. **/
+
+       for (i = 0; i < num_levels; i = i + 1)
+        {
+           status = FIfld_get_select (form, VDX_LAYERS_MCF, i, 0, &sel_flag);
+            if (status != FI_SUCCESS)
+               return (status);
+      
+            if (sel_flag == TRUE)
+             {
+
+                status = FIfld_get_text (form, VDX_LAYERS_MCF, i, 1, 40,
+                                         level, &sel_flag, &r_pos);
+                if (status != FI_SUCCESS)
+                   return (status);
+
+                status = FIfld_get_line_color (form, VDX_LAYERS_MCF, i, 1,
+                                               &color);
+                if (status != FI_SUCCESS)
+                   return (status);
+#ifdef VDX_ON_DEBUG
+   printf ("line_color = <%d>\n", color);
+#endif
+
+                n = 1; 
+                if ( (d_state == 0) && ( (color == FI_RED) || 
+                                         (strcmp (level, "1-1023") == 0) ) )
+                 {
+                    sprintf (VDXmsg_str,  "Turning layer <%s> on", level);
+                    VDXcenter_message (VDXform_info.ref_form,
+                                       FI_MSG_FIELD, VDXmsg_str);
+                    FIfld_set_line_color (form, VDX_LAYERS_MCF, i, 0, FI_GREEN);
+                    FIfld_set_line_color (form, VDX_LAYERS_MCF, i, 1, FI_GREEN);
+
+                    /*** convert the level string in level array ***/
+
+                    VDXconvert_lev_string (&msg, level, levels);  
+                    if ((msg != OM_S_SUCCESS) && (msg != MSSUCC))
+                     {
+                        printf ("msg = <%ld>\n", msg);
+                        if (strcmp (level, "1-1023") == 0)
+                           break;
+                        else
+                           continue;
+                     }
+                    flags = 1;
+
+                    status =
+                      ci$send(msg = message GRreffile.GRchglevels
+                                           ( &sts, &flags, levels ),
+                             targetid = VDXref_files[selected].ctx_id.objid,
+                             targetos = VDXref_files[selected].ctx_id.osnum );
+                    if(!(status&sts&1))
+                     {
+                         printf ("GRchglevels failed : status = <%d>,  sts = <%d>\n",
+                                 status, sts );
+                     }
+
+                    if (sts != MSSUCC)
+                     {
+                        strcpy (VDXmsg_str,"Warning : Cannot change level <%s>",
+                                level);
+                        VDXcenter_message (VDXform_info.ref_form, FI_MSG_FIELD,
+                                           VDXmsg_str);
+                     }
+
+                    if (strcmp (level, "1-1023") == 0)
+                       break; 
+                 }
+                else if ( (d_state == 1) && ( (color == FI_GREEN) || 
+                                             (strcmp (level, "1-1023") == 0) ) )
+                 {
+                    sprintf (VDXmsg_str, "Turning layer <%s> off", level);
+                    VDXcenter_message (VDXform_info.ref_form,
+                                       FI_MSG_FIELD, VDXmsg_str);
+                    FIfld_set_line_color (form, VDX_LAYERS_MCF, i, 0, FI_RED);
+                    FIfld_set_line_color (form, VDX_LAYERS_MCF, i, 1, FI_RED);
+
+                    /*** convert the level string in level array ***/
+
+                    VDXconvert_lev_string (&msg, level, levels);  
+                    if ((msg != OM_S_SUCCESS) && (msg != MSSUCC))
+                     {
+                        printf ("msg = <%ld>\n", msg);
+                        if (strcmp (level, "1-1023") == 0)
+                           break;
+                        else
+                           continue;
+                     }
+                    flags = 0;
+
+                    status =
+                       ci$send(msg = message GRreffile.GRchglevels
+                                          ( &sts, &flags, levels ),
+                               targetid = VDXref_files[selected].ctx_id.objid,
+                               targetos = VDXref_files[selected].ctx_id.osnum );
+                    if(!(status&sts&1))
+                     {
+                         printf ("GRchglevels failed : status = <%d>,  sts = <%d>\n",
+                                 status, sts );
+                     }
+
+                    if (sts != MSSUCC)
+                     {
+                        strcpy (VDXmsg_str,"Warning : Cannot change level <%s>",
+                                level);
+                        VDXcenter_message (VDXform_info.ref_form, FI_MSG_FIELD,
+                                           VDXmsg_str);
+                     }
+
+                    if (strcmp (level, "1-1023") == 0)
+                       break; 
+                 }
+             }
+        }  /** for i **/
+
+       for (i = 0; i < num_levels; i = i + 1)
+        {
+           FIfld_set_select (form, VDX_LAYERS_MCF, i,0, FALSE);
+           FIfld_set_select (form, VDX_LAYERS_MCF, i,1, FALSE);
+        }
+       dp$update (msg = &msg);
+    }
+
+#ifdef VDX_ON_DEBUG
+   printf ("VDXprocess_request: Exiting.\n");
+#endif
+   return (0);
+}
+
+
+void VDXset_all_layers (form)
+   Form form;
+{
+   int k, d_state, num_levels;
+   int status, sel_flag;
+
+   sel_flag = FALSE;
+   status = FIfld_get_select (form, VDX_LAYERS_MCF, 0, 0, &sel_flag);
+   if (status != FI_SUCCESS)
+       return;
+
+   if (sel_flag) 
+    {
+       num_levels = 0;
+       status = FIfld_get_num_rows (form, VDX_LAYERS_MCF, &num_levels); 
+       if (status != FI_SUCCESS)
+          return;  
+
+        /**  Get the display state from VDX_ON_OFF_LAY_TOGGLE  **/
+
+        d_state = 0;
+        FIg_get_state (form, VDX_ON_OFF_LAY_TOGGLE, &d_state);
+        if (d_state == 0)
+         {
+            sprintf (VDXmsg_str, "Selecting all levels for display on");
+            VDXcenter_message (VDXform_info.ref_form, FI_MSG_FIELD, VDXmsg_str);
+            for (k = 1; k < num_levels; k = k + 1)
+             {
+                 FIfld_set_select (form, VDX_LAYERS_MCF, k, 0, TRUE);
+                 FIfld_set_select (form, VDX_LAYERS_MCF, k, 1, TRUE);
+             }
+         }
+        else 
+         {
+            sprintf (VDXmsg_str, "Selecting all levels for display off");
+            VDXcenter_message (VDXform_info.ref_form, FI_MSG_FIELD, VDXmsg_str);
+            for (k = 1; k < num_levels; k = k + 1)
+             {
+                 FIfld_set_select (form, VDX_LAYERS_MCF, k, 0, TRUE);
+                 FIfld_set_select (form, VDX_LAYERS_MCF, k, 1, TRUE);
+             }
+         }
+     }
+    return;
+}
+
+
+int  VDXcheck_level_string (form)
+    Form  form;
+{
+    char level[256];
+    int  status, sel_flag, r_pos;
+    long msg;
+    IGRint levels[32]; 
+
+    status = FIfld_get_text (form, VDX_KEYIN_LAYER_FIELD, 0, 0, 255,
+                             level, &sel_flag, &r_pos);
+    if (status != FI_SUCCESS)
+       return (status);
+
+    if ( (strcmp (level, "all") == 0) || (strcmp (level, "ALL") == 0) ||
+         (strcmp (level, "All") == 0) || (strcmp (level, "aLL") == 0) ) 
+       return (0);
+
+    if (strcmp (level, "*") == 0) 
+       return (0);
+
+    if (strcmp (level, "") == 0)
+       return (-2);
+
+    /*** convert the level string in level array ***/
+
+#ifdef VDX_ON_DEBUG
+ printf ("level = <%s>\n", level);
+#endif
+    VDXconvert_lev_string (&msg, level, levels);  
+    if ((msg != OM_S_SUCCESS) && (msg != MSSUCC))
+     {
+        sprintf (VDXmsg_str, "Invalid input in levels : <%s>", level);
+        VDXcenter_message (VDXform_info.ref_form, FI_MSG_FIELD, VDXmsg_str);
+        strcpy (level, "");
+        FIfld_set_text (form, VDX_KEYIN_LAYER_FIELD, 0, 0, level, FALSE); 
+        return (-3);
+     }
+    return (0);
+}
+
+
+void VDXmain_form_init ()
+{
+	IGRchar			form_path[256];
+	IGRint			pstatus;
+	IGRint			status1;
+	IGRint			refcount;
+	struct VDX_reffile	*reftab;
+
+  SetProc( VDXmain_form_init ); Begin
+
+  /*
+   * the initialization of the form, which includes setting linking the form
+   * to the command object; Get the form input and display the found
+   * information in the form.
+   */
+ 
+  pstatus = FIf_new(	EX4RVW_FORM,		VDX_MAIN_FORM,
+			ci_notification,	&VDXform_info.main_form);
+  if ( (pstatus != FI_SUCCESS) || (VDXform_info.main_form == NULL) )
+  {
+	printf("Could not init the form\n");
+      return_error ();
+  }
+
+  VDXform_info.main_form_exists = TRUE;
+
+/* jvh added for chord height tol on form */
+/* get the original cht and save it */
+  //printf("get the cht\n");
+  BSxtractpar( &status1, BSTOLCHRDHT, &VDXold_cht);
+  //printf("set cht on form\n");
+  FIfld_set_text(VDXform_info.main_form,14,0,0,ftoa(VDXold_cht),FALSE);
+  //printf("form set\n"); 
+
+  /*
+   * MY_ID and OM_Gw_current_OS are symbolic constants that are defined in
+   * the "ciminimum.h" include file. 
+   */
+
+  pstatus = FIf_set_cmd_oid_os (VDXform_info.main_form, MY_ID,
+                                OM_Gw_current_OS);
+  if (pstatus != FI_SUCCESS)
+  {
+      /****   The form has been loaded into memory at this point.  we need to
+              delete it from memory at this point.  return_error will not
+              delete the form.  BW.  3/17/94  ********************************/
+      FIf_delete (VDXform_info.main_form);
+
+      VDXform_info.main_form_exists = FALSE;
+      VDXform_info.main_form_displayed = FALSE;
+      return_error ();
+  }
+
+  /*
+   * If the active design file does not have reference files erase the 
+   * "Manipulate Reference Files" button from the form.
+   */
+
+  refcount = 0;
+  reftab = NULL;
+  VDXget_ref_info (&VDXmod_info, &refcount, &reftab);
+  if(refcount <= 0)
+  {
+      FIg_erase (VDXform_info.main_form, VDX_MANIP_REF_BUTTON);
+      FIg_disable (VDXform_info.main_form, VDX_MANIP_REF_BUTTON);
+  }
+
+  if( reftab ) om$dealloc( ptr = reftab );
+
+  /*
+   * display the form
+   */
+  pstatus = FIf_display (VDXform_info.main_form);
+  if( pstatus != FI_SUCCESS ){
+
+      printf("Could not init form\n");
+      FIf_delete (VDXform_info.main_form);
+      VDXform_info.main_form_exists = FALSE;
+      VDXform_info.main_form_displayed = FALSE;
+      return_error ();
+  }
+
+  /*
+   * fill in some of the fields
+   */
+
+  ex$filename (name = VDXdesign_filename, len = 256);
+  VDXgen_filename (VDXdesign_filename, VDXoutput_filename, ".dgn");
+
+  FIfld_set_default_text (VDXform_info.main_form, VDX_IGDS_FILE_FIELD, 0, 0,
+                          VDXoutput_filename, FALSE);
+  FIg_reset (VDXform_info.main_form, VDX_IGDS_FILE_FIELD);
+
+  if( VDXcheck_dgn_file( VDXoutput_filename )){
+      sprintf(VDXmsg_str," WARNING: File %s exist", VDXoutput_filename );
+      UI_status (VDXmsg_str);
+      FIfld_set_text(VDXform_info.main_form,FI_MSG_FIELD,0,0,VDXmsg_str,FALSE);
+  }
+  else{
+      strcpy( VDXmsg_str, "");
+      UI_status( VDXmsg_str);
+      FIfld_set_text(VDXform_info.main_form,FI_MSG_FIELD,0,0,VDXmsg_str,FALSE);
+  }
+	
+  VDXform_info.main_form_displayed = TRUE;
+  VDXform_info.main_form_exists = TRUE;
+  VDXcenter_message (VDXform_info.main_form, FI_PROMPT_FIELD, VDXmsg_str);
+
+  FIg_set_state(VDXform_info.main_form, VDX_PRODUCTION_DATA, 
+			VDXform_info.productionFlag );
+
+  End
+  return ;
+}
+
+
+form_notification ()
+{
+  ci$put (response = MOVE_ON);
+}
+
+
+long VDXadd_ref_files (level, parent, path, reftab)
+    int  level;
+    int  parent;
+    char *path;
+    struct VDX_reffile reftab;
+{
+   int i, j;
+   int display;
+   IGRchar ref_name[512];
+   char *str_ptr;
+
+   SetProc( VDXadd_ref_files ); Begin
+
+   __DBGpr_int ("VDXadd_ref_files: level    ", level);
+   __DBGpr_int ("VDXadd_ref_files: parent   ", parent);
+   __DBGpr_str ("VDXadd_ref_files: path     ", path);
+   __DBGpr_str ("VDXadd_ref_files: ref_file ", reftab.ref_name);
+
+   if (VDXform_info.ref_count == 0)
+    {
+       VDXref_files = (VDXreference_files *) malloc (sizeof
+                                                       (VDXreference_files));
+       if (VDXref_files == NULL)
+        {
+           sprintf (VDXmsg_str,
+                    "FATAL: Memory allocation error size = <%d> bytes\n",
+                    sizeof (VDXreference_files));
+           write (VDXmsg_str);
+           return (VDX_F_MemAllErr);
+        }
+       VDXform_info.ref_count = 1; 
+       i = 1;
+    }
+   else
+    {
+       i = VDXform_info.ref_count + 1;
+       VDXref_files = (VDXreference_files *) realloc (VDXref_files,
+                                           i * sizeof (VDXreference_files));
+       if (VDXref_files == NULL)
+        {
+           sprintf (VDXmsg_str,
+                    "FATAL: Memory allocation error size = <%d> bytes\n",
+                    sizeof (VDXreference_files));
+           write (VDXmsg_str);
+           return (VDX_F_MemAllErr);
+        }
+       VDXform_info.ref_count = VDXform_info.ref_count + 1; 
+    }
+          
+   /**  Only show the user the reference file_name not the path. **/
+
+   strncpy (VDXref_files[i - 1].ref_file, reftab.ref_name, 39);
+   VDXref_files[i - 1].ref_file[39] = '\0';
+   sprintf (VDXref_files[i - 1].file, "%s%s", path, reftab.ref_name);
+
+   __DBGpr_str ("VDXadd_ref_file: ref_file ", VDXref_files[i - 1].ref_file); 
+   __DBGpr_str ("VDXadd_ref_file: file     ", VDXref_files[i - 1].file); 
+
+   VDXref_files[i - 1].level = level;
+   VDXref_files[i - 1].on_off = 0;
+   VDXref_files[i - 1].parent = parent;
+   VDXref_files[i - 1].display = reftab.display;
+   VDXref_files[i - 1].ctx_id = reftab.ctx_id;
+   VDXref_files[i - 1].md_env = reftab.md_env;
+   VDXref_files[i - 1].osnum = reftab.osnum;
+
+   End ;
+   return (VDX_S_SUCCESS);
+}
+
+
+int VDXform_cleanup ()
+{
+    int j;
+
+    SetProc( VDXform_cleanup); Begin
+
+    if (VDXref_files != NULL)
+        free (VDXref_files); 
+    VDXref_files = NULL;
+    VDXform_info.cur_ref_idx = 0; 
+    VDXform_info.ref_count = 0; 
+    VDXform_info.cur_ref_level = 0; 
+
+    if (VDXform_info.ref_form_exists == TRUE)
+     {
+        FIf_delete (VDXform_info.ref_form);
+        VDXform_info.ref_form_exists = FALSE;
+        VDXform_info.ref_form_displayed = FALSE;
+     }
+
+    if (VDXform_info.main_form_exists == TRUE)
+     {
+        FIf_delete (VDXform_info.main_form);
+        VDXform_info.main_form_exists = FALSE;
+        VDXform_info.main_form_displayed = FALSE;
+     }
+
+    End ;
+    return (0);
+}
+
+
+
+long VDXget_ref_files (act_or_nested, ref_file, form)
+   int  act_or_nested;  /** active = 1;  nested = 0 **/
+   char *ref_file;
+   Form form;
+{
+  int i, j, num_rows, sel, r_pos;
+  int level; 
+  int state;
+  int fstatus;
+  int num_lines;
+  int parent;
+  long pstatus;
+  IGRchar ref_name[512];
+  IGRchar path[80];
+  IGRchar **lines;
+  struct GRmd_env         mod_env;
+  IGRlong                 refcount;
+  struct VDX_reffile      *reftab;
+
+  SetProc( VDXget_ref_files ); Begin
+
+  state = 0;
+  FIg_get_state (form, VDX_SEL_MODE_TOGGLE, &state); 
+  if (state == 0)
+   {
+      /** Clear out the VDX_LAYERS_MCF **/
+      FIg_enable (form, VDX_LAYERS_MCF);
+      FIfld_set_num_rows (form, VDX_LAYERS_MCF, 0);
+      FIg_disable (form, VDX_LAYERS_MCF);
+   }
+  
+  if (act_or_nested)
+   {
+      if (VDXform_info.cur_ref_idx == 0) 
+       {
+         strcpy (path, "");
+         di$give_pathname (osnum = VDXmod_info.md_id.osnum,
+                           pathname = path);
+
+         __DBGpr_str ("path ", path);
+
+         strcat (path, ":ref:"); 
+
+         __DBGpr_str ("path ", path);
+
+         /**  call VDGetRefFiles to get the reference files for the active
+              design file.                                             **/
+
+         refcount = 0;
+         reftab = NULL;
+         VDXget_ref_info (&VDXmod_info, &refcount, &reftab);
+         if(refcount <= 0)
+          {
+             pstatus = VDX_E_FAILURE;
+             strcpy (VDXmsg_str, "VDXget_ref_files: No reference files\n");
+             status (VDXmsg_str);
+             write (VDXmsg_str, "Error code = ", pstatus, "\n");
+             return (VDX_E_FAILURE);
+          }
+
+         for (i = 0; i < refcount; i = i + 1)
+          {
+             pstatus = VDXadd_ref_files (1, -1, path, reftab[i]);
+             if (pstatus != VDX_S_SUCCESS)
+              {
+                 if (VDXref_files != NULL)
+                    free (VDXref_files); 
+                 VDXref_files = NULL;
+                 VDXform_info.ref_count = 0;
+                 VDXform_info.cur_ref_level = 0;
+                 VDXform_info.cur_ref_idx = 0;
+                 if( reftab ) om$dealloc( ptr = reftab );
+                 return (pstatus);
+              }
+          } /* for */
+         VDXform_info.cur_ref_level = 1;
+         if( reftab ) om$dealloc( ptr = reftab );
+         reftab = NULL;
+       }
+    
+      FIfld_set_num_rows (form, VDX_REF_FILES_SCF, 0);
+      j = 0;
+      for (i = 0; i < VDXform_info.ref_count; i = i + 1)
+       {
+          if (VDXref_files[i].level == 1)
+           {
+              fstatus = FIfld_set_text (form, VDX_REF_FILES_SCF, j, 0,
+                                        VDXref_files[i].ref_file, FALSE);
+              if (VDXref_files[i].display == 0)
+               {
+                  FIfld_set_line_color (form, VDX_REF_FILES_SCF, j, 0,
+                                        FI_RED);
+               }
+              else
+               {
+                  FIfld_set_line_color (form, VDX_REF_FILES_SCF, j, 0,
+                                        FI_GREEN);
+               }
+             
+              j = j + 1;
+           }
+       }
+      VDXform_info.cur_ref_idx = 1;
+   } 
+  else
+   {
+      if (strcmp (ref_file, "") == 0)
+         return (VDX_S_SUCCESS);
+      state = 0;
+
+      __DBGpr_str ("input reference file ", ref_file);
+
+      strcpy (ref_name, ref_file);
+
+      /**  Get the nested files for this reference file. **/
+      /**  Child keeps track of its parent.              **/
+
+      parent = -1;  /* reference file parent is active design file */
+      level = 1;
+      for (i = 0; i < VDXform_info.ref_count; i = i + 1) 
+       {
+          if ( (strcmp (VDXref_files[i].file, ref_file) == 0) &&
+               (VDXref_files[i].level == VDXform_info.cur_ref_idx) )
+           {
+              if (VDXref_files[i].display == 0)
+               {
+                 return (1); 
+                 strcpy (VDXmsg_str, 
+                  "Cannot get nested files : Display is off");
+                 VDXcenter_message (VDXform_info.ref_form, FI_PROMPT_FIELD,
+                                    VDXmsg_str);
+                 return (1); 
+               }
+              parent = i;
+              level = VDXref_files[i].level;
+              strcpy (ref_name, VDXref_files[i].file);
+              break;
+           }
+       }
+
+      __DBGpr_int ("parent : index ", parent );
+      __DBGpr_int ("parent : level ", level);
+      __DBGpr_str ("ref_name       ", ref_name);
+
+      if (parent == -1)
+         return (VDX_S_SUCCESS);  /** user unselected a row **/ 
+
+      /** Children may already have been previously located.  if so no need
+          to look in directory subsystem.                                 **/
+
+      j = 0;
+      for (i = 0; i < VDXform_info.ref_count; i = i + 1) 
+      {
+           if ((VDXref_files[i].parent == parent) &&
+               (parent > -1))
+            {
+               j = 1;
+               break; 
+            } 
+      }
+
+      num_lines = 0;
+      if (j == 0)
+       {
+          /** Get nested files by calling VDXget_ref_info **/
+
+          num_lines = 0;
+          reftab = NULL;
+          VDXget_ref_info (&VDXref_files[parent].md_env, &num_lines, &reftab);
+          if(num_lines <= 0)
+           {
+              pstatus = VDX_S_SUCCESS;  /* assume no nested files */
+              strcpy (VDXmsg_str, "No nested files found for selected file");
+              VDXcenter_message (VDXform_info.ref_form, FI_PROMPT_FIELD,
+                                 VDXmsg_str);
+              return (pstatus);
+           }
+
+          level = level + 1;
+          for (i = 0; i < num_lines; i = i + 1)
+           {
+              /** The reference files do not have paths.  use the parent
+                  as the path.                                            **/
+
+              sprintf (ref_name, "%s%s", ref_file, ":ref:"); 
+              pstatus = VDXadd_ref_files (level, parent, ref_name, reftab[i]);
+              if (pstatus != VDX_S_SUCCESS)
+               {
+                  if (VDXref_files != NULL)
+                     free (VDXref_files); 
+                  VDXref_files = NULL;
+                  VDXform_info.ref_count = 0;
+                  VDXform_info.cur_ref_level = 0;
+                  VDXform_info.cur_ref_idx = 0;
+                  if( reftab ) om$dealloc( ptr = reftab );
+                  reftab = NULL;
+                  return (pstatus);
+               }
+           } /* for */
+
+          if( reftab ) om$dealloc( ptr = reftab );
+          reftab = NULL;
+       } /** if **/
+      else
+       {
+          level = level + 1;  /** point to childs level **/
+       }
+      VDXform_info.cur_ref_idx = VDXform_info.cur_ref_idx + 1;
+
+#ifdef VDX_ON_DEBUG
+      printf ("child : level = <%d>\n", level);
+#endif
+    
+      FIfld_set_num_rows (form, VDX_REF_FILES_SCF, 0);
+      fstatus = FIfld_set_text (form, VDX_REF_FILES_SCF, 0, 0,
+                                "..", FALSE);
+      j = 1;
+      for (i = 0; i < VDXform_info.ref_count; i = i + 1)
+       {
+          if ((VDXref_files[i].level == level) &&
+              (VDXref_files[i].parent == parent))
+           {
+
+              fstatus = FIfld_set_text (form, VDX_REF_FILES_SCF, j, 0,
+                                         VDXref_files[i].ref_file, FALSE);
+              if (VDXref_files[i].display == 0)
+               {
+                  FIfld_set_line_color (form, VDX_REF_FILES_SCF, j, 0,
+                                        FI_RED);
+               }
+              else
+               {
+                  FIfld_set_line_color (form, VDX_REF_FILES_SCF, j, 0,
+                                        FI_GREEN);
+               }
+              j = j + 1;
+           }
+       }
+   }
+
+  End
+  return (VDX_S_SUCCESS);
+}
+
+int VDXdo_ref_files_exist (ref_file)
+   char *ref_file;
+{
+  int num_lines;
+  IGRchar **lines;
+  IGRchar ref_name[512];
+  int pstatus;
+
+  SetProc( VDXdo_ref_files_exist ); Begin
+
+  num_lines = 0;
+
+  /** Get nested files from IGRdir **/
+
+  sprintf (ref_name, "%s%s", ref_file, ":ref:*");
+
+#ifdef VDX_ON_DEBUG
+  printf ("\nVDXdo_ref_files_exist: query to IGDIR = <%s>\n", ref_name);
+#endif
+
+  di$find (start_dir = ref_name,
+           regexp = "*",
+           lines = &lines,
+           ptr = &num_lines,
+           max_level = -1,
+           deep = NULL,
+           options = OPT_LEVEL);
+
+  if(num_lines <= 0)
+   {
+      pstatus = 1;  /* assume no nested files */
+      strcpy (VDXmsg_str, "No nested files found for selected file");
+      VDXcenter_message (VDXform_info.ref_form, FI_PROMPT_FIELD,
+                         VDXmsg_str);
+      return (pstatus);
+   }
+  di$free (lines = lines,
+           count = num_lines);
+
+  End
+  return (0);
+}
+
+
+int VDXget_window_levels (form, g_label, osnum, objid)
+Form            form;
+int             g_label;
+GRspacenum      osnum;
+GRobjid         objid;
+{
+  IGRlong msg;
+  int i, j;
+  char level[5];
+  char level_name[80];
+  IGRdouble points[3];
+  IGRlong sz_name_buf;
+  IGRshort on_levels[1024], off_levels[1024], num_layers;
+  GRobj window_id;
+  GRspacenum window_osnum;
+  int num_of_off_levels, num_of_on_levels;
+
+#ifdef VDX_ON_DEBUG
+  printf ("VDXget_window_levels : entered\n");
+#endif
+
+  /*** update all windows ***/
+
+  num_of_off_levels = 0;
+  num_of_on_levels = 0;
+  sz_name_buf = sizeof (level_name);
+  points[0] = 1.0;
+  points[1] = 1.0;
+  points[2] = 1.0;
+  ci$put (point = points);
+  ci$get (point = points,
+          stackable = 1,
+          window_id = &window_id,
+          window_osnum = &window_osnum,
+          prompt = "select window");
+
+
+  num_of_off_levels = 1024;
+
+  /** Put up a processing message to user, so user knows that we are  
+      getting the specified levels 
+  **/
+
+  dp$inq_window_levels (msg = &msg,
+                        num_of_levels = &num_of_off_levels,
+		        on_off_flag = 0,
+		        levels = off_levels,
+		        window_objid = window_id,
+		        window_osnum = window_osnum);
+
+  num_of_on_levels = 1024;
+  dp$inq_window_levels (msg = &msg,
+			num_of_levels = &num_of_on_levels,
+			on_off_flag = 1,
+			levels = on_levels,
+			window_objid = window_id,
+			window_osnum = window_osnum);
+
+  j = 0;
+
+  /**  clear out the field **/
+
+  FIg_enable (form, g_label);
+  FIfld_set_num_rows (form, g_label, 0);
+  FIg_display (form, g_label);
+
+  if ( (num_of_off_levels == 0) && (num_of_on_levels == 0) ) 
+   {
+      printf (" cannot get levels\n");
+      return (1);
+   } 
+
+  sprintf (level, "all");
+  FIfld_set_text (form, g_label, j, 0, level, FALSE);
+  sprintf (level, "1-1023");
+     FIfld_set_text (form, g_label, j, 1, level, FALSE);
+/***
+  FIfld_set_line_color (form, g_label, j, 0, FI_GREEN);
+  FIfld_set_line_color (form, g_label, j, 1, FI_GREEN);
+***/
+  j = j + 1;
+
+  for (i = 0; i < num_of_on_levels; i = i + 1)
+   {
+     strcpy (level_name, "");
+     if (on_levels[i] == 0)
+        continue;
+
+     dp$levels_number_to_name (msg    = &msg,   
+                               number = on_levels[i],
+                               ret_num_lev = &num_layers,
+                               size_name_buffer = &sz_name_buf,
+                               name             = level_name,
+                               osnum            = osnum,
+                               mod_objid        = objid); 
+
+     if (strcmp (level_name, "all") == 0)
+        strcpy (level_name, "");
+
+     FIfld_set_text (form, g_label, j, 0, level_name, FALSE);
+     sprintf (level, "%-4.4d", on_levels[i]);
+     FIfld_set_text (form, g_label, j, 1, level, FALSE);
+     FIfld_set_line_color (form, g_label, j, 0, FI_GREEN);
+     FIfld_set_line_color (form, g_label, j, 1, FI_GREEN);
+     j = j + 1;
+   }
+
+  for (i = 0; i < num_of_off_levels; i = i + 1)
+   {
+     strcpy (level_name, "");
+     if (on_levels[i] == 0)
+        continue;
+     dp$levels_number_to_name (msg    = &msg,   
+                               number = off_levels[i],
+                               ret_num_lev = &num_layers,
+                               size_name_buffer = &sz_name_buf,
+                               name             = level_name,
+                               osnum            = osnum,
+                               mod_objid        = objid); 
+
+     if (strcmp (level_name, "all") == 0)
+        strcpy (level_name, "");
+     FIfld_set_text (form, g_label, j, 0, level_name, FALSE);
+     sprintf (level, "%-4.4d", off_levels[i]);
+     FIfld_set_text (form, g_label, j, 1, level, FALSE);
+     FIfld_set_line_color (form, g_label, j, 0, FI_RED);
+     FIfld_set_line_color (form, g_label, j, 1, FI_RED);
+     j = j + 1;
+   }
+
+ /***  Set the list to the first visible row ***/ 
+
+ FIfld_pos_cursor  (form, g_label, 0, 0, 0, 0, 0, 0);
+ FIfld_set_select (form, g_label, 0, 0, FALSE);
+ FIfld_set_select (form, g_label, 0, 1, FALSE);
+  
+
+#ifdef VDX_ON_DEBUG
+  printf ("VDXget_window_levels : exiting\n");
+#endif
+  return (0);
+}
+
+
+int VDXget_levels_for_ref_file (form, g_label, osnum, objid)
+Form            form;
+int             g_label;
+GRspacenum      osnum;
+GRobjid         objid;
+{
+  IGRlong msg, sts;
+  IGRint status;
+  int i, j;
+  IGRint levels[32];
+  char level[5];
+  char level_name[80];
+  char level_str[512];
+  IGRshort on_levels[1024], off_levels[1024], num_layers;
+  GRobj window_id;
+  int num_of_off_levels, num_of_on_levels;
+  IGRlong sz_name_buf;
+
+#ifdef VDX_ON_DEBUG
+  printf ("VDXget_levels_for_ref_file : entering\n");
+#endif
+
+  num_of_off_levels = 0;
+  num_of_on_levels = 0;
+  sz_name_buf = sizeof (level_name);
+
+  /***  Get the levels that are on in the reference file attachment ***/
+  status =
+   ci$send(msg = message GRreffile.GRgetlevels
+                                         ( &sts, levels ),
+           targetid = objid,
+           targetos = osnum );
+  if(!(status&sts&1))
+   {
+       printf ("GRgetlevels : Cannot get ref file layers: status = <%d>, sts = <%d>\n", status, sts );
+       return (-1);
+   }
+
+  /***  Get the level string from the level array ***/
+
+/***  Get rid of this call it is here for re-checking ****/
+  strcpy (level_str, "");
+  msg = VDXconvert_lev_array( &status, levels, level_str ); 
+/****                                               ***********/
+
+  msg = VDXget_on_off_lev( &status, levels, on_levels, &num_of_on_levels,
+                           off_levels, &num_of_off_levels ); 
+  if (status != MSSUCC)
+   {
+       /**  clear out the field **/
+
+       FIg_enable (form, g_label);
+       FIfld_set_num_rows (form, g_label, 0);
+       FIg_display (form, g_label);
+       return (-1);
+   }
+
+#ifdef VDX_ON_DEBUG
+  printf ("num_of_on_levels = <%d>\n", num_of_on_levels);
+  printf ("num_of_off_levels = <%d>\n", num_of_off_levels);
+#endif
+
+  j = 0;
+
+  /**  clear out the field **/
+
+  FIg_enable (form, g_label);
+  FIfld_set_num_rows (form, g_label, 0);
+  FIg_display (form, g_label);
+
+  if ( (num_of_off_levels == 0) && (num_of_on_levels == 0) ) 
+   {
+      printf (" cannot get levels\n");
+      return (1);
+   } 
+
+  sprintf (level, "all");
+  FIfld_set_text (form, g_label, j, 0, level, FALSE);
+  sprintf (level, "1-1023");
+     FIfld_set_text (form, g_label, j, 1, level, FALSE);
+/***
+  FIfld_set_line_color (form, g_label, j, 0, FI_GREEN);
+  FIfld_set_line_color (form, g_label, j, 1, FI_GREEN);
+***/
+  j = j + 1;
+
+  for (i = 0; i < num_of_on_levels; i = i + 1)
+   {
+     strcpy (level_name, "");
+     if (on_levels[i] == 0)
+        continue;
+
+     dp$levels_number_to_name (msg    = &msg,   
+                               number = on_levels[i],
+                               ret_num_lev = &num_layers,
+                               size_name_buffer = &sz_name_buf,
+                               name             = level_name,
+                               osnum            = osnum,
+                               mod_objid        = objid); 
+
+     if (strcmp (level_name, "all") == 0)
+        strcpy (level_name, "");
+
+     FIfld_set_text (form, g_label, j, 0, level_name, FALSE);
+     sprintf (level, "%-4.4d", on_levels[i]);
+     FIfld_set_text (form, g_label, j, 1, level, FALSE);
+     FIfld_set_line_color (form, g_label, j, 0, FI_GREEN);
+     FIfld_set_line_color (form, g_label, j, 1, FI_GREEN);
+     j = j + 1;
+   }
+
+  for (i = 0; i < num_of_off_levels; i = i + 1)
+   {
+     strcpy (level_name, "");
+     if (off_levels[i] == 0)
+        continue;
+     dp$levels_number_to_name (msg    = &msg,   
+                               number = off_levels[i],
+                               ret_num_lev = &num_layers,
+                               size_name_buffer = &sz_name_buf,
+                               name             = level_name,
+                               osnum            = osnum,
+                               mod_objid        = objid); 
+
+     if (strcmp (level_name, "all") == 0)
+        strcpy (level_name, "");
+     FIfld_set_text (form, g_label, j, 0, level_name, FALSE);
+     sprintf (level, "%-4.4d", off_levels[i]);
+     FIfld_set_text (form, g_label, j, 1, level, FALSE);
+     FIfld_set_line_color (form, g_label, j, 0, FI_RED);
+     FIfld_set_line_color (form, g_label, j, 1, FI_RED);
+     j = j + 1;
+   }
+
+ /***  Set the list to the first visible row ***/ 
+
+  FIfld_pos_cursor  (form, g_label, 0, 0, 0, 0, 0, 0);
+  FIfld_set_select (form, g_label, 0, 0, FALSE);
+  FIfld_set_select (form, g_label, 0, 1, FALSE);
+
+#ifdef VDX_ON_DEBUG
+  printf ("VDXget_levels_for_ref_file : exiting\n");
+#endif
+  return (0);
+}
+
+
+/** Calling routine needs to make sure the ref_file display is on before
+    calling this routine.   VDXget_layers
+***/
+
+int VDXget_layers (ref_file, form)
+   char *ref_file;
+   Form form;
+{
+  int state;
+  int i, j, num_rows, sel_flag, r_pos;
+  char sel_file[40];
+
+#ifdef VDX_ON_DEBUG
+  printf ("VDXget_layers : ref_file = <%s>\n", ref_file);
+  printf ("VDXget_layers : entered\n");
+#endif
+  /**  If the gadget state is single select mode get the layer
+       information for this file and put it in layer list          **/
+
+  state = 0;
+  FIg_get_state (form, VDX_SEL_MODE_TOGGLE, &state);  
+  if (state == 1)
+     return (1);   /** Multi select mode **/
+
+  /**  If the Display toggle is set to Display OFF, do not get
+       the layers.                                                 **/
+
+  state = 0;
+  FIg_get_state (form, VDX_DISPLAY_TOGGLE, &state);  
+  if (state == 1)
+     return (1);   /** Reference file Display is OFF **/
+
+  /**  find the reference file in the list and use this index to get the
+       layers.
+  **/
+
+  j = -1;
+
+  /** Get the selected file from the VDX_REF_FILES_SCF **/
+
+  num_rows = 0; 
+  FIfld_get_num_rows (form, VDX_REF_FILES_SCF, &num_rows);
+  if (num_rows <= 0)
+     return (1);
+
+  strcpy (sel_file, "");
+  for (i = 0; i < num_rows; i = i + 1)
+   {
+       sel_flag = FALSE;
+       FIfld_get_select (form, VDX_REF_FILES_SCF, i, 0, &sel_flag);
+       if (sel_flag)
+        {
+            FIfld_get_text (form, VDX_REF_FILES_SCF, i, 0, 39, sel_file,
+                            &sel_flag, &r_pos);
+            break;
+        } 
+   } 
+
+  if (strcmp (sel_file, "") == 0)  /** nothing was selected **/
+     return (1);
+#ifdef VDX_ON_DEBUG
+  printf ("sel_file = <%s>\n", sel_file);
+#endif
+
+  for (i = 0; i < VDXform_info.ref_count; i = i + 1)
+   {
+      if ( (strcmp (VDXref_files[i].file, ref_file) == 0) &&
+           (strcmp (VDXref_files[i].ref_file, sel_file) == 0) )
+       {
+           j = i;
+           break;
+       }
+   }
+
+  if (j == -1)  /*** shouldn't happen but just in case ***/
+     return (1);   /** Reference file Display is OFF **/
+
+#ifdef VDX_ON_DEBUG
+  printf ("VDXref_files[%d].file = <%s>\n", j, VDXref_files[j].file);
+#endif
+
+  if (VDXref_files[j].display == 0)
+     return (1);   /** reference file display is off **/
+
+  /** Get the layers for this reference file **/
+
+  FIg_enable (form, VDX_LAYERS_MCF);
+  FIg_display (form, VDX_LAYERS_MCF);
+
+  strcpy (VDXmsg_str,
+          "Retrieving layers, please wait ..."); 
+  VDXcenter_message (VDXform_info.ref_form,  FI_MSG_FIELD, VDXmsg_str); 
+/****
+  VDXget_window_levels (form, VDX_LAYERS_MCF, VDXref_files[j].ctx_id.osnum,
+                        VDXref_files[j].ctx_id.objid);
+***/
+  VDXget_levels_for_ref_file (form, VDX_LAYERS_MCF,
+                   VDXref_files[j].ctx_id.osnum,  VDXref_files[j].ctx_id.objid);
+  strcpy (VDXmsg_str, ""); 
+  FIfld_set_text (VDXform_info.ref_form, FI_MSG_FIELD, 0, 0, VDXmsg_str,
+                  FALSE); 
+#ifdef VDX_ON_DEBUG
+  printf ("VDXget_layers : exiting\n");
+#endif
+  return (0);
+}
+
+
+void VDXset_display_on (form)
+  Form form;
+{
+  int state;
+
+  /** get the selection mode toggle state. **/
+
+  state = 0;
+  FIg_get_state (form, VDX_SEL_MODE_TOGGLE, &state);
+
+  if (state == 0)
+   {  
+       /** Single select mode **/
+      
+       FIg_erase (form, VDX_KEYIN_LAYER_FIELD);
+       FIg_disable (form, VDX_KEYIN_LAYER_FIELD);
+       FIg_erase (form, VDX_KEYIN_TEXT);
+
+       FIg_display (form, VDX_NESTED_REFS_BUTTON);
+       FIg_enable (form, VDX_LAYERS_MCF);
+       FIg_display (form, VDX_LAYERS_MCF);
+       FIg_display (form, VDX_USED_TEXT);
+       FIg_display (form, VDX_USED_RECT);
+       FIg_display (form, VDX_LAYER_TEXT);
+       FIg_display (form, VDX_LAYER_RECT);
+       FIg_display (form, VDX_VALUE_TEXT);
+       FIg_display (form, VDX_VALUE_RECT);
+
+       /** Don't need to set the selection mode.  **/
+       FIfld_set_mode (form, VDX_REF_FILES_SCF, 0, FI_SINGLE_SELECT);
+   }
+  else
+   { 
+       /** Multi select mode **/
+      
+       FIg_erase (form, VDX_NESTED_REFS_BUTTON);
+       FIg_disable (form, VDX_NESTED_REFS_BUTTON);
+       FIg_erase (form, VDX_LAYERS_MCF);
+       FIg_disable (form, VDX_LAYERS_MCF);
+       FIg_erase (form, VDX_USED_TEXT);
+       FIg_erase (form, VDX_USED_RECT);
+       FIg_erase (form, VDX_LAYER_TEXT);
+       FIg_erase (form, VDX_LAYER_RECT);
+       FIg_erase (form, VDX_VALUE_TEXT);
+       FIg_erase (form, VDX_VALUE_RECT);
+
+       FIg_enable (form, VDX_KEYIN_LAYER_FIELD);
+       FIg_display (form, VDX_KEYIN_LAYER_FIELD);
+       FIg_display (form, VDX_KEYIN_TEXT);
+       FIg_enable (form, VDX_KEYIN_TEXT);
+
+       /** Don't need to set the selection mode.  **/
+       FIfld_set_mode (form, VDX_REF_FILES_SCF, 0, FI_MULTI_SELECT);
+   }
+
+   FIg_enable (form, VDX_ON_OFF_LAY_TOGGLE);
+   FIg_display (form, VDX_ON_OFF_LAY_TOGGLE);
+
+  return;
+} 
+
+
+
+void VDXset_display_off (form)
+  Form form;
+{
+  int state;
+
+  /** get the selection mode toggle state. **/
+
+  state = 0;
+  FIg_get_state (form, VDX_SEL_MODE_TOGGLE, &state);
+
+  if (state == 0)
+   {  
+       /** Single select mode **/
+      
+       /** Clear out the VDX_LAYERS_MCF **/
+
+       FIg_enable (form, VDX_LAYERS_MCF);
+       FIfld_set_num_rows (form, VDX_LAYERS_MCF, 0);
+       FIg_disable (form, VDX_LAYERS_MCF);
+
+       /** Don't need to set the selection mode.  **/
+       FIfld_set_mode (form, VDX_REF_FILES_SCF, 0, FI_SINGLE_SELECT);
+   }
+  else
+   { 
+       /** Multi select mode **/
+      
+       FIg_disable (form, VDX_KEYIN_LAYER_FIELD);
+       FIg_disable (form, VDX_KEYIN_TEXT);
+
+
+       /** Don't need to set the selection mode.  **/
+       FIfld_set_mode (form, VDX_REF_FILES_SCF, 0, FI_MULTI_SELECT);
+   }
+
+   FIg_disable (form, VDX_ON_OFF_LAY_TOGGLE);
+  return;
+} 
+
+
+int VDXget_selected_file (ref_file, form)
+   char *ref_file;   /** O : should be large enough to hold 256 chars **/
+   Form form;
+{
+  int i, j, k, parent, num_rows, vis_rows, sel_flag, r_pos;
+  int state, selected;
+  char tmp_file[256];
+  int status;
+
+#ifdef VDX_ON_DEBUG
+  printf ("VDXget_selected_file: ref_file = <%s>\n", ref_file);
+  printf ("VDXget_selected_file: Begin : cur_ref_idx = <%d>\n", 
+          VDXform_info.cur_ref_idx);
+#endif
+
+  selected = 0;
+  status = FIfld_get_num_rows (form, VDX_REF_FILES_SCF, &num_rows); 
+  if (status != FI_SUCCESS)
+     return (status);
+
+
+  for (j = 0; j < VDXform_info.ref_count; j = j + 1)
+   {
+      /** for this level turn off all on_off's for children at this level **/
+
+      if (VDXref_files[j].level == VDXform_info.cur_ref_idx)
+         VDXref_files[j].on_off = 0;
+   }
+
+  for (i = 0; i < num_rows; i = i + 1)
+   {
+      status = FIfld_get_select (form, VDX_REF_FILES_SCF, i, 0, &sel_flag); 
+      if (status != FI_SUCCESS)
+         return (status);
+
+      if (sel_flag == TRUE)
+       {
+          selected = 1;
+          status = FIfld_get_text (form, VDX_REF_FILES_SCF, i, 0, 255,
+                                   tmp_file, &sel_flag, &r_pos);
+          if (status != FI_SUCCESS)
+             return (status);
+#ifdef VDX_ON_DEBUG
+  printf ("VDXget_selected_file: selected_file = <%s>\n", tmp_file);
+#endif
+
+          if (strcmp (tmp_file, "..") != 0)
+           {
+              strcat (ref_file, ":ref:");
+              strcat (ref_file, tmp_file);
+
+              /**  find the reference file in the VDXref_files array  **/
+
+              for (j = 0; j < VDXform_info.ref_count; j = j + 1)
+               {
+                  if ( (strcmp (tmp_file, VDXref_files[j].ref_file) == 0) &&
+                       (VDXref_files[j].level == VDXform_info.cur_ref_idx) )
+                   {
+                      strcpy (ref_file, VDXref_files[j].file);
+#ifdef VDX_ON_DEBUG
+  printf ("VDXget_selected_file: RETURNED ref_file = <%s>\n", ref_file);
+#endif
+                      VDXref_files[j].on_off = 1;
+                      if (VDXref_files[j].display == 0)
+                       {
+                          VDXset_display_off (form);
+                          /** disable the VDX_NESTED_REFS_BUTTON  **/
+
+                          FIg_disable (form, VDX_NESTED_REFS_BUTTON);
+
+                           /** clear out the VDX_LAYER_MCF ***/
+                    
+                           FIg_enable (form, VDX_LAYERS_MCF);
+                           FIfld_set_num_rows (form, VDX_LAYERS_MCF, 0); 
+                           FIg_disable (form, VDX_LAYERS_MCF);
+                          return (-1);
+                       }
+                      else
+                          VDXset_display_on (form);
+                      break;
+                   }
+               }          
+           }
+          else
+           {
+
+              /** clear out the VDX_LAYER_MCF ***/
+
+              FIfld_set_num_rows (form, VDX_LAYERS_MCF, 0); 
+              FIg_disable (form, VDX_LAYERS_MCF);
+
+              /** need to go back up one level **/
+
+              VDXform_info.cur_ref_idx = VDXform_info.cur_ref_idx - 1;
+
+              /** get the parent **/
+
+              k = VDXform_info.cur_ref_idx;
+              parent = 0;
+
+#ifdef VDX_ON_DEBUG
+  printf ("VDXget_selected_file: cur_ref_idx = <%d>\n", k);
+#endif
+
+              for (j = 0; j < VDXform_info.ref_count; j = j + 1)
+               {
+                  if ( (VDXref_files[j].level == k) &&
+                       (VDXref_files[j].on_off == 1) )
+                   {
+                      strcpy (ref_file, VDXref_files[j].file);
+                      if (VDXref_files[j].display == 0)
+                          VDXset_display_off (form);
+                      else
+                          VDXset_display_on (form);
+                      parent = j;
+                      break;
+                   }
+               }          
+#ifdef VDX_ON_DEBUG
+  printf ("VDXget_selected_file: returned ref_file = <%s>\n", ref_file);
+  printf ("VDXget_selected_file: returned parent   = <%d>\n", parent);
+#endif
+     
+              /** Get maximum number of visible rows for VDX_REF_FILES_SCF. **/
+
+              vis_rows = 7;
+              FIfld_get_num_vis_rows (form, VDX_REF_FILES_SCF, &vis_rows); 
+
+              /** clear out the VDX_REF_FILES_SCF field.  **/
+
+              FIfld_set_num_rows (form, VDX_REF_FILES_SCF, 0); 
+
+              k = 0; 
+              for (j = 0; j < VDXform_info.ref_count; j = j + 1)
+               {
+                   sel_flag = FALSE;
+                   if (VDXref_files[j].level == VDXform_info.cur_ref_idx)
+                    {
+                       if (parent == j)
+                        {
+                           r_pos = k;
+                           sel_flag = TRUE;
+                        }
+                       status = FIfld_set_text (form, VDX_REF_FILES_SCF, k, 0,
+                                         VDXref_files[j].ref_file, sel_flag);
+                       if (VDXref_files[j].display == 0)
+                        { 
+                           FIfld_set_line_color (form, VDX_REF_FILES_SCF, k, 0,
+                                                 FI_RED);
+                        }
+                       else
+                        {
+                           FIfld_set_line_color (form, VDX_REF_FILES_SCF, k, 0,
+                                                 FI_GREEN);
+                        }
+                       k = k + 1;
+                    } 
+               }
+
+              if (r_pos > vis_rows)
+               {
+                  FIfld_pos_cursor (form, VDX_REF_FILES_SCF, r_pos,
+                                    r_pos + (vis_rows / 2), 0, 0, 0, 0);
+               }
+
+           }  /** if sel_flag == TRUE **/
+
+          return (0); 
+       }
+   }
+
+  if (selected == 0)
+   {
+      /** disable the VDX_NESTED_REFS_BUTTON  **/
+
+      FIg_disable (form, VDX_NESTED_REFS_BUTTON);
+
+      state = 0;
+      FIg_get_state (form, VDX_SEL_MODE_TOGGLE, &state);
+      if (state == 1)
+       {
+          strcpy (ref_file, "");
+          return (-1);
+       }
+
+       /** clear out the VDX_LAYER_MCF ***/
+
+       FIfld_set_num_rows (form, VDX_LAYERS_MCF, 0); 
+       FIg_disable (form, VDX_LAYERS_MCF);
+   }
+
+  strcpy (ref_file, "");
+  return (-1);
+}
+
+
+void VDXset_groups (select_mode, form)
+  int  select_mode;
+  Form form;
+{
+  int state;
+
+  state = 0;
+  FIg_get_state (form, VDX_DISPLAY_TOGGLE, &state); 
+
+  if (select_mode == 0)
+   {  
+       /** Single select mode **/
+      
+       FIg_erase (form, VDX_KEYIN_LAYER_FIELD);
+       FIg_disable (form, VDX_KEYIN_LAYER_FIELD);
+       FIg_erase (form, VDX_KEYIN_TEXT);
+/***
+       FIg_enable (form, VDX_NESTED_REFS_BUTTON);
+***/
+       FIg_display (form, VDX_NESTED_REFS_BUTTON);
+       if (state == 0)
+          FIg_enable (form, VDX_LAYERS_MCF);
+       FIg_display (form, VDX_LAYERS_MCF);
+       FIg_display (form, VDX_USED_TEXT);
+       FIg_display (form, VDX_USED_RECT);
+       FIg_display (form, VDX_LAYER_TEXT);
+       FIg_display (form, VDX_LAYER_RECT);
+       FIg_display (form, VDX_VALUE_TEXT);
+       FIg_display (form, VDX_VALUE_RECT);
+
+       /**  Set the selection mode for VDX_REF_FILES_SCF to SINGLE_SELECT **/ 
+
+       FIfld_set_mode (form, VDX_REF_FILES_SCF, 0, FI_SINGLE_SELECT);
+   }
+  else
+   { 
+       /** Multi select mode **/
+      
+       FIg_erase (form, VDX_NESTED_REFS_BUTTON);
+       FIg_disable (form, VDX_NESTED_REFS_BUTTON);
+       FIg_erase (form, VDX_LAYERS_MCF);
+       FIg_disable (form, VDX_LAYERS_MCF);
+       FIg_erase (form, VDX_USED_TEXT);
+       FIg_erase (form, VDX_USED_RECT);
+       FIg_erase (form, VDX_LAYER_TEXT);
+       FIg_erase (form, VDX_LAYER_RECT);
+       FIg_erase (form, VDX_VALUE_TEXT);
+       FIg_erase (form, VDX_VALUE_RECT);
+
+       if (state == 0)
+          FIg_enable (form, VDX_KEYIN_LAYER_FIELD);
+       FIg_display (form, VDX_KEYIN_LAYER_FIELD);
+       FIg_display (form, VDX_KEYIN_TEXT);
+       if (state == 0)
+          FIg_enable (form, VDX_KEYIN_TEXT);
+
+       /**  Set the selection mode for VDX_REF_FILES_SCF to MULTI_SELECT **/ 
+
+       FIfld_set_mode (form, VDX_REF_FILES_SCF, 0, FI_MULTI_SELECT);
+   }
+  return;
+} 
+
+
+long VDXref_form_init ()
+{
+  int fstatus;
+  int status1;
+  long pstatus;
+
+  /*
+   * the initialization of the form, which includes setting/linking the form
+   * to the command object; Get the form input and display the found
+   * information in the form.
+   */
+ 
+  fstatus = FIf_new (VDXREF_FORM,
+		     VDX_REF_FORM,
+		     ci_notification,
+		     &VDXform_info.ref_form);
+  if ( (fstatus != FI_SUCCESS) || (VDXform_info.ref_form == NULL) )
+   {
+      return (VDX_F_InitForm);
+   }
+
+  VDXform_info.ref_form_exists = TRUE;
+
+  /*  MY_ID and OM_Gw_current_OS are symbolic constants that are defined in
+      the "ciminimum.h" include file.                                      */
+
+  fstatus = FIf_set_cmd_oid_os (VDXform_info.ref_form, MY_ID,
+                                OM_Gw_current_OS);
+  if (fstatus != FI_SUCCESS)
+   {
+      printf("Could not init form\n");
+
+      /****   The form has been loaded into memory at this point.  we need to
+              delete it from memory at this point.  return_error will not
+              delete the form.  BW.  3/17/94  ********************************/
+      VDXform_info.ref_form_exists = FALSE;
+      FIf_delete (VDXform_info.ref_form);
+      VDXform_info.ref_form_displayed = FALSE;
+      return (VDX_F_FormLink);
+   }
+
+  /** Enable the needed gadgets and disable unneeded. **/
+
+  VDXset_groups (VDX_SINGLE_SELECT_MODE, VDXform_info.ref_form);
+
+  FIg_set_state_off (VDXform_info.ref_form, VDX_SEL_MODE_TOGGLE);
+  FIg_set_state_off (VDXform_info.ref_form, VDX_DISPLAY_TOGGLE);
+  FIg_set_state_off (VDXform_info.ref_form, VDX_ON_OFF_LAY_TOGGLE);
+  FIg_disable (VDXform_info.ref_form, VDX_NESTED_REFS_BUTTON);
+  FIg_disable (VDXform_info.ref_form, VDX_LAYERS_MCF);
+
+  /*
+  /** Put the reference files into the VDX_REF_FILES_SCF list **
+   */
+
+  pstatus = VDXget_ref_files (1, "", VDXform_info.ref_form);
+  if (pstatus != VDX_S_SUCCESS)
+   {
+      VDXform_info.ref_form_exists = FALSE;
+      VDXform_info.ref_form_displayed = FALSE;
+      write (VDXmsg_str, "Error code = ", pstatus, "\n");
+      FIf_delete (VDXform_info.ref_form);
+      return (pstatus);
+   }
+
+  VDXform_info.cur_ref_level = 1;
+
+  /*
+   * display the form
+   */
+
+  fstatus = FIf_display (VDXform_info.ref_form);
+  if (fstatus != FI_SUCCESS)
+    {
+      printf("Could not display form\n");
+
+      /****   The form has been loaded into memory at this point.  we need to
+              delete it from memory at this point.  return_error will not
+              delete the form.  BW.  3/17/94  ********************************/
+
+      VDXform_info.ref_form_exists = FALSE;
+      FIf_delete (VDXform_info.ref_form);
+      VDXform_info.ref_form_displayed = FALSE;
+      return (VDX_F_DisplayForm);
+    }
+
+
+  VDXform_info.ref_form_displayed = TRUE;
+  VDXform_info.ref_form_exists = TRUE;
+
+  /**  Overide update to display before forms are displayed **/
+ 
+  FIf_erase (VDXform_info.main_form);
+  VDXform_info.main_form_displayed = FALSE;
+
+  strcpy (VDXmsg_str, "");
+  status (VDXmsg_str);
+  FIfld_set_text (VDXform_info.ref_form, FI_MSG_FIELD, 0, 0,
+                  VDXmsg_str, FALSE);
+  strcpy (VDXmsg_str, "Awaiting user input ...");
+  VDXcenter_message (VDXform_info.ref_form, FI_PROMPT_FIELD, VDXmsg_str);
+
+  return (VDX_S_SUCCESS);
+}
+
+long VDXreset (select_mode, form)
+  int  select_mode;
+  Form form; 
+{
+  int i, j;
+  long pstatus;
+  char text1[8];
+
+  strcpy (text1, "");
+  FIg_enable (form, VDX_KEYIN_LAYER_FIELD);
+  FIfld_set_text (form, VDX_KEYIN_LAYER_FIELD, 0, 0, text1, FALSE);
+
+  VDXset_groups (select_mode, form);
+
+  if (select_mode == VDX_SINGLE_SELECT_MODE)
+   { 
+      /** Set the gadget state to single select mode **/  
+
+      FIg_set_state (form, VDX_SEL_MODE_TOGGLE, 0);
+
+      /** unselect the files in the attached files list **/
+
+      j = 0;
+      FIfld_get_num_rows (form, VDX_REF_FILES_SCF, &j);
+      for (i = 0; i < j; i = i + 1)
+       {
+          FIfld_set_select (form, VDX_REF_FILES_SCF, i, 0, FALSE);
+       } 
+
+      for (j = 0; j < VDXform_info.ref_count; j = j + 1)
+       {
+          /* for this level turn off all on_off's for children at this level */
+    
+          if (VDXref_files[j].level == VDXform_info.cur_ref_idx)
+             VDXref_files[j].on_off = 0;
+       }
+
+      /** Clear out the VDX_LAYERS_MCF gadget **/
+
+      FIg_enable (form, VDX_LAYERS_MCF);
+      FIfld_set_num_rows (form, VDX_LAYERS_MCF, 0);
+      FIg_disable (form, VDX_LAYERS_MCF);
+      FIg_display (form, VDX_LAYERS_MCF);
+   }
+
+  /** Set the gadget state to single display on **/  
+  FIg_set_state (form, VDX_DISPLAY_TOGGLE, 0);
+
+  /** Set the gadget state to layer on **/  
+  FIg_set_state (form, VDX_ON_OFF_LAY_TOGGLE, 0);
+
+  /** Set the gadget state to production Data OFF */
+  FIg_set_state (form, VDX_PRODUCTION_DATA, 0 );
+  VDXform_info.productionFlag = FALSE ;
+
+  return (VDX_S_SUCCESS);
+}
+
+int VDXreference_form ()
+{
+  char help_cmd[256];
+  char ref_file [512];
+  int fstatus, state; 
+  int  text_size;
+  int  sel_flag, r_pos;
+  int  vis_rows;
+  long pstatus;
+  int  i, j, status;
+  int  num_rows;
+  int  response;
+  char *str_ptr;
+  double cht;
+
+  SetProc( VDXreference_form ); Begin
+
+  /*
+   * this function is the main interface control for all activities with
+   * the command. It manages the initialization and the form_notification
+   * of the form.
+   * It also controls the output functionalities of the command object.
+   */
+
+  state = 0; 
+
+  strcpy (VDXmsg_str, "");
+  strcpy (ref_file, "");
+
+  pstatus = VDXref_form_init ();
+  if (pstatus != VDX_S_SUCCESS)
+   {
+      return_error ();
+   }
+  
+  /*********  Process the form gadgets **************************************/
+
+  while (1)   /* loop until user cancels the form. */
+    {
+      /*** suspend the command file and wait for the form.   ***/
+
+      ci$get (prompt = "Fill in the form",
+	      response = &response);
+
+      strcpy (VDXmsg_str, "");
+      FIfld_set_text (VDXform_info.ref_form, FI_MSG_FIELD, 0, 0,
+                      VDXmsg_str, FALSE);
+      FIfld_set_text (VDXform_info.ref_form, FI_PROMPT_FIELD, 0, 0,
+                      VDXmsg_str, FALSE);
+
+      switch (form_st.gadget_label)
+	{
+
+          case FI_ACCEPT:
+          case FI_EXECUTE: 
+
+	  __DBGpr_com ("VDXreference_form: ACCEPT or EXECUTE ");
+
+          /**  get the gadget state for the Select Mode toggle  **/
+
+#ifdef VDX_ON_DEBUG
+      printf ("IN case FI_ACCEPT, EXECUTE\n");
+      printf ("Coding not finished for this gadget\n");
+#endif
+          strcpy (VDXmsg_str, "Processing requests,  please wait ...");
+          VDXcenter_message (VDXform_info.ref_form, FI_MSG_FIELD,
+                             VDXmsg_str);
+
+          fstatus = VDXprocess_request (VDXform_info.ref_form);
+          if (fstatus)
+             break;
+
+	  if ( form_st.gadget_label == FI_ACCEPT )
+           {
+	    /*
+	     * ACCEPT state (exit command after processing).
+	     */
+
+	  __DBGpr_com ("VDXreference_form: ACCEPT ");
+
+#ifdef VDX_ON_DEBUG
+      printf ("Before call to delete\n");
+#endif
+
+            if (VDXref_files != NULL) 
+                free (VDXref_files); 
+            VDXref_files = NULL;
+	    __DBGpr_com ("The pointer VDXref_files = NULL"); 
+            VDXform_info.cur_ref_idx = 0; 
+            VDXform_info.ref_count = 0; 
+            VDXform_info.cur_ref_level = 0; 
+
+            /** Display the main form **/
+
+            FIf_display (VDXform_info.main_form);
+            VDXform_info.main_form_displayed = TRUE;
+
+	    VDXform_info.productionFlag = FALSE ;
+	    FIg_set_state( VDXform_info.main_form, VDX_PRODUCTION_DATA,
+				VDXform_info.productionFlag );
+
+            VDXform_info.ref_form_displayed = FALSE;
+            VDXform_info.ref_form_exists = FALSE;
+            FIf_delete (VDXform_info.ref_form);
+#ifdef VDX_ON_DEBUG
+      printf ("After call to delete\n");
+#endif
+	    return;
+	  }
+
+          /**  Reset the form gadgets **/
+         
+          strcpy (VDXmsg_str, "Successful Completion ...");
+          VDXcenter_message (VDXform_info.ref_form, FI_MSG_FIELD,
+                             VDXmsg_str);
+#ifdef VDX_ON_DEBUG
+      printf ("Before calls to reset gadgets\n");
+#endif
+          VDXreset (VDX_SINGLE_SELECT_MODE, VDXform_info.ref_form);
+          strcpy (VDXmsg_str, "Awaiting user input ...");
+          VDXcenter_message (VDXform_info.ref_form, FI_PROMPT_FIELD,
+                             VDXmsg_str);
+#ifdef VDX_ON_DEBUG
+      printf ("After calls to reset gadgets\n");
+#endif
+
+	  break;
+
+	case VDX_HELP:
+
+          /**  for this first released version, only pull up a vterm window
+               and bring up README file.                                  **/
+
+          __DBGpr_com ("VDXreference_form: HELP");
+
+         FIg_set_state_off ( VDXform_info.ref_form, VDX_HELP );
+         break;
+  
+	case FI_CANCEL:	/* Member of group FI_CTRL_GROUP */
+
+          __DBGpr_com ("VDXreference_form: Cancel");
+
+	  /* Erase and delete the displayed form */
+
+          if (VDXref_files != NULL)
+              	free (VDXref_files); 
+          VDXref_files = NULL;
+          VDXform_info.cur_ref_idx = 0; 
+          VDXform_info.ref_count = 0; 
+          VDXform_info.cur_ref_level = 0; 
+
+          /** Display the main form : eliminate update due to EMS redraw**/
+
+          FIf_display (VDXform_info.main_form);
+          VDXform_info.main_form_displayed = TRUE;
+
+          VDXform_info.ref_form_displayed = FALSE;
+          VDXform_info.ref_form_exists = FALSE;
+          FIf_delete (VDXform_info.ref_form);
+#ifdef VDX_ON_DEBUG
+      printf ("After call to delete\n");
+#endif
+
+	  return;
+
+        case VDX_SEL_MODE_TOGGLE:
+
+          __DBGpr_com ("VDXreference_form: VDX_SEL_MODE_TOGGLE ");
+
+          state = 0;
+          FIg_get_state (VDXform_info.ref_form, VDX_SEL_MODE_TOGGLE,
+                                 &state);
+          if (state)
+           {
+#ifdef VDX_ON_DEBUG
+              printf ("VDX_SEL_MODE_TOGGLE:  ref_file = <%s>\n", ref_file);
+#endif
+              VDXset_groups (VDX_MULTI_SELECT_MODE, VDXform_info.ref_form);
+              
+              strcpy (VDXmsg_str,
+                      "\"Attached Files\" list now in Multiple Select Mode");
+              VDXcenter_message (VDXform_info.ref_form, FI_PROMPT_FIELD,
+                             VDXmsg_str);
+           }
+          else
+           {
+              VDXset_groups (VDX_SINGLE_SELECT_MODE, VDXform_info.ref_form);
+              strcpy (VDXmsg_str,
+                      "\"Attached Files\" list now in Single Select Mode");
+              VDXcenter_message (VDXform_info.ref_form, FI_PROMPT_FIELD,
+                             VDXmsg_str);
+
+              /** If more than one file has been selected, unselect the files 
+                  in the SCF except for the last selected file              **/
+              
+              j = 0;
+              i = 0;
+              num_rows = 0;
+              FIfld_get_num_rows (VDXform_info.ref_form, VDX_REF_FILES_SCF,
+                                  &num_rows);
+              if (strcmp (ref_file, "") == 0)
+               {
+                  for (j = 0; j < num_rows;  j = j + 1)
+                   {
+                      FIfld_set_select (VDXform_info.ref_form,
+                                        VDX_REF_FILES_SCF, j, 0, FALSE);
+                   }
+                  FIg_disable (VDXform_info.ref_form, VDX_NESTED_REFS_BUTTON);
+                  break;
+               } 
+
+              i = 0;
+              vis_rows = 0;
+              FIfld_get_num_vis_rows (VDXform_info.ref_form, VDX_REF_FILES_SCF,
+                                      &vis_rows);
+              sel_flag = FALSE;
+              i = -1;
+              for (j = 0; j < num_rows;  j = j + 1)
+               {
+                  sel_flag = FALSE;
+                  FIfld_get_text (VDXform_info.ref_form, VDX_REF_FILES_SCF,
+                                  j, 0, 255, help_cmd, &sel_flag, &r_pos);
+                  if (sel_flag == TRUE)
+                   {
+                      i = j;
+                   }
+               }
+
+              /** Pass 2 **/
+
+              for (j = 0; j < num_rows;  j = j + 1)
+               {
+                  if (i != j)
+                   {
+                      FIfld_set_select (VDXform_info.ref_form,
+                                        VDX_REF_FILES_SCF, j, 0, FALSE);
+                   } 
+               }
+
+              if (i > vis_rows)
+               {
+                  FIfld_pos_cursor (VDXform_info.ref_form, VDX_REF_FILES_SCF, i,
+                                    i + (vis_rows / 2), 0, 0, 0, 0);
+               }
+
+             /** get the selected reference file **/
+
+             fstatus = VDXget_selected_file (ref_file, VDXform_info.ref_form);
+             if ( (fstatus != 0) && (fstatus != -1) )
+              {
+                 strcpy (VDXmsg_str,
+                        "Internal Error:  Cannot get selected file");
+                 VDXcenter_message (VDXform_info.ref_form, FI_MSG_FIELD,
+                               VDXmsg_str);
+              }
+
+             /**  If fstatus == -1 then just reset **/
+
+             if (fstatus == -1)
+                FIg_disable (VDXform_info.ref_form, VDX_NESTED_REFS_BUTTON);
+             else
+              {
+                 fstatus =  VDXdo_ref_files_exist (ref_file);
+                 if (fstatus != 0)
+                  {
+                     FIg_disable (VDXform_info.ref_form, VDX_NESTED_REFS_BUTTON);
+                     break;
+                  }
+                 FIg_enable (VDXform_info.ref_form, VDX_NESTED_REFS_BUTTON);
+              }
+           }
+
+        break;
+
+        case VDX_REF_FILES_SCF:
+
+          __DBGpr_com ("VDXreference_form: VDX_REF_FILES_SCF ");
+
+           state = 1;
+           fstatus = FIg_get_state (VDXform_info.ref_form, VDX_SEL_MODE_TOGGLE,
+                                    &state);
+
+           /** get the selected reference file **/
+
+           fstatus = VDXget_selected_file (ref_file, VDXform_info.ref_form);
+           if ( (fstatus != 0) && (fstatus != -1) )
+            {
+               strcpy (VDXmsg_str,
+                      "Internal Error:  Cannot get selected file");
+               VDXcenter_message (VDXform_info.ref_form, FI_MSG_FIELD,
+                             VDXmsg_str);
+            }
+
+           if (state == VDX_SINGLE_SELECT_MODE)
+            {
+               /**  If fstatus == -1 file was unselected or display is off**/
+
+               if (fstatus == -1)
+                  FIg_disable (VDXform_info.ref_form, VDX_NESTED_REFS_BUTTON);
+               else
+                {
+                   fstatus =  VDXdo_ref_files_exist (ref_file);
+                   if (fstatus != 0)
+                    {
+                       FIg_disable (VDXform_info.ref_form,
+                                    VDX_NESTED_REFS_BUTTON);
+/***
+                       break;
+***/
+                    }
+                   else
+                     FIg_enable (VDXform_info.ref_form, VDX_NESTED_REFS_BUTTON);
+
+                   VDXget_layers (ref_file, VDXform_info.ref_form);
+                }
+            }
+
+        break;
+
+        case VDX_NESTED_REFS_BUTTON:
+
+          __DBGpr_com ("VDXreference_form: VDX_NESTED_REFS_BUTTON ");
+
+           pstatus = VDXget_ref_files (0, ref_file, VDXform_info.ref_form);
+        break;
+
+        case VDX_DISPLAY_TOGGLE:
+
+          __DBGpr_com ("VDXreference_form: VDX_DISPLAY_TOGGLE ");
+
+          /**  Get the toggle state  **/
+
+          state = 0; 
+          FIg_get_state (VDXform_info.ref_form, VDX_DISPLAY_TOGGLE, &state);
+          if (state == 1)
+           {
+              VDXset_display_off (VDXform_info.ref_form);
+           }
+          else  
+           {
+              VDXset_display_on (VDXform_info.ref_form);
+              state = 1; 
+              FIg_get_state (VDXform_info.ref_form,VDX_SEL_MODE_TOGGLE,&state);
+              if (state == 0) 
+                   VDXget_layers (ref_file, VDXform_info.ref_form);
+           }
+          strcpy (VDXmsg_str, 
+                  "Only files in the current attachment level are eligible");
+          VDXcenter_message (VDXform_info.ref_form, FI_PROMPT_FIELD,
+                             VDXmsg_str);
+
+        break;
+
+        case VDX_LAYERS_MCF:
+
+          __DBGpr_com ("VDXreference_form: VDX_LAYERS_MCF ");
+
+            VDXset_all_layers (VDXform_info.ref_form);
+        break;
+
+        case VDX_KEYIN_LAYER_FIELD:
+
+          __DBGpr_com ("VDXreference_form: VDX_KEYIN_LAYER_FIELD ");
+
+            VDXcheck_level_string (VDXform_info.ref_form); 
+        break;
+
+       }  /** switch **/
+      form_st.gadget_label = 0;
+    }   /****  while  ****/
+
+	End 
+}
+
+main ()
+{
+  char		help_cmd[256];
+  int		fstatus, state; 
+  int		all_or_evgen;
+  int		text_size;
+  long		sts;
+  int		status;
+  int		response;
+  IGRlong	msg;
+  IGRdouble	cht;
+
+  /*
+   * this function is the main interface control for all activities with
+   * the command. It manages the initialization and the form_notification
+   * of the form.
+   * It also controls the output functionalities of the command object.
+   */
+
+  VDXref_files = NULL; 			/* KDD to secure the next call */ 
+
+  VDX_mode = VDX_INTERACTIVE;
+  VDXcre_loaded = 0;
+  state = 0; 
+  all_or_evgen = 0;
+
+  /** setup the signal handler **/
+
+  VDXsetup_signals ();
+
+  VDXref_files				= NULL;
+  VDXform_info.ref_count		= 0; 
+  VDXform_info.cur_ref_idx		= 0; 
+  VDXform_info.cur_ref_level		= 0; 
+  VDXform_info.productionFlag		= FALSE;
+  VDXform_info.main_form_exists		= FALSE;  
+  VDXform_info.ref_form_exists		= FALSE;  
+  VDXform_info.main_form_displayed	= FALSE;  
+  VDXform_info.ref_form_displayed	= FALSE;  
+
+  ci$get_module_info( md_env = &VDXmod_info );
+
+  /*
+   * Do the initialization of the form.
+   */
+  VDXmain_form_init ();
+
+  /*
+   * Get the window id's for all windows
+   */
+  
+  while (1) 
+  {
+      ci$get (prompt = "Fill in the form",
+	      response = &response);
+
+      __DBGpr_int("Gadget ", form_st.gadget_label );
+
+      strcpy (VDXmsg_str, "");
+      FIfld_set_text (VDXform_info.main_form, FI_MSG_FIELD, 0, 0,
+                      VDXmsg_str, FALSE);
+      FIfld_set_text (VDXform_info.main_form, FI_PROMPT_FIELD, 0, 0,
+                      VDXmsg_str, FALSE);
+
+      switch (form_st.gadget_label)
+      {
+        case VDX_PRODUCTION_DATA:
+
+          response = 0;
+          FIg_get_state( VDXform_info.main_form, VDX_PRODUCTION_DATA,
+				&response );
+          if(response){
+              __DBGpr_com("VDX_PRODUCTION_DATA is TRUE ");
+              VDXform_info.productionFlag = TRUE ;
+          }
+          else{
+              __DBGpr_com("VDX_PRODUCTION_DATA is FALSE ");
+              VDXform_info.productionFlag = FALSE ;
+          }
+
+          __DBGpr_int(" ProductionFlag ", VDXform_info.productionFlag );
+          break ;
+
+	case FI_ACCEPT:
+        case FI_EXECUTE: 
+
+          /**  get the gadget state for the Select Mode toggle  **/
+
+	  __DBGpr_com(" IN case FI_ACCEPT, EXECUTE ");
+          state = 1;
+	  
+          FIg_get_state (VDXform_info.main_form, VDX_WIN_FEN_TOGGLE, &state);
+          if (state == 0)
+            all_or_evgen = 1;
+          else
+            all_or_evgen = 0;
+
+	  __DBGpr_com(" Call VDXcre_dgn routine ");
+
+	  __DBGpr_int(" Process mode ", VDX_mode );
+	  __DBGpr_str(" Design File  ", VDXdesign_filename );
+	  __DBGpr_str(" Output File  ", VDXoutput_filename );
+	  __DBGpr_int(" Event Type   ", all_or_evgen );
+
+          VDXcre_loaded = 1;
+
+	/* jvh chord height tol stuff */
+          status = FIfld_get_text (VDXform_info.main_form, VDX_TOL, 0, 0, 25,
+                                         VDXstring_cht, &msg, &msg);
+	  VDXcht = atof( VDXstring_cht );
+	  BSchangepar( &msg, BSTOLCHRDHT, VDXcht);	
+	  //printf("change cht=%.3f  msg=%d\n",VDXcht, msg );
+	  //cht = 0.0;
+  	  //BSxtractpar( &msg, BSTOLCHRDHT, &cht);
+  	  //printf("get cht %.3f\n", cht);
+
+	/* end of cht stuff */
+
+	  push VDX_mode, VDXdesign_filename, all_or_evgen, 
+		VDXoutput_filename, VDXform_info.main_form;
+
+	  ci$exec (file_name = "VDXcre_dgn", entry = "VDXcre_dgn");
+
+	  __DBGpr_com(" After VDXcre_dgn routine ");
+
+	  if ( form_st.gadget_label == FI_ACCEPT )
+          {
+	    /*
+	     * ACCEPT state (exit command after processing).
+	     */
+            VDXrestore_signals ();
+	    delete ();
+	    return;
+	  }
+
+          /**  Reset the form gadgets **/
+          FIg_reset (VDXform_info.main_form, VDX_IGDS_FILE_FIELD); 
+          VDXgen_filename (VDXdesign_filename, VDXoutput_filename, ".dgn");
+          FIg_set_state_off (VDXform_info.main_form, VDX_WIN_FEN_TOGGLE); 
+
+	  FIg_set_state_off (VDXform_info.main_form, VDX_PRODUCTION_DATA );
+	  VDXform_info.productionFlag = FALSE ;
+
+          strcpy (VDXmsg_str, "Awaiting user input ...");
+          VDXcenter_message (VDXform_info.main_form, FI_PROMPT_FIELD,
+                             VDXmsg_str);
+
+	  if( VDXcheck_dgn_file( VDXoutput_filename )){
+	    sprintf(VDXmsg_str," WARNING: File %s exist", VDXoutput_filename );
+	    UI_status (VDXmsg_str);
+	    FIfld_set_text(VDXform_info.main_form,FI_MSG_FIELD,0,0,
+					VDXmsg_str,FALSE);
+	  }
+	  else{
+	    strcpy( VDXmsg_str, "");
+	    UI_status( VDXmsg_str);
+	    FIfld_set_text(VDXform_info.main_form,FI_MSG_FIELD,0,0,
+					VDXmsg_str,FALSE);
+	  }
+	  break;
+
+
+	case VDX_HELP:
+
+          /**  for this first released version, only pull up a vterm window
+               and bring up README file.                                  **/
+
+          FIg_set_state_off ( VDXform_info.main_form, VDX_HELP );
+          break;
+  
+	case FI_CANCEL:	/* Member of group FI_CTRL_GROUP */
+
+	  /* Erase and delete the displayed form */
+
+          VDXrestore_signals ();
+          delete ();
+	  return;
+
+	case VDX_MANIP_REF_BUTTON:
+
+/****     Overide EMS update of display before second form is displayed ***
+          FIf_erase (VDXform_info.main_form);
+          VDXform_info.main_form_displayed = FALSE;
+****/
+          VDXreference_form ();
+          
+
+          if (VDXform_info.main_form_displayed == FALSE)
+           {
+               FIf_display (VDXform_info.main_form);
+               VDXform_info.main_form_displayed = TRUE;
+           }
+
+          strcpy (VDXmsg_str, "Awaiting user input ...");
+          VDXcenter_message (VDXform_info.main_form, FI_PROMPT_FIELD,
+                             VDXmsg_str);
+          
+        break;
+
+	case VDX_IGDS_FILE_FIELD:
+
+          text_size = 255; 
+	  sts = VDXget_text (VDXform_info.main_form, VDX_IGDS_FILE_FIELD,
+                                 0, 0, VDXoutput_filename, &text_size);
+	  if (sts != FI_SUCCESS)
+	  {
+              strcpy (VDXmsg_str,
+                      "Invalid output filename, resetting ..."); 
+              VDXcenter_message (VDXform_info.main_form,  FI_MSG_FIELD, 
+                                 VDXmsg_str); 
+              FIg_reset (VDXform_info.main_form, VDX_IGDS_FILE_FIELD); 
+              VDXgen_filename (VDXdesign_filename, VDXoutput_filename, ".dgn");
+	  }
+
+	  /* put in code to check output_filename */
+	  if( VDXcheck_dgn_file( VDXoutput_filename )){
+	    sprintf(VDXmsg_str," WARNING: File %s exist", VDXoutput_filename );
+	    UI_status (VDXmsg_str);
+	    FIfld_set_text(VDXform_info.main_form,FI_MSG_FIELD,0,0,
+				VDXmsg_str,FALSE);
+	  }
+	  else{
+	    strcpy( VDXmsg_str, "");
+	    UI_status( VDXmsg_str);
+	    FIfld_set_text(VDXform_info.main_form,FI_MSG_FIELD,0,0,
+				VDXmsg_str,FALSE);
+	  }
+	  break;
+       }  /** switch **/
+       form_st.gadget_label = 0;
+    }   /****  while  ****/
+}
+
+int  VDXcheck_dgn_file( dgn_filename )
+char	*dgn_filename;
+{
+	IGRlong		filedesc;
+
+	SetProc( VDXcheck_dgn_file ); Begin
+
+	filedesc = -1 ;
+	filedesc = open (dgn_filename, GUREAD_ONLY, GUACCESS_MODE );
+
+	if( filedesc != -1 ){
+		close ((int) filedesc );
+		End
+		return TRUE ;
+	}
+	End
+	return FALSE ;
+}
+
