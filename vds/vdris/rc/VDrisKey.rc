@@ -1,0 +1,200 @@
+/* $Id: VDrisKey.rc,v 1.3 2002/03/13 16:19:33 ahundiak Exp $  */
+
+/***************************************************************************
+ * I/VDS
+ *
+ * File:        vdris/rc/VDrsxKey.rc
+ *
+ * Description: Unique Key Routines
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ * $Log: VDrisKey.rc,v $
+ * Revision 1.3  2002/03/13 16:19:33  ahundiak
+ * ah
+ *
+ * Revision 1.2  2001/02/11 17:59:58  ahundiak
+ * Renamed VDris2 to VDrisc
+ *
+ * Revision 1.1  2001/02/01 21:58:19  ahundiak
+ * ah
+ *
+ *
+ * History:
+ * MM/DD/YY  AUTHOR  DESCRIPTION
+ * 02/01/01  ah      Header
+ * 03/13/02  ah      Now assume table is always initialized
+*                    We were getting multiple records with a value of 1
+ ***************************************************************************/
+#include "VDtypedefc.h"
+#include "VDrisc.h"
+
+/* -------------------------------------------
+ * Read a key using a select into system
+ * A value of 0 is returned is key is not defined
+ */
+int VDrisGetCurrentKey(char *key_name, int *key)
+{
+  int retFlag = 0;
+
+  exec sql begin declare section;
+    int   keyx;
+    char *key_namex;
+  exec sql end   declare section;
+
+  /* Arg check */
+  if (key == NULL) goto wrapup;
+  *key = 0;
+  if ((key_name == NULL) || (*key_name == 0)) goto wrapup;
+  key_namex = key_name;
+
+  /* Generic Error Handler */
+  exec sql whenever sqlerror goto :error;
+
+  /* Make sure have a value */
+  exec sql whenever not found goto :not_found;
+
+  exec sql select key_num into :keyx from vdat_keys where key_type = :key_namex;
+  *key = keyx;
+  retFlag = 1;
+
+error:
+  exec sql whenever sqlerror continue;
+
+not_found:
+wrapup:
+  return retFlag;
+}
+
+/* -------------------------------------------
+ * Gets a unique key from a table
+ *
+ * Used the routine from App B of the ris programing ref manual
+ * The idea is to avoid locking by adding a where clause to the update
+ * statement.  This allows safe multiple updating of the keys.
+ *
+ * Inits a key to 1 for the first time a key is requested.
+ */
+int VDrisGetNextKey(char *key_name, int *key)
+{
+  int retFlag = 0;
+
+  exec sql begin declare section;
+    char  sqlx[128];
+    char *err_ptr;
+  exec sql end   declare section;
+
+  int keyx,key_try;
+
+  /* Arg check */
+  if (key == NULL) goto wrapup;
+  *key = 0;
+  if ((key_name == NULL) || (*key_name == 0)) goto wrapup;
+
+  /* Generic Error Handler */
+  exec sql whenever sqlerror goto :error;
+
+  /* Get the current key */
+  /* ---------------------------------------------
+   * Sometimes a connection will just fail
+   * The end result is 0
+   * Retry when this happens before giving up
+   */
+  keyx = 0;
+  key_try = 0;
+  while((keyx < 1) && (key_try < 10)) {
+    VDrisGetCurrentKey(key_name,&keyx);
+    if (keyx < 1) {
+      sleep(1);
+      key_try++;
+    }
+  }
+
+  /* --------------------------------------------
+   * Values have to be seeded
+   * So fail completely if no value is found
+   */
+  if (keyx < 1) return 0;
+
+#if 0
+  if (keyx < 1) {
+    sprintf(sqlx,"Insert into vdat_keys values('%s',1);",key_name);
+    VDrisExecute(sqlx);
+    *key = 1;
+    retFlag = 1;
+    return retFlag;
+  }
+#endif
+
+  /* Got the key, need to update the table */
+  exec sql whenever not found goto :key_num_not_found;
+  key_try = 0;
+
+key_loop:
+  keyx++;
+
+  /* Update the table taking into account the possibility that someone else
+   * may have tried updating at the same time */
+  sprintf(sqlx,
+          "Update vdat_keys set key_num = %d where key_type='%s' and key_num=%d;",
+          keyx,key_name,keyx-1);
+
+  exec sql prepare stmt_update_vdat_key from :sqlx;
+  exec sql execute stmt_update_vdat_key;
+  exec sql clear   stmt_update_vdat_key;
+
+  /* Done */
+  *key = keyx;
+  retFlag = 1;
+  return retFlag;
+
+  /* Someone is trying to update at the same time */
+key_num_not_found:
+  exec sql whenever not found continue;
+  exec sql clear stmt_update_vdat_key;
+
+  if (key_try < 10) {
+    key_try++;
+    goto key_loop;
+  }
+  printf("*** Giving up getting key for %s after %d tries \n",key_name,key_try);
+  
+wrapup:
+  return retFlag;
+
+error:
+  exec sql whenever sqlerror continue;
+  exec sql report error into :err_ptr;
+  puts(err_ptr);
+  return retFlag;
+}
+#if 0
+/* -------------------------------------------
+ * Test the unique key generator
+ */
+int VDrsxTestGetNextKey()
+{
+  int retFlag = 0;
+  int sts;
+  int key = 0;
+
+  /* Get started */
+  printf("Opening Schema ... "); fflush(stdout);
+  sts = VDrsxOpenSchema(NULL);
+  if (sts == 0) {
+    printf("Schema not opened.\n");
+    goto wrapup;
+  }
+  printf("Schema Opened.\n");
+
+  VDrsxGetNextKey("test_key",&key);
+  printf("Key %d\n",key);
+
+  retFlag = 1;
+wrapup:
+  return retFlag;
+}
+#endif
+
+

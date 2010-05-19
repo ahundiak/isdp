@@ -1,0 +1,216 @@
+/***************************************************************************
+ * I/VDS
+ *
+ * File:        api/expression/APIexec_exp.u
+ *
+ * Description: Identifies the VDS object.
+ *
+ *
+ * Dependencies:
+ *
+ * History:
+ *      MM/DD/YY        AUTHOR          DESCRIPTION
+ *      12/19/97        i-india         creation date
+ *
+ ***************************************************************************/
+
+#include <stdio.h>
+#include "cieveryone.h"
+#include "ciminimum.h"
+#include "cimacros.h"
+#include "igrdp.h"
+#include "igrtypedef.h"
+#include "godef.h"
+#include "go.h"
+#include "growner.h"
+#include "FI.h"
+#include "ACrg_collect.h"
+#include "VDmem_ppl.h"
+#include "v_slcdef.h"
+#include "v_pplslc.h"
+
+ 
+extern int ci_notification(),
+	   FIf_new(),
+	   FIf_erase(),
+	   FIf_display(),
+	   FIf_set_cmd_oid_os(),
+	   FIfld_set_text(),
+	   FIf_delete(),
+	   UI_message(),
+	   UI_prompt(),
+	   UI_status();
+
+
+#define theForm       "VDselView.frm"
+#define theCommand    "Select Items"
+#define thePrompt     "Select Items"
+
+
+struct CIform_st 
+{
+   int          form_label;
+   int          gadget_label;
+   double       value;
+   Form         form_ptr;
+}form_st;
+
+extern GRclassid        OPP_VDdrwTbl_class_id;
+extern VDtvwInitForm(char *form);
+extern VDtvwSetCancelStatus();
+extern VDtvwNotifyForm();
+Form	 form;
+IGRshort form_displayed;
+
+main()
+{
+IGRint		 	status, i, tolCnt, badCnt, goodCnt;
+struct GRobj_env 	*badTbl, *goodTbl, *tolTbl;
+IGRlong			msg, response;
+GRclassid               classids[1];
+OM_S_OBJID              *list;
+struct GRmd_env         loc_env;
+
+ 
+/* start the form */
+ init_form();
+VDtvwInitForm(form);
+ /* make the form visible */
+ wakeup();
+
+ /* display the default settings */
+ // vdfile$InitForm(form = form);
+ //VDtvwInitForm(form);
+ 
+        while(1)
+        {
+	  UI_message(theCommand);
+
+          ci$get( prompt   = thePrompt,
+                  response = &response );
+	  
+          switch( response )
+  	  {
+    	    case MOVE_ON:
+	      
+	      VDtvwNotifyForm(form,
+			      form_st.gadget_label);
+
+	      switch( form_st.gadget_label )
+	    {
+
+	      
+	      case FI_ACCEPT:
+		delete();
+	        goto wrapup;
+		break;
+		
+	      case FI_CANCEL:
+		delete();
+		goto wrapup;
+		break;
+	   
+
+      	      default:
+	        goto the_loop;
+            }
+
+            case TERMINATE:
+              goto wrapup;
+          }
+the_loop:
+	  response = 0;
+	  
+        }
+
+wrapup:
+
+	form = NULL;
+	return 1;
+}
+
+/* --------------------------------------------------------
+ * Get the form started
+ */
+init_form()
+{
+  IGRint  retFlag;
+
+
+  retFlag = 0;
+
+  if( FIf_new( 0, theForm, ci_notification, &form ) )
+  {
+ 
+    goto wrapup;
+  }
+
+   if( form )
+  {
+    if( FIf_set_cmd_oid_os( form, MY_ID, OM_Gw_current_OS ) )
+    {
+      printf("something went wrong in FIf_set_cmd_oid_os\n");
+      goto wrapup;
+    }
+  }
+
+
+  // Done
+  retFlag = 1;
+
+wrapup:
+  return retFlag;
+}
+
+/* ----------------------------------------
+ * form notification routine
+ * ***/
+
+IGRint form_notification()
+{
+
+  switch ( form_st.gadget_label )
+  {
+    case FI_CANCEL:
+       VDtvwSetCancelStatus();
+      ci$put( response = TERMINATE );
+      goto wrapup;
+  }
+
+  ci$put( response = MOVE_ON );
+
+wrapup:
+
+  return 1;
+
+
+}
+
+
+/****************************************************************/
+init ()
+{
+        UI_message("File Selection" );
+        UI_prompt(" Check the Form ");
+}
+delete()
+{
+  if( form ) FIf_delete( form );
+  form_displayed = FALSE;
+}
+wakeup()
+{
+  if( form ) 
+  {
+    FIf_display( form );
+    form_displayed = TRUE;
+  }
+}
+sleep()
+{
+  if( form_displayed == TRUE)
+  {
+    if( form ) FIf_erase( form );
+    form_displayed = FALSE;
+  }
+}
