@@ -1,0 +1,466 @@
+/* $Id: COsupEtc.u,v 1.1.1.1 2001/01/04 21:09:23 cvs Exp $  */
+
+/***************************************************************************
+ * I/VDS
+ *
+ * File:        vdsup/cmd/ppl/COsupEtc.u
+ *
+ * Description:
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ *      $Log: COsupEtc.u,v $
+ *      Revision 1.1.1.1  2001/01/04 21:09:23  cvs
+ *      Initial import to CVS
+ *
+# Revision 1.2  1999/10/13  19:23:22  pinnacle
+# tr179900767
+#
+# Revision 1.1  1998/04/29  16:27:20  pinnacle
+# VDS 2.5.1
+#
+# Revision 1.2  1998/04/01  15:46:40  pinnacle
+# Replaced: vdsup/cmd/ppl/COsupEtc.u for:  by mdong for vds
+#
+# Revision 1.1  1997/12/17  21:56:38  pinnacle
+# VDsupEtc
+#
+ *
+ *
+ * History:
+ *      MM/DD/YY  AUTHOR  DESCRIPTION
+ *      12/17/97  ah      Added header
+ *      04/01/98  Ming    CR179800888.  Add codes for Modification cmd.
+ *      10/05/99  Ravi    TR179900767.  Added code for Changing Parents.
+ ***************************************************************************/
+
+#include "VDppl.h"
+#include "VDsupCmd.h"
+#include "v_dbgmacros.h"
+#include "VDsupMac.h"
+
+extern VDsupCMDEtcModifyMacro();
+
+struct CIform_st form_st;
+
+#define thePrompt "Pick trace curve(s)"
+#define MdPrompt  "Modify extend trace curve(s)"
+#define MdPNPrompt  "Pick new Parent"
+
+extern VDbroPrintObj();
+extern VDsupGetParameterForPoint();
+
+extern VDsupCMDEtcNotifyCurve();
+extern VDsupCMDEtcNotifyForm();
+
+extern VDsupCMDEtcTrim1();
+extern VDsupCMDEtcTrim2();
+extern VDsupCMDEtcPickedEtc();
+
+extern VDsupCMDEtcInit();
+extern VDsupCMDEtcSleep();
+extern VDsupCMDEtcWakeup();
+extern VDsupCMDEtcDelete();
+
+TVDsupEtc info;
+int ModifyCmdFlag;
+/* --------------------------------------
+ * The main routine
+ */
+int main(argc,argv)
+int   argc;
+char *argv[];
+{
+  int sts;
+  int response,mask;
+
+  struct GRobj_env objOE;
+/*
+  printf("Starting etc, %d\n",argc);
+  if (argc > 1) {
+    printf("Arg %s\n",argv[1]);
+  }
+*/
+
+  if( strcmp(argv[1], "1") ) ModifyCmdFlag = 1;
+  if( strcmp(argv[1], "2") ) ModifyCmdFlag = 0;
+
+  sts = init_form();
+  if (!(sts & 1)) goto wrapup;
+
+  response = 0;
+  info.selInProgress = 0;
+
+  while(1) {
+
+    form_st.gadget_label = 0;
+    response = 0;
+
+    if( ModifyCmdFlag )
+    {
+      UI_message( MdPrompt  );
+      pickETC();
+
+      goto the_loop;
+    }
+    else                
+    {
+      UI_message( thePrompt );
+    
+      sts = ci$locate( prompt       = thePrompt,
+                       classes      = "GRcurve",
+                       owner_action = LC_RIGID_COMP | LC_RIGID_OWNER |
+                                      LC_FLEX_COMP  | LC_FLEX_OWNER  |
+                                      LC_REF_OBJECTS,
+
+                       response     = &response,
+                       md_env       = &objOE.mod_env,
+                       obj          = &objOE.obj_id.objid,
+                       osnum        = &objOE.obj_id.osnum );
+    }
+
+    if (!(sts & 1)) goto the_loop;
+
+    switch(response) {
+
+    case EX_OBJID: { // Object Set
+      VDsupCMDEtcNotifyCurve(&info,&objOE);
+      goto the_loop;
+    }
+
+    case EX_DATA: {  // Single Object
+      VDsupCMDEtcNotifyCurve(&info,&objOE);
+      goto the_loop;
+    }
+
+    } // Switch
+
+the_loop:
+    continue;
+  }
+
+wrapup:
+  return 1;
+}
+
+/* ------------------------------------------
+ * Pick an existing etc curve
+ */
+int pickETC()
+{
+  int retFlag;
+  int sts;
+  int response;
+
+  TGRobj_env objOE;
+  IGRchar buf[128];
+
+
+  // Init
+  if( ModifyCmdFlag ) info.selInProgress = 0;
+  else                info.selInProgress = 1;
+
+  sprintf(buf,"Pick ETC ");
+  UI_status(buf);
+  objOE.obj_id.objid = NULL_OBJID;
+
+  FIg_set_text(info.form,10,buf);
+  retFlag = 0;
+
+  // Do the locate
+  sts = ci$locate(
+    prompt  = buf,
+    classes = "VDsupGen",
+    owner_action = LC_RIGID_COMP | LC_RIGID_OWNER | 
+                   LC_FLEX_COMP  | LC_FLEX_OWNER  | LC_REF_OBJECTS,
+
+    response     = &response,
+    md_env       = &objOE.mod_env,
+    obj          = &objOE.obj_id.objid,
+    osnum	 = &objOE.obj_id.osnum
+  );
+  info.selInProgress = 0;
+  FIg_set_text(info.form,10,"");
+  
+  if (objOE.obj_id.objid == NULL_OBJID) goto wrapup;
+
+  retFlag = VDsupCMDEtcPickedEtc(&info,&objOE);
+
+wrapup:
+  if (retFlag == 1) FIg_set_text(info.form,10,"ETC Selected");
+
+  UI_message(thePrompt);
+  UI_status (thePrompt);
+  return 1;
+}
+
+/* ------------------------------------------
+ * Pick a trim surface
+ */
+int pickTrimSurface(trim)
+int trim;
+{
+  int retFlag;
+  int sts;
+  int response;
+
+  TGRobj_env objOE;
+  IGRchar buf[128];
+
+  // Init
+  info.selInProgress = 1;
+  sprintf(buf,"Pick Trim Surface %d",trim);
+  UI_status(buf);
+  objOE.obj_id.objid = NULL_OBJID;
+
+  FIg_set_text(info.form,10,buf);
+  retFlag = 0;
+
+  // Do the locate
+  sts = ci$locate(
+    prompt  = buf,
+    classes = "EMSsurface",
+    owner_action = LC_RIGID_COMP | LC_RIGID_OWNER | 
+                   LC_FLEX_COMP  | LC_FLEX_OWNER  | LC_REF_OBJECTS,
+
+    response     = &response,
+    md_env       = &objOE.mod_env,
+    obj          = &objOE.obj_id.objid,
+    osnum	 = &objOE.obj_id.osnum
+  );
+  info.selInProgress = 0;
+  FIg_set_text(info.form,10,"");
+  
+  if (objOE.obj_id.objid == NULL_OBJID) goto wrapup;
+
+  if (trim == 1) retFlag = VDsupCMDEtcTrim1(&info,&objOE);
+  else           retFlag = VDsupCMDEtcTrim2(&info,&objOE);
+
+wrapup:
+  if (retFlag == 1) FIg_set_text(info.form,10,"Trim Selected");
+
+  UI_message(thePrompt);
+  UI_status (thePrompt);
+  return 1;
+}
+
+/* ------------------------------------------
+ * Pick the New parent curve to change. 
+ *
+ * fix for TR179900767 Ravi */
+int pickParentCurve()
+{
+  int sts;
+	int retFlag;
+  int response;
+  struct GRobj_env objOE;
+	
+  //Init
+  info.selInProgress = 1;
+	objOE.obj_id.objid = NULL_OBJID;
+	retFlag = 0;
+  
+	UI_status (MdPNPrompt);
+  FIg_set_text(info.form,10,MdPNPrompt);
+      
+  // Do the locate			
+	sts = ci$locate( prompt       = "Pick new Parent",
+                       classes      = "GRcurve",
+                       owner_action = LC_RIGID_COMP | LC_RIGID_OWNER |
+                                      LC_FLEX_COMP  | LC_FLEX_OWNER  |
+                                      LC_REF_OBJECTS,
+                       response     = &response,
+                       md_env       = &objOE.mod_env,
+                       obj          = &objOE.obj_id.objid,
+                       osnum        = &objOE.obj_id.osnum );
+
+	info.selInProgress = 0;
+	FIg_set_text(info.form,10,"");
+
+  if (objOE.obj_id.objid == NULL_OBJID) goto wrapup;
+  info.crvOEs[0] = objOE;
+  
+  retFlag = 1;
+
+wrapup:
+  if (retFlag == 1) FIg_set_text(info.form,10,"Parent Selected");
+
+  UI_message(thePrompt);
+  UI_status (thePrompt);
+  return 1;
+}
+
+
+/* -----------------------------------------
+ * Form stuff
+ */
+form_notification()
+{
+  int retFlag;
+  int sts;
+
+  // Init
+  retFlag = 1;
+  info.gadget =form_st.gadget_label;
+ 
+  // A few always get's handled
+  switch (info.gadget) {
+
+  case FI_RESET: 
+  {
+    if( ModifyCmdFlag )
+    {
+      retFlag = VDsupCMDEtcInit(&info);
+      FIg_erase  ( info.form, VDSUP_FORM_ETC_C_CURVES      );
+      FIg_display( info.form, VDSUP_FORM_ETC_M_CURVES      );
+      FIg_erase  ( info.form, VDSUP_FORM_ETC_L_CURVES      );
+      FIg_erase  ( info.form, VDSUP_FORM_ETC_B_ETC         );
+      FIg_erase  ( info.form, VDSUP_FORM_ETC_B_HILITE_SEL  );
+      FIg_erase  ( info.form, VDSUP_FORM_ETC_B_HILITE_ALL  );
+      FIg_erase  ( info.form, VDSUP_FORM_ETC_B_UNHILITE    );
+      FIg_erase  ( info.form, VDSUP_FORM_ETC_B_DROP_CURVES );
+      FIg_display( info.form, VDSUP_FORM_ETC_T_ETC         );
+      UI_message(MdPrompt);
+      UI_status (MdPrompt);
+      goto wrapup;
+    }
+    else
+    {
+      FIg_erase  ( info.form, VDSUP_FORM_ETC_B_ETC         );
+      FIg_erase  ( info.form, VDSUP_FORM_ETC_G_ETC         );
+			/*      Button added to change Parent. TR179900767 */
+	  	FIg_erase  ( info.form, VDSUP_FORM_ETC_B_PARENT      );
+      break;
+    }
+  }
+  case FI_CANCEL: {
+    ci$put(response = TERMINATE);
+    goto wrapup;
+  }
+  } //switch
+
+  // See if already locating something
+  if (info.selInProgress == 1) {
+    FIg_set_text(info.form,10,"Select In Progress...");
+    goto wrapup;
+  }
+
+  switch (info.gadget) {
+
+  case VDSUP_FORM_ETC_B_TRIM1: {
+    pickTrimSurface(1);
+    goto wrapup;
+  }
+
+  case VDSUP_FORM_ETC_B_TRIM2: {
+    pickTrimSurface(2);
+    goto wrapup;
+  }
+
+  case VDSUP_FORM_ETC_B_ETC: {
+    pickETC();
+    goto wrapup;
+  }
+
+	/* case statement added for TR179900767 */
+	case VDSUP_FORM_ETC_B_PARENT: {
+		pickParentCurve();
+		goto wrapup;
+  }
+  } // Switch
+
+  // Hand it off to .I file
+  retFlag = VDsupCMDEtcNotifyForm(&info);
+
+  // Accept will also terminate if completed sucessfully
+  if ((retFlag == 1) && (info.gadget == FI_ACCEPT)) {
+    ci$put(response = TERMINATE);
+    goto wrapup;
+  }
+
+wrapup:
+  return retFlag;
+
+}
+
+int init_form()
+{
+  int retFlag;
+  int sts;
+  Form existingForm;
+
+  memset(&info,0,sizeof(info));
+  retFlag = 0;
+
+  sts = FI_get_form_by_name("VDsupEtc.frm",&existingForm);
+  if (sts == FI_SUCCESS) {
+    UI_status("X Curve Already Running");
+    return 0;
+  }
+
+  FIf_new(100, "VDsupEtc.frm", ci_notification, &info.form);
+
+  if (info.form == 0) {
+    printf("Could not init X Curve form\n");
+    goto wrapup;
+  }
+
+  sts = VDsupCMDEtcInit(&info);
+  if (!(sts & 1)) goto wrapup;
+
+  FIf_set_cmd_oid_os(info.form, MY_ID, OM_Gw_current_OS );
+
+  VDahFrmLoadPositionFromFile(info.form);
+
+  FIf_display(info.form);
+
+  if( ModifyCmdFlag )
+  {
+    FIg_erase  ( info.form, VDSUP_FORM_ETC_C_CURVES      );
+    FIg_display( info.form, VDSUP_FORM_ETC_M_CURVES      );
+    FIg_erase  ( info.form, VDSUP_FORM_ETC_B_ETC         );
+    FIg_erase  ( info.form, VDSUP_FORM_ETC_B_HILITE_SEL  );
+    FIg_erase  ( info.form, VDSUP_FORM_ETC_B_HILITE_ALL  );
+    FIg_erase  ( info.form, VDSUP_FORM_ETC_B_UNHILITE    );
+    FIg_erase  ( info.form, VDSUP_FORM_ETC_B_DROP_CURVES );
+    FIg_display( info.form, VDSUP_FORM_ETC_T_ETC         );
+  } 
+  else
+  {
+    FIg_erase  ( info.form, VDSUP_FORM_ETC_B_ETC         );
+    FIg_erase  ( info.form, VDSUP_FORM_ETC_G_ETC         );
+		/****  Button added to change Parent  **********/
+		FIg_erase  ( info.form, VDSUP_FORM_ETC_B_PARENT      );
+  }
+
+  retFlag = 1;
+
+wrapup:
+  return retFlag;
+}
+
+/* ------------------------------------------
+ * Usual command object messages
+ */
+init()
+{
+  info.form = NULL;
+}
+sleep() 
+{
+  VDsupCMDEtcSleep(&info);
+  // if (info.form) FIf_erase(info.form);
+}
+wakeup()
+{
+  VDsupCMDEtcWakeup(&info);
+  if (info.form) FIf_display(info.form);
+}
+delete()
+{
+  VDsupCMDEtcDelete(&info);
+  VDahFrmSavePositionInFile(info.form);
+  if (info.form) FIf_delete(info.form);
+  info.form = NULL;
+}

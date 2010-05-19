@@ -1,0 +1,294 @@
+/* $Id: COdbgFlags.u,v 1.3 2001/02/20 16:41:37 build Exp $  */
+
+/***************************************************************************
+ * I/VDS
+ *
+ * File:        vdppl/COdbgFlags.u
+ *
+ * Description:
+ *
+ * Dependencies: 
+ *
+ * Revision History:
+ *      $Log: COdbgFlags.u,v $
+ *      Revision 1.3  2001/02/20 16:41:37  build
+ *      Small Errors.
+ *
+ *      Revision 1.2  2001/02/19 21:07:56  ramarao
+ *      *** empty log message ***
+ *
+ *      Revision 1.1.1.1  2001/01/04 21:09:02  cvs
+ *      Initial import to CVS
+ *
+# Revision 1.1  1998/04/29  16:27:20  pinnacle
+# VDS 2.5.1
+#
+# Revision 1.4  1998/03/10  20:08:56  pinnacle
+# TraceFORM
+#
+# Revision 1.3  1998/03/09  14:09:46  pinnacle
+# ah
+#
+ *
+ * History:
+ * MM/DD/YY  AUTHOR  DESCRIPTION
+ * 03/05/98  ah      Creation, debug flag interface
+ * 03/06/98  ah      Added Pathway
+ * 03/08/98  ah      Corrected CLIX Crash
+ * 03/10/98  ah      Added TraceFORM
+ ***************************************************************************/
+
+#include "VDppl.h"
+
+#include "v_dbgmacros.h"
+
+struct CIform_st form_st;
+
+struct 
+{
+  Form form;
+  int  gadget;
+  
+} info;
+
+#define thePrompt "Debug Flags"
+
+#define VDDBG_FORM_FLAGS_TRACE_OM   14
+#define VDDBG_FORM_FLAGS_TRACE_PPL  12
+#define VDDBG_FORM_FLAGS_TRACE_FORM 26
+
+#define VDDBG_FORM_FLAGS_TRACE_DEV1 16
+#define VDDBG_FORM_FLAGS_TRACE_DEV2 17
+#define VDDBG_FORM_FLAGS_TRACE_DEV3 18
+#define VDDBG_FORM_FLAGS_TRACE_DEV4 19
+
+#define VDDBG_FORM_FLAGS_PATHWAY        20
+#define VDDBG_FORM_FLAGS_PATHWAY_TRIM   24
+#define VDDBG_FORM_FLAGS_PATHWAY_ORIENT 21
+
+#define VDDBG_FORM_FLAGS_ALL_VDS	34
+#define VDDBG_FORM_FLAGS_FILENAME	37
+
+extern IGRboolean _Pathway;
+extern IGRboolean _pathway_trim;
+extern IGRboolean _pathway_orient;
+
+/* --------------------------------------
+ * The main routine
+ */
+int main()
+{
+  int sts;
+  char buf[128];
+  
+  sts = init_form();
+  if (!(sts & 1)) goto wrapup;
+
+  while(1) {
+
+    UI_message(thePrompt);
+
+    ci$get(
+	   string    = buf,
+	   stackable = 1,
+	   prompt    = "Do Something!");
+
+  }
+
+wrapup:
+  return 1;
+}
+
+
+/* -----------------------------------------
+ * Form stuff
+ */
+form_notification()
+{
+  int     retFlag;
+  int     state, state1, state2, state3, state4;
+  char    out_filename[40];
+  
+  // Init
+  retFlag = 1;
+  info.gadget = form_st.gadget_label;
+ 
+  // A few always get's handled
+  switch (info.gadget) {
+
+  case FI_CANCEL: 
+    {
+      ci$put(response = TERMINATE);
+      goto wrapup;
+    }
+
+  case FI_ACCEPT: 
+    {
+      VIg_get_state(info.form,VDDBG_FORM_FLAGS_TRACE_OM,&state);
+      VDdbgSetTraceOM(state);
+
+      VIg_get_state(info.form,VDDBG_FORM_FLAGS_TRACE_PPL,&state);
+      VDdbgSetTracePPL(state);
+
+      VIg_get_state(info.form,VDDBG_FORM_FLAGS_TRACE_FORM,&state);
+      VDdbgSetTraceFORM(state);
+
+      VIg_get_state(info.form,VDDBG_FORM_FLAGS_TRACE_DEV1,&state);
+      VDdbgSetTraceDev1(state);
+
+      VIg_get_state(info.form,VDDBG_FORM_FLAGS_TRACE_DEV2,&state);
+      VDdbgSetTraceDev2(state);
+
+      VIg_get_state(info.form,VDDBG_FORM_FLAGS_TRACE_DEV3,&state);
+      VDdbgSetTraceDev3(state);
+
+      VIg_get_state(info.form,VDDBG_FORM_FLAGS_TRACE_DEV4,&state);
+      VDdbgSetTraceDev4(state);
+
+      VIg_get_state(info.form,VDDBG_FORM_FLAGS_PATHWAY,&state);
+      _Pathway = state;
+
+      VIg_get_state(info.form,VDDBG_FORM_FLAGS_PATHWAY_TRIM,&state);
+      _pathway_trim = state;
+      
+      VIg_get_state(info.form,VDDBG_FORM_FLAGS_PATHWAY_ORIENT,&state);
+      _pathway_orient = state;
+
+      VIg_get_state(info.form,VDDBG_FORM_FLAGS_TRACE_DEV1,&state1);
+      VIg_get_state(info.form,VDDBG_FORM_FLAGS_TRACE_DEV2,&state2);
+      VIg_get_state(info.form,VDDBG_FORM_FLAGS_TRACE_DEV3,&state3);
+      VIg_get_state(info.form,VDDBG_FORM_FLAGS_TRACE_DEV4,&state4);
+
+      if( state1 || state2 || state3 || state4 )
+      {
+	 if( DBG_Gb_Fp != NULL && DBG_Gb_Fp != stdout ) fclose( DBG_Gb_Fp );
+
+	 VIg_get_text( info.form,VDDBG_FORM_FLAGS_FILENAME, out_filename );
+
+         if( out_filename[0] == '\0' ) DBG_Gb_Fp = stdout;
+         else                          DBG_Gb_Fp = fopen( out_filename, "w" );
+
+	 if( DBG_Gb_Fp == NULL ) DBG_Gb_Fp = stdout;
+      }
+      else
+      {
+	 if( DBG_Gb_Fp != NULL && DBG_Gb_Fp != stdout ) fclose( DBG_Gb_Fp );
+      }
+      
+      ci$put(response = TERMINATE);
+      goto wrapup;
+    }
+
+   case VDDBG_FORM_FLAGS_ALL_VDS:
+    {
+	VIg_get_state(info.form,VDDBG_FORM_FLAGS_ALL_VDS,&state);
+	VIg_set_state(info.form,VDDBG_FORM_FLAGS_TRACE_DEV1,state);
+	VIg_set_state(info.form,VDDBG_FORM_FLAGS_TRACE_DEV2,state);
+	VIg_set_state(info.form,VDDBG_FORM_FLAGS_TRACE_DEV3,state);
+	VIg_set_state(info.form,VDDBG_FORM_FLAGS_TRACE_DEV4,state);
+    }
+      
+  } //switch
+
+wrapup:
+  return retFlag;
+
+}
+
+int init_form()
+{
+  int retFlag;
+  int sts;
+  int state, state1, state2, state3, state4;
+  
+  memset(&info,0,sizeof(info));
+  retFlag = 0;
+
+  VIf_new(100, "VDdbgFlags.F", ci_notification, &info.form);
+
+  if (info.form == NULL) {
+    printf("Could not init Debug Flags form\n");
+    goto wrapup;
+  }
+
+  VIf_set_cmd_oid_os(info.form, MY_ID, OM_Gw_current_OS );
+
+  VDahFrmLoadPositionFromFile(info.form);
+
+  state = VDdbgGetTraceOM();
+  VIg_set_state(info.form,VDDBG_FORM_FLAGS_TRACE_OM,state);
+  
+  state = VDdbgGetTracePPL();
+  VIg_set_state(info.form,VDDBG_FORM_FLAGS_TRACE_PPL,state);
+
+  state = VDdbgGetTraceFORM();
+  VIg_set_state(info.form,VDDBG_FORM_FLAGS_TRACE_FORM,state);
+  
+  state = VDdbgGetTraceDev1();
+  VIg_set_state(info.form,VDDBG_FORM_FLAGS_TRACE_DEV1,state);
+  
+  state = VDdbgGetTraceDev2();
+  VIg_set_state(info.form,VDDBG_FORM_FLAGS_TRACE_DEV2,state);
+  
+  state = VDdbgGetTraceDev3();
+  VIg_set_state(info.form,VDDBG_FORM_FLAGS_TRACE_DEV3,state);
+  
+  state = VDdbgGetTraceDev4();
+  VIg_set_state(info.form,VDDBG_FORM_FLAGS_TRACE_DEV4,state);
+
+  VIg_get_state(info.form,VDDBG_FORM_FLAGS_TRACE_DEV1,&state1);
+  VIg_get_state(info.form,VDDBG_FORM_FLAGS_TRACE_DEV2,&state2);
+  VIg_get_state(info.form,VDDBG_FORM_FLAGS_TRACE_DEV3,&state3);
+  VIg_get_state(info.form,VDDBG_FORM_FLAGS_TRACE_DEV4,&state4);
+
+  if( state1 || state2 || state3 || state4 )   state = 1;
+  else					       state = 0;
+
+  VIg_set_state(info.form,VDDBG_FORM_FLAGS_ALL_VDS, state );
+
+  // Putting pathway stuff directly in the set_state
+  // Causes crash on unix
+  state = _Pathway;
+  VIg_set_state(info.form,VDDBG_FORM_FLAGS_PATHWAY,state);
+  state = _pathway_trim;
+  VIg_set_state(info.form,VDDBG_FORM_FLAGS_PATHWAY_TRIM,state);
+  state = _pathway_orient;
+  VIg_set_state(info.form,VDDBG_FORM_FLAGS_PATHWAY_ORIENT,state);
+
+
+  // These crash on CLIX
+#if 0
+  VIg_set_state(info.form,VDDBG_FORM_FLAGS_PATHWAY_TRIM,  _pathway_trim);
+  VIg_set_state(info.form,VDDBG_FORM_FLAGS_PATHWAY_ORIENT,_pathway_orient);
+#endif
+
+  VIf_display(info.form);
+
+  retFlag = 1;
+
+wrapup:
+  return retFlag;
+}
+
+/* ------------------------------------------
+ * Usual command object messages
+ */
+init()
+{
+  info.form = NULL;
+}
+sleep() 
+{
+  if (info.form) VIf_erase(info.form);
+}
+wakeup()
+{ 
+  UI_message(thePrompt);
+  if (info.form) VIf_display(info.form);
+}
+delete()
+{
+  VDahFrmSavePositionInFile(info.form);
+  if (info.form != NULL) VIf_delete(info.form);
+  info.form = NULL;
+}

@@ -1,0 +1,1469 @@
+/* $Id: crv_expans.u,v 1.1.1.1 2001/01/04 21:08:55 cvs Exp $  */
+
+/***************************************************************************
+ * I/VDS
+ *
+ * File:	vdloft/ppl/crv_expans.u
+ *
+ * Description:
+ *	<Assoc> Place Expansion Curve
+ *
+ *	This function is designed to generate a single expansion curve
+ *	from a existing curve lying already a surface.
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ *	$Log: crv_expans.u,v $
+ *	Revision 1.1.1.1  2001/01/04 21:08:55  cvs
+ *	Initial import to CVS
+ *	
+# Revision 1.1  1998/04/29  16:27:20  pinnacle
+# VDS 2.5.1
+#
+# Revision 1.1  1997/05/08  13:20:44  pinnacle
+# New project VDS 250
+#
+# Revision 1.1  1996/07/19  20:33:52  pinnacle
+# Create VDS 241 project
+#
+# Revision 1.2  1996/03/27  14:07:42  pinnacle
+# Replaced: vdloft/ppl/crv_expans.u for:  by azuurhou for vds.240
+#
+# Revision 1.1  1996/03/24  19:30:40  pinnacle
+# Created: ./vdloft/ppl/crv_expans.u by azuurhou for vds.240
+#
+ *
+ * History:
+ *	MM/DD/YY	AUTHOR		DESCRIPTION
+ *	04/20/85	jll		creation date
+ *
+ ***************************************************************************/
+
+#include <stdio.h>
+#include "cieveryone.h"
+#include "cimacros.h"
+#include "ci_mac_def.h"
+#include "nddef.h"
+#include "macro.h"
+#include "bserr.h"
+#include "EMSdpb.h"
+#include "igrdp.h"
+#include "bsparameters.h"
+#include "madef.h"
+#include "growner.h"
+#include "msdef.h"
+#include "OMmacros.h"
+
+struct GRid		CI_MACRO_ID;
+struct GRmd_env		MOD_ENV;
+struct GRvg_construct	cst;
+struct IGRdisplay	dis;
+IGRlong			msgmsg;
+
+extern int		GRabsg_del_by_objid();
+extern IGRint 		init_cnst_list();
+extern			ASsuper_construct();
+extern			GRabsg_del_by_objid();
+
+/* VDS ROUTINES */
+extern			EvalFromTo();
+extern			BuildSrf();
+extern			IntTwoSrf();
+
+
+extern IGRint		BScveval();
+extern IGRboolean	BSnorvec();
+extern IGRint		BScrossp();
+extern IGRint		free();
+extern IGRdouble	BSdistptpts();
+extern IGRdouble	BSdistptpt();
+extern void		BSxlnpl();
+extern void		BStst_plan();
+extern IGRint		BSpj_pt_sf();
+extern IGRint		BSmdistptsf();
+extern void             BSsfevaln();
+extern void		BScvarrevc();
+extern IGRboolean       BSproj0();
+extern IGRboolean 	BSmkvec();
+extern IGRboolean       MArang2vc();
+extern IGRdouble	fabs();
+extern IGRboolean       BSxtractpar();
+extern IGRboolean	BScv_sf_int();
+extern void		BSmdstptcv();
+extern void		BSalloccv();
+extern IGRboolean	BSfreecv();
+extern IGRboolean 	BScv_copy();
+extern IGRboolean 	BSpl_cv_int();
+extern IGRboolean 	BSpartofcv();
+
+extern GRclassid  	OPP_GR3dpoint_class_id;
+
+#define MACRO_NAME    		"crv_expans" 
+#define MAX_TEMP		5
+#define MAX_FEET		1
+
+/* ========================================================================= */
+/* the main function is the one implementing the definition creation
+/* ========================================================================= */
+
+main ()
+{
+
+GRobj 			ci_mac_def1;
+IGRchar			*temp_names[MAX_TEMP], *feet_names[MAX_FEET];
+IGRint			temp_types[MAX_TEMP];
+IGRlong			stat;
+
+ 
+  temp_names[0] = "ref";
+  temp_names[1] = "surface";
+  temp_names[2] = "crv";
+  temp_names[3] = "end_bound";
+  temp_names[4] = "method";
+
+  temp_types[0] = point_generic | ref_generic;
+  temp_types[1] = surface_generic | other_generic;
+  temp_types[2] = line_generic | conic_generic | curve_generic;  
+  temp_types[3] = point_generic | surface_generic | other_generic;
+  temp_types[4] = parameter_generic | double_type;
+  
+  feet_names[0] = "rescrv";
+
+  ci_mac_def1 = NULL_OBJID;
+
+  ac$cimacdef( 	cimacdef          = ci_mac_def1,
+		prop		  = ACvariable_template,
+		status 	          = &stat, 	
+		name              = MACRO_NAME,
+              	temp_num          = MAX_TEMP,
+		temp_names        = temp_names,
+		temp_types        = temp_types,
+	      	extern_feet_num   = MAX_FEET,
+	 	extern_feet_names = feet_names );
+}
+
+/* ========================================================================= */
+
+IGRlong retrieve_parents( refStr, objEnv, method, msg )
+
+struct ret_struct	*refStr;
+struct GRlc_info	*objEnv;
+IGRint			*method;
+IGRlong			*msg;
+
+{
+IGRlong			locSts;
+IGRint			i;
+struct	GRid		ASelem;
+struct ret_struct	expr;
+
+/*-------------------------------------------------------------------------*/
+/* retrieve the coordinate system				           */
+/*-------------------------------------------------------------------------*/
+
+  	locSts = ci$send( msg = message  ACcpx.ACfind_exp_temp_struct(
+					msg, 0, (IGRchar *)refStr, &MOD_ENV ),
+           	 targetid = CI_MACRO_ID.objid,
+           	 targetos = CI_MACRO_ID.osnum );
+  	if( !(locSts&(*msg)&1) ){
+#ifdef DEBUG
+		printf("Error in retrieve_parents\n");
+		printf("ACfind_exp_temp_struct for referential\n");
+#endif
+		return(MSFAIL);
+	}
+
+/*-------------------------------------------------------------------------*/
+/* retrieve the four graphic parents				           */
+/*-------------------------------------------------------------------------*/
+
+  for(i=0;i<3;i=i+1){
+
+     	locSts = ci$send( msg      = message  ACcpx.ACfind_exp_temp_obj(
+							msg,(i+1),&ASelem),
+ 	      	       targetid = CI_MACRO_ID.objid ,
+	      	       targetos = CI_MACRO_ID.osnum);
+  	if( !(locSts&(*msg)&1) ){
+#ifdef DEBUG
+		printf("Error in retrieve_parents\n");
+		printf("ACfind_exp_temp_obj for parent = %d\n",(i+1));
+#endif
+		return(MSFAIL);
+	}
+
+     	locSts =
+	ci$send( msg      = message NDmacro.ACreturn_foot(	
+				msg,
+				"",
+				&(objEnv[i].located_obj), 
+				&objEnv[i].module_info.md_env.matrix_type, 
+				objEnv[i].module_info.md_env.matrix ),
+	        targetid = ASelem.objid,
+	        targetos = ASelem.osnum );
+  	if( !(locSts&(*msg)&1) ){
+#ifdef DEBUG
+		printf("Error in retrieve_parents\n");
+		printf("ACreturn_foot for parent = %d\n",(i+1));
+#endif
+		return(MSFAIL);
+	}
+   }
+
+/*-------------------------------------------------------------------------*/
+/* retrieve the method						           */
+/*-------------------------------------------------------------------------*/
+
+  locSts =
+  ci$send(msg = message  ACcpx.ACfind_exp_temp_struct(
+					msg, 4, (IGRchar *)&expr, &MOD_ENV ),
+	  targetid = CI_MACRO_ID.objid,
+	  targetos = CI_MACRO_ID.osnum );
+  if( !(locSts&(*msg)&1) ){
+#ifdef DEBUG
+	printf("Error in retrieve_parents\n");
+	printf("ACfind_exp_temp_struct for referential\n");
+#endif
+	return(MSFAIL);
+  }
+
+  *method = (IGRint) expr.var.root_pm_st.value;
+  if( *method <= 0 )     *method = 0;
+  else                   *method = 1;
+
+  return(MSSUCC);
+}
+/* ========================================================================= */
+
+IGRlong project_pnt_sf( pSrf, pPtToProj, pVecOfProj, pPtUvDistSol, pMsg )
+
+/*h 
+	this is a function to evaluate the projection of the end points
+	of line segment or the arc. if the vector of projection is set
+	to NULL then a minimum distance is performed.
+*/
+
+struct	IGRbsp_surface	*pSrf;		/*I thes surface on which we apply the
+					    projection along vector or in
+					    normal */
+IGRdouble		*pPtToProj;	/*I the point to be projected */
+IGRdouble		*pVecOfProj;    /*I the vector of projection or NULL */
+IGRdouble		*pPtUvDistSol;  /*O the point solution and the u,v
+					    parameters solution and 
+					    the distance */
+IGRlong			*pMsg;		/*O the return code MSSUCC or MSFAIL */
+
+{
+/*
+extern IGRint		BSpj_pt_sf();
+extern IGRdouble	BSdistptpts();
+extern IGRint		BSmdistptsf();
+*/
+
+IGRint			i, iRef;
+IGRint			num_pts;
+IGRdouble		*proj_pts, *u_par, *v_par;
+IGRlong			locSts;
+IGRdouble		distCou, distRef;
+IGRdouble		u, v;
+
+
+	locSts = MSFAIL;
+	proj_pts = NULL;
+	u_par    = NULL;
+	v_par    = NULL;
+	num_pts  = 0;
+
+if( pVecOfProj == NULL ){
+
+       	BSmdistptsf(    pMsg,
+                        pSrf,
+                        pPtToProj,
+                        &(pPtUvDistSol[3]),
+                        &(pPtUvDistSol[4]),
+                        pPtUvDistSol,
+                        &(pPtUvDistSol[5]) );
+  	if( (*pMsg) != BSSUCC ){
+#ifdef DEBUG
+		printf("error in project_pnt_sf\n");
+		printf("BSmdistptsf Failed\n");
+#endif
+		*pMsg = MSFAIL;
+		goto wrapup;
+        }
+}
+else{
+
+  	BSpj_pt_sf( pSrf, pPtToProj, pVecOfProj, &num_pts, 
+		    &proj_pts, &u_par, &v_par, pMsg );
+  	if( ((*pMsg) != BSSUCC) || (num_pts == 0) ){
+#ifdef DEBUG
+		printf("error in project_pnt_sf\n");
+		printf("BSpj_pt_sf Failed\n");
+#endif
+		*pMsg = MSFAIL;
+		goto wrapup;
+        }
+	else{
+	    distRef = BSdistptpts( pMsg, pPtToProj, proj_pts );
+	    iRef = 0;	    
+	    for(i=0;i<num_pts;i=i+1){
+		distCou = BSdistptpts( pMsg, pPtToProj, &(proj_pts[3*i]) );
+		if( distCou < distRef ){
+			distRef = distCou;
+			iRef    = 3*i;
+		}
+	    }
+	}
+
+	for(i=0;i<3;i=i+1) pPtUvDistSol[i] = proj_pts[iRef+i];
+	iRef = iRef / 3;
+	pPtUvDistSol[3] = u_par[iRef];
+	pPtUvDistSol[4] = v_par[iRef];
+	pPtUvDistSol[5] = distRef;
+}
+
+	*pMsg = MSSUCC;
+	locSts = MSSUCC;
+wrapup:
+
+	if( proj_pts != NULL ){ free(proj_pts); proj_pts = NULL; }
+	if( u_par != NULL )   { free(u_par);    u_par    = NULL; }
+        if( v_par != NULL )   { free(v_par);    v_par    = NULL; }
+	return(locSts);
+} 
+/* ========================================================================= */
+
+IGRlong find_startPnt( pSrf, pCrv, pGeomBound, cidBound, pVecProj, method, 
+		       pStartPt, pEndPt, pIsPlanar, pNorPla, pMsg   )
+
+/*h
+
+	this function finds the nearest end point of the innput curve
+	with the boundary element. This point will be the start  point
+	of the line segment or the arc projected onto the surface. In the
+	same time we evaluate the second end point of the line segment.
+*/
+
+struct	IGRbsp_surface	*pSrf;		/*I the surface */
+struct	IGRbsp_curve	*pCrv;		/*I the crv from which we extend */ 
+IGRchar			*pGeomBound;    /*I point the boundary geometry */
+GRclassid		cidBound;       /*I classid of the bounded geometry */
+IGRdouble		*pVecProj;      /*I vector of projection if NULL
+					    then projevtion along normal will
+					    be applyed */
+IGRint			method;		/*I the method applyed */
+IGRdouble		*pStartPt;      /*O the start pt with parameter,
+					    point and derivate */
+IGRdouble		*pEndPt;        /*O the end pointin the case of point 
+					    as bound geometry */
+IGRboolean		*pIsPlanar;     /*O planarity for the bounded obj.
+				            if the object is a point then
+					    pIsPlanar is set to FALSE */ 
+IGRdouble		*pNorPla;       /*O normal to plane */
+IGRlong			*pMsg;		/*O return code MSSUCC, MSFAIL */
+
+{
+IGRint			i;
+IGRdouble		midPt[6];
+IGRdouble		startPt[7], endPt[7], ptToProj[6];
+IGRlong			locSts;
+struct IGRbsp_surface	*pSrfBound;
+struct IGRbsp_curve	*pCrvBound;
+IGRdouble		sPt[3], ePt[3];
+
+
+	*pIsPlanar = FALSE;
+	for(i=0;i<3;i=i+1) pNorPla[i] = 0;
+
+	BScveval ( pCrv , (IGRdouble)0.5, (IGRint)1, midPt, pMsg );
+	if( (*pMsg) != BSSUCC ){
+#ifdef DEBUG
+		printf("Error in find_startPnt\n");
+		printf("BScveval Failed at mid point\n");
+#endif
+       		goto wrapup;
+	}
+
+	startPt[0] = 0.0;
+	BScveval ( pCrv , 0.0, (IGRint)1, &(startPt[1]), pMsg );
+	if( (*pMsg) != BSSUCC ){
+#ifdef DEBUG
+		printf("Error in find_startPnt\n");
+		printf("BScveval Failed at start point\n");
+#endif
+		goto wrapup;
+	}
+
+	endPt[0] = 1.0;
+	BScveval ( pCrv , 1.0, (IGRint)1, &(endPt[1]), pMsg );
+	if( (*pMsg) != BSSUCC ){
+#ifdef DEBUG
+		printf("Error in find_startPnt\n");
+		printf("BScveval Failed at end point\n");
+#endif
+       		goto wrapup;
+	}
+
+	if( om$is_ancestry_valid( superclassid = OPP_GR3dpoint_class_id,
+                          subclassid   = cidBound ) == OM_S_SUCCESS) {
+
+	  pCrvBound = ( struct IGRbsp_curve * )pGeomBound;
+	  locSts = project_pnt_sf( pSrf, pCrvBound->poles, pVecProj, 
+			    pEndPt, pMsg );
+	  if( !(locSts&(*pMsg)&1) ){
+#ifdef DEBUG
+		printf("Error in find_startPnt\n");
+		printf("project_pnt_sf 1 Failed");
+#endif
+		goto wrapup;
+	  }
+	}/* end of case if the limited object is a point */
+	else{
+	  pSrfBound = (struct IGRbsp_surface *)pGeomBound;
+
+	  BStst_plan( (IGRint)(pSrfBound->u_num_poles*pSrfBound->v_num_poles), 
+		    pSrfBound->poles, pSrfBound->weights,
+		    pIsPlanar, pNorPla, pMsg );
+ 
+	  if( *pIsPlanar == TRUE ){
+
+		for(i=0;i<3;i=i+1){
+			  sPt[i]     = startPt[i+1] + 100*startPt[4+i];
+			  ePt[i]     = endPt[i+1] + 100*endPt[4+i];
+			  midPt[3+i] = midPt[i] + 100*midPt[3+i];
+		} 
+
+		BSxlnpl( pMsg, pNorPla, pSrfBound->poles,
+	        	 midPt, &midPt[3], ptToProj );
+		if( (*pMsg) != BSSUCC ){
+#ifdef DEBUG
+			printf("Error in find_startPnt\n");
+			printf("BSxlnpl 1 Failed\n");
+#endif
+        		goto wrapup;
+		}
+
+		if( ( BSdistptpts(pMsg, &startPt[1], ptToProj) ) < 
+    	    	    ( BSdistptpts(pMsg, &endPt[1], ptToProj) ) )
+
+			BSxlnpl( pMsg, pNorPla, pSrfBound->poles,
+         		 	 &startPt[1], sPt, ptToProj );
+
+		else
+			BSxlnpl( pMsg, pNorPla, pSrfBound->poles,
+	         		 &endPt[1], ePt, ptToProj );
+
+		if( (*pMsg) != BSSUCC ){
+#ifdef DEBUG
+			printf("Error in find_startPnt\n");
+			printf("BSxlnpl 2 Failed");
+#endif
+			*pMsg = MSFAIL;
+			goto wrapup;
+		}
+
+	  }
+	  else{
+		locSts = project_pnt_sf( pSrfBound, midPt, &midPt[3], ptToProj, 
+			            pMsg);
+  		if( !(locSts&(*pMsg)&1) ){
+#ifdef DEBUG
+			printf("Error in find_startPnt\n");
+			printf("project_pnt_sf mid Pt Failed");
+#endif
+			goto wrapup;
+		}
+
+		if( ( BSdistptpts(pMsg, &startPt[1], ptToProj) ) < 
+	    	    ( BSdistptpts(pMsg, &endPt[1], ptToProj) ) )
+
+			locSts = project_pnt_sf( pSrfBound, &(startPt[1]), 
+					    &(startPt[4]), ptToProj, pMsg );
+		
+		else
+			locSts = project_pnt_sf( pSrfBound, &(endPt[1]), 
+					    &(endPt[4]), ptToProj, pMsg );
+		
+
+		if( !(locSts&(*pMsg)&1) ){
+#ifdef DEBUG
+			printf("Error in find_startPnt\n");
+			printf("project_pnt_sf 2 Failed");
+#endif
+			goto wrapup;
+		}
+	  }
+
+	  if( method == 0 ){
+		locSts = project_pnt_sf( pSrf, ptToProj, pVecProj, pEndPt, pMsg );
+  		if( !(locSts&(*pMsg)&1) ){
+#ifdef DEBUG
+			printf("Error in find_startPnt\n");
+			printf("project_pnt_sf 3 Failed\n");
+#endif
+			goto wrapup;
+		}
+	  }
+	  else for(i=0;i<3;i=i+1) pEndPt[i] = ptToProj[i];
+
+	}/* end of case if the limited object is a surface */
+
+	if(	BSdistptpts(pMsg, &(startPt[1]), pEndPt) < 
+		BSdistptpts(pMsg, &(endPt[1]), pEndPt) ){
+
+		for(i=0;i<7;i=i+1) pStartPt[i] = startPt[i]; 
+	}
+	else{
+		for(i=0;i<7;i=i+1) pStartPt[i] = endPt[i];  
+	}
+
+	*pMsg = MSSUCC;
+	return(MSSUCC);
+
+wrapup:
+	*pMsg = MSFAIL;
+	return(MSFAIL);
+}
+
+/* ========================================================================= */
+IGRlong eval_expand_crvMet0( pSrf, pCrv, pStartPaPt, pEndPtUvDist, pGeomBound, 
+			     cidBound, pVecProj, pCst, pObjToProj, pMsg   )
+
+/*h
+
+	This function evaluate evaluates and creates a line segment that
+	will be later projected onto a surface.
+	The line segment is an expansion of the input curve limited
+	by the nearest end point of this curve with the bounded object.
+	If the bounded object is a point then the line segment joint
+	this point with the nearest end point of the curve.
+	If the bounded object is a plan or a surface then the end point 
+	is the projection of the nearest end point of the curve along
+	its derivate.
+*/
+
+struct	IGRbsp_surface	*pSrf;		/*I the surface */
+struct	IGRbsp_curve	*pCrv;		/*I the crv from which we extend */ 
+IGRdouble		*pStartPaPt;    /*I start point */
+IGRdouble		*pEndPtUvDist;	/*I end point when we got a point as
+					    boundary */ 
+IGRchar			*pGeomBound;    /*I point the boundary geometry */
+GRclassid		cidBound;       /*I classid of the bounded geometry */
+IGRdouble		*pVecProj;      /*I vector of projection if NULL
+					    then projevtion along normal will
+					    be applyed */
+struct GRvg_construct	*pCst;		/*I the construction list */
+struct GRlc_info	*pObjToProj;    /*O the line segment solution to
+					    projected later onto the surface */
+IGRlong			*pMsg;		/*O return code MSSUCC, MSFAIL */
+
+{
+
+IGRint			i;
+IGRdouble		ptOnSrf[6];
+IGRlong			locSts;
+struct	IGRpolyline	segStr;
+
+    *pMsg = MSFAIL;
+
+    for(i=0;i<3;i=i+1){
+	  ptOnSrf[i]   = pStartPaPt[i+1];
+	  ptOnSrf[i+3] = pEndPtUvDist[i];
+    }
+
+    segStr.num_points  = 2;
+    segStr.points      = ptOnSrf;
+    pCst->geometry     = (char *)&segStr;
+
+    pObjToProj->located_obj.objid = NULL_OBJID;
+    pObjToProj->located_obj.osnum = pCst->env_info->md_id.osnum;
+
+    locSts = ci$send( msg       = message GR3dlineseg.GRaltconstruct(pCst),
+           	      targetid  = pObjToProj->located_obj.objid,
+ 	   	      targetos  = pObjToProj->located_obj.osnum );
+
+    if( !(locSts&(*(pCst->msg))&1) ){
+		#ifdef DEBUG
+		printf("Error in eval_expand_crvMet0\n");
+		printf("GRaltconstruct for lineseg Failed");
+		#endif
+		pObjToProj->located_obj.objid = NULL_OBJID;
+		goto wrapup;
+    }
+
+	pObjToProj->module_info = *(pCst->env_info);
+
+
+    *pMsg = MSSUCC;
+    return( MSSUCC );
+
+wrapup:
+
+   return( MSFAIL );
+
+}
+
+/* ========================================================================= */
+
+IGRlong eval_expand_crvMet1( pSrf, pCrv, pStartPaPt, pEndPtUvDist, pGeomBound, 
+			     cidBound, pVecProj, pCst, method,
+			     pObjToProj, pMsg   )
+
+/*h
+	This function evaluate evaluates and creates a curve that
+	a curvature extrapolation of the input curve, this curvature curve
+	will be later projected onto a surface along vector.
+*/
+
+struct	IGRbsp_surface	*pSrf;		/*I the surface */
+struct	IGRbsp_curve	*pCrv;		/*I the crv from which we extend */ 
+IGRdouble		*pStartPaPt;    /*I start point */
+IGRdouble		*pEndPtUvDist;	/*I end point when we got a point as
+					    boundary */ 
+IGRchar			*pGeomBound;    /*I point the boundary geometry */
+GRclassid		cidBound;       /*I classid of the bounded geometry */
+IGRdouble		*pVecProj;      /*I vector of projection if NULL
+					    then projevtion along normal will
+					    be applyed */
+struct GRvg_construct	*pCst;		/*I the construction list */
+IGRint			*method;	/*M this argument is mixte and could be
+					    set to 0 if the curve produced is
+					    a lineseg instead of an arc */
+struct GRlc_info	*pObjToProj;    /*O the resulting curve */
+IGRlong			*pMsg;		/*O return code MSSUCC, MSFAIL */
+
+{
+
+IGRint			i, k;
+IGRlong			locSts;
+struct	IGRpolyline	segStr;
+IGRdouble		maxKurv, kurv, rad, eval[6], ptOnKurvLine[3];
+struct IGRarc		ell;
+IGRdouble		pCir[9], norEll[3], tol;
+
+    *pMsg = MSFAIL;
+    maxKurv = 1000000;
+
+    /* evaluate the radius of curvature at the proper starting point */
+    
+    BScvarrevc(pCrv,1,&pStartPaPt[0],maxKurv,&kurv,&rad,eval,&locSts);
+#ifdef DEBUG
+    printf("locSts = %d, rad = %f\n",locSts,rad);
+#endif
+
+    if( locSts != BSSUCC ){
+#ifdef DEBUG
+	printf("Error in eval_expand_crvMet1\n");
+	printf("BScvarrevc Failed call eval_expand_crvMet0\n");
+#endif
+	goto genline;
+
+    }
+
+    /* project the starting point on to the line between defined by
+       the center of curvature and pEndPtUvDist */
+
+    for(i=0;i<3;i=i+1) eval[i] = pEndPtUvDist[i];
+    
+    BSproj0( &locSts, &pStartPaPt[1], eval, ptOnKurvLine );
+    if( locSts != BSSUCC ){
+#ifdef DEBUG
+		printf("Error in eval_expand_crvMet1\n");
+		printf("BSproj0\n");
+#endif
+		goto wrapup;
+    }
+
+    /* check if the arc could not be a line seg */
+
+    pObjToProj->located_obj.objid = NULL_OBJID;
+    pObjToProj->located_obj.osnum = pCst->env_info->md_id.osnum;
+
+    BSxtractpar(&locSts,BSTOLCHRDHT, &tol );
+    kurv = BSdistptpt( &locSts, &eval[3], ptOnKurvLine );
+    kurv = fabs((rad - kurv));
+
+    if( kurv > tol ){
+
+    	/* evaluate the arc */
+
+    	for( i=0;i<3;i=i+1 ){
+		pCir[i]       =  pStartPaPt[1+i] - eval[i+3];
+    		pCir[i+3]     =  2 * ptOnKurvLine[i] - 
+				 pStartPaPt[1+i] - eval[i+3];
+		ell.origin[i] =  eval[3+i];
+    	}
+
+    	BSnorvec(&locSts,pCir);
+    	BSnorvec(&locSts,&(pCir[3]));
+    	BScrossp(&locSts,pCir,&(pCir[3]),norEll);
+    	BSnorvec(&locSts,norEll);
+    	MArang2vc(&locSts, pCir, &(pCir[3]), norEll, &ell.sweep_angle );
+	if( !(fabs(ell.sweep_angle) > 0.0) ){
+#ifdef DEBUG
+		printf("Error in eval_expand_crvMet1\n");
+		printf("MArang2vc Failed\n");
+#endif
+	        goto genline;
+	}
+
+    	BScrossp(&locSts,norEll,pCir,&(pCir[3]));
+    	BSnorvec(&locSts,&(pCir[3]));
+
+    	ell.start_angle    = 0.0;
+    	ell.prim_axis      = rad;
+    	ell.sec_axis       = ell.prim_axis;
+    	ell.rot_matrix[15] = 1.0;
+
+    	for(i=0;i<3;i=i+1){
+		k = 4*i;
+		ell.rot_matrix[k]    = pCir[i];
+		ell.rot_matrix[k+1]  = pCir[i+3];
+		ell.rot_matrix[k+2]  = norEll[i];
+		ell.rot_matrix[k+3]  = 0.0;
+		ell.rot_matrix[12+i] = 0.0;
+    	}
+
+    	pCst->geometry     = (char *)&ell;
+	
+    	locSts = ci$send( msg       = message GR3dcirarc.GRaltconstruct(pCst),
+           	          targetid  = pObjToProj->located_obj.objid,
+ 	   	          targetos  = pObjToProj->located_obj.osnum );
+
+    	pObjToProj->module_info = *(pCst->env_info);
+    }
+    else{
+
+genline:
+	locSts = project_pnt_sf( pSrf, pEndPtUvDist, pVecProj, pCir, pMsg );
+  	if( !(locSts&(*pMsg)&1) ){
+#ifdef DEBUG
+		printf("Error in eval_expand_crvMet1\n");
+		printf("project_pnt_sf 3 Failed\n");
+#endif
+		goto wrapup;
+	}
+
+	locSts = eval_expand_crvMet0( pSrf, pCrv, pStartPaPt, 
+				      pCir, pGeomBound, 
+		     	              cidBound, pVecProj, 
+				      pCst, pObjToProj, pMsg  );
+
+  	if( !(locSts&(*pMsg)&1) ){
+#ifdef DEBUG
+		printf("Error in eval_expand_crvMet1\n");
+		printf("eval_expand_crvMet0 Failed\n");
+#endif
+		goto wrapup;
+	}
+	
+	*method = 0;
+    }
+
+    *pMsg = MSSUCC;
+    return( MSSUCC );
+
+wrapup:
+
+   return( MSFAIL );
+}
+
+/* ========================================================================= */
+
+trim_crv_to_bound(  pBound, cidBound, isPlanar, pNorPla, pCrv, pStartPaPt, 
+		    pEndPtUvDist, pVecProj, pCst, pObjToTrim, pMsg   )
+
+/*h
+
+	This function trim the projected curve at the proper end in function
+	of the boundary object.
+*/
+
+IGRchar			*pBound;        /*I pointer in the bounded geom */
+GRclassid		cidBound;       /*I classid of the bounded geometry */
+IGRboolean		isPlanar;       /*I TRUE or FALSE for planarity */
+IGRdouble		*pNorPla;       /*I normal of the plane */
+struct	IGRbsp_curve	*pCrv;		/*I the crv from which we extend */ 
+IGRdouble		*pStartPaPt;    /*I start point */
+IGRdouble		*pEndPtUvDist;	/*I end point when we got a point as
+					    boundary */ 
+IGRdouble		*pVecProj;      /*I vector of projection if NULL
+					    then projevtion along normal will
+					    be applyed */
+struct GRvg_construct	*pCst;		/*I the construction list */
+struct GRid		*pObjToTrim;    /*M the object to trim and the curve
+					    solution */
+IGRlong			*pMsg;		/*O return code MSSUCC, MSFAIL */
+
+{
+
+struct IGRbsp_curve	*pCrvToTrim;
+struct IGRbsp_curve	*pParCrv;
+struct IGRbsp_surface	*pSrfBound;
+
+IGRlong			locSts, statRet;
+struct GRpost_info      post_info;
+GRobjid			NEW_OBJ;
+IGRint			num_pts, num_seg;
+IGRdouble		*pProjPts, *pCvPar, *pSrfUpar, *pSrfVpar;
+IGRdouble		ustart, umid, uend, ptOn[3], minDist;
+IGRdouble		startPt[3], endPt[3];
+
+
+
+/* retrieve the geometry of the curve to trim */
+	
+	pParCrv    = NULL;
+	pCrvToTrim = NULL;
+ 	pProjPts   = NULL;
+	pCvPar     = NULL;
+	pSrfUpar   = NULL;
+	pSrfVpar   = NULL;
+	statRet    = MSFAIL;
+
+     	locSts =
+	ci$send( msg = message GRvg.GRgenabsg( 	
+				pMsg,
+				&pCst->env_info->md_env.matrix_type, 
+				pCst->env_info->md_env.matrix,
+			     	(char **)&pCrvToTrim ),
+		targetid = pObjToTrim->objid,
+		targetos = pObjToTrim->osnum );
+
+     	if( !((*pMsg)&locSts&1) ){
+#ifdef DEBUG
+		printf("error in trim_crv_to_bound\n");
+		printf("GRgenabsg Failed for pCrv\n");
+#endif
+        	goto wrapup;
+     	}
+
+	/* intersect the curve with the boundary element */
+
+	if( om$is_ancestry_valid( superclassid = OPP_GR3dpoint_class_id,
+                          subclassid   = cidBound ) == OM_S_SUCCESS) {
+
+   	  BSmdstptcv( pCrvToTrim, pEndPtUvDist, 
+		    &uend, ptOn, &minDist, &locSts);
+
+	  if( locSts != BSSUCC){
+#ifdef DEBUG
+		printf("error in trim_crv_to_bound\n");
+		printf("BSmdstptcv Failed\n");
+#endif
+       		goto wrapup;
+	  }
+	}
+	else{
+	  pSrfBound = ( struct IGRbsp_surface * ) pBound;	  
+	  if( isPlanar == TRUE ){
+
+		pProjPts = (IGRdouble *) om$malloc( size =
+				   3*(pCrvToTrim->num_poles)*sizeof(IGRdouble));
+		if( pProjPts == NULL ){
+#ifdef DEBUG
+			printf("error in trim_crv_to_bound\n");
+			printf("om$malloc Failed for pProjPts\n");
+#endif
+			goto wrapup;
+		}
+ 
+		pCvPar    = (IGRdouble *) om$malloc( size =
+				    pCrvToTrim->num_poles*sizeof(IGRdouble) );
+		if( pCvPar == NULL ){
+#ifdef DEBUG
+			printf("error in trim_crv_to_bound\n");
+			printf("om$malloc Failed for pCvPar\n");
+#endif
+			goto wrapup;
+		}
+
+		pSrfUpar  = (IGRdouble *) om$malloc( size =
+			    pCrvToTrim->num_poles*sizeof(IGRdouble) );
+		if( pSrfUpar == NULL ){
+#ifdef DEBUG
+			printf("error in trim_crv_to_bound\n");
+			printf("om$malloc Failed for pSrfUpar\n");
+#endif
+			goto wrapup;
+		}
+
+		pSrfVpar  = (IGRdouble *) om$malloc( size =
+				    pCrvToTrim->num_poles*sizeof(IGRdouble) );
+		if( pSrfVpar == NULL ){
+#ifdef DEBUG
+			printf("error in trim_crv_to_bound\n");
+			printf("om$malloc Failed for pSrfVpar\n");
+#endif
+    			goto wrapup;
+		}
+			
+		BSpl_cv_int( &locSts, pCrvToTrim, pSrfBound->poles, 
+			     pNorPla, &num_pts, pProjPts, 
+			     pCvPar, &num_seg, pSrfUpar, pSrfVpar);
+		if( locSts != BSSUCC){
+#ifdef DEBUG
+			printf("error in trim_crv_to_bound\n");
+			printf("BSpl_cv_int Failed\n");
+#endif
+			goto wrapup;
+		}
+
+	  }
+          else{
+
+		BScv_sf_int( &locSts, pCrvToTrim, pSrfBound, &num_pts,
+		     	     &pProjPts, &pCvPar, &pSrfUpar, &pSrfVpar );
+		
+		if( locSts != BSSUCC){
+#ifdef DEBUG
+			printf("error in trim_crv_to_bound\n");
+			printf("BScv_sf_int Failed\n");
+#endif
+			goto wrapup;
+		}
+	
+  	  }
+	  uend = pCvPar[0];
+	}
+
+	
+	/* malloc the parCrv */
+
+  	BSalloccv( pCrvToTrim ->order, pCrvToTrim->num_poles, 
+		   pCrvToTrim->rational, pCrvToTrim->num_boundaries, 
+		   &pParCrv, &locSts);
+	if( locSts != BSSUCC){
+#ifdef DEBUG
+		printf("error in trim_crv_to_bound\n");
+		printf("BSalloccv Failed for pParCrv\n");
+#endif
+       		goto wrapup;
+	}
+
+	BScv_copy( &locSts, pCrvToTrim, pParCrv );
+	if( locSts != BSSUCC){
+#ifdef DEBUG
+		printf("error in trim_crv_to_bound\n");
+		printf("BScv_copy Failed\n");
+#endif
+       		goto wrapup;
+	}
+	BScveval ( pCrvToTrim , (IGRdouble)0.0, (IGRint)0, startPt, &locSts );
+	BScveval ( pCrvToTrim , (IGRdouble)1.0, (IGRint)0, endPt, &locSts );
+	if( ( BSdistptpts(&locSts, &pStartPaPt[1], startPt) ) < 
+    	    ( BSdistptpts(&locSts, &pStartPaPt[1], endPt ) ) )
+		ustart = 0.0;
+	else	ustart = 1.0;
+
+	umid = ( ustart + uend ) * 0.3;
+
+  	BSpartofcv ( &locSts, pParCrv, ustart, umid, uend, pCrvToTrim );
+	if( locSts != BSSUCC){
+#ifdef DEBUG
+		printf("error in trim_crv_to_bound\n");
+		printf("BSpartofcv Failed\n");
+#endif
+       		goto wrapup;
+	}
+
+    	post_info.construct_flag = TRUE;
+
+    	locSts =
+	ci$send(msg = message GRvg.GRpostabsg(
+				      pMsg,
+			              pCst->env_info,
+			              &post_info,
+			              (char *)pCrvToTrim,
+				      &NEW_OBJ ) ,
+		targetid = pObjToTrim->objid,
+	  	targetos = pObjToTrim->osnum );
+     	if( !((*pMsg)&locSts&1) ){
+#ifdef DEBUG
+		printf("error in trim_crv_to_bound\n");
+		printf("GRpostabsg Failed for pCrv\n");
+#endif
+        	goto wrapup;
+     	}
+
+	*pMsg = MSSUCC;
+	statRet = MSSUCC;
+
+wrapup:
+	if( pParCrv  ) { BSfreecv(&locSts,pParCrv); pParCrv = NULL; }
+ 	if( pProjPts ) { free(pProjPts); pProjPts = NULL; }
+ 	if( pCvPar   ) { free(pCvPar);   pCvPar   = NULL; }
+ 	if( pSrfUpar ) { free(pSrfUpar); pSrfUpar = NULL; }
+ 	if( pSrfVpar ) { free(pSrfVpar); pSrfVpar = NULL; }
+
+return(statRet);
+
+}
+/* ========================================================================= */
+
+IGRlong eval_expand_crv( pRefStr, pObjEnv, pModEnv, method, pResCrv, pMsg )
+
+/*h
+	this function retrieves the parent geometry or the parent 
+	expressions value and the call the different functions to evaluate
+	the expansion curve
+*/
+
+struct ret_struct	*pRefStr; /*I the coordinate system or the point for
+				      the projection ( first parent ) 	*/
+struct GRlc_info	*pObjEnv; /*I the 3 geometrical parents.
+					- the surface, the curve and the
+					  boundary object */
+struct GRmd_env		*pModEnv; /*I the current module */
+IGRint			method;   /*I the method applyed */
+struct	GRid		*pResCrv; /*O the curve solution which is the foot of
+				      the macro */		
+IGRlong			*pMsg;    /*O return code MSSUCC or MSFAIL */
+{
+
+IGRint			i, j;
+struct  IGRbsp_curve	*pCrv;
+IGRdouble		startPaPtDv[7], endPtUvDist[6];
+IGRlong			locSts;
+IGRlong			size;
+IGRdouble		ptVec[12];
+IGRlong			retSts, stat;
+GRclassid		cid;
+struct	IGRbsp_surface	*pSrf;
+struct GRlc_info	lcLine, lcSrf;
+IGRdouble		FromTo[9];
+struct	GRid		TempSrf;
+IGRint			num_crvs;
+struct GRid		intCrvIds[10];
+IGRchar			*pBound;
+IGRdouble		*pRefVz;
+IGRdouble		u, v;
+IGRboolean		isPlanar;
+IGRdouble		norPla[3];
+
+
+	retSts = MSFAIL;
+   	init_cnst_list();
+   	get_symb();
+
+	pCrv      = NULL;
+	pSrf      = NULL;
+	pBound    = NULL;
+	pRefVz    = NULL;
+
+   	dis.color	= cnst_list.color;
+   	dis.weight	= cnst_list.weight;
+   	dis.style	= cnst_list.style;
+   	cst.msg		= &msgmsg;
+   	cst.properties	= GRIS_LOCATABLE | GRIS_DISPLAYABLE;
+   	cst.display	= &dis;
+   	cst.env_info	= &MOD_ENV;
+   	cst.newflag	= FALSE;
+   	cst.level	= cnst_list.level;
+   	cst.class_attr	= NULL;
+   	cst.name	= NULL;
+
+/*-------------------------------------------------------------------------*/
+/* define the coordinate system at the origine and the end of the curve    */
+/* if necessary								   */
+/*-------------------------------------------------------------------------*/
+
+     	GRabsg_del_by_objid( &pObjEnv[1].located_obj.objid,
+			     &pObjEnv[1].located_obj.osnum );
+
+     	locSts =
+	ci$send( msg = message GRvg.GRgetsize( 	
+				pMsg,
+			     	&pObjEnv[1].module_info.md_env.matrix_type,
+			     	pObjEnv[1].module_info.md_env.matrix,
+			     	&size ),
+  	     targetid = pObjEnv[1].located_obj.objid,
+  	     targetos = pObjEnv[1].located_obj.osnum );
+     	if( !((*pMsg)&locSts&1) ){
+#ifdef DEBUG
+		printf("error in eval_expand_crv\n");
+	  	printf("Error in GRvg.GRgetsize for curve \n");
+#endif
+	  	goto wrapup;
+     	}
+
+     	pCrv = (struct IGRbsp_curve *) om$malloc(size = size);
+     	if( pCrv == NULL ){
+#ifdef DEBUG
+		printf("error in eval_expand_crv\n");
+		printf("Error in om$malloc pCrv\n");
+#endif
+		*pMsg = MSFAIL;
+        	goto wrapup;
+     	}
+ 
+     	locSts =
+	ci$send(msg = message GRvg.GRgetgeom( 	
+				pMsg,
+			     	&pObjEnv[1].module_info.md_env.matrix_type,
+			     	pObjEnv[1].module_info.md_env.matrix,
+			     	(char *)pCrv ),
+		targetid = pObjEnv[1].located_obj.objid,
+		targetos = pObjEnv[1].located_obj.osnum );
+     	if( !((*pMsg)&locSts&1) ){
+#ifdef DEBUG
+		printf("error in eval_expand_crv\n");
+		printf("GRgetgeom Failed for pCrv\n");
+#endif
+        	goto wrapup;
+     	}
+
+	/*c define two points because needed later to create the surface of
+	    projection */
+
+	if( pRefStr[0].type != point_generic ){
+
+		pRefVz = (IGRdouble *) om$malloc(size = 3*sizeof(IGRdouble));
+      		if( pRefVz == NULL ){
+#ifdef DEBUG
+			printf("error in eval_expand_crv\n");
+			printf("Error in om$malloc pRefStr\n");
+#endif
+			*pMsg = MSFAIL;
+        		goto wrapup;
+     		}
+
+ 		for( i=0; i<3; i=i+1 ){
+    			j          = 4 * i;
+    			ptVec[i]   = pRefStr[0].var.ref_st.t[j+3];
+    			pRefVz[i]  = pRefStr[0].var.ref_st.t[j+2];
+    			ptVec[i+3] = ptVec[i] + 100.0 * pRefVz[i];
+  		}
+	}
+
+/*-------------------------------------------------------------------------*/
+/* retrieve the BSgeometry of the HULL to be able to project pnt on to     */
+/* this surface to avoid some potential mistakes when we will build the    */
+/* surface of projection			                           */
+/*-------------------------------------------------------------------------*/
+
+     	locSts =
+	ci$send(msg = message GRvg.GRgetsize( 	
+				pMsg,
+			     	&pObjEnv[0].module_info.md_env.matrix_type,
+			     	pObjEnv[0].module_info.md_env.matrix,
+			     	&size ),
+	     	targetid = pObjEnv[0].located_obj.objid,
+	  	targetos = pObjEnv[0].located_obj.osnum );
+     	if( !((*pMsg)&locSts&1) ){
+#ifdef DEBUG
+		printf("error in eval_expand_crv\n");
+		printf("Error in GRvg.GRgetsize for pSrf\n");
+#endif
+		goto wrapup;
+     	}
+
+     	pSrf = (struct IGRbsp_surface *) om$malloc(size = size);
+     	if( pSrf == NULL ){
+#ifdef DEBUG
+		printf("error in eval_expand_crv\n");
+		printf("Error in om$malloc pSrf\n");
+#endif
+		*pMsg = MSFAIL;
+        	goto wrapup;
+     	}
+ 
+     	locSts =
+	ci$send(msg = message GRvg.GRgetgeom( 	
+				pMsg,
+			     	&pObjEnv[0].module_info.md_env.matrix_type,
+			     	pObjEnv[0].module_info.md_env.matrix,
+			     	(char *)pSrf ),
+		targetid = pObjEnv[0].located_obj.objid,
+	  	targetos = pObjEnv[0].located_obj.osnum );
+     	if( !((*pMsg)&locSts&1) ){
+#ifdef DEBUG
+		printf("error in eval_expand_crv\n");
+		printf("GRgetgeom Failed for pSrf\n");
+#endif
+        	goto wrapup;
+     	}
+
+
+/*-------------------------------------------------------------------------*/
+/* here we just retrieve the geometry of the boundary object               */
+/*-------------------------------------------------------------------------*/
+
+    	om$get_classid( osnum     = pObjEnv[2].located_obj.osnum,
+        	        objid     = pObjEnv[2].located_obj.objid,
+        	        p_classid = &cid);
+
+     	locSts =
+	ci$send(msg = message GRvg.GRgetsize( 	
+				pMsg,
+			     	&pObjEnv[2].module_info.md_env.matrix_type,
+			     	pObjEnv[2].module_info.md_env.matrix,
+			     	&size ),
+		targetid = pObjEnv[2].located_obj.objid,
+	  	targetos = pObjEnv[2].located_obj.osnum );
+     	if( !((*pMsg)&locSts&1) ){
+#ifdef DEBUG
+		printf("error in eval_expand_crv\n");
+		printf("Error in GRvg.GRgetsize for pBound\n");
+#endif
+		goto wrapup;
+     	}
+
+	pBound =  (IGRchar *)om$malloc(size = size);
+     	if( pBound == NULL ){
+#ifdef DEBUG
+		printf("error in eval_expand_crv\n");
+		printf("Error in om$malloc pBound\n");
+#endif
+		*pMsg = MSFAIL;
+        	goto wrapup;
+     	}
+ 
+     	locSts =
+	ci$send(msg = message GRvg.GRgetgeom( 	
+				pMsg,
+			     	&pObjEnv[2].module_info.md_env.matrix_type,
+			     	pObjEnv[2].module_info.md_env.matrix,
+			     	(IGRchar *)pBound ),
+	  	targetid = pObjEnv[2].located_obj.objid,
+	  	targetos = pObjEnv[2].located_obj.osnum );
+     	if( !((*pMsg)&locSts&1) ){
+#ifdef DEBUG
+		printf("error in eval_expand_crv\n");
+		printf("GRgetgeom Failed for pBound\n");
+#endif
+        	goto wrapup;
+     	}
+	locSts = find_startPnt( pSrf, pCrv, pBound, cid, pRefVz, method, 
+		       		startPaPtDv, endPtUvDist, &isPlanar,
+				norPla, pMsg   );
+     	if( !((*pMsg)&locSts&1) ){
+		#ifdef DEBUG
+		printf("error in eval_expand_crv\n");
+		printf("find_startPnt Failed\n");
+		#endif
+        	goto wrapup;
+     	}
+
+
+	if( method == 0 )
+		locSts = eval_expand_crvMet0( pSrf, pCrv, 
+					      startPaPtDv, endPtUvDist, 
+			     		      (IGRchar *)pBound, 
+					      cid, pRefVz, &cst, 
+					      &lcLine, pMsg );
+	
+	else{
+
+		locSts = eval_expand_crvMet1( pSrf, pCrv, 
+					      startPaPtDv, endPtUvDist, 
+			     		      (IGRchar *)pBound, 
+					      cid, pRefVz, &cst,&method, 
+					      &lcLine, pMsg );
+	}
+			
+  	if( !(locSts&(*pMsg)&1) ){
+		#ifdef DEBUG
+		printf("Error in eval_expand_crv\n");
+		printf("eval_expand_crvMet 0 or 1 Failed");
+		#endif
+		goto wrapup;
+	}
+
+/*-------------------------------------------------------------------------*/
+/* create the line seg as an object to generate a surface of projection    */
+/*-------------------------------------------------------------------------*/
+		
+	if( pRefStr->type == point_generic ) {
+
+		locSts = project_pnt_sf( pSrf, &startPaPtDv[1], pRefVz,
+				    ptVec, pMsg );
+  		if( !(locSts&(*pMsg)&1) ){
+			#ifdef DEBUG
+			printf("Error in eval_expand_crv\n");
+			printf("project_pnt_sf 3 Failed");
+			#endif
+			goto wrapup;
+		}
+		u = ptVec[3];
+		v = ptVec[4];
+	        BSsfevaln( pSrf, u, v, 1, &j, ptVec, &ptVec[3], pMsg);
+		for(i=0;i<3;i=i+1) ptVec[3+i] = ptVec[i] + 100*ptVec[3+i];
+
+	}
+
+
+  	EvalFromTo( pObjEnv, &lcLine, ptVec, &ptVec[3], FromTo, pMsg );
+	if( !((*pMsg)&1) ){
+		#ifdef DEBUG
+		printf("Error in eval_expand_crv\n");
+		printf("EvalFromTo Failed\n");
+		#endif
+		goto wrapup;
+	}
+
+	TempSrf.objid = NULL_OBJID;
+  	BuildSrf( &lcLine, FromTo, &cst, &TempSrf, pMsg );
+	if( !((*pMsg)&1) ){
+		#ifdef DEBUG
+		printf("Error in eval_expand_crv\n");
+		printf("BuildSrf Failed\n");
+		#endif
+		goto wrapup;
+	}
+
+  	lcSrf.located_obj = TempSrf;
+  	lcSrf.module_info = *pModEnv;
+	for(i=0;i<10;i=i+1) intCrvIds[i].objid = NULL_OBJID;
+
+ 	IntTwoSrf(	(IGRboolean)FALSE,
+			(IGRboolean)TRUE,
+			pObjEnv,
+			&lcSrf,
+			&cst, 
+			&num_crvs,
+			intCrvIds,
+			pMsg );
+	if( !((*pMsg)&1) ){
+#ifdef DEBUG
+		printf("Error in eval_expand_crv\n");
+		printf("IntTwoSrf Failed\n");
+#endif
+		goto wrapup;
+	}
+
+#ifdef DEBUG
+	printf("num_crvs = %d\n",num_crvs);	
+#endif
+
+	if( method == 1 ){
+		locSts = trim_crv_to_bound( (IGRchar *) pBound, cid, 
+					      isPlanar, norPla,  pCrv, 
+					      startPaPtDv, endPtUvDist, 
+			              	      pRefVz, &cst, 
+					      &intCrvIds[0], pMsg );
+		if( !(locSts&(*pMsg)&1) ){
+			#ifdef DEBUG
+			printf("Error in eval_expand_crv\n");
+			printf("trim_crv_to_bound");
+			#endif
+			goto wrapup;
+		}
+	}
+
+	*pResCrv = intCrvIds[0];
+	*pMsg    = MSSUCC;
+	retSts   = MSSUCC;
+
+wrapup:
+	if( pCrv   != NULL ){ om$dealloc(ptr = pCrv);   pCrv   = NULL; }
+	if( pSrf   != NULL ){ om$dealloc(ptr = pSrf);   pSrf   = NULL; }
+	if( pBound != NULL ){ om$dealloc(ptr = pBound); pBound = NULL; }
+	if( pRefVz != NULL ){ om$dealloc(ptr = pRefVz); pRefVz = NULL; }
+
+	if( lcLine.located_obj.objid != NULL_OBJID )
+     		ci$send(msg      = message GRgraphics.GRdelete(&stat,pModEnv),
+             		targetid = lcLine.located_obj.objid,
+	        	targetos = lcLine.located_obj.osnum);
+
+	if( TempSrf.objid != NULL_OBJID )
+     		ci$send(msg      = message GRgraphics.GRdelete(&stat,pModEnv),
+             		targetid = TempSrf.objid,
+	        	targetos = TempSrf.osnum);
+	for(i=1;i<10;i=i+1){
+	    if( intCrvIds[i].objid != NULL_OBJID )
+     		ci$send(msg      = message GRgraphics.GRdelete(&stat,pModEnv),
+             		targetid = intCrvIds[i].objid,
+	        	targetos = intCrvIds[i].osnum);
+	
+	    else break;
+	}
+
+	return(retSts);
+}
+
+/* ========================================================================= */
+  
+compute_expand(resCrv)
+
+struct GRid	*resCrv; /*O the resulting foot of the macro. If we got
+			     a failure then resCrv->objid = NULL_OBJID */
+{
+
+IGRlong			msg, locSts;
+struct 	GRlc_info	objEnv[3];
+struct  ret_struct	refStr;
+IGRint			method;
+
+	resCrv->objid = NULL_OBJID;
+
+	locSts =
+	retrieve_parents(	&refStr,
+				objEnv,
+				&method,
+				&msg );
+	if(!(locSts&msg&1)){
+#ifdef DEBUG
+		printf("error in retrieve_parents\n");
+		printf("retrieve_parents FAILED\n");
+#endif
+		return;
+	}
+
+	locSts =
+	eval_expand_crv(	&refStr,
+				objEnv,
+				&MOD_ENV,
+				method,  
+				resCrv,
+				&msg );
+	if(!(locSts&msg&1)){
+#ifdef DEBUG
+		printf("error in eval_expand_crv\n");
+		printf("eval_expand_crv FAILED\n");
+#endif
+		return;
+	}
+}
+
+/* ========================================================================= */
+
+place ()
+{
+
+IGRlong			stat;
+struct GRid 		RESCRV;
+
+  compute_expand(&RESCRV);
+
+  if( RESCRV.objid == NULL_OBJID ) return(0);
+
+  ci$send( msg = message  ci_macro.set_all_extern_feet
+		(&stat, 1, &RESCRV, &MOD_ENV ),
+	   	targetid = CI_MACRO_ID.objid,
+	   	targetos = CI_MACRO_ID.osnum);
+  return(1);
+}
+
+/* ========================================================================= */
+
+compute ()
+{
+
+IGRlong			stat;
+struct GRid 		RESCRV;
+
+  compute_expand(&RESCRV);
+
+  if( RESCRV.objid == NULL_OBJID ) return(0);
+
+  ci$send( msg = message  ci_macro.set_all_extern_feet
+		(&stat, 1, &RESCRV, &MOD_ENV ),
+	   	targetid = CI_MACRO_ID.objid,
+	   	targetos = CI_MACRO_ID.osnum);
+  return(1);
+}
+
+/* ========================================================================= */
+

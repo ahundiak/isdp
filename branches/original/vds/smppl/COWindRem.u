@@ -1,0 +1,153 @@
+/* $Id: COWindRem.u,v 1.1.1.1 2001/01/04 21:07:36 cvs Exp $  */
+
+/* --------------------------------------------------------------------
+ * I/VDS
+ *
+ * File:	vds/smppl / COWindRem.u
+ *
+ * Description:
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ *	$Log: COWindRem.u,v $
+ *	Revision 1.1.1.1  2001/01/04 21:07:36  cvs
+ *	Initial import to CVS
+ *	
+# Revision 1.1  1998/04/29  16:27:20  pinnacle
+# VDS 2.5.1
+#
+# Revision 1.1  1997/05/08  13:20:44  pinnacle
+# New project VDS 250
+#
+# Revision 1.1  1996/07/19  20:33:52  pinnacle
+# Create VDS 241 project
+#
+# Revision 1.1  1994/11/14  22:42:32  pinnacle
+# Create vds.240 from vds.232
+#
+# Revision 1.1  1994/11/08  16:07:00  pinnacle
+# create vds.232
+#
+ *
+ * History:
+ *	MM/DD/YY	AUTHOR		DESCRIPTION
+ *
+ * -------------------------------------------------------------------*/
+
+#include "ciminimum.h"
+#include "cimacros.h"
+#include "cieveryone.h"
+#include "exmacros.h"
+#include "griodef.h"
+#include "griomacros.h"
+#include "growner.h"
+#include "nddef.h"
+#include "macro.h"
+#include "ACattrib.h"
+#include "ACrg_collect.h"
+#include "emsmass.h"
+#include "asbox.h"
+#include "AS_status.h"
+#include "ndmacros.h"
+#include "msdef.h"
+#include "SMdef.h"
+#include "SMmacros.h"
+
+#include "SMcomp_def.h"
+
+
+
+struct GRid 	  wind, root;
+IGRint 		  suc;
+struct GRmd_env	  MOD_ENV;
+IGRchar		  mes_f[80];
+struct GRid	  mac;
+struct ACrg_coll  att[SM_WIND_NB_MAX_ATTR];
+int 		  i, k, msg, sts, index;
+int		  nb_att, NbExist;
+IGRint            cn_type;
+
+
+extern free(), ASmake_source_from_env(), printf(), ASsuper_construct();
+extern NDwait_batch();
+
+main()
+{
+ strcpy(mes_f,"Wind Area Polygons disconnect");
+ message(mes_f);
+
+ ASsuper_construct();
+
+ while(1)
+  {
+   message(mes_f);
+
+
+       if(!ci$locate( prompt       = "Identify a WInd Area Plg",
+		    classes      = "SMwind",
+                    properties   = LC_LC_ONLY | LC_DP_ONLY | LC_RW,
+                    owner_action = LC_RIGID_COMP
+                                    | LC_RIGID_OWNER | LC_FLEX_COMP
+                                    | LC_FLEX_OWNER  | LC_REF_OBJECTS,
+	            obj          = &wind.objid,
+                    osnum        = &wind.osnum,
+		    md_env       = &MOD_ENV ) ) break;
+    	
+
+     index = 0;
+     while(1)
+      {
+       if(!ci$locate( prompt       = "Identify a root",
+		    classes      = "GRlinear",
+                    properties   = LC_LC_ONLY | LC_DP_ONLY | LC_RW,
+                    owner_action = LC_RIGID_COMP
+                                    | LC_RIGID_OWNER | LC_FLEX_COMP
+                                    | LC_FLEX_OWNER  | LC_REF_OBJECTS,
+	            obj          = &root.objid,
+                    osnum        = &root.osnum,
+		    md_env       = &MOD_ENV ) ) break;
+
+      ASmake_source_from_env(&root, &MOD_ENV, &root );	
+
+      sts = ci$send(msg = message SMwind.SMWindRemPlg(&msg, &root, &NbExist),
+                    targetid = wind.objid,
+                    targetos = wind.osnum);
+		    
+         if(!(sts & 1))
+	  {
+	   printf("Bad sts\n");
+	   break;
+	  }
+
+         if(!(msg & 1))
+	  {
+	   printf("Bad msg\n");
+	   break;
+	  }
+      if(NbExist <= 0)
+       {
+        printf("No More graphic root\n");
+	break;
+       }
+
+     /* Compute and display */
+
+     /* Put it in the bacth queue for recomputation */
+     cn_type = ND_COMP;
+     nd$wait_batch(type       = GR_GEOM_POSTED,
+                   l_object   = &wind,
+                   l_obj_info = &cn_type,
+                   nb_obj     = 1);
+
+     ci$send(msg = message NDnode.NDdisplay(0, GRbd, &MOD_ENV),
+            targetid = wind.objid,
+            targetos = wind.osnum);
+    }
+  }
+}
+
+
+wakeup(){
+	message("Wind Area Polygons, disconnect");
+}

@@ -1,0 +1,795 @@
+OBSOLUTE IN VDS 240.
+
+ /****************************************************************************
+
+	Filename:	VDCmdDfDwVr.I
+	Author:		Raju MSB
+	Type:		Slic File
+	Process by:	$EXNUC/bin/slic -C VDCmdMngVV.sl
+	Output:		VDCmdDfDwVr.S  and VDCmdDfDwVri.I
+
+	Description:
+	  Command Object to define drawing view variables which
+	will be used during extraction of drawing.
+
+	History:
+	Raju    Nov 16, 1994    Creation date
+
+ ****************************************************************************/
+
+
+/****************************************************************************/
+/*	CLASS SPECIFICATIONS						*****/
+/****************************************************************************/
+
+command_string	"Define Drawing Variables", 0, VDDfDwVr
+class		VDCmdDfDwVr
+super_class	CEO_LOCATE
+product_name	"$VDS"
+command_table	"vds.cmd"
+
+/* form used */
+form		"VDDefDrwVar",0,0,"-1","-1"
+
+start_state     start
+
+/****************************************************************************/
+/*	SPECIFICATION AREA						*****/
+/****************************************************************************/
+
+specification
+
+#define  FP		me^^CEO.forms[0].form_ptr
+
+
+#define  VD_INIT_DIM	2
+#define  VD_INIT_DIM50	50
+
+instance
+{
+int				num_coll;
+variable struct GRid		coll_id[VD_INIT_DIM];
+}
+
+
+/****************************************************************************/
+/*	IMPLEMENTATION AREA						*****/
+/****************************************************************************/
+
+implementation
+
+#include <stdio.h>
+#include "OMminimum.h"
+#include "OMprimitives.h"
+#include "OMmacros.h"
+#include "FI.h"
+#include "msdef.h"
+#include "msmacros.h"
+#include "godef.h"
+#include "gr.h"
+#include "igr.h"
+#include "igrdp.h"
+#include "go.h"
+
+#include "igrdef.h"
+#include "dpdef.h"
+#include "dpmacros.h"
+
+#include "ACattrib.h"
+#include "ACrg_collect.h"
+
+#include "DItypedef.h"
+#include "DIdef.h"
+#include "DIglob.h"
+#include "DIprims.h"
+
+#include "vderrmacros.h"
+#include "vdcolldef.h"
+
+%safe
+  static int x_pos = -1,y_pos = -1;
+%endsafe
+
+from  ACrg_collect  import  AClist_attribute;
+from  ACrg_collect  import  ACget_attribute_at_index;
+from  ACdiowner     import  ACrem_att_at_index;
+
+
+/****************************************************************************/
+/*	STATE TABLE AREA 						*****/
+/****************************************************************************/
+
+state_table
+
+#include "VDmsg.h"
+
+state start
+  display_form	      0
+  message	      "Define Drawing Variables"
+  prompt	      "Perform form operations"
+  filter	      get_event
+  on EX_FORM_FINISHED    state terminate
+
+at init   do set_instance_and_form
+at wakeup do set_form_pos
+at sleep  do save_form_pos
+
+
+action  save_form_pos
+{
+
+  FIf_get_location(me->forms[0].form_ptr,&x_pos,&y_pos);
+  *sts = MSSUCC;
+
+}
+
+action  set_form_pos
+{
+   if(x_pos != -1 && y_pos != -1)
+     FIf_set_location ( me->forms[0].form_ptr, x_pos, y_pos );
+}
+
+action set_instance_and_form
+{
+long			msg;
+char			coll_name[80],
+			AttrText[VD_ATTR_LEN],  tmpstr[VD_ATTR_LEN];
+struct GRid		coll_id;
+int			nb_attr, ii, indx, nb_str, row_num,
+			body_fld, body_width, len;
+int			start_pos, end_pos;
+struct ACrg_coll	att;
+
+
+   me->num_coll = 2;
+
+   for ( indx=0; indx < me->num_coll; indx++ )
+   {
+      VDSget_filename ( coll_name );
+      strcat ( coll_name, ":IGENOD:" );
+      if ( indx == 0 )
+	strcat ( coll_name, VD_OBJECTS_DIR_NAME );
+      else if ( indx == 1 )
+	strcat ( coll_name, VD_NOTES_DIR_NAME );
+      else  printf("Error in set_instance\n" );
+/*
+      else if ( indx == 2 )
+	strcat ( coll_name, VD_PREFIX_DIR_NAME );
+*/
+      row_num = 0;
+      status = di$translate( objname = coll_name,
+			     p_objid = &coll_id.objid,
+			     p_osnum = &coll_id.osnum  );
+
+      if ( status & 1 )
+      {
+	me->coll_id[indx] = coll_id;
+	status = om$send( msg = message ACrg_collect.AClist_attribute(
+					&msg,
+					0,
+					NULL,
+					&nb_attr ),
+			targetid = coll_id.objid,
+			targetos = coll_id.osnum );
+	VDS_ERR_HNDLR( "ACrg_collect.AClist_attribute", status, msg,
+		     VD_VERBOSE,  quit );
+
+	if ( indx == 0 )
+	{
+	  body_fld = VD_OBJ_BDY_FLD;
+	  body_width = VD_OBJ_BDY_WD;
+	}
+	else if ( indx == 1 )
+	{
+	  body_fld = VD_NOTES_BDY_FLD;
+	  body_width = VD_NOTES_BDY_WD;
+	}
+	else
+	{
+	  body_fld = VD_OBJ_BDY_FLD;
+	  body_width = VD_OBJ_BDY_WD;
+	}
+
+	FIfld_set_max_num_rows ( FP, body_fld, nb_attr + 100 );
+
+	for(ii=0; ii<nb_attr; ii++)
+	{
+	  status = om$send(msg = message ACrg_collect.ACget_attribute_at_index(
+						 &msg, ii, &att ),
+			targetid = coll_id.objid,
+			targetos = coll_id.osnum );
+	  VDS_ERR_HNDLR( "ACrg_collect.ACget_attribute_at_index", status, msg,
+			 VD_VERBOSE,  quit );
+
+	  status = VDgetAttFromColl ( &msg, coll_id, att.name, AttrText,
+				      VD_ATTR_LEN, &nb_str );
+	  VDS_ERR_HNDLR( "VDgetAttFromColl", status, msg, VD_VERBOSE, quit );
+	  FIfld_set_text ( FP, body_fld, row_num, 0, att.name, FALSE );
+
+	  start_pos = 0;
+	  while ( 1 )
+	  {
+	    len = strlen ( &AttrText[start_pos] );
+	    if ( len <= body_width )
+	    {
+		FIfld_set_text ( FP, body_fld, row_num, 1,
+						&AttrText[start_pos], FALSE );
+		row_num++;
+		break;
+	    }
+	    else
+	    {
+		end_pos = body_width;
+		/* find position of , character */
+		while ( AttrText[start_pos+end_pos] != '\0' &&
+			AttrText[start_pos+end_pos] != ','    ) end_pos++;
+		if ( AttrText[start_pos+end_pos] == '\0' )
+		{
+		   FIfld_set_text ( FP, body_fld, row_num, 1,
+						&AttrText[start_pos], FALSE );
+		   row_num++;
+		   break;
+		}
+		else
+		{
+		   strncpy( tmpstr, &AttrText[start_pos], end_pos+1 );
+		   tmpstr[end_pos+1] = '\0';
+		   FIfld_set_text ( FP, body_fld, row_num, 1,
+						tmpstr, FALSE );
+		   row_num++;
+
+		   end_pos++;
+		   /* skip blank characters */
+		   while ( AttrText[start_pos+end_pos] != '\0' &&
+			   isspace(AttrText[start_pos+end_pos])   )
+				end_pos++;
+		   if ( AttrText[start_pos+end_pos] == '\0' )  break;
+		   start_pos = start_pos+end_pos;
+		}
+	     } /* else of if ( len <= body_width ) */
+	  } /* while ( 1 ) */
+
+	  ii = ii + nb_str;
+
+	} /* for(ii=0; ii<nb_attr; ii++) */
+
+	FIfld_set_num_rows ( FP, body_fld, row_num );
+      } /* if ( status & 1 ) */
+      else
+	me->coll_id[indx].objid = NULL_OBJID;
+
+  } /* for ( indx =0; indx < me->num_coll; indx++ ) */
+
+}
+
+
+
+/****************************************************************************/
+/*	ACTION  form_notification					*****/
+/****************************************************************************/
+
+action form_notification
+{
+char		tmpstr[81], *tmpstr1 = NULL, *tmpstr2 = NULL;
+int		body_fld, num_rows;
+int		ii, jj, sel_row, sel_pos, sel_flag, r_pos;
+int		coll_nb;
+long		sts, msg;
+
+    FIg_set_text ( FP, FI_MSG_FIELD, "" );
+
+    switch ( gadget_label )
+    {
+      case  VD_READ_FROM_FILE :
+	FIg_display( FP, VD_READ_GRP );
+	break;
+
+      case  VD_READ_FILE_FLD :
+	FIg_get_text ( FP, VD_READ_FILE_FLD, tmpstr );
+	sts = om$send ( msg = message VDCmdDfDwVr.read_from_file (
+					&msg, tmpstr ),
+			targetid = my_id );
+	if ( !(msg&1) ) break;
+	FIg_erase( FP, VD_READ_GRP );
+	break;
+
+      case VD_WRITE_TO_FILE :
+	FIg_display( FP, VD_WRITE_GRP );
+	break;
+
+      case  VD_WRITE_FILE_FLD :
+	FIg_get_text ( FP, VD_WRITE_FILE_FLD, tmpstr );
+	sts = om$send ( msg = message VDCmdDfDwVr.write_to_file (
+				&msg, tmpstr ),
+			targetid = my_id );
+	if ( !(msg&1) ) break;
+	FIg_set_text(FP, FI_MSG_FIELD, "Written to file" );
+	FIg_erase( FP, VD_WRITE_GRP );
+	break;
+
+      case VD_DEL_ROW_FLD :
+	FIg_get_text ( FP, VD_COLL_FLD, tmpstr );
+	if ( !strcmp(tmpstr, VD_OBJECTS_TITLE) )
+		body_fld = VD_OBJ_BDY_FLD;
+	else if ( !strcmp(tmpstr, VD_NOTES_TITLE) )
+		body_fld = VD_NOTES_BDY_FLD;
+	else
+	{
+	  printf("error in form_notif\n");
+	  break;
+	}
+
+	FIfld_get_num_rows ( FP, body_fld, &num_rows );
+	tmpstr1 = (char *) malloc ( sizeof(char) * num_rows * 81 );
+	tmpstr2 = (char *) malloc ( sizeof(char) * num_rows * 81 );
+	FIfld_get_active_row ( FP, body_fld, &sel_row, &sel_pos );
+	for ( ii=0; ii<num_rows; ii++ )
+	{
+	  FIfld_get_text( FP, body_fld, ii, 0, 80, &tmpstr1[ii*81],
+			  &sel_flag, &r_pos);
+	  FIfld_get_text( FP, body_fld, ii, 1, 80, &tmpstr2[ii*81],
+			  &sel_flag, &r_pos);
+	}
+
+	jj = 0;
+	for ( ii=0; ii<num_rows; ii++ )
+	{
+	  if ( ii != sel_row )
+	  {
+	    FIfld_set_text( FP, body_fld, jj, 0, &tmpstr1[ii*81], FALSE );
+	    FIfld_set_text( FP, body_fld, jj, 1, &tmpstr2[ii*81], FALSE );
+	    jj++;
+	  }
+	}
+	FIfld_set_num_rows ( FP, body_fld, num_rows-1 );
+	FIfld_set_select ( FP, body_fld, sel_row, sel_pos, FALSE );
+
+	if ( tmpstr1 )  free ( tmpstr1 );
+	if ( tmpstr2 )  free ( tmpstr2 );
+	break;
+
+      case VD_INS_ROW_FLD :
+	FIg_get_text ( FP, VD_COLL_FLD, tmpstr );
+	if ( !strcmp(tmpstr, VD_OBJECTS_TITLE) )
+		body_fld = VD_OBJ_BDY_FLD;
+	else if ( !strcmp(tmpstr, VD_NOTES_TITLE) )
+		body_fld = VD_NOTES_BDY_FLD;
+	else
+	{
+	  printf("error in form_notif\n");
+	  break;
+	}
+
+	FIfld_get_active_row ( FP, body_fld, &sel_row, &sel_pos );
+	FIfld_insert_blank_row ( FP, body_fld, sel_row );
+	break;
+
+      case VD_DEL_ALL_ROWS_FLD :
+	/* not implemented */
+	break;
+
+      case VD_COLL_FLD :
+	FIg_get_text ( FP, VD_COLL_FLD, tmpstr );
+	if ( !strcmp(tmpstr, VD_OBJECTS_TITLE) )
+	{
+	   FIg_erase ( FP, VD_NOTES_GRP );
+	   FIg_display ( FP, VD_OBJ_GRP );
+	}
+	else if ( !strcmp(tmpstr, VD_NOTES_TITLE) )
+	{
+	   FIg_erase ( FP, VD_OBJ_GRP );
+	   FIg_display ( FP, VD_NOTES_GRP );
+	}
+	else
+	{
+	  printf("error in form_notif\n");
+	  break;
+	}
+	break;
+
+      case VD_OBJ_BDY_FLD :
+	break;
+
+      case VD_NOTES_BDY_FLD :
+	break;
+
+      case FI_EXECUTE :
+      case FI_ACCEPT:
+	FIg_get_text ( FP, VD_COLL_FLD, tmpstr );
+	if ( !strcmp(tmpstr, VD_OBJECTS_TITLE) )
+		coll_nb = 0;
+	else if ( !strcmp(tmpstr, VD_NOTES_TITLE) )
+		coll_nb = 1;
+	else
+	{
+	  printf("error in form_notif\n");
+	  break;
+	}
+
+	sts = om$send ( msg = message VDCmdDfDwVr.save_collection (
+					&msg, coll_nb ),
+			targetid = my_id );
+	if ( gadget_label == FI_ACCEPT )
+	{
+	   _put_response ( resp = EX_FORM_FINISHED );
+        }
+	break;
+
+      case FI_CANCEL:
+	_put_response ( resp = EX_FORM_FINISHED );
+	break;
+
+   }
+
+}
+
+action save_collection ( long  *msg; int  coll_nb )
+{
+int			ii, jj, num_rows, sel_flag, r_pos, nb_attr, body_fld;
+char			name[ATTR_NAME], coll_name[80],
+			AttText[VD_ATTR_LEN], body[VD_ATTR_LEN],
+			name1[ATTR_NAME];
+struct GRid		coll_id;
+
+
+  if ( coll_nb == 0 )
+	  body_fld = VD_OBJ_BDY_FLD;
+  else if ( coll_nb == 1 )
+	  body_fld = VD_NOTES_BDY_FLD;
+  else printf("Error in save_coll\n" );
+
+/*
+  else if ( coll_nb == 2 )
+	  body_fld = VD_PRF_BDY_FLD;
+*/
+
+  FIfld_get_text ( FP, body_fld, 0, 0, ATTR_NAME, name, &sel_flag, &r_pos );
+
+  if ( name[0] == '\0' ) goto quit;
+
+  if ( coll_nb == 0 )
+	strcpy ( coll_name, VD_OBJECTS_DIR_NAME );
+  else if ( coll_nb == 1 )
+	strcpy ( coll_name, VD_NOTES_DIR_NAME );
+  else printf("Error in save_collection\n" );
+/*
+  else if ( coll_nb == 2 )
+	strcpy ( coll_name, VD_PREFIX_DIR_NAME );
+*/
+
+  status = VDgetVdCollId ( msg, coll_name, 0, TRUE, &coll_id );
+  VDS_ERR_HNDLR( "VDretCollId", status, *msg, VD_VERBOSE, quit );
+
+
+  status = om$send( msg = message ACrg_collect.AClist_attribute(
+					msg,
+					0,
+					NULL,
+					&nb_attr ),
+			targetid = coll_id.objid,
+			targetos = coll_id.osnum );
+  VDS_ERR_HNDLR( "ACrg_collect.AClist_attribute", status, *msg,
+		  VD_VERBOSE,  quit );
+
+  for( ii=nb_attr-1; ii > -1; ii--)
+  {
+	status = om$send(msg = message ACdiowner.ACrem_att_at_index
+			 ( msg, ii ),
+		 senderid = NULL_OBJID,
+		 targetid = coll_id.objid,
+		 targetos = coll_id.osnum);
+	VDS_ERR_HNDLR( "ACdiowner.ACrem_att_at_index", status, *msg,
+		    VD_VERBOSE, quit );
+  }
+
+  FIfld_get_num_rows ( FP, body_fld, &num_rows );
+  for ( ii=0; ii<num_rows; ii++)
+  {
+	FIfld_get_text ( FP, body_fld, ii, 0, ATTR_NAME, name,
+			 &sel_flag, &r_pos);
+	if ( name[0] == '\0' ) continue;
+	FIfld_get_text ( FP, body_fld, ii, 1, VD_ATTR_LEN, AttText, &sel_flag,
+			   &r_pos);
+	jj=0;
+	do
+	{
+	    FIfld_get_text ( FP, body_fld, ii+jj+1, 0, ATTR_NAME,
+						name1, &sel_flag, &r_pos);
+
+	    FIfld_get_text ( FP, body_fld, ii+jj+1, 1, VD_ATTR_LEN,
+						body, &sel_flag, &r_pos);
+	    if ( name1[0] != '\0' ) break;
+	    if ( name1[0] == '\0' && body[0] == '\0' ) break;
+	    strcat ( AttText, " ");
+	    strcat ( AttText, body );
+	    jj++;
+	} while ( 1 );
+
+	ii = ii + jj;
+
+	status = VDputAttInColl ( &msg, coll_id, name, AttText );
+
+  } /*  for ( ii=0; ii<num_rows; ii++)  */
+
+
+
+}
+
+action read_from_file ( long *msg; char *filename )
+{
+FILE		*fp = NULL;
+char		str[VD_ATTR_LEN], name[ATTR_NAME], *pc = NULL,
+		tmpstr[VD_ATTR_LEN], AttText[VD_ATTR_LEN];
+int		body_fld, body_width, row_num, len;
+int		start_pos, end_pos, c;
+
+   *msg = MSSUCC;
+
+   FIg_get_text ( FP, VD_COLL_FLD, str );
+   if ( !strcmp(str, VD_OBJECTS_TITLE) )
+   {
+     body_fld = VD_OBJ_BDY_FLD;
+     body_width = VD_OBJ_BDY_WD;
+   }
+   else if ( !strcmp(str, VD_NOTES_TITLE) )
+   {
+     body_fld = VD_NOTES_BDY_FLD;
+     body_width = VD_NOTES_BDY_WD;
+   }
+   else
+   {
+	printf("error in read_from_file\n");
+	goto quit;
+   }
+
+   fp = fopen(filename,"r");
+   if ( fp == NULL )
+   {
+      sprintf( str, "Can not open file '%s'", filename );
+      FIg_set_text( FP, FI_MSG_FIELD, str );
+      *msg = MSFAIL;
+      goto quit;
+   }
+
+   row_num = 0;
+
+   while ( fgets (str, VD_ATTR_LEN, fp) )
+   {
+	/* read name of attribute */
+	name[0] = '\0';
+	sscanf( str, "%s", name );
+	if ( name[0] == '\0' || name[0] == '#' ) continue;
+
+	/* skip the name of attribute */
+	pc = str;
+	while (   isspace(pc[0]) ) pc++;
+	while ( ! isspace(pc[0]) ) pc++;
+	while (   isspace(pc[0]) && (pc[0] != '\n') ) pc++;
+
+	/* copy rest of line AttText */
+	len = strlen( pc );
+	pc[len-1] = ' ';	/* replace newline char with blank char*/
+	strcpy( AttText, pc );
+
+	/* read next lines and add it to AttText if started with tab */
+
+	while ( 1 )
+	{
+	   c = fgetc ( fp );
+	   if ( c == '#' )
+	   {
+ 		fgets(str, VD_ATTR_LEN, fp);
+		continue;
+	   }
+	   else if ( c == '\t' )
+	   {
+		ungetc( c, fp );
+		fgets(str, VD_ATTR_LEN, fp);
+		pc = str;
+		while ( isspace(pc[0]) && (pc[0] != '\n') ) pc++;
+		len = strlen( pc );
+		pc[len-1] = ' ';	/* replace newline char with blank char*/
+		strcat( AttText, pc );
+	   }
+	   else
+	   {
+		ungetc( c, fp );
+		break;
+	   }
+	}
+
+	FIfld_set_text ( FP, body_fld, row_num, 0, name, FALSE );
+
+	start_pos = 0;
+	while ( 1 )
+	{
+	    len = strlen ( &AttText[start_pos] );
+	    if ( len <= body_width )
+	    {
+		FIfld_set_text ( FP, body_fld, row_num, 1,
+						&AttText[start_pos], FALSE );
+		row_num++;
+		break;
+	    }
+	    else
+	    {
+		end_pos = body_width;
+		/* find position of , character */
+		while ( AttText[start_pos+end_pos] != '\0' &&
+			AttText[start_pos+end_pos] != ','    ) end_pos++;
+		if ( AttText[start_pos+end_pos] == '\0' )
+		{
+		   FIfld_set_text ( FP, body_fld, row_num, 1,
+						&AttText[start_pos], FALSE );
+		   row_num++;
+		   break;
+		}
+		else
+		{
+		   strncpy( tmpstr, &AttText[start_pos], end_pos+1 );
+		   tmpstr[end_pos+1] = '\0';
+		   FIfld_set_text ( FP, body_fld, row_num, 1,
+						tmpstr, FALSE );
+		   row_num++;
+
+		   end_pos++;
+		   /* skip blank characters */
+		   while ( AttText[start_pos+end_pos] != '\0' &&
+			   isspace(AttText[start_pos+end_pos])   )
+				end_pos++;
+		   if ( AttText[start_pos+end_pos] == '\0' )  break;
+		   start_pos = start_pos+end_pos;
+		}
+	     }
+	} /* while ( 1 ) */
+   }
+   FIfld_set_num_rows ( FP, body_fld, row_num );
+
+   fclose ( fp );
+ 
+
+}
+
+action write_to_file ( long *msg; char *filename )
+{
+FILE		*fp = NULL;
+char		str[VD_ATTR_LEN], name[ATTR_NAME],
+		tmpstr[VD_ATTR_LEN], AttText[VD_ATTR_LEN],
+		name1[ATTR_NAME];
+
+int		body_fld, body_width, num_rows, row, len,
+		ii, jj,
+		sel_flag, r_pos, start_pos, end_pos, over_write;
+
+  *msg = MSSUCC;
+
+  FIg_get_text ( FP, VD_COLL_FLD, str );
+  if ( !strcmp(str, VD_OBJECTS_TITLE) )
+  {
+     body_fld = VD_OBJ_BDY_FLD;
+     body_width = VD_OBJ_BDY_WD;
+  }
+  else if ( !strcmp(str, VD_NOTES_TITLE) )
+  {
+     body_fld = VD_NOTES_BDY_FLD;
+     body_width = VD_NOTES_BDY_WD;
+  }
+  else
+  {
+	printf("error in write_to_file\n");
+	goto quit;
+  }
+
+  FIg_get_state( FP, VD_WRITE_TGL_FLD, &over_write );
+  if ( !over_write )
+  {
+     fp = fopen(filename, "r+" );
+     if ( fp != NULL )
+     {
+	FIg_set_text( FP, FI_MSG_FIELD, "File already exists" );
+	fclose ( fp );
+     }
+     *msg = MSFAIL;
+     goto quit;
+  }
+
+  fp = fopen(filename,"w");
+  if ( fp == NULL )
+  {
+      sprintf( str, "Can not open file '%s' for writing", filename );
+      FIg_set_text( FP, FI_MSG_FIELD, str );
+      *msg = MSFAIL;
+      goto quit;
+  }
+  else
+  {
+      /* print file header */
+      fprintf(fp, "#\n#\t\tI/VDS\n");
+      if ( body_fld == VD_OBJ_BDY_FLD )
+	fprintf(fp, "#\n#\tObject Definitions\n#\n" );
+      else
+	fprintf(fp, "#\n#\tNotes Variables\n#\n" );
+  }
+
+  FIfld_get_num_rows ( FP, body_fld, &num_rows );
+  for ( ii=0; ii<num_rows; ii++)
+  {
+	FIfld_get_text ( FP, body_fld, ii, 0, ATTR_NAME,
+			 name,&sel_flag, &r_pos);
+	if ( name[0] == '\0' ) continue;
+	FIfld_get_text ( FP, body_fld, ii, 1, VD_ATTR_LEN, AttText, &sel_flag,
+			   &r_pos);
+	jj=0;
+	do
+	{
+	    FIfld_get_text ( FP, body_fld, ii+jj+1, 0, ATTR_NAME,
+						name1, &sel_flag, &r_pos);
+
+	    FIfld_get_text ( FP, body_fld, ii+jj+1, 1, VD_ATTR_LEN,
+						str, &sel_flag, &r_pos);
+	    if ( name1[0] != '\0' ) break;
+	    if ( name1[0] == '\0' && str[0] == '\0' ) break;
+	    strcat ( AttText, " ");
+	    strcat ( AttText, str );
+	    jj++;
+	} while ( 1 );
+
+	ii = ii + jj;
+
+	/* write to file */
+	fprintf( fp, "%s ", name );
+	len = strlen ( name );
+	if ( len < 8 )
+	  fprintf( fp, "\t\t\t" );
+	else if ( len < 16 )
+	  fprintf( fp, "\t\t" );
+	else fprintf( fp, "\t" );
+
+	row = 0;
+	start_pos = 0;
+	while ( 1 )
+	{
+	    len = strlen ( &AttText[start_pos] );
+	    if ( len <= 60 )
+	    {
+		if ( row == 0 ) fprintf( fp, "%s\n", &AttText[start_pos] );
+		else		fprintf( fp, "\t\t\t%s\n", &AttText[start_pos]);
+		break;
+	    }
+	    else
+	    {
+		end_pos = 60;
+		/* find position of , character */
+		while ( AttText[start_pos+end_pos] != '\0' &&
+			AttText[start_pos+end_pos] != ','    ) end_pos++;
+		if ( AttText[start_pos+end_pos] == '\0' )
+		{
+		   if ( row == 0 ) fprintf( fp, "%s\n", &AttText[start_pos] );
+		   else		   fprintf( fp, "\t\t\t%s\n",
+							&AttText[start_pos] );
+		   break;
+		}
+		else
+		{ 
+		   strncpy( tmpstr, &AttText[start_pos], end_pos+1 );
+		   tmpstr[end_pos+1] = '\0';
+
+		   if ( row == 0 ) fprintf( fp, "%s\n", tmpstr );
+		   else		   fprintf( fp, "\t\t\t%s\n", tmpstr );
+
+
+		   /* see if all the string is processed */
+		   /* if ( AttText[start_pos+end_pos+1] == len ) break; */
+
+		   start_pos = start_pos+end_pos+1;
+		}
+		row++;
+	    }
+	}
+
+	
+  } /*  for ( ii=0; ii<num_rows; ii++)  */
+
+  fclose ( fp );
+
+}

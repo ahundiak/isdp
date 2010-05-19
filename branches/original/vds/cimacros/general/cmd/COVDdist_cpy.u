@@ -1,0 +1,348 @@
+/* $Id: COVDdist_cpy.u,v 1.1.1.1 2001/01/04 21:07:19 cvs Exp $  */
+
+/* --------------------------------------------------------------------
+ * I/VDS
+ *
+ * File:	vds/cimacros/general/cmd / COVDdist_cpy.u
+ *
+ * Description:
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ *	$Log: COVDdist_cpy.u,v $
+ *	Revision 1.1.1.1  2001/01/04 21:07:19  cvs
+ *	Initial import to CVS
+ *	
+# Revision 1.1  1998/04/29  16:27:20  pinnacle
+# VDS 2.5.1
+#
+# Revision 1.2  1998/02/01  13:45:14  pinnacle
+# ah
+#
+# Revision 1.1  1997/05/08  13:20:44  pinnacle
+# New project VDS 250
+#
+# Revision 1.1  1996/07/19  20:33:52  pinnacle
+# Create VDS 241 project
+#
+# Revision 1.2  1996/03/11  19:35:34  pinnacle
+# Replaced: cimacros/general/cmd/COVDdist_cpy.u for:  by kddinov for vds.240
+#
+# Revision 1.1  1994/11/14  22:42:32  pinnacle
+# Create vds.240 from vds.232
+#
+# Revision 1.1  1994/11/08  16:07:00  pinnacle
+# create vds.232
+#
+ *
+ * History:
+ *	MM/DD/YY	AUTHOR		DESCRIPTION
+ *	02/01/98	ah		Move AS_status.h down
+ * -------------------------------------------------------------------*/
+
+/*
+	 VDS 2.0 - PPM macro library - 92/07/09 (alc)
+ */
+   
+/*
+	
+	File name :		COVDdist_cpy.u
+	Revision date :		92/05/27
+	Product :		I/VDS - PPMmacro library - VDCpElClRP
+
+	Description :
+	-----------
+		Select from a list of objects the farthest or the closest object
+	(given an expression), and copy it.
+
+	History :
+	-------
+	92/05/27   alc   Write command object to place the VDdist_cpy macro.
+ */
+
+
+#include <stdio.h>
+
+#include "cieveryone.h"
+#include "ciminimum.h"
+#include "cimacros.h"
+#include "ciexec.h"
+#include "EMSmsgdef.h"
+#include "msdef.h"
+
+#include "AS_status.h"
+
+#define MACRO_NAME	"VDdist_cpy"
+#define MAX_TEMP	12			/* see VDdist_cpy.u */
+
+struct GRid 	TEMP[MAX_TEMP] ;
+struct GRmd_env MOD_ENV ;
+IGRchar		loc_mes[256] ;
+GRobj 		ci_mac_bib_FileId ;
+
+extern ASmake_source_from_env();
+
+
+/*
+	------------------------------------------------------------------
+ */
+
+
+main()
+{
+GRobj 		MAC1 ;
+int		mouse_resp  ;
+IGRchar		loc_prompt[256] ;
+IGRboolean	exp_created ;
+IGRint		num_ent, i, nb_obj ;
+IGRlong		msg, stat   ;
+
+start :	/* begin of command */
+
+   exp_created = FALSE ;
+   while (1) {
+
+   /*
+	Locate reference point   (second template)
+	Reset, to give expression (first template)
+    */
+
+        message(loc_mes) ;
+	if (! exp_created) status("Reset to create expression") ;
+
+	ci$locate( prompt       = "Identify reference point",
+                  properties   	= LC_LC_ONLY | LC_DP_ONLY | LC_RW,
+                  owner_action 	= LC_RIGID_COMP  |
+                                LC_RIGID_OWNER | LC_FLEX_COMP |
+                                LC_FLEX_OWNER  | LC_REF_OBJECTS,
+		  classes 	= "GRpoint",	/* include also ASpoint */
+                  obj          = &(TEMP[1].objid),
+                  osnum        = &(TEMP[1].osnum),
+ 		  response     = &mouse_resp,
+                  md_env       = &MOD_ENV) ;
+
+	switch(mouse_resp) {
+
+		case EX_RJT_MOVEON :
+			stat = ask_expression() ; /* Get first template  */
+  			as$status(sts = stat, action = RET_STATUS ) ;
+			exp_created = TRUE ;
+			status("") ;		  /* Clear status field  */
+			continue   ;		  /* Get second template */
+			break ;
+
+		case EX_DATA :
+			if (! exp_created) {
+				stat = cre_default_expression() ;
+  				as$status(sts = stat, action = RET_STATUS) ;
+				exp_created = TRUE ;
+				}
+   			stat = ASmake_source_from_env( 
+					&TEMP[1], &MOD_ENV, &TEMP[1]) ;	
+  			as$status( sts = stat, action = RET_STATUS )  ;
+			break ;
+
+		case EX_BACK_UP :
+			goto start ; /* backtrack */
+			break ;
+
+		default :
+			#ifdef DEBUG
+			printf("Unknown response \n") ;
+			#endif
+			goto start ; /* backtrack */
+			break ;
+		} /* switch */
+	
+   /*
+	Locate list of objects
+    */
+
+   list : /* begin of list */
+
+	num_ent = 2 ; nb_obj = 0 ;
+	for (i = 0 ; i < MAX_TEMP - num_ent ; i = i + 1) {
+
+		if (i == 0) strcpy(loc_prompt, "Identify first object")   ;
+		else strcpy(loc_prompt, "Identify next object / Move on") ;
+
+		ci$locate(prompt     = loc_prompt,
+                  	properties   = LC_LC_ONLY | LC_DP_ONLY | LC_RW,
+                  	owner_action = LC_RIGID_COMP  |
+                                 LC_RIGID_OWNER | LC_FLEX_COMP |
+                                 LC_FLEX_OWNER  | LC_REF_OBJECTS,
+ 	          	classes      = "GRvg",
+	          	obj          = &TEMP[num_ent + i].objid,
+                  	osnum        = &TEMP[num_ent + i].osnum,
+			response     = &mouse_resp,
+                  	md_env       = &MOD_ENV) ;
+
+		switch(mouse_resp) {
+
+		   case EX_RJT_MOVEON : 
+			#ifdef DEBUG
+			printf("Ready to place macro \n") ;
+			#endif
+			if (i == 0) goto start ; /* restart command */
+			else        goto process ;
+			break ;
+
+		   case EX_DATA :
+			#ifdef DEBUG
+			printf("EX_DATA \n") ;
+			#endif
+   			stat = ASmake_source_from_env( 
+						&TEMP[num_ent + i], &MOD_ENV, 
+						&TEMP[num_ent + i]) ;	
+  			as$status( sts = stat, action = RET_STATUS ) ;
+			nb_obj = nb_obj + 1 ;
+			break ;
+
+		   case EX_BACK_UP :
+			if (i == 0) goto start ; /* restart command */
+			else         goto list ; /* restart list    */
+			break ;
+
+		   default :
+			return(OM_E_ABORT) ;
+			break    ;
+		   } /* switch */
+	
+		if (i == MAX_TEMP - num_ent) {
+ 		   status("VDdist_cpy : max number of templates reached") ;
+		   }
+		} /* for */
+
+   /*
+	Place macro occurrence
+    */
+
+   process :
+
+	num_ent = num_ent + nb_obj ;
+	#ifdef DEBUG
+	printf("Number of located go is %d \n", nb_obj) ; 
+	#endif
+
+   	MAC1 = NULL_OBJID ;   
+   	stat = ci$get_module_info(md_env = &MOD_ENV) ;
+	as$status(sts = stat, action = RET_STATUS)   ;
+
+   	stat = ci$send(msg = message nci_macro.init(&msg,
+                                        	0,
+				        	MACRO_NAME,
+						num_ent,
+						TEMP,
+						NULL,
+                                        	&MOD_ENV ),
+	   	targetid = MAC1,
+	   	targetos = MOD_ENV.md_id.osnum ) ; as$status(sts = stat) ;
+	if (!(stat & msg & 1)) {
+		#ifdef DEBUG
+		printf("Placement of %s failed \n", MACRO_NAME) ;
+		#endif
+      		stat = ci$send(msg = message Root.delete(0),
+			targetid = MAC1,
+			targetos = MOD_ENV.md_id.osnum ) ;
+		return(OM_E_ABORT) ;
+	        }
+	#ifdef DEBUG
+	else
+		printf("Placement of nci_macro successful \n\n") ;
+	#endif
+   } /* while */
+
+return(OM_S_SUCCESS) ;
+}     /* main() */
+
+
+/*
+	------------------------------------------------------------------
+ */
+
+
+init() 
+{
+IGRlong		msg ;
+
+strcpy(loc_mes,"<Assoc> Copy Element Closest to Reference Point") ;
+ci$load(file_name = "ci_mac_bib.u",
+	load 	  = LOAD,
+	file_id   = &ci_mac_bib_FileId,
+	stat 	  = &msg) ;
+
+if (msg != CI_S_SUCCESS) {
+	exit ;
+	}
+return(OM_S_SUCCESS) ;
+} /* init() */
+
+
+/*
+	------------------------------------------------------------------
+ */
+
+
+wakeup(){
+        message(loc_mes);
+	return(OM_S_SUCCESS) ;
+} /* wakeup() */
+
+
+/*
+	------------------------------------------------------------------
+ */
+
+
+ask_expression()
+{
+IGRchar		loc_prompt[256], exp_prompt[256] ;
+IGRdouble 	exp_default ;
+int		suc ;
+
+	#ifdef DEBUG
+	printf("	---> Call to ask_expression() \n") ;
+	#endif
+
+	/* Get first template */
+	strcpy(loc_prompt, "Enter expression for closest or farthest object [0/1]") ;
+	strcpy(exp_prompt, "Enter value (closest = 0, farthest = 1)") ;
+	exp_default = 0 ;
+	suc = 0 ;
+	push (char *) &suc, loc_mes, loc_prompt, exp_prompt, 
+			exp_default, (char *)&TEMP[0] ;
+	ci$run(	file_id = &ci_mac_bib_FileId,
+		entry  = "loc_exp") ;
+	if (suc != 1) {
+		return(OM_E_ABORT) ;
+		}
+	else	return(OM_S_SUCCESS) ;
+} /* ask_expression() */
+
+
+/*
+	------------------------------------------------------------------
+ */
+
+
+cre_default_expression() {
+int	suc ;
+
+	#ifdef DEBUG
+	printf("	---> Call to cre_default_expression() \n") ;
+	#endif
+
+	/* Set first template */
+        push (char *)&suc, (IGRdouble)0.0, (char *)&TEMP[0];
+        ci$run( file_id = &ci_mac_bib_FileId,
+ 	         entry   = "CreDefUnExp" );
+        if( suc != MSSUCC ) return(OM_E_ABORT) ;
+	else return(OM_S_SUCCESS) ;
+} /* cre_default_expression() */
+
+
+/*
+	------------------------------------------------------------------
+ */
+

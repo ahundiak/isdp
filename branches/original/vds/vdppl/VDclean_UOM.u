@@ -1,0 +1,125 @@
+/* $Id: VDclean_UOM.u,v 1.1 2001/08/30 17:58:32 hans Exp $  */
+
+/* --------------------------------------------------------------------
+ * I/VDS
+ *
+ * File:	VDclean_UOM.u
+ *
+ * Description:
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ *	$Log: VDclean_UOM.u,v $
+ *	Revision 1.1  2001/08/30 17:58:32  hans
+ *	TR# 5508 - Add VDclean_UOM.u & dbgUOM.u
+ *	
+ *
+ * History:
+ *	MM/DD/YYYY	AUTHOR		DESCRIPTION
+ *	08/29/2001	HF		Creation date
+ *
+ * -------------------------------------------------------------------*/
+
+/*
+ * PPL VDclean_UOM.u
+ *
+ * This PPL provides a very fast function to find & delete the UOMsuper object
+ * in the specified object space (no locate required !!!).
+ *
+ * Usage: "ci=VDclean_UOM"
+ */
+
+#include <stdio.h>
+#include <cieveryone.h>
+#include <cimacros.h>
+#include "OMindex.h"
+#include "OMmacros.h"
+#include "VDppl.h"
+#include "VDobj.h"
+
+extern VDpms_find_objects();
+extern GRdpb_get();
+
+extern int       VDcomment;
+extern GRclassid OPP_UOMsuper_class_id;
+
+main( argc, argv )
+  int	  argc;
+  char	**argv;
+{
+  char                  str[80];
+  int		        i0, osmax, cnt, del_count, sts, max_entry, sz, f_defer_flag;
+  IGRuint               max;
+  OMuword               osn;
+
+  struct GRobj_env      objOE;
+
+  OM_S_OBJID	        oid;
+  OM_p_OSD	        p_OSD;		/* Ptr to object space descriptor */
+  OM_p_SPAMAPENT        p_spamap;	/* Ptr to space map entry	 */
+  OM_p_OBJECTHDR        p_objhdr;
+
+  osn = 2;
+
+  gr$get_module_env  ( buffer = &objOE.mod_env);
+
+  for( i0 = 0 ; i0 < OM_Gw_maxOS ; i0=i0+1 )
+  {
+    if( OM_GA_OSDs[ i0 ] )
+    {
+      printf("OS[%d] = %s\n" , i0, OM_GA_OSDs[i0]->name );
+      osmax = i0;
+    }
+  }
+
+  if ( argc > 1 )
+  {
+    osn = (OMuword) atoi ( argv[1] );
+    if ( osn < 2 || osn > osmax )
+    {
+      sprintf ( str, "Error: Invalid OS number[2..%d] = %d <%s>", osmax, osn, argv[1]);
+      printf  ( "%s\n", str);
+      message ( str );
+      return;
+    }
+  }
+  else
+  {
+    osn = objOE.mod_env.md_id.osnum;
+  }
+
+  p_objhdr = NULL;
+
+  sprintf ( str, "Delete UOMsuper object in OS %d", osn);
+  message ( str );
+
+  sts = VDpms_find_objects ( osn, OPP_UOMsuper_class_id, &cnt, NULL );
+
+  printf ( "\nVDpms_find_objects() : sts = %d, Number of UOMsuper objects = %d\n", sts, cnt );
+
+  max       = OM_GA_OSDs[osn]->CurSpaceMapSize;
+  p_OSD     = OM_GA_OSDs[osn];
+  max_entry = p_OSD->CurSpaceMapSize;
+  p_spamap  = p_OSD->Spacemap;
+
+  for ( oid=0; (int) oid < max_entry;  oid = oid+1 )
+  {
+    if ( (p_spamap->flags != 0) && (p_spamap->p_acld != NULL) )
+    {
+      p_objhdr = p_spamap->state.object;
+
+      if ( !(p_spamap->flags & OM_SM_unknown_obj) && p_spamap->p_acld->w_classid == OPP_UOMsuper_class_id )
+      {
+        sts =
+          ci$send(msg      = message UOMsuper.delete(f_defer_flag),
+                  targetos = osn,
+                  targetid = oid);
+
+        del_count = del_count+1;
+      }
+    }
+    p_spamap = p_spamap+1;
+  }
+  printf ( "\nNumber of UOMsuper objects = %d, # of deleted objects = %d\n", cnt, del_count );
+}

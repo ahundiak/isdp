@@ -1,0 +1,710 @@
+/* $Id: crv_offset.u,v 1.1.1.1 2001/01/04 21:07:22 cvs Exp $  */
+
+/* --------------------------------------------------------------------
+ * I/VDS
+ *
+ * File:	vds/cimacros/wireframe/macros / crv_offset.u
+ *
+ * Description:
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ *	$Log: crv_offset.u,v $
+ *	Revision 1.1.1.1  2001/01/04 21:07:22  cvs
+ *	Initial import to CVS
+ *	
+# Revision 1.1  1998/04/29  16:27:20  pinnacle
+# VDS 2.5.1
+#
+# Revision 1.1  1997/05/08  13:20:44  pinnacle
+# New project VDS 250
+#
+# Revision 1.1  1996/07/19  20:33:52  pinnacle
+# Create VDS 241 project
+#
+# Revision 1.1  1994/11/14  22:42:32  pinnacle
+# Create vds.240 from vds.232
+#
+# Revision 1.1  1994/11/08  16:07:00  pinnacle
+# create vds.232
+#
+ *
+ * History:
+ *	MM/DD/YY	AUTHOR		DESCRIPTION
+ *
+ * -------------------------------------------------------------------*/
+
+/*
+	 VDS 2.1 - PPM macro library 
+	 92/10/06 Get rid of internal data (not used)
+ */
+   
+#include "cieveryone.h"
+#include "cimacros.h"
+#include "ci_mac_def.h"
+#include "bsicmpcvoff.h"
+#include "nddef.h"
+#include "macro.h"
+#include "bserr.h"
+
+OMuword			ln_cl, loc_cl;
+
+IGRchar 		*temp_names[3], *feet_names[1];
+IGRint			temp_types[3];
+
+IGRboolean		pos_orient_flag;
+
+IGRshort		mat_type, option;
+
+IGRlong			stat, msg;
+IGRint			k, num_temp, end_pole;
+IGRint			off_code[1], num_loops;
+ 
+IGRdouble 		matrix[16], off_len[1], off_lenn, eval[6], par0[5];
+IGRdouble		v2[3], vec[3], uv[2], v1[3], z0_pnt[3], line[6];
+IGRdouble		vz[3], p0[3],p1[3];
+
+GRobj 			ci_mac_def1, SUR, SURF, S_OFFSET;
+
+IGRboolean              is_natural_normal, in_udir;
+IGRboolean		right_side, uniform, fillet, rmv_loops;
+
+struct GRid		CUV, GCV, CI_MACRO_ID, C_OFFSET;
+struct GRmd_env		MOD_ENV;
+struct IGRbsp_curve     *bsp_curve, *pj_crv;
+struct GRvg_construct   cst;
+struct IGRdisplay	dis;
+struct GRprops          props;
+struct ret_struct	temp1_rts, expr; 
+struct IGRpolyline      geom;
+
+
+extern IGRboolean	BSprj_cv_pl(),
+			BSfreecv();
+
+extern int 		BSalloccv(),
+			BScrossp(),
+			BStst_plan(),
+			BScveval(),
+			BSmdstptcv(),
+			BSnorvec(),
+			init_cnst_list(),
+	      		BSxlnpl();
+
+extern double   	BSdotp();
+extern 			ASsuper_construct();
+extern			GRabsg_del_by_objid();
+
+/* ========================================================================= */
+/* the main function is the one implementing the definition creation
+/* ========================================================================= */
+
+main ()
+{
+
+  temp_names[0]  = "oflen";  
+  temp_names[1]  = "crv0";
+  temp_names[2]  = "vector";  
+  temp_types[0]  = parameter_generic | double_type | point_generic;
+  temp_types[1]  = curve_generic | conic_generic | line_generic;
+  temp_types[2]  = line_generic | ref_generic;
+
+  feet_names[0] = "rescur";
+  ci_mac_def1 = NULL_OBJID;
+
+  ac$cimacdef( 	cimacdef          = ci_mac_def1,
+		prop		  = ACvariable_template,
+		status 	          = &stat,
+	 	name              = "crv_offset",
+              	temp_num          = 3,
+		temp_names        = temp_names,
+		temp_types        = temp_types,
+	      	extern_feet_num   = 1,
+	 	extern_feet_names = feet_names );
+}
+
+/* ========================================================================= */
+
+compute ()
+{
+  construct_pjs();
+
+  if( C_OFFSET.objid == NULL_OBJID ) return(0);
+
+  ci$send( msg = message  ci_macro.set_all_extern_feet
+	 ( &stat, 1, &C_OFFSET, &MOD_ENV ),
+	   targetid = CI_MACRO_ID.objid,
+	   targetos = CI_MACRO_ID.osnum );
+  return(1);
+
+}
+
+/* ========================================================================= */
+
+place ()
+{
+  construct_pjs();
+
+  if( C_OFFSET.objid == NULL_OBJID ) return(0);
+
+  ci$send( msg = message  ci_macro.set_all_extern_feet
+	 ( &stat, 1, &C_OFFSET, &MOD_ENV ),
+	   targetid = CI_MACRO_ID.objid,
+	   targetos = CI_MACRO_ID.osnum );
+  return(1);
+
+}
+
+/* ========================================================================= */
+
+construct_pjs()
+{
+
+  C_OFFSET.objid = NULL_OBJID;
+  C_OFFSET.osnum = MOD_ENV.md_id.osnum;
+  pj_crv = NULL;
+
+  init_cnst_list();
+  get_symb();
+
+  dis.color		= cnst_list.color;
+  dis.weight		= cnst_list.weight;
+  dis.style		= cnst_list.style;
+
+  cst.msg		= &msg;
+  cst.properties	= GRIS_LOCATABLE | GRIS_NEW | GRIS_DISPLAYABLE;
+  cst.display		= &dis;
+  cst.env_info		= &MOD_ENV;
+  cst.newflag		= 0;
+  cst.level		= cnst_list.level;
+  cst.geometry		= NULL;
+  cst.class_attr	= 0;
+  cst.name		= 0;
+
+/*=========================================================================*/
+/*  retrieve the number of parents					   */
+/*=========================================================================*/
+
+
+  stat = ci$send(msg = message NDnode.NDget_objects(ND_ROOT,NULL,0,NULL,
+					     0,OM_K_MAXINT,&num_temp),
+	   	  targetid = CI_MACRO_ID.objid,
+	   	  targetos = CI_MACRO_ID.osnum);
+  if(!(stat&1)) return;
+
+/*=========================================================================*/
+/*  retrieve a point or expr to define the offset length		   */
+/*=========================================================================*/
+
+ msg =  ci$send( msg = message  ACcpx.ACfind_exp_temp_struct(
+			                &stat,0,(char *)&expr,&MOD_ENV ),
+            targetid = CI_MACRO_ID.objid,
+            targetos = CI_MACRO_ID.osnum );
+  if( !(stat&msg&1) ){
+	write(" bad elem for offset length \n" );
+	return;
+  }
+
+ if( num_temp == 3 ){
+	msg =  ci$send( msg = message  ACcpx.ACfind_exp_temp_struct(
+			                &stat,2,(char *)&temp1_rts,&MOD_ENV ),
+		 targetid = CI_MACRO_ID.objid,
+		 targetos = CI_MACRO_ID.osnum );
+  	if( !(stat&msg&1) ){
+		write(" bad third parent\n " );
+		return;
+  	}
+ }
+/*=========================================================================*/
+/*  retrieve the curve to offset					   */
+/*=========================================================================*/
+
+  msg = ci$send( msg = message  ACcpx.ACfind_exp_temp_obj(&stat,1,&CUV),
+           targetid = CI_MACRO_ID.objid,
+           targetos = CI_MACRO_ID.osnum );
+  if( !(stat&msg&1) ) return;
+
+  msg = ci$send( msg      = message NDmacro.ACreturn_foot(	
+						&stat ,
+						"",
+						&GCV, 
+						&mat_type, 
+					        matrix ),
+	         targetid = CUV.objid,
+	         targetos = CUV.osnum );
+
+  if( !(stat&msg&1) ) return;
+
+  #ifdef DEBUG
+	write("Enter GRvg.GRgeomprops\n");
+  #endif
+
+  ci$send( msg = message GRvg.GRgeomprops( &msg,
+			       		   &mat_type,
+			       		   matrix,
+			       		   &props ),
+                 targetid = GCV.objid,
+ 	         targetos = GCV.osnum );
+
+  GRabsg_del_by_objid(&GCV.objid,&GCV.osnum );
+
+  stat = ci$send( msg = message GRvg.GRgenabsg( 
+					 &msg,
+			                 &mat_type, 
+				         matrix, 
+					 &bsp_curve ),
+           targetid = GCV.objid,
+ 	   targetos = GCV.osnum );
+
+  if( !(stat&msg&1) ){
+	#ifdef DEBUG
+		write(" error ci_macros crv_offset in  GRvg.GRgenabsg\n");
+	#endif
+	return;
+  }
+
+/*===================== planar case ======================================*/
+
+   if(num_temp == 2 )
+   {
+
+/*=========================================================================*/
+/*  solve the lineseg as GO to offset and point as distance		   */
+/*=========================================================================*/
+
+
+    arepolaln( &stat, bsp_curve );
+
+    if( stat == BSSUCC ){
+
+#ifdef DEBUG
+	write("enter point line\n");
+#endif
+	end_pole = 3*(bsp_curve->num_poles -1);
+
+	for(k=0;k<3;k=k+1){
+		 v2[k] = expr.var.point_st.pt[k] - bsp_curve->poles[k];
+		 vec[k] = bsp_curve->poles[end_pole+k] - bsp_curve->poles[k]; 
+	}
+
+	BSnorvec(&stat,vec);
+	off_len[0] = BSdotp(&stat,v2,vec);
+
+	for(k=0;k<3;k=k+1){
+		 v2[k] =  v2[k]- off_len[0] * vec[k];
+		 line[k]   = bsp_curve->poles[k]   + v2[k];
+		 line[k+3] = bsp_curve->poles[end_pole + k] + v2[k];
+	}
+  	geom.num_points = 2;
+	geom.points	= &line[0];
+	cst.geometry	= (char *)&geom;
+
+        msg = ci$send(msg      = message GR3dlineseg.GRaltconstruct(&cst),
+                targetid = C_OFFSET.objid,
+	        targetos = C_OFFSET.osnum );
+	
+	return;
+
+  }/* end if poles are aligned */
+
+
+
+
+	/* --- retrieve the normal of the plane containing the curve --- */
+
+        BStst_plan(bsp_curve->num_poles,&bsp_curve->poles[0],
+		   bsp_curve->weights, &bsp_curve->planar,v1,&stat);
+
+	if(stat != 0)
+        {
+ 	     status("curve must be planar");
+ 	     return(0);
+        }
+
+  	if(expr.type != double_type) {
+
+		/* --- we got a point --- */
+
+		for(k=0;k<3;k=k+1)
+		 v2[k] =  expr.var.point_st.pt[k] +  10.0*v1[k];
+#ifdef DEBUG
+	write("v2 = ",v2[0],v2[1],v2[2],"\n");
+ #endif
+		/* --- we project the point in the plane of the curve --- */
+
+		BSxlnpl(&stat,v1,&bsp_curve->poles[0],
+			expr.var.point_st.pt,v2, vec );
+		if( stat != BSSUCC ) return(0);
+
+#ifdef DEBUG
+	write("pj vec = ",vec[0],vec[1],vec[2],"\n");
+#endif
+
+		/* --- we project the point in the plane on the curve to
+		       find the offset length */
+
+   		BSmdstptcv (bsp_curve,vec,&par0[0],z0_pnt,&off_len[0],&stat);
+#ifdef DEBUG
+	write("z0_pnt = ",z0_pnt[0],z0_pnt[1],z0_pnt[2],"off_len = ",
+							off_len[0],"\n");
+#endif
+
+
+   		if( stat != BSSUCC ) {
+#ifdef DEBUG
+write("project the dir_pnt on bsp_curve[0] stat =",stat,"\n");
+#endif
+			return(0);
+   		}
+		for(k=0;k<3;k=k+1) vec[k] = vec[k] - z0_pnt[k];
+
+
+  	}
+  	else off_len[0] =  expr.var.root_pm_st.value;
+
+        cst.geometry	= (char *)bsp_curve;
+        GCV.objid = NULL_OBJID;
+        msg = ci$send(msg      = message GRbcsubbc.GRconstruct(&cst),
+                      targetid = GCV.objid,
+	              targetos = GCV.osnum);
+
+  	if(expr.type != double_type) {
+
+   		BScveval ( bsp_curve , par0[0], 1, eval, &msg);
+		BScrossp(&msg,&eval[3],v1,v2);
+        	if( BSdotp(&msg,vec,v2)  < 0.0 ) right_side = FALSE;
+		else  right_side = TRUE;
+        }
+	else{
+		right_side = FALSE;
+		if( off_len[0] < 0.0 ){
+			right_side = TRUE;
+			off_len[0] = -1.0 * off_len[0];
+        	}
+	}	
+	off_code[0] = BSCONSTOFF;
+	uniform	= TRUE;
+	fillet	= FALSE;
+	rmv_loops = TRUE;
+	cst.geometry	= NULL;
+#ifdef DEBUG
+write("the curve is planar \n");
+#endif
+	stat = ci$send( msg	    = message GRcurve.EMcvoffset(
+						&msg,
+                           			&MOD_ENV.md_env.matrix_type, 
+						MOD_ENV.md_env.matrix,
+						&cst,
+						off_len,
+						v1,
+						right_side,
+						uniform,
+						off_code,
+						fillet,
+						rmv_loops,
+						&C_OFFSET,
+						&num_loops,
+						NULL,
+						NULL       ),
+	          targetid = GCV.objid,
+	          targetos = GCV.osnum );
+
+
+	ci$send(msg      = message GRgraphics.GRdelete(&msg,&MOD_ENV), 
+        	targetid = GCV.objid,
+		targetos = GCV.osnum );
+
+	if( !(stat&1) )goto exit_err;
+
+
+   }
+/*===================== 3D curve =====================================*/
+   else
+   {
+
+	#ifdef DEBUG
+		write("3D case\n");
+	#endif
+
+	if(temp1_rts.type == ref_generic){
+		vz[0] = temp1_rts.var.ref_st.t[2];
+		vz[1] = temp1_rts.var.ref_st.t[6];
+		vz[2] = temp1_rts.var.ref_st.t[10];
+	} 
+	else if(temp1_rts.type == line_generic){
+		for(k=0; k<3; k=k+1) vz[k] = temp1_rts.var.line_st.v0[k];
+	}
+
+
+  	if(expr.type != double_type){
+
+		/* --- project the curve in plane define by
+		   ( expr.var.point_st.pt, vz ) --- */
+
+    		BSalloccv( (short) bsp_curve->order,
+                   	   (long ) bsp_curve->num_poles, 
+		   	   (short) bsp_curve->rational, 
+		   	   (short) bsp_curve->num_boundaries, 
+		   	   &pj_crv, 
+		   	   &stat );
+
+		if( stat != BSSUCC ) return(0);
+
+  		cst.geometry		= (char *)pj_crv;
+
+		BSprj_cv_pl( &stat, bsp_curve, expr.var.point_st.pt, 
+			     vz, vz, pj_crv);
+
+		if( stat != BSSUCC ){
+			if( pj_crv != NULL ) BSfreecv(&stat,pj_crv);
+			return(0);
+		}
+ 
+   		BSmdstptcv (pj_crv,expr.var.point_st.pt,
+		    	    &par0[0], z0_pnt, &off_len[0] ,&stat);
+   		if( stat != BSSUCC ) {
+		#ifdef DEBUG
+		write("project the dir_pnt on bsp_curve[0] stat =",stat,"\n");
+		#endif
+			return(0);
+   		}
+		for(k=0;k<3;k=k+1) vec[k] = expr.var.point_st.pt[k] - z0_pnt[k];
+		#ifdef DEBUG
+		write("par0 = ",par0[0],"\n");
+		write("z0_pnt = ",z0_pnt[0],z0_pnt[1],z0_pnt[2],"\n");
+		write("vec = ",vec[0],vec[1],vec[2],"\n");
+		#endif
+  	}
+  	else off_len[0] =  expr.var.root_pm_st.value;
+
+/*
+	for(k=0; k<3; k=k+1){
+             v2[k] = bsp_curve->poles[3+k] - bsp_curve->poles[k];
+	     p0[k] = bsp_curve->poles[k];
+	     p1[k] = p0[k] + vz[k];
+   	}
+ 	BScrossp(&msg,vz,v2,vec);
+ 	if( msg != 0 )
+ 	{
+ 	     status("invalid vector");
+ 	     return(0);
+ 	}  
+*/
+       cst.geometry	= (char *)bsp_curve;
+       GCV.objid = NULL_OBJID;
+       msg = ci$send(msg      = message GRbcsubbc.GRconstruct(&cst),
+                targetid = GCV.objid,
+	        targetos = GCV.osnum);
+
+  	if(expr.type != double_type) {
+
+   		BScveval ( pj_crv , par0[0], 1, eval, &msg);
+		BScrossp(&msg,&eval[3],vz,v2);
+		
+		#ifdef DEBUG
+		p0[0] = BSdotp(&msg,vec,v2);
+		write("dot =",p0[0],"\n");
+		#endif
+
+        	if( BSdotp(&msg,vec,v2)  < 0.0 ){
+			
+			 right_side = FALSE;
+		}
+		else{
+			  right_side = TRUE;
+		}
+/*
+        	if( BSdotp(&msg,vec,v2)  < 0.0 ){
+			 right_side = FALSE;
+			 off_len[0] = -1.0 * off_len[0];
+		}
+		else{
+			 right_side = TRUE;
+        	}
+*/
+        }
+	else{
+		right_side = FALSE;
+		if( off_len[0] < 0.0 ){
+			right_side = TRUE;
+			off_len[0] = -1.0 * off_len[0];
+        	}
+	}
+
+	if( pj_crv != NULL ) BSfreecv(&stat,pj_crv);
+	
+	off_code[0] = BSCONSTOFF;
+	uniform	= TRUE;
+	fillet	= FALSE;
+	rmv_loops = TRUE;
+	cst.geometry	= NULL;
+
+	stat = ci$send( msg	    = message GRcurve.EMcvoffset(
+						&msg,
+                           			&MOD_ENV.md_env.matrix_type, 
+						MOD_ENV.md_env.matrix,
+						&cst,
+						off_len,
+						vz,
+						right_side,
+						uniform,
+						off_code,
+						fillet,
+						rmv_loops,
+						&C_OFFSET,
+						&num_loops,
+						NULL,
+						NULL       ),
+	          targetid = GCV.objid,
+	          targetos = GCV.osnum );
+
+	ci$send(msg      = message GRgraphics.GRdelete(&msg,&MOD_ENV), 
+        	targetid = GCV.objid,
+		targetos = GCV.osnum );
+
+ 	if( !(msg&1) ) goto exit_err;
+	return;
+
+
+ 
+   }
+
+   return(1);
+
+
+exit_err:
+	C_OFFSET.objid = NULL_OBJID;
+        return(0); 
+}
+
+/*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
+/*                                                                          */
+/*             are poles aligned		                            */
+/*                                                                          */
+/*  arepolaln( rc, bsp )                                                    */
+/*             O , I                                                        */
+/*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
+
+
+arepolaln( rc, bsp )
+
+IGRint				*rc;
+struct 	IGRbsp_curve 		*bsp;
+
+
+
+
+{
+
+#define ZERO		1.0E-12
+
+    IGRint		i, irc;
+    IGRdouble		v1[3], v2[3], w[3];
+
+
+    extern  int		BSmkvec(),
+			BScrossp();
+
+    extern  double      BSdotp();
+	
+
+        if( bsp->num_poles ==2 ) goto warpup;
+
+	BSmkvec( &irc,v1,&(bsp->poles[0]),&(bsp->poles[3]) );
+
+        for( i=6;i<3*bsp->num_poles;i=i+3 )
+        {
+		BSmkvec( &irc,v2,&(bsp->poles[0]),&(bsp->poles[i]) );
+		BScrossp( &irc, v1,v2,w);
+
+		if( BSdotp(&irc,w,w) > ZERO ){
+		   return(OM_W_ABORT);
+		   *rc = BSFAIL;
+		}
+	}
+
+
+warpup:
+	*rc = BSSUCC;
+        return(OM_S_SUCCESS);
+
+}/* end of arepolaln */
+
+
+/*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
+pieceofcake(){
+
+/*
+	SURF = NULL_OBJID;   
+	SUR  = NULL_OBJID;
+
+   	pos_orient_flag = FALSE;
+	#ifdef DEBUG
+	write("Enter EMSproject.EMplace_surface_of_projection\n");
+	#endif
+
+	msg = ci$send(msg   = message EMSproject.EMplace_surface_of_projection(
+					&cst,
+					(struct GRid *)NULL,
+					&MOD_ENV,
+					(struct IGRbsp_curve *) bsp_curve,
+					props.type,
+					p0,
+					p1,
+					pos_orient_flag,
+					&SURF),
+		 targetid = SUR,
+                 targetos = MOD_ENV.md_id.osnum); 
+
+ 	if( !(msg&1) ) goto exit_err;
+	
+
+	S_OFFSET = NULL_OBJID;
+	is_natural_normal = 1;
+	option = 1;
+	off_lenn =-1* off_len[0];
+	stat = ci$send( msg      = message EMSsurface.EMgenerate_offset_surface(
+                           			&MOD_ENV.md_env.matrix_type, 
+						MOD_ENV.md_env.matrix,
+						off_lenn,
+						is_natural_normal,
+						&cst,
+						&S_OFFSET,
+						option),
+                 targetid = SURF,
+                 targetos = MOD_ENV.md_id.osnum);
+
+
+	ci$send(msg      = message GRgraphics.GRdelete(&msg,&MOD_ENV), 
+        	targetid = SURF);
+
+ 	if( !(stat&1) ) return;
+
+	cst.properties	= GRIS_LOCATABLE |  GRIS_DISPLAYABLE;
+
+	uv[0] = 0.0;
+	uv[1] = 1.0;
+	in_udir = 0;
+
+	stat = ci$send( msg      = message EMSsubbs.EMisoparcv(
+						&msg,
+                           			&MOD_ENV.md_env.matrix_type, 
+						MOD_ENV.md_env.matrix,
+						&cst,
+						1,
+                                                uv,
+                                                in_udir,
+                              			&(C_OFFSET.objid) ),
+                 targetid = S_OFFSET,
+                 targetos = MOD_ENV.md_id.osnum);
+
+
+	ci$send(msg      = message GRgraphics.GRdelete(&msg,&MOD_ENV), 
+                targetid = S_OFFSET,
+                targetos = MOD_ENV.md_id.osnum );
+
+ 	if( !(stat&1) ) goto  exit_err;
+*/
+ return(1);
+}

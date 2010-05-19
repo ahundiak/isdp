@@ -1,0 +1,238 @@
+/* $Id: sol_box.u,v 1.1.1.1 2001/01/04 21:07:20 cvs Exp $  */
+
+/* --------------------------------------------------------------------
+ * I/VDS
+ *
+ * File:	vds/cimacros/solid/macros / sol_box.u
+ *
+ * Description:
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ *	$Log: sol_box.u,v $
+ *	Revision 1.1.1.1  2001/01/04 21:07:20  cvs
+ *	Initial import to CVS
+ *	
+# Revision 1.1  1998/04/29  16:27:20  pinnacle
+# VDS 2.5.1
+#
+# Revision 1.1  1997/05/08  13:20:44  pinnacle
+# New project VDS 250
+#
+# Revision 1.1  1996/07/19  20:33:52  pinnacle
+# Create VDS 241 project
+#
+# Revision 1.1  1994/11/14  22:42:32  pinnacle
+# Create vds.240 from vds.232
+#
+# Revision 1.1  1994/11/08  16:07:00  pinnacle
+# create vds.232
+#
+ *
+ * History:
+ *	MM/DD/YY	AUTHOR		DESCRIPTION
+ *
+ * -------------------------------------------------------------------*/
+
+/*
+	 VDS 2.0 - PPM macro library - 92/07/09 (alc)
+ */
+   
+/*******************************************************************/
+/*
+/*     JLL   redesign date: march 90
+/*
+/*     Make the solid box. 
+/*    
+/*     Root objects are a coordinate system and three parameter
+/*
+/*******************************************************************/
+#include "cieveryone.h"
+#include "cimacros.h"
+#include "ci_mac_def.h"
+#include "macro.h"
+#include "cimath.h"
+#include "AS_status.h"
+#include "msdef.h"
+#include "EMSmsgdef.h"
+
+#define EPSILON 	1.E-10 
+
+IGRlong 		EMSrtmsg;
+
+IGRdouble		pt[3], vx[3], vy[3], vz[3];
+
+IGRchar 		*temp_names[7], *feet_names[1], txt[40];
+IGRint			temp_types[7];
+
+IGRint			i, j;
+IGRlong			stat,msg;
+GRobj 			ci_mac_def1;
+
+struct GRid		CI_MACRO_ID, SOL;
+struct GRmd_env		MOD_ENV;
+struct GRvg_construct   cst;
+struct IGRdisplay	dis;
+struct ret_struct	temp_rts[7];
+
+extern IGRint 		init_cnst_list(),
+			printf();
+extern			ASsuper_construct();
+
+/* ========================================================================= */
+/* the main function is the one implementing the definition creation
+/* ========================================================================= */
+
+main ()
+{
+
+  temp_names[0]  = "coord";  
+  temp_names[1]  = "xst";  
+  temp_names[2]  = "xlen";  
+  temp_names[3]  = "yst";  
+  temp_names[4]  = "ylen";  
+  temp_names[5]  = "zst";  
+  temp_names[6]  = "zlen";  
+
+  temp_types[0]  = ref_generic;
+
+  for(i=1;i<7;i=i+1) temp_types[i]  = parameter_generic | double_type;
+
+  feet_names[0] = "box";
+
+  ci_mac_def1 = NULL_OBJID;
+
+  ac$cimacdef( 	cimacdef          =  ci_mac_def1,
+		status 	          = &stat, 	
+		name              = "sol_box",
+              	temp_num          = 7, 		
+		temp_names        = temp_names,
+		temp_types	  = temp_types,
+	      	extern_feet_num   = 1, 	
+		extern_feet_names = feet_names );
+}
+
+/* ========================================================================= */
+
+compute ()
+{
+
+  construct_pjs();
+
+  ci$send( msg = message  ci_macro.set_all_extern_feet
+	 ( &stat, 1, &SOL, &MOD_ENV ),
+	   targetid = CI_MACRO_ID.objid,
+	   targetos = CI_MACRO_ID.osnum );
+  return(1);
+}
+
+/* ========================================================================= */
+
+place ()
+{
+  construct_pjs();
+
+  if( SOL.objid == NULL_OBJID ) return(0);
+
+  ci$send( msg = message  ci_macro.set_all_extern_feet
+	 	( &stat, 1, &SOL, &MOD_ENV ),
+	   	targetid = CI_MACRO_ID.objid,
+	   	targetos = CI_MACRO_ID.osnum );
+  return(1);
+
+}
+
+/* ========================================================================= */
+
+construct_pjs()
+{
+  SOL.objid = NULL_OBJID;
+  SOL.osnum = MOD_ENV.md_id.osnum;
+
+/*--------------------------------------------------------------------------*/
+/*-----              retrieve al the template s                       ------*/
+/*--------------------------------------------------------------------------*/
+
+  for(i=0; i<7; i=i+1){
+  	msg = ci$send( msg      = message  ACcpx.ACfind_exp_temp_struct
+		           (&stat, i, (char *)&(temp_rts[i]),&MOD_ENV ),
+	   	 targetid = CI_MACRO_ID.objid,
+	   	 targetos = CI_MACRO_ID.osnum );
+  	if( !(msg&stat&1) ){
+         	strcpy(txt," bad object template ");
+		strcat(txt,itoa((i+1)));
+		status(txt);	
+		return;
+  	}
+  }
+/*--------------------------------------------------------------------------*/
+/*-----  check if xlen or ylen or zlen is equal to zero or not        ------*/
+/*--------------------------------------------------------------------------*/
+  if( ( fabs(temp_rts[2].var.root_pm_st.value) < EPSILON ) ||
+      ( fabs(temp_rts[4].var.root_pm_st.value) < EPSILON ) || 
+      ( fabs(temp_rts[6].var.root_pm_st.value) < EPSILON ) ) return;
+
+
+  for( i=0; i<3; i=i+1 )
+   {
+    j = 4 * i;
+    vx[i] = temp_rts[0].var.ref_st.t[j+0] * temp_rts[2].var.root_pm_st.value;
+    vy[i] = temp_rts[0].var.ref_st.t[j+1] * temp_rts[4].var.root_pm_st.value;
+    vz[i] = temp_rts[0].var.ref_st.t[j+2] * temp_rts[6].var.root_pm_st.value;
+    pt[i] = temp_rts[0].var.ref_st.t[j+3] + 
+	    (temp_rts[0].var.ref_st.t[j+0] * temp_rts[1].var.root_pm_st.value) +
+	    (temp_rts[0].var.ref_st.t[j+1] * temp_rts[3].var.root_pm_st.value) +
+	    (temp_rts[0].var.ref_st.t[j+2] * temp_rts[5].var.root_pm_st.value);
+   }
+/*
+
+  for( i=0; i<3; i=i+1 ){
+    j = 4 * i;
+    vx[i] =  pt_rts[1].var.point_st.pt[i];
+    for(k=0;k<3;k=k+1){
+	vx[i] = vx[i] + 
+		ref_rts.var.ref_st.t[j+k]*temp_rts[k+1].var.root_pm_st.value;
+    }
+  }
+*/
+
+#ifdef DEBUG
+   write("pt: ",pt,'\n');
+   write("vx: ",vx,'\n');
+   write("vy: ",vy,'\n');
+   write("vz: ",vz,'\n');
+#endif
+
+   init_cnst_list();
+   get_symb();
+
+   dis.color		= cnst_list.color;
+   dis.weight		= cnst_list.weight;
+   dis.style		= cnst_list.style;
+
+   cst.msg		= &msg;
+   cst.properties	= GRIS_LOCATABLE | GRIS_NEW | GRIS_DISPLAYABLE;
+   cst.display		= &dis;
+   cst.env_info		= &MOD_ENV;
+   cst.newflag		= FALSE;
+   cst.level		= cnst_list.level;
+   cst.geometry		= NULL;
+   cst.class_attr	= NULL;
+   cst.name		= NULL;
+
+
+  stat = ci$send( msg = message EMSblock.EMboxbyhwd( 	&EMSrtmsg, 
+							&cst, 
+							pt, 
+							vx, 
+							vy, 
+							vz       ),
+           targetid = SOL.objid, targetos = SOL.osnum );
+
+  as$status(sts=stat);
+  if( !( ( EMSrtmsg & MSSUCC ) | ( EMSrtmsg & EMS_S_Success  ) ) )
+  					SOL.objid = NULL_OBJID;
+}
+
+

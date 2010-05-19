@@ -1,0 +1,198 @@
+/* $Id: COsrf_mblend.u,v 1.1.1.1 2001/01/04 21:07:21 cvs Exp $  */
+
+/* --------------------------------------------------------------------
+ * I/VDS
+ *
+ * File:	vds/cimacros/surface/cmd / COsrf_mblend.u
+ *
+ * Description:
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ *	$Log: COsrf_mblend.u,v $
+ *	Revision 1.1.1.1  2001/01/04 21:07:21  cvs
+ *	Initial import to CVS
+ *	
+# Revision 1.1  1998/04/29  16:27:20  pinnacle
+# VDS 2.5.1
+#
+# Revision 1.1  1997/05/08  13:20:44  pinnacle
+# New project VDS 250
+#
+# Revision 1.1  1996/07/19  20:33:52  pinnacle
+# Create VDS 241 project
+#
+# Revision 1.2  1996/02/16  22:23:32  pinnacle
+# Replaced: cimacros/surface/cmd/COsrf_mblend.u for:  by v240_int for vds.240
+#
+# Revision 1.1  1994/11/14  22:42:32  pinnacle
+# Create vds.240 from vds.232
+#
+# Revision 1.1  1994/11/08  16:07:00  pinnacle
+# create vds.232
+#
+ *
+ * History:
+ *	MM/DD/YY	AUTHOR		DESCRIPTION
+ *
+ * -------------------------------------------------------------------*/
+
+/*
+	 VDS 2.0 - PPM macro library - 92/07/09 (alc)
+ */
+   
+#include "ciminimum.h"
+#include "cimacros.h"
+
+
+double		pnt[3];
+struct GRid 	TEMP[8],CTEMP[8];
+GRobj 		MAC1;
+short		numsrf,numtot,numcrv,num;
+int		sam,junk[4];
+int 		suc,rt,i,done;
+char            txt[20];
+struct GRmd_env	MOD_ENV;
+IGRchar		mes_f[80];
+
+struct
+{
+  int		num;
+  int		tot;
+  int		srf[4];
+  int		crv[4];
+} var;
+
+extern ASmake_source_from_env();
+
+main()
+{
+  strcpy(mes_f,"<Assoc> Place Blending Surface");
+  while(1)
+  {
+   message(mes_f);
+   numcrv = 0;
+   numsrf = 0;
+   numtot = 0;
+   num = 0;
+   while(1)
+   {
+
+st0: strcpy(txt,"Identify curve ");
+     strcat(txt,itoa(numcrv +1));
+
+      suc = ci$locate( prompt       = txt,
+		       classes      = "GRcurve",
+                       properties   = LC_LC_ONLY | LC_DP_ONLY | LC_RW,
+                       owner_action = LC_RIGID_COMP
+                                      | LC_RIGID_OWNER | LC_FLEX_COMP
+                                      | LC_FLEX_OWNER  | LC_REF_OBJECTS,
+	               obj          = &(TEMP[numcrv].objid),
+                       osnum        = &(TEMP[numcrv].osnum),
+		       md_env       = &MOD_ENV );
+
+	
+	if(suc == 1){
+		ASmake_source_from_env( &TEMP[numcrv],&MOD_ENV,&TEMP[numcrv]);	
+		var.crv[numcrv] = 1;
+		#ifdef DEBUG
+			write("curv[",numcrv,"] = ",TEMP[numcrv].objid,'\n');
+		#endif
+		numcrv = numcrv + 1;
+		numtot = numtot + 1;
+		goto st1;
+	}
+	if(numcrv < 3) goto st0;
+	var.crv[3] = 0;
+	junk[3] = 0;
+	#ifdef DEBUG
+		write("curv",numcrv+1,var.crv,'\n');
+	#endif
+	break;	
+
+st1:	strcpy(txt,"Identify surface ");
+     	strcat(txt,itoa(numcrv));
+     	strcat(txt,"/move-on");
+
+     	suc = ci$locate( prompt       = txt,
+		         classes      = "EMSsubbs",
+                         properties   = LC_LC_ONLY | LC_DP_ONLY | LC_RW,
+                         owner_action = LC_RIGID_COMP
+                                        | LC_RIGID_OWNER | LC_FLEX_COMP
+                                        | LC_FLEX_OWNER  | LC_REF_OBJECTS,
+	                 obj     = &(TEMP[numsrf+4].objid),
+                         osnum   = &(TEMP[numsrf+4].osnum ),
+		         md_env  = &MOD_ENV );
+
+	if( suc == 1 )	{
+		ASmake_source_from_env( &TEMP[numsrf+4],&MOD_ENV,
+					&TEMP[numsrf+4]);	
+
+		junk[numcrv-1] = 1;
+		#ifdef DEBUG
+			write("surf",numcrv,junk,'\n');
+			write("surf[",numsrf+4,"] = ",
+				TEMP[numsrf+4].objid,'\n');
+		#endif
+     		numtot = numtot + 1;
+		numsrf = numsrf + 1;
+		if(numcrv > 3)break;
+		goto st0;
+	}
+	
+	junk[numcrv-1] = 0;
+
+#ifdef DEBUG
+	write("surf",numcrv,junk,'\n');
+#endif
+	if(numcrv > 3) break;
+	goto st0;
+   }
+
+   var.num = numcrv;
+   var.tot = numtot;
+   for(i=0; i<4; i=i+1) var.srf[i] = junk[i];
+
+   if(numcrv == 3) for (i=3; i<7; i=i+1)	TEMP[i] = TEMP[i+1]; 
+
+
+#ifdef DEBUG
+   write("****************************",'\n');
+   write("surface=",var.srf,"\ncurve=",var.crv,'\n');
+   write("tot=",var.tot,"\nnum cur=",var.num,'\n');
+   write("****************************",'\n');
+   for(i=0;i<numtot;i=i+1) write(" TEMP[",i,"] = ",TEMP[i].objid,"\n");
+#endif
+
+   ci$get_module_info(md_env = &MOD_ENV);
+
+   MAC1 = NULL_OBJID;
+
+   ci$send(msg = message nci_macro.init( &suc,
+					 0, 
+					 "srf_mblend", 
+					 numtot,
+					 TEMP, 
+					 &var,
+					 &MOD_ENV),
+	        targetid = MAC1,
+		targetos = MOD_ENV.md_id.osnum );
+
+   if( suc == 0 ){
+		write("placement of nci_macro \"srf_mblend\" failed\n");
+		status("placement of nci_macro \"srf_mblend\" failed");
+      		ci$send(msg = message Root.delete(0),
+			targetid = MAC1,
+			targetos = MOD_ENV.md_id.osnum );
+   }
+
+
+ }
+}
+
+wakeup(){
+	message(mes_f);
+}
+
+

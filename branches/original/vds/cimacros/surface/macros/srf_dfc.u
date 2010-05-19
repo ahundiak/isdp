@@ -1,0 +1,313 @@
+/* $Id: srf_dfc.u,v 1.1.1.1 2001/01/04 21:07:21 cvs Exp $  */
+
+/* --------------------------------------------------------------------
+ * I/VDS
+ *
+ * File:	vds/cimacros/surface/macros / srf_dfc.u
+ *
+ * Description:
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ *	$Log: srf_dfc.u,v $
+ *	Revision 1.1.1.1  2001/01/04 21:07:21  cvs
+ *	Initial import to CVS
+ *	
+# Revision 1.1  1998/04/29  16:27:20  pinnacle
+# VDS 2.5.1
+#
+# Revision 1.1  1997/05/08  13:20:44  pinnacle
+# New project VDS 250
+#
+# Revision 1.1  1996/07/19  20:33:52  pinnacle
+# Create VDS 241 project
+#
+# Revision 1.1  1994/11/14  22:42:32  pinnacle
+# Create vds.240 from vds.232
+#
+# Revision 1.1  1994/11/08  16:07:00  pinnacle
+# create vds.232
+#
+ *
+ * History:
+ *	MM/DD/YY	AUTHOR		DESCRIPTION
+ *
+ * -------------------------------------------------------------------*/
+
+/*
+	VDS 2.1 - PPM macro library - surface
+	Description : <Assoc> Place Surface by Network of Curves
+
+   	History :
+
+	92/10/19 jll Add mechanism to set up correctly the orientation
+		     of the input curves. For each curve We should
+		     set the flag entries[i].geom_parms.polygon_inx to TRUE
+		     if the curve should be reverse else to FALSE.
+		     Now the customer should no get twisted surface.
+        92/11/16 alc Get rid of internal data (not used)
+ */
+
+#include <stdio.h>
+#include "cieveryone.h"
+#include "cimacros.h"
+#include "ci_mac_def.h"
+#include "macro.h"
+#include "nddef.h"
+
+ 
+#define MAX_TEMP	50
+#define MAX_CHA_TEMP	7
+
+IGRchar 	 	*temp_names[MAX_TEMP], *feet_names[1], 
+			buff[MAX_TEMP*MAX_CHA_TEMP], txt[40];
+
+IGRint			temp_types[MAX_TEMP];
+
+IGRboolean		v_periodic;
+
+IGRint      		num_crv, order;
+
+IGRint		        stat, msg, i, j, k, add_info[25];
+
+
+GRobj 			ci_mac_def1;
+
+IGRint			SizeDoubleM3, SizeDoubleM12;
+IGRdouble		EvalRef[12], EvalCou[12], dot1, dot2;
+struct	IGRbsp_curve	*cv;
+
+struct GRid		CUV, CI_MACRO_ID, SURF;
+struct GRlc_info	curves[MAX_TEMP];
+struct GRmd_env		MOD_ENV;
+struct GRvg_construct   cst;
+struct IGRdisplay	dis;
+struct ret_struct	expr;
+
+
+extern IGRint 		init_cnst_list();
+extern			ASsuper_construct();
+extern IGRchar		*memcpy();
+extern IGRdouble	BSdotp();
+extern			BScveval();
+
+/* ========================================================================= */
+/* the main function is the one implementing the definition creation
+/* ========================================================================= */
+
+main ()
+{
+
+  temp_names[0]  = "ordr"; 
+
+  temp_types[0]  = parameter_generic | double_type;
+ 
+  for (k=1; k<MAX_TEMP; k=k+1){
+
+	j = k * MAX_CHA_TEMP;
+	sprintf(&buff[j],"crv%d",k);
+	temp_names[k] = &buff[j];
+	temp_types[k] = curve_generic | conic_generic | line_generic;
+   }
+
+  feet_names[0] = "ressur";
+
+  ci_mac_def1 = NULL_OBJID;
+
+  ac$cimacdef( 	cimacdef          = ci_mac_def1,
+		prop 		  = ACvariable_template,
+		status 	          = &stat, 	
+		name              = "srf_dfc",
+              	temp_num          = MAX_TEMP, 		
+		temp_names        = temp_names,
+		temp_types        = temp_types,
+	      	extern_feet_num   = 1, 	
+		extern_feet_names = feet_names );
+}
+
+/* ========================================================================= */
+
+compute ()
+{
+
+  construct_comp();
+
+  if( SURF.objid == NULL_OBJID ) return(0);
+
+  ci$send( msg = message  ci_macro.set_all_extern_feet
+		(&stat, 1, &SURF, &MOD_ENV ),
+	   	targetid = CI_MACRO_ID.objid,
+	   	targetos = CI_MACRO_ID.osnum );
+  return(1);
+
+}
+
+/* ========================================================================= */
+
+place ()
+{
+
+  construct_comp();
+
+  if( SURF.objid == NULL_OBJID ) return(0);
+
+  ci$send( msg = message  ci_macro.set_all_extern_feet
+		(&stat, 1, &SURF, &MOD_ENV ),
+	   	targetid = CI_MACRO_ID.objid,
+	   	targetos = CI_MACRO_ID.osnum );
+  return(1);
+
+}
+
+
+/* ========================================================================= */
+
+construct_comp()
+{
+  SURF.objid = NULL_OBJID;
+  SURF.osnum = MOD_ENV.md_id.osnum;
+
+  stat = ci$send(msg = message NDnode.NDget_objects(ND_ROOT,NULL,0,NULL,
+					     0,OM_K_MAXINT,&num_crv),
+	   	  targetid = CI_MACRO_ID.objid,
+	   	  targetos = CI_MACRO_ID.osnum);
+  if(!(stat&1)) return;
+
+
+#ifdef DEBUG
+  write(" num_crv =",num_crv,"\n");
+#endif
+
+  msg = ci$send( msg = message  ACcpx.ACfind_exp_temp_struct(
+					&stat, 0, (IGRchar *)&expr,&MOD_ENV ),
+           targetid = CI_MACRO_ID.objid,
+           targetos = CI_MACRO_ID.osnum );
+  if( !(stat&msg&1) ){
+	status(" bad expression for the order ");
+	return;
+  }
+
+
+  order = expr.var.root_pm_st.value;
+
+  if( (num_crv-1) < 2 ) return;
+
+  if((num_crv - 1) <= order )	order = num_crv-1;
+  
+  for(i=1; i<num_crv; i=i+1)
+  {
+     k = i - 1;
+
+     msg = ci$send( msg = message  ACcpx.ACfind_exp_temp_obj(&stat,i,&CUV),
+ 	      targetid = CI_MACRO_ID.objid,
+	      targetos = CI_MACRO_ID.osnum );
+
+     if( !(msg&stat&1) ) return;
+
+     msg = ci$send( msg      = message NDmacro.ACreturn_foot(	
+			&stat ,
+			"",
+			&curves[k].located_obj, 
+			&curves[k].module_info.md_env.matrix_type, 
+			curves[k].module_info.md_env.matrix ),
+	     targetid = CUV.objid,
+	     targetos = CUV.osnum );
+
+     if( !(msg&stat&1) ){
+		strcpy(txt," bad curve " );
+		strcat(txt,itoa(k));
+		status(txt);
+		return;
+     }
+
+     curves[k].module_info.md_id.osnum = curves[k].located_obj.osnum;
+
+   }
+
+  init_cnst_list();
+  get_symb();
+
+  dis.color		= cnst_list.color;
+  dis.weight		= cnst_list.weight;
+  dis.style		= cnst_list.style;
+
+  cst.msg		= &msg;
+  cst.properties	= GRIS_LOCATABLE | GRIS_NEW | GRIS_DISPLAYABLE;
+  cst.display		= &dis;
+  cst.env_info		= &MOD_ENV;
+  cst.newflag		= 0;
+  cst.level		= cnst_list.level;
+  cst.geometry		= NULL;
+  cst.class_attr	= 0;
+  cst.name		= 0;
+
+
+   v_periodic = FALSE;
+
+   /*--- set correctly the geom_parms.polygon_inx flag to reverse or not
+         the input curve  ---*/
+
+   stat = ci$send(msg =	message GRvg.GRgenabsg(
+				&msg,
+				&curves[0].module_info.md_env.matrix_type, 
+				curves[0].module_info.md_env.matrix,
+				&cv),
+		targetid = curves[0].located_obj.objid,
+	 	targetos = curves[0].located_obj.osnum) ;
+
+   BScveval(cv,0.0,1,EvalRef,&msg);	          
+   BScveval(cv,1.0,1,&EvalRef[6],&msg);	
+   SizeDoubleM3  = 3 * sizeof(IGRdouble);
+   SizeDoubleM12 = 4 * SizeDoubleM3;
+
+   curves[0].geom_parms.polygon_inx = FALSE;
+   num_crv = num_crv - 1;
+
+   for(i=1;i<num_crv;i=i+1){
+
+   	stat = ci$send(msg =	message GRvg.GRgenabsg(
+				&msg,
+				&curves[i].module_info.md_env.matrix_type, 
+				curves[i].module_info.md_env.matrix,
+				&cv),
+		  targetid = curves[i].located_obj.objid,
+	 	  targetos = curves[i].located_obj.osnum) ;
+
+   	BScveval(cv,0.0,1,EvalCou,&msg);	          
+   	BScveval(cv,1.0,1,&EvalCou[6],&msg);
+	          
+   	dot1 = BSdotp(&msg, &(EvalRef[3]), &(EvalCou[3]));
+   	dot2 = BSdotp(&msg, &(EvalRef[9]), &(EvalCou[9]));
+
+	if( (dot1 < 0.0) && (dot2 < 0.0) ){
+		for(j=0;j<3;j=j+1){
+			EvalRef[j]   = EvalCou[6+j];
+			EvalRef[3+j] = -1.0 * EvalCou[9+j];
+			EvalRef[6+j] = EvalCou[j];
+			EvalRef[9+j] = -1.0 * EvalCou[3+j];
+		}		
+		curves[i].geom_parms.polygon_inx = TRUE;
+	}
+	else{
+		curves[i].geom_parms.polygon_inx = FALSE;
+   		memcpy( (IGRchar *) &EvalRef[0],(IGRchar *)&EvalCou[0], 
+			SizeDoubleM12 );
+	}
+   }
+   /*--- end of set up geom_parms.polygon_inx for each input curve ---*/
+
+   stat = ci$send(msg= message EMSgenbs.EMdirect_fit_surface_by_curves(
+                                                                order,
+								v_periodic,
+								num_crv,
+								curves,
+								&cst),
+           targetid = SURF.objid,
+	   targetos = SURF.osnum);
+
+   if( !(stat&1) ) SURF.objid = NULL_OBJID;
+
+
+}
+

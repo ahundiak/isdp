@@ -1,0 +1,195 @@
+/* $Id: ell_axis.u,v 1.1.1.1 2001/01/04 21:07:22 cvs Exp $  */
+
+/* --------------------------------------------------------------------
+ * I/VDS
+ *
+ * File:	vds/cimacros/wireframe/macros / ell_axis.u
+ *
+ * Description:
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ *	$Log: ell_axis.u,v $
+ *	Revision 1.1.1.1  2001/01/04 21:07:22  cvs
+ *	Initial import to CVS
+ *	
+# Revision 1.1  1998/04/29  16:27:20  pinnacle
+# VDS 2.5.1
+#
+# Revision 1.1  1997/05/08  13:20:44  pinnacle
+# New project VDS 250
+#
+# Revision 1.1  1996/07/19  20:33:52  pinnacle
+# Create VDS 241 project
+#
+# Revision 1.1  1994/11/14  22:42:32  pinnacle
+# Create vds.240 from vds.232
+#
+# Revision 1.1  1994/11/08  16:07:00  pinnacle
+# create vds.232
+#
+ *
+ * History:
+ *	MM/DD/YY	AUTHOR		DESCRIPTION
+ *
+ * -------------------------------------------------------------------*/
+
+/*
+	 VDS 2.0 - PPM macro library - 92/07/09 (alc)
+	 92/08/10	Change templates names
+ */
+   
+#include "cieveryone.h"
+#include "cimacros.h"
+#include "ci_mac_def.h"
+#include "bserr.h"
+
+IGRchar 		*temp_names[3], *feet_names[1], txt[30];
+
+IGRlong			stat, msg;
+IGRint			k, temp_types[3];
+
+IGRdouble 		bstab[38];
+
+GRobj 			ci_mac_def1;
+
+struct GRid		ELL_OBJ, CI_MACRO_ID;
+struct GRmd_env		MOD_ENV;
+struct IGRbsp_curve     bsp_curve;
+struct GRvg_construct   cst;
+struct IGRdisplay	dis;
+struct ret_struct	pts[3];
+
+
+extern int 	BSellctaxrm(),
+		init_cnst_list();
+extern			ASsuper_construct();
+
+/* ========================================================================= */
+/* the main function is the one implementing the definition creation
+/* ========================================================================= */
+
+main ()
+{
+
+  temp_names[0]  = "axis_pt1";  
+  temp_names[1]  = "axis_pt2";  
+  temp_names[2]  = "pnton";  
+
+  temp_types[0]  = point_generic;
+  temp_types[1]  = point_generic;
+  temp_types[2]  = point_generic;
+  
+  feet_names[0] = "ellipse";
+  ci_mac_def1 = NULL_OBJID;
+
+  ac$cimacdef( 	cimacdef          = ci_mac_def1,
+		status 	          = &stat, 	
+		name              = "ell_axis",
+              	temp_num          = 3, 		
+		temp_names        = temp_names,
+		temp_types	  = temp_types,
+	      	extern_feet_num   = 1, 	
+		extern_feet_names = feet_names );
+
+
+}
+
+/* ========================================================================= */
+
+compute ()
+{
+
+  construct_ell();
+
+  if( ELL_OBJ.objid == NULL_OBJID ) return(0);
+
+  ci$send( msg = message  ci_macro.set_all_extern_feet
+	 ( &stat, 1,&ELL_OBJ, &MOD_ENV ),
+	   targetid = CI_MACRO_ID.objid,
+	   targetos = CI_MACRO_ID.osnum );
+  return(1);
+
+}
+
+/* ========================================================================= */
+
+place ()
+{
+  construct_ell();
+
+  if( ELL_OBJ.objid == NULL_OBJID ) return(0);
+
+  ci$send( msg = message  ci_macro.set_all_extern_feet
+	 ( &stat, 1,&ELL_OBJ, &MOD_ENV ),
+	   targetid = CI_MACRO_ID.objid,
+	   targetos = CI_MACRO_ID.osnum );
+  return(1);
+}
+
+/* ========================================================================= */
+
+construct_ell()
+{
+   ELL_OBJ.objid = NULL_OBJID;
+   ELL_OBJ.osnum = MOD_ENV.md_id.osnum;
+
+   for(k=0; k<3; k=k+1){
+
+  		msg = ci$send( msg = message  ACcpx.ACfind_exp_temp_struct(
+					&stat, k, (IGRchar *)&pts[k],&MOD_ENV ),
+           	 	  targetid = CI_MACRO_ID.objid,
+           	 	  targetos = CI_MACRO_ID.osnum );
+  		if( !(stat&msg&1) ){
+			strcpy(txt,"bad template num");
+			strcat(txt,itoa(k));
+			status(txt);
+			return;
+		}
+   }
+
+
+   bsp_curve.poles   = &bstab[0];
+   bsp_curve.knots   = &bstab[21];
+   bsp_curve.weights = &bsp_curve.knots[10];
+ 
+   for(k=0; k<3; k=k+1)
+    pts[0].var.point_st.pt[k] = ( pts[0].var.point_st.pt[k] + 
+                                  pts[1].var.point_st.pt[k] ) * 0.5;  
+   BSellctaxrm(	&stat, 
+		pts[0].var.point_st.pt, 
+		pts[1].var.point_st.pt, 
+		pts[2].var.point_st.pt , 
+		&bsp_curve );
+   if( stat != BSSUCC ) return;
+
+
+  init_cnst_list();
+  get_symb();
+
+  dis.color		= cnst_list.color;
+  dis.weight		= cnst_list.weight;
+  dis.style		= cnst_list.style;
+
+  cst.msg		= &msg;
+  cst.properties	= GRIS_LOCATABLE | GRIS_NEW | GRIS_DISPLAYABLE;
+  cst.display		= &dis;
+  cst.env_info		= &MOD_ENV;
+  cst.newflag		= 0;
+  cst.level		= cnst_list.level;
+  cst.geometry		= (char *)&bsp_curve;
+  cst.class_attr	= 0;
+  cst.name		= 0;
+
+   stat = ci$send(msg      = message GR3dellipse.GRconstruct(&cst),
+	   targetid = ELL_OBJ.objid,
+	   targetos = ELL_OBJ.osnum );
+
+   if( !(stat&1 ) ){
+	status(" construction failed "); 
+        ELL_OBJ.objid = NULL_OBJID;
+   }
+}
+
+

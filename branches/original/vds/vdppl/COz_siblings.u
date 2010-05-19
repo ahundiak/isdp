@@ -1,0 +1,83 @@
+/* $Id $  */
+/* --------------------------------------------------------------------
+ * I/VDS
+ *
+ * File:       vdppl/COz_siblings.u
+ *
+ * Description: Functions to show the siblings of a VDS object.
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ *      $Log $
+ *
+ * History:
+ *      MM/DD/YY        AUTHOR          DESCRIPTION
+ *      05/24/00        Rama Rao        File Creation.
+ * -------------------------------------------------------------------*/
+
+#include "VDppl.h"
+#include "VDobj.h"
+
+#define NUM_STATIC_SIBLINGS      20
+
+extern long VD_bulkDisplayByGRids();
+
+extern printf();
+
+main()
+{
+IGRint			i, num_siblings, not_done;
+IGRlong			sts, msg;
+struct GRobj_env	object;
+struct GRmd_env		loc_env;
+struct GRid		sibling_store[NUM_STATIC_SIBLINGS], *siblings;
+
+  num_siblings = 0;
+  siblings     = NULL;
+  not_done     = TRUE;
+
+  ci$get_module_info( md_env = &loc_env);
+
+  message( "Show Siblings");
+
+  while( not_done )
+  {
+    if( !( ci$locate(
+                obj             = &object.obj_id.objid,
+                osnum           = &object.obj_id.osnum,
+                md_env          = &object.mod_env,
+                classes         = "VDSroot",
+                prompt          = "Locate Object / Move-on",
+                stackable       = TRUE ,
+                properties      = LC_LC_ONLY | LC_DP_ONLY | LC_RW,
+                owner_action    = LC_RIGID_COMP  | LC_RIGID_OWNER |
+                                  LC_FLEX_COMP   | LC_FLEX_OWNER  |
+                                  LC_REF_OBJECTS ) ) ) 
+    {
+	dp$erase_hilite( msg = &msg );
+	return 1;
+    }
+
+    dp$erase_hilite( msg = &msg );
+    sts = ci$send (msg = message GRowner.GRget_siblings ( &msg, NULL,
+                                                        &num_siblings,
+                                                        &siblings,
+                                                        NUM_STATIC_SIBLINGS,
+                                                        sibling_store),
+                       targetid = object.obj_id.objid,
+                       targetos = object.obj_id.osnum  );
+
+    printf("Number of siblings = %d\n", num_siblings );
+    if( num_siblings )
+    {
+       VD_bulkDisplayByGRids( &loc_env, GRhd, num_siblings, siblings );
+       for( i=0; i<num_siblings; i=i+1 )
+	  vdobj$Print( objID = &siblings[i] );
+    }
+
+    if( siblings )  free( siblings );
+  }
+
+  return 1;
+}

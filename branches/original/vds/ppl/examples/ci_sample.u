@@ -1,0 +1,221 @@
+#include "cieveryone.h"
+#include "cimacros.h"
+#include "ci_mac_def.h"
+//#include "EMSmsgdef.h"
+#include "AS_status.h"
+
+// EDIT: set the number of templates and the number of feet.
+
+#define	NUM_TEMP 2
+#define	NUM_FEET 1
+
+// EDIT: set the macro name. Macro name must match the .u file name.
+
+#define MACRO_NAME "ci_sample"
+
+IGRdouble		 exps[NUM_TEMP];
+IGRchar			*temp_names[NUM_TEMP],
+			*feet_names[NUM_FEET];
+IGRint			 temp_types[NUM_TEMP];
+IGRint			stat, msg, i;
+GRobj			ci_mac_def1;
+struct GRid		CI_MACRO_ID, OUTPUT_GRID[NUM_FEET];
+struct GRmd_env		MOD_ENV;
+
+// EDIT: add user variables as required.
+
+IGRint			bm_type;	/* 1st template. */
+IGRdouble		bm_depth;	/* 2nd template. */
+IGRchar			tmp[200];	/* Used to store output expression. */
+
+extern int		sprintf(),
+			printf();
+extern			ASsuper_construct();
+
+/* ========================================================================= */
+/* the main function is the one implementing the definition creation
+/* ========================================================================= */
+
+main ()
+{
+  // EDIT: fill in all the template names and types.
+
+  temp_names[0]  = "bm_type";
+  temp_types[0]  = double_type;
+  temp_names[1]  = "bm_depth";
+  temp_types[1]  = double_type;
+
+  feet_names[0]  = "id";
+
+  ci_mac_def1 = NULL_OBJID;
+
+  ac$cimacdef(	cimacdef	  = ci_mac_def1,
+		status		  = &stat,
+		name		  = MACRO_NAME,
+		temp_num	  = NUM_TEMP,
+		temp_names	  = temp_names,
+		temp_types	  = temp_types,
+		extern_feet_num   = NUM_FEET,
+		extern_feet_names = feet_names );
+}
+
+/* ========================================================================= */
+
+construct_comp()
+{
+  /*
+   * Initialize the expression id.
+   */
+  for( i=0; i<NUM_FEET; i=i+1)
+  {
+    OUTPUT_GRID[i].objid = NULL_OBJID;
+    OUTPUT_GRID[i].osnum = MOD_ENV.md_id.osnum;
+  }
+
+  /*
+   * Get the template expressions and values.
+   */
+  for(i=0; i<NUM_TEMP; i=i+1)
+  {
+    msg = Get_expression_value(i, &exps[i]);
+
+#ifdef DEBUG
+    printf("get exp msg=%d, value=%.3f\n",msg,exps[i]);
+#endif
+  }
+
+  // EDIT: do something with the expressions and create the string
+
+  bm_type  = exps[0];
+  bm_depth = exps[1];
+
+  switch(bm_type)
+  {
+  case 0:
+    if (bm_depth > 152.4) strcpy(tmp,"E1");
+    else		  strcpy(tmp,"E4");
+    break;
+  case 1:
+    if (bm_depth > 152.4) strcpy(tmp,"AE1");
+    else		  strcpy(tmp,"AE4");
+    break;
+  case 2:
+    if (bm_depth > 152.4) strcpy(tmp,"TE1");
+    else		  strcpy(tmp,"TE4");
+    break;
+  default:
+    strcpy(tmp,"NON STD");
+    break;
+  } /*end switch*/
+
+  /*
+   * Create the expression foot.
+   */
+  stat = ci$send(  msg = message Gtext_exp.create( NULL, tmp, &msg ),
+		   targetid = OUTPUT_GRID[0].objid,
+		   targetos = OUTPUT_GRID[0].osnum);
+
+  as$status(sts = stat);
+}
+
+/* ========================================================================= */
+/*		NOTHING SHOULD HAVE TO BE DONE BELOW HERE		     */
+/* ========================================================================= */
+
+compute ()
+{
+  int i;
+
+  construct_comp();
+
+  for( i=0; i<NUM_FEET; i=i+1)
+  {
+    if( OUTPUT_GRID[i].objid == NULL_OBJID) return(0);
+  }
+
+  ci$send( msg = message  ci_macro.set_all_extern_feet
+				 ( &stat, NUM_FEET, OUTPUT_GRID, &MOD_ENV ),
+	   targetid = CI_MACRO_ID.objid,
+	   targetos = CI_MACRO_ID.osnum );
+
+  return(1);
+}
+
+/* ========================================================================= */
+
+place ()
+{
+  int i;
+
+  construct_comp();
+
+  for( i=0; i<NUM_FEET; i=i+1)
+  {
+    if( OUTPUT_GRID[i].objid == NULL_OBJID) return(0);
+  }
+
+  ci$send( msg = message  ci_macro.set_all_extern_feet
+				 ( &stat, NUM_FEET, OUTPUT_GRID, &MOD_ENV ),
+	   targetid = CI_MACRO_ID.objid,
+	   targetos = CI_MACRO_ID.osnum );
+
+  return(1);
+}
+
+/* =========================================================================  */
+/* This is a function that uses the template index and returns a double value */
+/* ========================================================================== */
+
+int	Get_expression_value(index, outval)
+int	index;
+double	*outval;
+{
+  struct GRid	CUV,GCV;
+  int		msg,stat;
+  double	exp;
+  IGRshort	mat_type;
+  IGRdouble	matrix[16];
+
+  /*
+   * Get the input expression by index
+   */
+  msg = ci$send( msg = message  ACcpx.ACfind_exp_temp_obj(&stat,index,&CUV),
+		 targetid = CI_MACRO_ID.objid,
+		 targetos = CI_MACRO_ID.osnum );
+
+#ifdef DEBUG
+  printf("ACcpx.ACfind_exp_temp_obj stat = %d\n",stat);
+#endif
+
+  if( !(msg&stat&1) ) return;
+
+  msg = ci$send( msg = message NDmacro.ACreturn_foot
+					(&stat, ".", &GCV, &mat_type, matrix ),
+		 targetid = CUV.objid,
+		 targetos = CUV.osnum );
+
+  if( !(msg&stat&1) )
+  {
+    status(" bad element " );
+    return -1;
+  }
+
+  msg = ci$send( msg = message expression.NDgive_value(&exp),
+		 targetid = CUV.objid,
+		 targetos = CUV.osnum );
+
+  if ( msg != 1)	// if this was an ACpretend
+  {
+    msg = ci$send( msg = message expression.NDgive_value(&exp),
+		   targetid = GCV.objid,
+		   targetos = GCV.osnum );
+  }
+
+#ifdef DEBUG
+  printf("CUV[%d, %d], GCV[%d, %d], msg= %d, exp=[%.3f]\n",
+	  CUV.objid,CUV.osnum,GCV.objid,GCV.osnum,msg, exp);
+#endif
+
+  *outval = exp;
+  return msg;
+}

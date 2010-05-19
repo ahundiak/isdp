@@ -1,0 +1,241 @@
+#!/bin/ksh
+# $Id: gen_getcmdpath,v 1.1.1.1 2001/01/04 21:07:25 cvs Exp $
+#***********************************************************************
+# I/VDS
+#
+# File:		config/english/menus/gen_getcmdpath
+#
+# Description:
+# 	Script to generate get cmd paths for VDS panel and bar menus 
+#
+# Dependencys:
+#	VDS, EMS PowerPak (palettes), sed_file, awk_file, sed_pals   
+#
+# Process:
+#	Each field is analyzed as follows:
+#    		while more fields
+#        		process field based on level
+#       		 get next field
+#        	end
+#
+# Revision History
+#	$Log: gen_getcmdpath,v $
+#	Revision 1.1.1.1  2001/01/04 21:07:25  cvs
+#	Initial import to CVS
+#	
+# Revision 1.2  1996/05/07  16:33:50  pinnacle
+# Replaced: config/english/menus/gen_getcmdpath for:  by v240_int for vds.240
+#
+# Revision 1.1  1996/03/23  17:53:02  pinnacle
+# Created: ./config/english/menus/gen_getcmdpath by azuurhou for vds.240
+#
+#
+# History:
+#	MM/DD/YY	AUTHOR		DESCRIPTION
+#	03/23/96	David Atchison	creation date
+#	11/28/97	ah	Skip execuation on Solaris
+#
+#***********************************************************************
+
+
+SUN=`uname -s`
+if [ $SUN = "SunOS" ] ;
+then
+  echo "\tContinue On Solaris"
+#  exit 0;
+fi
+
+echo "\tCreate Panel Menu Get Command Paths"
+
+EMS=`echopath Emsui02`
+if [ -z "${VDS}" ] ; then
+  echo "Error: Vds Path not defined"
+  exit 1 ;
+fi
+TMP="/usr/tmp/VDgen.tmp"
+GBTMP="$VDS/config/english/menus/src/VDGBs"
+
+# Remove this file if previously generated
+rm -f $GBTMP
+rm -f $TMP
+
+# Set the name for the get command list
+CmdPath=IMVds
+
+#Convert tabs to words (LEV1, LEV2, LEV5, LEV4) and place results in tmp file
+sed -f $VDS/etc/bin/sed_file $VDS/config/english/menus/src/VDpan.otl > $TMP
+
+# Entries in tmp file are analyzed one at a time as $1
+set `cat $TMP`
+
+# Look for LEV1 and if found set the level 1 symbol
+while [ $1 ]
+do
+
+    if [ $1 = LEV1 ]
+    then
+        LEVEL1="$3 $4 -1"
+# Look for LEV2 and if found set the level 2 symbol
+    elif [ $1 = LEV2 ]
+        then
+
+    	    # Look to see if this is a global menu call, 
+	    #	if so read the VDGbs file
+            if [ $2 = "*VDGb" ]
+            then
+                LEVEL2="$3 $4 -1"
+
+                # Set the Level 1 symbol correct
+                sed s/"$VDGBMNU"/"$LEVEL1"/g $GBTMP >>$CmdPath.s
+
+            else if [ $2 = "VDGb" ]
+                then
+                    VDGB=1
+                    VDGBMNU="$LEVEL1"
+                else
+                    VDGB=0
+                fi
+
+                LEVEL2="$3 $4 -1"
+            fi
+
+    # Look for LEV3 and if found set the level 3 symbol
+    elif [ $1 = LEV3 ]
+        then
+            POPMNU=$2
+            LEVEL3="$3 $4 -1"
+
+            #Look to see if this is a command. If so, write it to file
+            TEST=`echo $6 | cut -c1`
+            if [ $TEST = "#" ]
+            then
+               echo "$2\011$LEVEL1 $LEVEL2 $3 $4 $5" >>$CmdPath.s
+
+               #If this is a global command, write it to the VDGBs file
+               if [ $VDGB = "1" ]
+               then
+                  echo "$2\011$LEVEL1 $LEVEL2 $3 $4 $5" >> $GBTMP
+                  echo "$2\011$LEVEL1 $LEVEL2 $3 $4 $5" >> $CmdPath.s
+               fi
+               shift
+            else
+               LEVEL3="$3 $4 -1"    
+            fi
+    # Look for LEV4 and if found set the level 4 symbol
+    elif [ $1 = LEV4 ]
+    then
+        LEVEL4="$3 $4 $5"
+
+        #if this is a global command, output this to VDGBs
+        if [ $VDGB = "1" ]
+        then echo "$2\011$LEVEL1 $LEVEL2 $LEVEL3 $LEVEL4" >> $GBTMP
+        fi
+
+        #if this is a popup menu, look for the palette & pull 
+        #the commands out
+        if [ $5 = "254" ]
+        then
+
+            #Look in the popups file
+            PAL=`cat $VDS/config/popups|tr "," " "|grep "$2 $POPMNU"| sed s/"$2 $POPMNU "/""/1`
+
+
+            #look in VDS first, then EMS
+            if [ -f $VDS/config/english/palettes/$PAL ]
+            then
+                PALETTE=$VDS/config/english/palettes/$PAL
+            elif [ -f $EMS/config/english/palettes/$PAL ]
+            then PALETTE=$EMS/config/english/palettes/$PAL
+            fi
+
+	    echo ".\c"
+
+            # loop over command keys in one palette file
+            for cmd in `sed -f $VDS/etc/bin/sed_pals $PALETTE`
+            do
+                LINE=`echo $cmd |sed  's/,/ /g'`
+                echo $LINE |awk '{ printf ("%s\t",$3)}' >> $CmdPath.s
+                echo "$LEVEL1 $LEVEL2 $LEVEL3 $LEVEL4 \c" >>$CmdPath.s
+                echo $LINE |awk '{printf ("%s %s -1\n", $5, $6)}' >>$CmdPath.s
+            done
+        else
+            echo "$2\011$LEVEL1 $LEVEL2 $LEVEL3 $LEVEL4" >>$CmdPath.s
+        
+        fi
+    fi
+    shift
+done # End of panel menu generation
+
+echo "."
+
+# Sort the CmdPath.s file and put it it in the correct format into CmdPath file
+
+cp $CmdPath.s /tmp/$CmdPath.s 
+sort $CmdPath.s |awk -f $VDS/etc/bin/awk_file >$CmdPath
+
+if [ -f $CmdPath ] ; then
+  mv $CmdPath $VDS/config/english/cmdpaths/.
+  ls -l $VDS/config/english/cmdpaths/$CmdPath
+fi
+
+rm -f $CmdPath.s $TMP
+
+########################################################
+#This section generates paths for the bar menu commands#
+########################################################
+set +x
+echo "\tCreate Bar Menu Get Command Paths"
+
+rm -f IMVdBar.s
+
+#Convert commas to spaces and put results in mem
+set `grep "^	" $VDS/config/english/menus/src/VDbar.otl|tr "," " "`
+while [ $4 ]
+do
+
+    # If no popups, then write to file
+    if [ $4 = "-1" ]
+        then echo "$1\011$2 $3 $4" >>IMVdBar.s
+
+    # If command has popup, generate the command list from palette
+    elif [ $4 = "254" ]
+    then
+             echo "$1\011$2 $3 $4" >>IMVdBar.s
+             LEVEL1="$2 $3 $4"
+             PAL=`cat $VDS/config/popups|tr "," " "|grep "$1 BAR_VDS"| sed s/"$1 BAR_VDS "/""/1`
+             if [ -f $VDS/config/english/palettes/$PAL ]
+                 then
+                     PALETTE=$VDS/config/english/palettes/$PAL
+             elif [ -f $EMS/config/english/palettes/$PAL ]
+                 then
+                     PALETTE=$EMS/config/english/palettes/$PAL
+             fi
+
+	echo ".\c"
+    
+         # loop over command keys in one palette file
+         for cmd in `sed  -f $VDS/etc/bin/sed_pals $PALETTE`
+         do
+             LINE=`echo $cmd |sed  's/,/ /g'`
+             echo $LINE |awk '{ printf ("%s\t",$3)}' >> IMVdBar.s
+             echo "$LEVEL1 \c" >>IMVdBar.s
+             echo $LINE |awk '{printf ("%s %s -1\n", $5, $6)} ' >>IMVdBar.s
+         done
+
+    fi
+    shift
+done # End of bar menu generation
+
+echo "."
+
+# Put file in proper format
+sort IMVdBar.s |awk -f $VDS/etc/bin/awk_file >IMVdsBar
+
+if [ -f IMVdsBar ] ; then
+  mv IMVdsBar $VDS/config/english/cmdpaths/.
+  ls -l $VDS/config/english/cmdpaths/IMVdsBar
+fi
+
+rm -f IMVdBar.s
+
+echo "Finished"

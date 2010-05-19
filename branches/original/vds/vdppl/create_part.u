@@ -1,0 +1,1003 @@
+/* $Id: create_part.u,v 1.1.1.1 2001/01/04 21:09:02 cvs Exp $  */
+
+/***************************************************************************
+ * I/VDS
+ *
+ * File:        vdppl/create_part.u
+ *
+ * Description:
+ *		This command places a part pointer in the design file.
+ *		This file is a copy of /pdu/ppl/create_part.u and has
+ *		been created after modification of /pdu/ppl/create_part.u
+ *		for vds for TR# 179801043 to update views after part
+ *		placement.
+ * Dependencies:
+ *
+ * Revision History:
+ *      $Log: create_part.u,v $
+ *      Revision 1.1.1.1  2001/01/04 21:09:02  cvs
+ *      Initial import to CVS
+ *
+# Revision 1.2  1998/09/17  14:47:28  pinnacle
+# Removed debug message
+#
+# Revision 1.1  1998/08/17  08:47:20  pinnacle
+# initial revision
+#
+ *
+ * History:
+ * MM/DD/YY  AUTHOR  DESCRIPTION
+ * 08/17/98  vinit   Created for TR#179801043
+ * 09/17/98  ah      Removed debug print statement				
+ ***************************************************************************/
+
+
+#if ! defined(__sgi)
+/*
+#include        "unistd.h"
+*/
+#endif
+#include 	"ciminimum.h"
+#include 	"cimacros.h"
+#include 	"PDUstr.h"
+#include        "PDUpart.h"
+#include        "ex.h"
+#include        "igrdp.h"
+#include 	"partmacros.h"
+#include 	"part.h"
+#include	"cieveryone.h"
+#include	"cimacros.h"
+#include	"acdef.h"
+#include	"acmacros.h"
+#include	"ACdb_info.h"
+#include	"macro.h"
+#include	"grdpbdef.h"
+#include	"grdpb.h"
+#include	"grdpbmacros.h"
+#include	"growner.h"
+#include	"igrdp.h"
+#include	"madef.h"
+#include	"exdef.h"
+#include	"exmacros.h"
+#include	"dp.h"
+#include	"dpdef.h"
+/* 'cs.h' is not available in 3.2 GRNUCDP. 05/Jul/95 - raj. */
+#include	"grcoordsys.h"
+#include	"csdef.h"
+#include	"msdef.h"
+#include	"PDUint.h"
+#include	"PDUintdef.h"
+#include	"grsymdef.h"
+#include	"grsym.h"
+#include	"grownerdef.h"
+#include 	"dpmacros.h"
+#include 	"comiscmac.h"
+#include 	"coplcmac.h"
+#include 	"cotxmacros.h"
+#include 	"partdef.h"
+#include        "DItypedef.h"
+#include        "DIdef.h"
+#include        "DIglob.h"
+#include        "DIprims.h"
+#include        "expmacros.h"
+#include        "csmacros.h"
+#include        "MEMstruct.h"
+#include        "MEMerrordef.h"
+#include        "PDUfile_def.h"
+#include        "PDUinform.h"
+#include        "PDUassy.h"
+#include        "PDUforms.h"
+#include        "PDUerror.h"
+#include        "v_dbgmacros.h"
+
+#define		FIT_FLAG 1
+
+/***
+#define vdsDEBUG        1
+#define vdserrDEBUG     1
+#define AS_DEBUG 1
+***/
+
+/* External functions declaration section */
+extern          _pdm_status();
+extern          _pdm_debug();
+extern		GRdpb_get();
+extern		COpart_construct_func();
+extern          COpart_attr_func();
+extern          DIfast_trans();
+extern          DIgive_pathname();
+extern          DImain();
+extern          DIreport_error();
+extern          DImkpath();
+extern          DPdisbyoid();
+extern          PDUgenerate_instance_number();
+extern          PDUincrement_tag_no();
+extern          PDUincrement_child_no();
+extern          PDUgenerate_tag_no();
+extern          PDUgenerate_child_no();
+extern          strcmp();
+extern          malloc();
+extern          PDUfill_in_string();
+extern          GRcsget_mgr();
+extern          PDUsetup_buffer();
+extern          PDUunquote();
+extern          GRdpb_put();
+extern          MEMbuild_array();
+extern          MEMclose();
+extern          PDUfree_string_array();
+extern          PDUadd_assy_struct_from_buffer();
+extern          PDUget_coord_sys_id();
+extern          PDUcheck_file_for_parts();
+extern          DIpwd();
+extern          DIcd();
+extern          PDUget_buffer_col();
+extern          PDUget_GRparts_ids();
+extern          ret_fromGpart();
+extern          PDUget_date();
+extern          PDUdynamic_attr_form();
+extern          PDMquery_dynamic_attrs();
+extern          PDUcreate_part_pointer();
+extern          DIfind();
+extern          memset();
+extern          strncmp();
+extern          free();
+extern          PDUdisplay_design_form();
+extern          PDUget_default_usage_id();
+extern          PDUis_cyclic_placement();
+extern          MEMprint_buffer();
+extern          PDUcheck_display_dynamic_attr();
+extern          PDUcreate_dynamic_arrays();
+extern          pdmoPlacePart();
+extern          pdmoDeletePartOccurrence();
+extern          PDUload_assy_struct_buffer();
+extern          PDUassembly_display_form();
+extern          PDUmessage();
+extern          PDMget_part_attach_info();
+extern          MEMsplit_copy_buffer();
+extern          PDUdisplay_views();
+extern          PDUdisplay_files();
+extern          PDUdump_point();
+extern          PDUfree_refid_list();
+extern          PDUfree_path_list();
+extern          SelectOrPlacePart();
+extern          PDUdisplay_files_and_origins();
+extern          PDMrcheck_part_status();
+extern          PDUtranslate_message();
+extern          EX_findmod();
+
+
+/* External variables declaration section */
+extern          struct PDUrefresh        *refresh;
+extern          struct PDUforms          forms;
+extern          struct PDUpart           *part;
+extern          IGRchar                  *PDU_tagno; 
+extern          IGRchar                  *PDU_alt_tagno; 
+extern          IGRchar                  *PDU_usage_id; 
+extern          IGRchar                  *PDU_quantity; 
+extern          IGRchar                  *PDU_incl_BOM; 
+extern          IGRchar                  *PDU_incl_ASM; 
+extern          IGRchar                  *PDU_explode_BOM; 
+extern          MEMptr                   PDU_dyn_attr_bufr; 
+extern          MEMptr                   PDU_dyn_data_bufr; 
+extern          MEMptr                   PDU_dyn_value_bufr; 
+extern          IGRshort                 PDU_attach;
+extern          IGRshort                 PDU_edit_display;
+extern          IGRchar                  PDU_place_part_by;
+extern          IGRshort                 PDU_store_point;
+extern          double                PDU_point[3]; 
+extern          IGRint                   PDU_message_type;
+extern          IGRint                   PDU_prompt_type;
+extern          IGRint			 PDM_debug_on;
+extern          IGRshort                 PDU_loop_cmd;
+extern          IGRint                   PDU_explode_depth;
+extern          IGRint                   PDU_command;
+extern          IGRshort                 PDU_display_dyn_attr;
+extern          struct GRid              *PDU_origin_id;
+extern          IGRchar                  PDU_status_string[54];
+extern          IGRint                   PDMdebug_on;
+extern          IGRshort                 PDU_display_pointers;
+extern          IGRchar                  *PDU_filename;
+extern          IGRchar                  *PDU_viewname;
+extern          Form                     PDU_form_id;
+extern		IGRint			 PDU_instance_no;
+extern 					 printf();
+
+
+/* Global variable declaration */
+
+main()
+{
+
+ struct           GRmd_env  mod_env;		
+ IGRchar          **attributes;	
+ IGRchar          **values;
+ IGRint           *attribute_type;
+ IGRint           attribute_count;
+ GRobjid          csmgr_id;
+ struct           GRid      part_id;
+ struct           GRid      cs_id;
+ struct           GRid      refobjid;
+ struct           GRid      src_coorid;
+ struct           GRid      dst_coorid;
+ struct           GRid      act_coorid;
+ struct           GRid      win;
+ struct           GRobj_env objects[1];
+ struct           GRevent   my_event;
+ GRobjid   csid;
+ double        origin[3];
+ double        point1[3];
+ double        point2[3];
+ IGRmatrix        src_matrix;
+ IGRmatrix        dst_matrix;
+ IGRlong          msg, sts;
+ IGRlong          stat;
+ IGRlong          status;
+ IGRlong          osNum;
+ IGRlong	  NumberOfBytes, BytesReceived;
+ IGRchar          part_label[MAX_VALUE];
+ IGRchar          attr_value[MAX_VALUE];
+ IGRchar          text_value[MAX_VALUE];
+ IGRchar          tag_dir[DI_PATH_MAX];
+ IGRchar          usr_dir[DI_PATH_MAX];
+ IGRchar          pwd[DI_PATH_MAX];
+ IGRchar          path[DI_PATH_MAX];
+ IGRchar          path_out[DI_PATH_MAX];
+ IGRchar          part_dir[DI_PATH_MAX];
+ IGRchar          assy_dir[DI_PATH_MAX];
+ IGRchar          s[DI_PATH_MAX];
+ IGRchar          **windows;
+ IGRchar          child_dir[DI_PATH_MAX];
+ IGRchar          tmp_tag[DI_PATH_MAX];
+ IGRchar          tmp_viewname[DI_PATH_MAX];
+ IGRchar          tmp_alttag[DI_PATH_MAX];
+ IGRchar          tmp_usage_id[DI_PATH_MAX];
+ IGRchar          tmp_childno[DI_PATH_MAX];
+ IGRint           instance_no;
+ IGRint           win_count;
+ IGRint           deep;
+ IGRchar          serial_no[10];
+ IGRchar          **attrs;
+ IGRchar          **data;
+ IGRchar          **row_data;
+ IGRint           increment_tag_no;
+ IGRint           basic_attr_count;
+ IGRint           count;
+ IGRint           occurence_count;
+ IGRint           cat_no_col;
+ IGRint           item_no_col;
+ IGRint           type;
+ IGRint           i;
+ IGRint           k;
+ IGRint           display_flag;
+ IGRshort         PointerLevel;
+ IGRshort         ActiveLevel;
+ IGRshort         cstype;
+ IGRchar          unsigned weight;
+ IGRchar          unsigned style;
+ IGRchar          part_date[26];
+ struct           IGRaltdisplay altdp_info;
+ IGRchar          *p_explode;
+ IGRchar          *child_no;
+ IGRchar          user_msg[40];
+ IGRshort         new_part;
+ IGRshort         PDU_auto_assy;
+ IGRint           explode_flag;
+ struct GRid      *part_ids;
+ FILE             *pdu_debug_file;
+ MEMptr           assembly_bufr;
+ char             **dyn_attr_names;
+ char             **dyn_attr_values;
+ int              dyn_attr_count;
+ double           quantity;
+ char             *attach;
+ char             *edit_display;
+ char             *msg_str;
+
+ /* TR # 179801043. 08/11/98 - vinit */
+ IGRboolean        updateFlag;
+ /* TR #:139524725. 05/Jul/95 - raj. */
+ IGRchar          save_dir[DI_PATH_MAX];
+
+ place_again:
+
+ /* Free lists */
+ PDUfree_refid_list();
+ PDUfree_path_list();
+
+ /* Initialize global variables */
+ PDU_message_type = PDM_I_PLACE_POINTER_MSG;
+
+
+ /* Initialize local variables */
+ basic_attr_count = 15;
+ increment_tag_no = FALSE;
+ child_no = NULL;
+ new_part = FALSE;
+ PDU_auto_assy = FALSE;
+ assembly_bufr = NULL;
+ part_ids = NULL;
+ p_explode = NULL;
+ PDU_dyn_attr_bufr = NULL;
+ PDU_dyn_data_bufr = NULL;
+ PDU_dyn_value_bufr = NULL;
+ dyn_attr_names = NULL;
+ dyn_attr_values = NULL;
+ dyn_attr_count = 0;
+ attach = NULL;
+ edit_display = NULL;
+ dyn_attr_names == NULL;
+ dyn_attr_values == NULL; 
+ msg_str = NULL;
+
+
+ PDUmessage(PDM_S_PLACE_PART,'s');
+
+
+ /* Display part file(s) and origin(s) */
+ stat = PDUdisplay_files_and_origins(
+                                    refresh->rev_catalog,
+                                    refresh->rev_partid, 
+                                    refresh->rev_revision,
+                                    &refresh->rev_filename,
+                                    &part->view
+                                   );
+ if (!stat)
+   {
+   _pdm_debug("PDUdisplay_files_and_origins failed", 0);
+   if (PDU_usage_id == NULL)
+     _pdm_debug("No usageid given", 0);
+   else if (strcmp(PDU_usage_id, "") == 0)
+     _pdm_debug("No usageid given", 0);
+   else
+     PDUfill_in_string(&PDU_usage_id, NULL);
+   PDUdisplay_design_form();
+   exit;
+   }
+
+ PDUfill_in_string(&PDU_quantity, "1.000000");
+ PDUfill_in_string(&PDU_alt_tagno, "");
+ /* Get current module environment information */
+ NumberOfBytes = sizeof(mod_env);
+ stat = gr$get_module_env(
+                          msg = &msg,
+                          sizbuf = &NumberOfBytes,
+                          buffer = &mod_env,
+                          nret = &BytesReceived
+                         );
+
+ PDUgenerate_tag_no(&PDU_tagno, mod_env.md_id.osnum);
+ PDUgenerate_instance_number(
+                             refresh->rev_catalog,
+                             refresh->rev_partid, 
+                             refresh->rev_revision,
+                             &instance_no, 
+                             &mod_env
+                            );
+
+ /* MJG - 10/3/95 - Save the instance number for later use */
+ PDU_instance_no = instance_no;
+
+
+
+if (instance_no == 1)
+   {
+    _pdm_debug("First occurrence of part", 0);
+   }
+ else
+
+   {
+    stat = co$part_get_attr(
+                            msg = &msg,
+                            mod_env = &mod_env, 
+                            catalog = refresh->rev_catalog,
+                            number = refresh->rev_partid, 
+                            revision = refresh->rev_revision, attr = "tag", 
+                            value = attr_value
+                           );
+
+    PDUunquote(attr_value);
+
+    PDUfill_in_string(&PDU_tagno, attr_value);
+
+    stat = co$part_get_attr(
+                            msg = &msg, mod_env = &mod_env, 
+                            catalog = refresh->rev_catalog,
+                            number = refresh->rev_partid, 
+                            revision = refresh->rev_revision, attr = "alt_tag", 
+                            value = attr_value
+                           );
+
+    PDUunquote(attr_value);
+    PDUfill_in_string(&PDU_alt_tagno, attr_value);
+   }
+
+ if (PDU_usage_id == NULL)
+ {
+ /* Default usage id */
+ stat = PDUget_default_usage_id(
+                                refresh->rev_catalog,
+                                refresh->rev_partid,
+                                refresh->rev_revision,
+                                part_label
+                               );
+
+ if (stat != PDM_S_SUCCESS)
+    {
+     _pdm_debug("PDUget_default_usage_id failed", 0);
+
+     PDUfill_in_string(&PDU_alt_tagno, "");
+     PDUfill_in_string(&PDU_usage_id, "");
+
+     PDUdisplay_design_form();
+     exit;
+    }
+
+ PDUfill_in_string(&PDU_usage_id, part_label);
+ }
+
+ else if (strcmp(PDU_usage_id, "") == 0)
+ {
+ /* Default usage id */
+ stat = PDUget_default_usage_id(
+                                refresh->rev_catalog,
+                                refresh->rev_partid,
+                                refresh->rev_revision,
+                                part_label
+                               );
+
+ if (stat != PDM_S_SUCCESS)
+    {
+     _pdm_debug("PDUget_default_usage_id failed", 0);
+
+     PDUfill_in_string(&PDU_alt_tagno, "");
+     PDUfill_in_string(&PDU_usage_id, "");
+
+     PDUdisplay_design_form();
+     exit;
+    }
+
+ PDUfill_in_string(&PDU_usage_id, part_label);
+ }
+
+ else
+   strcpy(part_label, PDU_usage_id);
+
+ _pdm_debug("default PDU_usage_id = <%s>", PDU_usage_id);
+
+ /* Display a message to user */
+ msg_str = (char *)PDUtranslate_message(PDM_I_PLACING_MSG);
+ sprintf(user_msg, "%s %s", msg_str, PDU_usage_id);
+ strcpy(PDU_status_string, user_msg);
+
+ if (PDU_dyn_attr_bufr)
+   {
+   MEMclose(&PDU_dyn_attr_bufr);
+   PDU_dyn_attr_bufr = NULL;
+   }
+ if (PDU_dyn_data_bufr)
+   {
+   MEMclose(&PDU_dyn_data_bufr);
+   PDU_dyn_data_bufr = NULL;
+   }
+ if (PDU_dyn_value_bufr) 
+   {
+   MEMclose(&PDU_dyn_value_bufr);
+   PDU_dyn_value_bufr = NULL;
+   }
+
+ /* Extract dynamic attributes from PDM if any, and display them on form */
+ stat = PDMquery_dynamic_attrs(
+                               refresh->rev_catalog,
+                               refresh->rev_partid,
+                               refresh->rev_revision,
+                               &PDU_dyn_attr_bufr,
+                               &PDU_dyn_data_bufr,
+                               &PDU_dyn_value_bufr,
+                               &p_explode
+                              );
+ _pdm_status("PDMquery_dynamic_attrs", stat);
+
+ /* Display dynamic attributes form, if necessary */
+ if (PDU_display_dyn_attr)
+    {
+     stat = display_dynamic_form();
+     _pdm_status("display_dynamic_form", stat);
+
+     if (stat == 0)
+        return(0);
+    }
+  else
+    {
+    display_flag = PDUcheck_display_dynamic_attr(PDU_dyn_attr_bufr, 
+                                                 PDU_dyn_data_bufr);
+    _pdm_debug("display flag = <%d>", (char *)display_flag);
+    if (display_flag)
+      {
+      stat = display_dynamic_form();
+      _pdm_status("display_dynamic_form", stat);
+      if (stat == 0)
+        return(0);
+      }
+    }
+
+ strcpy(part_label, PDU_usage_id);
+ stat = PDUcreate_dynamic_arrays(
+                                 PDU_dyn_attr_bufr,
+                                 PDU_dyn_data_bufr,
+                                 &dyn_attr_count,
+                                 &dyn_attr_names, 
+                                 &dyn_attr_values
+                                );
+ _pdm_status("PDUcreate_dynamic_arrays", stat);
+
+ PDU_form_id = forms.design_form_id;
+ /* Construct part pointer graphical representation */
+ if ( (PDU_place_part_by == 'A') && (strcmp(refresh->rev_parttype, "N") != 0)
+      && (strcmp(refresh->rev_parttype, "n") != 0) )
+    {
+     /* Get origin */
+     _pdm_debug("Place part by view alignment", 0);
+
+     PDU_prompt_type = PDM_I_DATA_POINT;
+     PDU_message_type = PDM_I_PLACE_POINTER_MSG;
+
+     begincmd("enter data point");
+     endcmd();
+    
+     if (!PDU_store_point)
+        {
+         /* No data point entered */
+         _pdm_debug("NO DATA POINT ENTERED", 0);
+
+         PDUfill_in_string(&PDU_alt_tagno, "");
+         PDUfill_in_string(&PDU_usage_id, "");
+
+         PDUdisplay_design_form();
+         exit;
+        }
+
+     origin[0] = PDU_point[0];
+     origin[1] = PDU_point[1];
+     origin[2] = PDU_point[2];
+
+     PDU_store_point = FALSE;
+     /*
+      * TR #:139524725. 05/Jul/95 - raj. Change dir to "<filename>:usr".
+      * While the command GRPCrSyFrV creates the coord. sys. in the
+      * current dir (wherever the user did chdir to), the rest of this
+      * command looks for it in <filename>:usr.
+      */
+
+     di$pwd(dirname = save_dir);
+     di$give_pathname(osnum = mod_env.md_id.osnum,
+                      pathname = usr_dir);
+     strcat(usr_dir,":usr");
+     di$cd(dirname = usr_dir,
+	   osnum = mod_env.md_id.osnum);
+
+     begincmd_key ("GRPCrSyFrV");
+              ci$put(response = TERMINATE,pos = FRONT);
+              ci$put(string = "PDUtest", pos = FRONT);
+              ci$put(point = origin, pos = FRONT);
+     endcmd();
+
+     /* TR #:139524725. 05/Jul/95 - raj. Change back to saved dir.. */
+     di$cd(dirname = save_dir,
+	   osnum = mod_env.md_id.osnum);
+     
+     di$give_pathname(osnum = mod_env.md_id.osnum,
+                      pathname = usr_dir
+                     );
+
+     strcat(usr_dir,":usr:PDUtest");
+
+     _pdm_debug("path = <%s>", usr_dir);
+     stat = PDUget_coord_sys_id(
+                               mod_env,
+                               usr_dir,
+                               &csid
+                               );
+     _pdm_status("PDUget_coord_sys_id", stat);
+     _pdm_debug("csid = <%d>", csid);
+
+     src_coorid.objid = csid;
+     src_coorid.osnum = mod_env.md_id.osnum;
+      
+
+     dp$display(
+                msg = &sts,
+                oids = &src_coorid,
+                mode = GRbe);
+    }
+
+ else
+
+  if ( (PDU_place_part_by == 'P') && (strcmp(refresh->rev_parttype, "N") != 0) 
+       && (strcmp(refresh->rev_parttype, "n") != 0) )
+    {
+     PDU_prompt_type = PDM_I_POINT_ONE;
+
+     begincmd("enter data point");
+     endcmd();
+
+     if (!PDU_store_point)
+        {
+         /* No data point entered */
+         PDUfill_in_string(&PDU_alt_tagno, "");
+         PDUfill_in_string(&PDU_usage_id, "");
+
+         PDUdisplay_design_form();
+         exit;
+        }
+
+     origin[0] = PDU_point[0];
+     origin[1] = PDU_point[1];
+     origin[2] = PDU_point[2];
+
+     PDU_store_point = FALSE;
+     
+     PDU_prompt_type = PDM_I_POINT_TWO;
+
+     begincmd("enter data point");
+     endcmd();
+
+     if (!PDU_store_point)
+        {
+         /* No data point entered */
+         PDUfill_in_string(&PDU_alt_tagno, "");
+         PDUfill_in_string(&PDU_usage_id, "");
+
+         PDUdisplay_design_form();
+         exit;
+        }
+
+     point1[0] = PDU_point[0];
+     point1[1] = PDU_point[1];
+     point1[2] = PDU_point[2];
+
+     PDU_store_point = FALSE;
+     
+     PDU_prompt_type = PDM_I_POINT_THREE;
+
+     begincmd("enter data point");
+     endcmd();
+
+     if (!PDU_store_point)
+        {
+         /* No data point entered */
+         PDUfill_in_string(&PDU_alt_tagno, "");
+         PDUfill_in_string(&PDU_usage_id, "");
+ 
+         PDUdisplay_design_form();
+         exit;
+        }
+
+     point2[0] = PDU_point[0];
+     point2[1] = PDU_point[1];
+     point2[2] = PDU_point[2];
+
+     PDU_store_point = FALSE;
+
+    } 
+
+ else
+     if ( 
+         (PDU_place_part_by == 'C') && 
+         (strcmp(refresh->rev_parttype, "N") != 0) &&
+         (strcmp(refresh->rev_parttype, "n") != 0) 
+        )
+        {
+         /* Locate coordinate system */
+         if (PDU_origin_id)
+           {
+            free(PDU_origin_id);
+            PDU_origin_id = NULL;
+            }
+         begincmd("Locate Coordinate System");
+         endcmd();
+
+         if (PDU_origin_id == NULL)
+            {
+             _pdm_debug("no cs id entered", 0);
+
+             /* Free variables */
+             if (PDU_origin_id)
+                {
+                 free(PDU_origin_id);
+                 PDU_origin_id = NULL;
+                }
+
+             PDUfill_in_string(&PDU_alt_tagno, "");
+             PDUfill_in_string(&PDU_usage_id, "");
+
+             PDUdisplay_design_form();
+             exit;
+            }
+        }
+  if (PDU_place_part_by == 'P')
+    {
+    sscanf(PDU_quantity, "%lf", &quantity);
+    if (PDU_attach)
+      PDUfill_in_string(&attach, "Y");
+    else
+      PDUfill_in_string(&attach, "N");
+    if (PDU_edit_display)
+      PDUfill_in_string(&edit_display, "Y");
+    else 
+      PDUfill_in_string(&edit_display, "N");
+    stat = PDMrcheck_part_status(refresh->rev_catalog, refresh->rev_partid,
+                                  refresh->rev_revision);
+    _pdm_status("PDMrcheck_part_status", stat);
+
+    if (stat == PDM_I_NEVER_CHECKED_IN)
+      PDUfill_in_string(&attach, "N");
+
+    stat = pdmoPlacePart(
+                         &msg,
+                         NULL,
+                         &part_id,
+                         refresh->rev_catalog, 
+                         refresh->rev_partid,
+                         refresh->rev_revision, 
+                         refresh->rev_filename,
+                         PDU_usage_id,
+                         part->view, 
+                         quantity,
+                         PDU_explode_BOM, 
+                         attach,
+                         PDU_alt_tagno,
+                         PDU_incl_ASM, 
+                         PDU_incl_BOM, 
+                         dyn_attr_count,
+                         dyn_attr_names,
+                         dyn_attr_values, 
+                         0,
+                         NULL,
+                         NULL,
+                         origin,
+                         point1,
+                         point2,
+                         NULL,
+                         edit_display
+                        );
+    }
+  else if (PDU_place_part_by == 'A') 
+    {
+    sscanf(PDU_quantity, "%lf", &quantity);
+    if (PDU_attach)
+      PDUfill_in_string(&attach, "Y");
+    else
+      PDUfill_in_string(&attach, "N");
+    if (PDU_edit_display)
+      PDUfill_in_string(&edit_display, "Y");
+    else 
+      PDUfill_in_string(&edit_display, "N");
+    stat = PDMrcheck_part_status(refresh->rev_catalog, refresh->rev_partid,
+                                  refresh->rev_revision);
+    _pdm_status("PDMrcheck_part_status", stat);
+
+    if (stat == PDM_I_NEVER_CHECKED_IN)
+      PDUfill_in_string(&attach, "N");
+    stat = pdmoPlacePart(
+                         &msg,
+                         NULL,
+                         &part_id,
+                         refresh->rev_catalog, 
+                         refresh->rev_partid,
+                         refresh->rev_revision, 
+                         refresh->rev_filename,
+                         PDU_usage_id,
+                         part->view, 
+                         quantity,
+                         PDU_explode_BOM, 
+                         attach,
+                         PDU_alt_tagno,
+                         PDU_incl_ASM, 
+                         PDU_incl_BOM, 
+                         dyn_attr_count,
+                         dyn_attr_names,
+                         dyn_attr_values, 
+                         0,
+                         NULL,
+                         NULL,
+                         NULL,
+                         NULL,
+                         NULL,
+                         &src_coorid,
+                         edit_display
+                        );
+ ci$send(
+         msg = message GRgraphics.GRdelete
+                                 (
+                                  &sts,
+                                  &mod_env
+                                 ),
+         targetid = src_coorid.objid,
+         targetos = src_coorid.osnum
+        );
+
+    }
+  else
+    {
+    sscanf(PDU_quantity, "%lf", &quantity);
+    if (PDU_attach)
+      PDUfill_in_string(&attach, "Y");
+    else 
+      PDUfill_in_string(&attach, "N");
+    if (PDU_edit_display)
+      PDUfill_in_string(&edit_display, "Y");
+    else 
+      PDUfill_in_string(&edit_display, "N");
+    stat = PDMrcheck_part_status(refresh->rev_catalog, refresh->rev_partid,
+                                  refresh->rev_revision);
+    _pdm_status("PDMrcheck_part_status", stat);
+
+    if (stat == PDM_I_NEVER_CHECKED_IN)
+      PDUfill_in_string(&attach, "N");
+
+    //printf(" Before calling the pdmoPlacePart routine\n");
+    stat = pdmoPlacePart(
+                         &msg,
+                         &mod_env,
+                         &part_id,
+                         refresh->rev_catalog, 
+                         refresh->rev_partid,
+                         refresh->rev_revision, 
+                         refresh->rev_filename,
+                         PDU_usage_id,
+                         part->view, 
+                         quantity,
+                         PDU_explode_BOM,
+                         attach,
+                         PDU_alt_tagno,
+                         PDU_incl_ASM,
+                         PDU_incl_BOM,
+                         dyn_attr_count,
+                         dyn_attr_names,
+                         dyn_attr_values,
+                         0,
+                         NULL,
+                         NULL,
+                         NULL,
+                         NULL,
+                         NULL, 
+                         PDU_origin_id,
+                         edit_display
+                        );
+    }
+
+  _pdm_status("pdmoPlacePart", stat);
+
+  /* Check success status HERE */
+  if (stat != PDM_S_SUCCESS)
+    {
+    PDUmessage(stat, 's');
+    stat = pdmoDeletePartOccurrence(&msg, &mod_env, &part_id);
+    _pdm_status("pdmoDeletePartOccurrence", stat);
+    PDUdisplay_design_form();
+    exit;
+    }
+  if (!PDU_display_pointers)
+    {
+     _pdm_debug("setting display off", 0);
+     begincmd("layers off");
+        ci$put(response = TERMINATE, pos = FRONT);
+        ci$put(string = "*", pos = FRONT);
+        ci$put(value = 1023, pos = FRONT);
+     endcmd();
+     }
+  
+
+
+   /*** Modifications for TR# 179801043 ***/
+
+   /*** Added to update the Windows after the part placement ***/
+
+   /*** Get the current osNum ***/
+
+	sts = ex$get_cur_mod (osnum = &osNum);
+
+	if( sts != 1 )
+	    printf (" Error retrieving the Window osnum\n" );
+
+	status = di$give_pathname ( osnum    = osNum,
+                                    pathname = path );
+
+        sprintf ( path_out , "%s:views:regviews:GRviews:", path );
+
+        win.objid = NULL_OBJID;
+        win.osnum = osNum;
+
+  /*** Find the ID's of the Views that exist for this file ***/
+
+	win_count = 0;
+	di$find ( start_dir = path_out,
+		  regexp    = "*",
+		  lines     = &windows,
+		  ptr       = &win_count, 
+		  deep      = &deep );
+
+
+	for(i=0; i< win_count; i=i+1)
+	    __DBGpr_str ("Window:", windows[i]);
+
+	i = 0;
+
+    while (i < win_count ) 
+    {  
+     
+     status = di$translate ( objname = windows[i],
+                             p_objid = &win.objid,
+                             p_osnum = &win.osnum );
+
+	__DBGpr_obj("window objid:", win);
+
+
+     updateFlag = 1;
+	
+     status = ci$send( msg = message IGEgragad.DPupdate
+					( &msg, NULL, &updateFlag ),
+			targetid 	= win.objid,
+			targetos 	= win.osnum	);
+     /*
+
+     status = ci$send( msg = message IGEgragad.DPfit
+					( &msg, FIT_FLAG ),
+			targetid 	= win.objid,
+			targetos 	= win.osnum	);
+			*/
+if(msg!=MSSUCC)
+	printf( "Update not completed successfully");
+
+	i=i+1;
+    }
+
+    PDUmessage(stat, 's');
+    PDUdisplay_design_form();
+    exit;
+}
+
+int display_dynamic_form()
+
+  {
+  int response;
+  int stat;
+
+  _pdm_debug("Entering PDUdynamic_attr_form", 0);
+  stat = PDUdynamic_attr_form();
+
+  /* Pause until the form is accepted or cancelled */
+  _pdm_debug("Waiting on input", 0);
+  do {
+     ci$get(prompt = "", response = &response);
+     }while (response != MOVE_ON && response!= RESET);
+
+  if (response == MOVE_ON)
+    {
+     return(1);
+    }
+
+  if (response == RESET)
+    {
+     /* Restore stat */
+     PDUfill_in_string(&PDU_alt_tagno, "");
+   
+     if (PDU_command == PDC_M_PLACE_PART)
+        {
+         /* Display design form */
+         ret_fromGpart();
+        }
+
+     return(0);
+    }
+
+  }
+
+int  delay()
+
+ {
+  int  i;
+
+  for (i = 0; i < 20000; i = i + 1);
+ }
+

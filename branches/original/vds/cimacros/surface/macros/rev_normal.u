@@ -1,0 +1,324 @@
+/* $Id: rev_normal.u,v 1.1.1.1 2001/01/04 21:07:21 cvs Exp $  */
+
+/* --------------------------------------------------------------------
+ * I/VDS
+ *
+ * File:	vds/cimacros/surface/macros / rev_normal.u
+ *
+ * Description:
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ *	$Log: rev_normal.u,v $
+ *	Revision 1.1.1.1  2001/01/04 21:07:21  cvs
+ *	Initial import to CVS
+ *	
+# Revision 1.1  1998/04/29  16:27:20  pinnacle
+# VDS 2.5.1
+#
+# Revision 1.2  1998/02/01  14:08:52  pinnacle
+# ah
+#
+# Revision 1.1  1997/05/08  13:20:44  pinnacle
+# New project VDS 250
+#
+# Revision 1.1  1996/07/19  20:33:52  pinnacle
+# Create VDS 241 project
+#
+# Revision 1.2  1995/04/07  10:15:28  pinnacle
+# Replaced: cimacros/surface/macros/rev_normal.u by msbraju r#
+#
+# Revision 1.1  1994/11/14  22:42:32  pinnacle
+# Create vds.240 from vds.232
+#
+# Revision 1.1  1994/11/08  16:07:00  pinnacle
+# create vds.232
+#
+ *
+ * History:
+ *	MM/DD/YY	AUTHOR		DESCRIPTION
+ *      02/01/98        ah              Moved AS_status.h down
+ * -------------------------------------------------------------------*/
+
+/*
+ *	 VDS 2.0 - PPM macro library - 92/07/09 (alc)
+ */
+   
+/*
+	------------------------------------------------------------------
+
+	File Name :		rev_normal.u
+	Creation date :		May 22, 1992
+	Revision date : 	May 25, 1992
+	Author :		Alain CLAUDE
+	Product :		I/VDS - PPM library
+
+	Description : <Assoc> Reverse normal of surface
+
+		This command allows to reverse the orientation of a surface.
+		The surface should be a simple B-spline surface (EMSsubbs).
+
+	Programmer's note :
+
+		This macro is greatly inspired from the VDRevPl macro (written 
+		by Christian Heraud) which allows to reverse the normal of a 
+		VDS plane).
+
+	History :
+
+	------------------------------------------------------------------
+ */
+
+
+#define  MACRO_NAME  "rev_normal"
+
+#include <stdio.h>
+#include <string.h>
+#include "cieveryone.h"
+#include "cimacros.h"
+#include "ci_mac_def.h"
+#include "go.h"
+#include "grdpbdef.h"
+#include "grdpbmacros.h"
+#include "msdef.h"
+#include "nddef.h"
+#include "macro.h"
+#include "dpmacros.h"
+#include "AS_status.h"
+
+#include "EMSmsgdef.h"
+#include "EMSopt.h"
+#include "EMSbnddef.h"
+#include "EMSbnd.h"
+
+struct GRid		CI_MACRO_ID ;
+struct GRmd_env		MOD_ENV ;
+
+extern 			printf(), ASsuper_construct() ;
+extern 			VDconsume_and_display() ;
+extern GRclassid  	OPP_EMSsubbs_class_id ;
+extern			GRdpb_get() ;
+
+
+/* ========================================================================= */
+/* the main function is the one implementing the definition creation
+/* ========================================================================= */
+
+main ()
+{
+	IGRchar *temp_names[1], *feet_names[1];
+	IGRint	temp_types[1] ;
+	GRobj 	ci_mac_def1   ;
+	IGRlong	stat, msg     ;
+
+temp_names[0] = "surface" ;  
+temp_types[0] = other_generic ;
+feet_names[0] = "surface" ;
+
+ci_mac_def1 = NULL_OBJID ;
+ac$cimacdef( 	cimacdef 	=  ci_mac_def1,
+		status 	 	= &stat, 	 
+		name       	= MACRO_NAME,
+              	temp_num 	= 1, 		
+		temp_names 	= temp_names, 
+		temp_types 	= temp_types,
+	      	extern_feet_num = 1, 	
+		extern_feet_names = feet_names) ;
+
+return(OM_S_SUCCESS) ;
+} /* main() */
+
+
+/* ========================================================================= */
+
+
+compute ()
+{
+ IGRlong	msg, stat ;
+ IGRshort	consume, display ;
+ struct	GRid	as_surf ; 		/* not needed here */
+ struct	GRid	foot    ;
+
+  stat = rev_surfnormal(&foot, &as_surf);
+  if (stat != OM_S_SUCCESS) return(OM_E_ABORT) ;
+
+  stat = ci$send( msg = message  ci_macro.set_all_extern_feet
+	 		( &msg, 1, &foot, &MOD_ENV ),
+	   targetid = CI_MACRO_ID.objid,
+	   targetos = CI_MACRO_ID.osnum ) ; as$status(sts = stat) ;
+
+  if (!(stat & msg & 1)) 	return(OM_E_ABORT)   ;
+  else 				return(OM_S_SUCCESS) ;
+} /* compute() */
+
+
+/* ========================================================================= */
+
+
+place ()
+{
+ IGRlong		msg, stat ;
+ IGRshort		consume, display ;
+ IGRchar		*symbol_name;
+ struct	GRid		as_surf ; 		/* parent to be consummed */
+ struct	GRid		foot ;
+
+  stat = rev_surfnormal(&foot, &as_surf) ;
+  if (stat != OM_S_SUCCESS) return(OM_E_ABORT) ;
+
+  /* Consume support */
+  consume = 1 ;
+  display = 0 ;
+  stat = VDconsume_and_display(as_surf, consume, display, &MOD_ENV) ; 
+					
+  as$status( sts = stat, action = RET_STATUS ) ;
+
+  stat = ci$send( msg = message  ci_macro.set_all_extern_feet
+	 		( &msg, 1, &foot, &MOD_ENV ),
+	   targetid = CI_MACRO_ID.objid,
+	   targetos = CI_MACRO_ID.osnum ) ; as$status(sts = stat) ;
+
+  if (!(stat & msg & 1)) 	return(OM_E_ABORT)   ;
+  else 				return(OM_S_SUCCESS) ;
+} /* place() */
+
+
+/* ========================================================================= */
+
+
+NDdelete(md_env)
+struct GRmd_env *md_env;
+{
+ IGRlong	msg, stat ;
+ IGRshort	consume, display ;
+ struct	GRid	as_surf ; 		/* parent to be consummed */
+	
+ if( md_env->md_id.objid == -1 ) goto wrapup ;
+
+ stat = ci$send( msg = message  ACcpx.ACfind_exp_temp_obj
+					(&msg, 0, &as_surf),
+                    targetid = CI_MACRO_ID.objid,
+	            targetos = CI_MACRO_ID.osnum ) ; as$status(sts = stat) ;
+ if(!(stat & msg & 1)) goto wrapup ;
+
+ /* Unconsume support */
+ consume = 0 ;
+ display = 1 ;
+ stat = VDconsume_and_display(as_surf, consume, display, md_env) ;
+ as$status( sts = stat, action = RET_STATUS );
+
+wrapup:
+        stat = ci$send( msg      = message ov_ci_mac.NDdelete(md_env),
+	         targetid = CI_MACRO_ID.objid,
+	         targetos = CI_MACRO_ID.osnum,
+                 mode     = WRT_message ) ; 
+ 	as$status( sts = stat, action = RET_STATUS );
+	 return(OM_S_SUCCESS) ;
+} /* NDdelete() */
+
+
+/* ========================================================================= */
+
+
+rev_surfnormal(rev_surf_ptr, as_surf_ptr)
+struct GRid *rev_surf_ptr ; /* O : Resulting surface with reversed normal    */
+struct GRid *as_surf_ptr  ; /* O : parent to be consumed (used at placement) */
+{
+	struct GRid 	       go_surf     ;
+	struct GRmd_env	       surf_env    ;
+	struct GRsymbology     symb        ;
+ 	GRclassid	       go_classid  ;
+	IGRchar		       buffer[256] ;
+	IGRlong 	       msg, stat   ;
+	IGRlong		       size, nret  ;
+
+ /* 
+	Get surface parent 
+  */
+
+ stat = ci$send(msg	 = message ACcpx.ACfind_exp_temp_obj
+						(&msg, 0, as_surf_ptr),
+		targetid = CI_MACRO_ID.objid,
+		targetos = CI_MACRO_ID.osnum ) ; as$status( sts = stat ) ;
+ if (!(stat & msg & 1)) return(OM_E_ABORT) ;
+
+ stat = ci$send(msg = message NDnode.ASreturn_go(&go_surf, 
+  				&surf_env.md_env.matrix_type,
+				surf_env.md_env.matrix),
+		  targetid = as_surf_ptr->objid,
+		  targetos = as_surf_ptr->osnum) ;
+ as$status( sts = stat, action = RET_STATUS );
+
+#ifdef DEBUG
+printf("as_surf is %d / %d \n", as_surf_ptr->objid, as_surf_ptr->osnum) ;
+printf("go_surf is %d / %d \n", go_surf.objid, go_surf.osnum) ;
+#endif
+
+ /* 
+	Check go classid 
+  */
+
+ stat = om$get_classid(	osnum     = go_surf.osnum,
+                	objid     = go_surf.objid,
+                	p_classid = &go_classid) ;
+ as$status( sts = stat, action = RET_STATUS ) ;
+
+ if(om$is_ancestry_valid(subclassid   = go_classid,
+                         superclassid = OPP_EMSsubbs_class_id) != OM_S_SUCCESS)
+  	{
+	sprintf(buffer, 
+	    	"%s failed : template is not a simple surface", 
+	    	MACRO_NAME) ; status(buffer) ;
+   	return OM_E_ABORT ;
+  	}
+
+ /* 
+	Copy the surface and reverse the normal 
+  */
+
+ rev_surf_ptr->objid  = NULL_OBJID ;
+ rev_surf_ptr->osnum  = MOD_ENV.md_id.osnum ;
+ surf_env.md_id.osnum = go_surf.osnum ;
+
+ stat = ci$send(msg = message GRgraphics.GRcopy
+			(&msg, &surf_env, &MOD_ENV, &rev_surf_ptr->objid),
+                   targetid = go_surf.objid,
+                   targetos = go_surf.osnum) ; as$status( sts = stat) ;
+ if (!(stat & msg & 1)) return(OM_E_ABORT) ;
+
+ stat = ci$send( msg = message EMSsurface.EMrevorient(&msg),
+ 		targetid = rev_surf_ptr->objid,
+		targetos = rev_surf_ptr->osnum) ; as$status( sts = stat) ;
+ if (!(stat & msg & 1)) return(OM_E_ABORT) ;
+
+ /* 
+  *  Get active symbology and change symbology of rev_surf(TR# 179423661)
+  *  03-28-1995  - Suresh
+  */
+ size = sizeof(struct GRsymbology);
+ gr$get_active_display( msg    = &msg,
+			sizbuf = &size,
+			buffer = &symb.display_attr, 
+			nret   = &nret  );
+ gr$get_active_level( msg = &msg,
+		      sizbuf = &size,
+ 		      buffer = &symb.level, 
+		      nret   = &nret   );
+ stat = ci$send(msg = message GRvg.GRputsymb(&msg, &symb),
+		targetid = rev_surf_ptr->objid,
+		targetos = rev_surf_ptr->osnum );
+ as$status( sts = stat) ;
+ if ( !(stat & msg & 1) ) printf("\tGRvg.GRputsymb failed\n");
+
+#ifdef DEBUG
+ printf("Reversed surface is %d / %d \n", 
+				rev_surf_ptr->objid, rev_surf_ptr->osnum) ;
+#endif
+
+ return(OM_S_SUCCESS) ;
+} /* rev_surfnormal() */
+
+
+/* ========================================================================= */
+

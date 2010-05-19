@@ -1,0 +1,173 @@
+/* $Id: COpla_bissec.u,v 1.1.1.1 2001/01/04 21:07:21 cvs Exp $  */
+
+/* --------------------------------------------------------------------
+ * I/VDS
+ *
+ * File:	vds/cimacros/surface/cmd / COpla_bissec.u
+ *
+ * Description:
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ *	$Log: COpla_bissec.u,v $
+ *	Revision 1.1.1.1  2001/01/04 21:07:21  cvs
+ *	Initial import to CVS
+ *	
+# Revision 1.2  1999/02/23  15:12:12  pinnacle
+# tr179802321
+#
+# Revision 1.1  1998/04/29  16:27:20  pinnacle
+# VDS 2.5.1
+#
+# Revision 1.2  1998/02/05  16:37:50  pinnacle
+# Replaced: cimacros/surface/cmd/COpla_bissec.u for:  by mdong for vds
+#
+# Revision 1.1  1997/05/08  13:20:44  pinnacle
+# New project VDS 250
+#
+# Revision 1.1  1996/07/19  20:33:52  pinnacle
+# Create VDS 241 project
+#
+# Revision 1.2  1996/03/05  12:19:20  pinnacle
+# Replaced: cimacros/surface/cmd/COpla_bissec.u for:  by svkadamb for vds.240
+#
+# Revision 1.1  1994/11/14  22:42:32  pinnacle
+# Create vds.240 from vds.232
+#
+# Revision 1.1  1994/11/08  16:07:00  pinnacle
+# create vds.232
+#
+ *
+ * History:
+ *	MM/DD/YY	AUTHOR		DESCRIPTION
+ *      11/10/98        ylong           tr179802321
+ *
+ * -------------------------------------------------------------------*/
+
+/*
+	 VDS 2.0 - PPM macro library - 92/07/09 (alc)
+ */
+   
+#include "ciminimum.h"
+#include "cimacros.h"
+#include "vds.h"
+#include "expmacros.h"
+#include "v_dbgmacros.h"
+
+extern int	 EXP_create();
+
+struct GRid 	TEMP[3],swap;
+long            sts;
+struct GRmd_env MOD_ENV;
+GRobj 		MAC1;
+int 		suc;
+IGRchar		mes_f[80];
+GRobjid         plane_1_id;         //  tr179802321  by ylong 
+
+extern ASmake_source_from_env();
+extern printf();
+
+main()
+{
+
+while(1)
+{
+        
+step1:
+        if(!ci$locate( prompt       = "Identify Plane 1",
+                       classes      = "EMSplane",
+                       properties   = LC_LC_ONLY | LC_DP_ONLY | LC_RW,
+                       owner_action = LC_RIGID_COMP  |
+                                      LC_RIGID_OWNER | LC_FLEX_COMP |
+                                      LC_FLEX_OWNER  | LC_REF_OBJECTS,
+	               obj          = &(TEMP[0].objid),
+                       osnum        = &(TEMP[0].osnum),
+                       md_env       = &MOD_ENV    )) break;
+        plane_1_id = TEMP[0].objid;                  // tr179802321  by ylong
+	ASmake_source_from_env( &TEMP[0],&MOD_ENV,&TEMP[0]);	
+step2:	
+        if(!ci$locate( prompt       = "Identify Plane 2 ",
+                       classes      = "EMSplane",
+                       properties   = LC_LC_ONLY | LC_DP_ONLY | LC_RW,
+                       owner_action = LC_RIGID_COMP  |
+                                      LC_RIGID_OWNER | LC_FLEX_COMP |
+                                      LC_FLEX_OWNER  | LC_REF_OBJECTS,
+	               obj          = &(TEMP[1].objid),
+                       osnum        = &(TEMP[1].osnum),
+                       md_env       = &MOD_ENV    )) goto step1;
+        if(TEMP[1].objid == plane_1_id) goto step2;   // tr179802321  by ylong
+	ASmake_source_from_env( &TEMP[1],&MOD_ENV,&TEMP[1]);	
+
+   	ci$get_module_info(md_env = &MOD_ENV);
+
+	TEMP[2].objid = NULL_OBJID;
+        TEMP[2].osnum = MOD_ENV.md_id.osnum;
+        sts = exp$create( exp_name      = NULL,
+                          exp_syntax    = "0",
+                          p_exp_id      = &(TEMP[2].objid),
+                          osnum         = TEMP[2].osnum,
+                          type_rq       = 4 );
+
+        if ( !(sts&1) )
+        { 
+	  status( "Error creating expression for place direction" );
+          goto step1;
+        }
+	
+	do {
+   	MAC1 = NULL_OBJID;   
+
+	__DBGpr_obj( "Template object 0", TEMP[0] );
+	__DBGpr_obj( "Template object 1", TEMP[1] );
+	__DBGpr_obj( "Template object 2", TEMP[2] );
+
+	sts =
+   	ci$send( msg      = message nci_macro.init(&suc,
+                                                   0,
+				                   "pla_bissec",
+					           3,
+					           TEMP,
+					           NULL,
+                                                   &MOD_ENV),
+		 targetid = MAC1,
+	         targetos = MOD_ENV.md_id.osnum );
+	   if( suc == 0 ){
+		write("placement of nci_macro \"pla_bissec\" failed\n");
+		status("placement of nci_macro \"pla_bissec\" failed");
+      		ci$send(msg = message Root.delete(0),
+			targetid = MAC1,
+			targetos = MOD_ENV.md_id.osnum );
+	   }
+	   if(suc == VD_RJT_MOVEON  )
+	   {
+		/*
+	 	 * Swap the templates
+		 */
+		swap = TEMP[0];
+		TEMP[0] = TEMP[1];
+		TEMP[1] = swap;
+
+      		ci$send(msg = message Root.delete(0),
+			targetid = MAC1,
+			targetos = MOD_ENV.md_id.osnum );
+	   }
+	   if (suc == VD_BACKUP ) goto step2;
+	} while ( suc == VD_RJT_MOVEON ) ;
+}
+
+}
+
+/*==========================================================================*/
+
+init(){
+	strcpy(mes_f,"<Assoc> Create Bisector Plane");
+}
+
+
+wakeup(){
+	message(mes_f);
+}
+
+/*==========================================================================*/
+

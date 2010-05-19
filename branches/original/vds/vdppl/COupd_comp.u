@@ -1,0 +1,208 @@
+/* $Id: COupd_comp.u,v 1.1.1.1 2001/01/04 21:09:02 cvs Exp $  */
+
+/***************************************************************************
+ * I/VDS
+ *
+ * File:	vdppl/COupd_comp.u
+ *
+ * Description:
+ *		This ppl program allows users to change the attributes
+ *		of located compartments and change the values based on
+ *		database values.
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ *	$Log: COupd_comp.u,v $
+ *	Revision 1.1.1.1  2001/01/04 21:09:02  cvs
+ *	Initial import to CVS
+ *	
+# Revision 1.1  1998/04/29  16:27:20  pinnacle
+# VDS 2.5.1
+#
+# Revision 1.1  1997/12/04  16:52:30  pinnacle
+# Created: vdppl/COupd_comp.u by v250_int for vds
+#
+ *
+ * History:
+ *	MM/DD/YY	AUTHOR		DESCRIPTION
+ *	12/04/97	adz		creation date
+ *
+ ***************************************************************************/
+
+
+#include "stdio.h"
+#include "ciminimum.h"
+#include "cieveryone.h"
+#include "cimacros.h"
+#include "igrdp.h"
+#include "dp.h"
+#include "go.h"
+#include "grmacros.h"
+#include "dpdef.h"
+#include "growner.h"
+#include "dpmacros.h"
+#include "coparadef.h"
+#include "coparamac.h"
+#include "SMdef.h"
+
+extern	int	SMUpdCompFromDb();
+
+extern		GRsymbology_options();
+extern		GRdisplay_object();
+extern		GRfindmod();
+extern	int	ASstart_var_fence();
+extern	int	ASend_fence();
+extern	int	DPerase_hilite();
+
+extern	int	printf();
+extern		strcpy();
+extern	int	UI_status() ;
+
+extern	GRclassid	OPP_GRgrset_class_id ;
+
+char		loc_mes[100];
+
+/**
+#define	DEBUG	1
+ **/
+
+main()
+{	
+	struct	GRsymbology	symbology;
+	struct	GRid		object,
+				display_info ;
+	struct	GRmd_env	MOD_ENV, mod_env;
+	struct	GRobj_env	*compList ;
+	IGRint			sts,
+				ind,
+				count,
+				mask,
+				response ;
+	IGRlong			msg;
+	GRclassid		cid ;
+	enum	GRdpmode	dpmode ;
+
+	ci$get_module_info(	md_env = &MOD_ENV );
+
+get_object :
+
+	/*
+	 * locate of the compartment objects.
+	 */
+
+	if(!ci$locate(
+		prompt       = "Locate Compartment(s)/Move-on",
+		classes      = "SMcomp",
+                owner_action = LC_RIGID_COMP | LC_RIGID_OWNER |
+                               LC_FLEX_COMP  | LC_FLEX_OWNER ,
+		md_env       = &mod_env,
+		response     = &response,
+                obj          = &object.objid,
+		osnum	     = &object.osnum )) {
+
+		UI_status("Error Locating Compartment Object(s)");
+
+		goto wrap_up ;
+	}
+	if( response == MOVE_ON ){
+
+		/*
+		 * Process all compartments.
+		 */
+		SMUpdCompFromDb( SM_COMPART, 0, NULL );
+		goto finish ;
+	} 
+
+#ifdef	DEBUG
+	printf(" Point object = [%d,%d]\n", object.objid, object.osnum);
+#endif
+
+	/*
+	 * Test is the object is a GRgrset and split the list into
+	 * individual components, when the set will be accepted.
+	 */
+	om$get_classid(	osnum = object.osnum,
+			objid = object.objid,
+			p_classid = &cid );
+
+	if( om$is_ancestry_valid(	subclassid = cid,
+					superclassid = OPP_GRgrset_class_id )
+			== OM_S_SUCCESS ){
+
+		mask = GRm_RJT_MOVEON | GRm_BACK_UP | GRm_DATA ;
+
+		dpmode = GRhd ;
+		GRfindmod( &display_info );
+
+		sts =
+		ci$send(msg = message GRgraphics.GRdisplay(
+					&msg,
+					&mod_env.md_env.matrix_type,
+					mod_env.md_env.matrix,
+					&dpmode,
+					&display_info ),
+			targetid = object.objid,
+			targetos = object.osnum );
+
+		if( !(sts & msg & 1 )) goto get_object;
+
+		mask = GRm_DATA | GRm_RJT_MOVEON ;
+		ci$getevent(	response 	= &response,
+       			        prompt          = "Accept/Reject",
+				stackable 	= 1 );
+
+		if( response != DATA ){
+			sts =
+			dp$erase_hilite( msg = &msg );
+			goto get_object;
+		}
+	}
+
+	sts = dp$erase_hilite( msg = & msg );
+
+	as$start_fence(	set	= &object,
+			set_env = &mod_env,
+			nb_obj	= &count,
+			p_obj_env = &compList );
+
+	if( count == 0 ) {
+		UI_status("No Object Located");
+		goto wrap_up;
+	}
+
+#ifdef	DEBUG
+	for ( ind = 0; ind < count; ind = ind + 1 ){
+	  printf(" [%d]: %d,%d\n", ind, compList[ind].obj_id.objid, 
+				  compList[ind].obj_id.osnum );
+	}
+#endif
+
+	/*
+	 * Update all the selected compartments.
+	 */
+	SMUpdCompFromDb( SM_COMPART, count, compList );
+	
+finish:
+
+        ASend_fence();
+        UI_status( "Finish Processing .. ");
+        return 1;
+
+wrap_up:
+
+        ASend_fence();
+        UI_status( "error in processing ");
+        return  1;
+}
+
+init()
+{
+	strcpy( loc_mes, "Update Compartment From Database" );
+}
+
+wakeup()
+{
+	message( loc_mes );
+}
+

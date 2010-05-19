@@ -1,0 +1,194 @@
+/* $Id: COsrf_rev.u,v 1.1.1.1 2001/01/04 21:07:21 cvs Exp $  */
+
+/* --------------------------------------------------------------------
+ * I/VDS
+ *
+ * File:	vds/cimacros/surface/cmd / COsrf_rev.u
+ *
+ * Description:
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ *	$Log: COsrf_rev.u,v $
+ *	Revision 1.1.1.1  2001/01/04 21:07:21  cvs
+ *	Initial import to CVS
+ *	
+# Revision 1.1  1998/04/29  16:27:20  pinnacle
+# VDS 2.5.1
+#
+# Revision 1.1  1997/05/08  13:20:44  pinnacle
+# New project VDS 250
+#
+# Revision 1.1  1996/07/19  20:33:52  pinnacle
+# Create VDS 241 project
+#
+# Revision 1.1  1994/11/14  22:42:32  pinnacle
+# Create vds.240 from vds.232
+#
+# Revision 1.1  1994/11/08  16:07:00  pinnacle
+# create vds.232
+#
+ *
+ * History:
+ *	MM/DD/YY	AUTHOR		DESCRIPTION
+ *
+ * -------------------------------------------------------------------*/
+
+/*
+	 VDS 2.0 - PPM macro library - 92/07/09 (alc)
+ */
+   
+#include "ciminimum.h"
+#include "cimacros.h"
+#include "cievent.h"
+#include "igr.h"
+#include "EMSmsgdef.h"
+#include "msdef.h"
+#include "ciexec.h"
+
+GRobj 			ci_mac_bib_FileId;
+IGRint			resp_exp;
+
+IGRchar			loc_mes[80],loc_prompt[80], exp_prompt[80];
+IGRdouble		exp_default;
+IGRint 			suc;
+GRobj 			MAC1, EXP, DIR, EXP1;
+struct GRmd_env		MOD_ENV;
+struct GRid 		TEMP[5];
+
+extern ASmake_source_from_env();
+
+
+main()
+{
+
+ while(1)
+ {
+
+step1:
+	resp_exp = 0;
+	status("Reset to create expressions");
+exp1:
+
+        ci$locate(     prompt       = "Identify curve ",
+	               obj          = &(TEMP[4].objid),
+                       osnum        = &(TEMP[4].osnum),
+                       properties   = LC_LC_ONLY | LC_DP_ONLY | LC_RW,
+                       owner_action = LC_RIGID_COMP
+                                      | LC_RIGID_OWNER | LC_FLEX_COMP
+                                      | LC_FLEX_OWNER  | LC_REF_OBJECTS,
+		       classes      = "GRcurve",
+		       response     = &M_response,
+                       md_env       = &MOD_ENV         );
+	status("");
+	if( M_response == EX_RJT_MOVEON ){
+		resp_exp = 1;
+		ask_expressions();
+		goto exp1;
+	}
+	else if( M_response != EX_DATA ) exit;
+
+	ASmake_source_from_env( &TEMP[4],&MOD_ENV,&TEMP[4]);	
+
+
+step2:  if(!ci$locate( prompt       = "Identify point 1",
+                       properties   = LC_LC_ONLY | LC_DP_ONLY | LC_RW,
+                       owner_action = LC_RIGID_COMP
+                                      | LC_RIGID_OWNER | LC_FLEX_COMP
+                                      | LC_FLEX_OWNER  | LC_REF_OBJECTS,
+                       classes      = "GRpoint",
+	               obj          = &(TEMP[2].objid),
+                       osnum        = &(TEMP[2].osnum),
+		       md_env       = &MOD_ENV  )) goto exp1;
+
+	 ASmake_source_from_env( &TEMP[2],&MOD_ENV,&TEMP[2]);	
+
+        if(!ci$locate( prompt       = "Identify point 2",
+                       properties   = LC_LC_ONLY | LC_DP_ONLY | LC_RW,
+                       owner_action = LC_RIGID_COMP
+                                      | LC_RIGID_OWNER | LC_FLEX_COMP
+                                      | LC_FLEX_OWNER  | LC_REF_OBJECTS,
+                       classes      = "GRpoint",
+	               obj          = &(TEMP[3].objid),
+                       osnum        = &(TEMP[3].osnum),
+		       md_env       = &MOD_ENV  )) goto step2;
+
+	ASmake_source_from_env( &TEMP[3],&MOD_ENV,&TEMP[3]);	
+
+	if( resp_exp == 0 ) cre_default_expressions();
+
+   	ci$get_module_info(md_env = &MOD_ENV);
+
+        MAC1 = NULL_OBJID;
+
+        ci$send(msg      = message nci_macro.init
+		( &suc, 0, "srf_rev",  5,  TEMP, 0, &MOD_ENV ),
+	        targetid = MAC1,
+		targetos = MOD_ENV.md_id.osnum );
+	if( suc == 0 ){
+		write("placement of nci_macro \"srf_rev\" failed\n");
+		status("placement of nci_macro \"srf_rev\" failed");
+      		ci$send(msg = message Root.delete(0),
+	      		targetid = MAC1,
+	      		targetos = MOD_ENV.md_id.osnum );
+	}
+
+ }
+}
+
+
+/*==========================================================================*/
+init(){
+
+ 	strcpy(loc_mes,"<Assoc> Place Surface of Revolution");
+
+ 	ci$load ( file_name = "ci_mac_bib.u",
+		  load      = LOAD,
+	  	  file_id   = &ci_mac_bib_FileId,
+		  stat      = &suc );
+	if( suc != CI_S_SUCCESS ) exit;
+}
+
+wakeup(){
+	message(loc_mes);
+}
+
+ask_expressions(){
+
+ask0:
+         strcpy(loc_prompt,"enter expression start angle");
+         strcpy(exp_prompt,"enter start angle value");
+         exp_default = 0.0;
+         push (char *)&suc,loc_mes,loc_prompt,exp_prompt,exp_default,
+              (char *)&TEMP[0];
+         ci$run( file_id   = &ci_mac_bib_FileId,
+ 	         entry     = "loc_exp" );
+         if( suc != 1 ) exit;
+
+         strcpy(loc_prompt,"enter expression sweep angle");
+         strcpy(exp_prompt,"enter sweep angle value");
+         exp_default = 360.0;
+         push (char *)&suc,loc_mes,loc_prompt,exp_prompt,exp_default,
+             (char *)&TEMP[1];
+         ci$run(  file_id   = &ci_mac_bib_FileId, 
+	          entry     = "loc_exp" );
+         if( suc != 1 ) goto ask0;
+}
+
+cre_default_expressions(){
+
+         push (char *)&suc, (IGRdouble)0.0, (char *)&TEMP[0];
+         ci$run( file_id = &ci_mac_bib_FileId,
+ 	         entry   = "CreDefUnExp" );
+         if( suc != MSSUCC ) exit;
+
+         push (char *)&suc, (IGRdouble)360.0, (char *)&TEMP[1];
+         ci$run( file_id = &ci_mac_bib_FileId,
+ 	         entry   = "CreDefUnExp" );
+         if( suc != MSSUCC ) exit;
+}
+/*==========================================================================*/
+
+
+

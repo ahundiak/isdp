@@ -1,0 +1,377 @@
+/* $Id: VDRevPl.u,v 1.1.1.1 2001/01/04 21:09:23 cvs Exp $  */
+
+/* --------------------------------------------------------------------
+ * I/VDS
+ *
+ * File:	vdspace/ppl / VDRevPl.u
+ *
+ * Description:
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ *	$Log: VDRevPl.u,v $
+ *	Revision 1.1.1.1  2001/01/04 21:09:23  cvs
+ *	Initial import to CVS
+ *	
+# Revision 1.1  1998/04/29  16:27:20  pinnacle
+# VDS 2.5.1
+#
+# Revision 1.2  1998/01/06  20:15:44  pinnacle
+# Replaced: vdspace/ppl/VDRevPl.u for:  by v250_int for vds
+#
+# Revision 1.1  1997/05/08  13:20:44  pinnacle
+# New project VDS 250
+#
+# Revision 1.1  1996/07/19  20:33:52  pinnacle
+# Create VDS 241 project
+#
+# Revision 1.1  1994/11/14  22:42:32  pinnacle
+# Create vds.240 from vds.232
+#
+# Revision 1.1  1994/11/08  16:07:00  pinnacle
+# create vds.232
+#
+ *
+ * History:
+ *	MM/DD/YY	AUTHOR		DESCRIPTION
+ *
+ * -------------------------------------------------------------------*/
+
+
+#include <stdio.h>
+
+#include "cieveryone.h"
+#include "cimacros.h"
+#include "ci_mac_def.h"
+#include "EMSmsgdef.h"
+#include "AS_status.h"
+#include "igr.h"
+#include "grownmacros.h"
+#include "msdef.h"
+#include "bstypes.h"
+#include "bserr.h"
+#include "DItypedef.h"
+#include "DIdef.h"
+#include "DIprims.h"
+
+#include "VDSutil_def.h"
+#include "vdsmacros.h"
+
+IGRshort		mat_type;
+IGRdouble		matrix[16];
+IGRchar 		*temp_names[1], *feet_names[1];
+IGRint			temp_types[1];
+
+IGRint			stat, msg, i;
+GRobj 			ci_mac_def1;
+
+struct GRid		CUV, CI_MACRO_ID, GRid_list[1];
+
+struct GRmd_env		MOD_ENV;
+struct GRvg_construct   cst;
+struct IGRdisplay	dis;
+
+
+
+extern int 		init_cnst_list(),
+			printf(),
+			ASsuper_construct(),
+			VDconsume_and_display(),
+			GRactive_owner_fun(),
+			BSrevsf_v();
+
+extern char		*strrchr();
+
+extern 			VDextract_plane();
+
+extern GRclassid  	OPP_EMSplane_class_id, OPP_VDSInfPl_class_id;
+
+
+
+/* ========================================================================= */
+/* the main function is the one implementing the definition creation
+/* ========================================================================= */
+
+main ()
+{
+  temp_names[0] = "plane";  
+  temp_types[0] = debug_type;  /* To loacte only the planes */
+  			       /* This PPL macro works also with surface */
+			       /* but it is impossible to set to filter  */
+
+  feet_names[0] = "plane";
+
+  ci_mac_def1 = NULL_OBJID;
+
+  ac$cimacdef( 	cimacdef 	=  ci_mac_def1,
+		status 	 	= &stat, 	 
+		name       	= "VDRevPl",
+              	temp_num 	= 1, 		
+		temp_names 	= temp_names, 
+		temp_types 	= temp_types,
+	      	extern_feet_num = 1, 	
+		extern_feet_names = feet_names );
+}
+
+/* ========================================================================= */
+
+compute ()
+{
+ IGRlong	sts;
+ IGRint		nb_comp;
+ struct	GRid	as_pl;
+
+
+  sts = vdsRevPln( &nb_comp, &as_pl );
+  as$status( sts = sts, action = RET_STATUS);
+
+  if( nb_comp == 0 || GRid_list[0].objid == NULL_OBJID)	return	0;
+
+   ci$send( msg = message  ci_macro.set_all_extern_feet
+	 ( &stat, nb_comp, GRid_list, &MOD_ENV ),
+	   targetid = CI_MACRO_ID.objid,
+	   targetos = CI_MACRO_ID.osnum );
+
+
+  return(1);
+}
+
+/* ========================================================================= */
+
+place ()
+{
+ IGRlong	sts;
+ IGRshort	consume, display;
+ struct	GRid	as_pl;
+ IGRint		nb_comp;
+
+  sts = vdsRevPln( &nb_comp, &as_pl );
+  as$status( sts = sts, action = RET_STATUS);
+  
+  if( nb_comp == 0 || GRid_list[0].objid == NULL_OBJID)	return	0;
+
+  /*| consume support */
+  consume = 1;
+  display = 0;
+  sts = VDconsume_and_display( as_pl, consume, display, &MOD_ENV );
+  as$status( sts = sts, action = RET_STATUS );
+
+  ci$send( msg = message  ci_macro.set_all_extern_feet
+	 ( &stat, nb_comp, GRid_list, &MOD_ENV ),
+	   targetid = CI_MACRO_ID.objid,
+	   targetos = CI_MACRO_ID.osnum );
+
+
+# ifdef DEBUG
+  printf("set the name\n");
+# endif
+  vdset_mac_name(as_pl);
+
+  return(1);
+}
+
+/* ========================================================================= */
+NDdelete(md_env)
+struct GRmd_env *md_env;
+{
+ IGRlong 	sts;
+ IGRshort	consume, display;
+ struct GRid	as_pl;
+	
+ if( md_env->md_id.objid == -1 ) goto wrapup ;
+
+ ci$send( msg = message  ACcpx.ACfind_exp_temp_obj
+					(&stat,0,&as_pl),
+                    targetid = CI_MACRO_ID.objid,
+	            targetos = CI_MACRO_ID.osnum );
+ if(!stat) goto wrapup;
+
+ consume = 0; /* unconsume */
+ display = 1;
+ sts = VDconsume_and_display( as_pl, 0, 1, md_env );
+ as$status( sts = sts, action = RET_STATUS );
+
+wrapup:
+        ci$send( msg      = message ov_ci_mac.NDdelete(md_env),
+	         targetid = CI_MACRO_ID.objid,
+	         targetos = CI_MACRO_ID.osnum,
+                 mode     = WRT_message );
+ return(1);
+}
+
+
+/* ========================================================================= */
+
+vdsRevPln( num_obj, as_pl)
+IGRint		*num_obj;
+struct	GRid	*as_pl;
+{
+ IGRlong		actmsg;
+ IGRshort		view_pl;
+ GRclassid		obj_classid;
+ struct	GRid		pl_go, active_owner;
+ IGRlong		sts;
+ struct	GRmd_env	pl_env;
+
+ *num_obj = 0;
+ view_pl  = 0;
+
+ /*| get plane */
+ sts = ci$send(	msg	 = message ACcpx.ACfind_exp_temp_obj
+					( &msg, 0, as_pl ),
+			targetid = CI_MACRO_ID.objid,
+			targetos = CI_MACRO_ID.osnum );
+ as$status( sts = sts );
+
+#ifdef DEBUG
+ printf("as obj: %d, %d\n", as_pl->objid, as_pl->osnum);
+ printf("Test if the support class is subclassed of EMSplane\n");
+#endif
+ sts = ci$send(msg = message NDnode.ASreturn_go(&pl_go, 
+  						&pl_env.md_env.matrix_type,
+						 pl_env.md_env.matrix),
+		  targetid = as_pl->objid,
+		  targetos = as_pl->osnum);
+ as$status( sts = sts, action = RET_STATUS );
+
+ om$get_classid(osnum     = pl_go.osnum,
+                objid     = pl_go.objid,
+                p_classid = &obj_classid);
+
+ if(om$is_ancestry_valid(subclassid   = obj_classid,
+                         superclassid = OPP_EMSplane_class_id) != OM_S_SUCCESS)
+  {
+   printf("The root must be a plane\n");
+   return OM_W_ABORT;
+  }
+
+ if(om$is_ancestry_valid(subclassid   = obj_classid,
+                         superclassid = OPP_VDSInfPl_class_id) == OM_S_SUCCESS)
+  {
+#  ifdef DEBUG
+   printf("View scale independent plane class\n");
+#  endif
+   view_pl = 1;
+  }
+
+/* gr$get_active_owner ( msg=&actmsg,active_owner=&active_owner);
+/* if(actmsg == MSSUCC) gr$clear_active_owner(msg= &actmsg);
+/* */
+
+
+ /* 
+ /*  Copy and reverse the normal 
+ /* 
+ /* */
+
+ GRid_list[0].objid = NULL_OBJID;
+ GRid_list[0].osnum = MOD_ENV.md_id.osnum;
+ pl_env.md_id.osnum = pl_go.osnum;
+
+ sts = ci$send(msg          = message GRgraphics.GRcopy(&msg, &pl_env,
+ 						&MOD_ENV, &GRid_list[0].objid),
+                   targetid = pl_go.objid,
+                   targetos = pl_go.osnum);
+ as$status( sts = sts, action = RET_STATUS);
+
+ sts = ci$send( msg = message EMSsurface.EMrevorient(&msg),
+ 		targetid = GRid_list[0].objid,
+		targetos = GRid_list[0].osnum);
+ as$status( sts = sts, action = RET_STATUS);
+
+#ifdef DEBUG
+ printf("Object construct: %d, %d\n",GRid_list[0].objid,GRid_list[0].osnum);
+#endif
+
+ *num_obj = 1;
+
+
+ return 1;
+}
+
+
+vdset_mac_name(as_pl)
+struct GRid as_pl;
+{
+ IGRlong	sts;
+ IGRchar	name[DI_PATH_MAX], *pt_name, tmp[DI_PATH_MAX], *pt_tmp;
+ struct GRid	obj;
+
+ /* Get the name of the old one */
+ name[0] = '\0';
+ sts = vd$get_name(	name = name,
+			obj  = &as_pl);
+
+#ifdef DEBUG
+ printf("Template obj name: <%s>\n", name);
+#endif
+
+ if((!(sts&1)) || (name[0] == '\0')) return 1;
+ 
+
+ pt_name = strrchr(name,':');
+ if(pt_name != NULL) pt_name[0] = '\0';
+
+ tmp[0] = '\0'; 
+ sts= di$pwd (dirname = tmp);
+ if(!(sts&1))
+  {
+   printf("Error, name of the directory not found\n");
+   return 0;
+  }
+
+ strcat(tmp,":");
+ strcat(tmp,name);
+
+#ifdef DEBUG
+ printf("obj name: %s\n", tmp);
+#endif
+
+ sts = di$translate ( objname = tmp,
+                      p_objid = &obj.objid,
+                      p_osnum = &obj.osnum);
+ if(sts&1)
+  {
+#  ifdef DEBUG
+   printf("An object: %d, %d exists with this name\n",obj.objid,obj.osnum);
+#  endif
+   
+   /* delete the name .. */
+  sts = ci$send(msg = message GRvg.GRchgname(&msg, &MOD_ENV, NULL),
+                targetid = obj.objid,
+                targetos = obj.osnum);
+   if(!(sts&1)) { printf("Error template name not removed\n"); return 0;}
+  }
+
+#ifdef DEBUG
+ printf("Set the name: <%s>\n",name);
+#endif
+ ci$send(msg = message GRvg.GRputname(&msg, name),
+		targetid = CI_MACRO_ID.objid,
+		targetos = CI_MACRO_ID.osnum );
+ if(!(sts&1)) { return 0;}
+
+ return 1;
+}
+
+
+NDdrawing_copy_geom (selected_elements, nb_elements, drawing_elements,
+                 nb_drawing_elem, vector,point, level,lbsys,
+                 from_env,to_env)
+  struct GRid *selected_elements;
+  int    nb_elements;
+  struct GRid **drawing_elements;
+  int    *nb_drawing_elem;
+  double *vector,*point;
+  int *level;struct IGRlbsys *lbsys;
+  struct GRmd_env *from_env,*to_env;
+{
+ long status;
+ status = VDextract_plane(&CI_MACRO_ID,drawing_elements, nb_drawing_elem,
+			  level,lbsys,from_env,to_env);
+ return status;
+}
+
+
+

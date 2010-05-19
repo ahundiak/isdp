@@ -1,0 +1,300 @@
+/* $Id: COmkface.u,v 1.1.1.1 2001/01/04 21:07:20 cvs Exp $  */
+
+/* --------------------------------------------------------------------
+ * I/VDS
+ *
+ * File:	vds/cimacros/obsolete/cmd / COmkface.u
+ *
+ * Description:
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ *	$Log: COmkface.u,v $
+ *	Revision 1.1.1.1  2001/01/04 21:07:20  cvs
+ *	Initial import to CVS
+ *	
+# Revision 1.1  1998/04/29  16:27:20  pinnacle
+# VDS 2.5.1
+#
+# Revision 1.1  1997/05/08  13:20:44  pinnacle
+# New project VDS 250
+#
+# Revision 1.1  1996/07/19  20:33:52  pinnacle
+# Create VDS 241 project
+#
+# Revision 1.1  1994/11/14  22:42:32  pinnacle
+# Create vds.240 from vds.232
+#
+# Revision 1.1  1994/11/08  16:07:00  pinnacle
+# create vds.232
+#
+ *
+ * History:
+ *	MM/DD/YY	AUTHOR		DESCRIPTION
+ *
+ * -------------------------------------------------------------------*/
+
+/*
+	 VDS 2.0 - PPM macro library - 92/07/09 (alc)
+ */
+   
+#include "ciminimum.h"
+#include "cievent.h"
+#include "cilocate.h"
+#define MAX_STATES 1024
+int current_state;
+int states[MAX_STATES];
+extern printf();
+
+// #define DEBUG 1
+
+/*
+ * command object for cimacro mkface
+ * creation in pplic EB, 17 Oct 89
+ */
+
+
+#include "OMprimindex.h"
+#include "OMprimitives.h"
+#include "ciminimum.h"
+#include "cimacros.h"
+#include "ci_mac_bib.h"
+#include "mkface.h"
+
+
+#if DEBUG
+ char classname[80];
+#endif
+
+  int    sts;                   /* Returned status of the definition       */
+  struct GRmd_env	MOD_ENV;
+  double ap[3];
+  int nbtemp, i;
+
+  extern sprintf();
+  extern ASmake_source_from_env();
+
+makecimac()
+{
+#if DEBUG
+write("makecimac(), nbtemp:",nbtemp, '\n' );
+for(i=0; i<nbtemp; i=i+1 ){
+	om$get_classname ( objid= temp_obj[i].objid,
+			  osnum = temp_obj[i].osnum,
+                          classname = classname  );
+	write("temp ", i,": [", temp_obj[i].objid,',',temp_obj[i].osnum,
+			"]\tclassname:",classname,'\n');
+}
+#endif
+
+  if( nbtemp < 2 ){
+	message("no boundary located");
+	return 0;
+  }
+  for(i=nbtemp; i<MAX_TEMPLATE; i=i+1 )
+	temp_obj[i].objid = NULL_OBJID;
+
+  macro_def_id	= NULL_OBJID;
+  ci$get_module_info(md_env = &MOD_ENV);
+
+  ci$send( msg	    = message nci_macro.init
+ 		( &sts,4,MACRO_NAME,
+//				MAX_TEMPLATE,temp_obj,NULL,&MOD_ENV),
+				nbtemp,temp_obj,NULL,&MOD_ENV),
+	   targetid = macro_def_id,
+	   targetos = MOD_ENV.md_id.osnum,
+	   construct= TRUE ) ;
+  return 1;
+}
+
+/*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
+int locate_surf(surfgrid, md_env)
+struct GRid *surfgrid;
+struct GRmd_env *md_env;
+{
+
+ OM_S_CLASSLIST rtree_classes, elig_classes;
+ OMuword        rclass, eliclass;
+ int OPP_EMSsubbs_class_id;
+ int ret_sts;
+
+ om$get_classid( classname = "EMSsubbs",
+		p_classid = &OPP_EMSsubbs_class_id );
+
+ rtree_classes.w_count = 1;
+ elig_classes.w_count = 1;
+ rtree_classes.w_flags = elig_classes.w_flags = OM_CLST_subclass;
+ rclass = OPP_EMSsubbs_class_id;
+ eliclass = OPP_EMSsubbs_class_id;
+ rtree_classes.p_classes = &rclass;
+ elig_classes.p_classes = &eliclass;
+
+ ret_sts = ci$locate(obj     = &surfgrid->objid,
+		osnum   = &surfgrid->osnum,
+                prompt  = "locate surface",
+		acc_prompt = "accept with boundary #1/ reject",
+		accept_point = ap,
+		response = &M_response,
+/*
+                classes = "EMSsurface",
+ */
+                owner_action = LC_RIGID_COMP | LC_RIGID_OWNER | LC_REF_OBJECTS
+                              | LC_FLEX_COMP | LC_FLEX_OWNER,
+		properties = LC_LC_ONLY | LC_DP_ONLY | LC_RW  ,
+                eligible_classes = &elig_classes,
+		md_env = md_env  );
+
+#if DEBUG
+	om$get_classname ( objid= surfgrid->objid,
+			  osnum = surfgrid->osnum,
+                          classname = classname  );
+	write("\nlocated surf: [", surfgrid->objid,',',surfgrid->osnum,
+			"]\tclassname:",classname,'\n');
+ write( "M_response:",M_response, '\n' );
+#endif
+
+ nbtemp = 1;	// for the future
+}
+
+
+int locbound(boundgrid,md_env)
+struct GRid *boundgrid;
+struct GRmd_env *md_env;
+{
+ int ret_sts;
+ char sprt[80];
+ char saccprt[80];
+
+ sprintf(sprt,"Identify boundary #%d / Move On", nbtemp );
+ sprintf(saccprt,"Accept with boundary #%d / Reject", nbtemp+1 );
+
+ ret_sts = ci$locate ( prompt  = sprt,
+		    acc_prompt = saccprt,
+                owner_action = LC_RIGID_COMP | LC_RIGID_OWNER | LC_REF_OBJECTS
+                              | LC_FLEX_COMP | LC_FLEX_OWNER,
+		properties = LC_LC_ONLY | LC_DP_ONLY | LC_RW  ,
+
+		    accept_point = ap,
+		    response = &M_response,
+		    classes  = "GRcurve",
+ 		    obj     = &(boundgrid->objid),
+		    osnum   = &(boundgrid->osnum),
+		    md_env  = md_env);
+
+#if DEBUG
+if(ret_sts){
+	om$get_classname ( objid= boundgrid->objid,
+			  osnum = boundgrid->osnum,
+                          classname = classname  );
+	write("\nlocated bound: [", boundgrid->objid,',',boundgrid->osnum,
+			"]\tclassname:",classname,'\n');
+
+// write( "M_response:",M_response, '\n' );
+// write("locbound(), nbtemp:",nbtemp, '\n' );
+}
+#endif
+}
+
+
+wakeup()
+{
+	message("Associative Create Face");
+}
+
+null_action() { return 1; }
+
+
+state_default(){
+    if (M_response == TERMINATE){
+	current_state = current_state+1;
+	states[current_state] = -1;
+	return 1;
+    }
+    return 0;
+} /* end state_default */
+
+state_locsurf(){
+	message("Associative Make Face");
+    locate_surf(&temp_obj[0],&MOD_ENV);
+    if( state_default() ) return 1;
+    if (M_response == DATA){
+	ASmake_source_from_env( &temp_obj[0],&MOD_ENV,&temp_obj[0]);	
+	M_response = ci$put( point = ap, pos = FRONT );
+	current_state = current_state+1;
+	states[current_state] = 1;
+	return 1;
+    }
+    if (1){
+	current_state = current_state+1;
+	states[current_state] = 0;
+	return 1;
+    }
+} /* end state_locsurf */
+
+state_locbounds(){
+    locbound(&temp_obj[nbtemp],&MOD_ENV);
+    if( state_default() ) return 1;
+    if (M_response == RESET){
+	M_response = makecimac();
+	if (M_response == 0){
+		current_state = current_state+1;
+		states[current_state] = 1;
+		return 1;
+	}
+	if (1){
+		current_state = current_state+1;
+		states[current_state] = 0;
+		return 1;
+	}
+	current_state = current_state+1;
+	states[current_state] = 1;
+	return 1;
+    }
+    if (M_response == D_RESET){
+ nbtemp = nbtemp - 1; 	M_response = null_action();
+	current_state = current_state-1;
+	return 1;
+    }
+    if (M_response == DATA){
+	ASmake_source_from_env( &temp_obj[nbtemp],&MOD_ENV,&temp_obj[nbtemp]);	
+	M_response = ci$put( point = ap, pos = FRONT );
+ nbtemp = nbtemp + 1; 	current_state = current_state+1;
+	states[current_state] = 1;
+	return 1;
+    }
+    if (1){
+	current_state = current_state+1;
+	states[current_state] = 0;
+	return 1;
+    }
+} /* end state_locbounds */
+
+terminate(){ exit; }
+
+
+error(s) char *s; { status(s);  exit;}
+
+
+
+main(){
+	current_state = 0;
+	states[0] = 0;
+	while(1){
+	    if(current_state < 0 ){
+	    	error("no previous state, exit");
+	    	return 0;
+	    }
+	    if(current_state >= MAX_STATES){
+	    	error("state table overflow, exit");
+	    	return 0;
+	    }
+	    switch(states[current_state]){
+	    case -1: terminate(); return(1);
+	    case 0: state_locsurf(); break;
+	    case 1: state_locbounds(); break;
+	    default: error("software error, unknown state\n");
+	             return(0);
+	    } /* switch */
+	} /* while */
+} /* main */

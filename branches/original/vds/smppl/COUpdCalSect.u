@@ -1,0 +1,120 @@
+/* $Id: COUpdCalSect.u,v 1.1.1.1 2001/01/04 21:07:36 cvs Exp $  */
+
+/* --------------------------------------------------------------------
+ * I/VDS
+ *
+ * File:	vds/smppl / COUpdCalSect.u
+ *
+ * Description:
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ *	$Log: COUpdCalSect.u,v $
+ *	Revision 1.1.1.1  2001/01/04 21:07:36  cvs
+ *	Initial import to CVS
+ *	
+# Revision 1.1  1998/04/29  16:27:20  pinnacle
+# VDS 2.5.1
+#
+# Revision 1.1  1997/05/08  13:20:44  pinnacle
+# New project VDS 250
+#
+# Revision 1.1  1996/07/19  20:33:52  pinnacle
+# Create VDS 241 project
+#
+# Revision 1.1  1994/11/14  22:42:32  pinnacle
+# Create vds.240 from vds.232
+#
+# Revision 1.1  1994/11/08  16:07:00  pinnacle
+# create vds.232
+#
+ *
+ * History:
+ *	MM/DD/YY	AUTHOR		DESCRIPTION
+ *
+ * -------------------------------------------------------------------*/
+
+
+#include "cieveryone.h"
+#include "cimacros.h"
+#include "msdef.h"
+#include "growner.h"
+#include "SMdef.h"
+#include "SMmacros.h"
+#include "growner.h"
+
+extern int printf(), SMCritSel();
+extern UI_status(), free();
+extern SMGetCalSctFlg(), SMSetCalSctFlg();
+main()
+{
+ int 			i, k;
+ char			loc_mes[45], name[81];
+ IGRlong		status,msg;
+ struct SMObjList 	ObjList;
+ IGRboolean 		CurCalFlg;
+ struct GRmd_env	md_env, obj_env;
+
+ strcpy(loc_mes,"Update Calculation section");
+ message(loc_mes);
+
+ status = SM$CritSel(msg 	= &msg, 
+ 		     state	= SM_NOT_COMP,
+		     options	= 0,
+ 		     type	= SM_SCT,
+	    	     sub_type	= 0xFFFF,
+	    	     list	= &ObjList);
+ if(!(status & 1) || msg != MSSUCC) 
+  {
+   /*
+    * printf("Error getting the components\n");
+    */
+   UI_status("Error getting the components");
+   exit;
+  } 
+ if(ObjList.nb_objects <= 0) 
+  {
+   /*
+    * printf("Nothing to update\n");
+    */
+   UI_status("Nothing to update");
+   exit;
+  }
+
+ /* Get the calculation section state to turn it on and restore it */
+ SMGetCalSctFlg(&CurCalFlg);
+ if(CurCalFlg != TRUE) SMSetCalSctFlg(1);
+
+ ci$get_module_info(md_env = &md_env);
+
+ for(i=0;i<ObjList.nb_objects;i=i+1)
+  {
+   obj_env 	 = ObjList.list[i].mod_env;
+   obj_env.md_id = md_env.md_id;  /* For display */
+
+   ci$send(msg = message NDnode.NDdisplay(0, GRbe, &obj_env),
+                targetid = ObjList.list[i].obj_id.objid,
+		targetos = ObjList.list[i].obj_id.osnum);
+   if(!(status & msg & 1)) printf("bad erase\n");
+
+   status = ci$send(msg = message NDnode.NDs_compute_node(&msg, 0, NULL),
+                targetid = ObjList.list[i].obj_id.objid,
+		targetos = ObjList.list[i].obj_id.osnum);
+   if(!(status & msg & 1))
+    {
+     continue;
+    }
+
+   ci$send(msg = message NDnode.NDdisplay(0, GRbd, &obj_env),
+                targetid = ObjList.list[i].obj_id.objid,
+		targetos = ObjList.list[i].obj_id.osnum);
+   if(!(status & msg & 1)) printf("bad display\n");
+  }
+  
+ /* free the allocated memory */
+ if(CurCalFlg != TRUE) SMSetCalSctFlg(0);
+ free(ObjList.list);
+}
+
+

@@ -1,0 +1,355 @@
+/* $Id: PartQty.u,v 1.1 2001/01/18 20:40:57 hans Exp $  */
+
+/***************************************************************************
+ * I/VDS
+ *
+ * File:        vdsa/ucm/PartQty.u
+ *
+ * Description: node quantity and pcmk issues mgr
+ *
+ * Dependencies:
+ *
+ * Revision History:v_slcdef.h
+ *      $Log: PartQty.u,v $
+ *      Revision 1.1  2001/01/18 20:40:57  hans
+ *      SP16 additions/modifications
+ *
+# Revision 1.4  2000/12/16  16:33:54  pinnacle
+# Replaced: vds/vdppl/PartQty.u for:  by rchennup for Service Pack
+#
+# Revision 1.3  2000/11/13  16:48:08  pinnacle
+# (No comment)
+#
+# Revision 1.2  2000/11/01  17:28:24  pinnacle
+# pn
+#
+# Revision 1.1  2000/11/01  12:15:16  pinnacle
+# initial revision
+#
+ *
+ * History:
+ * MM/DD/YY  AUTHOR  DESCRIPTION
+ * 10/05/00  pn      Creation
+ * 11/13/00  pn      fixes
+ *****************************************************************************/
+
+/* ---------------------------------------------------------------
+ * This include file pulls in many other useful files including
+ * all of the usual ci files
+ */
+#include "VDppl.h"
+#include "v_pplslc.h"
+#include "v_slcdef.h"
+#include "VDobj.h"
+//#include "VDct1.h"
+#include "VDsa.h"
+#include "VDchn.h"
+//#include "VDefp.h"
+//#include "VDct1Cmd.h"
+#include "VDat.h"
+
+extern IGRstat VDatFldGetAttrByName();
+extern IGRstat VDatGetObjectLeafsVLA();
+extern IGRstat VDatGetNodeName();
+extern IGRstat VDatGetNodeType();
+extern IGRstat VDatGetSetType();
+extern IGRstat VDatGetParentNode();
+extern IGRstat VDatGetLeafObject();
+extern IGRstat VDatGetParentByType();
+extern IGRstat VDatGetLeafsVLA();
+
+
+#define theCommand "PCMK location"
+#define thePrompt  "Do Something"
+
+IGRstat cnt;
+IGRstat IsPcCreated;
+IGRchar PCMK[128];
+TGRobj_env  BeamObj;
+TGRid       OBJECT_ID;
+
+//#if 0
+//TVDct1CmdInfo *cmdInfo;
+
+/********************************************************************************************
+ * wrapper for the ci$locate function to get the input data for Strudel simulation without
+ * operating in it
+ ********************************************************************************************/
+get_input()
+{
+  IGRstat sts;
+  IGRint  response;
+ 
+
+  printf("welcome to get_input\n");
+  
+  // Be a little careful
+  //cmdInfo->form = NULL;
+  // cmdInfo->gadget = 0;
+  response = 0;
+
+  //UI_message(theCommand);
+  printf("get Input going to ci$locate\n");
+  
+     // Either locate or form interaction
+    sts = ci$locate(
+      prompt = "Select Object",
+      classes = "VSbeam",
+      owner_action = LC_RIGID_COMP | LC_RIGID_OWNER |
+                     LC_FLEX_COMP  | LC_FLEX_OWNER  | LC_REF_OBJECTS,
+
+      response     = &response,
+      md_env       = &BeamObj.mod_env,
+      obj          = &BeamObj.obj_id.objid,
+      osnum        = &BeamObj.obj_id.osnum
+    );
+
+    printf("We got out of Cilocate sts was (%d)\n",sts);
+    
+    printf("BeamObj.obj_id.objid [%d]\n",BeamObj.obj_id.objid);
+    
+}
+
+//#endif
+  /***********************************************************************************
+   * Routine to return to STRUDEL the following values
+   * the PCMK of a node if it has one
+   * Count of parts under a unit with a pcmk = to the test case if it has one
+   * A yes/no value for if any of these parts which have matching pcmk
+   * also have a connection to the PcCard
+   ***********************************************************************************/
+pcmk_quantity()
+{
+  IGRstat     retFlag;
+  IGRstat     sts,i,j,k,size,msg;
+  IGRstat     traceFlag,ifNotStrudel;
+  IGRchar     buf[128];
+  IGRint      isConsumed;
+  TVDvlaID    leafVLA,unitLeafsVLA,pcVLA;
+  TGRid       leafID,unitLeafID,pID,pcID,nID;
+  IGRchar     fx[128],nodeType[128],nodeName[128];
+  TGRobj_env  unitOE,objOE,unitLeafOE;
+ 
+  
+  
+  
+  // inits
+  strcpy(fx,"pcmk_quantity()");
+  retFlag = 0;
+  traceFlag = 0;
+  ifNotStrudel = 0;
+  cnt = 0;
+  IsPcCreated = 0;
+  strcpy(PCMK,"");
+  
+
+  // say hi
+  if(traceFlag) printf("PPL>>> %s\n",fx);
+
+  // args check
+  if(objOE.obj_id.objid == NULL_OBJID) goto wrapup;
+
+  /***************************************************/
+  // Retrieve the data block from STRUDEL
+  // get the size of input
+  vd$ppl_get_size( which_info = INPUT_INFO,
+                   size       = &size);
+  
+  // get the Chock macro
+  vd$ppl_getarg_at_index ( which_info = INPUT_INFO,
+                           index      = 1,
+                           value      = &BeamObj );
+    /**************************************************/
+
+  if(ifNotStrudel) {
+    printf("manual data input\n");
+    get_input();
+  }
+  objOE.obj_id.osnum = BeamObj.obj_id.osnum;
+  objOE.obj_id.objid = BeamObj.obj_id.objid;
+  
+  
+
+    // make up leafVLA and get its data
+  VDvlaID_Construct(&leafVLA);
+  VDatGetObjectLeafsVLA(&objOE.obj_id,&leafVLA);
+
+
+  // test loop
+  if(traceFlag) printf("Got leafVLA\n");
+  
+  // loop through the leafVLA and get the nodes
+  for(i = 0; VDvlaID_GetAt(&leafVLA,&leafID,i); i = i + 1)
+    {
+
+      VDatGetNodeType(&leafID,nodeType);
+      if(traceFlag) VDatGetNodeName(&leafID,nodeName);
+
+      if(traceFlag) {
+        printf("#%d leafID [%d] [%d] nodeType [%s]\n",i,leafID.osnum,leafID.objid,nodeType,nodeName);
+      }
+      
+       if(!strcmp("PM",nodeType)) {
+         // now we have a leafID for real
+         vdsa$GetStruct(objID  = &leafID,
+                        name  = "pcmk",
+                        txt   = PCMK);
+         // at this point we now have the pcmk or a blank
+         if(strcmp(PCMK,"")) {
+           // go up and get the unit
+           nID.osnum = leafID.osnum;
+           nID.objid = leafID.objid;
+           VDatGetNodeType(&nID,nodeType);
+           // start checking the parents for the UNIT
+           while (strcmp(nodeType,"UNIT")) {
+             // get the parent node and its data
+             VDatGetParentNode(&nID,&pID);
+             if(pID.objid == NULL_OBJID) {
+               //if(traceFlag) printf("BREAK! pID.objid == NULL_OBJID\n");
+               break;
+             }
+             VDatGetNodeType(&pID,nodeType);
+             // get ready for next loop
+             nID.osnum = pID.osnum;
+             nID.objid = pID.objid;
+           } // while !UNIT loop
+           if(!strcmp(nodeType,"UNIT")) {
+             VDatGetNodeName(&pID,nodeName);
+
+             if(traceFlag) printf("UNIT  [%s] [%s] \n",nodeType,nodeName);
+             
+             // well it is a unit! get all the leafs
+             VDvlaID_Construct(&unitLeafsVLA);
+             // VDatGetObjectLeafsVLA(&unitOE.obj_id,&unitLeafsVLA);
+             VDatGetLeafsVLA (&pID,&unitLeafsVLA);
+             // loop through the unitLeafsVLA and get the nodes
+             for(j = 0; VDvlaID_GetAt(&unitLeafsVLA,&unitLeafID,j); j = j + 1) {
+                vdsa$GetStruct(objID  = &unitLeafID,
+                              name   = "pcmk",
+                              txt    = buf);
+                if(!strcmp(buf,PCMK)) {
+                  if(traceFlag) printf("The node [%d] is matched \n",j);
+                  cnt = cnt + 1;
+                }
+             }
+             for(j = 0; VDvlaID_GetAt(&unitLeafsVLA,&unitLeafID,j); j = j + 1) {
+               // exclude the original test case
+               // if(leafID.objid != unitLeafID.objid)  {
+               // check each unit leaf for its pcmk (buf)
+               vdsa$GetStruct(objID  = &unitLeafID,
+                              name   = "pcmk",
+                              txt    = buf);
+                 // check if the pcmk matches buf
+                 if(!strcmp(buf,PCMK)) {
+                   // update the count
+                   // cnt = cnt + 1;
+                   //if(traceFlag) printf("The count is updated to [%d]\n", cnt);
+                   // don't check if it has a card once one is found
+                   if (!IsPcCreated) {
+                     // get this unitLeafID's unitLeafOE
+                     VDatGetLeafObject(&unitLeafID,&unitLeafOE);
+                     // check to see if he has a card
+                     VDvlaID_Construct(&pcVLA);
+                     vdchn$GetChildrenByClass(objOE     = &unitLeafOE,
+                                              className = "VLpcView",
+                                              vla       = &pcVLA);
+                     
+                     // loop through the vla to find out if a connection exists
+                     for(k = 0; VDvlaID_GetAt(&pcVLA,&pcID,k); k = k + 1) {
+                       if(pcID.objid != NULL_OBJID) {
+                         IsPcCreated = 1;
+                         // this line below commented out to continue the counting after
+                         // this card is found
+                         //goto wrapup;
+                       }
+                     } // end check if the card is there 
+                   } // if a card has not been found
+                 } // end check the pcmk match
+                 // }  // end exclude the original test case
+             } // end of loop through the unitLeafsVLA
+           }  // if it is a unit else is not
+           else {
+             goto wrapup;
+           } // end unit check
+         } // if not blank loop
+       } // checking PM node for parents loop
+    }  // end of the leafVLA loop
+  
+  retFlag = 1;
+ wrapup:
+  if(cnt == 0) {
+    if(strcmp(PCMK,"")) {
+      cnt = 1;
+    }
+  }
+  // get rid of the vla objects if they exist.  NO memory leaks ever!
+  if(&leafVLA != NULL) VDvlaID_Delete(&leafVLA);
+  if(&unitLeafsVLA != NULL) VDvlaID_Delete(&unitLeafsVLA);
+  if(&pcVLA != NULL) VDvlaID_Delete(&pcVLA);
+  if(traceFlag) {
+    printf("\n******************* output Report **************************\n");
+    
+    printf("PCMK [%s] cnt[%d] IsPcCreated [%d]\n",PCMK,cnt,IsPcCreated);
+    printf("******************* output Report **************************\n\n");
+  }
+
+  sts = ci$send( msg      = message NDmacro.ACtest_consumed( &isConsumed ),
+                 targetid = BeamObj.obj_id.objid,
+                 targetos = BeamObj.obj_id.osnum );
+  
+  /****************************************************************/
+  vd$ppl_set_size ( which_info = OUTPUT_INFO,
+                    size       = 4 );
+  vd$ppl_setarg_at_index ( which_info = OUTPUT_INFO,
+                           index      = 0,
+                           type       = VD_string,
+                           value      = PCMK );
+  
+    vd$ppl_setarg_at_index ( which_info = OUTPUT_INFO,
+                           index      = 1,
+                           type       = VD_int,
+                           value      = &cnt );
+
+  vd$ppl_setarg_at_index ( which_info = OUTPUT_INFO,
+                           index      = 2,
+                           type       = VD_int,
+                           value      = &IsPcCreated );
+
+  vd$ppl_setarg_at_index ( which_info = OUTPUT_INFO,
+                           index      = 3,
+                           type       = VD_int,
+                           value      = &isConsumed );
+
+  /****************************************************************/
+
+  // say bye
+  if(traceFlag) printf("PPL<<< %s[%d]\n",fx,retFlag);
+  return 1;
+}
+
+
+/* --------------------------------------------------------------- 
+ * Main routine is not required but putting in some print statements
+ * will allow you to document what the ppl is for.
+ * ESCci=VDsaAttr will cause main to execute
+ */ 
+main()
+{
+
+  //IGRint i;
+  printf("Testing It! ppl(main)\n");
+  // for(i=0;i<20;i=i+1) {
+    
+  //get_input();
+  // printf("Testing the output ppl(main)\n");
+  
+  pcmk_quantity();
+  // }
+  
+   
+}
+
+
+
+
+

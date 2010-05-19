@@ -1,0 +1,153 @@
+/* $Id: COneatBSpl.u,v 1.1 2001/03/10 19:27:35 ramarao Exp $  */
+/***************************************************************************
+ * I/VDS
+ *
+ * File:        vdppl/COneatBSpl.u
+ *
+ * Description: Command for placing neat BS plates
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ *      $Log: COneatBSpl.u,v $
+ *      Revision 1.1  2001/03/10 19:27:35  ramarao
+ *      Created Neat Edge Function for BSPmath.
+ *
+ *
+ * History:
+ * MM/DD/YY  AUTHOR  	DESCRIPTION
+ * 03/10/01  Rama Rao   File Creation.
+ ***************************************************************************/
+
+#include "VDppl.h"
+#include "VDobj.h"
+#include "VDefp.h"
+#include "coparamac.h"
+
+extern ASstart_var_fence();
+extern ASend_fence();
+
+extern GRclassid OPP_EMSsubbs_class_id;
+
+#define thePrompt  "Select Plate or Surface"
+#define theCommand "Place BS Neat Plate"
+
+IGRint traceFlag;
+
+/* -------------------------------------
+ * Process the selected plate
+ */
+int process(plateOE)
+TGRobj_env *plateOE;
+{
+  IGRint sts;
+
+  TGRobj_env srfOE;
+  IGRint     cnt;
+
+  IGRchar    buf[256];
+
+  TGRobj_env neatOE;
+  TGRobj_env  macOE;
+
+  // Arg check
+  if (plateOE->obj_id.objid == NULL_OBJID) goto wrapup;
+
+  // Put a macro on it
+  vdefp$PlaceMacro(macName = "neat_plateBS",
+                   tplOEs  =  plateOE,
+                   macOE   =  &macOE    );
+
+  if (macOE.obj_id.objid == NULL_OBJID) {
+    printf("Problem placing neat macro\n");
+    goto wrapup;
+  }
+  if (traceFlag) vdobj$Print(objOE = &macOE);
+
+wrapup:
+  return 1;
+}
+
+/* --------------------------------------
+ * The main routine
+ */
+int main()
+{
+  int 			sts,msg,response;
+  TGRobj_env  		objOE;
+  TGRobj_env 		*locOEs;
+  IGRint      		locNum;
+  IGRint      		i;
+  OM_S_CLASSLIST        eligibleClasses;
+  OMuword               classids[2];
+  
+  traceFlag = 0;
+
+  sts = om$get_classid( classname = "VSplate",
+		        p_classid = &classids[0] );
+  if( sts&1 )
+  {
+     eligibleClasses.w_count = 2;
+     classids[1] = OPP_EMSsubbs_class_id ;
+  }
+  else
+  {
+     eligibleClasses.w_count = 1;
+     classids[0] = OPP_EMSsubbs_class_id ;
+  }
+
+  eligibleClasses.w_flags   = OM_CLST_subclass ;
+  eligibleClasses.p_classes = classids ;
+    
+  while(1) {
+
+    objOE.obj_id.objid = NULL_OBJID;
+    
+    response = 0;
+
+    UI_message(theCommand);
+
+    sts = ci$locate(prompt  = thePrompt,
+		    eligible_classes= &eligibleClasses,
+		    owner_action = LC_RIGID_OWNER | 
+                                   LC_RIGID_COMP  |
+                                   LC_FLEX_COMP   | 
+                                   LC_FLEX_OWNER  |
+                                   LC_REF_OBJECTS,
+
+                    stackable    = 1,
+		    response     = &response,
+		    md_env       = &objOE.mod_env,
+		    obj          = &objOE.obj_id.objid,
+		    osnum	 = &objOE.obj_id.osnum);
+
+    if (!(sts & 1)) response = 0;
+
+    switch(response) {
+
+    case EX_OBJID:   // Object Set
+
+      /* Grab Located Objects */
+      as$start_fence(
+      set       = &objOE.obj_id,
+      set_env   = &objOE.mod_env,
+      nb_obj    = &locNum,
+      p_obj_env = &locOEs);
+
+      for(i = 0; i < locNum; i = i + 1) {
+        process(&locOEs[i]);
+      }
+
+      ASend_fence();
+      break;
+      
+    case EX_DATA:    // Single Object
+      process(&objOE);
+      break;
+
+    } // Switch
+  }
+
+wrapup:
+  return 1;
+}

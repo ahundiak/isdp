@@ -1,0 +1,204 @@
+/* $Id: pt_pos.u,v 1.1.1.1 2001/01/04 21:07:23 cvs Exp $  */
+
+/* --------------------------------------------------------------------
+ * I/VDS
+ *
+ * File:	vds/cimacros/wireframe/macros / pt_pos.u
+ *
+ * Description:
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ *	$Log: pt_pos.u,v $
+ *	Revision 1.1.1.1  2001/01/04 21:07:23  cvs
+ *	Initial import to CVS
+ *	
+# Revision 1.1  1998/04/29  16:27:20  pinnacle
+# VDS 2.5.1
+#
+# Revision 1.1  1997/05/08  13:20:44  pinnacle
+# New project VDS 250
+#
+# Revision 1.1  1996/07/19  20:33:52  pinnacle
+# Create VDS 241 project
+#
+# Revision 1.1  1994/11/14  22:42:32  pinnacle
+# Create vds.240 from vds.232
+#
+# Revision 1.1  1994/11/08  16:07:00  pinnacle
+# create vds.232
+#
+ *
+ * History:
+ *	MM/DD/YY	AUTHOR		DESCRIPTION
+ *
+ * -------------------------------------------------------------------*/
+
+/*
+	 VDS 2.0 - PPM macro library - 92/07/09 (alc)
+ */
+   
+#include "cieveryone.h"
+#include "cimacros.h"
+#include "ci_mac_def.h"
+#include "cimath.h"
+#include "msdef.h"
+#include "AS_status.h"
+#include "bserr.h"
+#include "macro.h"
+#include "nddef.h"
+ 
+struct GRid		CI_MACRO_ID;
+
+IGRchar			tmp[40],str[40];
+IGRdouble 		matrix[16];
+IGRdouble 		pts1[4],pts2[4];
+IGRlong		        stat, msg, rc;
+IGRint		        num_temp, i;
+GRobj 			ci_mac_def1;
+struct GRmd_env		MOD_ENV;
+struct GRid		CUV, GCV, GRid_list[3];
+IGRchar 		*temp_names[2], *feet_names[3], txt[5],name[80];
+IGRint			temp_types[2];
+struct GRparms		parms1, parms2, parms3;
+struct ret_struct  	pt_str,ref_str;
+short            	mat_type;       /* Matrix type of the graphic object */
+short            	four,one;           /* Dimension of the matrix           */
+
+extern int	MAinvmx(),
+		MAidmx(),
+		MAmulmx(),
+		MAtypemx();
+
+extern int 		sprintf(),
+			printf();
+extern			ASsuper_construct();
+
+/* ========================================================================= */
+/* the main function is the one implementing the definition creation
+/* ========================================================================= */
+
+main ()
+{
+
+  temp_names[0] = "ref";  
+  temp_names[1] = "pnt";
+
+  temp_types[0] = ref_generic;
+  temp_types[1] = point_generic;
+
+  feet_names[0]= "x_pos";
+  feet_names[1]= "y_pos";
+  feet_names[2]= "z_pos";
+
+  ci_mac_def1 = NULL_OBJID;
+
+  ac$cimacdef( 	cimacdef          = ci_mac_def1,
+		status 	          = &stat, 	
+		name              = "pt_pos",
+              	temp_num          = 2, 		
+		temp_names        = temp_names,
+		temp_types        = temp_types,
+	      	extern_feet_num   = 3, 	
+		extern_feet_names = feet_names );
+}
+
+/* ========================================================================= */
+
+compute ()
+{
+  construct_comp();
+
+  if( GRid_list[0].objid == NULL_OBJID ) return(0); 
+
+
+  ci$send( msg = message  ci_macro.set_all_extern_feet
+	 ( &stat, 3, GRid_list, &MOD_ENV ),
+	   targetid = CI_MACRO_ID.objid,
+	   targetos = CI_MACRO_ID.osnum );
+
+
+  return(1);
+}
+
+/* ========================================================================= */
+
+place ()
+{
+  construct_comp();
+
+  if( GRid_list[0].objid == NULL_OBJID ) return(0); 
+
+
+  ci$send( msg = message  ci_macro.set_all_extern_feet
+	 ( &stat, 3, GRid_list, &MOD_ENV ),
+	   targetid = CI_MACRO_ID.objid,
+	   targetos = CI_MACRO_ID.osnum );
+
+
+  return(1);
+}
+
+
+/* ========================================================================= */
+
+construct_comp()
+{
+
+     GRid_list[0].objid = NULL_OBJID;
+     GRid_list[0].osnum = MOD_ENV.md_id.osnum;
+     GRid_list[1].objid = NULL_OBJID;
+     GRid_list[1].osnum = MOD_ENV.md_id.osnum;
+     GRid_list[2].objid = NULL_OBJID;
+     GRid_list[2].osnum = MOD_ENV.md_id.osnum;
+
+ 
+     msg = ci$send(msg      = message ACcpx.ACfind_temp_struct(&stat,"ref",
+                                           (char *)&ref_str, &MOD_ENV ),  
+     targetid = CI_MACRO_ID.objid,
+     targetos = CI_MACRO_ID.osnum);
+     if( !(stat&msg&1) ) return;
+
+ 
+     msg = ci$send(msg      = message ACcpx.ACfind_temp_struct(&stat,"pnt",
+                                           (char *)&pt_str, &MOD_ENV ),  
+     targetid = CI_MACRO_ID.objid,
+     targetos = CI_MACRO_ID.osnum);
+     if( !(stat&msg&1) ) return;
+
+
+     one  = 1;
+     four = 4;
+     MAinvmx(&msg,&four,ref_str.var.ref_st.t,matrix);
+     for(i=0;i<3;i=i+1)
+	{pts1[i]=pt_str.var.point_st.pt[i];}
+     pts1[3]=1;
+     MAmulmx(&msg,&four,&four,&one,matrix,pts1,pts2);
+/*     MAtypemx(&msg,trans_matrix,&mat_type);*/
+
+
+
+
+
+#ifdef DEBUG
+	write(" enter Gexp.create\n");
+#endif
+
+  for(i=0;i<3;i=i+1)
+    {
+/*        printf("ptn %d = %f\n",i,pts2[i]);*/
+  	sprintf( tmp, "%g", pts2[i] );
+  	stat = ci$send(  msg      = message Gexp.create
+		 				( NULL,tmp , &msg ),
+                   	targetid = GRid_list[i].objid,
+		   	targetos = GRid_list[i].osnum);
+    	as$status(sts = stat);
+    }
+
+#ifdef DEBUG
+	write(" exit Gexp.create\n");
+#endif
+
+
+}

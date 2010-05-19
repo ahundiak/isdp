@@ -1,0 +1,344 @@
+/* $Id: updModel.u,v 1.1.1.1 2001/01/04 21:09:03 cvs Exp $  */
+
+/* --------------------------------------------------------------------
+ * I/VDS
+ *
+ * File:	vds/vdppl / updModel.u
+ *
+ * Description:
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ *	$Log: updModel.u,v $
+ *	Revision 1.1.1.1  2001/01/04 21:09:03  cvs
+ *	Initial import to CVS
+ *	
+# Revision 1.1  1998/04/29  16:27:20  pinnacle
+# VDS 2.5.1
+#
+# Revision 1.1  1997/05/08  13:20:44  pinnacle
+# New project VDS 250
+#
+# Revision 1.1  1996/07/19  20:33:52  pinnacle
+# Create VDS 241 project
+#
+# Revision 1.1  1994/11/14  22:42:32  pinnacle
+# Create vds.240 from vds.232
+#
+# Revision 1.1  1994/11/08  16:07:00  pinnacle
+# create vds.232
+#
+ *
+ * History:
+ *	MM/DD/YY	AUTHOR		DESCRIPTION
+ *
+ * -------------------------------------------------------------------*/
+
+/* 
+   updModel.u 
+   This command regenerates ACheader model associate to a given macro 
+   definition.
+*/
+
+#include "ciminimum.h"
+#include "cieveryone.h"
+#include "cimacros.h"
+#include "cilocate.h"
+#include "AS_status.h"
+#include "grdpbdef.h"
+#include "grdpbmacros.h"
+#include "parametric.h"
+#include "nddef.h"
+#include "ndmacros.h"
+#include "asbox.h"
+
+#include "DIdef.h"
+#include "DItypedef.h"
+#include "DIglob.h"
+#include "DIprims.h"
+
+#include "macro.h"
+#include "acdef.h"
+#include "acmacros.h"
+
+#include "ACheader.h"
+#include "grmacros.h"
+
+extern  int             printf();
+extern			NDwait_batch();
+extern			NDexec_batch();
+extern			GRdisplay_object();
+extern  int             GRdpb_get();
+
+extern			ACfind_macro_defn();
+extern			ACSlocate_pattern();
+extern			ASget_as_owner();
+extern			GRfindmod();
+
+extern	int		ACpath_gr_number;
+extern	struct	GRid	*ACpath_grid;
+
+main()
+{
+int			rc;
+int			i;
+struct GRmd_env         MOD_ENV;
+char			defName[120];
+
+	message(" Update Symbol Macro Definitions ");
+
+step0 :
+
+	defName[0]	= '\0';
+	ci$get(	string	= defName,
+		prompt	= "Enter definition name / Move on",
+		rc	= rc );
+	if( ! (rc&1))	return	1;
+
+//	printf(" defName : %s\n", defName );
+
+	ci$get_module_info( md_env = &MOD_ENV );
+
+	// update current OS
+	ACupdHeader( defName, &MOD_ENV, 1 );
+
+	// update Macro Library
+	for( i=0; i<ACpath_gr_number; i=i+1 ){
+		MOD_ENV.md_id = ACpath_grid[i];
+		ACupdHeader( defName, &MOD_ENV, 0 );
+	}
+
+	// exec_batch
+	nd$exec_batch();
+
+goto	step0;
+
+return	1;
+}
+
+extern  GRclassid       OPP_ACheader_class_id;
+
+ACupdHeader( dname, md_env, cmpt_bool )
+char			*dname;
+struct	GRmd_env	*md_env;
+int			cmpt_bool;
+
+{
+struct GRid	mgr;
+
+	/* -- Get ACmodel Mgr from ACheader -- */
+	if( ACfindModelMgr( dname, &mgr, md_env ) & 1  )
+
+		// update model of dgn environment
+		ACupdModelInOs( mgr, dname, md_env );
+
+return 1;
+}
+
+long ACfindModelMgr( dName, mMgr, env )
+
+char			*dName;
+struct	GRid		*mMgr;
+struct	GRmd_env	*env;
+{
+long		stat;
+char		head_path[DI_PATH_MAX];
+char		mac_path[DI_PATH_MAX];
+char		mgr_path[DI_PATH_MAX];
+int		index;
+struct	GRid	defId;
+
+	defId.objid	= NULL_OBJID;
+        stat = 
+	ac$find_macro_defn( 	action          = ACfind_load,
+                           	macro_name      = dName,
+                          	p_macro_defn_id = &defId );
+	if( defId.objid == NULL_OBJID )	return	MSFAIL;
+
+	if( defId.osnum == env->md_id.osnum ){
+
+		stat = 
+		di$give_pathname(	osnum		= env->md_id.osnum,
+					pathname	= head_path );
+		as$status(sts = stat);
+		/*" head_path : %s\n", head_path */
+
+		sprintf( mgr_path, "%s:models:%s", head_path, dName );
+		/*" mgr_path : %s\n", mgr_path */
+
+	} else {
+
+		stat = 
+		di$give_pathname(	osnum		= env->md_id.osnum,
+					pathname	= head_path );
+		as$status(sts = stat);
+		/*" head_path : %s\n", head_path */
+
+		stat = 
+		di$give_pathname(	osnum		= defId.osnum,
+					pathname	= mac_path );
+		as$status(sts = stat);
+		/*" mac_path : %s\n", mac_path */
+		
+		/*" find %s in mac_path\n", CHG_PATH */
+		index = ACSlocate_pattern( CHG_PATH, mac_path );
+		if( index != -1 )
+			sprintf( mgr_path, "%s:%s%s:constructs:%s", 
+					head_path, 
+					NEW_PATH, 
+					&mac_path[index + strlen( CHG_PATH )],
+					dName );
+
+		else	sprintf( mgr_path, "%s%s:models:%s",
+					head_path,
+					mac_path,
+					dName );
+
+		/*" mgr_path : %s\n", mgr_path */
+	}
+
+//	printf(" mgr_path : %s, find model_mgr GRid \n", mgr_path );
+	mMgr->objid = NULL_OBJID;
+	stat =
+	di$translate(	objname	= mgr_path,
+				osnum	= env->md_id.osnum,
+				p_objid	= &mMgr->objid,
+				p_osnum	= &mMgr->osnum );
+	if( stat & 1 )
+//	printf(" model_mgr : id/os = (%d/%d)\n", 
+//					mMgr->objid, mMgr->osnum );
+
+return	stat;
+}
+
+ACupdModelInOs( ModelMgr, mac_name, envir )
+struct	GRid		ModelMgr;
+char			*mac_name;
+struct	GRmd_env	*envir;
+
+{
+long			msg, status;
+int			nbModel;
+struct	GRid		mId;
+int			j;
+struct	GRid		temp_list[500];
+int			num_temp;
+struct	GRid		new_model;
+
+
+	/* -- get all models attached to this model_mgr -- */
+	nbModel = 0;
+	status = 
+	om$get_channel_count(  	objid   = ModelMgr.objid,
+				osnum	= ModelMgr.osnum,
+				count   = &nbModel,
+				p_chanselect = &AS_to_comp );
+
+	for( j=nbModel-1; j>-1; j=j-1 ){
+
+		status = 
+                om$get_objid_at_index(
+                                        objid           = ModelMgr.objid,
+					osnum		= ModelMgr.osnum,
+                                        p_chanselect    = &AS_to_comp,
+                                        index           = j,
+                                        objidaddr       = &mId.objid,
+                                        osnumaddr       = &mId.osnum );
+                as$status();
+//		printf(" model :%d/%d\n", mId.objid, mId.osnum );
+
+		// disconnect model of model_mgr
+	        status = 
+		ci$send(  msg      = message Root.disconnect(
+                                        AS_to_owner,
+                                        ModelMgr.objid,
+                                        ModelMgr.osnum,
+                                        AS_to_comp ),
+                        targetid = mId.objid,
+			targetos = mId.osnum );
+	        as$status();
+
+		// get parents of model
+                status =
+		ci$send(  msg      = message NDnode.NDget_objects(
+                                                ND_ROOT,
+                                                temp_list,
+                                                500,	// max template
+                                                NULL,
+                                                0,
+                                                OM_K_MAXINT,
+                                                &num_temp ),
+			targetid = mId.objid,
+			targetos = mId.osnum );
+		if( num_temp > 500 ){
+			printf(" Error : not enought memory \n");
+			return	MSFAIL;
+		}
+
+		// place a new model
+		new_model.objid = NULL_OBJID;
+		status = 
+		ci$send( msg	= message ACmodel_mgr.ACreturn_model(
+					&msg,
+					AChdr_norange | AChdr_nodisplay,
+					0,
+					mac_name,
+					num_temp,
+					temp_list,
+					&mId,
+					envir,
+					&new_model ),
+ 			targetid = ModelMgr.objid,
+			targetos = ModelMgr.osnum );
+		as$status();
+		as$status( sts = msg );
+//		printf(" new model : %d/%d\n", 
+//					new_model.objid, new_model.osnum );
+
+		// disconnect temporary model from model_mgr
+	        status = 
+		ci$send(  msg      = message Root.disconnect(
+                                        AS_to_owner,
+                                        ModelMgr.objid,
+                                        ModelMgr.osnum,
+                                        AS_to_comp ),
+                        targetid = new_model.objid,
+			targetos = new_model.osnum );
+	        as$status();
+
+		// transfert headers from old to new model.
+		status = 
+		ci$send( msg	= message Root.move_chan(
+					AS_to_owner,
+					mId.objid,
+					mId.osnum,
+					AS_to_owner ),
+				targetid = new_model.objid,
+				targetos = new_model.osnum );
+		as$status();
+
+		// reconnect model mgr in position 0 of to_owner chan.
+		status = 
+		ci$send( msg	= message Root.connect(
+				AS_to_owner,
+				OM_K_MAXINT,
+				ModelMgr.objid,
+				ModelMgr.osnum,
+				AS_to_comp,
+				0 ),
+			 targetid = new_model.objid,
+			 targetos = new_model.osnum );
+		as$status();
+
+		// delete model
+		status =
+		nd$wait_batch(
+			type		= GR_DELETED,
+			nb_obj		= 1,
+			l_object	= &mId );
+		as$status();
+	}
+
+return	status;
+}

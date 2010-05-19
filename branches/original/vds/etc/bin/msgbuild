@@ -1,0 +1,67 @@
+#
+#	Shell script to create a new "v_globalmsg.h" file based on
+#	the created VDmsg.h and SMmsg.h files.
+#
+#	Creation Date:	November - 10 , 1994.
+#
+
+set +x
+
+supGL="/usr/tmp/gl_${RANDOM}"
+supVD="/usr/tmp/vd_${RANDOM}"
+supSM="/usr/tmp/sm_${RANDOM}"
+
+fileVD="$VDS/include/VDmsg.h"
+fileSM="$VDS/include/SMmsg.h"
+fileGL="$VDS/include/v_globalmsg.h"
+
+	vdmsgbuild
+	smanmsgbuild
+
+	if [ $fileGL -nt $fileVD -a $fileGL -nt $fileSM ]
+	then
+		echo "v_globalmsg.h is up to date."
+		exit 0 ;
+	fi
+
+#
+#	create the support file
+#
+	echo "Create globals for VD_"
+
+	awk '{ print $2 }' $VDS/include/VDmsg.h				\
+		| sort | uniq						\
+		| awk '{ print "_"$1 "\t\tDCLASG( " $1 ")," }'	\
+		| sed -e "s/_VD_/VD_g/" 		> $supVD
+
+#
+#	create the support file
+#
+	echo "Create globals for SM_"
+
+	awk '{ print $2 }' $VDS/include/SMmsg.h				\
+		| sort | uniq						\
+		| awk '{ print "_"$1 "\t\tDCLASG( " $1 ")," }'	\
+		| sed -e "s/_SM_/SM_g/"					\
+		| sed -e "\$s/,/;/"			> $supSM
+
+#
+#	Concatenate everything into one file.
+#
+
+	cat $VDS/etc/bin/msghdr.h	> $supGL
+	cat $supVD	>> $supGL
+	cat $supSM	>> $supGL
+	echo ""		>> $supGL
+	echo "#endif"	>> $supGL
+
+	cp $supGL	$VDS/include/v_globalmsg.h
+
+	ls -l $VDS/include/v_globalmsg.h
+
+	if [ -f $supGL ] ; then rm -f $supGL ; fi
+	if [ -f $supSM ] ; then rm -f $supSM ; fi
+	if [ -f $supVD ] ; then rm -f $supVD ; fi
+
+	echo "Done"
+

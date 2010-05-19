@@ -1,0 +1,240 @@
+#include "VDppl.h"
+#include "VDct1Cmdx.h"
+#include "VDct1Forms.h"
+#include "VDrisc.h"
+#include "VDnfmc.h"
+#include "VDobj.h"
+
+TVDct1CmdInfo *cmdInfo;
+// TVDct1CmdInfo  cmdInfox;  // Try using local data for now
+
+int traceFlag; // Turn on in init()
+int errorFlag;
+int  wakeFlag;
+
+#define theCommand "Tree Manager"
+#define thePrompt  "Do Something"
+
+struct CIform_st form_st;
+
+/* -----------------------------------------------
+ * Main Traffic director
+ *
+ * Gets called after init and wakeup
+ */
+main(argc,argv)
+  IGRint   argc;
+  IGRchar *argv[];
+
+{ 
+  IGRstat sts;
+  IGRint  response,mask;
+
+  struct GRevent event;
+  TGRobj_env objOE;
+
+  // Say Hi
+  if (traceFlag) printf(">>> COct1Mgr.main\n");
+
+  // Check startup error
+  if (cmdInfo == NULL) {
+    printf("*** COct1Mgr in main with cmdInfo NULL\n");
+    goto wrapup;
+  }
+  
+  if (errorFlag & 1) {
+    printf("*** COct1Mgr Startup Problems, Error Flag %d\n",errorFlag);
+    goto wrapup;
+  }
+  
+  // Tell wakup
+  wakeFlag = 1;
+
+  // Kick off test routine
+  if (1) {
+
+    // printf("argc %d\n",argc);
+    
+    // VDct1CmdTest1();
+    // goto wrapup;
+  }
+  
+  // See if need to shutdown from test
+  if (cmdInfo->shutDown == 1) {
+    goto wrapup;
+  }
+
+  // Main loop
+  while(1) {
+
+    // Be a little careful
+    cmdInfo->form = NULL;
+    cmdInfo->gadget = 0;
+    cmdInfo->windowID.objid = NULL_OBJID;
+    
+    form_st.gadget_label = 0;
+    response = 0;
+
+    UI_message(theCommand);
+
+    // Either locate or form interaction
+    if (traceFlag) printf(">>> ci$locate\n");
+    sts = ci$locate(
+      prompt = thePrompt,
+      eligible_classes = &cmdInfo->classList,
+      // classes = "VDSroot",
+      owner_action = LC_RIGID_COMP | LC_RIGID_OWNER | 
+                     LC_FLEX_COMP  | LC_FLEX_OWNER  | LC_REF_OBJECTS,
+
+      response     = &response,
+      md_env       = &objOE.mod_env,
+      obj          = &objOE.obj_id.objid,
+      osnum	   = &objOE.obj_id.osnum,
+
+      window_id	   = &cmdInfo->windowID.objid,
+      window_osnum = &cmdInfo->windowID.osnum
+
+    );
+    if (traceFlag) printf("<<< ci$locate %d\n",response);
+    // vdobj$Print(objID = &cmdInfo->windowID);
+    
+    // Process it
+    switch(response) {
+
+    case EX_OBJID: // Object Set
+    case EX_DATA:  // Single Object
+      VDct1CmdNotifyRootLocate(NULL,0,&objOE);
+      break;
+
+    case RESET:
+      VDct1CmdNotifyRootLocate(cmdInfo->form,cmdInfo->gadget,NULL);
+
+    } // Switch
+
+    // See if need to shutdown command
+    if (cmdInfo->shutDown == 1) {
+      goto wrapup;
+    }
+  }
+
+  // Done
+wrapup:
+  if (traceFlag) printf("<<< COct1Mgr.main\n");
+  return 1;
+}
+
+/* ------------------------------------------
+ * Usual command object messages
+ *
+ * Startup always starts here
+ */
+init()
+{
+  IGRstat retFlag;
+  IGRstat sts;
+
+  // Init 
+  retFlag = 0;
+  
+  // Say Hi
+  // traceFlag = 1;
+  if (traceFlag) printf(">>> COct1Mgr.init\n");
+
+  // Just for grins, force a log in
+  sts = VDrsxIsSchemaOpen();
+  if (!(sts & 1)) VDrsxOpenSchema(NULL);
+  
+  // Adjust the pointer
+  // cmdInfo = &cmdInfox;
+  cmdInfo = (TVDct1CmdInfo*)malloc(sizeof(TVDct1CmdInfo));
+  if (cmdInfo == NULL) {
+    printf("Problem allocating cmdInfo structure in COct1Mgr.init\n");
+    goto wrapup;
+  }
+  
+  // Class initing
+  if (traceFlag) {
+    printf("About to call VDct1CmdInitRootCmdInfo\n");
+    fflush(stdout);
+  }
+  
+  sts = VDct1CmdInitRootCmdInfo(cmdInfo);
+
+  if (traceFlag) {
+    printf("Back from     VDct1CmdInitRootCmdInfo\n");
+    fflush(stdout);
+  }
+  
+  if (!(sts & 1)) {
+    printf("Problem with VDct1CmdInitRootCmdInfo in COct1Mgr.init\n");
+    goto wrapup;
+  }
+  
+  // Done
+  retFlag = 1;
+  
+wrapup:
+  if (traceFlag) {
+    printf("<<< COct1Mgr.init %d\n",retFlag);
+    fflush(stdout);
+  }
+  
+  if (retFlag == 0) {
+    errorFlag = 1;
+    cmdInfo = NULL;  
+  }
+  return retFlag;
+}
+
+sleep() 
+{
+  if (traceFlag) printf(">>> COct1Mgr.sleep\n");
+
+  // Verify command data
+  if (cmdInfo == NULL) return;
+  
+  // VDct1CmdSleepRootCmdInfo();
+  if (traceFlag) printf("<<< COct1Mgr.sleep\n");
+}
+
+/* -----------------------------------------------
+ * Gets called second (after init)
+ * Hence the wakeFlag to ignore first call
+ */
+wakeup()
+{
+  if (traceFlag) printf(">>> COct1Mgr.wakeup\n");
+
+  // See if really awake
+  if (wakeFlag == 0) return;
+
+  // Verify command data
+  if (cmdInfo == NULL) return;
+  
+  // VDct1CmdWakupRootCmdInfo();
+  UI_message(theCommand);
+
+  if (traceFlag) printf("<<< COct1Mgr.wakeup\n");
+
+}
+
+delete()
+{
+  // Say Hi
+  if (traceFlag) printf(">>> COct1Mgr.delete\n");
+
+  // Verify command data
+  if (cmdInfo == NULL) return;
+
+  // Hand off
+  VDct1CmdDeleteRootCmdInfo();
+  
+  // Done
+  free(cmdInfo);
+  cmdInfo = NULL;
+  
+  // Say Bi
+  if (traceFlag) printf("<<< COct1Mgr.delete\n");
+}
+
+

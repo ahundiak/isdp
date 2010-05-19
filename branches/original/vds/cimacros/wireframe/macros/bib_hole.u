@@ -1,0 +1,572 @@
+/* $Id: bib_hole.u,v 1.1.1.1 2001/01/04 21:07:22 cvs Exp $  */
+
+/* --------------------------------------------------------------------
+ * I/VDS
+ *
+ * File:	vds/cimacros/wireframe/macros / bib_hole.u
+ *
+ * Description:
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ *	$Log: bib_hole.u,v $
+ *	Revision 1.1.1.1  2001/01/04 21:07:22  cvs
+ *	Initial import to CVS
+ *	
+# Revision 1.1  1998/04/29  16:27:20  pinnacle
+# VDS 2.5.1
+#
+# Revision 1.1  1997/05/08  13:20:44  pinnacle
+# New project VDS 250
+#
+# Revision 1.1  1996/07/19  20:33:52  pinnacle
+# Create VDS 241 project
+#
+# Revision 1.1  1994/11/14  22:42:32  pinnacle
+# Create vds.240 from vds.232
+#
+# Revision 1.1  1994/11/08  16:07:00  pinnacle
+# create vds.232
+#
+ *
+ * History:
+ *	MM/DD/YY	AUTHOR		DESCRIPTION
+ *
+ * -------------------------------------------------------------------*/
+
+/*
+	 VDS 2.0 - PPM macro library - 92/07/09 (alc)
+ */
+   
+/*******************************************************************/
+/*
+/*	Etienne BEEKER
+/*	Sept 1st 89
+/*
+/*	library to
+/*	place hole in a solid
+/*
+/*******************************************************************/
+
+// #define DEBUG 1
+
+#include "cieveryone.h"
+#include "cimacros.h"
+#include "cisend.h"
+#include "cimath.h"
+#include "AS_status.h"
+
+IGRlong		sts;
+int		status, j, msg, keyindex;
+extern		UI_status(), printf();
+extern			ASsuper_construct();
+
+
+
+get_prof( ixpt, depthpt, surf, depth, pmod_env, trav )
+double			*ixpt, *depthpt;
+struct GRid		*surf;
+double 	 		depth;
+struct GRmd_env		*pmod_env;
+int			trav;		/* traversant */
+/*
+ * returns depthpt
+ */
+{
+    double			sf_nrml[3], sf_pt[3];
+    double			u, v;
+    struct IGRbsp_surface     *sf_geom;
+    extern		BSsfarrevn();
+
+   /* get the normal vector to the surface at the index point */
+   ci$send( msg = message GRvg.GRgenabsg( &msg,
+			                 &pmod_env->md_env.matrix_type, 
+				         pmod_env->md_env.matrix, 
+					 &sf_geom ),
+           targetid = surf->objid,
+ 	   targetos = surf->osnum );
+
+   u = v = 0.5;
+   BSsfarrevn (&sts, sf_geom, 1, &u, 1, &v, sf_pt, sf_nrml);
+
+#if DEBUG
+write("after BSsfarrevn got \tsf_pt:",sf_pt, '\n',
+	 "\t\t\tsf_nrml:", sf_nrml ,'\n');
+write("sts:", sts, '\n' );
+#endif
+
+   /* calculates the depth point and modifies ixpt */
+   u = v_len(sf_nrml);
+   for(j=0; j<3; j=j+1)
+   {
+	sf_nrml[j] = sf_nrml[j] / u;
+	depthpt[j] = ixpt[j] - depth * sf_nrml[j];
+   }
+   if( trav )
+	extend_2p( ixpt, depthpt);
+	
+}
+
+
+extend_2p( ixpt, depthpt)
+double	*ixpt, *depthpt;
+{
+   #define BIG	100
+   double v[3], p1[3], p2[3];
+
+   for(j=0; j<3; j=j+1){
+	p1[j] = ixpt[j];
+	p2[j] = depthpt[j];
+	v[j] = p2[j] - p1[j];
+	depthpt[j] = p1[j] + BIG*v[j];
+	ixpt[j] = p2[j] - BIG*v[j];
+   }
+}
+
+get_axis( p1, p2, axis, pmod_env, trav )
+double			*p1, *p2;
+struct GRid		*axis;
+struct GRmd_env		*pmod_env;
+int			trav;		/* traversant */
+/*
+ * returns p1 and p2 according to axis
+ */
+{
+   double pts[100];
+   int action;
+   struct IGRpolyline	polyline;
+
+   /* get the 2 extremities of the line */
+    polyline.points = pts;
+    action = 1;
+    sts = ci$send( msg = message GRlinear.GRgetpolyline(
+			    &msg, &pmod_env->md_env.matrix_type,
+			    pmod_env->md_env.matrix, &action, &polyline),
+		targetid = axis->objid,
+		targetos = axis->osnum );
+
+#if DEBUG
+write("points:", pts[0], pts[1], pts[2],'\n', pts[3], pts[4], pts[5]);
+#endif
+
+    for(j=0; j<3; j=j+1 ){
+	p1[j] = pts[j];
+	p2[j] = pts[j+3];
+
+#if DEBUG
+write("get_axis, trav = ", trav, '\n' );
+#endif
+    }
+   if( trav ) {
+	extend_2p( p1, p2);
+#if DEBUG
+write("points after extend:", pts[0], pts[1], pts[2],'\n',
+			 pts[3], pts[4], pts[5]);
+#endif
+   }
+}
+
+
+
+place_hole_poly( r, h1, h2, r1, r2, p1, p2, solid, 
+				res_id, pmod_env, type, trav )
+double	r;
+double	h1, h2;
+double	r1, r2;
+double	*p1, *p2;
+struct	GRid *solid;
+GRobj	*res_id;
+struct GRmd_env		*pmod_env;
+int 	type, trav;
+/*
+ * general hole_lam placement function 
+ */
+{
+#define EMSsfbool_opt_display   1
+#define SUC_SOL			2654217
+#define SUC_CAP 		2654217
+#define SUC_COMP                134250505
+#define SUC_CONS 		134250505
+
+
+   enum EMSbooltype {
+	EMSbool_intersect,  /* Boolean intersection */
+	EMSbool_union,      /* Boolean union */
+	EMSbool_difference, /* Boolean difference */
+	EMSbool_saveside,   /* Intersect with infinite plane saving 1 side */
+	EMSbool_disjointU,  /* Boolean disjoint union (disjoint outside) */
+	EMSbool_hollowDif   /* Boolean hollow difference or disjoint inside */
+   } ;
+
+   extern int 	init_cnst_list();
+   extern		BScrossp();
+   extern		double BSdotp();
+
+   int			display_count;
+   GRobj		RES1, RES2;
+   unsigned short	option;
+   char			classname[64];
+
+   struct GRid		linestr, hole_solid;
+   double		vn[3], vp[3], u;
+   double		anyv[3], vtmp[3];
+   int			i;
+   double		axe[6];
+
+   struct GRid		SOL;
+   GRobj		SREV, COMP;
+   GRobj 		cyl_surf;
+   int			cstmsg;
+   struct GRvg_construct	cst;
+   struct IGRdisplay	dis;
+   struct IGRpolyline	polyline;
+   struct GRlc_info	entries;
+ 
+
+   /* construction list */
+   init_cnst_list();
+   get_symb();
+
+   dis.color		= cnst_list.color;
+   dis.weight		= cnst_list.weight;
+   dis.style		= cnst_list.style;
+
+   cst.msg		= &cstmsg;
+   cst.properties	= GRIS_LOCATABLE | GRIS_DISPLAYABLE;
+   cst.display		= &dis;
+   cst.env_info		= pmod_env;
+   cst.newflag		= FALSE;
+   cst.level		= cnst_list.level;
+   cst.geometry   	= (char *)&polyline;
+   cst.class_attr	= NULL;
+   cst.name		= NULL;
+
+#if DEBUG
+write("radius:",r, '\n');
+write("h1=",h1,"  h2=", h2,'\n');
+write("r1=",r1,"  r2=", r2,'\n');
+write("p1=",p1[0], p1[1], p1[2] , '\n' );
+write("p2=",p2[0], p2[1], p2[2] , '\n' );
+#endif
+
+   /* vn and vp */
+   for(j=0; j<3; j=j+1)
+	vtmp[j] = p2[j] - p1[j];
+   u = v_len(vtmp);
+   for(j=0; j<3; j=j+1)
+	vp[j] = vtmp[j] / u;
+
+   /* any normal to vp */
+   anyv[0] = 5.7;
+   anyv[1] = 3.4;
+   anyv[2] = 9.5;
+   BScrossp(&sts, anyv, vp, vtmp );
+   u = v_len(vtmp);
+   for(j=0; j<3; j=j+1)
+	vn[j] = vtmp[j] / u;
+
+#ifdef DEBUG
+write("got vp:", vp, "   vn:", vn, "  vn*vp=", BSdotp(&sts, vn, vp ),'\n' );
+#endif
+
+   linestr.objid = NULL_OBJID;
+
+   /* construct the linestring */
+   if( type == 0 )
+	   const_lam_linestr( &polyline, p1, p2, r, r1, r2,
+						 h1, h2, vn, vp, trav );
+   else if( type == 1 )
+	   const_chf_linestr( &polyline, p1, p2, r, h1, h2, vn, vp, trav );
+   else {
+	write("soft error, bad type in place_hole_poly:", type, '\n' );
+	return NULL_OBJID;
+   }
+
+   ci$send(msg      = message GR3dlinestr.GRaltconstruct(&cst),
+	   targetid = linestr.objid,
+	   targetos = pmod_env->md_id.osnum );
+
+   linestr.osnum = pmod_env->md_id.osnum;
+
+/*
+*res_id = linestr.objid;
+return;
+*/
+
+#ifdef DEBUG
+write("returning linestring ",linestr.objid,'\n');
+/*
+*res_id = linestr.objid;
+return;
+ */
+#endif
+
+  /* construct the revol obj */
+   entries.located_obj = linestr;
+   entries.module_info = *pmod_env;
+   entries.geom_parms.u = 0.5;
+   entries.geom_parms.v = 0.5;
+   entries.geom_parms.polygon_inx = 0;
+   entries.geom_parms.leaf_id.objid = NULL_OBJID;
+
+   COMP = NULL_OBJID;
+   SREV = NULL_OBJID;
+   for(j=0; j<3; j=j+1 ){
+	axe[j] = p1[j];
+	axe[j+3] = p2[j];
+   }
+   ci$send( msg      = message EMSrevol.EMrevolve_curve(
+                           				&cst, 
+							&entries,
+							NULL,
+							axe,
+							360.,	// start_angle
+			    				0.0,	// sweep_angle
+                					1,	// rot_flag
+							1,
+							&SREV,
+							&sts),
+            targetid = COMP,
+	    targetos = pmod_env->md_id.osnum);
+#if DEBUG
+write("SREV:", SREV, '\n' );
+*res_id =  SREV;
+#endif
+
+  SOL.objid = NULL_OBJID;
+  SOL.osnum = pmod_env->md_id.osnum;
+
+  ci$send( msg = message EMSsfsolid.EMcap_thyself ( &sts, &cst, &SREV ),
+           targetid = SOL.objid,
+	   targetos = pmod_env->md_id.osnum );
+#if DEBUG
+write("EMcap_thyself sts = ",sts, "SOL.objid",SOL.objid,"\n");
+#endif
+
+  if ( (sts != SUC_CAP) && (sts != SUC_COMP) ){
+	write("pbs in EMSsfsolid.EMcap_thyself\n");
+	goto we_quit;
+  }
+
+  /* calls the boolean operation between the cylinder and the solid */
+  RES1 = NULL_OBJID;
+  RES2 = NULL_OBJID;
+  option = EMSsfbool_opt_display;
+
+#if DEBUG
+om$get_classname ( objid= solid->objid,
+		  osnum = solid->osnum,
+                  classname = classname  );
+write("solid: [", solid->objid,',',solid->osnum, "]\tclassname:",classname,'\n');
+
+om$get_classname ( objid= SOL.objid,
+		  osnum = SOL.osnum,
+                  classname = classname  );
+write("SOL: [", SOL.objid,',',SOL.osnum, 
+		"]\tclassname:",classname,'\n');
+#endif
+
+
+  UI_status("Processing boolean operation...");
+  hole_solid.osnum = pmod_env->md_id.osnum ;
+  hole_solid.objid = NULL_OBJID;
+  ci$send( msg = message EMSslboolean.EMboolean( &sts, 
+						 &pmod_env->md_env.matrix_type,
+						 pmod_env->md_env.matrix,
+           					 solid->objid,
+						 1,
+						 &SOL.objid,
+           					 &cst,
+						 EMSbool_difference,
+						 option,
+						 NULL,
+						 NULL,
+						 &RES1,
+						 &RES2,
+						 &display_count ),
+           targetid = hole_solid.objid,
+	   targetos = hole_solid.osnum );
+
+
+  if( sts != SUC_SOL ){
+	UI_status("pb in boolean operation\n");
+	goto we_quit;
+  }
+
+  UI_status("");
+
+  /* the linestring is no longer used */
+  ci$send(msg      = message GRgraphics.GRdelete(&sts,pmod_env), 
+             targetid = linestr.objid,
+	   targetos = pmod_env->md_id.osnum );
+
+  *res_id =  hole_solid.objid;
+  return;
+
+we_quit:		/* on problems */
+  write("hole: pbs somewhere, exiting...\n");
+  if( SREV != NULL_OBJID ) {
+     ci$send(msg      = message GRgraphics.GRdelete(&sts,pmod_env), 
+             targetid = SREV,
+             targetos = pmod_env->md_id.osnum );
+  }
+  if( SOL.objid != NULL_OBJID ) {
+     ci$send(msg      = message GRgraphics.GRdelete(&sts,pmod_env), 
+             targetid = SOL.objid,
+             targetos = SOL.osnum );
+  }
+  *res_id = NULL_OBJID;
+}	
+
+const_lam_linestr( polyline, p1, p2, r, r1, r2, h1, h2, vn, vp, trav )
+struct IGRpolyline	*polyline;
+double *p1, *p2, r, r1, r2, h1, h2, *vn, *vp;
+int trav;
+{
+   int			nbpts, i;
+   double		pts[40];
+   double		PA[3], PAP[3], P1[3];
+   double		PB[3], PC[3], P2[3];
+   double		PD[3], PE[3];
+   double		PF[3], PFP[3];
+
+   for(i=0; i<3; i=i+1){
+      if( r1 == r || h1 == 0.|| r1 == 0. ){
+	PC[i] = p1[i] + r*vn[i];
+      } else {
+	PA[i] = p1[i] + r1*vn[i];
+	PB[i] = PA[i] + h1*vp[i];
+	PC[i] = PB[i] + (r - r1)*vn[i];
+      }
+
+      if( r2 == r || h2 == 0.|| r2 == 0. ){
+	PD[i] = p2[i] + r*vn[i];
+      } else {
+	PF[i] = p2[i] + r2*vn[i];
+	PE[i] = PF[i] - h2*vp[i];
+	PD[i] = PE[i] + (r - r2)*vn[i];
+      }
+
+      /* extend extremities */
+      if( trav ){
+	if( r1 == r || h1 == 0.|| r1 == 0. )
+		PC[i] = PC[i] - 100*(p2[i] - p1[i]);
+	else
+		PAP[i] = PA[i] - 100*(p2[i] - p1[i]);
+
+	if( r2 == r || h2 == 0.|| r2 == 0. )
+		PD[i] = PD[i] + 100*(p2[i] - p1[i]);
+	else
+		PFP[i] = PF[i] + 100*(p2[i] - p1[i]);
+      } else {
+	PAP[i] = PA[i];
+	PFP[i] = PF[i];
+      }
+   }
+
+   nbpts = 0;
+
+   if( r1 != r && h1 != 0 && r1 != 0){
+	   for(i=0; i<3; i=i+1)
+	      pts[i] = PAP[i];
+	   nbpts = nbpts + 1;
+
+	   for(i=0; i<3; i=i+1)
+	      pts[nbpts*3+i] = PB[i];
+	   nbpts = nbpts + 1;
+   }
+
+   for(i=0; i<3; i=i+1)
+      pts[nbpts*3+i] = PC[i];
+   nbpts = nbpts + 1;
+
+   for(i=0; i<3; i=i+1)
+      pts[nbpts*3+i] = PD[i];
+   nbpts = nbpts + 1;
+
+   if( r2 != r && h2 != 0. && r2 != 0. ){
+	   for(i=0; i<3; i=i+1)
+	      pts[nbpts*3+i] = PE[i];
+	   nbpts = nbpts + 1;
+
+	   for(i=0; i<3; i=i+1)
+	      pts[nbpts*3+i] = PFP[i];
+	   nbpts = nbpts + 1;
+   }
+
+   polyline->points = pts;
+   polyline->num_points = nbpts;
+}
+
+
+const_chf_linestr( polyline, p1, p2, r,h1, h2, vn, vp, trav )
+struct IGRpolyline	*polyline;
+double *p1, *p2, r, h1, h2, *vn, *vp;
+int trav;
+{
+   int			nbpts, i;
+   double		pts[40];
+   double		PA[3], PAP[3];
+   double		PB[3], PC[3];
+   double		PD[3], PDP[3];
+
+   for(j=0; j<3; j=j+1){
+	if( h1 != 0. ){
+		PA[j] = p1[j] + (r + h1*.707106781)*vn[j];
+		PB[j] = p1[j] + r*vn[j] + h1*vp[j];
+	} else
+		PB[j] = p1[j] + r*vn[j];
+
+	if( h2 != 0. ){
+		PC[j] = p2[j] + r*vn[j] - h2*vp[j];
+		PD[j] = p2[j] + (r + h2*.707106781)*vn[j];
+	} else
+		PC[j] = p2[j] + r*vn[j];
+   }
+
+   /* extend extremities */
+  for(j=0; j<3; j=j+1)
+  if ( trav ) {
+	if( h1 != 0. )
+		PAP[j] = PA[j] + 100 * (PA[j] - PB[j] );
+	else
+		PB[j] = PB[j] + 100 * (p1[j]-p2[j]);
+
+	if( h2 != 0. )
+		PDP[j] = PD[j] + 100 * (PD[j] - PC[j] );
+	else
+		PC[j] = PC[j] - 100 * (p1[j]-p2[j]);
+
+   } else {
+	PAP[j] = PA[j];
+	PDP[j] = PD[j];
+   }
+
+   /* construct the linestring */
+   nbpts = 0;
+   if( h1 != 0. ){
+	for(i=0; i<3; i=i+1)
+		pts[nbpts*3+i] = PAP[i];
+	nbpts = nbpts + 1;
+   }
+
+   for(i=0; i<3; i=i+1)
+	pts[nbpts*3+i] = PB[i];
+   nbpts = nbpts + 1;
+
+   for(i=0; i<3; i=i+1)
+	pts[nbpts*3+i] = PC[i];
+   nbpts = nbpts + 1;
+
+   if( h2 != 0. ){
+	for(i=0; i<3; i=i+1)
+		pts[nbpts*3+i] = PDP[i];
+	nbpts = nbpts + 1;
+   }
+
+   polyline->points = pts;
+   polyline->num_points = nbpts;
+}
+
+

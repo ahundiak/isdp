@@ -1,0 +1,218 @@
+/* $Id: COcrv_pole_p.u,v 1.1.1.1 2001/01/04 21:07:22 cvs Exp $  */
+
+/* --------------------------------------------------------------------
+ * I/VDS
+ *
+ * File:	vds/cimacros/wireframe/cmd / COcrv_pole_p.u
+ *
+ * Description:
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ *	$Log: COcrv_pole_p.u,v $
+ *	Revision 1.1.1.1  2001/01/04 21:07:22  cvs
+ *	Initial import to CVS
+ *	
+# Revision 1.1  1998/04/29  16:27:20  pinnacle
+# VDS 2.5.1
+#
+# Revision 1.1  1997/05/08  13:20:44  pinnacle
+# New project VDS 250
+#
+# Revision 1.1  1996/07/19  20:33:52  pinnacle
+# Create VDS 241 project
+#
+# Revision 1.2  1996/02/22  10:03:56  pinnacle
+# Replaced: cimacros/wireframe/cmd/COcrv_pole_p.u for:  by ksundar for vds.240
+#
+# Revision 1.1  1994/11/14  22:42:32  pinnacle
+# Create vds.240 from vds.232
+#
+# Revision 1.1  1994/11/08  16:07:00  pinnacle
+# create vds.232
+#
+ *
+ * History:
+ *	MM/DD/YY	AUTHOR		DESCRIPTION
+ *
+ * -------------------------------------------------------------------*/
+
+/*
+	 VDS 2.0 - PPM macro library - 92/07/09 (alc)
+	 92/07/22 Get rid of internal data (not used)
+ */
+   
+#include "ciminimum.h"
+#include "cimacros.h"
+#include "msdef.h"
+#include "ciexec.h"
+
+GRobj 		ci_mac_bib_FileId;
+IGRint		resp_exp;
+
+
+#define		MAX_TEMP	50
+
+struct GRid 	TEMP[MAX_TEMP];
+GRobj 		MAC1;
+IGRint          num_crv;
+int 		suc,stat, order;
+char            txt[40];
+double		number;
+char		loc_mes[80],loc_prompt[80], exp_prompt[80];
+double		exp_default;
+struct GRmd_env	MOD_ENV;
+
+extern ASmake_source_from_env();
+
+main()
+{
+
+  while(1)
+  {
+
+step1:
+	resp_exp = 0;
+   	status("Reset to create expressions for order");
+exp1:
+        while(1)
+        {
+   	num_crv = 1;
+   	while(1)
+   	{
+     		strcpy(txt,"Identify point ");
+     		strcat(txt,itoa(num_crv));
+
+     		ci$locate(      prompt       = txt,
+		    		classes      = "GRpoint",
+                    		properties   = LC_LC_ONLY | LC_DP_ONLY | LC_RW,
+                    		owner_action = LC_RIGID_COMP
+                                    	       | LC_RIGID_OWNER | LC_FLEX_COMP
+                                    	       | LC_FLEX_OWNER | LC_REF_OBJECTS,
+	            		obj          = &(TEMP[num_crv].objid),
+                    		osnum        = &(TEMP[num_crv].osnum),
+			   	response     = &M_response,
+		    		md_env       = &MOD_ENV);
+
+		status("");
+		if( M_response == EX_RJT_MOVEON ){
+		    	if( resp_exp == 0 ){
+				ask_expressions();
+				goto exp1;
+		   	}
+		   	else break;
+		}
+		else if( M_response == EX_DATA  ){
+	   		if(  (resp_exp == 0) && (num_crv == 1) ) 
+					cre_default_expressions();
+     			ASmake_source_from_env( &TEMP[num_crv],
+						&MOD_ENV,&TEMP[num_crv] );	
+
+     			num_crv = num_crv + 1;
+     			if( num_crv == MAX_TEMP )
+     			{
+				status("number of points > 49");
+        			goto exp1;
+     			} 
+		}
+		else if( M_response == EX_BACK_UP ){
+     			 num_crv = num_crv - 1;
+			 if( num_crv < 1 ) goto step1;
+		}
+		else exit;
+
+   	   }/* end of while on Identifying poles */
+
+
+
+	if( (num_crv-1) < order ){
+     		strcpy(txt,"You should Identify ");
+		strcat(txt,itoa(order));
+		strcat(txt,"  Poles at least");
+		status(txt);
+		goto exp1;
+	}
+
+
+   	ci$get_module_info(md_env = &MOD_ENV);
+
+   	MAC1 = NULL_OBJID;
+
+   	ci$send( msg = message nci_macro.init( 
+						&suc,
+						0,
+						"crv_pole_p", 
+						num_crv,
+						TEMP, 
+						NULL, 
+						&MOD_ENV    ),
+	         targetid = MAC1,
+		 targetos = MOD_ENV.md_id.osnum );
+
+	if( suc == 0 ){
+		write("placement of nci_macro \"crv_pole_p\" failed\n");
+		status("placement of nci_macro \"crv_pole_p\" failed");
+      		ci$send(msg = message Root.delete(0),
+			targetid = MAC1,
+			targetos = MOD_ENV.md_id.osnum );
+        }
+  }
+ }
+}
+
+
+/*==========================================================================*/
+init(){
+
+  	strcpy(loc_mes,"<Assoc> Place Fitted Curve from Poles Points");
+
+ 	ci$load ( file_name = "ci_mac_bib.u",
+		  load      = LOAD,
+	  	  file_id   = &ci_mac_bib_FileId,
+		  stat      = &suc );
+	if( suc != CI_S_SUCCESS ) exit;
+
+}
+
+wakeup(){
+	message(loc_mes);
+}
+
+ask_expressions(){
+
+       strcpy(loc_prompt,"enter expression for order");
+       strcpy(exp_prompt,"enter value");
+       exp_default = 4.0;
+
+       push (char *)&suc,loc_mes,loc_prompt,exp_prompt,exp_default,
+            (char *)&TEMP[0];
+       ci$run( file_id   = &ci_mac_bib_FileId,
+ 	       entry     = "loc_exp" );
+       if( suc != 1 ) exit;
+
+        ci$send( msg = message expression.NDgive_value(&number),
+                 targetid = TEMP[0].objid,
+		 targetos = TEMP[0].osnum );
+	order = number;
+
+	resp_exp = 1;
+
+}
+
+cre_default_expressions(){
+
+         push (char *)&suc, (IGRdouble)4.0, (char *)&TEMP[0];
+         ci$run( file_id = &ci_mac_bib_FileId,
+ 	         entry   = "CreDefUnExp" );
+         if( suc != MSSUCC ) exit;
+
+	number = 4.0;
+	resp_exp = 1;
+	order = 4.0;
+
+}
+/*==========================================================================*/
+
+
+
