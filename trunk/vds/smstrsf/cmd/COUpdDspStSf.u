@@ -1,0 +1,129 @@
+/* $Id: COUpdDspStSf.u,v 1.1.1.1 2001/01/04 21:07:38 cvs Exp $  */
+
+/* --------------------------------------------------------------------
+ * I/VDS
+ *
+ * File:	vds/smstrsf/cmd / COUpdDspStSf.u
+ *
+ * Description:
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ *	$Log: COUpdDspStSf.u,v $
+ *	Revision 1.1.1.1  2001/01/04 21:07:38  cvs
+ *	Initial import to CVS
+ *	
+# Revision 1.1  1998/04/29  16:27:20  pinnacle
+# VDS 2.5.1
+#
+# Revision 1.1  1997/05/08  13:20:44  pinnacle
+# New project VDS 250
+#
+# Revision 1.1  1996/07/19  20:33:52  pinnacle
+# Create VDS 241 project
+#
+# Revision 1.1  1994/11/14  22:42:32  pinnacle
+# Create vds.240 from vds.232
+#
+# Revision 1.1  1994/11/08  16:07:00  pinnacle
+# create vds.232
+#
+ *
+ * History:
+ *	MM/DD/YY	AUTHOR		DESCRIPTION
+ *
+ * -------------------------------------------------------------------*/
+
+
+#include "cieveryone.h"
+#include "cimacros.h"
+#include "msdef.h"
+#include "growner.h"
+#include "SMdef.h"
+#include "SMmacros.h"
+#include "growner.h"
+#include "SMcomp_def.h"
+#include "ACrg_collect.h"
+#include "SMStructSf.h"
+
+extern int printf(), SMCritSel();
+extern UI_status(), free();
+extern SMGetDspMnSfFlg(), SMSetDspMnSfFlg();
+main()
+{
+ int 			i, k;
+ IGRshort		props;
+ char			*cog_nm, loc_mes[45], name[ATTR_TXT];
+ IGRlong		status,msg;
+ struct SMObjList 	ObjList;
+ IGRboolean 		CurDspFlg;
+ struct GRmd_env	md_env, obj_env;
+
+ strcpy(loc_mes,"Update Display For The Structural Surfaces");
+ message(loc_mes);
+
+ status = SM$CritSel(msg 	= &msg, 
+		     options	= 0,
+ 		     type	= SM_SRF,
+	    	     sub_type	= 0xFFFF,
+	    	     list	= &ObjList);
+ if(!(status & 1) || msg != MSSUCC) 
+  {
+   UI_status("Error getting the surfaces");
+   exit;
+  } 
+ if(ObjList.nb_objects <= 0) 
+  {
+   UI_status("Nothing to display");
+   exit;
+  }
+
+ /* Get the display  state to turn it on and restore it */
+
+ SMGetDspMnSfFlg(&CurDspFlg);
+ 
+ if(CurDspFlg == TRUE) props = SM_CMP_DSP_CMP_COG_PT | SM_CMP_DSP_CMP_COG_NAME;
+ else props = 0;
+
+ ci$get_module_info(md_env = &md_env);
+
+ for(i=0;i<ObjList.nb_objects;i=i+1)
+  {
+   obj_env 	 = ObjList.list[i].mod_env;
+   obj_env.md_id = md_env.md_id;  /* For display */
+
+   ci$send(msg = message SMmgr.SMGetAttTxt( &msg,"name",name,NULL),
+                targetid = ObjList.list[i].obj_id.objid,
+		targetos = ObjList.list[i].obj_id.osnum);
+   if(!(status & msg & 1)) printf("cannot get the name\n");
+
+
+   ci$send(msg = message NDnode.NDdisplay(0, GRbe, &obj_env),
+                targetid = ObjList.list[i].obj_id.objid,
+		targetos = ObjList.list[i].obj_id.osnum);
+   if(!(status & msg & 1)) printf("bad erase\n");
+
+   cog_nm = NULL;
+   if(CurDspFlg == TRUE) cog_nm = &name[0];
+   status = ci$send(msg = message SMMainSf.SMModPtTxt(&msg, NULL, NULL, &props,
+			cog_nm),
+                targetid = ObjList.list[i].obj_id.objid,
+		targetos = ObjList.list[i].obj_id.osnum);
+   if(!(status & msg & 1))
+    {
+     continue;
+    }
+
+   ci$send(msg = message NDnode.NDdisplay(0, GRbd, &obj_env),
+                targetid = ObjList.list[i].obj_id.objid,
+		targetos = ObjList.list[i].obj_id.osnum);
+   if(!(status & msg & 1)) printf("bad display\n");
+  }
+  
+ /* free the allocated memory */
+ if(CurDspFlg != TRUE) SMSetDspMnSfFlg(0);
+ free(ObjList.list);
+}
+
+

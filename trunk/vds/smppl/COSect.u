@@ -1,0 +1,327 @@
+/* $Id: COSect.u,v 1.1.1.1 2001/01/04 21:07:36 cvs Exp $  */
+
+/* --------------------------------------------------------------------
+ * I/VDS
+ *
+ * File:	vds/smppl / COSect.u
+ *
+ * Description:
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ *	$Log: COSect.u,v $
+ *	Revision 1.1.1.1  2001/01/04 21:07:36  cvs
+ *	Initial import to CVS
+ *	
+# Revision 1.1  1998/04/29  16:27:20  pinnacle
+# VDS 2.5.1
+#
+# Revision 1.1  1997/05/08  13:20:44  pinnacle
+# New project VDS 250
+#
+# Revision 1.1  1996/07/19  20:33:52  pinnacle
+# Create VDS 241 project
+#
+# Revision 1.1  1994/11/14  22:42:32  pinnacle
+# Create vds.240 from vds.232
+#
+# Revision 1.1  1994/11/08  16:07:00  pinnacle
+# create vds.232
+#
+ *
+ * History:
+ *	MM/DD/YY	AUTHOR		DESCRIPTION
+ *
+ * -------------------------------------------------------------------*/
+
+#include "ciminimum.h"
+#include "cimacros.h"
+#include "cieveryone.h"
+#include "exmacros.h"
+#include "griodef.h"
+#include "griomacros.h"
+#include "growner.h"
+#include "nddef.h"
+#include "macro.h"
+#include "ACattrib.h"
+#include "ACrg_collect.h"
+#include "emsmass.h"
+#include "asbox.h"
+#include "AS_status.h"
+#include "ndmacros.h"
+#include "msdef.h"
+#include "SMdef.h"
+#include "SMmacros.h"
+
+#include "SMcomp_def.h"
+
+
+#define		MAX_TEMP 33
+
+struct GRid 	TEMP[MAX_TEMP];
+GRobj 		MAC1;
+IGRint 		suc;
+IGRchar         txt[40], tmp_string[81];
+struct GRmd_env	MOD_ENV;
+IGRchar		mes_f[80];
+struct GRid	  mac, temp[MAX_TEMP], CalSect;
+struct ACrg_coll  att[SM_MAX_SECT_PART];
+int 		  i, k, msg, sts;
+int		  nb_att, nb_frame;
+int		  ival, mode, nb_parts, last_to_nb;
+double		  dval, last_to;
+int		  NbRoots, nb_temps;
+struct SMSectInfo   Info;
+IGRint              cn_type;
+
+
+extern free(), ASmake_source_from_env(), printf(), SMSectMacDef(), ASsuper_construct();
+extern int SMSectInitCol(), VDSSetAttTxt(), VDSSetAttDbl();
+extern int SMGetActCs(), SMGetActFrm(), SMSectFillPart(), sprintf();
+extern NDduplicate_root();
+extern int GRcvt_imp_to_wrk();
+extern NDwait_batch();
+
+main()
+{
+ strcpy(mes_f,"Section creation");
+ message(mes_f);
+
+ ASsuper_construct();
+ SMSectMacDef();
+
+
+ while(1)
+  {
+   message(mes_f);
+
+   /* Get the active CS */
+   sts = SMGetActCs(&TEMP[1], NULL, &MOD_ENV);
+   if(!(sts&1)) 
+    {
+     printf("Error gettting the Active Coordinate System\n");
+     exit;
+    }
+   else if(TEMP[1].objid == NULL_OBJID) 
+    {
+     printf("No active Coordinate System defined\n");
+     exit;
+    }
+
+   /* make a return foot to get the garphic object */
+   sts = ci$send(msg = message NDmacro.ACreturn_foot(&msg, "", &TEMP[1],
+     			  &MOD_ENV.md_env.matrix_type, MOD_ENV.md_env.matrix),
+                        targetid = TEMP[1].objid,
+                        targetos = TEMP[1].osnum );
+   if(!(sts&msg&1)) 
+    {
+     printf("Error getting the active coordinate system\n");
+     exit;
+    }
+   ASmake_source_from_env(&TEMP[1], &MOD_ENV, &TEMP[1]);	
+
+     while(1)
+      {
+       if(!ci$locate( prompt       = "Identify a compartment",
+		    classes      = "SMcomp",
+                    properties   = LC_LC_ONLY | LC_DP_ONLY | LC_RW,
+                    owner_action = LC_RIGID_COMP
+                                    | LC_RIGID_OWNER | LC_FLEX_COMP
+                                    | LC_FLEX_OWNER  | LC_REF_OBJECTS,
+	            obj          = &(TEMP[2].objid),
+                    osnum        = &(TEMP[2].osnum),
+		    md_env       = &MOD_ENV ) ) break;
+
+      ASmake_source_from_env(&TEMP[2], &MOD_ENV, &TEMP[2] );	
+
+      /* Verify that there is no calculation sections already defined */
+      ci$send(msg = message SMcomp.SMGetCalSect(&msg, &CalSect, NULL),
+     			targetid = TEMP[2].objid,
+			targetos = TEMP[2].osnum);
+      if(CalSect.objid != NULL_OBJID)
+       {
+        printf("Calculation already defined\n");
+	exit;
+       }			
+
+     last_to    = 0.0;
+     last_to_nb = 0;
+
+     /* Get user input */
+     ci$get(prompt = "Key-in mode (0 => S Auto, 1 => User, 2 => Auto)",
+        		value  = ival, rc = sts);
+     if(sts != 1)       mode = SM_SECT_SGL;
+     else if(ival == 0) mode = SM_SECT_SGL;
+     else if(ival == 1) mode = SM_SECT_USER;
+     else if(ival == 2) 
+      {
+       mode = SM_SECT_AUTO;
+       printf("Not yet implemented\n"); 
+       continue;
+      }
+     else continue;
+
+     Info.mode      = mode;     
+     Info.NbPart    = 1;     
+     Info.axis      = 'x';     
+     Info.EndOffset = 0.1;     
+
+     nb_temps = 3;
+     if(mode == SM_SECT_SGL)
+      {
+       /* Get the number of section */
+       ci$get(prompt = "Key-in the number of sections", value  = ival, rc = sts);
+       if(sts != 1) ival = 3;
+       Info.att.sgl.NbSect = ival;
+      }
+     else if(mode == SM_SECT_USER)
+      {
+       /* Get the number of parts */
+       ci$get(prompt = "Key-in the number of parts", value  = ival, rc = sts);
+       if(sts != 1) nb_parts = 1;
+       else nb_parts = ival;
+       if(nb_parts < 2) nb_parts = 2;
+       Info.NbPart = nb_parts;
+
+       nb_frame = 0;
+       for(i=0;i<nb_parts;i=i+1)
+        {
+	 nb_att = 0;
+	 ival   = 3;
+         sprintf(tmp_string, "Key-in the number of sections for part: %d/%d", i+1, nb_parts);
+         ci$get(prompt = tmp_string, value  = ival, rc = sts);
+         if(sts != 1) ival = 3;
+	 if(ival < 3) ival = 3;
+         
+	 Info.att.usr[i].NbSect = ival;
+
+         sprintf(tmp_string, "Identify the beginning frame for part: %d", i);
+         if(!ci$locate( prompt   = tmp_string,
+		    classes      = "SMframe",
+                    properties   = LC_LC_ONLY | LC_DP_ONLY | LC_RW,
+                    owner_action = LC_RIGID_COMP
+                                    | LC_RIGID_OWNER | LC_FLEX_COMP
+                                    | LC_FLEX_OWNER  | LC_REF_OBJECTS,
+	            obj          = &(TEMP[3+2*i].objid),
+                    osnum        = &(TEMP[3+2*i].osnum),
+		    md_env       = &MOD_ENV ) ) break;
+
+         ASmake_source_from_env(&TEMP[3+2*i], &MOD_ENV, &TEMP[3+2*i] );	
+         nb_temps = nb_temps + 1;
+         nb_frame = nb_frame + 1;
+      
+
+         if(i==0) sprintf(tmp_string,"Key-in distance offset [0] for part: %d", i);
+	 else     sprintf(tmp_string,"Key-in distance offset [%lf] for part: %d", last_to, i);
+	 dval = last_to;
+
+         ci$get(prompt = tmp_string, value  = dval, rc = sts);
+         if(sts != 1) dval = last_to;
+         ci$get_module_info(md_env = &MOD_ENV);
+         sts = co$cvt_imp_to_wrk(msg 	= &msg,
+			  unit_type 	= GRIO_DISTANCE,
+			  osnum 	= MOD_ENV.md_id.osnum,
+			  primary 	= dval,
+			  result 	= &dval);
+	 Info.att.usr[i].FrDx = dval;
+
+         sprintf(tmp_string, "Identify the end frame for part: %d", i);
+         if(!ci$locate( prompt   = tmp_string,
+		    classes      = "SMframe",
+                    properties   = LC_LC_ONLY | LC_DP_ONLY | LC_RW,
+                    owner_action = LC_RIGID_COMP
+                                    | LC_RIGID_OWNER | LC_FLEX_COMP
+                                    | LC_FLEX_OWNER  | LC_REF_OBJECTS,
+	            obj          = &(TEMP[4+2*i].objid),
+                    osnum        = &(TEMP[4+2*i].osnum),
+		    md_env       = &MOD_ENV ) ) break;
+
+         ASmake_source_from_env(&TEMP[4+2*i], &MOD_ENV, &TEMP[4+2*i] );	
+         nb_frame = nb_frame + 1;
+         nb_temps = nb_temps + 1;
+
+	 last_to_nb = 0;
+
+         dval = 0.0;
+	 sprintf(tmp_string,"Key-in distance offset [0] for part: %d", i);
+         ci$get(prompt = tmp_string, value  = dval, rc = sts);
+         if(sts != 1) dval = 0;
+	 last_to = dval;
+         ci$get_module_info(md_env = &MOD_ENV);
+         sts = co$cvt_imp_to_wrk(msg 	= &msg,
+			  unit_type 	= GRIO_DISTANCE,
+			  osnum 	= MOD_ENV.md_id.osnum,
+			  primary 	= dval,
+			  result 	= &dval);
+	 Info.att.usr[i].ToDx = dval;
+        }
+      }
+     else
+      {
+       printf("Automatic mode not yet implemented\n");
+       continue;
+      }
+
+      /* create the SMsection */
+      mac.objid = NULL_OBJID;
+      mac.osnum = MOD_ENV.md_id.osnum;
+
+      // for(i=0;i<nb_temps;i=i+1) printf("TEMP: %d, %d\n", TEMP[i].objid, TEMP[i].osnum);
+
+      /* If there are some duplicated objects, create intermediate pretend */
+      NDduplicate_root(nb_temps, TEMP);
+      // for(i=0;i<nb_temps;i=i+1) printf("TEMP: %d, %d\n", TEMP[i].objid, TEMP[i].osnum);
+      ci$get_module_info(md_env = &MOD_ENV);
+
+      sts = ci$send( msg = message SMsection.ACmplace(&suc, AChdr_nodisplay| AChdr_nocompute,
+ 				0, "SMsection", 0, NULL, &MOD_ENV),
+			targetid = mac.objid,
+			targetos = mac.osnum);
+      as$status( sts = sts );
+      if( !(sts&1) || suc == 0 )
+       {
+	write("placement of the compartment_macro \"SMsection\" failed\n");
+	status("placement of nci_macro \"SMsection\" failed");
+	ci$send(msg = message Root.delete(0),
+	      		targetid = mac.objid,
+	      		targetos = mac.osnum );
+        continue;
+       }
+
+       if(Info.mode == SM_SECT_USER)
+        {
+         if(nb_frame != Info.NbPart * 2)
+	  {
+	   printf("Bad frame number, go to hell\n");
+           continue;
+	  }
+	 }
+	else nb_frame = 0;
+
+        sts = ci$send( msg = message SMsection.SMSectSetCal(&msg, &TEMP[1], 
+	                    &TEMP[2], nb_frame, &TEMP[3], &Info),
+			targetid = mac.objid,
+			targetos = mac.osnum);
+        as$status( sts = sts );
+        if( !(sts&msg&1) )
+         { 
+          printf("Pas beau l'avion\n");
+	  continue;
+         }
+
+        /* Put it in the bacth queue for recomputation */
+        cn_type = ND_COMP;
+        nd$wait_batch(type       = GR_GEOM_POSTED,
+                      l_object   = &mac,
+                      l_obj_info = &cn_type,
+                      nb_obj     = 1);
+
+     }
+   }
+}
+
+
+wakeup(){
+	message("Place Section");
+}
