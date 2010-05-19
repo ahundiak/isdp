@@ -1,0 +1,141 @@
+/* $Id: COSVol.u,v 1.1.1.1 2001/01/04 21:07:36 cvs Exp $  */
+
+/* --------------------------------------------------------------------
+ * I/VDS
+ *
+ * File:	vds/smppl / COSVol.u
+ *
+ * Description:
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ *	$Log: COSVol.u,v $
+ *	Revision 1.1.1.1  2001/01/04 21:07:36  cvs
+ *	Initial import to CVS
+ *	
+# Revision 1.1  1998/04/29  16:27:20  pinnacle
+# VDS 2.5.1
+#
+# Revision 1.1  1997/05/08  13:20:44  pinnacle
+# New project VDS 250
+#
+# Revision 1.1  1996/07/19  20:33:52  pinnacle
+# Create VDS 241 project
+#
+# Revision 1.1  1994/11/14  22:42:32  pinnacle
+# Create vds.240 from vds.232
+#
+# Revision 1.1  1994/11/08  16:07:00  pinnacle
+# create vds.232
+#
+ *
+ * History:
+ *	MM/DD/YY	AUTHOR		DESCRIPTION
+ *
+ * -------------------------------------------------------------------*/
+
+#include <stdio.h>
+#include "ciminimum.h"
+#include "cimacros.h"
+#include "cieveryone.h"
+#include "growner.h"
+#include "nddef.h"
+#include "macro.h"
+#include "ACattrib.h"
+#include "ACrg_collect.h"
+#include "emsmass.h"
+#include "asbox.h"
+#include "AS_status.h"
+#include "msdef.h"
+#include "SMdef.h"
+#include "SMmacros.h"
+
+#include "SMcomp_def.h"
+
+
+IGRchar             txt[40];
+struct GRmd_env	    MOD_ENV;
+IGRchar		    mes_f[80];
+int 		    i, msg, sts;
+struct GRid         TEMP[2], mac;
+IGRint 		    suc;
+struct GRsymbology  symb;
+
+extern free(), printf(), SMSketchVolMacDef();
+extern ASmake_source_from_env(), ASsuper_construct();
+extern int init_cnst_list();
+
+main()
+{
+ strcpy(mes_f,"Place Sketch Volume");
+ message(mes_f);
+
+ ASsuper_construct();
+ SMSketchVolMacDef(); 
+
+ while(1)
+  {
+
+   init_cnst_list() ; get_symb() ;
+
+   symb.display_attr.color  = cnst_list.color;
+   symb.display_attr.weight = cnst_list.weight;
+   symb.display_attr.style  = cnst_list.style;
+   symb.level               = cnst_list.level;
+
+
+     if(!ci$locate( prompt       = "Identify a closed profile",
+		    classes      = "GRcurve",
+                    properties   = LC_LC_ONLY | LC_DP_ONLY | LC_RW,
+                    owner_action = LC_RIGID_COMP
+                                    | LC_RIGID_OWNER | LC_FLEX_COMP
+                                    | LC_FLEX_OWNER  | LC_REF_OBJECTS,
+	            obj          = &(TEMP[0].objid),
+                    osnum        = &(TEMP[0].osnum),
+		    md_env       = &MOD_ENV ) ) break;
+
+     ASmake_source_from_env( &TEMP[0],&MOD_ENV,&TEMP[0] );	
+
+     if(!ci$locate( prompt       = "Identify bounded volume",
+		    classes      = "EMSsurface",
+                    properties   = LC_LC_ONLY | LC_DP_ONLY | LC_RW,
+                    owner_action = LC_RIGID_COMP
+                                    | LC_RIGID_OWNER | LC_FLEX_COMP
+                                    | LC_FLEX_OWNER  | LC_REF_OBJECTS,
+	            obj          = &(TEMP[1].objid),
+                    osnum        = &(TEMP[1].osnum),
+		    md_env       = &MOD_ENV ) ) break;
+
+     ASmake_source_from_env( &TEMP[0],&MOD_ENV,&TEMP[0] );	
+
+
+ ci$get_module_info(md_env = &MOD_ENV);
+ mac.objid = NULL_OBJID;
+ mac.osnum = MOD_ENV.md_id.osnum;
+ sts = ci$send( msg = message SMSketchVol.ACmplace(&suc, 0,
+ 				0, "SMSketchVol", 2, TEMP, &MOD_ENV),
+			targetid = mac.objid,
+			targetos = mac.osnum);
+ if( suc == 0 )
+  {
+		write("placement of the macro \"SMSketchVol\" failed\n");
+		status("placement of nci_macro \"SMSketchVol\" failed");
+      		ci$send(msg = message Root.delete(0),
+	      		targetid = mac.objid,
+	      		targetos = mac.osnum );
+    break;
+   }
+
+  ci$send(msg = message GRvg.GRputsymb(&msg, &symb),
+	      		targetid = mac.objid,
+	      		targetos = mac.osnum );
+
+ }
+
+}
+
+wakeup(){
+	message(mes_f);
+}
+
