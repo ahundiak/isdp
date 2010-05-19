@@ -1,0 +1,635 @@
+/* $Id: VDctxDom.c1,v 1.1 2001/11/09 14:56:00 ahundiak Exp $  */
+
+/***************************************************************************
+ * I/VDS
+ *
+ * File:        vds/vdctx/c/VDctxDom.c
+ *
+ * Description: Context Classes
+ *
+ * Dependencies: 
+ *
+ * Revision History:
+ *      $Log: VDctxDom.c1,v $
+ *      Revision 1.1  2001/11/09 14:56:00  ahundiak
+ *      ah
+ *
+ *      Revision 1.14  2001/09/18 14:01:38  ahundiak
+ *      ah
+ *
+ *      Revision 1.13  2001/09/17 17:44:40  ahundiak
+ *      ah
+ *
+ *      Revision 1.12  2001/08/24 20:00:01  ahundiak
+ *      ah
+ *
+ *      Revision 1.11  2001/05/17 14:48:13  ahundiak
+ *      ah
+ *
+ *      Revision 1.10  2001/04/13 19:49:42  ahundiak
+ *      ah
+ *
+ *      Revision 1.9  2001/04/06 12:43:21  ahundiak
+ *      ah
+ *
+ *      Revision 1.8  2001/03/13 00:17:58  ahundiak
+ *      ah
+ *
+ *      Revision 1.7  2001/03/09 22:11:28  ahundiak
+ *      ah
+ *
+ *      Revision 1.6  2001/02/26 15:46:10  ahundiak
+ *      *** empty log message ***
+ *
+ *      Revision 1.5  2001/02/22 22:47:18  ahundiak
+ *      *** empty log message ***
+ *
+ *      Revision 1.4  2001/02/17 14:20:25  ahundiak
+ *      *** empty log message ***
+ *
+ *      Revision 1.3  2001/01/14 16:07:35  art
+ *      sp merge
+ *
+ *      Revision 1.1  2001/01/14 16:02:29  art
+ *      sp merge
+ *
+ * Revision 1.1  2000/12/06  15:01:08  pinnacle
+ * ah
+ *
+ *
+ * History:
+ * MM/DD/YY  AUTHOR  DESCRIPTION
+ * 12/12/00  ah      Creation
+ * 05/15/01  ah      TR5212 getCompName sometimes returns garbage if no comp path
+ * 09/18/01  ah      Internal calls not initializing results
+ ***************************************************************************/
+
+#include "VDtypedefc.h"
+#include "VDassert.h"
+#include "VDctxPrivate.h"
+#include "VDctx.h"
+#include "VDdom.h"
+#include "VDss.h"
+
+VDASSERT_FFN("vdctx/c/VDctxDom.c");
+
+/* -----------------------------------------------
+ * Text Attribute
+ */
+static IGRstat getTxtAtr(TGRid     *nodeID, 
+			 TGRmd_env *env, 
+			 IGRchar   *name, 
+			 IGRint     flag,
+			 IGRchar   *value)
+{
+  VDASSERT_FN("getTxtAtr");
+  IGRstat retFlag = 0;
+  TVDdomAtr *nameAD;
+
+  // Init
+  *value = 0;
+  
+  // Get it
+  VDdomGetAtrByName(nodeID,name,&nameAD);
+  if (nameAD == NULL) goto wrapup;
+  strcpy(value,nameAD->value);
+  
+  // Done
+  retFlag = 1;
+  
+wrapup:
+  return retFlag;
+}
+
+/* -----------------------------------------------
+ * Text Attribute
+ */
+static IGRstat setTxtAtr(TGRid     *nodeID, 
+			 TGRmd_env *env, 
+			 IGRchar   *name, 
+			 IGRint     flag,
+			 IGRchar   *value)
+{
+  VDASSERT_FN("setTxtAtr");
+  IGRstat retFlag = 1;
+  TVDdomAtr *nameAD;
+
+  // Get it
+  VDdomGetAtrByName(nodeID,name,&nameAD);
+  if (nameAD) {
+    strcpy(nameAD->value,value);
+    goto wrapup;
+  }
+  
+  // Append ?
+  switch(flag) {
+    case VDCTX_SET_ATR_FLAG_PUBLIC:
+    case VDCTX_SET_ATR_FLAG_PRIVATE:
+      retFlag = 0;
+      goto wrapup;
+  }
+  VDdomAppendAtr(nodeID,name,value);
+  
+  // Done
+  
+wrapup:
+  return retFlag;
+}
+
+/* -----------------------------------------------
+ * Double Attribute
+ */
+static IGRstat getDblAtr(TGRid     *nodeID, 
+			 TGRmd_env *env, 
+			 IGRchar   *name, 
+			 IGRint     flag,
+			 IGRdouble *value)
+{
+  VDASSERT_FN("getDblAtr");
+  IGRstat retFlag = 0;
+  TVDdomAtr *nameAD;
+
+  // Init
+  *value = 0.0;
+  
+  // Get it
+  VDdomGetAtrByName(nodeID,name,&nameAD);
+  if (nameAD == NULL) goto wrapup;
+  *value = atof(nameAD->value);
+  
+  // Done
+  retFlag = 1;
+
+wrapup:
+  return retFlag;
+}
+
+/* -----------------------------------------------
+ * Field attribute
+ */
+static IGRstat getFldAtr(TGRid     *nodeID, 
+			 TGRmd_env *env, 
+			 IGRchar   *name, 
+			 IGRint     flag,
+			 TVDfld    *fld)
+{
+  VDASSERT_FN("getFldAtr");
+  IGRstat retFlag = 0;
+  TVDdomAtr *nameAD;
+
+  // Init
+  memset(fld,0,sizeof(TVDfld));
+  
+  // Get it
+  VDdomGetAtrByName(nodeID,name,&nameAD);
+  if (nameAD == NULL) goto wrapup;
+
+  // Xfer (assume text for now)
+  strcpy(fld->name,name);
+  strcpy(fld->val.txt,nameAD->value);
+  fld->type = VDFLD_TYPE_TXT;
+  
+  // Done
+  retFlag = 1;
+
+wrapup:
+  return retFlag;
+}
+
+/* -----------------------------------------------
+ * Field attribute
+ */
+static void getFldAtrs(TGRid     *nodeID, 
+		       TGRmd_env *env,  
+		       IGRint     flag,
+		       IGRint    *cnt,
+		       TVDfld    *flds)
+{
+  VDASSERT_FN("getFldAtrs");
+
+  TVDdomAtr *nodeAD;
+  TVDfld    *fld;
+  
+  IGRint i = 0;
+  
+  // Init
+  *cnt = 0;
+  
+  // Get the first
+  VDdomGetFirstAtr(nodeID,&nodeAD);
+  while(nodeAD) {
+
+    // NULL is ok
+    if (flds) {
+      
+      // Xfer (assume text for now)
+      fld = &flds[i];
+      strcpy(fld->name,nodeAD->type);
+      strcpy(fld->val.txt,nodeAD->value);
+      fld->type = VDFLD_TYPE_TXT;
+    }
+    i++;
+    
+    // Get the next
+    nodeAD = VDdomGetNextAtr(nodeAD);
+  }
+  
+  // Return count
+  *cnt = i;
+
+wrapup:
+  return;
+}
+
+/* --------------------------------------------------
+ * Component name, path and piece mark
+ */
+static void getCompPath(TGRid *nodeID, IGRchar *path)
+{ 
+  *path = 0;
+  getTxtAtr(nodeID,NULL,VDCTX_ATR_COMP_PATH,0,path);
+  
+  // Done
+  return;
+}
+
+static void getCompName(TGRid *nodeID, IGRchar *name)
+{ 
+  IGRchab buf;
+  IGRchar *p;
+
+  *buf = 0;
+  *name = 0;
+  
+  getCompPath(nodeID,buf);  
+  p = strrchr(buf,':');
+  if (p) p++;
+  else   p = buf;
+  strcpy(name,p);
+  
+  // Done
+  return;
+}
+static void getPieceMark(TGRid *nodeID, IGRchar *pcmk)
+{ 
+  *pcmk = 0;
+  getTxtAtr(nodeID,NULL,VDCTX_ATR_SS_PIECE_PCMK,0,pcmk);
+  if (*pcmk == 0) {
+    getTxtAtr(nodeID,NULL,VDCTX_ATR_AT_ST_PCMK,0,pcmk);
+  }
+  
+  // Done
+  return;
+}
+static void setPieceMark(TGRid *nodeID, IGRchar *pcmk)
+{ 
+  
+  setTxtAtr(nodeID,NULL,VDCTX_ATR_SS_PIECE_PCMK,0,pcmk);
+  
+  // Done
+  return;
+}
+
+/* -----------------------------------------------
+ * Base Information
+ * Should a set return nodeType and nodeName?
+ */
+static IGRstat getBaseInfo(TGRid *nodeID, TVDctxBaseInfo *baseInfo)
+{
+  VDASSERT_FN("getBaseInfo");
+  IGRstat retFlag = 0;
+
+  TGRid setID;
+
+  IGRchab buf;
+  IGRchar *p,*b;
+  IGRint  i;
+  
+  // Init
+  memset(baseInfo,0,sizeof(TVDctxBaseInfo));
+  
+  // See if have an attribute
+  VDctxGetPrivateTxtAtr(nodeID,VDCTX_ATR_BASE_INFO,buf);
+  if (*buf) {
+
+    // Extract
+    p = b = buf;
+    for(i = 0; i < 5; i++) {
+      p = strchr(b,':');
+      if (p) {
+	*p = 0;
+	switch(i) {
+	  case 0: strcpy(baseInfo->setType,   b); break;
+	  case 1: strcpy(baseInfo->setTypeRev,b); break;
+	  case 2: strcpy(baseInfo->setName,   b); break;
+	  case 3: strcpy(baseInfo->nodeType,  b); break;
+	  case 4: strcpy(baseInfo->nodeName,  b); break;
+	}    
+	b = p + 1;
+      }
+    }
+    // Display name
+    sprintf(baseInfo->baseName,"%s %s",baseInfo->nodeType,baseInfo->nodeName);
+    retFlag = 1;
+    goto wrapup;
+  }
+  
+  // Get The node stuff
+  VDdomGetObjType(nodeID,baseInfo->nodeType);
+  VDdomGetObjName(nodeID,baseInfo->nodeName);
+
+  // Need the set
+  VDdomGetSetObj (nodeID,&setID);
+  VDdomGetObjType(&setID,baseInfo->setType);
+  VDdomGetObjName(&setID,baseInfo->setName);
+
+  // What about revs
+
+  // Build a description
+  sprintf(baseInfo->baseName,"%s %s",baseInfo->nodeType,baseInfo->nodeName);
+
+  // Should a set return nodeType and nodeName?
+  
+  // Done
+  retFlag = 1;
+
+wrapup:
+  return retFlag;
+}
+
+/* -----------------------------------------------
+ * Base Information
+ * Set the base info
+ */
+static IGRstat setBaseInfo(TGRid *nodeID, TVDctxBaseInfo *baseInfo)
+{
+  VDASSERT_FN("setBaseInfo");
+  IGRstat retFlag = 0;
+
+  IGRchab buf;
+  
+  // Just a cat
+  sprintf(buf,"%s:%s:%s:%s:%s:",
+	  baseInfo->setType,
+	  baseInfo->setTypeRev,
+	  baseInfo->setName,
+	  baseInfo->nodeType,
+	  baseInfo->nodeName);
+
+  VDctxAppPrivateTxtAtr(nodeID,VDCTX_ATR_BASE_INFO,buf);
+  
+  // Done
+  retFlag = 1;
+
+wrapup:
+  return retFlag;
+}
+
+/* -----------------------------------------------
+ * Get the nth child
+ */
+static  IGRstat getNthTreeChild(TGRid *nodeID, IGRint nth, TGRid *childID)
+{
+  childID->objid = NULL_OBJID;
+  return VDdomGetNthChildObj(nodeID,nth,childID);
+}
+/* -----------------------------------------------
+ * Get the nth mgr child (no difference)
+ */
+static  IGRstat getNthMgrChild(TGRid *nodeID, IGRint nth, TGRid *childID)
+{
+  childID->objid = NULL_OBJID;
+  return VDdomGetNthChildObj(nodeID,nth,childID);
+}
+
+/* -----------------------------------------------
+ * Get the parent
+ */
+static  IGRstat getTreeParent(TGRid *nodeID, TGRid *parentID)
+{
+  parentID->objid = NULL_OBJID;
+  return VDdomGetParentObj(nodeID,parentID);
+}
+
+/* -----------------------------------------------
+ * Get the manager parent (no difference)
+ */
+static  IGRstat getMgrParent(TGRid *nodeID, TGRid *parentID)
+{
+  parentID->objid = NULL_OBJID;
+  return VDdomGetParentObj(nodeID,parentID);
+}
+
+/* -----------------------------------------------
+ * Get the tree
+ */
+static void getTree(TGRid *nodeID, TGRid *treeID)
+{
+  treeID->objid = NULL_OBJID;
+  VDdomGetTreeObj(nodeID,treeID);
+}
+
+/* -----------------------------------------------
+ * Get the parent
+ */
+static void getSet (TGRid *nodeID, TGRid *setID)
+{
+  setID->objid = NULL_OBJID;
+  VDdomGetTreeObj(nodeID,setID);
+}
+
+/* -----------------------------------------------
+ * Get a model object
+ */
+static void getModelObject(TGRid *nodeID, TGRobj_env *modelOE)
+{
+  IGRchab path;
+
+  // Init
+  modelOE->obj_id.objid = NULL_OBJID;
+  
+  // Work from path
+  getCompPath(nodeID,path);  
+  if (*path == 0) goto wrapup;
+  
+  // Get the object
+  VDobjGetObjFromPath(path,modelOE);
+
+ wrapup:  
+  return;
+}
+
+/* ---------------------------------------------
+ * Returns the objects class (type)
+ */
+static void getNodeType(TGRid *nodeID, IGRchar *nodeType)
+{  
+  TVDdomEle *nodeDD;
+  
+  TVDctxBaseInfo baseInfo;
+  
+  // Init
+  *nodeType = 0;
+  
+  // Try
+  getBaseInfo(nodeID,&baseInfo);
+  if (*baseInfo.nodeType) {
+    strcpy(nodeType,baseInfo.nodeType);
+    return;
+  }
+  
+  // Get the instance
+  VDdomGetObjInstance(nodeID,&nodeDD);
+  
+  // Simple Copy
+  strcpy(nodeType,nodeDD->type);
+  
+  // Done
+}
+
+/* ---------------------------------------------
+ * Returns the objects name
+ */
+static void getNodeName(TGRid *nodeID, IGRchar *nodeName)
+{    
+  TVDctxBaseInfo baseInfo;
+  
+  // Init
+  *nodeName = 0;
+  
+  // Try
+  getBaseInfo(nodeID,&baseInfo);
+  if (*baseInfo.nodeName) {
+    strcpy(nodeName,baseInfo.nodeName);
+    return;
+  }
+
+  VDdomGetObjName(nodeID,nodeName);
+}
+
+/* ---------------------------------------------
+ * returns true if the object is of a given type
+ */
+static IGRstat isNodeType(TGRid *nodeID, IGRchar *nodeType)
+{ 
+  IGRstat retFlag = 0;
+  
+  TVDdomEle *nodeDD;
+  
+  // Get the instance
+  VDdomGetObjInstance(nodeID,&nodeDD);
+  
+  // Simple Copy
+  if (!strcmp(nodeType,nodeDD->type)) retFlag = 1;
+  
+  // Done
+  return retFlag;
+}
+static void deleteNode(TGRid *nodeID)
+{
+  VDdomFreeTreeObj(nodeID);
+}
+/* -----------------------------------------------
+ * Adds new node for a tree
+ */
+static void createNode(TGRid *parentID, IGRchar *nodeType, IGRchar *nodeName, TGRid *nodeID)
+{
+  VDASSERT_FN("createNode");
+  
+  TVDctxBaseInfo baseInfo;
+  
+  // Init
+  nodeID->objid = NULL_OBJID;
+  
+  // Create the node
+  VDdomCreateObj(parentID,nodeType,nodeID);
+  
+  // Add the baseInfo
+  if (nodeName) {  
+    VDctxGetBaseInfo(parentID,&baseInfo);
+    strcpy(baseInfo.nodeType,nodeType);
+    strcpy(baseInfo.nodeName,nodeName);
+    VDctxSetBaseInfo(nodeID,&baseInfo);
+  }
+  
+  // Done
+ wrapup:
+  return;
+}
+
+/* ---------------------------------------------
+ * save tree
+ */
+static void saveTreeToXmlBuf(TGRid *treeID, IGRchar **buf)
+{
+  *buf = NULL;
+  VDctxSaveTreeToXmlBufPrivate(treeID,buf);
+}
+static void saveTreeToXmlFile(TGRid *treeID, IGRchar *fileName)
+{
+  VDctxSaveTreeToXmlFilePrivate(treeID,fileName);
+}
+
+/* -----------------------------------------------
+ * Initializer
+ */
+IGRstat VDctxInitDomCP(TVDctxCP *baseCP, TVDctxCP *cp)
+{
+  VDASSERT_FN("VDctxInitDomCP");
+  IGRstat retFlag = 0;
+
+  // Arg check
+  VDASSERTW(cp);
+
+  // Copy Base
+  memcpy(cp,baseCP,sizeof(TVDctxCP));
+  cp->parentCP = baseCP;
+  
+  // Xfer overrode functions
+  cp->setTxtAtr  = setTxtAtr;
+  cp->getTxtAtr  = getTxtAtr;
+
+  cp->getDblAtr  = getDblAtr;
+  cp->getFldAtr  = getFldAtr;
+  cp->getFldAtrs = getFldAtrs;
+
+  cp->getBaseInfo = getBaseInfo;
+  cp->setBaseInfo = setBaseInfo;
+
+  cp->getNthTreeChild = getNthTreeChild;
+  cp->getTreeParent   = getTreeParent;
+
+  cp->getNthMgrChild  = getNthMgrChild;
+  cp->getMgrParent    = getMgrParent;
+
+  cp->getTree         = getTree;
+  cp->getSet          = getSet;
+
+  cp->getModelObject = getModelObject;
+
+  cp->getNodeName = getNodeName;
+  cp->getNodeType = getNodeType;
+  cp->isNodeType  = isNodeType;
+
+  cp->deleteNode  = deleteNode;
+  cp->createNode  = createNode;
+
+  cp->saveTreeToXmlBuf  = saveTreeToXmlBuf;
+  cp->saveTreeToXmlFile = saveTreeToXmlFile;
+
+  cp->getCompName = getCompName;
+  cp->getCompPath = getCompPath;
+
+  cp->getPieceMark = getPieceMark;
+  cp->setPieceMark = setPieceMark;
+
+#if 0
+  cp->get = get;
+#endif
+  // Done
+  retFlag = 1;
+  
+wrapup:
+  return retFlag;
+}
+

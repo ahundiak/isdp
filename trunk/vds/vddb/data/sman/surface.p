@@ -1,0 +1,11 @@
+[
+n_catalogname=surface
+n_itemname='surf'
+n_itemrev='1'
+n_itemdesc='surface'
+n_creator='nfmadmin'
+n_creationdate='01/23/1998'
+p_parttype='P'
+units_set=20.0
+n_cofilename='SURFACE'
+]

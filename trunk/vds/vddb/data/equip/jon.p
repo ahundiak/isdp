@@ -1,0 +1,16 @@
+[
+n_catalogname=jon
+n_itemname='jon1'
+n_itemrev='1'
+n_itemdesc='cabinet'
+n_creator='nfmadmin'
+n_creationdate='01/23/1998'
+p_parttype='P'
+wet_weight=5500.0
+eqp_type='cabinet'
+heat_disp=0.0
+mlx=0.0
+mly=0.0
+mlz=0.0
+n_cofilename='VSEQUIP'
+]

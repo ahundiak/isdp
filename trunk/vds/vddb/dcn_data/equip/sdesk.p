@@ -1,0 +1,16 @@
+[
+n_catalogname=sdesk
+n_itemname='desk1'
+n_itemrev='1'
+n_itemdesc='desk'
+n_creator='nfmadmin'
+n_creationdate='06/15/91'
+p_parttype='P'
+wet_weight=1500.0
+eqp_type='desk'
+heat_disp=0.0
+mlx=0.0
+mly=0.0
+mlz=0.0
+n_cofilename='VSEQUIP'
+]

@@ -1,0 +1,1077 @@
+/* $Id: GenData.rc,v 1.1.1.1 2001/01/04 21:08:13 cvs Exp $  */
+
+/* --------------------------------------------------------------------
+ * I/VDS
+ *
+ * File:	vds/vddb/source / GenData.rc
+ *
+ * Description:
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ *	$Log: GenData.rc,v $
+ *	Revision 1.1.1.1  2001/01/04 21:08:13  cvs
+ *	Initial import to CVS
+ *	
+# Revision 1.3  2000/04/04  21:12:02  pinnacle
+# Replaced: vddb/source/GenData.rc for:  by impd252 for vds
+#
+# Revision 1.2  1999/01/27  21:13:28  pinnacle
+# TR_179900043: Modified function, RisNullValue
+#
+# Revision 1.1  1998/04/29  16:27:20  pinnacle
+# VDS 2.5.1
+#
+# Revision 1.2  1997/07/08  20:14:20  pinnacle
+# Replaced: vddb/source/GenData.rc for:  by aprahlad for vds
+#
+# Revision 1.1  1996/07/19  20:33:52  pinnacle
+# Create VDS 241 project
+#
+# Revision 1.6  1996/05/30  21:26:32  pinnacle
+# Replaced: vddb/source/GenData.rc for:  by sljenks for vds.240
+#
+# Revision 1.5  1996/05/30  01:31:16  pinnacle
+# Replaced: vddb/source/GenData.rc for:  by sljenks for vds.240
+#
+# Revision 1.4  1996/05/29  20:15:12  pinnacle
+# Replaced: vddb/source/GenData.rc for:  by sljenks for vds.240
+#
+# Revision 1.3  1996/04/22  15:12:22  pinnacle
+# Replaced: vddb/source/GenData.rc for:  by v240_int for vds.240
+#
+ * Revision 1.2  1996/04/21  23:49:12  pinnacle
+ * Replaced: vddb/source/GenData.rc for:  by v240_int for vds.240
+ *
+ * Revision 1.1  1994/11/14  22:42:32  pinnacle
+ * Create vds.240 from vds.232
+ *
+ * Revision 1.1  1994/11/08  16:07:00  pinnacle
+ * create vds.232
+ *
+ *
+ * History:
+ *	04/11/96	tlb	Add formatting
+ *				Rename VDSdbstr.h constants 
+ *	04/22/96	tlb	Fix nested comment in log message
+ *
+ *      05/29/96        slj     Fix () not being replaced with [] for
+ *				dynamic character fields.
+ *      05/29/96        slj     Correct the way Prefix is determined for
+ *				attributes.
+ *	05/30/96	slj	Removed printf of n_cofilename.
+ *
+ *	01/27/99	ejm	Original if-else syntax in RisNullValue was
+ *				  preventing the proper assignment and
+ *				  printing of row values after the first row.
+ *
+ *	04/04/00	jvh	changed variable sent to sprintf when timestamp
+ *				data type is found, when RISdatetime_to_ascii
+ *				was called to convert the data.
+ * -------------------------------------------------------------------*/
+
+#include <stdio.h>
+#include <string.h>
+#include <ctype.h>
+#include "v_risproto.h"
+
+#define BIP    0
+
+#define FAMILY    0
+#define PART      1
+#define COMPONENT 2
+#define TABLE     3
+#define DATA      4
+
+int DebugFlag;
+
+#define QUIET   0
+#define PARTIAL 1
+#define TOTAL   2
+
+#define MAX_ITEM 1000
+
+/*
+#include "LibRis.h"
+*/
+
+#include "VDSdbstr.h"
+#include "VDSdbio.h"
+
+char *getenv ();
+
+
+#define RIS_NULL	-1281
+#define RIS_STMT	1024
+
+/*-------------------------------------------------------------*/
+RisSuccess (string)
+char *string;
+  {
+   exec sql begin declare section;
+     char *p_sqlerror;
+   exec sql end declare section;
+
+   if (SQLCODE != RIS_SUCCESS)
+     {
+      exec sql report error into :p_sqlerror;
+      printf ("\nsqlerror in <%s>\n%s\n", string, p_sqlerror);
+      return (0);
+     }
+   else
+      return (1);
+  }
+
+/*-------------------------------------------------------------*/
+RisNullValue ()
+  {
+   if (SQLCODE == RIS_NULL)
+	return 1;
+   else if (SQLCODE == END_OF_DATA)
+   {
+	if (!RisSuccess ("fetch"))
+		exit (1);
+   }
+   else
+	return 0;
+  }
+
+/*
+    This code was mysteriously malfunctioning (?) after the retrieval of
+    the first part of a table.
+RisNullValue ()
+  {
+   if      (SQLCODE == RIS_NULL)				return 1;
+   else if (SQLCODE == END_OF_DATA) if (!RisSuccess ("fetch")) 	exit (1);
+   else 							return 0;
+  }
+*/
+
+/*-------------------------------------------------------------*/
+RisEndOfData ()
+  {
+   if      (SQLCODE == RIS_SUCCESS)	return 0;
+   else if (SQLCODE == END_OF_DATA)	return 1;
+   else if (!RisSuccess ("fetch"))	exit (1);
+  }
+
+
+/*-------------------------------------------------------------*/
+exec_sql_open_cursor1 (string, variable)
+
+char *string;
+char *variable;
+  {
+   exec sql begin declare section;
+     char StmtString[1024];
+   exec sql end declare section;
+
+   int i;
+
+   for (i=0 ; string[i] != '%'; i= i+1);
+   if (string[i+1] == 's')
+      sprintf (StmtString, string, variable);
+   else
+      sprintf (StmtString, string, *((int *)variable));
+   if (DebugFlag & TOTAL)
+      printf ("\n<%s>\n\n", StmtString);
+   exec sql prepare statement1 from :StmtString;
+   exec sql declare cursor1 cursor for statement1;
+   exec sql open cursor1;
+  }
+
+
+/*-------------------------------------------------------------*/
+exec_sql_close_cursor1 ()
+  {
+   exec sql close cursor1;
+   exec sql clear statement1;
+  }
+
+
+exec_sql_execute (string, variable)
+
+char *string;
+char *variable;
+  {
+   exec sql begin declare section;
+     char StmtString[1024];
+   exec sql end declare section;
+
+   int i;
+
+   if (variable != NULL)
+     {
+      for (i=0 ; string[i] != '%'; i= i+1);
+      if (string[i+1] == 's')
+         sprintf (StmtString, string, variable);
+      else
+         sprintf (StmtString, string, *((int *)variable));
+     }
+   else
+      strcpy (StmtString, string);
+   if (DebugFlag & TOTAL)
+         printf ("\n<%s>\n\n", StmtString);
+
+   exec sql prepare statement from :StmtString;
+   exec sql execute statement;
+   if (!RisSuccess (StmtString)) exit (1);
+   exec sql clear statement;
+  }
+
+/***************** End of LibRis.h *********************/
+
+
+/*-------------------------------------------------------------*/
+main (argc, argv)
+
+int   argc;
+char *argv[];
+{
+   int  ProcessOption;
+   int  i, rc, index;
+   char Schema[32];
+   char Application[15];
+   FILE *p_File;
+   char FileName[32];
+   char FamilyName[15];
+   int  ComponentItemCount;
+   int  ComponentItemNo[MAX_ITEM];
+   char *p_String;
+
+   if (argc < 5)
+     {
+      printf ("usage is <GenData sch_name sch_pwd options [family]>\n");
+      exit (1);
+     }
+
+   if (argv[3][0] == 'd')
+      DebugFlag= TOTAL|PARTIAL;
+   else if (argv[3][0] == 'p')
+      DebugFlag= PARTIAL;
+   else if (argv[3][0] == 'q')
+      DebugFlag= QUIET;
+   else
+     {
+      printf ("invalid DebugFlag (d/p/q) \n");
+      exit (1);
+     }
+
+   ProcessOption= FAMILY;
+   if (argv[3][1] == 'f')
+      ProcessOption= FAMILY;
+   else if (argv[3][1] == 'p')
+      ProcessOption= PART;
+   else if (argv[3][1] == 't')
+      ProcessOption= TABLE;
+   else if (argv[3][1] == 'd')
+      ProcessOption= DATA;
+   else
+     {
+      printf ("invalid ProcessOption (f/p) \n");
+      exit (1);
+     }
+
+   p_String = getenv ("PWD");
+   if (p_String == NULL)
+     {
+      printf ("shell variable PWD not defined \n");
+      exit (1);
+     }
+   for (i= strlen(p_String); i>= 0; i= i-1)
+      if (p_String[i] == '/') break;
+   strcpy (Application, &p_String[i+1]);
+
+   if (DebugFlag & PARTIAL)
+     {
+      printf ("\n");
+      printf ("nfm schema name    = <%s> \n", argv[1]);
+      printf ("nfm schema password= <%s> \n", argv[2]);
+      printf ("options            = <%s>"   , argv[3]);
+
+      if (DebugFlag & TOTAL)
+         printf (" (debug option is total)");
+      else if (DebugFlag == PARTIAL)
+         printf (" (debug option is partial)");
+
+      if (ProcessOption == FAMILY)
+         printf (" (process option is family)");
+      else if (ProcessOption == PART)
+         printf (" (process option is part)");
+      else if (ProcessOption == TABLE)
+         printf (" (process option is table)");
+      else if (ProcessOption == DATA)
+         printf (" (process option is data)");
+
+      printf ("\n");
+
+      printf ("application        = <%s>"   , Application);
+     }
+
+   sprintf (Schema, "%s.%s", argv[1], argv[2]);
+   exec_sql_execute (
+      "default schema %s",
+      Schema);
+
+
+/* loop on families */
+
+   for (index= 4; index <argc; index= index+ 1) {
+
+   strcpy (FamilyName, argv[index]);
+   strcpy (FileName, FamilyName);
+   if (ProcessOption == FAMILY)
+      strcat (FileName, ".f");
+   else
+      strcat (FileName, ".p");
+   p_File= fopen (FileName, "w");
+   if (p_File == NULL)
+     {
+      printf ("cannot open file <%s> in write mode \n", FileName);
+      exit (1);
+     }
+
+   ProcessFamily (DebugFlag, ProcessOption, Application,
+		  FamilyName, FamilyName, p_File,
+		  &ComponentItemCount, ComponentItemNo);
+
+   if (strcmp (Application, "piping") == 0
+   &&  ProcessOption == PART
+   &&  strcmp (FamilyName, "component") != 0)
+      ProcessFamily (DebugFlag, COMPONENT, Application,
+		     FamilyName, "component", p_File,
+		     &ComponentItemCount, ComponentItemNo);
+
+   rc= fclose (p_File);
+   if (rc != 0)
+     {
+      printf ("cannot close file, rc= %d \n", rc);
+      exit (1);
+     }
+
+   }
+   exit (0);
+ }
+
+/*-------------------------------------------------------------*/
+ProcessFamily (DebugFlag, ProcessOption, Application,
+	       FamilyName, CatalogName, p_File,
+	       p_ComponentItemCount, ComponentItemNo)
+
+int  DebugFlag;
+int  ProcessOption;
+char *Application;
+char *FamilyName;
+char *CatalogName;
+FILE *p_File;
+int  *p_ComponentItemCount;
+int  ComponentItemNo[];
+{
+   exec sql begin declare section;
+     int    n_itemno;
+     char   n_itemname[32];
+     int    n_tableno;
+     char   n_tablename[20];
+     char   n_catalogdesc[100];
+     char   n_cofilename[40];
+     /*char   n_itemdesc[14];*/
+     char   p_templatename[20];
+     char   p_type[20];
+     char   p_iotype[10];
+     char   n_name[20];
+     char   n_datatype[15];
+     char   n_synonym[40];
+     char   my_char[256];
+     int    my_int;
+     double my_double;
+     datetime my_datetimeVar;  /** added by AP -- TR#179603862 **/
+   exec sql end declare section;
+
+   int  i, j, rc;
+/* int  count; */
+   int  ParameterCount;
+   char ParameterName[64][20];
+   char ParameterType[64][20];
+   int  AttributeCount;
+   char AttributeName[64][20];
+   char AttributeType[64][20];
+   char IoType[64][10];
+   int  ParameterIndex;
+   char Prefix[8];
+   int  TableCount;
+   char TableName[2][15];
+   int  TableNo[3];
+   char WhereString[160];
+   char QueryString[160];
+   char DataType[20];
+   char PartNum[MAX_ITEM][32];
+   char MyValue[256];
+   char tmpParam[20];
+   int  ItemCount;
+   int  ItemNo[MAX_ITEM];
+   int  DynTableNo = 1;  /* used to track which table is the y_ table */
+			 /* in most cases it will be [1] */
+
+   char dtTimeFormat[12];
+   char dtTimeBuffer[12];     /** Both added by AP -- TR#179603862 **/
+
+   /* Initialization */
+   AttributeCount= 0;
+   ItemCount= 0;
+
+   /* print what is going on */
+   if (ProcessOption == FAMILY)
+      printf ("generating attributes for family <%s> \n", FamilyName);
+   else if (ProcessOption == TABLE)
+      printf ("generating attributes for table <%s> \n", FamilyName);
+   else if (ProcessOption == PART)
+      printf ("generating parts for family <%s> \n", FamilyName);
+   else if (ProcessOption == DATA)
+      printf ("generating data for table <%s> \n", FamilyName);
+   else
+      printf ("generating components for family <%s> \n", FamilyName);
+
+   if (ProcessOption == FAMILY
+   ||  ProcessOption == TABLE)
+     {/* output the character begin of family */
+
+      rc= fprintf (p_File, "[\n");
+      if (rc <= 0)
+        {
+         printf ("cannot print to file, rc= %d \n", rc);
+         exit (1);
+        }
+
+      /* output the family name */
+      if (ProcessOption == FAMILY)
+         rc= fprintf (p_File, "n_catalogname(char[12])=%s\n", FamilyName);
+      else
+         rc= fprintf (p_File, "tablename(char[12])=%s\n", FamilyName);
+      if (rc <= 0)
+        {
+         printf ("cannot print to file, rc= %d \n", rc);
+         exit (1);
+        }
+     }
+   else if (ProcessOption == PART)
+     {
+      /* collect all the part identifier of the catalog */
+      exec_sql_open_cursor1 (
+         "select n_itemno, n_itemname from %s",
+         CatalogName);
+
+      ItemCount= 0;
+      while (1)
+        {/* store them for next loop */
+         exec sql fetch cursor1 into :n_itemno, :n_itemname;
+         if (RisEndOfData ())  break;
+         if (DebugFlag & TOTAL)
+            printf ("n_itemno= %d \n", n_itemno);
+	 ItemNo[ItemCount]= n_itemno;
+	 strcpy (PartNum[ItemCount], n_itemname);
+	 ItemCount= ItemCount+ 1;
+        }
+      exec_sql_close_cursor1 ();
+
+      if (ItemCount == 0)
+         printf ("...no parts found %c\n", BIP);
+      else if (strcmp (Application, "piping") == 0)
+        {/* verify existency of corresponding rows in component table */
+/*
+	 *p_ComponentItemCount= 0;
+         for (i= 0; i< ItemCount; i= i+1)
+           {
+*/
+	    /* verify part by part */
+
+/* MSM
+	    sprintf (WhereString, "vr_catalogname=\'%s\' and vr_partnum=\'%s\'",
+		     FamilyName, PartNum[i]);
+            exec_sql_open_cursor1 (
+               "select n_itemno from component where %s",
+               WhereString);
+
+	    count= 0;
+	    while (1)
+              {
+*/
+		/* store the component identifier in output argument */
+/* MSM
+               exec sql fetch cursor1 into :n_itemno;
+               if (RisEndOfData ()) break;
+	       if (DebugFlag & TOTAL)
+		  printf ("component n_itemno= %d \n", n_itemno);
+	       ComponentItemNo[*p_ComponentItemCount]= n_itemno;
+	       *p_ComponentItemCount= *p_ComponentItemCount+ 1;
+               count= count+ 1;
+              }
+            exec_sql_close_cursor1 ();
+*/
+            /* exec sql clear cursor cursor1; */
+/*
+            if (count == 0)
+	      {
+*/
+	       /* no component has been found for the part */
+/*
+	       printf ("no corresponding row in component, skipping %d <%s> \n",
+		       ItemNo[i], PartNum[i]);
+	       ItemNo[i]= -1;
+	      }
+           }
+*/
+        }
+     } else /* COMPONENT */
+     {/* retrieve the component identifier from input argument */
+      for (i=0; i< *p_ComponentItemCount; i= i+1)
+	 ItemNo[i]= ComponentItemNo[i];
+      ItemCount= *p_ComponentItemCount;
+     }
+
+
+   /* find tables */
+
+   sprintf (WhereString,
+	    "n_tablename=\'%s\' or n_tablename=\'y_%s\'",
+            CatalogName, CatalogName);
+
+   exec_sql_open_cursor1 (
+     "select n_tableno,n_tablename from nfmtables where %s",
+      WhereString);
+
+   TableCount= 0;
+   while (1)
+     {
+      exec sql fetch cursor1 into :n_tableno,:n_tablename;
+      if (RisEndOfData ())  break;
+      if (DebugFlag & TOTAL)
+         printf ("n_tableno= %d \n", n_tableno);
+      if (strcmp  (n_tablename, CatalogName) == 0
+      || (strncmp (n_tablename, "y_", 2)  == 0 && ProcessOption == FAMILY))
+        {
+         TableNo[TableCount]= n_tableno;
+         strcpy (TableName[TableCount], n_tablename);
+         if (strncmp(n_tablename, "y_", 2) == 0) DynTableNo = TableCount;
+         TableCount= TableCount+ 1;
+        }
+     }
+   exec_sql_close_cursor1 ();
+   /* exec sql clear cursor cursor1; */
+
+   if (TableCount < 1)
+     {
+      if (DebugFlag & PARTIAL)
+        {
+         printf ("...table not found in nfmtables %c\n", BIP);
+        }
+      exit (1);
+     }
+
+
+   /* find catalog desc */
+
+   if (ProcessOption == FAMILY)
+     {
+      exec_sql_open_cursor1 (
+         "select n_catalogdesc from nfmcatalogs where n_catalogname=\'%s\'",
+  	 CatalogName);
+      exec sql fetch cursor1 into :n_catalogdesc;
+      if (RisEndOfData ())
+        {
+         if (DebugFlag & PARTIAL)
+         printf ("...catalog not found in nfmcatalogs %c\n", BIP);
+         exit (1);
+        }
+      exec_sql_close_cursor1 ();
+
+      rc= fprintf (p_File, "n_catalogdesc(char[100])=%s\n", n_catalogdesc);
+      if (rc < 0)
+        {
+         printf ("cannot print to file, rc= %d \n", rc);
+         exit (1);
+        }
+     }
+
+
+   /* find family and parameters */
+
+/*
+   exec_sql_open_cursor1 (
+	    "select p_familyno, p_libraryno from pdmfamilies where p_familyname=\"%s\"",
+  	    CatalogName);
+   exec sql fetch cursor1 into :p_familyno, :p_libraryno;
+*/
+   exec_sql_open_cursor1 (
+	    "select n_catalogname from pdmparamloc where n_catalogname=\'%s\' ",
+		CatalogName );
+   if (RisEndOfData ())
+     {
+      if (DebugFlag & PARTIAL)
+/*
+         printf ("...family not found in pdmfamilies %c\n", BIP);
+      p_familyno= -1;
+*/
+      CatalogName[0] = 0;
+     }
+   else
+     {
+      if (DebugFlag & TOTAL)
+/*
+          printf ("p_familyno= <%d> \n", p_familyno);
+*/
+	  printf ("CatalogName= <%s> \n",CatalogName );
+     }
+   exec_sql_close_cursor1 ();
+   /* exec sql clear cursor cursor1; */
+
+   ParameterCount= 0;
+/*
+   if (p_familyno != -1)
+*/
+   if ( CatalogName[0] != 0 )
+     {
+/*
+      exec_sql_open_cursor1 (
+            "select p_name,p_parametertype,p_iotype,p_seqno from pdmparameters where p_familyno=%d order by p_seqno",
+  	    (char *) &p_familyno);
+*/
+      exec_sql_open_cursor1 (
+            "select p_templatename,p_type,p_iotype from pdmparameters where n_catalogname='%s' ",
+  	    CatalogName );
+
+      while (1)
+        {/* store the macro parameters for future use */
+
+         exec sql fetch cursor1 into :p_templatename, :p_type, :p_iotype;
+         if (RisEndOfData ()) break;
+         if (DebugFlag & TOTAL)
+	    printf ("attribute= <%s> <%s> <%s> <%d> \n",
+		    p_templatename, p_type, p_iotype );
+	 strcpy (ParameterName[ParameterCount], p_templatename);
+
+         /* Replace any (, or ) for char fields */
+         for (i= 0; i< strlen(p_type); i= i+1)
+           if      (p_type[i] == '(')  p_type[i]= '[';
+           else if (p_type[i] == ')')  p_type[i]= ']';
+
+	 strcpy (ParameterType[ParameterCount], p_type);
+	 strcpy (IoType[ParameterCount], p_iotype);
+         ParameterCount= ParameterCount+ 1;
+        }
+      exec_sql_close_cursor1 ();
+      /* exec sql clear cursor cursor1; */
+
+      if (ParameterCount == 0)
+        {
+         if (DebugFlag & PARTIAL)
+            printf ("...parameters not found in pdmparameters %c\n", BIP);
+        }
+     }
+
+
+   /* find macro file name */
+
+   if( ProcessOption == FAMILY )
+     {
+/*
+      if (p_familyno != -1)
+*/
+      if ( CatalogName[0] != 0 )
+        {
+/*
+         exec_sql_open_cursor1 (
+           "select n_cofilename from f_pdmlibraries where n_itemnum=%d",
+            (char *) &p_libraryno);
+*/
+	 exec_sql_open_cursor1 (
+	   "select p_macropartno from pdmparamloc where n_catalogname ='%s' ",
+	      CatalogName );
+         exec sql fetch cursor1 into :n_cofilename;
+         if (RisEndOfData ())
+           {
+            if (DebugFlag & PARTIAL)
+               printf ("...n_cofilename not found in f_pdmlibraries %c\n", BIP);
+            exit (1);
+           }
+
+         if (DebugFlag & TOTAL)
+            printf ("n_cofilename= <%s> \n", n_cofilename);
+         exec_sql_close_cursor1 ();
+         /* exec sql clear cursor cursor1; */
+
+	 /* output the cofilename */
+         rc= fprintf (p_File, "n_cofilename(char[14])=%s/%s\n",
+		      Application, n_cofilename);
+         if (rc < 0)
+           {
+            printf ("cannot print to file, rc= %d \n", rc);
+            exit (1);
+           }
+
+ 	 /* MF insertion */
+/*  MSM
+         exec_sql_open_cursor1 (
+           "select n_itemdesc from pdmlibraries where n_itemname='%s'",
+             n_cofilename );
+
+         exec sql fetch cursor1 into :n_itemdesc;
+         if (RisEndOfData ())
+           {
+            if (DebugFlag & PARTIAL)
+               printf ("...n_itemdesc not found in pdmlibraries %c\n", BIP);
+            exit (1);
+           }
+
+         if (DebugFlag & TOTAL)
+            printf ("n_itemdesc= <%s> \n", n_itemdesc);
+         exec_sql_close_cursor1 ();
+*/
+         /* exec sql clear cursor cursor1; */
+
+         /* output the partdesc */
+/* MSM
+         rc= fprintf (p_File, "n_itemdesc(char[40])=%s\n", n_itemdesc);
+         if (rc < 0)
+           {
+            printf ("cannot print to file, rc= %d \n", rc);
+            exit (1);
+           }
+*/
+        }
+      else
+
+        {/* output the cofilename */
+         rc= fprintf (p_File, "n_cofilename(char[14])=%s\n", "tmp");
+         if (rc < 0)
+           {
+            printf ("cannot print to file, rc= %d \n", rc);
+            exit (1);
+           }
+
+         /* output the partdesc */
+/* MSM
+         rc= fprintf (p_File, "n_itemdesc(char[40])=%s\n", "unknown");
+         if (rc < 0)
+           {
+            printf ("cannot print to file, rc= %d \n", rc);
+            exit (1);
+           }
+*/
+        }
+     }
+   else if( ProcessOption == PART  &&
+	    CatalogName[0] != NULL )
+   {
+       exec_sql_open_cursor1(
+	   "select p_macropartno from pdmparamloc where n_catalogname ='%s' ",
+	      CatalogName );
+       exec sql fetch cursor1 into :n_cofilename;
+
+       if( RisEndOfData () )
+       {
+         if( DebugFlag & PARTIAL )
+          printf ("...n_cofilename not found in f_pdmlibraries %c\n", BIP);
+       }
+
+       if( DebugFlag & TOTAL )
+        printf ("n_cofilename= <%s> \n", n_cofilename);
+
+       exec_sql_close_cursor1();
+   }
+
+   /* find attributes */
+
+   /* prepare numerotation of the macro parameters */
+   ParameterIndex= 0;
+
+   if (TableCount == 3)
+      sprintf (WhereString, "n_tableno=%d or n_tableno=%d or n_tableno=%d",
+	       TableNo[0], TableNo[1], TableNo[2]);
+   else
+      sprintf (WhereString, "n_tableno=%d or n_tableno=%d",
+	       TableNo[0], TableNo[1]);
+
+   exec_sql_open_cursor1 (
+     "select n_name,n_datatype,n_synonym,n_tableno from nfmattributes where %s",
+      WhereString);
+
+
+   if (ProcessOption == PART
+   ||  ProcessOption == COMPONENT)
+     {/* prepare storage of attributes */
+
+      AttributeCount= 0;
+     }
+
+   while (1)
+     {/* loop on attributes */
+
+      exec sql fetch cursor1 into :n_name, :n_datatype, :n_synonym, :n_tableno;
+      if (RisEndOfData ()) break;
+      if (DebugFlag & TOTAL)
+         printf("n_name <%s>\tn_datatype\t<%s>\tn_synonym <%s>\tn_tableno=%d\n",
+		  n_name, n_datatype, n_synonym, n_tableno);
+
+      /* replace the datatype char(...) by char[...] */
+
+      for (i= 0; i< strlen(n_datatype); i= i+1)
+         if      (n_datatype[i] == '(')  n_datatype[i]= '[';
+         else if (n_datatype[i] == ')')  n_datatype[i]= ']';
+      strcpy (DataType, n_datatype);
+
+
+      if (strncmp (n_name, "n_", 2) == 0
+      ||  strncmp (n_name, "p_", 2) == 0)
+        {/* skip some nfm/pdm attributes */
+
+	 /* Added exception for p_macro but any other user defined */
+	 /* attribute that starts with p_ or n_ will be skipped!   */
+
+	 if (strcmp (n_name, "n_itemname")      != 0
+	 &&  strcmp (n_name, "n_itemrev")     != 0
+	 &&  strcmp (n_name, PDU_DESCRIPTION_ATTR)     != 0
+	 &&  strcmp (n_name, "n_creator")      != 0
+	 &&  strcmp (n_name, "n_creationdate") != 0
+	 &&  strcmp (n_name, "p_creationtime") != 0
+	 &&  strcmp (n_name, "p_parttype")     != 0
+	 &&  strcmp (n_name, "p_macro")        != 0
+	 &&  strcmp (n_name, "n_cofilename")   != 0) continue;
+
+	 if (strcmp (n_name, "n_cofilename") == 0)
+            sprintf ( Prefix, "%s0", FAMY);
+         else
+            sprintf ( Prefix, "%s0", UA);
+        }
+      else
+        {/* process remaining attributes */
+
+         strcpy (Prefix,"p_u0");
+         for (i= 0; i< ParameterCount; i= i+1)
+           { /* check if the attribute is a macro parameter */
+
+	     /* convert pdm parameter to lower case */
+
+             strcpy( tmpParam, ParameterName[i] );
+             j = 0;
+             while( tmpParam[j] != '\0' ) tmpParam[j++] = tolower(tmpParam[j]);
+
+             /*if (strcmp (n_name, ParameterName[i]) == 0)*/
+             if (strcmp (n_name, tmpParam) == 0)
+               { /* found macro parameter */
+
+	        if      (strcmp (IoType[i], "DC") == 0) strcpy (Prefix, DC);
+	        else if (strcmp (IoType[i], "DL") == 0) strcpy (Prefix, DL);
+		else if (strcmp (IoType[i], "DO") == 0) strcpy (Prefix, DO);
+		else if (strcmp (IoType[i], "SC") == 0) strcpy (Prefix, SC);
+		else if (strcmp (IoType[i], "UA") == 0) strcpy (Prefix, UA);
+		else if (strcmp (IoType[i], "UD") == 0) strcpy (Prefix, UD);
+	        else
+                  {
+                   printf ("invalid iotype <%s> \n", IoType[i]);
+   		   exit (1);
+ 	          }
+
+	       ParameterIndex= ParameterIndex+ 1;
+	       sprintf (&Prefix[strlen(Prefix)], "%d", ParameterIndex);
+
+               /* take the parameter datatype as "referential" */
+               /* This should have the () filtered out with [] now */
+	       strcpy (DataType, ParameterType[i]);
+
+	       break;
+              }
+	   }
+
+         for (i= 0; i< ParameterCount; i= i+1)
+           { /* MF : seeking UD iotype attributes */
+	      {
+               strcpy( tmpParam, ParameterName[i] );
+               j = 0;
+               while( tmpParam[j] != '\0' ) tmpParam[j++] = tolower(tmpParam[j]);
+
+	       if ( (n_tableno == TableNo[DynTableNo])
+               &&   (strcmp (Prefix, "p_u0") ==0)
+	       &&   (strcmp (n_name, tmpParam) != 0) )
+		 {
+		  strcpy (Prefix, UD);
+	          ParameterIndex= ParameterIndex+ 1;
+	          sprintf (&Prefix[strlen(Prefix)], "%d", ParameterIndex);
+	          break;
+		 }
+	      }
+	   }
+        }
+
+      if (ProcessOption == FAMILY)
+        {/* output the attribute */
+
+         rc= fprintf (p_File, "%s|%s(%s)=%s\n",
+		      Prefix, n_name, DataType, n_synonym);
+         if (rc < 0)
+           {
+            printf ("cannot print to file, rc= %d \n", rc);
+            exit (1);
+           }
+        }
+      else /* PART or COMPONENT */
+        {/* store the attribute to use them in next loop */
+
+	 strcpy (AttributeName[AttributeCount], n_name);
+	 strcpy (AttributeType[AttributeCount], n_datatype);
+	 AttributeCount= AttributeCount+ 1;
+        }
+     }
+   exec_sql_close_cursor1 ();
+   /* exec sql clear cursor cursor1; */
+
+   if (ProcessOption == PART
+   ||  ProcessOption == COMPONENT)
+     {
+      for (i= 0; i< ItemCount; i= i+1)
+        {/* loop on the part of the catalog */
+
+	 /* skip the part which do not have corresponding rows in "component" */
+         if (ItemNo[i] == -1) continue;
+
+         if (DebugFlag & PARTIAL)
+            printf ("generating item no %d \n", ItemNo[i]);
+
+         /* output the character begin of part */
+         rc= fprintf (p_File, "[\n");
+         if (rc < 0)
+           {
+            printf ("cannot print to file, rc= %d \n", rc);
+            exit (1);
+           }
+
+         /* output the catalog name */
+         rc= fprintf (p_File, "n_catalogname=%s\n", CatalogName);
+         if (rc < 0)
+           {
+            printf ("cannot print to file, rc= %d \n", rc);
+            exit (1);
+           }
+
+         for (j= 0; j< AttributeCount; j= j+1)
+	   {/* loop on the attributes */
+
+	    /* query only one value at the time */
+	    if (strcmp (AttributeName[j], "n_cofilename") != 0)
+               sprintf (QueryString, "select %s from %s     where %s",
+  			AttributeName[j], CatalogName, "n_itemno=%d");
+	    else
+               sprintf (QueryString, "select %s from f_%s   where %s",
+  			AttributeName[j], CatalogName, "n_itemnum=%d");
+            exec_sql_open_cursor1 (
+	       QueryString,
+               (char *) &ItemNo[i]);
+
+	    /* read the value depending from its datatype */
+            MyValue[0]= 0;
+	    if (strncmp (AttributeType[j], "char", 4) == 0)
+	      {/* attribute of type char */
+
+               exec sql fetch cursor1 into :my_char;
+	       if (!RisNullValue ())
+	         {
+                  if (DebugFlag & TOTAL)
+                     printf ("my_char <%s> \n", my_char);
+	          sprintf (MyValue, "'%s'", my_char);
+                 }
+              }
+	    else if (strcmp (AttributeType[j], "smallint") == 0)
+	      {/* attribute of type int */
+               exec sql fetch cursor1 into :my_int;
+	       if (!RisNullValue ())
+                 {
+                  if (DebugFlag & TOTAL)
+                     printf ("my_int %d \n", my_int);
+	          sprintf (MyValue, "%d", my_int);
+                 }
+              }
+	    else if (strcmp (AttributeType[j], "double") == 0)
+	      {/* attribute of type double */
+
+               exec sql fetch cursor1 into :my_double;
+	       if (!RisNullValue ())
+                 {
+                  if (DebugFlag & TOTAL)
+                     printf ("my_double %lf \n", my_double);
+	          sprintf (MyValue, "%lf", my_double);
+                 }
+ 	      }
+
+            /** Below else added by AP for TR# 179603862 **/
+
+	    else if (strcmp (AttributeType[j], "timestamp") == 0)
+	      {/* attribute of type timestamp */
+
+               exec sql fetch cursor1 into :my_datetimeVar;
+	       if (!RisNullValue ())
+                 {
+                  sprintf(dtTimeFormat, "mm/dd/yyyy");
+                  RISdatetime_to_ascii(&my_datetimeVar, dtTimeBuffer,
+                                                 dtTimeFormat); 
+                                                 
+                  /* changed the variable being sent to the sprintf */                          
+                  if (DebugFlag & TOTAL)
+                     printf ("my_double %s \n", dtTimeBuffer);
+	          sprintf (MyValue, "%s", dtTimeBuffer);
+                 }
+ 	      }
+ 	    else
+              {
+               printf ("invalid datatype <%s> \n", AttributeType[j]);
+	       exit (1);
+	      }
+
+	    if (!RisNullValue ())
+              {/* output attribute=value for non NULL value */
+
+	       rc= fprintf (p_File, "%s=%s\n", AttributeName[j], MyValue);
+               if (rc < 0)
+                 {
+                  printf ("cannot print to file, rc= %d \n", rc);
+                  exit (1);
+                 }
+	      }
+            exec_sql_close_cursor1 ();
+            /* exec sql clear cursor cursor1; */
+           }
+
+	 if( ProcessOption == PART )
+	 {
+	   /* write 'n_cofilename' at the end of each part */
+           rc= fprintf( p_File, "n_cofilename=\'%s\'\n", n_cofilename );
+
+           if( rc < 0 )
+           {
+             fprintf( stdout, "cannot print to file, rc= %d\n", rc);
+             exit( 1 );
+           }
+	 }
+
+	 /* output the character end of part */
+         rc= fprintf (p_File, "]\n");
+         if (rc < 0)
+           {
+            printf ("cannot print to file, rc= %d \n", rc);
+            exit (1);
+           }
+        }
+     }
+
+   if (ProcessOption == FAMILY)
+     {/* output the character end of family */
+
+      rc= fprintf (p_File, "]\n");
+      if (rc < 0)
+        {
+         printf ("cannot print to file, rc= %d \n", rc);
+         exit (1);
+        }
+     }
+
+   return (1);
+}

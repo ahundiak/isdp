@@ -1,0 +1,97 @@
+#include "VDppl.h"
+#include "VDct1Part.h"
+#include "VDrisc.h"
+
+
+main()
+{
+  IGRstat sts;
+  IGRstat retFlag;
+  IGRint  i;
+  IGRchar updSql[1024];
+  IGRchar buf[128];
+  
+
+  TVDrisInfo ris;
+  
+
+  printf("----Updating Attributes Table ...\n");
+
+  //init
+  vdris$InitInfo (info = &ris);
+  retFlag = 0;
+  
+  
+  //build query
+  sprintf(ris.sql,
+	  "select %s, %s from %s;",
+	  VDCT1_RIS_COLN_ITEMS_ITEM_ID,
+	  VDCT1_RIS_COLN_ITEMS_ITEM_TYPE,
+	  VDCT1_RIS_TBLN_ITEMS);
+  
+  //query it
+  vdris$Query (info = &ris);
+  if (ris.rows < 1) goto wrapup;
+  
+  //Loop through the values
+  for (ris.i = 0; ris.i < ris.rows ; ris.i = ris.i + 1)
+  {
+    ris.j = ris.i * ris.cols;
+
+    
+    // Brute force method to assure item_type doesn't show up twice for a given id
+    *updSql = NULL;
+    sprintf(updSql,
+	    "Delete from %s where %s = '%s' and %s = '%s';",
+	    VDCT1_RIS_TBLN_ATTRS,
+	    VDCT1_RIS_COLN_ATTRS_PART_ID,ris.buf[ris.j],
+	    VDCT1_RIS_COLN_ATTRS_NAME,VDCT1_PART_FLD_NAME_ITEM_TYPE);
+    
+    sts = vdris$Execute(sql = updSql);
+    if (!sts) goto wrapup;
+    
+    //re-init updSql each time
+    *updSql = NULL;
+    
+    //  Do it
+    sprintf(updSql,
+	    "Insert into %s values ('%s','%s','%s',%d,'NULL');",
+	    VDCT1_RIS_TBLN_ATTRS,
+	    ris.buf[ris.j],
+	    VDCT1_PART_FLD_NAME_ITEM_TYPE,
+	    ris.buf[ris.j+1],
+	    VDCT1_PART_FLD_IDX_ITEM_TYPE);
+    
+    sts = vdris$Execute(sql = updSql);
+    if (!sts) goto wrapup;
+ 
+    if (!(ris.i % 10)) {
+      sprintf(buf,"Processing %d of %d",ris.i,ris.rows);
+      UI_status(buf);
+    }
+    
+  }
+  
+
+  //Done
+  retFlag = 1;
+  goto wrapup;
+  
+wrapup:
+  
+  if (retFlag) {
+    printf (    "Update of %d Parts Completed\n",ris.rows);
+    sprintf(buf,"Update of %d Parts Completed",ris.rows);
+    UI_status(buf);
+  }
+  else {
+    printf (    "Update Failed\n");
+    sprintf(buf,"Update Failed");
+    UI_status(buf);
+  }
+  
+
+  vdris$FreeInfo (info = &ris);
+  
+  
+}
