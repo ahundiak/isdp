@@ -1,0 +1,120 @@
+/*************************************************************************/
+/*									 */
+/*	VdsRisTbl.C :	This file contains functions for manipulating	 */
+/*			Tables. ie., Creating, modifying, dropping 	 */
+/*									 */
+/*************************************************************************/
+
+#include	<stdio.h>
+#include	"VDDbDef.h"
+#include	"vdbmacros.h"
+#include	"VDSris_def.h"
+
+int VdsManipTables( vds_table_name, operation, nbcols, columns, coltypes )
+char	*vds_table_name;	/*  I	Table name affected		*/
+int	operation;		/*  I	Operation - Create/Modify/Drop  */
+int	nbcols;			/*  I   Number of Columns.		*/
+char	**columns;		/*  I   Columns.			*/
+char	**coltypes;		/*  I   Columns types			*/
+{
+
+	char	SqlStmt[2048];
+	char	tmpstr[2048];
+	int	i;
+
+	SqlStmt[0] = '\0';
+
+	switch ( operation ) {
+	case VDS_CREATE_TABLE:
+		if (nbcols == 0 ) return 0;
+		tmpstr[0] = '\0';
+		sprintf( SqlStmt," create table %s ( ", vds_table_name ); 
+		for ( i = 0; i < nbcols; i++ )
+		{
+		   sprintf( tmpstr," %s %s \0", columns[i], coltypes[i] );
+		   strcat( SqlStmt, tmpstr );
+		   if( i < (nbcols-1)) strcat (SqlStmt, "," );
+		   else strcat (SqlStmt,")");
+		}
+		VDSexecute_sql_stmt( SqlStmt );
+		break;
+	case VDS_MODIFY_TABLE:
+		if (nbcols == 0 ) return 0;
+		for ( i=0; i<nbcols; i++ )
+		{
+		   sprintf( SqlStmt,"alter table %s add %s %s \0",
+				vds_table_name, columns[i], coltypes[i] ); 
+		   VDSexecute_sql_stmt( SqlStmt );
+		}
+		break;
+	case VDS_DROP_TABLE:
+		sprintf(SqlStmt,"drop table %s ", vds_table_name );
+		VDSexecute_sql_stmt( SqlStmt );
+		break;
+	default:
+		break;
+	}
+	return 1;
+}
+
+
+int VdsInsertRowsinTable( vds_table_name, nbcols, columns, coltypes, colvalues )
+char	*vds_table_name;	/*  I	Table name affected		*/
+int	nbcols;			/*  I   Number of Columns.		*/
+char	**columns;		/*  I   Columns.			*/
+int	*coltypes;		/*  I   Columns types			*/
+char	**colvalues;		/*  I   Columns values			*/
+{
+	int	i,sts;
+	char	column_names[1024];
+	char	column_values[1536];
+	char	select[5];
+
+	column_names[0]='\0';
+	column_values[0]='\0';
+	select[0] = '\0';
+	for ( i = 0; i < nbcols; i++ )
+	{
+		strcat(column_names,columns[i]);
+		if( i < (nbcols-1) ) strcat (column_names,",");
+	}
+
+	for ( i = 0; i < nbcols; i++ )
+	{
+
+		VDBdelTrailBlanks( colvalues[i] );
+
+		if(coltypes[i] == CHAR || coltypes[i] == DATE ) 
+		{  
+		   /* Put it in Quotes */
+		   strcat(column_values,"'"); 
+		   strcat(column_values,colvalues[i]);
+		   strcat(column_values,"'"); 
+		}
+		else
+		   strcat(column_values,colvalues[i]);
+
+		if( i < (nbcols-1) ) strcat (column_values,",");
+	}
+
+	sts = VdsRisInsert(vds_table_name,column_names,column_values,select );
+	return sts;
+}
+
+int  VdsVerifyRisTable( table_name )
+char	*table_name;
+{
+	char	*ristables="ristables";
+	char	where[200];
+	int	count=0;
+
+	sprintf(where,"table_name = '%s' ",table_name );
+
+	vdb$RisGetNumberOfParts ( table_name = ristables,
+				  where = where,
+				  count = &count );
+
+	if ( count > 0 ) return VDS_DBTABLE_FOUND; 
+	else return VDS_DBTABLE_NOT_FOUND;
+
+}

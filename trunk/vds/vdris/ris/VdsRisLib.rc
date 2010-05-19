@@ -1,0 +1,1096 @@
+/* $Id: VdsRisLib.rc,v 1.1.1.1 2001/01/04 21:09:12 cvs Exp $  */
+
+/* --------------------------------------------------------------------
+ * I/VDS
+ *
+ * File:	vds/vdris/ris / VdsRisLib.rc
+ *
+ * Description:
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ *	$Log: VdsRisLib.rc,v $
+ *	Revision 1.1.1.1  2001/01/04 21:09:12  cvs
+ *	Initial import to CVS
+ *	
+# Revision 1.5  1999/05/02  14:14:38  pinnacle
+# ah
+#
+# Revision 1.3  1999/04/30  21:54:36  pinnacle
+# Double to string problem
+#
+# Revision 1.2  1999/04/28  21:48:34  pinnacle
+# ah
+#
+# Revision 1.1  1998/04/29  16:27:20  pinnacle
+# VDS 2.5.1
+#
+# Revision 1.1  1997/05/08  13:20:44  pinnacle
+# New project VDS 250
+#
+# Revision 1.1  1996/07/19  20:33:52  pinnacle
+# Create VDS 241 project
+#
+# Revision 1.11  1996/05/28  23:20:54  pinnacle
+# Replaced: vdris/ris/VdsRisLib.rc for:  by tlbriggs for vds.240
+#
+# Revision 1.10  1996/05/28  18:10:18  pinnacle
+# Replaced: vdris/ris/VdsRisLib.rc for:  by sljenks for vds.240
+#
+# Revision 1.8  1996/05/24  18:59:42  pinnacle
+# Replaced: vdris/ris/VdsRisLib.rc for:  by sljenks for vds.240
+#
+# Revision 1.7  1996/05/16  06:11:18  pinnacle
+# Replaced: vdris/ris/VdsRisLib.rc for:  by msbraju for vds.240
+#
+# Revision 1.6  1996/05/15  23:12:34  pinnacle
+# Replaced: vdris/ris/VdsRisLib.rc for:  by tlbriggs for vds.240
+#
+# Revision 1.5  1996/05/03  19:07:30  pinnacle
+# Replaced: vdris/ris/VdsRisLib.rc for:  by v240_int for vds.240
+#
+# Revision 1.4  1996/04/22  13:42:28  pinnacle
+# Replaced: vdris/ris/VdsRisLib.rc for:  by v240_int for vds.240
+#
+ * Revision 1.3  1996/04/21  22:36:58  pinnacle
+ * Replaced: vdris/ris/VdsRisLib.rc for:  by v240_int for vds.240
+ *
+ * Revision 1.2  1995/11/21  00:58:40  pinnacle
+ * Replaced: ./vdris/ris/VdsRisLib.rc for:  by azuurhou for vds.240
+ *
+ * Revision 1.1  1994/11/14  22:42:32  pinnacle
+ * Create vds.240 from vds.232
+ *
+ * Revision 1.1  1994/11/08  16:07:00  pinnacle
+ * create vds.232
+ *
+ *
+ * History:
+ *	06/24/92  Roger MALMGREN (INTERGRAPH Sweden AB)  creation
+ *
+ *	04/10/96  tlb	Use VDS memory checking
+ *			Add prototypes
+ *	04/22/96  tlb	Unset ris.h constants, Fix log coment
+ *	04/26/96  tlb	Add SQL tracing, formatting
+ *	05/13/96  tlb	Use standard VDS debug file for tracing
+ *	05/16/96  raju  changed sprintf formats for DOUBLE and REAL from
+ *			%f  to %g
+ *
+ *      05/24/96  slj   Added function VDSris_get_count
+ *      05/28/96  slj   Added on error in VDSris_get_count, added num_rows
+ *			parameter.
+ *
+ *      04/28/99  ah    Fixed up problems with doubles, dates and strings
+ *                      Look for sarcastic comments.
+ * -------------------------------------------------------------------*/
+
+/* Redefine ris.h constants in VDSris_def.h  */
+#undef NUMERIC
+#undef DECIMAL
+#undef SMALLINT
+#undef REAL
+#undef DOUBLE
+
+#include	<stdio.h>
+#include	<string.h>
+#include	"VDmem.h"
+#include	"VDSris_siz.h"
+#include	"VDSris_def.h"
+#include 	"VDdbgFile.h"
+#include 	"v_risproto.h"
+#include        "VDrisFunc.h"
+
+#define		MEM_START	50
+
+/*  Remove because the increment is now exponential : 19 July 93 .
+    Mallik, Jean.
+#define		MEM_STEP	10
+*/
+
+static int Take_trailing_blanks_off();
+static int traceFlag;
+
+/******************************************************************************/
+/*
+ *
+ *	RIS Development Platform basic functions :
+ *
+ *        VDSopen_ris_schema            Open RIS schema
+ *        VDSclose_ris_schema           Close RIS schema
+ *        VDSsql_query                  Select from table
+ *        VDSexecute_sql_stmt           Execute sql statement
+ *
+ *	These functions return SUCCESS or FAILURE if an error is detected.
+ *	SUCCESS and FAILURE are defined in the include file <VDSris_def.h>.
+*/
+/******************************************************************************/
+
+/******************************************************************************/
+int VDSopen_ris_schema ( schema_name)
+	char		*schema_name;	/* <schema_name>[.<password>]  (I) */
+{
+    exec sql begin declare section;
+        char    *def_schema_stmt; /* dynamic default schema statement */
+        char    *err_ptr;               /* pointer to RIS errormessage */
+    exec sql end declare section;
+
+    def_schema_stmt = NULL;
+
+   /***************************************************************************
+    *  define exeption handlers
+    ***************************************************************************/
+
+    exec sql whenever sqlerror goto :error;
+
+   /***************************************************************************
+    *  set the default schema
+    ***************************************************************************/
+   def_schema_stmt = _MALLOC (((schema_name ? strlen(schema_name) : 0)+25),
+								char);
+   if (def_schema_stmt == NULL)
+     {
+      printf ("VDSopen_ris_schema: Cannot allocate memory for schema buffer\n");
+      return (FAILURE);
+     }
+   strcpy(def_schema_stmt,"default schema ");
+   strcat(def_schema_stmt,schema_name);
+
+#   ifndef VD_RUNTIME
+    VDSsqlDebug (def_schema_stmt);
+#   endif
+
+   /***************************************************************************
+    *  execute default schema statement
+    ***************************************************************************/
+    exec sql execute immediate :def_schema_stmt;
+    _FREE(def_schema_stmt);
+    return(SUCCESS);
+
+error:
+    _FREE(def_schema_stmt);
+    exec sql whenever sqlerror continue;
+    exec sql report error into :err_ptr;
+    puts(err_ptr);
+    return(FAILURE);
+}
+/******************************************************************************/
+
+/******************************************************************************/
+int VDSclose_ris_schema ( schema_name)
+	char		*schema_name;	/* <schema_name>[.<password>]  (I) */
+{
+    exec sql begin declare section;
+        char    *close_schema_stmt; /* dynamic close schema statement */
+        char    *err_ptr;               /* pointer to RIS errormessage */
+    exec sql end declare section;
+
+    close_schema_stmt = NULL;
+
+    /***************************************************************************
+     *  define exeption handlers
+     *************************************************************************/
+
+    exec sql whenever sqlerror goto :error;
+
+    /***************************************************************************
+     *  set the close schema statement
+     *************************************************************************/
+
+    close_schema_stmt = _MALLOC (((schema_name ? strlen(schema_name) : 0)+25),
+						char);
+    if (close_schema_stmt == NULL) {
+      printf("VDSclose_ris_schema: Cannot allocate memory for schema buffer\n");
+      return (FAILURE);
+     }
+    strcpy(close_schema_stmt,"close schema ");
+    strcat(close_schema_stmt,schema_name);
+
+#   ifndef VD_RUNTIME
+    VDSsqlDebug (close_schema_stmt);
+#   endif
+
+    /***************************************************************************
+     *  execute close schema statement
+     **************************************************************************/
+    exec sql execute immediate :close_schema_stmt;
+    _FREE(close_schema_stmt);
+    return(SUCCESS);
+
+error:
+    _FREE(close_schema_stmt);
+    exec sql whenever sqlerror continue;
+    exec sql report error into :err_ptr;
+    puts(err_ptr);
+    return(FAILURE);
+}
+
+/******************************************************************************/
+
+/******************************************************************************/
+int VDSsql_query ( select_stmt, ncols, nrows, result )
+
+exec sql begin declare section;
+char		*select_stmt;	/* Select statement                       (I) */
+exec sql end declare section;
+int		*ncols;		/* Number of columns in select statement  (O) */
+int		*nrows;		/* Number of rows found                   (O) */
+char		**result[];	/* result buffer	                  (O) */
+
+/* This function allocates memory for result buffer which should be freed
+ * by the caller
+ *
+ * Format of select_stmt:
+ * 	"select <attribute_name>[,<attribute_name>,...] from <table_name>
+ *	[where <where_clause>] [order by <order_clause>] 
+ *	[group by <group_clause>]
+ */
+{
+    exec sql begin declare section;
+        int     i,j;
+        sqlda   in_desc;
+        sqlda   out_desc;
+        char    *err_ptr;               /* pointer to RIS errormessage */
+	char     statement[256];	/* SET MODE statement */
+    exec sql end declare section;
+
+    int   next_alloc;
+    int   status;
+    int   SIZE ;
+    int   nb_realloc = 1;  		/* nb times we realloc (result *) */
+    int   row;
+
+#if ah_mod_042899
+    statement = NULL;
+#endif
+
+    /* This is for the double/real fixups */
+    char buf[512];
+    char *p;
+    int  *pi; /* For date time conversion */
+
+    *ncols = 0;
+    *nrows = 0;
+    *result = NULL;
+
+    status = SUCCESS;
+
+    traceFlag = 1;
+    traceFlag = VDdbgGetTraceFlag(99);
+
+    if (traceFlag) {
+      printf("================== RIS QRY =======================\n");
+      printf("%s\n",select_stmt);
+    }
+
+#   ifndef VD_RUNTIME
+    VDSsqlDebug (select_stmt);
+#   endif
+
+    /***************************************************************************
+     *  define exeption handlers
+     **************************************************************************/
+
+    exec sql whenever sqlerror goto :error;
+    exec sql whenever not found goto :not_found;
+
+#if ah_mod_042899
+    statement = _MALLOC( 512, char );
+    if( statement == NULL )
+    {
+      printf ("VDSsql_query : Cannot allocate memory for set mode buffer\n" );
+      return( FAILURE );
+    }
+#endif
+
+    /* set mode blank strip to off */
+    strcpy( statement, "set mode blank strip off" );
+    exec sql execute immediate :statement;
+
+    /***************************************************************************
+     *  prepare dynamic SQL statement
+     **************************************************************************/
+
+    exec sql prepare stmt1 from :select_stmt;
+
+    in_desc.sqld = 0;
+    in_desc.sqln = 0;
+    in_desc.sqlvar = 0;
+
+    /* see if there are any input parameters */
+    exec sql describe input stmt1 using descriptor in_desc;
+
+    if (in_desc.sqld)
+    {
+      printf ("Error VDSsql_query: ");
+      printf ("Sql statement should not contain input parameters (?,?,..)\n");
+      printf ("Select statement:%s\n",select_stmt);
+      goto error;
+    }
+
+    /***************************************************************************
+     *  get the count of output columns
+     **************************************************************************/
+
+    out_desc.sqld = 0;
+    out_desc.sqln = 0;
+    out_desc.sqlvar = 0;
+
+    exec sql describe output stmt1 using descriptor out_desc;
+
+    *ncols = out_desc.sqld;
+
+    if (traceFlag) {
+      printf("RIS Query returned, %d cols, %d sqln\n",
+             out_desc.sqld,
+             out_desc.sqln);
+      fflush(stdout);
+    }
+
+    /***************************************************************************
+     *  open the SELECT statement
+     **************************************************************************/
+
+    exec sql declare curs1 cursor for stmt1;
+    exec sql open curs1 using descriptor in_desc;
+
+    /***************************************************************************
+     *  allocate a sqlvar struct for each column and call describe
+     *  again to get information about each result column.
+     *************************************************************************/
+
+    out_desc.sqlvar = NULL;
+    out_desc.sqlvar = _CALLOC(out_desc.sqld, sqlvar);
+    if (out_desc.sqlvar == NULL) {
+       printf ("VDSsql_query: Cannot allocate memory for internal structure\n");
+       goto error;
+    }
+
+    out_desc.sqln = out_desc.sqld;
+
+    exec sql describe output stmt1 using descriptor out_desc;
+
+    /***************************************************************************
+     * allocate buffers for each result column
+     **************************************************************************/
+    for (i = 0; i < out_desc.sqld; ++i)
+    {
+      out_desc.sqlvar[i].sqldata = NULL;
+      out_desc.sqlvar[i].sqldata = _CALLOC(out_desc.sqlvar[i].sqllen, char);
+      if (out_desc.sqlvar[i].sqldata == NULL)
+      {
+        printf("VDSsql_query: Cannot allocate memory for internal structure\n");
+        status = FAILURE;
+        goto wrapup;
+      }
+
+      out_desc.sqlvar[i].sqlind = NULL;
+      out_desc.sqlvar[i].sqlind = _CALLOC(1, long);
+      if (out_desc.sqlvar[i].sqlind == NULL)
+      {
+        printf("VDSsql_query: Cannot allocate memory for internal structure\n");
+        status = FAILURE;
+        goto wrapup;
+      }
+
+      out_desc.sqlvar[i].sqlnull = 1;
+    }
+
+    /***************************************************************************
+     * allocate a result buffer
+     *************************************************************************/
+
+    next_alloc = MEM_START * (*ncols);
+    *result = NULL;
+    *result = _MALLOC ( next_alloc,  char* );
+    if (*result == NULL)
+    {
+      printf ("VDSsql_query : Cannot allocate memory for output buffer\n");
+      status = FAILURE;
+      goto wrapup;
+    }
+
+    j = 0;
+    row = 0;
+    for (;;)
+    {
+      /* fetch a row of output */
+      exec sql fetch curs1 using descriptor out_desc;
+
+      if (traceFlag) {
+        row++;
+        printf("RIS ROW %2d -----\n",row);
+      }
+
+      for (i = 0; i < out_desc.sqld; ++i) {
+        if (j >= next_alloc ) {
+          /* 19 July 93 : Alloc exponentially */
+	  nb_realloc *= 2;
+          next_alloc = next_alloc + (nb_realloc * MEM_START * (*ncols));
+          *result = _REALLOC ( *result, next_alloc,  char* );
+          if (*result == NULL) {
+            printf ("VDSsql_query: ");
+	    printf ("Cannot re-allocate memory for output buffer\n");
+            status = FAILURE;
+            goto wrapup;
+          }
+
+        }
+
+	/*|Malloc buffer's string */
+
+        if (traceFlag) {
+          memcpy(buf,
+		 out_desc.sqlvar[i].sqlname.sqlnamec,
+                 out_desc.sqlvar[i].sqlname.sqlnamel);
+          *(buf +out_desc.sqlvar[i].sqlname.sqlnamel) = 0;
+
+          printf("RIS ATR %2d %-15s %2d %3d ",
+                  i+1,
+                  buf,
+                  out_desc.sqlvar[i].sqltype,
+                  out_desc.sqlvar[i].sqllen);
+          fflush(stdout);
+        }
+
+	if( out_desc.sqlvar[i].sqltype == RIS_CHARACTER ) {
+	  SIZE = out_desc.sqlvar[i].sqllen + 1 ;
+	}
+	else
+	{
+	  SIZE = 128 ;
+	}
+
+	(*result)[j] = _MALLOC( SIZE, char ) ;
+        if ((*result)[j] == NULL)
+        {
+          printf ("VDSsql_query : Cannot allocate memory for result\n");
+          status = FAILURE;
+          goto wrapup;
+        }
+
+        /* Determine data type */
+
+        switch(out_desc.sqlvar[i].sqltype)
+        {
+
+/* ------------------------------------------
+ * 28 April 1999 - Art Hundiak
+ * Datetime does not come back as a string!!!
+ * 
+ * It actually returns an array of six integers which form 
+ * a date (1999 04 28 12 00 01)
+ *
+ * The old code just copied the raw numbers and then added a NULL
+ * It's possible that if the calling routine was expecting a date time then
+ * it could convert this data correctly.  But the rest of the routine
+ * converts everything to a string so I am guessing that whoever wrote this code
+ * never bothered to test it.
+ *
+ * Go ahead and convert to a string and see what breaks. 
+ * Match the format that xrisgui displays
+ */
+	  case RIS_DATETIME:
+
+          VdsRisSqlDateTimeToStr(out_desc.sqlvar[i].sqldata,out_desc.sqlvar[i].sqllen,buf);
+	  strcpy((*result)[j],buf);	
+          
+	  if (traceFlag) {
+            printf("DTG '%s'\n",(*result)[j]);
+          }
+          break;
+
+          case RIS_CHARACTER:
+
+/* #if ah_mod_990428 */
+#if 0
+	    Take_trailing_blanks_off( out_desc.sqlvar[i].sqldata,
+						out_desc.sqlvar[i].sqllen);
+            strncpy(	(*result)[j],
+          		out_desc.sqlvar[i].sqldata,
+          		out_desc.sqlvar[i].sqllen ) ;
+            (*result)[j][out_desc.sqlvar[i].sqllen] = 0 ;
+
+ 	    /* strcpy( (*result)[j], out_desc.sqlvar[i].sqldata ); */
+
+            if (traceFlag) {
+              printf("STR '%s'\n",(*result)[j]);
+            }
+#endif
+/* ---------------------------------------------
+ * 28 April 1999 - Art Hundiak
+ * The above code is stupid.  The take trailing blanks off cannot
+ * update the length but the code assumes it does.
+ * let's do it right without making any assumption that the sql data is null
+ * terminated
+ * If I screw it up, I got no one to blame by myself.
+ */
+#if 1
+	    VdsRisSqlStrToStr(out_desc.sqlvar[i].sqldata,out_desc.sqlvar[i].sqllen,buf);
+	    strcpy((*result)[j],buf);
+
+            if (traceFlag) {
+              printf("STR '%s'\n",buf);
+            }
+#endif
+
+            break;
+
+          case RIS_INTEGER:
+	    VdsRisSqlIntToStr(*(int*)out_desc.sqlvar[i].sqldata,(*result)[j]);
+
+          /*sprintf((*result)[j],"%d", *(int*)out_desc.sqlvar[i].sqldata); */
+
+            if (traceFlag) {
+              printf("INT '%s'\n",(*result)[j]);
+            }
+            break;
+
+          case SMALLINT:
+	    VdsRisSqlIntToStr(*(short*)out_desc.sqlvar[i].sqldata,(*result)[j]);
+
+          /*sprintf((*result)[j],"%hd", *(short*)out_desc.sqlvar[i].sqldata); */
+
+            if (traceFlag) {
+              printf("SNT '%s'\n",(*result)[j]);
+            }
+            break;
+
+	  case REAL:
+	    VdsRisSqlDblToStr(*(float*)out_desc.sqlvar[i].sqldata,(*result)[j]);
+
+          /*sprintf(buf,"%f", *(float*)out_desc.sqlvar[i].sqldata); */
+
+            if (traceFlag) {
+              printf("REA %f %g '%s'\n",
+	             *(float*)out_desc.sqlvar[i].sqldata,
+	             *(float*)out_desc.sqlvar[i].sqldata,
+	            (*result)[j]);
+            }
+            break;
+          
+          case DOUBLE:
+	    VdsRisSqlDblToStr(*(double*)out_desc.sqlvar[i].sqldata,(*result)[j]);
+
+          /*sprintf(buf,"%f", *(double*)out_desc.sqlvar[i].sqldata); */
+
+            if (traceFlag) {
+              printf("DBL %f %g '%s'\n",
+                     *(double*)out_desc.sqlvar[i].sqldata,
+                     *(double*)out_desc.sqlvar[i].sqldata,
+                    (*result)[j]);
+            }
+            break;
+
+/* --------------------------------------------------------------------------
+ * 28 April 1999 - Art Hundiak
+ * Problem is that a number like 1000.125 comes out as 1000.12 when using %g
+ * Unknown why this was changed back in 1996.  Perhaps an attempt to
+ * strip off trailing zeros
+ * go back to %f and manually drop zeros
+ * A whole number (10.0) is returned as 10
+ */
+#if 0
+strip_it:
+            for(p = buf + strlen(buf) - 1; (p >= buf) && (*p == '0'); p--);
+            if (p < buf) *buf = 0;
+	    else {
+	      if (*p == '.') *p = 0;
+              else *(p+1) = 0;
+            }
+            strcpy((*result)[j],buf);
+            if (traceFlag) {
+              printf("DBL '%s'\n",(*result)[j]);
+            }
+            break;
+#endif
+
+          default:
+            printf("VDSsql_query error: unknown out_type %s\n",
+                                                   out_desc.sqlvar[i].sqltype);
+            status = FAILURE;
+            goto wrapup;
+        }
+
+        j = j + 1;
+      }
+
+      *nrows = *nrows + 1;
+    }
+
+not_found:
+    exec sql whenever not found continue;
+
+wrapup:
+    /* Free memory */
+    for (i = 0; i < out_desc.sqld; ++i)
+    {
+      _FREE(out_desc.sqlvar[i].sqldata);
+      _FREE(out_desc.sqlvar[i].sqlind);
+    }
+    _FREE(out_desc.sqlvar);
+
+    /* set mode blank strip back to on */
+    strcpy( statement, "set mode blank strip on" );
+    exec sql execute immediate :statement;
+
+#if ah_mod_042899
+    _FREE( statement );
+#endif
+
+    return(status);
+
+error:
+    exec sql whenever sqlerror continue;
+    exec sql report error into :err_ptr;
+    puts(err_ptr);
+    printf("Select statement:%s\n",select_stmt);
+
+    /* set mode blank strip back to on */
+    strcpy( statement, "set mode blank strip on" );
+    exec sql execute immediate :statement;
+
+#if ah_mod_042899
+    _FREE( statement );
+#endif
+
+    return(FAILURE);
+}
+/******************************************************************************/
+
+/******************************************************************************/
+int VDSexecute_sql_stmt ( statement )
+    exec sql begin declare section;
+  	char		*statement;	/* SQL statement to be executed  (I) */
+    exec sql end declare section;
+{
+    exec sql begin declare section;
+        char    *err_ptr;               /* pointer to RIS errormessage */
+    exec sql end declare section;
+
+#   ifndef VD_RUNTIME
+    VDSsqlDebug (statement);
+#   endif
+
+    /***************************************************************************
+    *  define exeption handlers
+    ***************************************************************************/
+
+    exec sql whenever sqlerror goto :error;
+
+   /***************************************************************************
+    *  execute sql statement
+    ***************************************************************************/
+    exec sql execute immediate :statement;
+    return(SUCCESS);
+
+error:
+    exec sql whenever sqlerror continue;
+    exec sql report error into :err_ptr;
+    puts(err_ptr);
+    return(FAILURE);
+}
+/******************************************************************************/
+
+/******************************************************************************/
+/* This function allocates memory for result buffer, columns & coltype
+ * which should be freed by the caller
+ *
+ * Format of select_stmt:
+ * 	"select <attribute_name>[,<attribute_name>,...] from <table_name>
+ *	[where <where_clause>] [order by <order_clause>]
+ * 	[group by <group_clause>]
+ */
+
+int VDSsql_query1 ( select_stmt1, ncols, nrows, result, columns, coltype )
+
+    exec sql begin declare section;
+	char		*select_stmt1;	/* Select statement             (I) */
+    exec sql end declare section;
+	int		*ncols;		/* Number of columns in select
+							     statement  (O) */
+	int		*nrows;		/* Number of rows found         (O) */
+	char		**result[];	/* result buffer	        (O) */
+	char		**columns[];
+	int		**coltype;
+{
+    exec sql begin declare section;
+        int     i,j;
+        sqlda   in_desc;
+        sqlda   out_desc;
+        char    *err_ptr;               /* pointer to RIS errormessage */
+	char    *statement;             /* SET MODE statement */
+    exec sql end declare section;
+
+    int   next_alloc;
+    int   status;
+    int   SIZE, SIZE1 ;
+    int   first_row;
+    int   nb_realloc = 1;  		/* nb times we realloc (result *) */
+
+    statement = NULL;
+
+    *ncols = 0;
+    *nrows = 0;
+    *result = NULL;
+    *columns = NULL;
+    *coltype = NULL;
+    first_row = 1;
+
+    status = SUCCESS;
+
+#   ifndef VD_RUNTIME
+    VDSsqlDebug (select_stmt1);
+#   endif
+
+    /***************************************************************************
+     *  define exeption handlers
+     *************************************************************************/
+
+    exec sql whenever sqlerror goto :error;
+    exec sql whenever not found goto :not_found;
+
+    /* set mode blank strip to off */
+    statement = _MALLOC( 512, char );
+    if( statement == NULL ) {
+      printf ("VDSsql_query1 : Cannot allocate memory for set mode buffer\n" );
+      return( FAILURE );
+    }
+
+    strcpy( statement, "set mode blank strip off" );
+    exec sql execute immediate :statement;
+
+    /***************************************************************************
+     *  prepare dynamic SQL statement
+     *************************************************************************/
+
+    exec sql prepare stmt_1 from :select_stmt1;
+
+    in_desc.sqld = 0;
+    in_desc.sqln = 0;
+    in_desc.sqlvar = 0;
+
+    /* see if there are any input parameters */
+    exec sql describe input stmt_1 using descriptor in_desc;
+
+    if (in_desc.sqld) {
+      printf ("Error VDSsql_query: ");
+      printf ("Sql statement should not contain input parameters (?,?,..)\n");
+      printf ("Select statement:%s\n",select_stmt1);
+      goto error;
+    }
+
+    /***************************************************************************
+     *  get the count of output columns
+     *************************************************************************/
+
+    out_desc.sqld = 0;
+    out_desc.sqln = 0;
+    out_desc.sqlvar = 0;
+
+    exec sql describe output stmt_1 using descriptor out_desc;
+
+    *ncols = out_desc.sqld;
+
+    /***************************************************************************
+     *  open the SELECT statement
+     *************************************************************************/
+
+    exec sql declare curs_1 cursor for stmt_1;
+    exec sql open curs_1 using descriptor in_desc;
+
+   /***************************************************************************
+    *  allocate a sqlvar struct for each column and call describe
+    *  again to get information about each result column.
+    ***************************************************************************/
+
+    out_desc.sqlvar = NULL;
+    out_desc.sqlvar = _CALLOC(out_desc.sqld, sqlvar);
+    if (out_desc.sqlvar == NULL) {
+       printf ("VDSsql_query: Cannot allocate memory for internal structure\n");
+       goto error;
+    }
+
+    out_desc.sqln = out_desc.sqld;
+
+    exec sql describe output stmt_1 using descriptor out_desc;
+
+    /***************************************************************************
+     * allocate buffers for each result column
+     *************************************************************************/
+    for (i = 0; i < out_desc.sqld; ++i) {
+      out_desc.sqlvar[i].sqldata = NULL;
+      out_desc.sqlvar[i].sqldata = _CALLOC(out_desc.sqlvar[i].sqllen, char);
+      if (out_desc.sqlvar[i].sqldata == NULL) {
+        printf("VDSsql_query: Cannot allocate memory for internal structure\n");
+        status = FAILURE;
+        goto wrapup;
+      }
+
+      out_desc.sqlvar[i].sqlind = NULL;
+      out_desc.sqlvar[i].sqlind = _CALLOC(1, long);
+      if (out_desc.sqlvar[i].sqlind == NULL) {
+        printf("VDSsql_query: Cannot allocate memory for internal structure\n");
+        status = FAILURE;
+        goto wrapup;
+      }
+
+      out_desc.sqlvar[i].sqlnull = 1;
+    }
+
+    /***************************************************************************
+     * allocate a result buffer
+     *************************************************************************/
+
+    next_alloc = MEM_START * (*ncols);
+    *result = NULL;
+    *result = _MALLOC ( next_alloc,  char* );
+    if (*result == NULL)
+    {
+      printf ("VDSsql_query : Cannot allocate memory for output buffer\n");
+      status = FAILURE;
+      goto wrapup;
+    }
+    *columns = _MALLOC ( next_alloc, char* );
+    if (*columns == NULL)
+    {
+      printf ("VDSsql_query : Cannot allocate memory for output buffer\n");
+      status = FAILURE;
+      goto wrapup;
+    }
+    *coltype = _MALLOC (next_alloc,  int );
+
+    j = 0;
+    for (;;)
+    {
+      /* fetch a row of output */
+      exec sql fetch curs_1 using descriptor out_desc;
+
+      for (i = 0; i < out_desc.sqld; ++i)
+      {
+        if (j >= next_alloc )
+        {
+          /* 19 July 93 : Alloc exponentially */
+	  nb_realloc *= 2;
+          next_alloc = next_alloc + (nb_realloc * MEM_START * (*ncols));
+          *result = _REALLOC ( *result, next_alloc, char* );
+          if (*result == NULL) {
+            printf ("VDSsql_query: ");
+	    printf ("Cannot re-allocate memory for output buffer\n");
+            status = FAILURE;
+            goto wrapup;
+          }
+	 if( first_row ) {
+          *columns = _REALLOC ( *result, next_alloc,  char* );
+          if (*columns == NULL) {
+            printf ("VDSsql_query: ");
+	    printf ("Cannot re-allocate memory for output buffer\n");
+            status = FAILURE;
+            goto wrapup;
+          }
+	  *coltype = _MALLOC (next_alloc,  int);
+	 }
+
+        }
+
+	/*|Malloc buffer's string */
+
+	if( out_desc.sqlvar[i].sqltype == RIS_CHARACTER )
+	{
+	  SIZE = out_desc.sqlvar[i].sqllen + 1 ;
+	}
+	else
+	{
+	  SIZE = 128 ;
+	}
+
+	(*result)[j] = _MALLOC( SIZE, char ) ;
+        if ((*result)[j] == NULL)
+        {
+          printf ("VDSsql_query : Cannot allocate memory for result\n");
+          status = FAILURE;
+          goto wrapup;
+        }
+
+        if ( first_row ) {
+	     SIZE1 = out_desc.sqlvar[i].sqlname.sqlnamel + 1;
+	     (*columns)[j] = _MALLOC( SIZE1, char ) ;
+             if ((*columns)[j] == NULL) {
+           	printf ("VDSsql_query : Cannot allocate memory for result\n");
+           	status = FAILURE;
+           	goto wrapup;
+         	}
+
+	 	strncpy( (*columns)[j], out_desc.sqlvar[i].sqlname.sqlnamec,
+			out_desc.sqlvar[i].sqlname.sqlnamel );
+         	(*columns)[j][out_desc.sqlvar[i].sqlname.sqlnamel] = 0 ;
+	 	(*coltype)[j] = (int)(out_desc.sqlvar[i].sqltype);
+
+		/* MALLIK
+		printf("column [%d] = <%s> \n", j, (*columns)[j] );
+		printf("coltype [%d] = <%d> \n", j, (*coltype)[j] );
+		*/
+        	}
+
+        /* Determine data type */
+
+        switch(out_desc.sqlvar[i].sqltype)
+        {
+          case RIS_CHARACTER:
+	  case RIS_DATETIME:
+	    Take_trailing_blanks_off( out_desc.sqlvar[i].sqldata,
+						out_desc.sqlvar[i].sqllen);
+            strncpy(	(*result)[j],
+          		out_desc.sqlvar[i].sqldata,
+          		out_desc.sqlvar[i].sqllen ) ;
+            (*result)[j][out_desc.sqlvar[i].sqllen] = 0 ;
+
+/* 	    strcpy( (*result)[j], out_desc.sqlvar[i].sqldata ); */
+            break;
+
+          case RIS_INTEGER:
+            sprintf((*result)[j],"%d", *(int*)out_desc.sqlvar[i].sqldata);
+            break;
+
+          case SMALLINT:
+            sprintf((*result)[j],"%hd", *(short*)out_desc.sqlvar[i].sqldata);
+            break;
+
+          case DOUBLE:
+            sprintf((*result)[j],"%lf", *(double*)out_desc.sqlvar[i].sqldata);
+            break;
+
+          case REAL:
+            sprintf((*result)[j],"%f", *(float*)out_desc.sqlvar[i].sqldata);
+            break;
+
+          default:
+            printf("VDSsql_query error: unknown out_type %s\n",
+                                                   out_desc.sqlvar[i].sqltype);
+            status = FAILURE;
+            goto wrapup;
+        }
+
+        j = j + 1;
+      }
+
+      first_row = 0;
+      *nrows = *nrows + 1;
+    }
+
+not_found:
+    exec sql whenever not found continue;
+
+wrapup:
+    /* Free memory */
+    for (i = 0; i < out_desc.sqld; ++i)
+    {
+      _FREE(out_desc.sqlvar[i].sqldata);
+      _FREE(out_desc.sqlvar[i].sqlind);
+    }
+    _FREE(out_desc.sqlvar);
+
+    /* set mode blank strip back to on */
+    strcpy( statement, "set mode blank strip on" );
+    exec sql execute immediate :statement;
+
+    _FREE( statement );
+
+    return(status);
+
+error:
+    exec sql whenever sqlerror continue;
+    exec sql report error into :err_ptr;
+    puts(err_ptr);
+    printf("Select statement:%s\n",select_stmt1);
+
+    /* set mode blank strip back to on */
+    strcpy( statement, "set mode blank strip on" );
+    exec sql execute immediate :statement;
+
+    _FREE( statement );
+
+    return(FAILURE);
+}
+
+
+/**************************************************************************
+ * This function takes the table and where clause passed into and gets    *
+ * the number of rows that match.                                         *
+ *                                                                        *
+ **************************************************************************/
+int VDSris_get_count (
+	int	*num_rows,	/* -O  The number of rows in the table */
+	char	*table,		/* -I  The table to select from */
+	char	*where )	/* -I  Where clause to use */
+{
+   exec sql begin declare section;
+     char *StmtString;
+     char *err_ptr;
+     int   count_sts;
+   exec sql end declare section;
+
+   int		len, sts;
+
+   /* Initialize */
+   sts = FALSE;
+   *num_rows = 0;
+   count_sts= 0;
+   StmtString = NULL;
+   err_ptr = NULL;
+
+   /* Setup error handling */
+   exec sql whenever sqlerror goto :error;
+
+   /* If a table is not specified, skip the function and return an error */
+   if (table == NULL) goto wrapup;
+
+   len = 2 + (table ? strlen(table) : 0) + (where ? strlen(where) : 0 ) +
+   			strlen("select count(*) from where ");
+
+   StmtString = _MALLOC ( len, char );
+   _CheckAlloc(StmtString, "query buffer", sts, FALSE, wrapup);
+
+   if (!where || !*where)
+    	sprintf (StmtString, "select count(*) from %s", table);
+   else
+    	sprintf (StmtString, "select count(*) from %s where %s", table, where);
+
+   exec sql prepare statement1 from :StmtString;
+   exec sql declare cursor1 cursor for statement1;
+   exec sql open cursor1;
+   while (1) {
+	exec sql fetch cursor1 into :count_sts;
+        if (SQLCODE == END_OF_DATA ) break;
+        }
+   exec sql close cursor1;
+   sts = SUCCESS;
+  *num_rows = count_sts;
+   goto wrapup;
+
+error:
+  exec sql whenever sqlerror continue; 
+  exec sql report error into :err_ptr;
+  puts(err_ptr);
+  exec sql close cursor1;
+
+wrapup:
+  _FREE(StmtString);
+  return(sts);
+}
+
+/**************************************************************************/
+static int Take_trailing_blanks_off( sqlstring, sqllen)
+char *sqlstring;
+int  sqllen;
+{
+        int  i;
+
+        i=sqllen -1;
+        while( sqlstring[i] == ' ' && i != 0 )
+           sqlstring[i--] = 0;
+	if( i == 0 && sqlstring[i] == ' ' ) sqlstring[i] = 0;
+        return 0;
+}
+
+

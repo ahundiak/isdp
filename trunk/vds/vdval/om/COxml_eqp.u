@@ -1,0 +1,160 @@
+/* $Id: COxml_eqp.u,v 1.2 2001/08/14 19:15:45 ahundiak Exp $  */
+/***************************************************************************
+ * I/VDS
+ *
+ * File:        vdval/om/COxml_eqp.u
+ *
+ * Description: Command for placing xml macro on equipment
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ *      $Log: COxml_eqp.u,v $
+ *      Revision 1.2  2001/08/14 19:15:45  ahundiak
+ *      ah
+ *
+ *      Revision 1.1  2001/08/02 15:33:38  ahundiak
+ *      ah
+ *
+ *
+ *
+ * History:
+ * MM/DD/YY  AUTHOR  	DESCRIPTION
+ * 07/31/01  ah         Creation.
+ ***************************************************************************/
+
+#include "VDppl.h"
+#include "VDobj.h"
+#include "VDefp.h"
+#include "coparamac.h"
+
+extern ASstart_var_fence();
+extern ASend_fence();
+
+
+#define thePrompt  "Select Equipment"
+#define theCommand "Place Equipment Xml Info"
+#define MACRO_NAME "xml_eqp"
+
+IGRint traceFlag;
+
+extern VDbufPlaceMacro2();
+extern VDvalPostPlaceNozzles();
+
+/* -------------------------------------
+ * Process the selected piece
+ */
+int process(eqpOE)
+TGRobj_env *eqpOE;
+{
+  IGRint sts;
+  TGRobj_env  macOE;
+
+  // Arg check
+  if (eqpOE->obj_id.objid == NULL_OBJID) goto wrapup;
+
+  // Only place once in active file
+  vdefp$GetAttachedMacro(macName = MACRO_NAME,
+			 macOS   = 2,
+			 tplOEs  = eqpOE,
+			 macOE   = &macOE);
+  //if (macOE.obj_id.objid != NULL_OBJID) goto wrapup;
+
+  VDbufPlaceMacro2("VDxml",MACRO_NAME,NULL,NULL,NULL,1,eqpOE,&macOE);
+  
+  if (macOE.obj_id.objid == NULL_OBJID) {
+    printf("Problem placing %s macro for\n",MACRO_NAME);
+    vdobj$Print(objOE = eqpOE);
+    goto wrapup;
+  }
+  if (traceFlag) vdobj$Print(objOE = &macOE);
+
+  // Nozzles
+  VDvalPostPlaceNozzles(&macOE);
+  
+
+wrapup:
+  return 1;
+}
+
+/* --------------------------------------
+ * The main routine
+ */
+int main()
+{
+  int 			sts,msg,response;
+  TGRobj_env  		objOE;
+  TGRobj_env 		*locOEs;
+  IGRint      		locNum;
+  IGRint      		i;
+  OM_S_CLASSLIST        eligibleClasses;
+  OMuword               classids[2];
+  
+  traceFlag = 0;
+
+  // Fiil up filter
+  i = 0;
+  sts = om$get_classid( classname = "VDequipment",
+		        p_classid = &classids[i] );
+  if (sts & 1) i = i + 1;
+  
+  if (i != 1) {
+    UI_status("Need to be running I/VDS");
+    return 0;
+  }
+  eligibleClasses.w_count   = i;
+  eligibleClasses.w_flags   = OM_CLST_subclass;
+  eligibleClasses.p_classes = classids ;
+    
+  while(1) {
+
+    objOE.obj_id.objid = NULL_OBJID;
+    
+    response = 0;
+
+    UI_message(theCommand);
+
+    sts = ci$locate(prompt  = thePrompt,
+		    eligible_classes= &eligibleClasses,
+		    owner_action = LC_RIGID_OWNER | 
+                                   LC_RIGID_COMP  |
+                                   LC_FLEX_COMP   | 
+                                   LC_FLEX_OWNER  |
+                                   LC_REF_OBJECTS,
+
+                    stackable    = 1,
+		    response     = &response,
+		    md_env       = &objOE.mod_env,
+		    obj          = &objOE.obj_id.objid,
+		    osnum	 = &objOE.obj_id.osnum);
+
+    if (!(sts & 1)) response = 0;
+
+    switch(response) {
+
+    case EX_OBJID:   // Object Set
+
+      /* Grab Located Objects */
+      as$start_fence(
+      set       = &objOE.obj_id,
+      set_env   = &objOE.mod_env,
+      nb_obj    = &locNum,
+      p_obj_env = &locOEs);
+
+      for(i = 0; i < locNum; i = i + 1) {
+        process(&locOEs[i]);
+      }
+
+      ASend_fence();
+      break;
+      
+    case EX_DATA:    // Single Object
+      process(&objOE);
+      break;
+
+    } // Switch
+  }
+
+wrapup:
+  return 1;
+}

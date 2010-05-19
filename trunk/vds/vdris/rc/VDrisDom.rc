@@ -1,0 +1,211 @@
+/* $Id: VDrisDom.rc,v 1.3 2002/05/09 17:45:31 ahundiak Exp $  */
+
+/***************************************************************************
+ * I/VDS
+ *
+ * File:        vdris/rc/VDrisDom.rc
+ *
+ * Description: Query Routines returing DOM tree
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ * $Log: VDrisDom.rc,v $
+ * Revision 1.3  2002/05/09 17:45:31  ahundiak
+ * ah
+ *
+ * Revision 1.2  2001/08/24 19:59:29  ahundiak
+ * ah
+ *
+ * Revision 1.1  2001/05/24 18:54:07  ahundiak
+ * ah
+ *
+ *
+ * History:
+ * MM/DD/YY  AUTHOR  DESCRIPTION
+ * 05/21/01  ah      Creation
+ * 05/07/02  ah      Added trace statements
+ ***************************************************************************/
+
+#include "VDtypedefc.h"
+#include "VDrisc.h"
+#include "VDctx.h"
+
+#define RSX_SQLDATA_LEN 256
+#define RSX_SQLCOLS_LEN  10
+
+/* -------------------------------------------
+ * Generic query
+ */
+int VDrisDomQuery(char *qry, TGRid *treeID)
+{
+  int retFlag = 0;
+  int sts;
+  int traceFlag = VDdbgGetTraceFlag(99);
+
+  int  cols,row;
+  int  i,len;
+  char data[256];
+  char name[40];
+  char *p;
+
+  TGRid recordID;
+
+  exec sql begin declare section;
+    sqlda  out_desc;
+    sqlda  in_desc;
+    char  *qryx;
+    char  *err_ptr;
+  exec sql end   declare section;
+
+  /* ---------------------------------------------
+   * Define buffers of reasonable size
+   * malloc if need bigger ones
+   */
+  sqlvar  sqlvars[RSX_SQLCOLS_LEN];
+  sqlvar *sqlvarsp = NULL;
+
+  long    sqlvari[RSX_SQLCOLS_LEN];
+  long   *sqlvarip  = NULL;
+
+  char    sqldata[RSX_SQLDATA_LEN];
+  char   *sqldatap = NULL;
+
+  /* Init */
+  memset(&in_desc, 0,sizeof(sqlda));
+  memset(&out_desc,0,sizeof(sqlda));
+
+  /* Arg check */
+  if (treeID == NULL) goto wrapup;
+
+  /* Always return a root node */
+  VDctxCreateXdomTree("records",NULL,treeID);
+  if (treeID->objid == NULL_OBJID) goto wrapup;
+
+  if (qry  == NULL) goto wrapup;
+
+  if (traceFlag) {
+    printf("### RIS QRY VDrisDomQuery ### \n%s\n",qry);
+  }
+
+
+  /* Make sure logged in */
+  sts = VDrisIsSchemaOpen();
+  if (!(sts & 1)) {
+    printf("*** No Open Schema\n%s\n",qry);
+    return 0;
+  }
+
+  /* Standard error processing */
+  exec sql whenever sqlerror  goto :error;
+  exec sql whenever not found goto :not_found;
+
+  /* Basic info */
+  qryx = qry;
+  exec sql prepare stmt_qry1 from :qryx;
+
+  /* Input descriptor */
+  exec sql describe input stmt_qry1 using descriptor in_desc;
+  if (in_desc.sqld) {
+    printf("*** VDrisDomQuery does not support input parameters\n");
+    printf("    %s\n",qry);
+    goto error;
+  }
+
+  /* Output descriptor, get number of columns */
+  exec sql describe output stmt_qry1 using descriptor out_desc;
+
+  cols = out_desc.sqld;
+  if (cols == 0) goto wrapup;
+  sqlvarsp = sqlvars;
+  sqlvarip = sqlvari;
+
+  if (cols > RSX_SQLCOLS_LEN) {
+    sqlvarsp = malloc(cols * sizeof(sqlvar));
+    if (sqlvarsp == NULL) goto wrapup;
+    sqlvarip = malloc(cols * sizeof(long));
+    if (sqlvarip == NULL) goto wrapup;
+  }
+    
+  /* Get lengths of each column */
+  out_desc.sqlvar = sqlvarsp;
+  out_desc.sqln   = out_desc.sqld;
+
+  exec sql describe output stmt_qry1 using descriptor out_desc;
+
+  /* Need to make a buffer big enough to handle the record */
+  len = 0;
+  for(i = 0; i < out_desc.sqld; i++) {
+    len = len + out_desc.sqlvar[i].sqllen + 1;
+  }
+  sqldatap = sqldata;
+  if (len > RSX_SQLDATA_LEN) {
+    sqldatap = malloc(len);
+    if (sqldatap == NULL) goto wrapup;
+  }
+
+  /* Set the actual data pointers */
+  p = sqldatap;
+  for(i = 0; i < out_desc.sqld; i++) {
+    out_desc.sqlvar[i].sqlind  = &sqlvarip[i];
+    out_desc.sqlvar[i].sqldata = p;
+    p += out_desc.sqlvar[i].sqllen + 1;
+  }
+
+  /* Open the cursor */
+  exec sql declare curs_qry1 cursor for stmt_qry1;
+  exec sql open    curs_qry1 using descriptor in_desc;
+
+  /* Cycle through */
+  row = 0;
+  while(1) {
+
+    /* fetch a row of output */
+    exec sql fetch curs_qry1 using descriptor out_desc;
+
+    /* Create the record */
+    VDctxCreateNode(treeID,"record",NULL,&recordID);
+
+    /* Cycle through each field */
+    for(i = 0; i < cols; i++) {
+
+      /* Value in text format */
+      VDrisGetDataFromSqlvar(&out_desc.sqlvar[i],data);
+
+      /* Name is a pain */
+      memcpy(name,out_desc.sqlvar[i].sqlname.sqlnamec,out_desc.sqlvar[i].sqlname.sqlnamel);
+      *(name +  out_desc.sqlvar[i].sqlname.sqlnamel) = 0;     
+
+      /* Create the attribute */
+      VDctxAppTxtAtr(&recordID,name,data);
+    }
+    row++;
+  }
+
+  /* No more rows */
+not_found:
+  exec sql whenever not found continue;
+  exec sql clear stmt_qry1;
+
+  if (traceFlag) {
+    printf("Rows %d\n",row);
+  }
+
+  /* Done */
+  retFlag = 1;
+  goto wrapup;
+
+
+error:
+  exec sql whenever sqlerror continue;
+  exec sql report error into :err_ptr;
+  puts(err_ptr);
+
+wrapup:
+  /* Clean up memory */
+  if ((sqlvarsp) && (sqlvarsp != sqlvars)) free(sqlvarsp);
+  if ((sqldatap) && (sqldatap != sqldata)) free(sqldatap);
+  if ((sqlvarip) && (sqlvarip != sqlvari)) free(sqlvarip);
+
+  return retFlag;
+}
