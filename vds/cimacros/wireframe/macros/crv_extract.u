@@ -1,0 +1,1003 @@
+/* $Id: crv_extract.u,v 1.1.1.1 2001/01/04 21:07:22 cvs Exp $  */
+
+/* --------------------------------------------------------------------
+ * I/VDS
+ *
+ * File:	vds/cimacros/wireframe/macros / crv_extract.u
+ *
+ * Description:
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ *	$Log: crv_extract.u,v $
+ *	Revision 1.1.1.1  2001/01/04 21:07:22  cvs
+ *	Initial import to CVS
+ *	
+# Revision 1.4  1998/09/25  20:05:12  pinnacle
+# sp
+#
+# Revision 1.2  1998/05/11  15:30:36  pinnacle
+# TR179801039
+#
+# Revision 1.1  1997/05/08  13:20:44  pinnacle
+# New project VDS 250
+#
+# Revision 1.1  1996/07/19  20:33:52  pinnacle
+# Create VDS 241 project
+#
+# Revision 1.1  1994/11/14  22:42:32  pinnacle
+# Create vds.240 from vds.232
+#
+# Revision 1.1  1994/11/08  16:07:00  pinnacle
+# create vds.232
+#
+ *
+ * History:
+ * MM/DD/YY  AUTHOR  DESCRIPTION
+ * 04/27/98  ah      TR179801039 If getting extended geometry fails, 
+ *                   use regular geometry
+ *                   The whole ppl seems to bounce back and forth between
+ *                   extended and non-extended for no particular reason
+ *                   Any more problems, just rewrite the whole thing
+ * 07/02/98  ah      TR179801164 More extended geomotry problems
+ *                   rewrote the code.
+ * 07/16/98  ah      The rewrite is causing problems on some test cases.
+ *                   The old one worked so rolling back to it.
+ * -------------------------------------------------------------------*/
+
+/*
+	VDS 2.1 - PPMmacro library - 92/10/14
+
+	History:
+	AdZ	Oct-22-1993 :	fct EvalPartialGenCrv() did a bsp_curve test
+				before allocation the curve.  
+ */
+#include "VDppl.h"
+#include "bserr.h"
+#include "ci_mac_def.h"
+#include "v_geommacros.h"
+
+#if 0
+#include	<stdio.h>
+#include	"cieveryone.h"
+#include	"cimacros.h"
+#include	"ci_mac_def.h"
+#include	"bserr.h"
+#include	"macro.h"
+#include	"AS_status.h"
+#include	"EMSdpb.h"
+#include	"igrdp.h"
+#endif
+
+
+/* #include	"dbg.uf" */
+
+
+IGRchar			*temp_names[3], *feet_names[1];
+IGRint			temp_types[3];
+enum	GRdpmode	GRdpmode;
+
+
+IGRlong			stat, MSG;
+
+
+GRobj 			ci_mac_def1;
+
+struct GRid		CUV, GCV, CI_MACRO_ID, PAR_CUR;
+struct GRmd_env		from_env;
+struct IGRbsp_curve	*par_curve;
+struct GRsymbology	symbology;
+struct ret_struct	temp_rts[2];
+struct GRid		display_info;
+
+struct EMdpbinfo 	dpbinfo;
+struct IGResbc		esbc;
+
+OMuword	 		arc_cl, obj_cl;
+
+extern IGRdouble		BSdistptpts();
+extern IGRint 		        BSmdstptcv(),
+				BSalloccv();
+
+extern IGRboolean		BSpartofcv(),
+				BSfreecv(),
+				BSperpa(),
+				BScvxttpt(),
+				BSrev_cv();
+
+extern 				GRfindmod(),
+				EFmsgReport(),EMdpb_getinfo();
+
+
+extern				GRabsg_del_by_objid();
+extern ASsuper_construct();
+extern void			BScveval();
+
+extern	IGRint			dblcpy();
+
+/* ========================================================================= */
+/* the main function is the one implementing the definition creation
+/* ========================================================================= */
+
+main ()
+{
+
+  temp_names[0]  = "stpnt";  
+  temp_names[1]  = "edpnt";  
+  temp_names[2]  = "crv0";
+
+  temp_types[0]  = point_generic;  
+  temp_types[1]  = point_generic;  
+  temp_types[2]  = line_generic | conic_generic | curve_generic;
+
+  
+
+  feet_names[0] = "curve";
+  ci_mac_def1 = NULL_OBJID;
+
+  ac$cimacdef( 	cimacdef          = ci_mac_def1,
+		status 	          = &stat,
+	 	name              = "crv_extract",
+      		temp_num          = 3,
+		temp_names        = temp_names,
+		temp_types        = temp_types,
+		extern_feet_num   = 1,
+	 	extern_feet_names = feet_names );
+}
+
+/* ========================================================================= */
+
+place ()
+{
+
+  construct_pdelc();
+
+  if( PAR_CUR.objid == NULL_OBJID ) return(0);
+
+  EMdpb_getinfo (&msg, &dpbinfo);
+  esbc.is_curvedis = TRUE;
+  esbc.is_polydis  = (IGRboolean) dpbinfo.props & EMDPB_POLYGON_DISPLAY_ON;  
+
+  ci$send(msg = message GRvg.GRputattr( &msg, (IGRchar *) &esbc ),
+	  targetid = PAR_CUR.objid,
+	  targetos = PAR_CUR.osnum);
+
+  ci$send( msg	    = message  ci_macro.set_all_extern_feet
+		 		( &stat, 1,&PAR_CUR, &MOD_ENV ),
+	   targetid = CI_MACRO_ID.objid,
+	   targetos = CI_MACRO_ID.osnum );
+  return(1);
+
+}
+
+/* ========================================================================= */
+
+compute ()
+{
+
+
+  construct_pdelc();
+
+  if( PAR_CUR.objid == NULL_OBJID ) return(0);
+
+  ci$send( msg	    = message  ci_macro.set_all_extern_feet
+		 		( &stat, 1,&PAR_CUR, &MOD_ENV ),
+	   targetid = CI_MACRO_ID.objid,
+	   targetos = CI_MACRO_ID.osnum );
+  return(1);
+
+}
+
+/* ========================================================================= */
+
+construct_pdelc()
+{
+
+  PAR_CUR.objid = NULL_OBJID;
+  PAR_CUR.osnum = MOD_ENV.md_id.osnum;
+  par_curve = NULL;
+
+/*--------------------------------------------------------------------------*/
+/* 		get the start point	 				    */
+/*--------------------------------------------------------------------------*/
+
+  ci$send ( msg      = message ACcpx.ACfind_exp_temp_struct ( 
+				&stat,
+				0,
+				(IGRchar *)&temp_rts[0],
+				&MOD_ENV ),
+	    targetid = CI_MACRO_ID.objid,
+	    targetos = CI_MACRO_ID.osnum );
+
+  if (stat != 1) {
+	status(" bad start point" );
+	return;
+  }
+
+/*--------------------------------------------------------------------------*/
+/* 		get the end point	 				    */
+/*--------------------------------------------------------------------------*/
+  ci$send ( msg      = message ACcpx.ACfind_exp_temp_struct (
+				&stat,
+				1,
+				(IGRchar *)&temp_rts[1],
+			   	&MOD_ENV ),
+	    targetid = CI_MACRO_ID.objid,
+	    targetos = CI_MACRO_ID.osnum );
+
+  if (stat != 1) {
+	status(" bad end point" );
+	return;
+  }
+
+/*--------------------------------------------------------------------------*/
+/* 		get the support curve	 				    */
+/*--------------------------------------------------------------------------*/
+
+  ci$send ( msg      = message ACcpx.ACfind_exp_temp_obj ( &stat, 2, &CUV),
+	    targetid = CI_MACRO_ID.objid,
+	    targetos = CI_MACRO_ID.osnum );
+  if (!stat) return;
+
+  ci$send( msg      = message NDmacro.ACreturn_foot(	
+						&stat ,
+						"",
+						&GCV,
+						&from_env.md_env.matrix_type, 
+					        from_env.md_env.matrix ),
+	   targetid = CUV.objid,
+	   targetos = CUV.osnum );
+
+ if(!stat) return;
+
+  om$get_classid(	classname	= "GRconic", p_classid = &arc_cl  );
+  om$get_classid(	osnum		= GCV.osnum	,
+			objid		= GCV.objid	,
+			p_classid	= &obj_cl	) ;
+
+/*--------------------------------------------------------------------------*/
+/* 	set cst			  			    		    */
+/*--------------------------------------------------------------------------*/
+
+  init_cnst_list();
+  get_symb();
+
+  cst.level		= cnst_list.level;
+  dis.color 		= cnst_list.color;
+  dis.weight		= cnst_list.weight;
+  dis.style		= cnst_list.style;
+
+  cst.msg		= &MSG;
+  cst.properties	= GRIS_LOCATABLE | GRIS_DISPLAYABLE;
+  cst.display		= &dis;
+  cst.env_info		= &MOD_ENV;
+  cst.newflag		= 0;
+  cst.geometry		= NULL;
+  cst.class_attr	= 0;
+  cst.name		= 0;
+
+  if( om$is_ancestry_valid(  superclassid = arc_cl,
+			     subclassid	  = obj_cl ) == OM_S_SUCCESS )
+
+  	EvalPartialCirArc( GCV, &from_env, temp_rts, &par_curve, &msg );
+
+  else
+  	EvalPartialGenCrv( GCV, &from_env, &MOD_ENV, &cst, 
+			   temp_rts, &par_curve, &msg );
+
+  if( msg != BSSUCC ){
+	PAR_CUR.objid = NULL_OBJID;
+	return;
+  }
+  
+  cst.geometry		= (char *)par_curve;
+
+
+
+  stat = ci$send(msg	  = message GRbcsubbc.GRconstruct(&cst),
+		 targetid = PAR_CUR.objid,
+		 targetos = PAR_CUR.osnum );
+
+  if( par_curve != NULL ) { BSfreecv(&msg,par_curve); par_curve = NULL;}
+  
+  if( !(stat&1) ){
+	PAR_CUR.objid = NULL_OBJID;
+	return;
+  }
+
+
+}
+
+/* ----------------------------------------------------------------
+ * TR179801164 New version
+ * No extended curve stuff
+ * Min dis seems to give same results as project point
+ * so use it
+ */
+#if 0
+EvalPartialGenCrv(crvID, crvENV, curENV, cst, FromToPt, parBSP, msg )
+
+TGRid		 crvID;
+TGRmd_env	*crvENV;
+TGRmd_env	*curENV;
+TGRvg_construct *cst;
+Tret_struct	*FromToPt;
+TGRbsp_curve   **parBSP;
+IGRlong	        *msg;
+{
+  IGRstat retFlag;
+  IGRstat sts;
+
+  TGRbsp_curve *crvBSP;
+  TGRbsp_curve *newBSP;
+  
+  IGRint i;
+
+  TGRparms  locParms, prjParms;
+  IGRdouble prjPT [3];
+  IGRdouble crvPAR[2];
+  IGRdouble parDir;
+  IGRdouble prjDist;
+  
+  // Init
+  retFlag = 0;
+ *parBSP = NULL;
+  crvBSP = NULL;
+  newBSP = NULL;
+  
+  // Grab the geomotry
+  sts = vd_$get_geometry(msg = msg, 
+			 grobjId  = &crvID, 
+			 grobjEnv =  crvENV, 
+			 geometry = &crvBSP);
+
+  if (!(sts & *msg & 1)) {
+    goto wrapup;    
+  }
+
+  // Project the two points
+  for (i = 0; i < 2; i = i + 1) {
+
+#if 0
+    sts = ci$send(msg = message GRbcsubbc.GRprojpt 
+		  (msg,
+		   &crvENV->md_env.matrix_type, 
+		    crvENV->md_env.matrix,
+		   &locParms,
+		    FromToPt[i].var.point_st.pt,
+		    prjPT,
+		   &prjParms),
+		  targetid = crvID.objid,
+		  targetos = crvID.osnum );
+
+    if (!(sts & *msg & 1)) goto wrapup;
+  
+    crvPAR[i] = prjParms.u;
+#endif
+
+#if 1
+    // Try min distance
+    BSmdstptcv (crvBSP,
+		FromToPt[i].var.point_st.pt,
+	       &crvPAR[i],
+		prjPT,
+	       &prjDist,
+		msg);
+    if( *msg != BSSUCC ) goto wrapup;
+#endif
+
+  }
+
+  // Copy the geometry
+  BSalloccv (crvBSP->order, 
+	     crvBSP->num_poles, 
+	     crvBSP->rational,
+	     crvBSP->num_boundaries, 
+	     &newBSP, 
+	     msg);
+
+  if (*msg != BSSUCC) goto wrapup;
+
+  parDir = (2.0/3.0 * crvPAR[0]) + (1.0/3.0 * crvPAR[1]);
+
+  // printf("Pars %.4f %.4f %.4f\n",crvPAR[0],parDir,crvPAR[1]);
+  
+  // Cutout
+  BSpartofcv ( msg, crvBSP, crvPAR[0], parDir, crvPAR[1], newBSP);
+  if (*msg != BSSUCC)  goto wrapup;
+
+
+  // Reverse if necessary
+  if ((crvPAR[1] - crvPAR[0]) < 0.0 ) { 
+    BSrev_cv( msg, newBSP );
+    if (*msg != BSSUCC)  goto wrapup;
+  }
+
+  // Got it
+ *parBSP = newBSP;
+  newBSP = NULL;
+  
+  retFlag = 1;
+  
+wrapup:
+
+  /* ----------------------------------------------------------
+   * Warning using BSfreecv can cause a delayed coredump
+   * in some cases, not sure why but it does
+   */
+  //if (crvBSP) BSfreecv(msg,crvBSP);
+
+  if (crvBSP) free(crvBSP);
+  if (newBSP) BSfreecv(msg,newBSP);
+  
+  if (retFlag == 0) *msg = BSFAIL;
+  else              *msg = BSSUCC;
+
+  return retFlag;
+}
+#endif
+
+/*==========================================================================
+ * 2 Jul 1998 This routines does alot with extended geometry for reasons
+ * currently unknown.  Avondale files have trouble with extended geometry.
+ * Sometimes the geomotry fails, sometimes projection a point fails
+ *
+ * Comment out the old code and rewrite using regular geomotry
+ */
+
+EvalPartialGenCrv( GCV, EnvGCV, CurEnv, cst, FromToPt, ParCv, msg )
+
+struct  GRid		GCV;
+struct	GRmd_env	*EnvGCV;
+struct	GRmd_env	*CurEnv;
+struct GRvg_construct   *cst;
+struct  ret_struct	*FromToPt;
+struct	IGRbsp_curve    **ParCv;
+IGRlong			*msg;
+
+{
+
+IGRint				k, ii;
+IGRlong				size, stat;
+struct		IGRbsp_curve	*bsp_curve, *PartialCrv;
+IGRdouble			ptpj[3], min_dist, par[4], par_dir;
+IGRshort			num_par;
+IGRint				side;
+struct		GRparms		loc_parms, prj_parms;
+struct		GRid		extended;
+BSrc				rc;
+struct	GRmd_env	        *EnvOfExtent;	
+
+struct IGRbsp_curve *bsp_curvex;
+
+	#ifdef DEBUG
+	write("enter EvalPartialGenCrv\n");
+	#endif
+
+
+	*ParCv     = NULL;
+        bsp_curve  = NULL;
+	bsp_curvex = NULL;
+	PartialCrv = NULL;
+
+
+/*--------------------------------------------------------------------------*/
+/* 		get the curve's extented abstract geometry		    */
+/*--------------------------------------------------------------------------*/
+
+	GRabsg_del_by_objid(&GCV.objid,&GCV.osnum);
+
+  	stat = ci$send( msg = message GRvg.GRgetsize( 
+					       msg,
+					       &EnvGCV->md_env.matrix_type, 
+					       EnvGCV->md_env.matrix,
+			     		       &size ),
+	  	 	targetid = GCV.objid,
+	  	 	targetos = GCV.osnum );
+
+	if( !(*msg&stat&1) ) goto wrapup;
+
+	bsp_curve = (struct IGRbsp_curve *) om$malloc( size = size );
+        if( bsp_curve == NULL ) goto wrapup;
+
+  	stat = ci$send( msg = message GRvg.GRgetgeom( 
+					       msg,
+					       &EnvGCV->md_env.matrix_type, 
+					       EnvGCV->md_env.matrix,
+			     		       bsp_curve ),
+	  	 	targetid = GCV.objid,
+	  	 	targetos = GCV.osnum );
+
+	if( !(*msg&stat&1) ) goto wrapup;
+
+
+
+	if (  (bsp_curve->order == 2)
+           && (bsp_curve->num_poles >= 2)
+           && (!bsp_curve->phy_closed) ){
+		 	extended = GCV;
+			EnvOfExtent = EnvGCV;
+	}
+	else {
+		stat = ci$send ( msg      = message GRgraphics.GRcopy (
+						msg,
+						EnvGCV,
+						CurEnv,
+						&extended.objid ),
+	  	 	 	 targetid = GCV.objid,
+	  	 	 	 targetos = GCV.osnum );
+		if (!(stat&1&(*msg))) {
+			EFmsgReport ( 0, stat, "GRgraphics.GRcopy : sts");
+			EFmsgReport ( 0, *msg, "GRgraphics.GRcopy : msg");
+			goto wrapup;
+		}
+
+		EnvOfExtent = CurEnv;
+		extended.osnum = CurEnv->md_id.osnum;		
+	}
+
+	if( bsp_curve != NULL ) { 
+	  //om$dealloc(ptr = bsp_curve);  bsp_curve = NULL; 
+	}
+
+  	stat = ci$send ( msg      = message GRvg.GRgetexsize ( 
+					       msg,
+					       &EnvGCV->md_env.matrix_type, 
+					       EnvGCV->md_env.matrix,
+			     		       &size ),
+	  	 	 targetid = GCV.objid,
+	  	 	 targetos = GCV.osnum );
+
+	if (!(stat&1&(*msg))) {
+		EFmsgReport ( 0, stat, "GRvg.GRgetexsize : sts");
+		EFmsgReport ( 0, *msg, "GRvg.GRgetexsize : msg");
+		goto wrapup;
+	}
+
+	bsp_curvex = (struct IGRbsp_curve *) om$malloc( size = size );
+        if( bsp_curvex == NULL ) goto wrapup;
+
+  	stat = ci$send ( msg      = message GRvg.GRgetexgeom ( 
+					       msg,
+					       &EnvGCV->md_env.matrix_type, 
+					       EnvGCV->md_env.matrix,
+			     		       bsp_curvex ),
+	  	 	 targetid = GCV.objid,
+	  	 	 targetos = GCV.osnum );
+
+	// TR179801039 If it failed, use regular geometry
+	if (!(stat&1&(*msg))) {
+		EFmsgReport ( 0, stat, "GRvg.GRgetexgeom : sts");
+		EFmsgReport ( 0, *msg, "GRvg.GRgetexgeom : msg");
+		stat = OM_S_SUCCESS;
+		*msg = MSSUCC;
+	}
+	else {
+	  /*
+	  if( bsp_curve != NULL ) { 
+	    om$dealloc(ptr = bsp_curve);  bsp_curve = NULL; 
+	  }
+	  bsp_curve = bsp_curvex;
+	  */
+	}
+	
+	if (  (bsp_curve->order == 2)
+           && (bsp_curve->num_poles >= 2)
+           && (!bsp_curve->phy_closed) ) {
+	  
+		   ii = 3 * ( bsp_curve->num_poles - 2 );
+
+	    	   for ( k=0; k<3; k=k+1) {
+		      	bsp_curve->poles[k] =
+					501 * bsp_curve->poles[k] -
+					500 * bsp_curve->poles[k+3];
+		      	bsp_curve->poles[k+ii+3] = 
+		 			501 * bsp_curve->poles[ii+3+k] -
+					500 * bsp_curve->poles[ii+k];
+	           }
+
+/*--------------------------------------------------------------------------*/
+/* 	project the start and end point on the curve			    */
+/*--------------------------------------------------------------------------*/
+
+   		for ( k=0; k<2; k=k+1) {
+
+			#ifdef DEBUG
+			printf ( "\nFromToPt[%d] = ( %f, %f, %f)\n",
+				 k,
+				 FromToPt[k].var.point_st.pt[0],
+				 FromToPt[k].var.point_st.pt[1],
+				 FromToPt[k].var.point_st.pt[2] );
+			#endif
+
+   			BSperpa ( msg,
+			  	  bsp_curve,
+			  	  FromToPt[k].var.point_st.pt,
+			  	  FromToPt[k].var.point_st.pt,
+			  	  &num_par,
+			  	  &par[2+k],
+			  	  &side );
+   			if( *msg != BSSUCC ) goto wrapup;
+
+			#ifdef DEBUG
+printf ( "BSperpa : msg=%d\tnum_par=%d\tside=%d\tpar[%d]=%f\n",
+	 *msg, num_par, side, k, par[k+2]);
+			#endif
+
+   			BSmdstptcv ( bsp_curve,
+			     	     FromToPt[k].var.point_st.pt,
+			     	     &par[k],
+			     	     ptpj,
+			     	     &min_dist,
+			     	     msg);
+   			if( *msg != BSSUCC ) goto wrapup;
+
+			#ifdef DEBUG
+			printf ( "BSmdstptcv : msg=%d\td_min=%f\tpar[%d]=%f\n",
+			 	 *msg, min_dist,k, par[k]);
+			#endif
+
+			if (  (fabs((par[k] - par[k+2])) >= 1e-6)
+			   && (num_par > 0.0) ) 	par[k] = par[k+2];
+
+			#ifdef DEBUG
+			printf ( "\tparameter %d is <%f>\n", k, par[k]);
+			#endif
+  		}
+
+	}/* end if it's a bsp order 2 which should never come */
+
+	else {
+	  
+		if( bsp_curve != NULL ) { 
+		  //om$dealloc(ptr = bsp_curve);  bsp_curve = NULL; 
+		}
+
+		GRabsg_del_by_objid ( &extended.objid , &extended.osnum);
+
+  		stat = ci$send ( msg      = message GRvg.GRgetexsize ( 
+					     msg,
+					     &EnvOfExtent->md_env.matrix_type, 
+					     EnvOfExtent->md_env.matrix,
+			     		     &size ),
+	  	 	 	 targetid = extended.objid,
+	  	 	 	 targetos = extended.osnum );
+		if (!(stat&1&(*msg))) {
+			EFmsgReport ( 0, stat, "GRvg.GRgetexsize : sts");
+			EFmsgReport ( 0, *msg, "GRvg.GRgetexsize : msg");
+			goto wrapup;
+		}
+
+		bsp_curvex = (struct IGRbsp_curve *) om$malloc( size = size );
+        	if( bsp_curvex == NULL ) goto wrapup;
+
+  		stat = ci$send ( msg      = message GRvg.GRgetexgeom ( 
+					     msg,
+					     &EnvOfExtent->md_env.matrix_type, 
+					     EnvOfExtent->md_env.matrix,
+			     		     bsp_curvex ),
+	  	 	 	 targetid = extended.objid,
+	  	 	 	 targetos = extended.osnum );
+	        // TR179801039 If it failed, use regular geometry
+		if (!(stat&1&(*msg))) {
+			EFmsgReport ( 0, stat, "GRvg.GRgetexgeom : sts");
+			EFmsgReport ( 0, *msg, "GRvg.GRgetexgeom : msg");
+			stat = OM_S_SUCCESS;
+			*msg = MSSUCC;
+		}
+		else {
+		  /*
+		  if( bsp_curve != NULL ) { 
+		    om$dealloc(ptr = bsp_curve);
+		  }
+		  bsp_curve = bsp_curvex;
+		  */
+		}
+		
+  		cst->geometry	= (IGRchar *)bsp_curve;
+
+  		extended.objid = NULL_OBJID;
+  		extended.osnum = CurEnv->md_id.osnum;
+
+  		stat = ci$send ( msg	  = message GRbcsubbc.GRconstruct(cst),
+		 	 	 targetid = extended.objid,
+		 	 	 targetos = extended.osnum );
+		
+  		if (!(stat&1)) {
+			EFmsgReport(0,stat,"GRbcsubbc.GRconstruct : sts");
+			EFmsgReport(0,*(cst->msg),"GRbcsubbc.GRconstruct :msg");
+			extended.objid = NULL_OBJID;
+			goto wrapup;
+  		}
+		
+		cst->geometry = NULL;
+		GRabsg_del_by_objid ( &extended.objid, &extended.osnum);
+
+   		for ( k=0; k<2; k=k+1) {
+  			stat = ci$send ( msg      = message GRbcsubbc.GRprojpt (
+					       	msg,
+					       	&CurEnv->md_env.matrix_type, 
+					       	CurEnv->md_env.matrix,
+			     		       	&loc_parms,
+					       	FromToPt[k].var.point_st.pt,
+					       	ptpj,
+					       	&prj_parms),
+	  	 	 	 	 targetid = extended.objid,
+	  	 	 	 	 targetos = extended.osnum );
+			if (!(stat&1&(*msg))) {
+				EFmsgReport(0,stat, "GRbcsubbc.GRprojpt : sts");
+				EFmsgReport(0,*msg, "GRbcsubbc.GRprojpt : msg");
+				goto wrapup;
+			}
+			par[k] = prj_parms.u;
+			#ifdef DEBUG
+			printf ( "extended\nLocate  Point = ( %f\t%f\t%f)\n",
+			 	 FromToPt[k].var.point_st.pt[0],
+			 	 FromToPt[k].var.point_st.pt[1],
+			 	 FromToPt[k].var.point_st.pt[2] );
+			printf ( "Project Point = ( %f\t%f\t%f)\n",
+			 	 ptpj[0], ptpj[1], ptpj[2] );
+			printf ( "GRbcsubbc.GRprojpt : par[%d] = %f\n",
+				 k, par[k]);
+			#endif
+  		}
+
+		stat = ci$send ( msg      = message GRgraphics.GRdelete (
+							msg,
+							CurEnv ),
+	  	 	 	 targetid = extended.objid,
+	  	 	 	 targetos = extended.osnum );
+		if (!(stat&1&(*msg))) {
+			EFmsgReport ( 0, stat, "GRgraphics.GRdelete : sts");
+			EFmsgReport ( 0, *msg, "GRgraphics.GRdelete : msg");
+			goto wrapup;
+		}
+	}
+
+/*--------------------------------------------------------------------------*/
+/* 	evaluate the partial curve  			    		    */
+/*--------------------------------------------------------------------------*/
+
+  	BSalloccv ( bsp_curve->order, bsp_curve->num_poles, bsp_curve->rational,
+	    	    bsp_curve->num_boundaries, &PartialCrv, msg);
+	if (*msg != BSSUCC) goto wrapup;
+
+  	par_dir = 2.0/3.0 * par[0] + 1.0/3.0 * par[1];
+
+  	BSpartofcv ( msg, bsp_curve, par[0], par_dir, par[1], PartialCrv);
+  	if (*msg != BSSUCC)  goto wrapup;
+
+
+  	if ( (par[1] - par[0]) < 0.0 ) { 
+  		BSrev_cv( msg, PartialCrv );
+  		if (*msg != BSSUCC)  goto wrapup;
+  	}
+
+  	if (bsp_curve != NULL) {
+		om$dealloc (ptr = bsp_curve); 
+  		bsp_curve = NULL;
+	}
+
+  	*ParCv = PartialCrv;
+	*msg = BSSUCC;
+  	return;
+ 
+
+wrapup:
+
+	if( bsp_curve != NULL ) { 
+		om$dealloc(ptr = bsp_curve);  bsp_curve = NULL; 
+	}
+	if( PartialCrv != NULL ) { 
+		BSfreecv(msg,PartialCrv); 
+		PartialCrv = NULL;
+	}
+  	*ParCv = PartialCrv;
+	*msg = BSFAIL;
+
+
+}
+
+/*==========================================================================*/
+
+EvalPartialCirArc( GCV, env, FromToPt, ParCv, msg )
+
+struct  GRid		GCV;
+struct	GRmd_env	*env;
+struct  ret_struct	*FromToPt;
+struct	IGRbsp_curve    **ParCv;
+IGRlong			*msg;
+
+{
+
+IGRint			k, ii;
+IGRlong			size, stat;
+struct	IGRbsp_curve	*bsp_curve, *PartialCrv;
+IGRdouble		ptpj[3], min_dist, par[2], par_dir, mid_pt[3];
+
+
+	#ifdef DEBUG
+	write("enter EvalPartialCirArc\n");
+	#endif
+
+	*ParCv    = NULL;
+        bsp_curve = NULL;
+	PartialCrv = NULL;
+
+
+/*--------------------------------------------------------------------------*/
+/* 		get the curve's extented abstract geometry		    */
+/*--------------------------------------------------------------------------*/
+
+	GRabsg_del_by_objid(&GCV.objid,&GCV.osnum);
+
+  	stat = ci$send( msg = message GRvg.GRgetsize( 
+					       msg,
+					       &env->md_env.matrix_type, 
+					       env->md_env.matrix,
+			     		       &size ),
+	  	 	targetid = GCV.objid,
+	  	 	targetos = GCV.osnum );
+
+	if( !(*msg&stat&1) ) goto wrapup;
+
+	bsp_curve = (struct IGRbsp_curve *) om$malloc( size = size );
+        if( bsp_curve == NULL ) goto wrapup;
+
+  	stat = ci$send( msg = message GRvg.GRgetgeom( 
+					       msg,
+					       &env->md_env.matrix_type, 
+					       env->md_env.matrix,
+			     		       bsp_curve ),
+	  	 	targetid = GCV.objid,
+	  	 	targetos = GCV.osnum );
+
+	if( !(*msg&stat&1) ) goto wrapup;
+
+
+
+/*--------------------------------------------------------------------------*/
+/* 	project the start and end point on the curve			    */
+/*--------------------------------------------------------------------------*/
+
+   	for( k=0; k<2; k=k+1){
+
+   		BSmdstptcv ( bsp_curve,FromToPt[k].var.point_st.pt,
+			     &par[k], ptpj, &min_dist ,msg);
+   		if( *msg != BSSUCC ) goto wrapup;
+
+		#ifdef DEBUG
+		write("project the dir_pnt on bsp_curve *msg =",
+		      *msg,",k=",k,"\n");
+		write("project the par[",k,"] = ", par[k],"\n");
+		#endif
+
+  	}
+
+
+	if( ( (fabs(par[0]) > 1.0E-10) && (fabs((1.0-par[0])) > 1.0E-10) ) &&
+	    ( (fabs(par[1]) > 1.0E-10) && (fabs((1.0-par[1])) > 1.0E-10) ) ){
+  		par_dir = 2.0/3.0 * par[0] + 1.0/3.0 * par[1];
+		#ifdef DEBUG
+		write("on est au milieu\n");
+		#endif
+		goto eval;
+	}
+
+
+  	par_dir = 2.0/3.0 * par[0] + 1.0/3.0 * par[1];
+	#ifdef DEBUG
+	write(" exterieur par_dir =",par_dir,"\n");
+	#endif
+
+        BScveval(bsp_curve,par_dir,0,mid_pt,msg);
+	if(*msg != BSSUCC) goto wrapup;
+
+  	if( bsp_curve != NULL ){
+		om$dealloc(ptr = bsp_curve); 
+  		bsp_curve = NULL;
+	}
+
+
+ 
+
+
+
+/*--------------------------------------------------------------------------*/
+/* 		get the curve's extented abstract geometry		    */
+/*--------------------------------------------------------------------------*/
+
+	GRabsg_del_by_objid(&GCV.objid,&GCV.osnum);
+
+  	stat = ci$send( msg = message GRvg.GRgetexsize( 
+					       msg,
+					       &env->md_env.matrix_type, 
+					       env->md_env.matrix,
+			     		       &size ),
+	  	 	targetid = GCV.objid,
+	  	 	targetos = GCV.osnum );
+
+	if( !(*msg&stat&1) ) goto wrapup;
+
+	bsp_curve = (struct IGRbsp_curve *) om$malloc( size = size );
+        if( bsp_curve == NULL ) goto wrapup;
+
+  	stat = ci$send( msg = message GRvg.GRgetexgeom( 
+					       msg,
+					       &env->md_env.matrix_type, 
+					       env->md_env.matrix,
+			     		       bsp_curve ),
+	  	 	targetid = GCV.objid,
+	  	 	targetos = GCV.osnum );
+
+	if( !(*msg&stat&1) ) goto wrapup;
+
+
+
+/*--------------------------------------------------------------------------*/
+/* 	project the start and end point on the curve			    */
+/*--------------------------------------------------------------------------*/
+
+   	for( k=0; k<2; k=k+1){
+
+   		BSmdstptcv ( bsp_curve,FromToPt[k].var.point_st.pt,
+			     &par[k], ptpj, &min_dist ,msg);
+   		if( *msg != BSSUCC ) goto wrapup;
+
+		#ifdef DEBUG
+		write("project the dir_pnt on bsp_curve *msg =",
+		      *msg,",k=",k,"\n");
+		write("project the par[",k,"] = ", par[k],"\n");
+		#endif
+
+  	}
+
+/*--------------------------------------------------------------------------*/
+/* 	evaluate the partial curve  			    		    */
+/*--------------------------------------------------------------------------*/
+
+eval:
+
+  	BSalloccv(bsp_curve->order,(IGRlong) 9,bsp_curve->rational,
+	    	  bsp_curve->num_boundaries,&PartialCrv,msg);
+	if( *msg != BSSUCC ) goto wrapup;
+
+   	BSmdstptcv ( bsp_curve, mid_pt, &par_dir, ptpj, &min_dist ,msg);
+   	if( *msg != BSSUCC ) goto wrapup;
+	
+  	BSpartofcv( msg, bsp_curve, par[0], par_dir, par[1], PartialCrv );
+  	if( *msg != BSSUCC ) goto wrapup;
+
+
+
+  	if( ( par_dir - par[0] ) < 0.0 ){ 
+  		BSrev_cv( msg, PartialCrv );
+  		if( *msg != BSSUCC ) goto wrapup;
+  	}
+
+  	if( bsp_curve != NULL ){
+		om$dealloc(ptr = bsp_curve); 
+  		bsp_curve = NULL;
+        }
+
+  	*ParCv = PartialCrv;
+	*msg = BSSUCC;
+  	return;
+ 
+
+wrapup:
+
+	if( bsp_curve != NULL ) { 
+		om$dealloc(ptr = bsp_curve);  bsp_curve = NULL; 
+	}
+	if( PartialCrv != NULL ) { 
+		BSfreecv(msg,PartialCrv); 
+		PartialCrv = NULL;
+	}
+
+  	*ParCv = PartialCrv;	
+	*msg = BSFAIL; 
+
+}
+/*==========================================================================*/

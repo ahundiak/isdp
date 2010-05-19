@@ -1,0 +1,226 @@
+/* $Id: COpnts.u,v 1.1.1.1 2001/01/04 21:07:22 cvs Exp $  */
+
+/* --------------------------------------------------------------------
+ * I/VDS
+ *
+ * File:	vds/cimacros/wireframe/cmd / COpnts.u
+ *
+ * Description:
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ *	$Log: COpnts.u,v $
+ *	Revision 1.1.1.1  2001/01/04 21:07:22  cvs
+ *	Initial import to CVS
+ *	
+# Revision 1.1  1998/04/29  16:27:20  pinnacle
+# VDS 2.5.1
+#
+# Revision 1.1  1997/05/08  13:20:44  pinnacle
+# New project VDS 250
+#
+# Revision 1.3  1997/02/07  10:51:32  pinnacle
+# Replaced: cimacros/wireframe/cmd/COpnts.u for:  by svkadamb for vds.241
+#
+# Revision 1.2  1996/12/30  21:40:30  pinnacle
+# Replaced: cimacros/wireframe/cmd/COpnts.u for:  by yzhu for vds.241
+#
+# Revision 1.1  1996/07/19  20:33:52  pinnacle
+# Create VDS 241 project
+#
+# Revision 1.2  1996/02/22  05:39:44  pinnacle
+# Replaced: cimacros/wireframe/cmd/COpnts.u for:  by rchennup for vds.240
+#
+# Revision 1.1  1994/11/14  22:42:32  pinnacle
+# Create vds.240 from vds.232
+#
+# Revision 1.1  1994/11/08  16:07:00  pinnacle
+# create vds.232
+#
+ *
+ * History:
+ *	MM/DD/YY	AUTHOR		DESCRIPTION
+ *
+ * -------------------------------------------------------------------*/
+
+/*
+	 VDS 2.0 - PPM macro library - 92/07/09 (alc)
+ */
+   
+#include "ciminimum.h"
+#include "cimacros.h"
+#include "msdef.h"
+#include "ciexec.h"
+
+GRobj 		ci_mac_bib_FileId;
+IGRint		resp_exp;
+
+#define  LOW_RNG		0.0
+#define  HIG_RNG		1.0
+
+char		loc_mes[80],loc_prompt[80], exp_prompt[80];
+int		suc, stat;
+GRobj		MAC1;
+struct GRid	TEMP[3];
+struct GRmd_env MOD_ENV;
+double		exp_default, expr;
+
+
+
+extern ASmake_source_from_env();
+
+
+main()
+{
+
+
+ while(1)
+ {
+step0:
+     	resp_exp = 0;
+     	status("Reset to create expressions for u v parameters");
+
+exp1:
+
+        while(1)
+	{
+
+		ci$locate(     prompt	    = "locate surface",
+			       obj	    = &(TEMP[2].objid),
+			       osnum	    = &(TEMP[2].osnum),
+                               properties   = LC_LC_ONLY | LC_DP_ONLY | LC_RW,
+                               owner_action = LC_RIGID_COMP
+                                      | LC_RIGID_OWNER | LC_FLEX_COMP
+                                      | LC_FLEX_OWNER  | LC_REF_OBJECTS,
+                               classes      = "EMSsubbs",
+		   	       response     = &M_response,
+                               md_env       = &MOD_ENV   );
+ 		status("");
+		if( (M_response == EX_RJT_MOVEON)){/* && (resp_exp == 0) ){*/
+			resp_exp = 1;
+			ask_expressions();
+			goto exp1;
+		}
+		else if( (M_response == EX_DATA)||(M_response == EX_OBJID)){
+			if(  resp_exp == 0 ) cre_default_expressions();
+	   		ASmake_source_from_env( &TEMP[2],&MOD_ENV,&TEMP[2]);	
+		}
+		else if( M_response == EX_BACK_UP ){ 
+		       resp_exp = 1;
+		       ask_expressions();
+		       goto exp1;
+		}
+		else exit;
+
+
+   		ci$get_module_info(md_env = &MOD_ENV);
+
+		MAC1 = NULL_OBJID;
+
+		ci$send(msg      = message nci_macro.init( &suc,
+							   0,
+							   "pnts",  
+							   3,
+							   TEMP,
+							   0,
+							   &MOD_ENV ),
+			targetid = MAC1,
+	      		targetos = MOD_ENV.md_id.osnum );
+
+   		if( suc == 0 ){
+			write("placement of nci_macro \"pnts\" failed\n");
+			status("placement of nci_macro \"pnts\" failed");
+      			ci$send(msg = message Root.delete(0),
+	      			targetid = MAC1,
+	      			targetos = MOD_ENV.md_id.osnum );
+   		}
+
+     		status("Reset to create expressions for u v parameters");
+
+	}
+ }
+}
+wakeup(){
+	message(loc_mes);
+}
+
+/*==========================================================================*/
+init(){
+
+  	strcpy(loc_mes,"<Assoc> Place Point on Surface at U-V Parameters");
+
+ 	ci$load ( file_name = "ci_mac_bib.u",
+		  load      = LOAD,
+	  	  file_id   = &ci_mac_bib_FileId,
+		  stat      = &suc );
+	if( suc != CI_S_SUCCESS ) exit;
+
+}
+
+
+ask_expressions(){
+
+ask0:
+       strcpy(loc_prompt,"enter expression for u_par");
+       strcpy(exp_prompt,"enter u_par value");
+       exp_default = 0.0;
+
+       push (char *)&suc,loc_mes,loc_prompt,exp_prompt,exp_default,
+            (char *)&TEMP[0];
+       ci$run( file_id   = &ci_mac_bib_FileId,
+ 	       entry     = "loc_exp" );
+       if( suc != 1 ) exit;
+
+       ci$send( msg = message expression.NDgive_value(&expr),
+                 targetid = TEMP[0].objid,
+		 targetos = TEMP[0].osnum );
+
+       if( expr < 0.0 || expr > 1.0  ){
+	  status("u_par from 0.0 - 1.0");
+	  goto ask0;
+       }
+
+       strcpy(loc_prompt,"enter expression for v_par");
+       strcpy(exp_prompt,"enter v_par value");
+       exp_default = 0.0;
+
+       push (char *)&suc,loc_mes,loc_prompt,exp_prompt,exp_default,
+            (char *)&TEMP[1];
+       ci$run( file_id   = &ci_mac_bib_FileId,
+ 	       entry     = "loc_exp" );
+       if( suc != 1 ) goto ask0;
+
+       ci$send( msg = message expression.NDgive_value(&expr),
+                 targetid = TEMP[1].objid,
+		 targetos = TEMP[1].osnum );
+
+       if( expr < 0.0 || expr > 1.0  ){
+	  status("u_par from 0.0 - 1.0");
+	  goto ask0;
+       }
+
+
+
+}
+
+cre_default_expressions(){
+
+         push (char *)&suc, (IGRdouble)0.0, (char *)&TEMP[0];
+         ci$run( file_id = &ci_mac_bib_FileId,
+ 	         entry   = "CreDefUnExp" );
+         if( suc != MSSUCC ) exit;
+
+         push (char *)&suc, (IGRdouble)0.0, (char *)&TEMP[1];
+         ci$run( file_id = &ci_mac_bib_FileId,
+ 	         entry   = "CreDefUnExp" );
+         if( suc != MSSUCC ) exit;
+
+}
+/*==========================================================================*/
+
+
+
+
+
+

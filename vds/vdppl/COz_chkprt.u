@@ -1,0 +1,112 @@
+/* $Id $  */
+
+/*************************************************************************
+ * I/LOFT
+ *
+ * File:        src/vdppl/COz_chkprt.u
+ *
+ * Description: Check Pretend Objects.
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ *      $Log $
+ *
+ * History:
+ *      MM/DD/YY   AUTHOR       DESCRIPTION
+ *      09/27/00   Rama Rao     File Creation
+ *      09/28/00   jvh          added support for VSvalidate output
+ *************************************************************************/
+
+#include "VDppl.h"
+#include "VDobj.h"
+#include "vdVALmacros.h" //support for the validate form
+
+extern int		VDpms_findall_ancestryobjects();
+extern GRclassid	OPP_ACpretend_class_id;
+
+main()
+{
+IGRlong               msg, sts, bad_cnt;
+IGRint                i, nb_class, loc_cnt;
+IGRchar		      down_scan[1024];
+IGRchar		      msg_str[1024];
+GRclassid	      classid[1];
+OM_S_OBJID            *loc_list;
+struct GRid	      obj_chk, pret_parent;
+struct GRmd_env       cur_env;
+struct GRobj_env      footOE;
+
+   message( "Check Pretends" );
+
+   loc_cnt    = 0;
+   nb_class   = 1;
+   loc_list   = NULL;
+   bad_cnt = 0;
+   sts = MSSUCC;
+   msg = MSSUCC;
+
+
+   /* added the output to .process.log for display in VSvalidate form */
+   vd$VAL_openLog( msg = msg );
+   if( !(msg&1) ){ printf("validate log file could not be opened\n"); }
+
+   classid[0] = OPP_ACpretend_class_id;
+
+   ci$get_module_info( md_env = &cur_env );
+
+   loc_cnt = 0;
+   VDpms_findall_ancestryobjects( cur_env.md_id.osnum, nb_class, 
+				  classid, &loc_cnt, NULL );
+   if( !loc_cnt ) goto wrapup;
+
+   loc_list = ( OM_S_OBJID * ) malloc( sizeof(OM_S_OBJID)*loc_cnt );
+   VDpms_findall_ancestryobjects(  cur_env.md_id.osnum, nb_class,
+                                   classid, &loc_cnt, loc_list );
+                                     
+   for( i=0; i<loc_cnt; i=i+1 )
+   {
+       obj_chk.objid = loc_list[i];
+       obj_chk.osnum = cur_env.md_id.osnum;
+
+       vdobj$GetPretendParent( pretendID = &obj_chk,
+		   	       parentID  = &pret_parent );
+       if( pret_parent.objid == NULL_OBJID ) continue;
+
+       down_scan[0] = '\0' ;
+       ci$send ( msg      = message ACpretend.ACgive_downscan( down_scan ),
+                targetid = obj_chk.objid,
+		targetos = obj_chk.osnum );
+
+       footOE.obj_id.objid = NULL_OBJID;
+
+       vdobj$GetFoot( objID    = &pret_parent,
+		      footName = down_scan,
+		      footOE   = &footOE );	
+
+       if( footOE.obj_id.objid == NULL_OBJID )
+       {
+       
+	   vdobj$Print( objID = &pret_parent, cr = FALSE );
+	   sprintf( msg_str , "id[%d, %d] is Missing feet: [%s]\n",
+	   	obj_chk.objid, obj_chk.osnum, down_scan );
+	   	
+	   if( bad_cnt == 0 ) vd$VAL_addInfo( Text = "The following are bad ACpretends found." );	
+	   vd$VAL_addObject(
+	   	GRid = obj_chk, 
+	   	PreText = "\t",
+	   	PostText = "has missing feet" );
+	   	
+	   printf( "%s", msg_str );
+	   bad_cnt = bad_cnt + 1;
+       }
+   }
+
+   if( bad_cnt == 0 ) vd$VAL_addInfo( Text = "No bad ACpretends found" );
+wrapup:
+   status( "Done" );
+   if( loc_list   ) { free( loc_list   ); loc_list   = NULL; }
+   vd$VAL_closeLog();
+
+   return 1;
+}

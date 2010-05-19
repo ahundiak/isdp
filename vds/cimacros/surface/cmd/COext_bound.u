@@ -1,0 +1,169 @@
+/* $Id: COext_bound.u,v 1.1.1.1 2001/01/04 21:07:21 cvs Exp $  */
+
+/* --------------------------------------------------------------------
+ * I/VDS
+ *
+ * File:	vds/cimacros/surface/cmd / COext_bound.u
+ *
+ * Description:
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ *	$Log: COext_bound.u,v $
+ *	Revision 1.1.1.1  2001/01/04 21:07:21  cvs
+ *	Initial import to CVS
+ *	
+# Revision 1.1  1998/04/29  16:27:20  pinnacle
+# VDS 2.5.1
+#
+# Revision 1.2  1998/02/01  14:04:46  pinnacle
+# ah
+#
+# Revision 1.1  1997/05/08  13:20:44  pinnacle
+# New project VDS 250
+#
+# Revision 1.1  1996/07/19  20:33:52  pinnacle
+# Create VDS 241 project
+#
+# Revision 1.1  1994/11/14  22:42:32  pinnacle
+# Create vds.240 from vds.232
+#
+# Revision 1.1  1994/11/08  16:07:00  pinnacle
+# create vds.232
+#
+ *
+ * History:
+ *	MM/DD/YY	AUTHOR		DESCRIPTION
+ *      02/01/98        ah              Moved AS_status.h down
+ * -------------------------------------------------------------------*/
+
+/*
+	 VDS 2.0 - PPM macro library - 92/07/09 (alc)
+ */
+   
+/*
+	------------------------------------------------------------------
+
+	File Name :		COext_bound.u
+	Creation date :		December 09, 1991
+	Revision date : 	April 16, 1992
+	Author :		Alain CLAUDE
+	Product :		I/VDS - PPM library
+
+	Description :
+		This command extracts the surface boundaries from its
+		connectable edges to build one or more associative closed curves
+		(for more details, see ext_bound.u).
+
+	History :
+	   91/12/31	Rename COxbound to COext_bound, and make the previous 
+			release of ext_bound (91/12/11) obsolete.
+	   92/04/16	Update command field, 
+			(<Assoc> Extract Boundaries of Surface), VDExBdSr.
+
+	------------------------------------------------------------------
+ */
+
+
+#define  MACRO_NAME  "ext_bound"
+
+#include <stdio.h>
+#include <string.h>
+#include "cieveryone.h"
+#include "cimacros.h"
+#include "ci_mac_def.h"
+#include "msdef.h"
+#include "nddef.h"
+#include "macro.h"
+#include "dpmacros.h"
+#include "AS_status.h"
+#include "EMSmsgdef.h"
+#include "EMSopt.h"
+#include "EMSbnddef.h"
+#include "EMSbnd.h"
+
+IGRchar         loc_mes[300] ;
+struct GRmd_env MOD_ENV      ;
+struct GRid     LOCSURF      ; /* Located surface (EMSsurface) */
+GRobj           MAC1         ;
+
+extern ASmake_source_from_env() ;
+extern DPerase_hilite() ;
+
+
+/* ------------------------------------------------------------------------- */
+
+
+main ()
+{
+IGRlong rc, suc, sts ;
+IGRchar prompt_txt[300] ; 
+IGRchar status_txt[300] ; 
+
+dp$erase_hilite(msg = &sts) ;
+strcpy(loc_mes, "<Assoc> Extract Boundaries of Surface") ;
+strcpy(prompt_txt, "Identify a surface") ;
+
+LOCSURF.objid = NULL_OBJID ; rc = 0 ;
+
+while (1) {
+	message(loc_mes) ;
+	if (! ci$locate(properties   = 	LC_LC_ONLY | LC_DP_ONLY | LC_RW,
+			owner_action = 	LC_RIGID_COMP  |
+					LC_RIGID_OWNER | LC_FLEX_COMP |
+					LC_FLEX_OWNER  | LC_REF_OBJECTS,
+			obj          = 	&LOCSURF.objid,
+			osnum        = 	&LOCSURF.osnum,
+			prompt 	     =  prompt_txt,
+			classes	     = "EMSsurface",
+			md_env       = 	&MOD_ENV)) {
+		/* Mouse REJECT button */
+		return rc ;
+		}
+	/* */
+	ASmake_source_from_env(&LOCSURF, &MOD_ENV, &LOCSURF) ;
+	/* */
+	MAC1 = NULL_OBJID ;
+	sts = ci$get_module_info(md_env = &MOD_ENV) ; as$status(sts = sts) ;
+	sts = ci$send(msg = message nci_macro.init(&suc,
+				     0,
+				     MACRO_NAME,
+				     1,
+				     &LOCSURF,
+				     NULL,
+				     &MOD_ENV),
+		targetid = MAC1,
+		targetos = MOD_ENV.md_id.osnum) ; as$status(sts = sts) ;
+
+	if (!(sts & suc & 1)) {
+		sprintf(status_txt, "Placement of nci_macro \"%s\" failed", MACRO_NAME) ;
+		status(status_txt) ;
+		sts = ci$send(msg = message Root.delete(0),
+			targetid = MAC1,
+			targetos = MOD_ENV.md_id.osnum) ; as$status(sts = sts) ;
+
+		rc = 0 ; 
+		}
+	else {
+		#ifdef DEBUG
+		sprintf(status_txt, "Placement of nci_macro \"%s\" successful", MACRO_NAME) ;
+		status(status_txt) ;
+		#endif
+		rc = 1 ;
+		}
+	} /* while */
+} /* main() */
+
+
+/* ------------------------------------------------------------------------- */
+
+
+wakeup() 
+{
+message(loc_mes) ;
+}
+
+
+/* ------------------------------------------------------------------------- */
+

@@ -1,0 +1,786 @@
+/* $Id: crv_hgen.u,v 1.1.1.1 2001/01/04 21:07:22 cvs Exp $  */
+/* --------------------------------------------------------------------
+ * I/VDS
+ *
+ * File:        vds/cimacros/wireframe/cmd / crv_hgen.u
+ *
+ * Description:
+ *	This macro will create a lsq sq fit curve on a redistributed set
+ *	of points that are a result of a 4th order direct fit curve to the 
+ *	original set of points.
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ *      $Log: crv_hgen.u,v $
+ *      Revision 1.1.1.1  2001/01/04 21:07:22  cvs
+ *      Initial import to CVS
+ *
+# Revision 1.1  1998/04/29  16:27:20  pinnacle
+# VDS 2.5.1
+#
+# Revision 1.1  1997/07/17  20:12:30  pinnacle
+# Created: cimacros/wireframe/macros/crv_hgen.u by yzhu for vds
+#
+ *
+ * History:
+ *      MM/DD/YY        AUTHOR          DESCRIPTION
+ *      7/15/97         yzhu            copy from crv_hom.u
+ * -------------------------------------------------------------------*/
+
+   
+#include "cieveryone.h"
+#include "cimacros.h"
+#include "grdpb.h"
+#include "grdpbdef.h"
+#include "grdpbmacros.h"
+#include "ci_mac_def.h"
+#include "cimath.h"
+#include "nddef.h"
+#include "macro.h"
+#include "bserr.h"
+#include "macro.h"
+#include "msdef.h"
+#include "grwireframe.h"
+
+#define MAX_TEMP		500
+#define MAX_CHA_TEMP		9
+
+struct var 
+{
+  int    beg;
+  int    end;
+} *me;
+ 
+IGRshort	 	matrix_type;
+IGRdouble 	 	matrix[16];
+
+struct GRid		CI_MACRO_ID, COMP, GCV, CUV;
+int			k, offset;
+IGRdouble 	 	*beg_tan, *end_tan;
+IGRboolean		periodic;
+IGRint		        stat, msg, i, j, m;
+IGRdouble 	 	pt1[3*MAX_TEMP], *opoints, ave_err, max_err, mx_ind;
+IGRchar			*temp_names[MAX_TEMP], *feet_names[1], str[132];
+struct IGRbsp_curve     *bsp_curve, *bsp1, curve;
+IGRint			temp_types[MAX_TEMP], num_crv, num_sav;
+IGRchar			buff_TEMP[MAX_TEMP*MAX_CHA_TEMP];
+struct GRid 		CRV, DFC_CURVE;
+GRobj 			ci_mac_def1;
+struct GRvg_construct	cst;
+struct GRmd_env		MOD_ENV;
+struct IGRdisplay	dis;
+struct ret_struct	order, pole;
+struct ret_struct       tan_con;
+char			tmp_name[6];
+int			crv_order, num_spans, num_pts;
+double	cht;
+
+IGRdouble               max_disp, *points, *parms, *kurv, *rad;
+
+extern int GRdpb_get();
+extern int 		BSmkvec();
+extern IGRdouble	BSdotp();
+extern IGRint 		init_cnst_list(),
+			sprintf();
+extern int		*malloc(), free();
+extern			ASsuper_construct();
+extern                  BScvarrevc();
+extern                  GRgetcurve_struct();
+
+/* ========================================================================= */
+/* the main function is the one implementing the definition creation
+/* ========================================================================= */
+
+main ()
+{
+  
+  temp_names[0]="order";
+  temp_names[1]="spans";
+  temp_names[2]="numpt";
+
+  temp_types[0] = parameter_generic | double_type;
+  temp_types[1] = parameter_generic | double_type;
+  temp_types[2] = parameter_generic | double_type;
+  
+  for (i=1; i<MAX_TEMP-2; i=i+1)
+  {
+	j = (i+2) * MAX_CHA_TEMP;
+	sprintf(&buff_TEMP[j],"pnt%d",i);
+	temp_names[i+2] = &buff_TEMP[j];
+	temp_types[i+2] = point_generic | line_generic | curve_generic;
+  }
+
+  feet_names[0] = "rescrv";
+
+  ci_mac_def1 = NULL_OBJID;
+
+  ac$cimacdef( 	cimacdef          = ci_mac_def1,
+		prop	 	  = ACvariable_template,
+		status 	          = &stat, 	
+		name              = "crv_hgen",
+              	temp_num          = MAX_TEMP,
+		int_name          = "var",	   
+		int_size          = sizeof(struct var),
+		temp_names        = temp_names,
+		temp_types        = temp_types,
+	      	extern_feet_num   = 1,
+	 	extern_feet_names = feet_names );
+
+}
+
+/* ========================================================================= */
+
+place ()
+{
+
+  construct_comp();
+
+  if( CRV.objid == NULL_OBJID ) return(0);
+
+  ci$send( msg = message  ci_macro.set_all_extern_feet
+		(&stat, 1, &CRV, &MOD_ENV ),
+	   	targetid = CI_MACRO_ID.objid,
+	   	targetos = CI_MACRO_ID.osnum);
+  return(1);
+}
+/* ========================================================================= */
+
+compute ()
+{
+
+  construct_comp();
+
+  if( CRV.objid == NULL_OBJID ) return(0);
+
+  ci$send( msg = message  ci_macro.set_all_extern_feet
+		(&stat, 1, &CRV, &MOD_ENV ),
+	   	targetid = CI_MACRO_ID.objid,
+	   	targetos = CI_MACRO_ID.osnum);
+
+  return(1);
+
+}
+
+
+/* ========================================================================= */
+
+construct_comp()
+{
+
+	CRV.objid = NULL_OBJID;
+	CRV.osnum = MOD_ENV.md_id.osnum;
+
+  	stat = ci$send(msg = message NDnode.NDget_objects(ND_ROOT,NULL,0,NULL,
+					     0,OM_K_MAXINT,&num_crv),
+	   	       targetid = CI_MACRO_ID.objid,
+	   	       targetos = CI_MACRO_ID.osnum);
+
+	num_sav = num_crv - 3;
+	if(me->beg == 1) num_sav = num_sav -1;
+	if(me->end == 1) num_sav = num_sav -1;
+
+#ifdef DEBUG
+	write("me->beg=",me->beg,", me->end=",me->end,"\n");
+	write("number of inputs=",num_crv,'\n');
+	write("number of points=",num_sav,'\n');
+#endif
+
+  	if(!(stat&1)) return;
+
+/*--------------------------------------------------------------------------*/
+/*----------------    get the order	        ----------------------------*/
+/*--------------------------------------------------------------------------*/
+
+  	msg = ci$send( msg = message  ACcpx.ACfind_exp_temp_struct(
+					&stat, 0, (IGRchar *)&order,&MOD_ENV ),
+           	 targetid = CI_MACRO_ID.objid,
+           	 targetos = CI_MACRO_ID.osnum );
+  	if( !(stat&msg&1) ){
+		write(" bad expression for the order \n");
+		return;
+	}
+
+  	if( order.var.root_pm_st.value < 2) crv_order = 2;
+	else if(order.var.root_pm_st.value > num_crv-3) crv_order = num_crv-3;
+	else crv_order = order.var.root_pm_st.value;
+
+#ifdef DEBUG
+  write("curve order=",crv_order,'\n');
+#endif
+
+/*--------------------------------------------------------------------------*/
+/*----------------    get the number of spans     --------------------------*/
+/*--------------------------------------------------------------------------*/
+
+  	msg = ci$send( msg = message  ACcpx.ACfind_exp_temp_struct(
+					&stat, 1, (IGRchar *)&order,&MOD_ENV ),
+           	 targetid = CI_MACRO_ID.objid,
+           	 targetos = CI_MACRO_ID.osnum );
+
+  	if( !(stat&msg&1) )
+	{
+		write(" bad expression for the number of spans \n");
+		return;
+	}
+
+  	if( order.var.root_pm_st.value < 0) num_spans = 0;
+	else num_spans = order.var.root_pm_st.value;
+
+#ifdef DEBUG
+  write("num_spans=",num_spans,'\n');
+#endif
+
+/*--------------------------------------------------------------------------*/
+/*----------------    get the number of sample points   --------------------*/
+/*--------------------------------------------------------------------------*/
+
+  	msg = ci$send( msg = message  ACcpx.ACfind_exp_temp_struct(
+					&stat, 2, (IGRchar *)&order,&MOD_ENV ),
+           	 targetid = CI_MACRO_ID.objid,
+           	 targetos = CI_MACRO_ID.osnum );
+
+  	if( !(stat&msg&1) )
+	{
+		write(" bad expression for the number of points \n");
+		return;
+	}
+
+  	if( order.var.root_pm_st.value < 2) num_pts = 2;
+  	else num_pts = order.var.root_pm_st.value;
+
+#ifdef DEBUG
+  write("num_pts=",num_pts,'\n');
+#endif
+
+/*--------------------------------------------------------------------------*/
+/*----------------    retrieve the poles        ----------------------------*/
+/*--------------------------------------------------------------------------*/
+
+	num_crv = num_crv - 2;
+  	if(me->beg == 1 ){ num_crv = num_crv - 1; }
+  	if(me->end == 1 ){ num_crv = num_crv - 1; }
+
+  	m=0;
+  	for(i=1; i<num_crv; i=i+1)
+  	{
+
+		sprintf(tmp_name,"pnt%d",i);
+
+     		ci$send( msg = message  ACcpx.ACfind_temp_struct
+			(&stat,tmp_name, (char *)&pole,&MOD_ENV ),
+ 	      		targetid = CI_MACRO_ID.objid ,
+	      		targetos = CI_MACRO_ID.osnum );
+
+
+		#ifdef DEBUG
+		write(i);
+		write("pole[",(i-1),"] = ",pole.var.point_st.pt[0]
+			      ,pole.var.point_st.pt[1]
+			      ,pole.var.point_st.pt[2],"\n");
+		#endif
+   		for(j=0; j<3; j=j+1)
+   		{
+     			pt1[m] = pole.var.point_st.pt[j];
+     			m = m+1;
+   		}
+
+  	}
+	#ifdef DEBUG
+	write("out of getting the points\n");
+	#endif
+
+        beg_tan = (IGRdouble *) malloc(3 * sizeof(IGRdouble));
+        end_tan = (IGRdouble *) malloc(3 * sizeof(IGRdouble));
+
+/*--------------------------------------------------------------------------*/
+/*----------------    get start tangent if exists          -----------------*/
+/*--------------------------------------------------------------------------*/
+  
+  if(me->beg == 1 )
+  {
+  	#ifdef DEBUG
+	write("in start tan num_crv=",num_crv,"\n");
+	#endif
+
+    	msg = ci$send( msg = message  ACcpx.ACfind_exp_temp_struct( 
+							&stat, 
+							num_crv+2,
+							(IGRchar *)&tan_con,
+						        &MOD_ENV ),
+	     	targetid = CI_MACRO_ID.objid,
+	     	targetos = CI_MACRO_ID.osnum );
+
+  	if( !(stat&msg&1) )
+	{
+		write(" error in start tangent\n ");
+		goto wrapup;
+	}
+
+	get_vec_from_curve(num_crv+2, pt1, &tan_con);
+
+	#ifdef DEBUG
+	write("tan point\n",tan_con.var.point_st.pt[0],',',tan_con.var.point_st.pt[1],',',tan_con.var.point_st.pt[2],'\n');
+	#endif
+
+	set_tgt( &msg, (IGRint) 1, &pt1[0], &pt1[3], &tan_con, beg_tan );
+	#ifdef DEBUG
+	write("out of set_tgt",'\n');
+	#endif
+	
+	if( msg != BSSUCC ) goto wrapup;
+
+	num_crv = num_crv+1;
+  #ifdef DEBUG
+        write("beg_tan =",beg_tan[0],beg_tan[1],beg_tan[2],"\n");
+  #endif
+  }
+  else 
+  {
+  	if(beg_tan) { free(beg_tan); beg_tan = NULL; }
+  }
+
+/*--------------------------------------------------------------------------*/
+/*----------------    get end tangent if exists            -----------------*/
+/*--------------------------------------------------------------------------*/
+
+  if(me->end == 1 )
+  {
+  	#ifdef DEBUG
+	write("in end tan num_crv=",num_crv,"\n");
+	#endif
+
+	offset = num_crv*3;
+
+    	msg = ci$send( msg = message  ACcpx.ACfind_exp_temp_struct( 
+							&stat, 
+							num_crv+2,
+							(IGRchar *)&tan_con,
+						        &MOD_ENV ),
+	     	targetid = CI_MACRO_ID.objid,
+	     	targetos = CI_MACRO_ID.osnum );
+
+  	if( !(stat&msg&1) ){
+		write(" error in end tangent\n ");
+		goto wrapup;
+	}
+	
+	#ifdef DEBUG
+	write("tan_con.type=",tan_con.type,'\n');
+	#endif
+
+	get_vec_from_curve(num_crv+2, &pt1[offset] ,&tan_con);
+
+
+	#ifdef DEBUG
+	write("tan point\n",tan_con.var.point_st.pt[0],',',tan_con.var.point_st.pt[1],',',tan_con.var.point_st.pt[2],'\n');
+	#endif
+
+	set_tgt( &msg,(IGRint)2,
+		 &pt1[offset],
+		 &pt1[offset-3],
+		 &tan_con, end_tan );
+
+	if( msg != BSSUCC ) goto wrapup;
+  	#ifdef DEBUG
+        write("end_tan =",end_tan[0],end_tan[1],end_tan[2],"\n");
+  	#endif
+
+  }
+  else
+  { 
+  	if(end_tan) { free(end_tan); end_tan = NULL; }
+	//end_tan[0] = 0.0 ; end_tan[1] = 0.0 ; end_tan[2] = 0.0;
+  }
+
+
+
+/****************************************************************/
+/**************** Now Get to work on the new curve **************/
+/****************************************************************/
+
+   	init_cnst_list();
+   	get_symb();
+
+   	dis.color	= cnst_list.color;
+   	dis.weight	= cnst_list.weight;
+   	dis.style	= cnst_list.style;
+
+   	cst.msg		= &msg;
+   	cst.properties	= GRIS_LOCATABLE | GRIS_DISPLAYABLE;
+   	cst.display	= &dis;
+   	cst.env_info	= &MOD_ENV;
+   	cst.newflag	= FALSE;
+   	cst.level	= cnst_list.level;
+   	cst.geometry	= NULL;
+   	cst.class_attr	= NULL;
+   	cst.name	= NULL;
+
+	DFC_CURVE.objid = NULL_OBJID;
+	DFC_CURVE.osnum = MOD_ENV.md_id.osnum;
+	#ifdef DEBUG
+	write("num_cur=",num_crv,'\n');
+	#endif
+
+   	stat = ci$send(msg= message GRbcsubbc.EMdirect_fit_curve(
+             		4,0,(IGRlong)num_sav,pt1,0,beg_tan,end_tan,&cst),
+             		targetid = DFC_CURVE.objid,
+			targetos = DFC_CURVE.osnum);
+
+   	if( !(stat&1) )
+	{
+		write("direct fit curve failed\n");
+		status("direct fit curve failed");
+	  	DFC_CURVE.objid = NULL_OBJID;
+     		return;
+   	}
+	
+	opoints = NULL;
+	opoints = (double *) malloc (num_pts*3*sizeof(double));
+	if( opoints == NULL)
+	{
+		write("malloc on points failed\n");
+		status("malloc on points failed");
+		return;
+	}
+
+        gr$get_curve_geometry( msg          = &msg,
+                               md_env       = &MOD_ENV,
+                               object_id    = &DFC_CURVE,
+                               curve_struct = &bsp1 );
+                              
+        parms  = (IGRdouble *) malloc(8 * num_pts);
+        points = (IGRdouble *) malloc(48 * num_pts);
+        kurv   = (IGRdouble *) malloc(8 * num_pts);
+        rad    = (IGRdouble *) malloc(8 * num_pts);
+
+        for(i=0; i<num_pts;i=i+1) parms[i]=i/(num_pts - 1.0);
+
+        BScvarrevc(bsp1,num_pts,parms,max_disp,kurv,rad,points,&msg);
+
+        for(i=0;i<num_pts;i=i+1) {
+           opoints[i*3]   = points[i*6];
+           opoints[i*3+1] = points[i*6+1];
+           opoints[i*3+2] = points[i*6+2];
+           write(opoints[i*3],opoints[i*3+1],opoints[i*3+2], "\n");
+        }
+
+        free(points);
+        free(parms);
+        free(kurv);
+        free(rad);
+
+	gr$get_chord_height_tolerance(msg = &msg,
+                              sizbuf = sizeof(double),
+                              buffer = &cht,
+                              nret = NULL);
+
+	#ifdef DEBUG
+	write("cht=",cht,'\n');
+	#endif
+	periodic = FALSE;
+
+	CRV.objid = NULL_OBJID;
+	CRV.osnum = MOD_ENV.md_id.osnum;
+
+	stat = ci$send(msg = message GRbcsubbc.EMleast_squares_fit_curvee(
+			crv_order,
+ 			periodic, // periodic
+			num_pts,
+			opoints,
+			NULL,
+			beg_tan, // start tan
+			end_tan, // end tan
+			num_spans,
+			NULL,
+			&ave_err,
+			&max_err,
+			&mx_ind,
+			&pt1[0],
+			&cst ),
+                	targetid = CRV.objid,
+	        	targetos = CRV.osnum );
+
+  	if(opoints) { free(opoints); opoints = NULL; }
+	
+  	if( !(stat&1) )
+	{
+		CRV.objid = NULL_OBJID;
+		write(" error in GRbcsubbc.EMleast_squares_fit_curvee \n");
+	}
+	else
+	{
+		if( dis.weight < 2 ) dis.weight = 2;
+//ddd (for DAEWOO) 10/12/94		if(max_err > cht) display_max_error( &msg, pt1, (IGRdouble) 1.0, &cst );
+	}
+
+  	strcpy(str,"average error = ");
+  	strcat(str,ftoa(ave_err));
+  	strcat(str,"  maximun error = ");
+  	strcat(str,ftoa(max_err));
+  	status(str);
+
+  	stat = ci$send( msg = message  GRgraphics.GRdelete( 
+		 &msg,
+                 &MOD_ENV ),
+                 targetid = DFC_CURVE.objid,
+		 targetos = DFC_CURVE.osnum );
+
+ 	if( !(stat&msg&1) ){ msg = MSFAIL; return; }
+
+wrapup:
+
+  if(beg_tan) { free(beg_tan); beg_tan = NULL; }
+  if(end_tan) { free(end_tan); end_tan = NULL; }
+}
+
+
+/*=========================================================================*/
+
+display_max_error( rc, fromtopt, ratio, cst )
+
+IGRlong			*rc;
+IGRdouble		*fromtopt;
+IGRdouble		ratio;
+struct GRvg_construct	*cst;
+
+{
+
+struct IGRpolyline	line;
+IGRint			GRdpmode;
+struct GRid		display_info, lineGRid;
+IGRlong			OMsts, msgmsg;
+IGRint			i;
+IGRdouble		unMratio;
+extern IGRint		GRfindmod();
+
+
+     	GRfindmod(&display_info);
+	GRdpmode = GRbd;
+	lineGRid.objid = NULL_OBJID;
+	lineGRid.osnum = cst->env_info->md_id.osnum;
+	line.num_points = 2;
+	unMratio = 1.0 - ratio;
+
+	for(i=0;i<3;i=i+1) 
+	fromtopt[i+3] = unMratio * fromtopt[i] + ratio * fromtopt[i+3];
+
+        line.points = (IGRdouble *) fromtopt;
+	cst->geometry = (char *)&line;
+
+
+  	OMsts = ci$send( msg       = message GR3dlineseg.GRaltconstruct(cst),
+        	         targetid  = lineGRid.objid,
+ 	                 targetos  = lineGRid.osnum ) ;
+ 	if( !(OMsts&1) ){ *rc = MSFAIL; return; }
+ 
+       	OMsts = ci$send( msg      = message GRgraphics.GRdisplay(
+                 	&msgmsg,
+			&cst->env_info->md_env.matrix_type,
+              		cst->env_info->md_env.matrix,
+			&GRdpmode, 
+			&display_info),
+                        targetid = lineGRid.objid,
+		        targetos = lineGRid.osnum );
+  
+ 	if( !(OMsts&msgmsg&1) ){ *rc = MSFAIL; return; }
+
+  	OMsts = ci$send( msg      = message  GRgraphics.GRdelete( 
+							&msgmsg,
+                                                        &cst->env_info ),
+                 targetid = lineGRid.objid,
+		 targetos = lineGRid.osnum );
+ 	if( !(OMsts&msgmsg&1) ){ *rc = MSFAIL; return; }
+
+	*rc = MSSUCC;
+}
+
+/***************************************************************/
+
+get_vec_from_curve(index, pnt1, ret)
+double  pnt1[3];
+int	index;
+struct ret_struct 	*ret;
+{
+struct GRid CURVE,TMPCURVE;
+double	point1[3],point2[3],point3[3],point4[3], tmp1[3], tmp2[3];
+int	i;
+
+
+	msg = ci$send( msg = message ACcpx.ACfind_exp_temp_obj(
+			&stat,index,&TMPCURVE),
+           		targetid = CI_MACRO_ID.objid,
+           		targetos = CI_MACRO_ID.osnum );
+
+	if( !(stat&msg&1) ) return;
+
+	msg = ci$send( msg   = message NDmacro.ACreturn_foot(	
+			&stat ,	"", &CURVE, &matrix_type, matrix ),
+	   		targetid = TMPCURVE.objid,
+	   		targetos = TMPCURVE.osnum );
+
+	if(!(stat&msg&1)){
+		write(" bad curve\n" );
+		return;
+  	}
+
+	#ifdef DEBUG
+	write("id of tangent curve[",TMPCURVE.objid,TMPCURVE.osnum,"]\n");
+	#endif
+
+
+	ci$send(  msg = message GRvg.GRgenabsg( 
+			&msg, &matrix_type, matrix, &bsp_curve ),
+           		targetid = CURVE.objid,
+ 	   		targetos = CURVE.osnum );
+
+	#ifdef DEBUG
+	write("past genabsg\n");
+	#endif
+
+	if(bsp_curve->rational == 0) 
+	{
+		for(i=0;i<3;i=i+1)
+		{
+			 point1[i] = bsp_curve->poles[i];
+			 point2[i] = bsp_curve->poles[3+i];
+			 point3[i] = bsp_curve->poles[bsp_curve->num_poles*3-6+i];
+			 point4[i] = bsp_curve->poles[bsp_curve->num_poles*3-3+i];
+		}
+	}
+	else
+	{
+		for(i=0;i<3;i=i+1)
+		{
+	point1[i] = bsp_curve->poles[i]/bsp_curve->weights[0];
+	point2[i] = bsp_curve->poles[3+i]/bsp_curve->weights[1];
+	point3[i] = bsp_curve->poles[bsp_curve->num_poles*3-6+i]/bsp_curve->weights[bsp_curve->num_poles-2];
+	point4[i] = bsp_curve->poles[bsp_curve->num_poles*3-3+i]/bsp_curve->weights[bsp_curve->num_poles-1];
+		}
+#ifdef DEBUG
+write("weights=",bsp_curve->weights[0],bsp_curve->weights[1],":",bsp_curve->weights[bsp_curve->num_poles-2],bsp_curve->weights[bsp_curve->num_poles-1],'\n');
+write("poles=",point1[0], point1[1], point1[2],":",point2[0],point2[1],point2[2],"\n");
+write("poles=",point3[0], point3[1], point3[2],":",point4[0],point4[1],point4[2],"\n");
+#endif
+	}
+
+
+	if(point1[0] == point4[0] && 
+	   point1[1] == point4[1] &&
+	   point1[2] == point4[2] )
+	{
+		#ifdef DEBUG
+		write("found a point\n");
+		#endif
+
+		v_equal(point1,&ret->var.point_st.pt[0]);
+		goto skip;
+	}
+
+	v_sub(pnt1,point1, tmp1);
+	v_sub(pnt1,point4, tmp2);
+
+	if( v_len(tmp1) <  v_len(tmp2))
+	{
+		#ifdef DEBUG
+		write("start of curve is closer\n");
+		#endif
+		v_sub(point2,point1,tmp1);
+		v_add(pnt1,tmp1,&ret->var.point_st.pt[0]);
+	}
+	else if( v_len(tmp1) >  v_len(tmp2))
+	{
+		#ifdef DEBUG
+		write("end of curve is closer\n");
+		#endif
+		v_sub(point3,point4,tmp1);
+		v_add(pnt1,tmp1,&ret->var.point_st.pt[0]);
+	}
+skip:
+	ret->type = point_generic;
+
+	#ifdef DEBUG
+	write("leaving get_vec_from_curve() point[",ret->var.point_st.pt[0],ret->var.point_st.pt[1],ret->var.point_st.pt[2],"]\n");
+	#endif
+
+}
+
+
+/*=========================================================================*/
+
+set_tgt( rc, flag, frompt, topt, ret, tan )
+
+IGRlong			*rc;
+IGRint		        flag;     /* flag = 1 -> start tangent */
+IGRdouble		frompt[3];
+IGRdouble		topt[3];
+struct ret_struct 	*ret;
+IGRdouble		tan[3];
+
+{
+		
+IGRdouble vdif[3], v1[3],t2[3],t1[3];
+IGRint	  ind;
+
+	    #ifdef DEBUG
+		write("frompt=",frompt[0],frompt[1],frompt[2],"\n");
+		write("topt=",topt[0],topt[1],topt[2],"\n");
+	    #endif
+
+	    if( flag == 1 ) BSmkvec(rc,vdif,frompt,topt);
+            else            BSmkvec(rc,vdif,topt,frompt);
+	    if( *rc != BSSUCC ) return;
+
+	    #ifdef DEBUG
+		write("got past BSmkvec\n");
+	    #endif
+			
+	    if( ret->type == line_generic )
+	    {
+		if( BSdotp(rc,vdif,ret->var.line_st.v0) < 0.0 )
+		{
+			tan[0] = -1.0 * ret->var.line_st.v0[0];
+			tan[1] = -1.0 * ret->var.line_st.v0[1];
+			tan[2] = -1.0 * ret->var.line_st.v0[2];
+		}
+		else
+		{
+			tan[0] = ret->var.line_st.v0[0];
+			tan[1] = ret->var.line_st.v0[1];
+			tan[2] = ret->var.line_st.v0[2];
+		}
+		*rc = BSSUCC; 
+		return;		
+	    }
+	    else if( ret->type == point_generic )
+	    {
+
+		#ifdef DEBUG
+		write("	BSmkvec() \n");
+		write("point[",ret->var.point_st.pt[0],ret->var.point_st.pt[1],ret->var.point_st.pt[2],"]\n");
+		write("frompt=",frompt[0],frompt[1],frompt[2],"\n");
+		#endif
+
+	    	BSmkvec(rc,tan,frompt,ret->var.point_st.pt);
+	  	#ifdef DEBUG
+		write("	BSdotp() \n");
+		#endif
+
+		if( BSdotp(rc,vdif,tan) < 0.0 )
+		{
+			tan[0] = -1.0 * tan[0];
+			tan[1] = -1.0 * tan[1];
+			tan[2] = -1.0 * tan[2];
+		}
+
+		*rc = BSSUCC;
+		return;
+	    }
+	    else if( ret->type == curve_generic ){
+
+		write("curve generic\n");
+	    }
+	    else *rc = BSFAIL;
+
+}
+

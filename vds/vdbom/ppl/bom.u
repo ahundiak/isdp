@@ -1,0 +1,2224 @@
+  /* $Id: bom.u,v 1.1.1.1 2001/01/04 21:07:57 cvs Exp $  */
+
+/* --------------------------------------------------------------------
+ * I/VDS
+ *
+ * File:        vds/vdbom/ppl / bom.u
+ *
+ * Description:
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ *      $Log: bom.u,v $
+ *      Revision 1.1.1.1  2001/01/04 21:07:57  cvs
+ *      Initial import to CVS
+ *
+# Revision 1.1  1998/04/29  16:27:20  pinnacle
+# VDS 2.5.1
+#
+# Revision 1.1  1997/05/08  13:20:44  pinnacle
+# New project VDS 250
+#
+# Revision 1.1  1996/07/19  20:33:52  pinnacle
+# Create VDS 241 project
+#
+# Revision 1.9  1995/09/26  14:28:08  pinnacle
+# Replaced: vdbom/ppl/bom.u for:  by sundar for vds.240
+#
+# Revision 1.8  1995/01/23  19:09:26  pinnacle
+# Replaced:  vdbom/ppl/bom.u r#
+#
+# Revision 1.7  1994/12/30  22:35:08  pinnacle
+# Replaced:  vdbom/ppl/bom.u tr# 179424276
+#
+# Revision 1.6  1994/12/28  22:04:08  pinnacle
+# Replaced:  vdbom/ppl/bom.u tr# 179424265
+#
+
+# Revision 1.5  1994/12/21  15:54:26  pinnacle
+# Replaced:  vdbom/ppl/bom.u r#
+#
+# Revision 1.4  1994/12/15  22:41:26  pinnacle
+# Replaced:  vdbom/ppl/bom.u r#
+#
+# Revision 1.3  1994/12/13  15:18:08  pinnacle
+# Replaced:  vdbom/ppl/bom.u r#
+#
+# Revision 1.2  1994/12/12  20:52:30  pinnacle
+# Replaced:  vdbom/ppl/bom.u r#
+#
+# Revision 1.1  1994/12/07  14:53:48  pinnacle
+# Created:   vdbom/ppl/bom.u r#
+#
+# Revision 1.1  1994/11/14  22:42:32  pinnacle
+# Create vds.240 from vds.232
+#
+# Revision 1.1  1994/11/08  16:07:00  pinnacle
+# create vds.232
+#
+ *
+ * History:
+ *
+ *      09/05/94        R.Manem         Creation
+ *      12/07/94        R.Manem         Enhancements for OPE :
+ *                                      - assoc/non-assoc option
+ *                                      - sorting of non-assoc list
+ *                                      - additional attributes in rg_collector
+ *                                        template
+ *                                      - ASCII file output
+ *	12/12/94	R. Manem	- BOTTOM_UP format for ASCII output
+ *					- table name row in ASCII output
+ *					- Moved getItemInfo function to a 
+ *					  macro
+ *					- NDdelete : proper deletion of item 
+ *					  numbers
+ *	12/13/94	R. Manem	- Removal of declaration for
+ *					  VDgetItemNoForObj
+ *	12/15/94	R. Manem	- Changed blanks from array to pointer
+ *	12./20/94	R. Manem	- Changed NDdelete : removed call to
+ *					  free item numbers. GRdelete of the
+ *					  item number will set its item nb free.
+ *	12/28/94	R. Manem	- fixed TR 179424265 : unit conversions
+ *	12/30/94	R. Manem	- delete set during NDdelete
+ *
+ * -------------------------------------------------------------------*/
+
+   
+#include "cieveryone.h"
+#include "cimacros.h"
+#include "OMminimum.h"
+#include "OMprimitives.h"
+#include "parametric.h"
+#include "ci_mac_def.h"
+#include "igrtypedef.h"
+#include "ACattrib.h"
+#include "ACrg_collect.h"
+#include "grdpb.h"
+#include "growner.h"
+#include "grdpbmacros.h"
+#include "cotxmacros.h"
+#include "gotextdef.h"
+#include "grmacros.h"
+#include "exmacros.h"
+#include "vdparmacros.h"
+#include "vdsetmacros.h"
+#include "parametric.h"
+#include "nddef.h"
+#include "ndmacros.h"
+#include "AS_status.h"
+#include "asmacros.h"
+#include "asbox.h"
+#include "VDbom.h"
+#include "DIdef.h"
+#include "DImacros.h"
+#include "vdanmacros.h"
+#include "go.h"
+#include "godef.h"
+#include "stdio.h"
+#include "string.h"
+
+/*
+#define DEBUG
+*/
+
+#define MAX_CHA_TEMP         7
+
+IGRint			i, j, k, 
+                        mustSort,
+                        nbCols, nbRows,
+                        nbTempObjs, nbMatrls,
+                        nb, four, rect, len,
+                        index,
+                        found,
+                        outToFile,
+                        nbTotBlnks, nbBlnksLeft, nbBlnksRight, fileTotChars,
+			nbLinesInFile,
+                        nret, sizebuf, totChars, flag,
+                        colSizeLst[SORT_LEVEL], 
+                        size[MAX_COLUMNS], temp_types[MAX_TEMP];
+
+IGRchar                 just[MAX_COLUMNS], 
+                        className[80],
+                        *format[MAX_COLUMNS],
+                        *sortOrder[MAX_COLUMNS], 
+                        sortIndex[4], 
+                        *title[MAX_COLUMNS], 
+       			*temp_names[MAX_TEMP], 
+                        *feet_names[2], 
+                        nullAtt[MAX_BUF_CHARS],
+                        paramValue[MAX_BUF_CHARS], 
+                        buffer[MAX_BUF_CHARS], 
+                        elmName[DI_PATH_MAX], 
+                        buff[MAX_TEMP * MAX_CHA_TEMP],
+                        txt[30], 
+                        outputFileName[256], 
+                        tblName[256], 
+                        *fileBuffer, 
+                        *blanks, 
+                        *fileHorLine, 
+                        sortOrderLst[SORT_LEVEL], 
+                        *sortAttrLst, 
+                        *formatLst, 
+                        *curPfx, 
+			*itemNo,
+                        itemString[1024], 
+                        orient;
+
+IGRdouble               horLineLength, verLineLength,
+                        charWidth, charHeight, rowHeight, 
+                        colPnts[(MAX_COLUMNS + 1)],
+                        *rowPnts, 
+                        qty, org[3],
+                        textWidth, textHeight,
+                        points[12], wld_pts[12];
+
+IGRlong			stat, msg;			
+
+FILE                    *fp;
+
+IGRmatrix               idMatrix, loc_to_wld, wld_to_loc;
+
+GRclassid               class_id;
+GRobj 			ci_mac_def1;
+
+struct GRid		coll, 
+                        cs, 
+                        itemObj, 
+                        setGrid, 
+                        outerLine, 
+                        BOM_OBJ[2], CI_MACRO_ID,
+                        *lstMatrls,
+                        verLines[MAX_COLUMNS + 1],
+                        paramTexts[MAX_COLUMNS], 
+                        titleTexts[MAX_COLUMNS],
+                        tblNameId,
+                        *horLines;       /* no of hor lines = nrows +1,
+                                                     nrows = nb_obj+1, 
+                                                     nb_obj = MAX_TEMP-2 */
+
+struct IGRdisplay	dis;
+
+struct IGRpolyline      polyLine;
+
+struct GRobj_env        obj, *lstEnvMatrls;
+
+struct GRmd_env		MOD_ENV;
+
+struct GRobj_info       info;
+
+struct GRvg_construct   cst;
+
+struct ACrg_coll        att[MAX_COLUMNS+13], 
+                        tempAtt,
+                        paramsList[MAX_COLUMNS];
+
+struct GRdpb_text_symb  textSymb;
+
+extern GRclassid        OPP_GRcontext_class_id,
+                        OPP_GRowner_class_id;
+
+extern        	        init_cnst_list(),
+                        GRang_place_text(),
+                        GRplace_text(),
+      	                ASsuper_construct(),
+       	                GRdpb_get(),
+                        GRdpb_put(),
+                        NDis_waiting(),
+                        EX_get_super(),
+                        CO_xlate_to_user_mode(),
+                        som_construct_object(),
+      			VDsortObjs(),
+      			VDdet_conv_int_ext(),
+      			sprintf(),
+      			atoi(),
+      			printf(),
+      			malloc(),
+      			free(),
+      			MAidmx(),
+      			MAinvmx(),
+      			sscanf();
+
+/* ========================================================================= */
+/* the main function is the one implementing the definition creation
+/* ========================================================================= */
+
+main ()
+{
+
+  temp_names[0]  = "collector" ;  
+  temp_types[0]  = macro_generic;
+
+  temp_names[1]  = "origin" ;  
+  temp_types[1]  = ref_generic | point_generic | line_generic;
+
+  for( i = 2 ; i < MAX_TEMP ; i = i+1 )
+  {
+       j = (i-2) * MAX_CHA_TEMP;
+       sprintf( &buff[j], "obj%d", i-1 );
+       temp_names[i] = &buff[j];
+       temp_types[i] = other_generic ;
+  }
+
+  feet_names[0] = "bom_table";
+  feet_names[1] = "item_nos";
+  ci_mac_def1 = NULL_OBJID;
+
+  ac$cimacdef( 	cimacdef          =  ci_mac_def1,
+		status 	          = &stat,
+	 	name              = "bom",
+              	temp_num          = MAX_TEMP,
+		temp_names        = temp_names,
+		temp_types        = temp_types,
+	      	extern_feet_num   = 2,
+	 	extern_feet_names = feet_names );
+}
+
+/* ========================================================================= */
+
+compute ()
+{
+
+  construct_bom();
+
+
+  ci$send( msg = message  ci_macro.set_all_extern_feet
+	 ( &stat, 2, BOM_OBJ, &MOD_ENV ),
+	   targetid = CI_MACRO_ID.objid,
+	   targetos = CI_MACRO_ID.osnum );
+
+  /* free up allocated memory */
+
+   for( i = 0 ; i < nbCols ; i = i + 1 )
+   {
+      if( format[i] )
+         free( format[i] );
+      if( title[i] )
+         free( title[i] );
+      if( sortOrder[i] )
+         free( sortOrder[i] );
+   }
+   if( sortAttrLst )
+      free( sortAttrLst );
+   if( formatLst )
+      free( formatLst );
+   if( fileBuffer )
+      free( fileBuffer );
+   if( fileHorLine )
+      free( fileHorLine );
+   if( blanks )
+      free( blanks );
+   if( rowPnts )
+      free( rowPnts );
+   if( horLines )
+      free( horLines );
+   if( lstMatrls )
+      free( lstMatrls );
+   if( lstEnvMatrls )
+      free( lstEnvMatrls );
+   
+  return(1);
+}
+
+/* ========================================================================= */
+
+place ()
+{
+
+   construct_bom();
+
+   if( BOM_OBJ[0].objid == NULL_OBJID ) 
+   {
+      printf("\nRESULT : NULL_OBJID got\n");
+      return(0); 
+   }
+
+   ci$send( msg = message  ci_macro.set_all_extern_feet
+	                   ( &stat, 2, BOM_OBJ, &MOD_ENV ),
+	    targetid = CI_MACRO_ID.objid,
+	    targetos = CI_MACRO_ID.osnum );
+ 
+  /* free up allocated memory */
+
+   for( i = 0 ; i < nbCols ; i = i + 1 )
+   {
+      if( format[i] )
+         free( format[i] );
+      if( title[i] )
+         free( title[i] );
+      if( sortOrder[i] )
+         free( sortOrder[i] );
+   }
+   if( sortAttrLst )
+      free( sortAttrLst );
+   if( formatLst )
+      free( formatLst );
+   if( fileBuffer )
+      free( fileBuffer );
+   if( fileHorLine )
+      free( fileHorLine );
+   if( blanks )
+      free( blanks );
+   if( rowPnts )
+      free( rowPnts );
+   if( horLines )
+      free( horLines );
+   if( lstMatrls )
+      free( lstMatrls );
+   if( lstEnvMatrls )
+      free( lstEnvMatrls );
+
+   return(1);
+
+}
+
+/* ========================================================================= */
+
+
+construct_bom()
+{
+
+   BOM_OBJ[0].objid = NULL_OBJID;
+   BOM_OBJ[1].objid = NULL_OBJID;
+   BOM_OBJ[0].osnum = MOD_ENV.md_id.osnum;
+   BOM_OBJ[1].osnum = MOD_ENV.md_id.osnum;
+
+   /* initialize pointers */
+
+   for( i = 0 ; i < MAX_COLUMNS ; i=i+1 )
+   {
+      format[i] = NULL;
+      title[i] = NULL;
+      sortOrder[i] = NULL;
+   }
+   sortAttrLst = NULL;
+   formatLst = NULL;
+   fileBuffer = NULL;
+   fileHorLine = NULL;
+   blanks = NULL;
+   rowPnts = NULL;
+   horLines = NULL;
+   lstMatrls = NULL;
+   
+   init_cnst_list();
+   get_symb();
+
+   dis.color            = cnst_list.color;
+   dis.weight           = cnst_list.weight;
+   dis.style            = cnst_list.style;
+
+   cst.msg              = &msg;
+   cst.properties       = GRIS_LOCATABLE | GRIS_DISPLAYABLE;
+   cst.display          = &dis;
+   cst.env_info         = &MOD_ENV;
+   cst.newflag          = FALSE;
+   cst.level            = cnst_list.level;
+   cst.class_attr       = NULL;
+   cst.name             = NULL;
+
+   /* get the number of templates */
+
+   msg = ci$send( msg = message NDnode.NDget_objects( ND_ROOT, NULL, 0, NULL,
+                                                  0, OM_K_MAXINT, &nbTempObjs ),
+                  targetid = CI_MACRO_ID.objid,
+                  targetos = CI_MACRO_ID.osnum );
+
+   if( !( msg & 1 ) )
+      return;
+
+#ifdef DEBUG
+   printf("====No of template objects = %d\n", nbTempObjs );
+#endif
+
+   /* get the rg collector ( BOM table layout information)  */
+
+   msg =  ci$send( msg = message  ACcpx.ACfind_exp_temp_obj(&stat,0,&coll),
+                targetid = CI_MACRO_ID.objid,
+                targetos = CI_MACRO_ID.osnum );
+
+   if( !(msg & stat & 1) )
+   {
+        printf("\nError : getting collector template\n");
+        return;
+   }
+
+#ifdef DEBUG
+   printf("\nCollector objid = <%d, %d>\n", coll.objid, coll.osnum );
+#endif
+
+   /* get the coordinate system source object */
+
+   msg =  ci$send( msg = message  ACcpx.ACfind_exp_temp_obj(&stat,1,&cs),
+                   targetid = CI_MACRO_ID.objid,
+                   targetos = CI_MACRO_ID.osnum );
+
+   if( !(msg & stat & 1) )
+   {
+        printf("\nError : getting coord sys template\n");
+        return;
+   }
+
+   /* get the coordinate system graphic object */
+
+   msg = ci$send( msg = message ASnode.ASreturn_go( &cs, NULL, NULL),
+                  targetid = cs.objid,
+                  targetos = cs.osnum );
+
+#ifdef DEBUG
+   printf("\nCoord sys  objid = <%d, %d>\n", cs.objid, cs.osnum );
+#endif
+
+   /* get the grid of the 3rd template, probably a source of set */
+
+   msg =  ci$send( msg = message  ACcpx.ACfind_exp_temp_obj(&stat, 2,
+                                                            &setGrid ),
+                targetid = CI_MACRO_ID.objid,
+                targetos = CI_MACRO_ID.osnum );
+   if( !(msg &1) )
+   {
+      printf("\nbom.u : getting set object failed \n");
+      return;
+   }
+ 
+#ifdef DEBUG
+   printf("\nSet grid source = %d, %d", setGrid.objid, setGrid.osnum );
+#endif
+
+   /* get the set object */
+
+   msg = ci$send( msg = message ASnode.ASreturn_go( &setGrid, NULL, NULL),
+                  targetid = setGrid.objid,
+                  targetos = setGrid.osnum );
+
+#ifdef DEBUG
+   printf("\nActual set objid = <%d, %d>\n", setGrid.objid, setGrid.osnum );
+#endif
+
+   msg = om$get_classid( osnum       = setGrid.osnum,
+                         objid       = setGrid.objid,
+                         p_classid   = &class_id );
+   as$status( sts = msg, action = RET_STATUS );
+
+#ifdef DEBUG
+   msg = om$get_classname( osnum     = setGrid.osnum,
+                         objid       = setGrid.objid,
+                         classname   = className );
+   printf("\nClassname ======== %s\n\n", className );
+#endif
+
+   if( om$is_ancestry_valid( subclassid     = class_id,
+                             superclassname = "VDgrset" ) == OM_S_SUCCESS )
+   {
+
+      /* non-assoc BOM case : get the set objects */
+ 
+      /* objects have to be sorted later */
+
+      mustSort = 1;
+
+      /* get the number of objects in the set */
+
+#ifdef DEBUG
+   printf("\n==========Non Associative BOM==========\n");
+#endif
+
+      msg = vd$give_setobjs(	set_grid        = &setGrid,
+				set_name	= NULL,
+                        	numcomps        = &nbMatrls );
+      as$status( sts = msg, action = RET_STATUS );
+
+#ifdef DEBUG
+   printf("\nNo of objects in set = %d", nbMatrls );
+#endif
+
+      if( !nbMatrls )
+         return;
+
+      lstMatrls = (struct GRid *)malloc( sizeof(struct GRid) * nbMatrls );
+      if( lstMatrls == NULL )
+      {
+           printf( "ERROR : Dynamic allocation\n");
+           return;
+      }
+      
+      msg = vd$give_setobjs(  	set_grid        = &setGrid,
+				set_name	= NULL,
+                              	numcomps        = &nbMatrls,
+                              	set_objs        = lstMatrls );
+      as$status( sts = msg, action = RET_STATUS );
+
+#ifdef DEBUG
+   printf("\nObtained set objects : \n\t");
+   for( i = 0 ; i < nbMatrls ; i=i+1 )
+       printf("<%d, %d> ", lstMatrls[i].objid, lstMatrls[i].osnum );
+#endif
+
+      for( i = 0 ; i < nbMatrls ; i=i+1 )
+      {
+         if( om$is_objid_valid( osnum = lstMatrls[i].osnum,
+                                objid = lstMatrls[i].objid ) != OM_S_SUCCESS )
+         {
+#ifdef DEBUG
+   printf( "\nVDgrset : Invalid object id : <%d, %d>\n", lstMatrls[i].osnum,
+                                                         lstMatrls[i].objid );
+#endif
+            lstMatrls[i].objid == NULL_OBJID;
+            continue;
+         }
+      }
+   }
+   else
+   {
+
+      mustSort = 0;
+
+      /* associative BOM : get individual template objects */
+
+#ifdef DEBUG
+   printf("\n=========== Associative BOM===========\n");
+#endif
+
+      nbMatrls = nbTempObjs - 2;
+
+      /* first allocate memory for the list of Materials */
+
+      lstMatrls = (struct GRid *)malloc( sizeof(struct GRid) * (nbTempObjs-2) );
+      if( lstMatrls == NULL )
+      {
+           printf( "ERROR : Dynamic allocation\n");
+           return;
+      }
+      
+      /* 
+       * get each template source object, some of them could be NULL objects, or
+       * invalid object ids 
+       */
+
+      for( i = 2 ; i < nbTempObjs ; i = i + 1 )
+      {
+         msg =  ci$send( msg = message  ACcpx.ACfind_exp_temp_obj(&stat, i,
+                                                            &lstMatrls[i-2]),
+                      targetid = CI_MACRO_ID.objid,
+                      targetos = CI_MACRO_ID.osnum );
+         if( !(msg &1) )
+         {
+            printf("\nbom.u : getting template object failed \n");
+            return;
+         }
+ 
+         if( lstMatrls[i-2].objid == NULL_OBJID )
+         {
+#ifdef DEBUG
+   printf("\n%d : NULL object\n", i );
+#endif
+            continue;
+        }
+
+         if( om$is_objid_valid( osnum = lstMatrls[i-2].osnum,
+                                objid = lstMatrls[i-2].objid ) != OM_S_SUCCESS )
+         {
+#ifdef DEBUG
+   printf( "\nInvalid object id : <%d, %d>\n", lstMatrls[i-2].osnum,
+                                              lstMatrls[i-2].objid );
+#endif
+            lstMatrls[i-2].objid == NULL_OBJID;
+            continue;
+         }
+
+         /* 
+          * only if the object is not a subclass of VDSroot, do we get the
+          * graphic object ( this takes care of objects in reference files )
+          */
+
+         msg = om$get_classid( osnum       = lstMatrls[i-2].osnum,
+                               objid       = lstMatrls[i-2].objid,
+                               p_classid   = &class_id );
+         as$status( sts = msg, action = RET_STATUS );
+   
+         if( om$is_ancestry_valid( subclassid     = class_id,
+                                   superclassname = "VDSroot" ) != OM_S_SUCCESS )
+         {
+            msg = ci$send(msg = message ASnode.ASreturn_go( &obj.obj_id, 
+                                                            NULL, NULL),
+                        targetid = lstMatrls[i-2].objid,
+                        targetos = lstMatrls[i-2].osnum );
+            as$status( sts = msg, action = RET_STATUS );
+   
+            lstMatrls[i-2] = obj.obj_id;
+   
+         }
+#ifdef DEBUG
+   printf("\n-----lstMatrls[%d] = <%d, %d>\n", i-2, lstMatrls[i-2].objid, 
+                                                    lstMatrls[i-2].osnum );
+#endif
+      
+      }
+   }
+
+   /* 
+    * pack the template objects in the array : fill up all NULL_OBJID positions
+    * by pushing the objects ; also update the number of template objects
+    */
+
+   packTempObjs();
+
+
+#ifdef DEBUG
+   printf("\nAfter packing objects ======= : ");
+   printf("\n\tnbTempObjs = %d, nbMatrls = %d\n", nbTempObjs, nbMatrls );
+#endif
+
+   /* if there are no objects, delete myself */
+
+   if( nbMatrls == 0 )
+   {
+      msg = ci$send( msg = message NDnode.NDdisplay( 0, GRbehe,
+                                                     &MOD_ENV ),
+                     targetid = CI_MACRO_ID.objid,
+                     targetos = CI_MACRO_ID.osnum );
+
+      msg = ci$send( msg  = message NDnode.NDdelete( &MOD_ENV ),
+                     targetid = CI_MACRO_ID.objid,
+                     targetos = CI_MACRO_ID.osnum );
+      return;
+   }
+   
+
+   /* 
+    * get the layout (includeing sort criteria) of the table, 
+    * from the rg_collector attributes 
+    */
+
+   get_layout();
+
+   /* sort if needed */
+
+   if( mustSort )
+      if( !sortObjects() )
+         return;
+   
+   /* compute the table parameters like rowheight, line lengths, etc */
+
+   compute_table_params();
+
+   /* construct the outer line of the table */
+
+   constr_outerLine();
+
+   /* construct vertical lines */
+
+   constr_verLines();
+
+   /* construct horizontal lines */
+
+   constr_horLines();
+
+   /* construct and place the texts in the title row */
+
+   constr_titleText();
+
+   /* fill up the table with all the object parameter values */
+
+   place_params();
+}
+
+packTempObjs()
+{
+   IGRint      i, j;
+   char        state;
+   IGRint      wait_index;
+
+   /* 
+    * for each object, check if it in the delete list, if it
+    * is, then push remaining elements forward.  Also, don't leave any
+    * NULL_OBJID positions in the list
+    */
+
+   for( i = 0 ; i < nbMatrls ; )
+   {
+      NDis_waiting( GR_DELETED, 0, &lstMatrls[i], &wait_index, NULL, NULL, 1);
+      if( wait_index != -1 )
+      {
+#ifdef DEBUG
+   printf("\npackTempObjs : object <%d %d> deleted\n", lstMatrls[i].objid,
+                                                       lstMatrls[i].osnum );
+#endif
+         lstMatrls[i].objid = NULL_OBJID;
+      }
+     
+      if( lstMatrls[i].objid == NULL_OBJID )
+      {
+         for( j = i ; j < nbMatrls-1 ; j = j + 1 )
+            lstMatrls[j] = lstMatrls[j+1];
+         nbMatrls = nbMatrls - 1;
+      }
+      else
+         i = i + 1;
+   }
+}
+
+get_layout()
+{
+   IGRint i;
+
+   msg =  ci$send( msg = message  ACrg_collect.AClist_attribute( &stat,
+                                                                 MAX_COLUMNS+13,
+                                                                 att,
+                                                                 &nb ),
+                   targetid = coll.objid,
+                   targetos = coll.osnum );
+
+#ifdef DEBUG
+   printf("\nNo of attributes = %d", nb );
+#endif
+
+#ifdef TEMPORARY
+   /* null att representation */
+
+   strcpy( tempAtt.name, "nullAttRep" );
+
+   msg = ci$send( msg = message ACrg_collect.ACget_named_attribute( &stat,
+                                                                    &tempAtt ),
+                  targetid = coll.objid,
+                  targetos = coll.osnum );
+
+   strcpy( nullAtt, tempAtt.desc.value.att_txt );
+
+   /* orientation : BOTTOM_UP, TOP_DOWN */
+
+   strcpy( tempAtt.name, "bomOrient" );
+
+   msg = ci$send( msg = message ACrg_collect.ACget_named_attribute( &stat,
+                                                                    &tempAtt ),
+                  targetid = coll.objid,
+                  targetos = coll.osnum );
+
+   orient = tempAtt.desc.value.att_txt[0];
+
+#endif
+
+   /* 
+    * read the following from the rg_collector list :
+    *         nullAttRep
+    *         bomOrient
+    *         txtWidth
+    *         txtHeight
+    *         outFilename
+    *         tblName
+    */
+   strcpy( nullAtt, att[nb-13].desc.value.att_txt );
+   orient = att[nb-12].desc.value.att_txt[0];
+
+   textWidth = att[nb-7].desc.value.att_exp;
+   textHeight = att[nb-6].desc.value.att_exp;
+
+   strcpy( outputFileName, att[nb-5].desc.value.att_txt );
+   strcpy( tblName, att[nb-4].desc.value.att_txt );
+
+   if( !strlen(outputFileName) )
+      outToFile = FALSE;
+   else
+   {
+      fp = fopen( outputFileName, "w" );
+      if( fp == NULL )
+         outToFile = FALSE;
+      else 
+         outToFile = TRUE;
+   }
+
+#ifdef DEBUG
+
+   if( orient == BOTTOM_UP )
+      printf("\n====BOTTOM UP orientation\n");
+
+   else if( orient == TOP_DOWN )
+      printf("\n====TOP DOMN orientation\n");
+
+   else
+      printf("\n====ORIENTATION unknown\n");
+
+   printf("\nNull att rep = %s\n", nullAtt );
+   printf("Orientation = %c\n", orient );
+   printf("Text width = %g; text height = %g\n", textWidth, textHeight );
+   printf("Ouput file name = %s\n", outputFileName );
+   printf("BOM table name = %s\n", tblName );
+
+#endif
+
+   /* 
+    * number of columns is 13 less than number of attributes 
+    */
+
+   nbCols = nb - 13;
+
+   /* allocate space for sortAttrLst and formatlst */
+
+   sortAttrLst = (IGRchar *)malloc( sizeof(IGRchar ) *
+					MAX_BUF_CHARS * SORT_LEVEL );
+   formatLst = (IGRchar *)malloc( sizeof(IGRchar ) *
+					MAX_BUF_CHARS * SORT_LEVEL );
+   if( formatLst == NULL || sortAttrLst == NULL )
+   {
+        printf( "ERROR : Dynamic allocation\n");
+        return;
+   }
+ 
+      /* initialize sortAttrLst to empty string */
+
+   for( i = 0 ; i < SORT_LEVEL ; i=i+1 )
+      strcpy( &sortAttrLst[i*MAX_BUF_CHARS], "" );
+
+   for( i = 0 ; i < nbCols ; i = i + 1 )
+   {
+       /* 
+        * allocate space for the format, title and sortOrder : 
+        * multi dim arrays not allowed in ppl
+        */
+
+       format[i] = (IGRchar *)malloc( MAX_BUF_CHARS );
+       title[i] = (IGRchar *)malloc( MAX_BUF_CHARS );
+       sortOrder[i] = (IGRchar *)malloc( 4 );
+
+       if( format[i] == NULL || title[i] == NULL || sortOrder[i] == NULL )
+       {
+            printf( "ERROR : Dynamic allocation\n");
+            return;
+       }
+
+       /* read the layout of each attribute */
+
+       sscanf( att[i].desc.value.att_txt, "%c %s %d %s %s", &just[i], 
+                                  sortOrder[i], &size[i], title[i], format[i] );
+#ifdef DEBUG
+       printf("\njust = %c, sortOrder = %s, size = %d, title = %s, format = %s",
+                 just[i], sortOrder[i], size[i], title[i], format[i] );
+#endif
+
+      /*
+       * set up the lists for sorting if required 
+       * Only for non-assoc BOM, we need to sort here, because we cannot
+       * guarantee the order of the objects in the set.
+       * For the assoc case, sorting is done in the Command object itself.
+       */
+
+       if( mustSort )
+       {
+          if( strcmp( sortOrder[i], NULL_SORT ) )
+          {
+             len = strlen( sortOrder[i] );
+             strncpy( sortIndex, sortOrder[i], len-1 );
+             sortIndex[len-1] = '\0';
+             index = atoi(sortIndex);
+
+#ifdef DEBUG
+   printf("\nppl : sortOrder[i] = %s, sortIndex = %s, index = %d\n",
+                                     sortOrder[i], sortIndex, index );
+#endif
+
+             if( index > SORT_LEVEL )
+                printf("\nError in sorting criteria\n");
+             else
+             {
+
+                sortOrderLst[index-1] = sortOrder[i][len-1];
+                strcpy( &sortAttrLst[(index-1)*MAX_BUF_CHARS], att[i].name );
+                colSizeLst[index-1] = size[i];
+                strcpy( &formatLst[(index-1)*MAX_BUF_CHARS], format[i] );
+#ifdef DEBUG
+   printf("\n\tsortOrderLst[] = %c\n\tsortAttrLst[] = %s", 
+					sortOrderLst[index-1],
+					&sortAttrLst[(index-1)*MAX_BUF_CHARS] ); 
+   printf("colSizeLst[] = %d\n\tformatLst[] = %s\n", 
+					colSizeLst[index-1],
+					&formatLst[(index-1)*MAX_BUF_CHARS] ); 
+#endif
+
+             }
+          }
+       }
+   }
+}
+
+int sortObjects()
+{
+   IGRint i, j, nb, sortLevel;
+   
+   /* compute actual sort level ; some entries may be null */
+
+   sortLevel = 0;
+   nb = 0;
+
+   for( i = 0 ; i < (SORT_LEVEL-nb) ; i=i+1 )
+   {
+      if( !strlen( &sortAttrLst[i*MAX_BUF_CHARS] ) )
+      {
+         for( j = i ; j < SORT_LEVEL-1 ; j=j+1 )
+         {
+             sortOrderLst[j] = sortOrderLst[j+1];
+             strcpy( &sortAttrLst[j*MAX_BUF_CHARS], 
+			&sortAttrLst[(j+1)*MAX_BUF_CHARS] );
+             colSizeLst[j] = colSizeLst[j+1];
+             strcpy( &formatLst[j*MAX_BUF_CHARS], 
+			&formatLst[(j+1)*MAX_BUF_CHARS] );
+             nb = nb+1;
+          }
+       }
+       else
+          sortLevel = sortLevel + 1;
+   }
+
+#ifdef DEBUG
+   printf("\nsortLevel = %d\n", sortLevel );
+#endif
+
+   /* set up the list of object envs for sorting */
+
+   lstEnvMatrls = NULL;
+   lstEnvMatrls = (struct GRobj_env *)malloc( sizeof(struct GRobj_env) *
+							nbMatrls );
+   if( lstEnvMatrls == NULL )
+   {
+       printf("\nERROR : Dynamic allocation\n");
+       return 0;
+   }
+
+   for( i = 0 ; i < nbMatrls ; i=i+1 )
+   {
+      lstEnvMatrls[i].obj_id = lstMatrls[i];
+      lstEnvMatrls[i].mod_env = MOD_ENV;
+      lstEnvMatrls[i].mod_env.md_id.osnum = lstMatrls[i].osnum;
+      lstEnvMatrls[i].mod_env.md_id.objid = OM_Gw_current_OS;
+   }
+
+   VDsortObjs( lstEnvMatrls,
+               nbMatrls,
+               sortLevel,
+               sortOrderLst,
+               sortAttrLst,
+               colSizeLst,
+               formatLst );
+   /* copy the sorted list to lstMatrls */
+
+   for( i = 0 ; i < nbMatrls ; i=i+1 )
+      lstMatrls[i] = lstEnvMatrls[i].obj_id;
+
+   return 1;
+}
+
+compute_table_params()
+{
+
+   /* get the active text symbology */
+
+   sizebuf = sizeof( struct GRdpb_text_symb);
+
+   msg = gr$get_text_symb( msg     = &stat,
+                           sizbuf  = sizebuf,
+                           buffer  = &textSymb );
+
+   /* set the correct text parameters */
+
+   textSymb.Active_height = textHeight;
+   textSymb.Active_width = textWidth;
+
+   charHeight = textHeight;
+   charWidth  = textWidth;
+
+#ifdef DEBUG
+   printf("\nnbcols = %d, size[0] = %d\n", nbCols, size[0] );
+#endif
+
+   /* compute total number of characters in a row of the table */
+
+   totChars = 0;
+   for( i = 0 ; i < nbCols ; i = i + 1 )
+        totChars = totChars + size[i];
+
+   /* 
+    * compute horizontal line length : allow 2 extra characters per
+    * column as allowance
+    */
+
+   horLineLength = ( totChars + ( nbCols * 2 ) ) * charWidth;
+
+   fileTotChars = totChars + ( nbCols * 3 ) + 1;
+
+   /* allocate memory for horizontal line, file buffer, blanks */
+
+   fileHorLine = (char *)malloc( fileTotChars+1 );
+   fileBuffer = (char *)malloc( fileTotChars+1 );
+   blanks = (char *)malloc( fileTotChars+1 );
+   if( fileHorLine == NULL || fileBuffer == NULL || blanks == NULL )
+   {
+       printf("\nERROR : Dynamic allocation\n");
+       return;
+   }
+
+   for( i = 0 ; i < fileTotChars ; i = i + 1 )
+      fileHorLine[i] = '-';
+   fileHorLine[i] = '\0';
+   
+   /* compute row height : 1 char height tolerance */
+
+   rowHeight = charHeight * 2;
+
+   /* Number of rows */
+
+   nbRows    = nbMatrls + 1;
+
+   nbLinesInFile = nbRows + 3; 		/* excluding bom table name */
+
+   /* vertical line length */
+
+   verLineLength = nbRows * rowHeight;
+
+#ifdef DEBUG
+   printf("\ntotChars = %d, charWidth = %g\n", totChars, charWidth );
+   printf("\nverLineLength = %d, horLineLength = %g\n", verLineLength, 
+                                                        horLineLength );
+#endif
+}
+
+constr_outerLine()
+{
+   /*
+    *            O : origin of the coordinate system
+    *
+    * for BOTTOM_UP orientation, the outer line relative to coord sys is 
+    *
+    *      2nd pt  ___________  3rd pt
+    *             |           |    
+    *             |           |    
+    *      1st pt |           O 4th pt    
+    *
+    *
+    * for TOP_DOWN orientation, the outer line relative to coord sys is
+    *
+    *      2nd pt O___________  3rd pt
+    *             |           |    
+    *             |           |    
+    *      1st pt |           | 4th pt    
+    *
+    */
+
+
+   /* set up the initial values of all points */
+
+   for( i = 0 ; i < 12 ; i = i + 1 )
+      points[i] = 0;
+
+   /* compute the 4 points for the polyline */
+
+   if( orient == BOTTOM_UP )
+   {
+      /* x coordinate of 1st point on the polyline */
+   
+      points[0] = -horLineLength;
+
+      /* x, y coordinates of 2nd point on the polyline */
+
+      points[3] = -horLineLength;
+      points[4] = verLineLength;
+   
+      /* y coordinate of the 3rd point on the polyline */
+
+      points[7] = verLineLength;
+   }
+   else
+   {
+      /* y coordinate of 1st point on the polyline */
+
+      points[1] = -verLineLength;
+
+      /* x coordinate of 3rd point on the polyline */
+
+      points[6] = horLineLength;
+
+      /* x, y coordinates of 4th point on the polyline */
+
+      points[9] = horLineLength;
+      points[10] = -verLineLength;
+   }
+
+   /* construct the outer line */
+
+   constr_polyline( points, 4, &outerLine );
+
+#ifdef DEBUG
+   printf("\n Outer line id : <%d, %d>\n", outerLine.objid, 
+                                           outerLine.osnum );
+#endif
+   
+   /* 
+    * construct GRowner object and add the outer line as its component.
+    * The GRowner object is the first foot of the macro
+    */
+
+   add_components( 1, &outerLine, &BOM_OBJ[0] );
+
+#ifdef DEBUG
+   printf("\n1: Growner id = <%d, %d>\n", BOM_OBJ[0].objid, BOM_OBJ[0].osnum );
+#endif
+
+}
+
+
+constr_verLines()
+{
+   for( i = 0 ; i < 6 ; i=i+1 )
+      points[i] = 0;
+
+   /* 
+    * compute the row points for the vertical lines 
+    * The points are :
+    *
+    * TOP_DOWN
+    *
+    *    Pt :   0     1           2           3
+    *           O_____________________________
+    *           |     |           |           |
+    *           |     |           |           |
+    *
+    * BOTTOM_UP
+    *            _____________________________
+    *           |     |           |           |
+    *           |     |           |           O
+    *
+    *    Pts :  0     1           2           3
+    */
+
+   for( i = 0 ; i < (MAX_COLUMNS + 1) ; i=i+1 )
+      colPnts[i] = 0;
+
+   if( orient == BOTTOM_UP )
+      colPnts[0] = -horLineLength;
+
+   for( i = 0 ; i <= nbCols ; i = i + 1 )
+   {
+      colPnts[(i+1)] = colPnts[i] + (size[i] + 2) * charWidth;
+
+#ifdef DEBUG
+   printf("\ncolPnts %d : %g", i, colPnts[(i+1)] );
+#endif
+
+   }
+      
+   /* 
+    * compute the end points of the vertical lines, construct them and add
+    * them as components to the foot of the macro
+    * The first and the last vertical lines are part of the outer line,
+    * so don't construct them
+    */
+
+   for( i = 1 ; i < nbCols ; i = i + 1 )
+   {
+      points[0] = colPnts[i];
+      points[3] = colPnts[i];
+      if( orient == BOTTOM_UP )
+         points[4] = verLineLength;
+      else
+         points[4] = -verLineLength;
+      
+      constr_polyline( points, 2, &verLines[i-1] );
+
+#ifdef DEBUG
+   printf("\nVertical line %d id = <%d,%d>\n", i, verLines[i-1].objid,
+                                               verLines[i-1].osnum );
+#endif
+   }
+   add_components( nbCols-1, verLines, &BOM_OBJ[0] );
+}
+
+constr_horLines()
+{
+
+   /* allocate memory for rowPnts, and horLines */
+
+   rowPnts = ( IGRdouble *)malloc( sizeof(IGRdouble) * (nbMatrls+2) );
+   horLines = ( struct GRid *)malloc( sizeof(struct GRid) * (nbMatrls+2) );
+   if( rowPnts == NULL || horLines == NULL )
+   {
+       printf("\nERROR : Dynamic allocation\n");
+       return;
+   }
+
+   for( i = 0 ; i < 6 ; i=i+1 )
+      points[i] = 0;
+
+   /*
+    *
+    * Note rowPnts index and line positions
+    *
+    *  TOP_DOWN           outer line
+    *           O= = = = = = = = = = = = = = = 
+    * rowPnts 1 =_____|___________|___________= 1st line ( j = i+1 )
+    * rowPnts 2 =_____|___________|___________= 2nd line       
+    * rowPnts 3 =_____|___________|___________= 3rd line
+    *
+    *         Pt 1                           Pt 2
+    *
+    *
+    *  BOTTOM_UP          outer line
+    *            = = = = = = = = = = = = = = =
+    *  3rd line =_____|___________|___________= rowPnts 2
+    *  2nd line =_____|___________|___________= rowPnts 1
+    *  1st line =_____|___________|___________O rowPnts 0
+    *
+    *         Pt 2                           Pt 1
+    */
+
+   /* x coordinate of Pt 2 */
+
+   if( orient == BOTTOM_UP )
+      points[3] = -horLineLength;
+   else
+       points[3] = horLineLength;
+
+   for( i = 0 ; i < nbRows ; i=i+1 )
+   {
+      if( orient == BOTTOM_UP )
+      {
+         j = i;
+         rowPnts[j] = rowHeight * j;
+      }
+      else
+      {
+         j = i+1;
+         rowPnts[j] = -(rowHeight * j);
+      }
+
+      points[1] = rowPnts[j];
+      points[4] = rowPnts[j];
+ 
+      constr_polyline( points, 2, &horLines[i] );
+   }
+
+   add_components( nbRows, horLines, &BOM_OBJ[0] );
+}
+
+constr_titleText()
+{
+   IGRint i, j;
+
+   /* write the table name in the file */
+
+   nbTotBlnks = fileTotChars - strlen( tblName );
+   nbBlnksLeft = nbTotBlnks / 2;
+   nbBlnksRight = nbTotBlnks - nbBlnksLeft;
+
+   fileBuffer[0] = '\0';
+   for( i = 0 ; i < nbBlnksLeft ; i=i+1 )
+      blanks[i] = ' ';
+   blanks[i] = '\0';
+   strcat( fileBuffer, blanks );
+   strcat( fileBuffer, tblName );
+   for( i = 0 ; i < nbBlnksRight ; i=i+1 )
+      blanks[i] = ' ';
+   blanks[i] = '\0';
+   strcat( fileBuffer, blanks );
+
+#ifdef DEBUG
+   printf("\nfile - table name buffer = %s\n", fileBuffer );
+#endif
+
+   if( outToFile )
+   {
+      if( orient == BOTTOM_UP )
+         fseek( fp, nbLinesInFile * (fileTotChars+1), 0 );
+
+      fprintf( fp, "%s\n", fileBuffer );
+
+      /* write horline in ASCII file */
+
+      if( orient == BOTTOM_UP )
+         fseek( fp, -((fileTotChars+1) * 2) , 1 );
+      fprintf( fp, "%s\n", fileHorLine );
+   }
+   
+   rect = 0;
+   MAidmx( &stat, idMatrix );
+
+   /* 
+    * the title texts are displayed in a higher weight.
+    */
+
+   /* get the current display values */
+
+   sizebuf = sizeof( struct IGRdisplay );
+   msg = gr$get_active_display( msg        = &stat,
+                                sizbuf     = &sizebuf,
+                                buffer     = &dis,
+                                nret       = &nret );
+
+   /* increase the weight by 1 and activate the display values */
+
+   dis.weight =  dis.weight + 1;
+   msg = gr$put_active_display( msg        = &stat,
+                                sizbuf     = &sizebuf,
+                                buffer     = &dis );
+
+   /* get the transformation matrix from local to world coordinates */
+
+   msg = ci$send( msg = message GRgencs.GRgetmatrix( &stat, loc_to_wld ),
+                  targetid = cs.objid,
+                  targetos = cs.osnum );
+
+   as$status( sts = msg );
+   four = 4;
+
+   /* get the transformation matrix from world to local coordinates */
+
+   MAinvmx( &stat, &four, loc_to_wld, wld_to_loc );
+
+
+   /* first place the name of the BOM table */
+
+   org[0] = ( colPnts[0] + colPnts[nbCols] ) / 2;
+   if( orient == BOTTOM_UP )
+      org[1] = -rowHeight;
+   else
+      org[1] = 0;
+   org[2] = 0;
+
+   textSymb.Active_just = CENTER_BOTTOM;
+
+   /* convert origin pt to world coordinates */
+
+   msg = ci$send( msg = message GRgencs.GRcvt_to_wld_coords( &stat,
+                                &rect, 1, org, wld_pts ),
+                  targetid = cs.objid,
+                  targetos = cs.osnum );
+
+   len = strlen( tblName );
+
+   /* place the title text */
+
+   msg = co$place_text( msg         = &stat,
+                        text_string = tblName,
+                        text_length = &len,
+                        origin      = wld_pts,
+                        rot_matrix  = wld_to_loc,
+                        ModuleInfo  = &MOD_ENV,
+                        TextSymb    = &textSymb,
+                        buffer      = &tblNameId );
+
+   add_components( 1, &tblNameId, &BOM_OBJ[0] );
+
+   /*
+    *        Text justification :
+    *
+    *  LEFT :
+    *        -----------------------------------------
+    *       | TITLE                                   |
+    *        -----------------------------------------
+    *        /\
+    *        org 
+    *                Active_just = LEFT_BOTTOM
+    *
+    *  CENTER :
+    *        -----------------------------------------
+    *       |                TITLE                    |
+    *        -----------------------------------------
+    *                          /\
+    *                          org 
+    *
+    *                Active_just = CENTER_BOTTOM
+    *
+    *  RIGHT :
+    *        -----------------------------------------
+    *       |                                   TITLE |
+    *        -----------------------------------------
+    *                                               /\
+    *                                               org 
+    *                Active_just = RIGHT_BOTTOM
+    */
+
+   fileBuffer[0] = '\0';
+   for( i = 0 ; i < nbCols ; i = i + 1 )
+   {
+      len = strlen(title[i]);
+      nbTotBlnks = size[i] - len;
+      strcat( fileBuffer, "| " );
+      if( just[i] == 'L' || just[i] == 'l' )
+      {
+         org[0] = colPnts[i] + charWidth;
+         textSymb.Active_just = LEFT_BOTTOM;
+         nbBlnksLeft = 0;
+      }
+      else if( just[i] == 'R' || just[i] == 'r' )
+      {
+         org[0] = colPnts[i+1] - charWidth;
+         textSymb.Active_just = RIGHT_BOTTOM;
+         nbBlnksLeft = nbTotBlnks;
+      }
+      else if( just[i] == 'C' || just[i] == 'c' )
+      {
+         org[0] = (colPnts[i] + colPnts[i+1]) / 2.0;
+         textSymb.Active_just = CENTER_BOTTOM;
+         nbBlnksLeft = nbTotBlnks / 2;
+      }
+      else
+         printf("\nInvalid Justification----------\n");
+
+      if( outToFile )
+      {
+         /* Justify text in file buffer */
+
+         nbBlnksRight = nbTotBlnks - nbBlnksLeft + 1;
+
+         for( j = 0 ; j < nbBlnksLeft ; j = j + 1 )
+            blanks[j] = ' ';
+         blanks[j] = '\0';
+         strcat( fileBuffer, blanks );
+         strcat( fileBuffer, title[i] );
+         for( j = 0 ; j < nbBlnksRight ; j = j + 1 )
+            blanks[j] = ' ';
+         blanks[j] = '\0';
+         strcat( fileBuffer, blanks );
+
+#ifdef DEBUG
+   printf("fileBuffer = %s\n", fileBuffer );
+#endif
+      }
+
+      if( orient == BOTTOM_UP )
+         org[1] = 0;
+      else
+         org[1] = -rowHeight;
+
+      org[2] = 0;
+
+#ifdef DEBUG
+   printf("\norg : %g,%g,%g\n", org[0], org[1], org[2] );
+#endif
+
+      /* convert origin pt to world coordinates */
+
+      msg = ci$send( msg = message GRgencs.GRcvt_to_wld_coords( &stat,
+                                   &rect, 1, org, wld_pts ),
+                     targetid = cs.objid,
+                     targetos = cs.osnum );
+
+      /* place the title text */
+
+      msg = co$place_text( msg         = &stat,
+                           text_string = title[i],
+                           text_length = &len,
+                           origin      = wld_pts,
+                           rot_matrix  = wld_to_loc,
+                           ModuleInfo  = &MOD_ENV,
+                           TextSymb    = &textSymb,
+                           buffer      = &titleTexts[i] );
+                     
+#ifdef DEBUG
+   printf("\ntext id = <%d, %d>\n", titleTexts[i].objid, titleTexts[i].osnum );
+#endif
+   }                     
+
+   if( outToFile )
+   {
+      strcat( fileBuffer, "|" );
+      if( orient == BOTTOM_UP )
+         fseek( fp, -((fileTotChars+1) * 2), 1 );
+
+      fprintf( fp, "%s\n", fileBuffer );
+
+      if( orient == BOTTOM_UP )
+         fseek( fp, -((fileTotChars+1) * 2), 1 );
+
+      fprintf( fp, "%s\n", fileHorLine );
+   }
+ 
+   /* add the title texts as components of the foot of the macro */
+
+   add_components( nbCols, titleTexts, &BOM_OBJ[0] );
+
+   /* reset the previous display parameters */
+
+   dis.weight =  dis.weight - 1;
+   msg = gr$put_active_display( msg        = &stat,
+                                sizbuf     = &sizebuf,
+                                buffer     = &dis );
+}
+         
+place_params()
+{
+   IGRint i, j, k;
+
+   rect = 0;
+   MAidmx( &stat, idMatrix );
+
+   /* z coordinate of origin */
+
+   org[2] = 0;
+
+   /* fill up the attribute names in the rg collector list */
+
+   for( i = 0 ; i < nbCols ; i = i + 1 )
+      strcpy( paramsList[i].name, att[i].name );
+
+   for( j = 0 ; j < nbMatrls ; j = j + 1 )
+   {
+      obj.obj_id = lstMatrls[j];
+
+#ifdef DEBUG
+   printf("\n=====obj = %d,%d\n", obj.obj_id.objid, obj.obj_id.osnum );
+#endif
+
+      obj.mod_env = MOD_ENV;
+      obj.mod_env.md_id.osnum = lstMatrls[j].osnum;
+
+      /* get the attribute values of the object */
+
+      getObjParams( paramsList, obj );
+
+      /* y coordinate of text origin */
+
+      if( orient == BOTTOM_UP )
+         org[1] = rowHeight * (j+1);
+      else
+         org[1] = -( rowHeight * (j+2) );
+
+
+      fileBuffer[0] = '\0';
+        
+      for( i = 0 ; i < nbCols ; i = i + 1 )
+      {
+         paramValue[0] = '\0';
+
+         /* set up paramValue according to format */
+
+         /* 
+          * must validate type with format.
+	  * printing dbl as %s causes core dump.
+ 	  * printing txt as %g will result in 0.0 instead of the string value
+ 	  */
+
+         len = strlen( format[i] );
+
+         switch( paramsList[i].desc.type )
+         {
+            case AC_ATTRIB_TEXT :
+		if( format[i][len-1] != 's' )
+		    sprintf( paramValue, "%s",
+                         paramsList[i].desc.value.att_txt );
+		else
+                    sprintf( paramValue, format[i], 
+                         paramsList[i].desc.value.att_txt );
+                break;
+
+            case AC_ATTRIB_DOUBLE :
+		if( format[i][len-1] == 's' )
+		    sprintf( paramValue, "%.2f",
+                         paramsList[i].desc.value.att_exp );
+		else
+                    sprintf( paramValue, format[i], 
+                         paramsList[i].desc.value.att_exp );
+                break;
+
+            case AC_ATTRIB_TYPE_NOT_DEF :
+
+            default :
+                strcpy( paramValue, nullAtt );
+                break;
+         }
+
+#ifdef DEBUG
+   printf("\nparamsList[i].name = %s", paramsList[i].name );
+#endif
+ 
+         /* take care of global attributes */
+
+         if( !strcmp( paramsList[i].name, "%ITEM" ) )
+         {
+
+            curPfx = NULL;
+
+            /* get the item number info for the object */
+
+            found = 0;
+            msg =
+            vd$getItemNoForObj( obj             = lstMatrls[j],
+                                tblName         = tblName,
+                                itemId          = &itemObj,
+                                itemNo          = &itemNo,
+                                found           = &found );
+
+            if( found )
+            {
+#ifdef DEBUG
+   printf("\nItem number exists. \n");
+   printf("\nValue = %d, pfx = %s, flag = %d\n", (int)itemNo, curPfx, flag );
+#endif
+               /* form the item number with the prefix/postfix */
+
+               paramValue[0] = '\0';
+               if( flag )
+                  sprintf( itemString, "%d%s", itemNo, curPfx );
+               else
+                  sprintf( itemString, "%s%d", curPfx, itemNo );
+               sprintf( paramValue, format[i], itemString );
+
+               if( curPfx )
+                  free(curPfx);
+               curPfx = NULL;
+            }
+            else
+            {
+#ifdef DEBUG
+               printf("\nItem number does not exist.\n" );
+#endif
+                strcpy( paramValue, nullAtt );
+            }
+         }
+         else if( !strcmp( paramsList[i].name, "%OBJ_NAME" ) )
+         {
+
+            /* get the object name */
+
+            paramValue[0] = '\0';
+            elmName[0] = '\0';
+
+            msg =  ci$send( msg = message  GRvg.GRgetname( &stat, 
+                                                            elmName ),
+                            targetid = lstMatrls[j].objid,
+                            targetos = lstMatrls[j].osnum );
+            as$status( sts = msg );
+
+            di$cvt_name_for_output( s_path = elmName,
+                                    u_path = elmName );
+
+            if( elmName[0] == ':' )
+                 strncpy( buffer, &elmName[1], MAX_BUF_CHARS - 1 );
+            else
+                 strncpy( buffer, elmName, MAX_BUF_CHARS - 1 );
+            sprintf( paramValue, format[i], buffer );
+
+         }
+         else if( !strcmp( paramsList[i].name, "%OBJ_TYPE" ) )
+         {
+
+            /* get the object type */
+
+            paramValue[0] = '\0';
+            info.type[0] = '\0';
+
+            msg =  ci$send( msg = message  GRgraphics.GRgetobjinfo( &stat, 
+                                                                    &info ),
+                            targetid = lstMatrls[j].objid,
+                            targetos = lstMatrls[j].osnum );
+            as$status( sts = msg );
+
+            strncpy( buffer, info.type, MAX_BUF_CHARS - 1 );
+            sprintf( paramValue, format[i], buffer );
+         }
+            
+         paramValue[ size[i] ]  = '\0';
+
+#ifdef DEBUG
+   printf("\nparamValue = %s\n", paramValue );
+#endif
+
+         len = strlen( paramValue );
+         nbTotBlnks = size[i] - len;
+         strcat( fileBuffer, "| " );
+
+         /* x coordinate and justification of the parameter */
+
+         if( just[i] == 'L' || just[i] == 'l' )
+         {
+            org[0] = colPnts[i] + charWidth;
+            textSymb.Active_just = LEFT_BOTTOM;
+            nbBlnksLeft = 0;
+         }
+         else if( just[i] == 'R' || just[i] == 'r' )
+         {
+            org[0] = colPnts[i+1] - charWidth;
+            textSymb.Active_just = RIGHT_BOTTOM;
+            nbBlnksLeft = nbTotBlnks;
+         }
+         else if( just[i] == 'C' || just[i] == 'c' )
+         {
+            org[0] = (colPnts[i] + colPnts[i+1]) / 2.0;
+            textSymb.Active_just = CENTER_BOTTOM;
+            nbBlnksLeft = nbTotBlnks/2;
+         }
+         else
+            printf("\nattribute %s : Invalid Justification\n", paramsList[i] );
+
+         /* convert to world coordinates */
+
+         msg = ci$send( msg = message GRgencs.GRcvt_to_wld_coords( &stat,
+                                      &rect, 1, org, wld_pts ),
+                        targetid = cs.objid,
+                        targetos = cs.osnum );
+
+         if( outToFile )
+         {
+            /* Justify text in file buffer */
+
+            nbBlnksRight = nbTotBlnks - nbBlnksLeft + 1;
+
+            for( k = 0 ; k < nbBlnksLeft ; k = k + 1 )
+               blanks[k] = ' ';
+            blanks[k] = '\0';
+            strcat( fileBuffer, blanks );
+            strcat( fileBuffer, paramValue );
+            for( k = 0 ; k < nbBlnksRight ; k = k + 1 )
+               blanks[k] = ' ';
+            blanks[k] = '\0';
+            strcat( fileBuffer, blanks );
+
+#ifdef DEBUG
+   printf("fileBuffer = %s\n", fileBuffer );
+#endif
+         }
+
+         /* place the parameter value in the table */
+
+         msg = co$place_text( msg         = &stat,
+                              text_string = paramValue,
+                              text_length = &len,
+                              origin      = wld_pts,
+                              rot_matrix  = wld_to_loc,
+                              ModuleInfo  = &MOD_ENV,
+                              TextSymb    = &textSymb,
+                              buffer      = &paramTexts[i] );
+#ifdef DEBUG
+   printf("\ntext id = <%d, %d>\n", paramTexts[i].objid, paramTexts[i].osnum );
+#endif
+      }
+
+      if( outToFile )
+      {
+         strcat( fileBuffer, "|" );
+         if( orient == BOTTOM_UP )
+            fseek( fp, -((fileTotChars+1) * 2), 1 );
+
+         fprintf( fp, "%s\n", fileBuffer );
+      }
+ 
+      /* add all the text objects to the "GRowner" foot */
+
+      add_components( nbCols, paramTexts, &BOM_OBJ[0] );
+   }                     
+   if( outToFile )
+   {
+      if( orient == BOTTOM_UP )
+         fseek( fp, -((fileTotChars+1) * 2), 1 );
+
+      fprintf( fp, "%s\n", fileHorLine );
+      fclose( fp );
+   }
+}
+
+getObjParams( parList, object )
+struct ACrg_coll  *parList;
+struct GRobj_env  object;
+{
+   IGRint              i, j, k;
+   IGRint              nbTotal;
+   IGRchar             tempName[1024];
+   struct ACrg_coll    *attLst;
+
+#ifdef DEBUG
+   printf("\ngetObjParams : object = <%d, %d>\n", object.obj_id.objid,
+                                                  object.obj_id.osnum );
+#endif
+
+   /* get all the total number of parameters for the object */
+
+   msg = vd$get_parameters( sts        = &stat,
+                            object     = &object.obj_id,
+                            md_env     = &object.mod_env,
+                            count      = &nbTotal );
+   as$status( sts = msg );
+
+#ifdef DEBUG
+   printf("getObjParams : nbTotal = %d\n", nbTotal );
+#endif
+
+   /* allocate space */
+
+   attLst = NULL;
+   attLst = (struct ACrg_coll *)malloc( sizeof(struct ACrg_coll) * nbTotal );
+
+   /* get the parameters  */
+
+   msg = vd$get_parameters( sts        = &stat,
+                            object     = &object.obj_id,
+                            md_env     = &object.mod_env,
+                            plist      = attLst,
+                            size       = nbTotal,
+                            count      = &nbTotal );
+   as$status( sts = msg );
+
+   /* convert the detailed names to short names (remove all prefixes) */
+
+   for( i = 0 ; i < nbTotal ; i = i + 1 )
+   {
+      for( j = strlen( attLst[i].name ) - 1 ; j >=0 ; j = j - 1 )
+         if( attLst[i].name[j] == ':' )
+            break;
+
+      j = j + 1;
+      strcpy( tempName, &attLst[i].name[j] );
+      strcpy( attLst[i].name, tempName );
+   }
+
+   for( i = 0 ; i < nbCols ; i = i + 1 )
+   {
+      /* initialize the attribute type */
+
+      parList[i].desc.type = AC_ATTRIB_TYPE_NOT_DEF;
+
+      for( j = 0 ; j < nbTotal ; j = j + 1 )
+      {
+         if( !strcmp( parList[i].name, attLst[j].name ) )
+         {
+            parList[i] = attLst[j];
+            break;
+         }
+      }
+   }
+   if( attLst )
+      free( attLst );
+}
+   
+add_components( nbComp, Comps, ownerObj )
+int nbComp;
+struct GRid *Comps;
+struct GRid *ownerObj;
+{
+   IGRint                  i;
+   struct GRobj_env        *objs;
+
+#ifdef DEBUG
+   printf("\nIn add_components : nbComp = %d\n", nbComp);
+#endif
+
+   /* allocate space for GRobj_env type objects */
+
+   objs = NULL;
+   objs = (struct GRobj_env *) malloc( sizeof( struct GRobj_env ) * nbComp );
+
+
+   if( objs == NULL )
+   {
+       printf("\nERROR : Dynamic allocation\n");
+       return;
+   }
+
+   /* set up the structures */
+
+   for( i = 0 ; i < nbComp ; i=i+1 )
+   {
+      objs[i].obj_id = Comps[i];
+      objs[i].mod_env = MOD_ENV;
+   }
+
+   /* add the components to the owner object */
+
+   msg =  ci$send( msg = message  GRowner.GRadd_components(&stat, 
+                                                           &MOD_ENV,
+                                                           &nbComp,
+                                                           objs,
+                                                           NULL, NULL),
+                   targetid = ownerObj->objid,
+                   targetos = ownerObj->osnum );
+   as$status( sts = msg );
+
+   if( objs )
+      free( objs );
+}
+
+
+constr_polyline( points, nb, lineGrid )
+IGRdouble *points;
+int nb;
+struct GRid *lineGrid;
+{
+   lineGrid->objid = NULL_OBJID;
+   lineGrid->osnum = MOD_ENV.md_id.osnum;
+
+   /* convert coordinates from local to world */
+
+   rect = 0;
+   msg = ci$send( msg = message GRgencs.GRcvt_to_wld_coords( &stat,
+                                &rect, 4, points, wld_pts ),
+                targetid = cs.objid,
+                targetos = cs.osnum );
+
+   /* set up the construction list */
+
+   polyLine.num_points = nb;
+   polyLine.points     = wld_pts;
+
+   cst.geometry       = (char *)&polyLine;
+
+   /* construct the polyline */
+
+   ci$send( msg = message GR3dlinestr.GRaltconstruct( &cst ),
+            targetid = lineGrid->objid,
+            targetos = lineGrid->osnum );
+}
+
+NDdelete( md_env )
+struct GRmd_env *md_env;
+{
+IGRint      	i;
+IGRchar		setName[80];
+OM_S_CHANSELECT	to_pfx;
+struct GRmd_env mod_env;
+
+#ifdef DEBUG
+   printf("\nIn NDdelete \n");
+#endif
+
+   /* 
+    * when macro is deleted, the item numbers are also
+    * to be deleted
+    */
+
+   /* get the rg collector ( BOM table name )  */
+
+   msg =  ci$send( msg = message  ACcpx.ACfind_exp_temp_obj(&stat,0,&coll),
+                targetid = CI_MACRO_ID.objid,
+                targetos = CI_MACRO_ID.osnum );
+
+   if( !(msg & stat & 1) )
+   {
+        printf("\nError : getting collector template\n");
+        return;
+   }
+
+#ifdef DEBUG
+   printf("\nCollector objid = <%d, %d>\n", coll.objid, coll.osnum );
+#endif
+
+   strcpy( tempAtt.name, "tblName" );
+
+   tblName[0] = '\0';
+   msg = ci$send( msg = message ACrg_collect.ACget_named_attribute( &stat,
+                                                                    &tempAtt ),
+                  targetid = coll.objid,
+                  targetos = coll.osnum );
+
+   strcpy( tblName, tempAtt.desc.value.att_txt );
+
+#ifdef DEBUG
+    printf("\ntblname = %s", tblName );
+#endif
+
+   /* get the grid of the 3rd template, probably a source of set */
+
+   msg =  ci$send( msg = message  ACcpx.ACfind_exp_temp_obj(&stat, 2,
+                                                            &setGrid ),
+                targetid = CI_MACRO_ID.objid,
+                targetos = CI_MACRO_ID.osnum );
+   if( !(msg &1) )
+   {
+      printf("\nbom.u : getting set object failed \n");
+      goto wrapup;
+   }
+ 
+#ifdef DEBUG
+   printf("\nSet grid source = %d, %d", setGrid.objid, setGrid.osnum );
+#endif
+
+   /* get the set object */
+
+   msg = ci$send( msg = message ASnode.ASreturn_go( &setGrid, NULL, NULL),
+                  targetid = setGrid.objid,
+                  targetos = setGrid.osnum );
+
+#ifdef DEBUG
+   printf("\nActual set objid = <%d, %d>\n", setGrid.objid, setGrid.osnum );
+#endif
+
+   msg = om$get_classid( osnum       = setGrid.osnum,
+                         objid       = setGrid.objid,
+                         p_classid   = &class_id );
+   as$status( sts = msg, action = RET_STATUS );
+
+   if( om$is_ancestry_valid( subclassid     = class_id,
+                             superclassname = "VDgrset" ) == OM_S_SUCCESS )
+   {
+
+      /* non-assoc BOM case : get the set objects */
+ 
+      /* get the number of objects in the set */
+
+#ifdef DEBUG
+   printf("\n==========Non Associative BOM==========\n");
+#endif
+
+      msg = vd$give_setobjs(	set_grid        = &setGrid,
+				set_name	= NULL,
+                        	numcomps        = &nbMatrls );
+      as$status( sts = msg, action = GOTO_VALUE, value = wrapup );
+
+#ifdef DEBUG
+   printf("\nNo of objects in set = %d", nbMatrls );
+#endif
+
+      if( !nbMatrls )
+         return;
+
+      lstMatrls = (struct GRid *)malloc( sizeof(struct GRid) * nbMatrls );
+      if( lstMatrls == NULL )
+      {
+           printf( "ERROR : Dynamic allocation\n");
+           return;
+      }
+      
+      msg = vd$give_setobjs(  	set_grid        = &setGrid,
+				set_name	= NULL,
+                              	numcomps        = &nbMatrls,
+                              	set_objs        = lstMatrls );
+      as$status( sts = msg, action = GOTO_VALUE, value = wrapup );
+
+#ifdef DEBUG
+   printf("\nObtained set objects : \n\t");
+   for( i = 0 ; i < nbMatrls ; i=i+1 )
+       printf("<%d, %d> ", lstMatrls[i].objid, lstMatrls[i].osnum );
+#endif
+
+    /* delete this set */
+
+    msg = vd$setgrid_toname(   set_grid        = &setGrid,
+                               maxchar         = 80,
+                               set_name        = setName );
+#ifdef DEBUG
+     printf("\nDeleting set %s", setName );
+#endif
+
+    if( msg & 1 )
+          vd$delete_set( set_name  = setName );
+   }
+   else
+   {
+
+#ifdef DEBUG
+   printf("\n==========Associative BOM==========\n");
+#endif
+      /* get number of templates */
+
+      msg = ci$send( msg = message NDnode.NDget_objects( ND_ROOT, NULL, 0, NULL,
+                                                  0, OM_K_MAXINT, &nbTempObjs ),
+                     targetid = CI_MACRO_ID.objid,
+                     targetos = CI_MACRO_ID.osnum );
+
+      if( !( msg & 1 ) )
+         goto wrapup;
+
+      /* allocate memory for lstMatrls */
+
+      lstMatrls = NULL;
+      lstMatrls = (struct GRid *)malloc( sizeof(struct GRid) * (nbTempObjs-2) );
+      if( lstMatrls == NULL )
+      {
+           printf( "ERROR : Dynamic allocation\n");
+           return;
+      }
+
+      /* get the templates */
+
+      for( i = 2 ; i < nbTempObjs ; i = i+1 )
+      {
+         /* get the template object */
+
+         msg =  ci$send( msg = message  ACcpx.ACfind_exp_temp_obj(&stat, i,
+                                                            &lstMatrls[i-2]),
+                      targetid = CI_MACRO_ID.objid,
+                      targetos = CI_MACRO_ID.osnum );
+
+#ifdef DEBUG
+   printf( "\nlstMatrls : %d, %d\n", lstMatrls[i-2].objid, 
+                                     lstMatrls[i-2].osnum);
+#endif
+      }
+      nbMatrls = nbTempObjs - 2;
+   }
+
+   /* for each template object delete its item number if it has one */
+
+   for( i = 0 ; i < nbMatrls ; i = i + 1 )
+   {
+      /* get the item info for the object */
+
+      found = 0;
+      msg = 
+      vd$getItemNoForObj(	obj   		= lstMatrls[i],
+				tblName		= tblName,
+				itemId		= &itemObj,
+				found		= &found );
+
+      if( found )
+      {
+#ifdef DEBUG
+   printf("\nitem object <%d, %d> to be deleted\n", 
+			itemObj.objid, itemObj.osnum );
+#endif
+
+         /* delete the item number */
+
+         msg = ci$send( msg = message NDnode.NDdisplay( 0, GRbehe,
+                                                        md_env ),
+                        targetid = itemObj.objid,
+                        targetos = itemObj.osnum );
+
+         msg = ci$send( msg = message GRgraphics.GRdelete( &stat, md_env ),
+                        targetid = itemObj.objid,
+                        targetos = itemObj.osnum );
+
+      }
+   }
+
+wrapup:
+        /* invoke parent class method */
+
+        if( lstMatrls )
+           free( lstMatrls );
+
+        ci$send( msg      = message ACcpx.NDdelete(md_env),
+                 targetid = CI_MACRO_ID.objid,
+                 targetos = CI_MACRO_ID.osnum,
+                 mode     = WRT_message );
+
+ return(1);
+}
+
+NDmove_to_root( msg, src_grid, md_env )
+IGRlong         *msg;
+struct GRid     *src_grid;
+struct GRmd_env *md_env;
+{
+
+   /* 
+    * overridden method : when one of the parents is deleted, we simply do a
+    * recompute of the macro, so that the corresponding row of the table
+    * gets deleted
+    */
+
+#ifdef DEBUG
+   printf("\nIn NDmove_to_root\n");
+#endif
+
+   ci$send( msg = message NDnode.NDdisplay( 0, GRbehe,
+                                            md_env ),
+            targetid = CI_MACRO_ID.objid,
+            targetos = CI_MACRO_ID.osnum );
+
+   ci$send( msg = message nci_macro.NDs_compute_node( msg, 0, md_env ),
+            targetid = CI_MACRO_ID.objid,
+            targetos = CI_MACRO_ID.osnum );
+
+   ci$send( msg = message NDnode.NDdisplay( 0, GRbd,
+                                            md_env ),
+            targetid = CI_MACRO_ID.objid,
+            targetos = CI_MACRO_ID.osnum );
+
+   *src_grid =  CI_MACRO_ID;
+   return OM_S_SUCCESS;
+}

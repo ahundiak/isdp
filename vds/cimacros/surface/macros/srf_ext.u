@@ -1,0 +1,348 @@
+/* $Id: srf_ext.u,v 1.1.1.1 2001/01/04 21:07:21 cvs Exp $  */
+
+/* --------------------------------------------------------------------
+ * I/VDS
+ *
+ * File:	vds/cimacros/surface/macros / srf_ext.u
+ *
+ * Description:
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ *	$Log: srf_ext.u,v $
+ *	Revision 1.1.1.1  2001/01/04 21:07:21  cvs
+ *	Initial import to CVS
+ *	
+# Revision 1.1  1998/04/29  16:27:20  pinnacle
+# VDS 2.5.1
+#
+# Revision 1.1  1997/05/08  13:20:44  pinnacle
+# New project VDS 250
+#
+# Revision 1.1  1996/07/19  20:33:52  pinnacle
+# Create VDS 241 project
+#
+# Revision 1.2  1996/03/26  16:36:16  pinnacle
+# Replaced: cimacros/surface/macros/srf_ext.u for:  by jwfrosch for vds.240
+#
+# Revision 1.1  1994/11/14  22:42:32  pinnacle
+# Create vds.240 from vds.232
+#
+# Revision 1.1  1994/11/08  16:07:00  pinnacle
+# create vds.232
+#
+ *
+ * History:
+ *	MM/DD/YY	AUTHOR		DESCRIPTION
+ *
+ * -------------------------------------------------------------------*/
+
+/*
+	 VDS 2.0 - PPM macro library - 92/07/09 (alc)
+ */
+   
+#include "cieveryone.h"
+#include "cimacros.h"
+#include "ci_mac_def.h"
+#include "cimath.h"
+#include "AS_status.h"
+
+extern printf();
+extern		ASsuper_construct();
+
+IGRchar 		*temp_names[4], *feet_names[1], old_ASbroad;
+IGRint			temp_types[4];
+
+IGRshort	 	mat_type, action, mask;
+
+IGRint			i, j, k;
+
+IGRlong			stat, msg;
+ 
+IGRdouble 	 	matrix[16];
+
+GRobj 			ci_mac_def1, SUR, SURF;
+
+struct GRid		CUV, GCV, GRid_list[1], CI_MACRO_ID, display_info;
+struct GRmd_env		MOD_ENV;
+struct GRlc_info	entries;
+struct GRvg_construct   cst;
+struct IGRdisplay	dis;
+struct IGRbsp_surface   *sf1,*sf2;
+struct ret_struct	temp1_rts, temp2_rts, expr;
+
+struct GRprops          GRprops;
+
+int  GRdpmode;
+IGRlong			opt;
+
+
+extern int 	init_cnst_list();
+extern int	BSsfxttpt(),
+		free(),
+		GRfindmod();
+
+/* ========================================================================= */
+/* the main function is the one implementing the definition creation
+/* ========================================================================= */
+
+init()
+{
+  feet_names[0] = "ressur";
+}
+
+main ()
+{
+  temp_names[0]  = "low";  
+  temp_names[1]  = "surf";  
+  temp_names[2]  = "pnt1";  
+  temp_names[3]  = "pnt2";  
+
+  temp_types[0]  = parameter_generic | double_type;
+  temp_types[1]  = other_generic;
+  temp_types[2]  = point_generic;
+  temp_types[3]  = point_generic;
+
+  ci_mac_def1 = NULL_OBJID;
+  ac$cimacdef( 	cimacdef          = ci_mac_def1,
+		status 	          = &msg, 	
+		name              = "srf_ext",
+              	temp_num          = 4, 		
+		temp_names        = temp_names,
+		temp_types	  = temp_types,
+	      	extern_feet_num   = 1, 	
+		extern_feet_names = feet_names );
+}
+/* ========================================================================= */
+
+place ()
+{
+
+  construct_pjs();
+
+  if( GRid_list[0].objid == NULL_OBJID ) return(0);
+  ci$send( msg = message  ci_macro.set_all_extern_feet
+	 ( &msg, 1,GRid_list, &MOD_ENV ),
+	   targetid = CI_MACRO_ID.objid,
+	   targetos = CI_MACRO_ID.osnum );
+  return(1);
+}
+/* ========================================================================= */
+
+compute ()
+{
+  construct_pjs();
+
+  if( GRid_list[0].objid == NULL_OBJID ) return(0);
+
+  ci$send( msg = message  ci_macro.set_all_extern_feet
+	 ( &msg, 1,GRid_list, &MOD_ENV ),
+	   targetid = CI_MACRO_ID.objid,
+	   targetos = CI_MACRO_ID.osnum );
+  return(1);
+}
+
+
+
+/*==========================================================================*/
+
+NDdelete(md_env)
+struct GRmd_env *md_env;
+{
+
+     IGRint		GRdpmode;
+     struct GRid	display_info;
+     IGRshort		matrix_type;
+     IGRdouble	matrix[16];
+
+
+     if( md_env->md_id.objid == -1 ) goto wrapup ;
+
+     GRfindmod(&display_info);
+     GRdpmode = 0;
+
+     stat = ci$send( msg = message  ACcpx.ACfind_exp_temp_obj(&msg,1,&CUV),
+                    targetid = CI_MACRO_ID.objid,
+	            targetos = CI_MACRO_ID.osnum );
+     as$status( sts = stat  );
+     if(!(msg&stat&1)) goto wrapup;
+
+     stat = ci$send( msg = message  NDmacro.ACunconsume(&msg,""),
+              targetid = CUV.objid,
+	      targetos = CUV.osnum );
+     as$status( sts = stat  );
+
+     msg = ci$send( msg      = message NDmacro.ACreturn_foot(	
+						&stat ,
+						"",
+						&GCV, 
+						&matrix_type, 
+					        matrix ),
+	      targetid = CUV.objid,
+	      targetos = CUV.osnum );
+
+     if(!(msg&stat&1)){
+		status(" bad element " );
+		return;
+     }
+/*
+     stat = ci$send( msg = message ASnode.ASreturn_go( 
+						&GCV, 
+						&matrix_type, 
+						matrix ),
+	      	     targetid = CUV.objid,
+	      	     targetos = CUV.osnum );
+     as$status( sts = stat  );
+*/
+     stat = ci$send(msg = message GRgraphics.GRdisplay(
+						&msg,
+						&matrix_type,
+                				matrix,
+                				&GRdpmode,
+						&display_info),
+        	    targetid = GCV.objid,
+		    targetos = GCV.osnum);
+
+     as$status( sts = stat  );
+
+wrapup:
+
+     stat = ci$send( msg      = message ov_ci_mac.NDdelete(md_env),
+         targetid = CI_MACRO_ID.objid,
+         targetos = CI_MACRO_ID.osnum,
+         mode     = WRT_message );
+     as$status( sts = stat  );
+
+     return(1);
+}
+
+/* ========================================================================= */
+
+construct_pjs()
+{
+
+  GRid_list[0].objid = NULL_OBJID;
+
+  stat = ci$send( msg = message  ACcpx.ACfind_exp_temp_struct(
+							&msg,
+							0,
+						        &expr,
+							&MOD_ENV ),
+	   targetid = CI_MACRO_ID.objid,
+	   targetos = CI_MACRO_ID.osnum );
+  as$status( sts= stat );
+  opt = expr.var.root_pm_st.value;
+  if(!(stat&msg&1)) return;
+  if( opt < 0 ) opt = 0;
+  if( opt > 2 ) opt = 2;
+
+#ifdef DEBUG
+	write("opt = ",opt,"\n");
+#endif
+
+  stat = ci$send( msg = message  ACcpx.ACfind_exp_temp_obj(&msg,1,&CUV),
+           targetid = CI_MACRO_ID.objid,
+           targetos = CI_MACRO_ID.osnum );
+  as$status( sts= stat );
+
+
+  stat = ci$send( msg = message NDmacro.ACconsume(&msg,"",1,&GCV,&MOD_ENV),
+              targetid = CUV.objid,
+	      targetos = CUV.osnum );
+  as$status( sts= stat );
+
+  stat = ci$send( msg = message  ACcpx.ACfind_exp_temp_struct(&msg,2,
+						  &temp1_rts,&MOD_ENV),
+	    targetid = CI_MACRO_ID.objid,
+	    targetos = CI_MACRO_ID.osnum );
+  as$status( sts= stat );
+
+  stat = ci$send( msg = message  ACcpx.ACfind_exp_temp_struct(&msg,3,
+						  &temp2_rts,&MOD_ENV),
+	    targetid = CI_MACRO_ID.objid,
+	    targetos = CI_MACRO_ID.osnum );
+  as$status( sts= stat );
+
+  stat = ci$send( msg	    = message GRvg.GRgenabsg(&msg,
+					&MOD_ENV.md_env.matrix_type,
+					MOD_ENV.md_env.matrix,
+					(char *)&sf1) ,
+	     targetid = GCV.objid,
+	     targetos = GCV.osnum );
+
+#ifdef DEBUG
+  printf ("return GRvg.GRgenabsg: msg = %d, stat = %d\n",msg, stat);
+#endif
+
+  if ( ! ( 1 & msg & stat ) )
+  {
+    status ( "Selected Object not valid for extending" );
+    stat = ci$send (	msg	 = message  NDmacro.ACunconsume(&msg,""),
+			targetid = CUV.objid,
+			targetos = CUV.osnum );
+    as$status( sts = stat );
+    return (0);
+  }
+
+  BSsfxttpt(    opt,
+		sf1,
+		temp1_rts.var.point_st.pt,
+		temp2_rts.var.point_st.pt,
+		&sf2,
+		&msg );
+
+#ifdef DEBUG
+  write("return BSsfxttpt msg =",msg,"\n");
+#endif
+
+  GRid_list[0].objid = NULL_OBJID;
+  if( msg != 0 ){
+     		stat = ci$send( msg = message  NDmacro.ACunconsume(&msg,""),
+              			targetid = CUV.objid,
+	      			targetos = CUV.osnum );
+     		as$status( sts = stat );
+	 	return(0);
+  }
+
+  init_cnst_list();
+  get_symb();
+
+  dis.color		= cnst_list.color;
+  dis.weight		= cnst_list.weight;
+  dis.style		= cnst_list.style;
+
+  cst.msg		= &msg;
+  cst.properties	= GRIS_LOCATABLE | GRIS_NEW | GRIS_DISPLAYABLE;
+  cst.display		= &dis;
+  cst.env_info		= &MOD_ENV;
+  cst.newflag		= 0;
+  cst.level		= cnst_list.level;
+  cst.geometry		= NULL;
+  cst.class_attr	= 0;
+  cst.name		= 0;
+
+ 
+  GRid_list[0].osnum = MOD_ENV.md_id.osnum;
+  cst.geometry   = (char *)sf2;
+
+  stat = ci$send( msg = message EMSgenbs.GRconstruct(&cst), 
+           targetid = GRid_list[0].objid,
+           targetos = GRid_list[0].osnum );
+  as$status( sts= stat );
+
+  free(sf2);
+  if( stat != 1 ) 
+  {
+     		stat = ci$send( msg = message  NDmacro.ACunconsume(&msg,""),
+              			targetid = CUV.objid,
+	      			targetos = CUV.osnum );
+     		as$status( sts = stat );
+	 	return(0);
+
+    		GRid_list[0].objid = NULL_OBJID;
+    		return(0);
+  }
+}
+
+

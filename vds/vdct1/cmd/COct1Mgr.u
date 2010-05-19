@@ -1,0 +1,340 @@
+/* $Id: COct1Mgr.u,v 1.2 2001/01/11 22:03:42 art Exp $  */
+
+/***************************************************************************
+ * I/VDS
+ *
+ * File:        vdct1/cmd/COctMgr.u
+ *
+ * Description: Assembly Manager Command Object
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ *      $Log: COct1Mgr.u,v $
+ *      Revision 1.2  2001/01/11 22:03:42  art
+ *      sp merge
+ *
+# Revision 1.3  2000/06/02  15:02:14  pinnacle
+# ah
+#
+# Revision 1.2  2000/04/27  14:55:34  pinnacle
+# Replaced: vds/vdct1/cmd/COct1Mgr.u for:  by pnoel for Service Pack
+#
+# Revision 1.1  2000/04/20  18:27:36  pinnacle
+# Created: vds/vdct1/cmd/COct1Mgr.u by pnoel for Service Pack
+#
+# Revision 1.2  1999/12/08  19:37:34  pinnacle
+# ah
+#
+# Revision 1.1  1999/06/29  18:29:28  pinnacle
+# ct
+#
+# Revision 1.1  1999/05/30  14:30:52  pinnacle
+# ct
+#
+ *
+ * History:
+ * MM/DD/YY  AUTHOR  DESCRIPTION
+ * 04/19/99  ah      Created
+ *
+ ***************************************************************************/
+
+#include "VDppl.h"
+#include "VDfrm.h"
+#include "VDct1.h"
+#include "VDct1Cmd.h"
+
+#define theCommand "Outfit Tree"
+#define thePrompt  "Do Something"
+
+struct CIform_st form_st;
+
+TVDct1CmdInfo *cmdInfo;
+
+IGRint traceFlag;
+IGRint inittedOK;
+IGRint wakeUP;
+
+/* --------------------------------------
+ * The main routine
+ */
+int main()
+{
+  int retFlag;
+  int sts;
+  int response,mask;
+
+  struct GRevent   event;
+  struct GRobj_env objOE;
+
+  // Init
+  retFlag = 0;
+  if (cmdInfo == NULL) goto wrapup;
+   
+  // Say Hi
+  if (traceFlag) printf(">>> COctMgr.main\n");
+
+  // Verify that everything is ok
+  if (inittedOK == 0)          goto wrapup;
+  if (cmdInfo->inittedOK == 0) goto wrapup;
+
+  // Enables wakeUP
+  wakeUP = 1;
+  
+  // Main loop
+  while(1) {
+
+    // Be a little careful
+    cmdInfo->form = NULL;
+    cmdInfo->gadget = 0;
+    form_st.gadget_label = 0;
+    response = 0;
+
+    UI_message(theCommand);
+
+    // Either locate or form interaction
+    sts = ci$locate(
+      prompt = thePrompt,
+      eligible_classes = &cmdInfo->classList,
+      owner_action = LC_RIGID_COMP | LC_RIGID_OWNER | 
+                     LC_FLEX_COMP  | LC_FLEX_OWNER  | LC_REF_OBJECTS,
+
+      response     = &response,
+      md_env       = &objOE.mod_env,
+      obj          = &objOE.obj_id.objid,
+      osnum	   = &objOE.obj_id.osnum
+    );
+
+    // Process it
+    switch(response) {
+
+    case EX_OBJID: // Object Set
+    case EX_DATA:  // Single Object
+      VDct1CmdMgrNotifyObject(&objOE);
+      break;
+
+    default:
+      VDct1CmdMgrNotifyForm();
+
+    } // Switch
+
+    // See if need to shutdowm command
+    if (cmdInfo->shutdown == 1) {
+      retFlag = 1;
+      goto wrapup;
+    }
+  }
+
+  // Done
+wrapup:
+  return retFlag;
+}
+
+/* -----------------------------------------
+ * Form stuff
+ */
+form_notification()
+{
+  int sts;
+
+  // Xfer data
+  cmdInfo->form   = form_st.form_ptr;
+  cmdInfo->gadget = form_st.gadget_label;
+
+  // Just break out of the locate loop
+  ci$put(response = RESET);
+  return 1;
+  
+}
+
+/* -----------------------------------------
+ * Create all the forms and get things going
+ */
+int init_form()
+{
+  int retFlag;
+  int sts;
+  Form existingForm;
+
+  retFlag = 0;
+
+  sts = vdfrm$GetFormByName(name = "VDct1Mgr.F", form = &existingForm);
+  if (sts & 1) {
+    UI_status("Tree Already Running");
+    goto wrapup;
+  }
+
+  vdfrm$CreateForm(label  = 101,
+		   name   = "VDct1Mgr.F",
+		   notify = ci_notification,
+		   objid  = MY_ID,
+		   form   = &cmdInfo->mgr.form);
+
+  vdfrm$CreateForm(label  = 102,
+		   name   = "VDct1Set.F",
+		   notify = ci_notification,
+		   objid  = MY_ID,
+		   form   = &cmdInfo->set.form);
+
+  vdfrm$CreateForm(label  = 103,
+		   name   = "VDct1Leaf.F",
+		   notify = ci_notification,
+		   objid  = MY_ID,
+		   form   = &cmdInfo->leaf.form);
+
+  vdfrm$CreateForm(label  = 104,
+		   name   = "VDct1Tree.F",
+		   notify = ci_notification,
+		   objid  = MY_ID,
+		   form   = &cmdInfo->tree.form);
+
+  vdfrm$CreateForm(label  = 105,
+		   name   = "VDct1Attr.F",
+		   notify = ci_notification,
+		   objid  = MY_ID,
+		   form   = &cmdInfo->attr.form);
+
+  vdfrm$CreateForm(label  = 106,
+		   name   = "VDct1Node.F",
+		   notify = ci_notification,
+		   objid  = MY_ID,
+		   form   = &cmdInfo->node.form);
+
+  vdfrm$CreateForm(label  = 107,
+		   name   = "VDct1Pcmk.F",
+		   notify = ci_notification,
+		   objid  = MY_ID,
+		   form   = &cmdInfo->pcmk.form);
+
+  vdfrm$CreateForm(label  = 108,
+		   name   = "VDct1Lib.F",
+		   notify = ci_notification,
+		   objid  = MY_ID,
+		   form   = &cmdInfo->lib.form);
+
+  vdfrm$CreateForm(label  = 109,
+		   name   = "VDct1Free.F",
+		   notify = ci_notification,
+		   objid  = MY_ID,
+		   form   = &cmdInfo->free.form);
+
+  vdfrm$CreateForm(label  = 110,
+		   name   = "VDct1Ops.F",
+		   notify = ci_notification,
+		   objid  = MY_ID,
+		   form   = &cmdInfo->part.form);
+
+
+  if (cmdInfo->mgr.form == NULL) {
+    printf("Could not init Manager form\n");
+    goto wrapup;
+  }
+  vdfrm$DisplayForm(form = cmdInfo->mgr.form,  flag = &cmdInfo->mgr.displayed);
+  vdfrm$DisplayForm(form = cmdInfo->tree.form, flag = &cmdInfo->tree.displayed);
+  
+  retFlag = 1;
+
+wrapup:
+  return retFlag;
+}
+
+extern calloc();
+extern free();
+
+/* ------------------------------------------
+ * Usual command object messages
+ */
+init()
+{
+  IGRstat retFlag;
+  IGRstat sts;
+
+  retFlag   = 0;
+  traceFlag = 0;
+
+  //  printf("=================== COct1Mgr.init ==================\n");
+
+  if (traceFlag) printf(">>> COct1Mgr.init\n");
+
+  cmdInfo = (TVDct1CmdInfo*)calloc(1,sizeof(TVDct1CmdInfo));
+  if (cmdInfo == NULL) {
+    printf("Unable to allocate command information memory\n");
+    goto wrapup;
+  }
+
+#if 0
+  cmdInfo->activeSetID.objid  = NULL_OBJID;
+  cmdInfo->activeNodeID.objid = NULL_OBJID;
+  cmdInfo->parentNodeID.objid = NULL_OBJID;
+
+  cmdInfo->lastNodeID.objid = NULL_OBJID;
+
+  cmdInfo->activeLibNodeID.objid = NULL_OBJID;
+  
+  cmdInfo->pasteID.objid = NULL_OBJID;
+  cmdInfo->pasteFlds.cnt = 0;
+#endif
+
+  // Inits forms
+  sts = init_form();
+  if (!(sts & 1)) goto wrapup;
+
+  //printf("About to init\n");  
+  inittedOK = VDct1CmdMgrInit(cmdInfo);
+  //printf("Back from init\n");
+
+  retFlag = 1;
+
+wrapup:
+  return retFlag;
+
+}
+
+sleep() 
+{
+  if (cmdInfo == NULL) return 0;
+  if (traceFlag) printf(">>> COct1Mgr.sleep\n");
+  VDct1CmdMgrSleep();
+
+}
+wakeup()
+{
+  if (cmdInfo == NULL) return 0;
+  if (traceFlag) printf(">>> COct1Mgr.wakeup\n");
+
+  // See if really awake
+  if (wakeUP == 0) return;
+  
+  VDct1CmdMgrWakeup();
+
+  UI_message(theCommand);
+
+}
+
+delete()
+{
+  if (cmdInfo == NULL) return 0;
+  if (traceFlag) printf(">>> COct1Mgr.delete\n");
+  VDct1CmdMgrDelete();
+
+  vdfrm$DeleteForm(form = cmdInfo->mgr.form  );
+  vdfrm$DeleteForm(form = cmdInfo->set.form  );
+  vdfrm$DeleteForm(form = cmdInfo->leaf.form );
+  vdfrm$DeleteForm(form = cmdInfo->tree.form );
+  vdfrm$DeleteForm(form = cmdInfo->attr.form );
+  vdfrm$DeleteForm(form = cmdInfo->node.form);
+  vdfrm$DeleteForm(form = cmdInfo->pcmk.form );
+  vdfrm$DeleteForm(form = cmdInfo->lib.form  );
+  vdfrm$DeleteForm(form = cmdInfo->free.form );
+  vdfrm$DeleteForm(form = cmdInfo->part.form );
+
+  free(cmdInfo);
+  cmdInfo = NULL;
+
+}
+
+
+
+
+
+

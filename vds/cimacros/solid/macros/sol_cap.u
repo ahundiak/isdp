@@ -1,0 +1,382 @@
+/* $Id: sol_cap.u,v 1.1.1.1 2001/01/04 21:07:20 cvs Exp $  */
+
+/* --------------------------------------------------------------------
+ * I/VDS
+ *
+ * File:	vds/cimacros/solid/macros / sol_cap.u
+ *
+ * Description:
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ *	$Log: sol_cap.u,v $
+ *	Revision 1.1.1.1  2001/01/04 21:07:20  cvs
+ *	Initial import to CVS
+ *	
+# Revision 1.1  1998/04/29  16:27:20  pinnacle
+# VDS 2.5.1
+#
+# Revision 1.1  1997/05/08  13:20:44  pinnacle
+# New project VDS 250
+#
+# Revision 1.2  1997/03/24  06:22:14  pinnacle
+# Replaced: cimacros/solid/macros/sol_cap.u for:  by ksundar for vds.241
+#
+# Revision 1.1  1996/07/19  20:33:52  pinnacle
+# Create VDS 241 project
+#
+# Revision 1.1  1994/11/14  22:42:32  pinnacle
+# Create vds.240 from vds.232
+#
+# Revision 1.1  1994/11/08  16:07:00  pinnacle
+# create vds.232
+#
+ *
+ * History:
+ *	MM/DD/YY	AUTHOR		DESCRIPTION
+ *
+ * -------------------------------------------------------------------*/
+
+/*
+	 VDS 2.0 - PPM macro library - 92/07/09 (alc)
+ */
+   
+/****************************************************************** */
+/*
+/*     j. hanson 7-25-88
+/*     
+/*     make capped solid
+/*     JL-Loschutz 	Review for reference file and new consume.
+/*     Alain Claude	Make the solid change if the underlying
+/*			surface changes shape (Hanson pb) - 92/03/19
+/*     Ad               in NDdelete added the NDdelete before the
+/*                      REdisplay() to avoid multiple copies during
+/*                      move after capping.
+/****************************************************************** */
+#include "cieveryone.h"
+#include "cimacros.h"
+#include "ci_mac_def.h"
+#include "cimath.h"
+#include "EMSmsgdef.h"
+#include "msdef.h"
+#include "asbox.h"
+#include "AS_status.h"
+
+#define EMSsfbool_opt_display   1
+
+IGRlong			EMSrtmsg;
+double 	 		matrix[16];
+double			pnt[3];
+
+char            	old_ASbroad;
+char 			*temp_names[1], *feet_names[1], txt[200];
+int			temp_types[1];
+
+short	 		mat_type;
+short	        	action, mask;
+
+int      		rflag,mode;
+int			i, j, k;
+GRobj 			ci_mac_def1 ;
+
+struct GRid		display_info;
+struct GRid		CUV, AS_SURF, CI_MACRO_ID, SOL,SURF;
+struct GRmd_env		MOD_ENV;
+struct IGRbsp_curve     *bsp_curve;
+struct GRvg_construct   cst;
+struct IGRdisplay	dis;
+struct GRprops          props;
+
+
+extern char     ASbroadcast_in_progress;
+extern int	init_cnst_list(),
+		sprintf();
+extern 		printf();
+extern		ASsuper_construct();
+
+/* ========================================================================= */
+/* the main function is the one implementing the definition creation
+/* ========================================================================= */
+
+main ()
+{
+IGRlong stat ;
+
+  temp_names[0]  = "surf";  
+
+  temp_types[0]  = other_generic;
+//  feet_names[0] = "cap solid";
+  ci_mac_def1 = NULL_OBJID;
+
+  ac$cimacdef( 	cimacdef          =  ci_mac_def1,
+		status 	          = &stat, 	
+		name              = "sol_cap",
+              	temp_num          = 1, 		
+		temp_names        = temp_names,
+		temp_types        = temp_types,
+	      	extern_feet_num   = 1, 	
+		extern_feet_names = feet_names );
+}
+
+/* ========================================================================= */
+
+
+init()
+/* for initialization at loading time */
+{
+  feet_names[0] = "cap solid";
+}
+
+/* ========================================================================= */
+
+compute ()
+{
+  IGRlong msg, sts ;
+
+  construct_pjs();
+  if( SOL.objid == NULL_OBJID ) {
+	#ifdef DEBUG
+	write("macro sol_cap.u - compute() failed \n") ;
+	#endif
+	return(0);
+	}
+
+  sts = ci$send( msg = message  ci_macro.set_all_extern_feet
+	 					( &msg, 1, &SOL, &MOD_ENV ),
+	   targetid = CI_MACRO_ID.objid,
+	   targetos = CI_MACRO_ID.osnum ) ; as$status(sts = sts) ;
+  if (!(sts & msg & 1)) {
+	#ifdef DEBUG
+	write("macro sol_cap.u - message  ci_macro.set_all_extern_feet() failed \n") ;
+	#endif
+	return(0) ;
+	}
+
+  return(1) ;
+}
+
+/* ========================================================================= */
+
+place ()
+{
+  IGRlong msg, sts ;
+
+  construct_pjs();
+  if( SOL.objid == NULL_OBJID ) {
+	#ifdef DEBUG
+	write("macro sol_cap.u - place() failed \n") ;
+	#endif
+	return(0);
+	}
+
+  sts = ci$send( msg = message  ci_macro.set_all_extern_feet
+	 					( &msg, 1, &SOL, &MOD_ENV ),
+	   targetid = CI_MACRO_ID.objid,
+	   targetos = CI_MACRO_ID.osnum ) ; as$status(sts = sts) ;
+  if (!(sts & msg & 1)) {
+	#ifdef DEBUG
+	write("macro sol_cap.u - message  ci_macro.set_all_extern_feet() failed \n") ;
+	#endif
+	return(0) ;
+	}
+
+  return(1) ;
+}
+
+/* ========================================================================= */
+
+construct_pjs()
+{
+IGRlong		EMSrtmsg  ;
+IGRlong		msg_cst   ;
+IGRlong		msg, stat ;
+
+#ifdef DEBUG
+	printf("--> macro sol_cap.u - construct_pjs() \n") ;
+#endif
+
+   init_cnst_list() ; get_symb() ;
+
+  dis.color		= cnst_list.color;
+  dis.weight		= cnst_list.weight;
+  dis.style		= cnst_list.style;
+
+  cst.msg		= &msg_cst ;
+  cst.properties	= GRIS_LOCATABLE | GRIS_NEW | GRIS_DISPLAYABLE;
+  cst.display		= &dis;
+  cst.env_info		= &MOD_ENV;
+  cst.newflag		= FALSE;
+  cst.level		= cnst_list.level;
+  cst.geometry		= NULL;
+  cst.class_attr	= NULL;
+  cst.name		= NULL;
+
+  SOL.objid = NULL_OBJID ;
+  SOL.osnum = MOD_ENV.md_id.osnum ;
+
+  stat = ci$send( msg = message  ACcpx.ACfind_exp_temp_obj(&msg, 0, &AS_SURF),
+           targetid = CI_MACRO_ID.objid,
+           targetos = CI_MACRO_ID.osnum );
+  as$status( sts = stat );
+  if( !(stat & msg & 1) ) {
+	#ifdef DEBUG
+	printf("macro sol_cap -  message ACcpx.ACfind_exp_temp_obj() failed \n") ;
+	#endif
+	return(0) ;
+	}
+
+#ifdef DEBUG
+	write("--> sol_cap.construct comp\n");
+	om$get_classname ( objid = AS_SURF.objid,
+			   osnum = AS_SURF.osnum,
+                          classname = txt  );
+ 	write("template AS_SURF =",AS_SURF.objid, " class:", txt, '\n');
+#endif
+  
+   stat = ci$send( msg = message  
+			      NDmacro.ACconsume(&msg, ".", 1, &SURF, &MOD_ENV),
+              	targetid = AS_SURF.objid,
+	      	targetos = AS_SURF.osnum) ;
+   as$status( sts = stat );
+   if( !(stat & msg & 1) ) {
+	#ifdef DEBUG
+	printf("macro sol_cap -  message NDmacro.ACconsume() failed \n") ;
+	#endif
+	return(0) ;
+	}
+
+   stat = ci$send( msg = message EMSsfsolid.GRconstruct(&cst), 
+           	targetid = SOL.objid, 
+		targetos = SOL.osnum ) ;
+   as$status( sts = stat );
+   if (!(stat & *(cst.msg) & 1)) {
+	#ifdef DEBUG
+	printf("macro sol_cap -  message EMSsfsolid.GRconstruct() failed \n") ;
+	#endif
+	REdisplay_cons( &AS_SURF ) ; 
+	return(0) ;
+	}
+
+   stat = ci$send( msg = message EMSsfsolid.EMcap_thyself ( 
+						&EMSrtmsg, &cst, &SURF.objid ),
+           	   targetid = SOL.objid, 
+		   targetos = SOL.osnum );
+   as$status(sts = stat) ;
+   if (!(stat & EMSrtmsg & 1)) {
+	write("macro sol_cap : ---- capping failed ----\n");
+	REdisplay_cons( &AS_SURF ) ; 
+	return(0) ;
+        }
+   return(1) ;
+}
+
+/* ========================================================================= */
+
+NDdelete(md_env)
+struct GRmd_env *md_env ;
+{
+	struct GRid	TMP      ;
+        IGRlong		msg, sts, sts1 ;
+
+#ifdef DEBUG
+	printf("--> macro sol_cap.u - NDdelete() \n") ;
+#endif
+     
+	MOD_ENV = *md_env ;
+#ifdef DEBUG
+	printf("--> macro sol_cap.u - NDdelete() mod_env \n") ;
+	printf("\nCI_MACRO_ID = %d, %d", CI_MACRO_ID.objid, CI_MACRO_ID.osnum);
+#endif
+        sts = ci$send( msg = message  ACcpx.ACfind_exp_temp_obj(&msg, 0, &TMP),
+                    targetid = CI_MACRO_ID.objid,
+	            targetos = CI_MACRO_ID.osnum ) ;
+  	as$status( sts = sts );
+#ifdef DEBUG
+	printf("--> macro sol_cap.u - NDdelete()ACcpx \n") ;
+#endif
+  	if( !(sts & msg & 1) ) 
+	{
+           sts = om$get_objid_at_index(objid = CI_MACRO_ID.objid,
+                                     osnum = CI_MACRO_ID.osnum,
+                                     objidaddr = &TMP.objid,
+                                     osnumaddr = &TMP.osnum,
+                                     p_chanselect = &AS_to_owner,
+                                     index = 0);
+/*******
+           if(!(sts&1)){
+	     printf("\n failed");
+	     return(0) ;
+	   }
+ ********/
+	}
+
+        sts1 = ci$send( msg      = message ov_ci_mac.NDdelete(md_env),
+	         targetid = CI_MACRO_ID.objid,
+	         targetos = CI_MACRO_ID.osnum,
+                 mode     = WRT_message );
+  	as$status( sts = sts1 );
+#ifdef DEBUG
+	printf("--> macro sol_cap.u - NDdelete() NDdelete() \n") ;
+#endif
+
+	if( sts & 1 ){
+#ifdef DEBUG
+	  printf(" TMP: %d,%d\n", TMP.objid, TMP.osnum );
+#endif
+	  REdisplay_cons( &TMP );
+#ifdef DEBUG
+	printf("--> macro sol_cap.u - NDdelete() REdisplay \n") ;
+#endif
+	}
+
+ return( sts&sts1&1 );
+}
+
+/*============================================================================*/
+
+REdisplay_cons( AS_OBJ )
+struct GRid	*AS_OBJ;
+{
+	struct GRid	OBJ;
+	IGRshort	matrix_type;
+	IGRdouble	matrix[16];
+	IGRint		GRdpmode;
+	IGRlong		msg, sts ;
+	extern int	GRfindmod() ;
+
+#ifdef DEBUG
+	printf("--> macro sol_cap.u - REdisplay_cons() \n") ;
+#endif
+	
+
+        GRfindmod(&display_info);
+        GRdpmode = 0;
+
+        sts = ci$send( msg      = message  NDmacro.ACunconsume(&msg, "."),
+                 targetid = AS_OBJ->objid,
+	         targetos = AS_OBJ->osnum ) ; as$status( sts = sts );
+
+  	sts = ci$send( msg      = message NDmacro.ACreturn_foot(
+							   &msg ,
+							   ".",
+							   &OBJ, 
+							   &mat_type, 
+							   matrix ),
+	         targetid = AS_OBJ->objid,
+	         targetos = AS_OBJ->osnum ); as$status( sts = sts );
+
+	   
+        sts = ci$send(msg      = message GRgraphics.GRdisplay(
+							 &msg,
+							 &mat_type,
+                                			 matrix,
+	                        			 &GRdpmode,
+							 &display_info ),
+	        targetid = OBJ.objid,
+		targetos = OBJ.osnum); as$status( sts = sts );
+
+}
+
+/* ========================================================================= */
+

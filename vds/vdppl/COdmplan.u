@@ -1,0 +1,389 @@
+/* $Id: COdmplan.u,v 1.1 2001/11/15 16:47:38 hans Exp $  */
+
+/* --------------------------------------------------------------------
+ * I/VDS
+ *
+ * File:	vds/vdppl / COdmplan.u
+ *
+ * Description: This file is a copy of the file:
+ *
+ *              $GRNUC/src/dim/cisrc/COdmplan.u
+ *
+ *              ONLY the wakeup function has been modified !!!
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ *	$Log: COdmplan.u,v $
+ *	Revision 1.1  2001/11/15 16:47:38  hans
+ *	Fix for TR# MP5602
+ *	
+ *
+ * History:
+ *	MM/DD/YYYY	AUTHOR	DESCRIPTION
+ *	11/16/2001	HF	Fix for TR# MP5602
+ *                              "Set Measurement Axis" does not work in VDS
+ * -------------------------------------------------------------------*/
+
+#include "cieveryone.h"
+#include "cimacros.h"
+
+#include "grdpbdef.h"
+#include "dimfiundef.h"
+#include "msdef.h"
+#include "msmacros.h"
+
+#include "nddef.h"
+#include "asbox.h"
+
+#include "dimdef.h"
+#include "dim.h"
+#include "dimplan.h"
+#include "dimlinear.h"
+#include "dimdload.h"
+#include "dm_status.h"
+#include "dimsrc.h"
+#include "DMmsg.h"
+#include "grmessage.h"
+#include "DMcmd.h"
+#include "EMSdatumdef.h"
+#include "EMdtmacros.h"
+#include "FI.h"
+#include "FEI.h"
+
+OM_S_CLASSLIST classlist;
+OMuword classes[2];
+char buff[80];
+int ref_state_flag;
+
+extern MSmessage();
+extern GRfindcontext();
+extern printf();
+extern EFref_plane_lock();
+extern EMget_active_datum_plane();
+extern FI_get_form_by_name();
+extern FIf_is_displayed();
+extern int GRget_model_mode();
+
+IGRchar accbuff[MS_MAX_MSG_LENGTH];
+IGRchar msg_buff[MS_MAX_MSG_LENGTH];
+
+extern GRclassid OPP_GRbspline_class_id;
+extern GRclassid OPP_GRpoint_class_id;
+extern GRclassid OPP_DMdim_class_id;
+extern GRclassid OPP_dim_plan_class_id;
+
+init()
+{
+	classlist.w_count = 2;
+	classlist.w_flags = OM_CLST_subclass;
+	classlist.p_classes = classes;
+
+	classes[0] = OPP_GRbspline_class_id;
+	classes[1] = OPP_DMdim_class_id;
+}
+
+main()
+{
+	IGRint sts, msg, index;
+	IGRint rc , ref_lock_state ;
+	IGRint	response, no_parents;
+	struct GRevent event;
+	struct GRid go_grid[2];
+	struct GRid list[3];
+	struct GRid context[2];
+	struct GRid null_grid;
+	struct GRmd_env md_env, lc_env;
+	struct GRid dim_plan_mgr;
+	struct GRid win_grid;
+	struct GRid dim_plan;
+	IGRpoint data_point;
+	IGRmatrix matrix;
+	struct dim_attr dim_attr;
+	struct IGRbsp_curve *bspline;
+        IGRchar   prompt_buff[MS_MAX_MSG_LENGTH];
+
+	ex$message(msgnumb = DM_P_Ac, buff = accbuff);
+
+	ci$get_module_info(md_env = &md_env);
+	context[0].objid = NULL_OBJID;
+	context[1].objid = NULL_OBJID;
+	null_grid.objid = NULL_OBJID;
+
+	locate_p1:
+
+	do
+	{
+                ex$message(msgnumb = DM_P_IdElMvOnVwAlign, buff = prompt_buff);
+
+		sts =
+		ci$locate(
+			prompt = prompt_buff,
+			acc_prompt = accbuff,
+			eligible_classes = &classlist,
+			owner_action =  LC_READ | LC_NO_REF_HEADER
+					| LC_REF_OBJECTS,
+			response = &response,
+			window_id = &event.event.button.objid,
+			window_osnum = &event.event.button.osnum,
+			data_point = data_point,
+			md_env = &lc_env,
+			obj = &go_grid[0].objid,
+			osnum = &go_grid[0].osnum);
+
+		if (response == RESET) break;
+	} while (!sts);
+
+	if (response == RESET)
+	{
+		no_parents = 0;
+
+		do
+		{
+                        ex$message(msgnumb = GR_P_IdWin,
+                                   buff = prompt_buff);
+			ci$getevent(
+				prompt = prompt_buff,
+				stackable = TRUE,
+				event = &event,
+				response = &response);
+
+			if (response == D_RESET)
+				goto locate_p1;
+
+		} while (response != DATA);
+
+		goto place_dimplan;
+	}
+
+	if (DMancestry_valid(go_grid[0], OPP_DMdim_class_id))
+	{
+		no_parents = 0;
+
+		sts =
+		ci$send(msg = message DMroot.get_dim_attr(&dim_attr),
+			targetid = go_grid[0].objid,
+			targetos = go_grid[0].osnum);
+		dm$status(sts = sts, action = RET_STATUS);
+
+		sts =
+		om$get_objid_at_index(
+			osnum = go_grid[0].osnum,
+			objid = go_grid[0].objid,
+			p_chanselect = &ND_father,
+			index = DIM_ROOT_PLAN,
+			objidaddr = &dim_plan.objid,
+			osnumaddr = &dim_plan.osnum);
+		dm$status(sts = sts, action = RET_STATUS);
+
+		sts =
+		ci$send(msg = message NDnode.NDget_objects(
+					ND_ROOT,
+					list,
+					3,
+					NULL,
+					0,
+					OM_K_MAXINT,
+					&no_parents),
+			targetid = dim_plan.objid,
+			targetos = dim_plan.osnum);
+		dm$status(sts = sts, action = RET_STATUS);
+
+		if (dim_attr.dim_type == SINGLE_PARALLEL)
+		{
+			if (no_parents)
+			{
+				if (DMancestry_valid(list[0], OPP_dim_plan_class_id))
+					index = 1;
+			}
+			else index = 0;
+
+			sts =
+			om$get_objid_at_index(
+				osnum = go_grid[0].osnum,
+				objid = go_grid[0].objid,
+				p_chanselect = &ND_father,
+				index = DIM_SGPAR_LINE,
+				objidaddr = &list[index].objid,
+				osnumaddr = &list[index].osnum);
+			dm$status(sts = sts, action = RET_STATUS);
+
+			no_parents = 1;
+		}
+
+		goto place_dimplan;
+	}
+
+	sts =
+	GRfindcontext(
+		&msg,
+		&lc_env.md_env.matrix_type,
+		lc_env.md_env.matrix,
+		&lc_env.md_id.osnum,
+		&context[0]);
+	if (sts != OM_S_SUCCESS || msg != MSSUCC)
+		context[0].objid = NULL_OBJID;
+
+	sts =
+	ci$send(msg = message GRvg.GRgenabsg(
+					&msg,
+					&lc_env.md_env.matrix_type,
+					lc_env.md_env.matrix,
+					&bspline),
+		targetid = go_grid[0].objid,
+		targetos = go_grid[0].osnum);
+	dm$status(sts = sts, action = RET_STATUS);
+
+	if (bspline->order != 2
+	||  DMancestry_valid(go_grid[0], OPP_GRpoint_class_id))
+	{
+		sts =
+		dm$create_root(
+			type = DMkeypt,
+			count = 1,
+			list = &go_grid[0],
+			context = &context[0],
+			attr = data_point,
+			md_env = &md_env,
+			p_root = &list[0]);
+		dm$status(sts = sts, action = RET_STATUS);
+
+		locate_p2:
+
+                ex$message(msgnumb = DM_P_IdEndPnt, buff = prompt_buff);
+
+		ci$locate(
+			prompt = prompt_buff,
+			classes = "GRbspline",
+			owner_action = LC_READ|LC_NO_REF_HEADER|LC_REF_OBJECTS,
+			response = &response,
+			data_point = data_point,
+			md_env = &lc_env,
+			obj = &go_grid[1].objid,
+			osnum = &go_grid[1].osnum);
+		if (response != DATA) goto locate_p2;
+
+		sts =
+		GRfindcontext(
+			&msg,
+			&lc_env.md_env.matrix_type,
+			lc_env.md_env.matrix,
+			&lc_env.md_id.osnum,
+			&context[1]);
+		if (sts != OM_S_SUCCESS || msg != MSSUCC)
+			context[1].objid = NULL_OBJID;
+
+		sts =
+		dm$create_root(
+			type = DMkeypt,
+			count = 1,
+			list = &go_grid[1],
+			context = &context[1],
+			attr = data_point,
+			md_env = &md_env,
+			p_root = &list[1]);
+		dm$status(sts = sts, action = RET_STATUS);
+
+		no_parents = 2;
+	}
+	else
+	{
+		sts =
+		dm$create_root(
+			type = DMkeyseg,
+			count = 1,
+			list = &go_grid[0],
+			context = &context[0],
+			attr = data_point,
+			md_env = &md_env,
+			p_root = &list[0]);
+		dm$status(sts = sts, action = RET_STATUS);
+
+		no_parents = 1;
+	}
+
+	place_dimplan:
+
+	sts =
+	DMget_plan_mgr(&dim_plan_mgr);
+	dm$status(sts = sts, action = RET_STATUS);
+
+	/*|- get the active referance plane if lock is on*/
+
+	win_grid.objid = NULL_OBJID;
+
+	ems$ref_plane_lock(
+		msg = &rc,
+		options = EMS_REF_PLANE_LOCK_INQ,
+		mode = &ref_lock_state);
+	if (!(1&rc))
+	{
+		ref_lock_state = 0;
+	}
+
+	if(ref_state_flag)
+	   ems$get_active_datum_plane(
+				msg = &rc,
+				datpln = &win_grid);
+
+	if (win_grid.objid == NULL_OBJID)
+	{
+		win_grid.objid = event.event.button.objid;
+		win_grid.osnum = event.event.button.osnum;
+	}
+
+	if (no_parents)
+	{
+		if (DMancestry_valid(list[0], OPP_dim_plan_class_id))
+		{
+			win_grid.objid = list[0].objid;
+			win_grid.osnum = list[0].osnum;
+		}
+		else if (DMancestry_valid(win_grid, OPP_dim_plan_class_id))
+		{
+			for( index = no_parents; index > 0; index=index-1)
+			{
+				list[index].objid = list[index-1].objid;
+				list[index].osnum = list[index-1].osnum;
+			}
+
+			list[0].objid = win_grid.objid;
+			list[0].osnum = win_grid.osnum;
+			no_parents = no_parents + 1;
+		}
+	}
+
+	sts =
+	ci$send(msg = message DMplan_mgr.create_dim_plane(
+						&msg,
+						win_grid,
+						matrix,
+						no_parents,
+						list,
+						&md_env,
+						&dim_plan),
+		targetid = dim_plan_mgr.objid,
+		targetos = dim_plan_mgr.osnum);
+	dm$status(sts = sts, action = RET_STATUS);
+
+        ex$message(msgnumb = DM_I_MeasAxisSet, buff = buff);
+	status(buff);
+
+	exit;
+}
+wakeup()
+{
+	int sts,ref,rc;
+	Form fp;
+
+	ex$message(msgnumb = DMC_M_DMMeasAxis, buff = msg_buff);
+	message(msg_buff);
+
+	// HF: 11/16/2001	Fix for TR# MP5602
+        // Always return ref_state_flag = FALSE;
+
+//  	if (GRget_model_mode() == GR_MODEL_MODE)
+//  		ref_state_flag = TRUE;
+//  	else /* GR_DETAIL_MODE or GR_UNKNOWN_MODE */
+		ref_state_flag = FALSE;
+}

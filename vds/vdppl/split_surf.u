@@ -1,0 +1,159 @@
+/* ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~	*/
+/*	Compile with switch '-DDEBUG=1' for debug print				*/
+/* ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~	*/
+
+#include <stdio.h>
+#include "cieveryone.h"
+#include "cimacros.h"
+#include "msdef.h"
+#include "bsallocsf.h"
+#include "bsfreesf.h"
+#include "bsu_spl_sf.h"
+#include "bsprtbspsf.h"
+
+struct GRid 		PREV, TEMP;
+struct GRmd_env		MOD_ENV;
+
+IGRint                  sts, msg, resp, BSrc;
+IGRchar                 loc_mes[80], strng[80];
+IGRdouble               upar;
+
+struct IGRbsp_surface  *surf, *sf1, *sf2;
+
+OMuword                 classid[2];
+struct OM_sd_classlist  classlist;
+
+extern			VDcomment;
+
+
+/* ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~	*/
+/*				 Beginning of code				*/
+/* ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~	*/
+
+main ()
+{
+  while ( 1 )
+  {
+step1:
+
+    PREV = TEMP;
+
+    ci$locate ( prompt		 = "Locate surface to split",
+		eligible_classes = &classlist,
+		properties	 = LC_LC_ONLY | LC_DP_ONLY | LC_RW,
+		owner_action	 = LC_RIGID_COMP | LC_RIGID_OWNER |
+				   LC_FLEX_COMP  | LC_FLEX_OWNER |
+				   LC_REF_OBJECTS,
+		obj		 = &TEMP.objid,
+		osnum		 = &TEMP.osnum,
+		md_env		 = &MOD_ENV,
+		response	 = &resp );
+
+    switch ( resp )
+    {
+      case DATA:
+	break;
+      case EX_OBJID:
+	goto step1;
+      case D_RESET:
+	exit;
+      case EX_RJT_MOVEON:
+	{
+	  goto step1;
+	}
+      case EX_BACK_UP:
+	{
+	  goto step1;
+	}
+      default:
+	message ( "Require <Backup> or <DATA> " );
+	status  ( "invalid user input" );
+	exit;
+    }					/* end switch on resp */
+
+    if (VDcomment) printf("Element_ID = [%d,%d]", TEMP.osnum, TEMP.objid );
+
+    sts = ci$send ( msg = message GRvg.GRgenabsg ( &msg,
+                                                   &MOD_ENV.md_env.matrix_type,
+                                                    MOD_ENV.md_env.matrix,
+                                                   ( char * ) &surf ),
+              targetid = TEMP.objid,
+              targetos = TEMP.osnum );
+
+    if ( ! ( sts & 1 & msg ))
+    {
+      printf ("GRvg.GRgenabsg error sts = %d, msg = %#x\n", sts, msg);
+      break;
+    }
+
+    BSallocsf ( surf->u_order, surf->v_order,
+                surf->u_num_poles, surf->v_num_poles,
+                surf->rational, surf->num_boundaries,
+                &sf1, &BSrc );
+    if ( BSrc )
+    {
+      printf ("BSallocsf (sf1) error BSrc = %d\n", BSrc);
+      break;
+    }
+
+    BSallocsf ( surf->u_order, surf->v_order,
+                surf->u_num_poles, surf->v_num_poles,
+                surf->rational, surf->num_boundaries,
+                &sf2, &BSrc );
+    if ( BSrc )
+    {
+      printf ("BSallocsf (sf2) error BSrc = %d\n", BSrc);
+      break;
+    }
+
+invalid_upar:
+
+    ci$get ( prompt = "Keyin u-parameter (0.0 -- 1.0)",
+             value  = upar );
+
+    if ( upar < 0.0 || upar > 1.0 )
+    {
+      sprintf (strng, "Invalid u-parameter (0.0 -- 1.0): %lg", upar);
+      status(strng);
+      goto invalid_upar;
+    }
+
+//    upar = 1.0 / 3.0;
+
+    BSu_spl_sf( surf, upar, sf1, sf2, &BSrc );
+    if ( BSrc )
+    {
+      printf ("BSu_spl_sf error BSrc = %d\n", BSrc);
+      break;
+    }
+
+    BSprtbspsf ( sf1 );
+    BSprtbspsf ( sf2 );
+
+    if ( sf1 )
+    {
+      BSfreesf ( &BSrc, sf1);
+    }
+    if ( sf2 )
+    {
+      BSfreesf ( &BSrc, sf2);
+    }
+  }					/* end of while */
+}					/* end of main */
+
+/* ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~	*/
+
+init ()
+{
+  om$get_classid ( classname = "EMSsubbs",
+		   p_classid = &classid[0] );
+
+  classlist.w_count = 1;
+  classlist.w_flags = OM_CLST_subclass;
+  classlist.p_classes = classid;
+
+  strcpy  ( loc_mes, "Split Surface with more than 1 multiple knot" );
+  message ( loc_mes );
+}
+
+/* ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~	*/

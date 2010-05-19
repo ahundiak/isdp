@@ -1,0 +1,317 @@
+/* $Id: crv_sland.u,v 1.1.1.1 2001/01/04 21:08:55 cvs Exp $  */
+
+/***************************************************************************
+ * I/VDS
+ *
+ * File:	vdloft/ppl/crv_sland.u
+ *
+ * Description:
+ *	Single Landing Curve
+ *	This function is designed to generate a single landing curve
+ *	from a existing curve lying already a surface.
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ *	$Log: crv_sland.u,v $
+ *	Revision 1.1.1.1  2001/01/04 21:08:55  cvs
+ *	Initial import to CVS
+ *	
+# Revision 1.1  1998/04/29  16:27:20  pinnacle
+# VDS 2.5.1
+#
+# Revision 1.1  1997/05/08  13:20:44  pinnacle
+# New project VDS 250
+#
+# Revision 1.1  1996/07/19  20:33:52  pinnacle
+# Create VDS 241 project
+#
+# Revision 1.1  1996/03/27  14:04:10  pinnacle
+# Created: vdloft/ppl/crv_sland.u by azuurhou for vds.240
+#
+ *
+ * History:
+ *	MM/DD/YY	AUTHOR		DESCRIPTION
+ *			JLL 		Creation date
+ *	05/01/95	PW		Took bare skeleton and changed to
+ *					use external functions to calculate
+ *					the "landing" curve.
+ *
+ ***************************************************************************/
+
+#include <stdio.h>
+#include "cieveryone.h"
+#include "cimacros.h"
+#include "ci_mac_def.h"
+#include "nddef.h"
+#include "macro.h"
+#include "bserr.h"
+#include "EMSdpb.h"
+#include "igrdp.h"
+#include "bsparameters.h"
+#include "madef.h"
+#include "growner.h"
+#include "msdef.h"
+
+#include "v_geommacros.h"
+#include "v_dbgmacros.h"
+
+struct GRid		CI_MACRO_ID;
+struct GRmd_env		MOD_ENV;
+struct GRvg_construct	cst;
+struct IGRdisplay	dis;
+IGRlong			msgmsg;
+
+
+extern int		GRabsg_del_by_objid(),
+			VDdw_CrvOffSrf() ,
+			VDdw_initCnst( ) ;
+
+extern			ASsuper_construct();
+extern	int		init_cnst_list();
+
+
+#define MACRO_NAME    		"crv_sland" 
+#define MAX_TEMP		8
+#define MAX_FEET		1
+
+
+/* ========================================================================= */
+/* the main function is the one implementing the definition creation
+/* ========================================================================= */
+
+main ()
+{
+GRobj 			ci_mac_def1;
+IGRchar			*temp_names[MAX_TEMP], *feet_names[MAX_FEET];
+IGRint			temp_types[MAX_TEMP];
+IGRlong			stat;
+
+
+  temp_names[0] = "surface";
+  temp_names[1] = "crv";
+  temp_names[2] = "start_bound";
+  temp_names[3] = "end_bound";
+  temp_names[4] = "method";
+  temp_names[5] = "law";
+  temp_names[6] = "start_offset";
+  temp_names[7] = "end_offset";
+
+  temp_types[0] = surface_generic | other_generic;
+  temp_types[1] = line_generic | conic_generic | curve_generic;  
+  temp_types[2] = point_generic | line_generic | conic_generic | curve_generic;
+  temp_types[3] = point_generic | line_generic | conic_generic | curve_generic;
+  temp_types[4] = parameter_generic | double_type;
+  temp_types[5] = parameter_generic | double_type;
+  temp_types[6] = parameter_generic | double_type;
+  temp_types[7] = parameter_generic | double_type;
+ 
+  feet_names[0] = "curve";
+
+  ci_mac_def1 = NULL_OBJID;
+
+  ac$cimacdef( 	cimacdef          = ci_mac_def1,
+		prop		  = ACvariable_template,
+		status 	          = &stat, 	
+		name              = MACRO_NAME,
+              	temp_num          = MAX_TEMP,
+		temp_names        = temp_names,
+		temp_types        = temp_types,
+	      	extern_feet_num   = MAX_FEET,
+	 	extern_feet_names = feet_names );
+}
+
+/* ========================================================================= */
+
+IGRlong VDdw_retSlandParents( refStr, objEnv, expVal, msg )
+
+struct ret_struct	*refStr;
+struct GRlc_info	*objEnv;
+IGRdouble		*expVal;		
+IGRlong			*msg;
+
+{
+IGRlong			RetC;
+IGRint			i;
+struct	GRid		ASelem;
+struct ret_struct	expr;
+
+/*-------------------------------------------------------------------------*/
+/* retrieve the four graphic parents				           */
+/*-------------------------------------------------------------------------*/
+
+  for(i=0;i<4;i=i+1){
+
+     	RetC =
+	ci$send(msg      = message  ACcpx.ACfind_exp_temp_obj(
+							msg,i,&ASelem),
+ 	      	targetid = CI_MACRO_ID.objid ,
+	      	targetos = CI_MACRO_ID.osnum);
+  	if( !(RetC&(*msg)&1) ){
+#ifdef DEBUG
+		printf("Error in VDdw_retSlandParents\n");
+		printf("ACfind_exp_temp_obj for parent = %d\n",(i+1));
+#endif
+		return(MSFAIL);
+	}
+
+     	RetC =
+	ci$send( msg      = message NDmacro.ACreturn_foot(	
+			msg,
+			"",
+			&(objEnv[i].located_obj), 
+			&objEnv[i].module_info.md_env.matrix_type, 
+			objEnv[i].module_info.md_env.matrix ),
+	      	 targetid = ASelem.objid,
+	      	 targetos = ASelem.osnum );
+  	if( !(RetC&(*msg)&1) ){
+#ifdef DEBUG
+		printf("Error in VDdw_retSlandParents\n");
+		printf("ACreturn_foot for parent = %d\n",(i+1));
+#endif
+		return(MSFAIL);
+	}
+   }
+
+/*-------------------------------------------------------------------------*/
+/* retrieve the four parameter					           */
+/*-------------------------------------------------------------------------*/
+
+  for(i=0;i<4;i=i+1){
+
+  	RetC =
+	ci$send(msg = message  ACcpx.ACfind_exp_temp_struct(
+					msg, (i+4), (IGRchar *)&expr,&MOD_ENV ),
+           	targetid = CI_MACRO_ID.objid,
+           	targetos = CI_MACRO_ID.osnum );
+  	if( !(RetC&(*msg)&1) ){
+#ifdef DEBUG
+		printf("Error in VDdw_retSlandParents\n");
+		printf("ACfind_exp_temp_struct for expression = %d\n",(i+5));
+#endif
+		return(MSFAIL);
+	}
+	else expVal[i] = expr.var.root_pm_st.value; 
+  }
+
+  return(MSSUCC);
+}
+
+/* ========================================================================= */
+
+  
+computeSland(resCrv)
+
+struct GRid	*resCrv;
+{
+IGRlong			msg;
+IGRint			RetC; 
+struct 	GRlc_info	objEnv[4];
+struct ret_struct	refStr;
+IGRdouble		expVal[4];		
+IGRlong			NumberOfBytes,BytesReceived;
+
+	RetC = OM_E_INVARG;
+
+	if ( resCrv ) resCrv->objid = NULL_OBJID;
+	else goto wrapup ;
+
+        init_cnst_list();
+        get_symb();
+
+        dis.color               = cnst_list.color;
+        dis.weight              = cnst_list.weight;
+
+        dis.style               = cnst_list.style;
+        cst.msg                 = &msg;
+        cst.properties          = GRIS_LOCATABLE | GRIS_NEW | GRIS_DISPLAYABLE;
+        cst.display             = &dis;
+        cst.env_info            = &MOD_ENV;
+        cst.newflag             = 0;
+        cst.level               = cnst_list.level;
+        cst.geometry            = (char *)NULL;
+        cst.class_attr          = 0;
+        cst.name                = 0;
+
+	status( "Calculating the landing curve..." ) ;
+
+	RetC =
+	VDdw_retSlandParents(	&refStr,
+				objEnv,
+				expVal,
+				&msg );
+	if(!(RetC&msg&1)){
+#ifdef DEBUG
+		printf("error in compute_sland\n");
+#endif
+		status( "Couldn't find all parents for landing curve" ) ;
+		__CheckRC( RetC, msg, "Sland:VDdw_retParents", wrapup ) ;
+	}
+
+
+	RetC =
+	VDdw_CrvOffSrf(		&msg,
+				&objEnv[1] ,
+				&objEnv[0] ,
+				expVal , 
+				&objEnv[2] ,
+				&cst,
+				resCrv ) ;
+	if(!(RetC&msg&1)){
+#ifdef DEBUG
+		printf("error in compute_sland\n");
+		printf("VDdw_CrvOffSrf FAILED\n");
+#endif
+		status( "Couldn't calculate the landing curve" ) ;
+		__CheckRC( RetC, msg, "Sland:VDdw_CrvOffSrf", wrapup ) ;
+	}
+	else
+		status( "Placed the landing curve" ) ;
+
+wrapup:
+	 return RetC ;	
+
+}
+
+/* ========================================================================= */
+
+place ()
+{
+IGRlong			stat;
+struct GRid 		RESCRV;
+
+	RESCRV.objid	= NULL_OBJID ;
+
+	computeSland( &RESCRV );
+
+	if( RESCRV.objid == NULL_OBJID ) return(0);
+
+	ci$send( msg = message  ci_macro.set_all_extern_feet
+					(&stat, 1, &RESCRV, &MOD_ENV ),
+	   	targetid = CI_MACRO_ID.objid,
+	   	targetos = CI_MACRO_ID.osnum);
+
+	return(1);
+}
+
+/* ========================================================================= */
+
+compute ()
+{
+IGRlong			stat;
+struct GRid 		RESCRV;
+
+	RESCRV.objid	= NULL_OBJID ;
+
+	computeSland(&RESCRV);
+
+	if( RESCRV.objid == NULL_OBJID ) return(0);
+
+	ci$send(msg = message  ci_macro.set_all_extern_feet
+					(&stat, 1, &RESCRV, &MOD_ENV ),
+	   	targetid = CI_MACRO_ID.objid,
+	   	targetos = CI_MACRO_ID.osnum);
+	return(1);
+}
+/* ========================================================================= */
+

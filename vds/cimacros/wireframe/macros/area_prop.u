@@ -1,0 +1,379 @@
+/* $Id: area_prop.u,v 1.2 2001/07/21 15:07:41 ad Exp $  */
+
+/* --------------------------------------------------------------------
+ * I/VDS
+ *
+ * File:	vds/cimacros/wireframe/macros / area_prop.u
+ *
+ * Description:
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ *	$Log: area_prop.u,v $
+ *	Revision 1.2  2001/07/21 15:07:41  ad
+ *	*** empty log message ***
+ *	
+ *	Revision 1.1.1.1  2001/01/04 21:07:22  cvs
+ *	Initial import to CVS
+ *	
+# Revision 1.1  1998/04/29  16:27:20  pinnacle
+# VDS 2.5.1
+#
+# Revision 1.1  1997/05/08  13:20:44  pinnacle
+# New project VDS 250
+#
+# Revision 1.1  1996/07/19  20:33:52  pinnacle
+# Create VDS 241 project
+#
+# Revision 1.1  1994/11/14  22:42:32  pinnacle
+# Create vds.240 from vds.232
+#
+# Revision 1.1  1994/11/08  16:07:00  pinnacle
+# create vds.232
+#
+ *
+ * History:
+ *	MM/DD/YY	AUTHOR		DESCRIPTION
+ *	07/21/01	adz		MP5440; Macro not working in ref-file.
+ *
+ * -------------------------------------------------------------------*/
+
+/*
+	 VDS 2.0 - PPM macro library - 92/07/09 (alc)
+ */
+   
+#include "cieveryone.h"
+#include "cimacros.h"
+#include "ci_mac_def.h"
+#include "EMSmsgdef.h"
+#include "AS_status.h"
+#include "OMprimitives.h"
+
+
+IGRlong			EMS_ret;
+IGRshort		mat_type;
+IGRdouble		matrix[16];
+IGRboolean      	want_status;
+
+IGRchar 		*temp_names[1], *feet_names[2], str[40], tmp[40];
+IGRint			temp_types[1];
+
+IGRint			stat, msg, i, j, num_surfaces;
+GRobj 			ci_mac_def1, list[1], COMP, SURF;
+
+IGRdouble               org[3], out_in[20], pnt[6], scaling_factor;
+
+IGRint			chan_index;
+
+OM_S_CHANSELECT		notify_chan, to_object;
+
+IGRdouble		density;
+
+struct GRid		CUV, GCV, CI_MACRO_ID, GRid_list[2], MPROP;
+
+struct GRmd_env		MOD_ENV, MOD_ENV1;
+struct GRvg_construct   cst;
+struct IGRdisplay	dis;
+struct IGRpolyline      geom;
+
+extern int 		init_cnst_list(),
+			sprintf(),
+			printf();
+extern			ASsuper_construct();
+
+
+/* ========================================================================= */
+/* the main function is the one implementing the definition creation
+/* ========================================================================= */
+
+main ()
+{
+  temp_names[0]  = "surface";  
+  temp_types[0]  = other_generic;
+
+  feet_names[0]  = "cdg";
+  feet_names[1]  = "area";
+
+
+  ci_mac_def1 = NULL_OBJID;
+
+  ac$cimacdef( 	cimacdef            =  ci_mac_def1,
+		status 	            = &stat,
+	 	name                = "area_prop",
+              	temp_num            = 1,
+		temp_names          = temp_names,
+		temp_types          = temp_types,
+	      	extern_feet_num     = 2,
+	 	extern_feet_names   = feet_names );
+}
+
+/* ========================================================================= */
+
+compute ()
+{
+
+  construct_comp();
+
+  if( (GRid_list[0].objid == NULL_OBJID) ||
+      (GRid_list[1].objid == NULL_OBJID)    ) return(0); 
+
+
+  ci$send( msg = message  ci_macro.set_all_extern_feet
+	 ( &stat, 2,GRid_list, &MOD_ENV ),
+	   targetid = CI_MACRO_ID.objid,
+	   targetos = CI_MACRO_ID.osnum );
+
+  return(1);
+}
+
+/* ========================================================================= */
+
+place ()
+{
+  construct_comp();
+
+  if( (GRid_list[0].objid == NULL_OBJID) ||
+      (GRid_list[1].objid == NULL_OBJID)    ) return(0); 
+
+  ci$send( msg = message  ci_macro.set_all_extern_feet
+	 ( &stat, 2,GRid_list, &MOD_ENV ),
+	   targetid = CI_MACRO_ID.objid,
+	   targetos = CI_MACRO_ID.osnum );
+
+  return(1);
+}
+
+/* ========================================================================= */
+
+construct_comp()
+{
+     GRid_list[0].objid = NULL_OBJID;
+     GRid_list[0].osnum = MOD_ENV.md_id.osnum;
+     GRid_list[1].objid = NULL_OBJID;
+     GRid_list[1].osnum = MOD_ENV.md_id.osnum;
+
+     MPROP.objid = NULL_OBJID;
+     MPROP.osnum = MOD_ENV.md_id.osnum;
+
+     msg = ci$send( msg     = message  ACcpx.ACfind_exp_temp_obj(&stat,0,&CUV),
+ 	      targetid = CI_MACRO_ID.objid,
+	      targetos = CI_MACRO_ID.osnum );
+#ifdef DEBUG
+	write("ACcpx.ACfind_exp_temp_obj stat =",stat,"\n");
+#endif
+
+     if( !(msg&stat&1) ) return;
+
+     msg = ci$send( msg      = message NDmacro.ACreturn_foot(	
+						&stat ,
+						".",
+						&GCV, 
+						&mat_type, 
+					        matrix ),
+	     targetid = CUV.objid,
+	     targetos = CUV.osnum );
+
+     if( !(msg&stat&1) ){
+		status(" bad element " );
+		return;
+     }
+
+     for(i=0;i<3;i=i+1) org[i] = 0.0;
+
+/*-------------------------------------------------------------------------*/
+/*---		construct the area properties object   		        ---*/
+/*-------------------------------------------------------------------------*/
+
+
+  	init_cnst_list();
+  	get_symb();
+
+  	dis.color		= cnst_list.color;
+  	dis.weight		= cnst_list.weight;
+
+
+  	dis.style		= cnst_list.style;
+  	cst.msg			= &msg;
+  	cst.properties		= GRIS_LOCATABLE | GRIS_NEW | GRIS_DISPLAYABLE;
+  	cst.display		= &dis;
+  	cst.env_info		= &MOD_ENV;
+  	cst.newflag		= 0;
+  	cst.level		= cnst_list.level;
+  	cst.geometry		= (char *)NULL;
+  	cst.class_attr		= 0;
+  	cst.name		= 0;
+
+
+     /* MP5440
+      * correction to work directly in reference files.
+      * When the curve is in the reference file, the EMSmassprop object
+      * need to be temporary constructed in the reference file to maintain
+      * a relation with the curve.
+      * EMSmassprop object will be deleted at end of routine.
+      */
+     MOD_ENV1 = MOD_ENV ;
+     MOD_ENV1.md_id.osnum = GCV.osnum ;
+     MPROP.osnum = GCV.osnum;
+
+     stat = ci$send(msg       = message EMSmassprop.GRconstruct(&cst),
+	            construct = 1,
+                    targetid  = MPROP.objid,
+	            targetos  = MPROP.osnum );
+#ifdef DEBUG
+write(" exit EMSmassprop.construct stat = ",stat,"\n");
+#endif
+
+     stat = om$make_chanselect ( channame     = "GRnotify.notification",
+				 p_chanselect = &notify_chan );
+#ifdef DEBUG
+write(" exit om$make_chanselect GRnotify.notification\n");
+#endif
+
+     stat = om$make_chanselect ( channame     = "EMSmassprop.to_object",
+			         p_chanselect = &to_object);
+
+#ifdef DEBUG
+write(" exit om$make_chanselect EMSmassprop.to_object\n");
+#endif
+     chan_index = GRDGNLIMITS_MAX_I;
+
+     stat = ci$send(msg      = message Root.connect( to_object,
+						     chan_index,
+						     GCV.objid,
+						     GCV.osnum,
+						     notify_chan,
+						     0 ),
+             	    targetid = MPROP.objid,
+	            targetos = MPROP.osnum );
+#ifdef DEBUG
+write(" exit Root.connect stat= ",stat,"\n");
+#endif
+
+     stat = ci$send(msg      = message EMSmassprop.EMinitialize(&EMS_ret),
+             	    targetid = MPROP.objid,
+	            targetos = MPROP.osnum );
+#ifdef DEBUG
+write(" exit EMSmassprop.EMinitialize stat= ",stat,"\n");
+#endif
+
+/*
+     density = 1.0;
+     stat = ci$send(msg      = message EMSmassprop.EMset_density( &EMS_ret,
+								  density  ),
+             	    targetid = MPROP.objid,
+	            targetos = MPROP.osnum );
+
+#ifdef DEBUG
+write(" exit EMSmassprop.EMset_density stat= ",stat," EMS_ret =",EMS_ret,"\n");
+#endif
+*/
+     stat = ci$send(msg      = message EMSmassprop.EMset_type( &EMS_ret,
+							       1 ),
+             	    targetid = MPROP.objid,
+	            targetos = MPROP.osnum );
+
+/*-------------------------------------------------------------------------*/
+/*---	evalute the area properties					---*/
+/*-------------------------------------------------------------------------*/
+
+#ifdef DEBUG
+	write("enter EMSsurface.EMareaprop\n");
+#endif
+     want_status = TRUE;
+     num_surfaces = 1;
+     scaling_factor = 1.0;
+
+     stat = ci$send(msg = message EMSsurface.EMareaprop(
+				 &EMS_ret,
+				 want_status,
+				 num_surfaces,
+				 &MOD_ENV1,
+				 scaling_factor,
+			         org,
+                                 out_in),
+           targetid = GCV.objid,
+	   targetos = GCV.osnum );
+
+#ifdef DEBUG
+	write(" GCV ", GCV.osnum, ", ", GCV.objid,"\n"); 
+	write("exit EMSsurface.EMareaprop EMS_ret = ",EMS_ret,"\n");
+	om$report_error( sts = stat );
+	om$report_error( sts = EMS_ret );
+#endif
+
+      if( EMS_ret != EMS_S_Success ) goto update;
+
+#ifdef DEBUG
+
+	status("");
+	prompt("hit return to continue");
+	write("\f\f\f");
+	write("Centroid          [ ",out_in[2],out_in[3],out_in[4],"]",'\n');
+	write("Surface area      = ",out_in[11],'\n');
+#endif
+
+/*-------------------------------------------------------------------------*/
+/*---		construct the center of gravity				---*/
+/*-------------------------------------------------------------------------*/
+
+        for(i=0;i<3;i=i+1){
+	 	pnt[i]   = out_in[i+2];
+         	pnt[i+3] = pnt[i];
+        }
+
+#ifdef DEBUG
+	write("pnt=",pnt[0],pnt[1],pnt[2],
+		     pnt[3],pnt[4],pnt[5],"\n");
+#endif
+
+  	geom.num_points = 2;
+	geom.points = pnt;
+
+        if( dis.weight < 3 ) dis.weight = 3; 
+
+  	cst.geometry		= (char *)&geom;
+
+  	stat = ci$send( msg       = message GR3dpoint.GRaltconstruct(&cst),
+        	        targetid  = GRid_list[0].objid,
+ 	                targetos  = GRid_list[0].osnum );
+
+	if( !(stat&1) ){
+		GRid_list[0].objid = NULL_OBJID;
+		return;
+	}
+
+  	sprintf( tmp, "%g", out_in[11] );
+
+#ifdef DEBUG
+	write(" enter Gexp.create\n");
+#endif
+
+
+	stat = ci$send(  msg      = message Gexp.create
+		 				( NULL,tmp , &msg ),
+                   targetid = GRid_list[1].objid,
+		   targetos = GRid_list[1].osnum);
+
+#ifdef DEBUG
+    	as$status(sts = stat);
+	write(" exit Gexp.create\n");
+#endif
+
+
+	strcpy( str,"Surface area = " );
+	strcat( str,ftoa(out_in[11]) );
+	status(str);
+
+update:
+
+	if( MPROP.objid != NULL_OBJID ){
+	  stat =
+	  ci$send(msg = message GRvg.GRdelete(&msg, &MOD_ENV1),
+		targetid = MPROP.objid,
+		targetos = MPROP.osnum);
+	  as$status(sts = stat) ;
+	}
+
+	return ;
+}

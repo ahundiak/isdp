@@ -1,0 +1,600 @@
+#include        <stdio.h>
+#include        "ciminimum.h"
+#include        "cimacros.h"
+#include        "PDUstr.h"
+#include        "PDUpart.h"
+#include        "cieveryone.h"
+#include        "cimacros.h"
+#include        "string.h"
+#include        "PDUgrpart.h"
+#include        "PDUnode.h"
+#include        "PDUfile_def.h"
+#include        "PDUcommand.h"
+#include        "PDUerror.h"
+#include        "PDUforms.h"
+#include        "part_gadgets.h"
+
+/* External function declarations */
+extern          PDUl_in_string();
+extern          PDUmessage();
+extern          malloc();
+extern          free();
+extern          sprintf();
+extern          _pdm_debug();
+extern          _pdm_status();
+extern          MEMbuild_array();
+extern          FIg_set_text();
+extern          PDUget_col_number();
+extern          FIfld_get_num_rows();
+extern          FIfld_pos_cursor();
+extern          FIfld_get_text_length();
+extern          FIfld_get_text();
+extern          FIfld_set_text();
+extern          FIfld_set_mode();
+extern          FIg_display();
+extern          FIg_disable();
+extern          FIg_enable();
+extern          MEMprint_buffers();
+extern          PDUnp_part_fld();
+extern          PDUnp_rev_fld();
+extern          PDUnp_desc_fld();
+extern          PDUep_desc_fld();
+extern          PDUnp_parttype_fld();
+extern          PDUep_parttype_fld();
+extern          PDUcheck_char();
+extern		PDUtranslate_message();
+extern		UI_status();
+
+/* External global variables */
+extern          int    PDMdebug_on;
+extern          int    PDU_command;
+extern          int    new_mode; 
+extern          int    similar_mode; 
+extern          int    change_mode; 
+extern          int    review_mode; 
+extern          char  *PDU_report_name;
+extern          char  *PDU_template;
+extern          char   PDU_attr_value[40];
+extern          MEMptr PDU_attr_bufr;
+extern          MEMptr PDU_data_bufr;
+extern          MEMptr PDU_func_buffer;
+extern          struct PDUforms  forms;
+
+main()
+{
+   long    status;
+   long    status1;
+   char    func_name[25];
+   char    spec_char;
+   char   *search_str;
+   char   *ptr;
+   char   *max_row_text;
+   char  **func_bufr_col;
+   char  **func_bufr_row;
+   char  **attr_bufr_col;
+   char  **attr_bufr_row;
+   int     response;
+   int     n_name_col;
+   int     n_filenm_col;
+   int     n_syn_col;
+   int     max_rows;
+   int     max_row_length;
+   int     select_flag;
+   int     pos;
+   int     row;
+   int     i;
+   int     j;
+   int     str_len;
+
+   _pdm_debug("ENTER: get_atr_val.u",PDU_DEBUG_FILE);
+   
+   n_name_col = 0;
+   n_filenm_col = 0;
+   n_syn_col = 0;
+   max_rows = 0;
+   max_row_length = 0;
+   select_flag = 0;
+   pos = 0;
+   row = 0;
+   i = 0;
+   j = 0;
+   n_name_col = 0;
+   search_str = NULL;
+
+
+   if (review_mode)
+     exit;
+   
+   /* added by JBP */
+   if (change_mode)
+     exit;
+
+   status = MEMbuild_array(PDU_func_buffer);
+   _pdm_status("MEMbuild_array",status);
+
+   if (status != MEM_S_SUCCESS)
+    {
+      search_str = (char *)PDUtranslate_message(PDM_E_BUILD_ARRAY);
+
+      UI_status( search_str );
+      printf("ERROR (Warning): in get_atr_val.u\n%s\n",search_str);
+      //FIg_set_text(forms.part_operations_form_id,FI_MSG_FIELD,search_str);
+      exit;
+    }
+
+   if (PDMdebug_on)
+      MEMprint_buffers("PDU_func_buffer inside get_atr_val.u",
+                       PDU_func_buffer, PDU_DEBUG_FILE);
+
+   func_bufr_col = (char **) PDU_func_buffer->column_ptr;
+   func_bufr_row = (char **) PDU_func_buffer->data_ptr;
+
+   status = PDUget_col_number(PDU_func_buffer,"n_name",func_bufr_col,
+                              &n_name_col);
+   _pdm_status("PDUget_col_number",status);
+
+   if (status != PDM_S_SUCCESS)
+      {
+      PDUmessage(status,'s');
+      exit;
+      }
+
+   status = PDUget_col_number(PDU_func_buffer,"n_filename",func_bufr_col,
+			      &n_filenm_col);
+   _pdm_status("PDUget_col_number",status);
+
+   if (status != PDM_S_SUCCESS)
+      {
+      PDUmessage(status,'s');
+      exit;
+      }
+
+   if (!change_mode)
+   {
+   printf("get_atr_val.u 6\n");
+   for (i = 0; i < PDU_func_buffer->rows; i = i+1)
+      {
+      if (strcmp(func_bufr_row[(PDU_func_buffer->columns * i) + n_name_col],
+		 "n_itemname") == 0)
+	 { 
+	 FIfld_set_mode(forms.part_operations_form_id,
+			NP_PARTNUM_FLD,0,FI_REVIEW);
+         FIg_display(forms.part_operations_form_id, NP_PARTNUM_FLD);
+	 _pdm_debug("Generate value for the part number",PDU_DEBUG_FILE);
+         _pdm_debug("Function is <%s>",func_bufr_row[(PDU_func_buffer->columns 
+                                       * i) + n_filenm_col]);
+
+         strcpy(func_name,func_bufr_row[(PDU_func_buffer->columns * i) +
+                                         n_filenm_col]);
+
+         ptr = (char *)strrchr(func_name, '.');
+
+         if (ptr)
+            *((char *) strrchr(func_name, '.')) = '\0';
+
+         ci$exec(file_name = func_name);
+
+         _pdm_debug("After the function FUNC_TEST",0);
+         _pdm_debug("PDU_attr_value = <%s>", PDU_attr_value);
+	 FIfld_set_text(forms.part_operations_form_id,
+			NP_PARTNUM_FLD,0,0,PDU_attr_value,FALSE);
+         status1 = PDUnp_part_fld();
+         _pdm_status("PDUnp_part_fld", status1);
+         break;
+	 }
+       }
+    }
+   _pdm_debug("Searching for revision", 0);
+   if (!change_mode)
+   {
+   for (i = 0; i < PDU_func_buffer->rows; i = i+1)
+      {
+      if (strcmp(func_bufr_row[(PDU_func_buffer->columns * i)+n_name_col],
+		 "n_itemrev") == 0)
+	 {
+	 _pdm_debug("Generate value for the revision",PDU_DEBUG_FILE);
+	 FIfld_set_mode(forms.part_operations_form_id,
+			NP_REV_FLD,0,FI_REVIEW);
+         FIg_display(forms.part_operations_form_id, NP_REV_FLD);
+         strcpy(func_name,func_bufr_row[(PDU_func_buffer->columns * i) +
+                                         n_filenm_col]);
+
+         ptr = (char *)strrchr(func_name, '.');
+
+         if (ptr)
+            *((char *) strrchr(func_name, '.')) = '\0';
+
+         ci$exec(file_name = func_name);
+         _pdm_debug("PDU_attr_value = <%s>", PDU_attr_value);
+	 FIfld_set_text(forms.part_operations_form_id,
+			NP_REV_FLD,0,0,PDU_attr_value,FALSE);
+         status = PDUnp_rev_fld();
+         PDUmessage(status, 's');
+         break;
+	 }
+       }
+     }
+   _pdm_debug("Looking for description", 0);
+   for (i = 0; i < PDU_func_buffer->rows; i = i+1)
+      {
+      if (strcmp(func_bufr_row[(PDU_func_buffer->columns * i)+n_name_col],
+		 "n_itemdesc") == 0)
+	 {
+	 _pdm_debug("Generate value for the description",PDU_DEBUG_FILE);
+         if (change_mode)
+           {
+           FIfld_pos_cursor(forms.part_operations_form_id,EP_DESC_FLD,0,0,0,0,0,
+                            0);
+	   FIfld_set_mode(forms.part_operations_form_id,
+			  EP_DESC_FLD,0,FI_REVIEW);
+           FIg_display(forms.part_operations_form_id, EP_DESC_FLD);
+           }
+         else
+           {
+           FIfld_pos_cursor(forms.part_operations_form_id,NP_DESC_FLD,0,0,0,0,0,
+                            0);
+	   FIfld_set_mode(forms.part_operations_form_id,
+			  NP_DESC_FLD,0,FI_REVIEW);
+           FIg_display(forms.part_operations_form_id, NP_DESC_FLD);
+           }
+         strcpy(func_name,func_bufr_row[(PDU_func_buffer->columns * i) +
+                                         n_filenm_col]);
+
+         ptr = (char *)strrchr(func_name, '.');
+
+         if (ptr)
+            *((char *) strrchr(func_name, '.')) = '\0';
+
+         ci$exec(file_name = func_name);
+         _pdm_debug("PDU_attr_value = <%s>", PDU_attr_value);
+         if (change_mode)
+           {
+	   FIfld_set_text(forms.part_operations_form_id,
+			  EP_DESC_FLD,0,0,PDU_attr_value,FALSE);
+           status = PDUep_desc_fld();
+           PDUmessage(status, 's');
+           }
+         else
+           {
+	   FIfld_set_text(forms.part_operations_form_id,
+			  NP_DESC_FLD,0,0,PDU_attr_value,FALSE);
+           status = PDUnp_desc_fld();
+           PDUmessage(status, 's');
+           }
+         break;
+	 }
+      }
+   for (i = 0; i < PDU_func_buffer->rows; i = i+1)
+      {
+      if (strcmp(func_bufr_row[(PDU_func_buffer->columns * i)+n_name_col],
+		 "p_parttype") == 0)
+	 {
+	 _pdm_debug("Generate value for the part type",PDU_DEBUG_FILE);
+         if (change_mode)
+           {
+	   FIfld_set_mode(forms.part_operations_form_id,
+			  EP_PARTTYPE_FLD,0,FI_REVIEW);
+           FIg_display(forms.part_operations_form_id, EP_PARTTYPE_FLD);
+           }
+         else
+           {
+	   FIfld_set_mode(forms.part_operations_form_id,
+			  NP_PARTTYPE_FLD,0,FI_REVIEW);
+           FIg_display(forms.part_operations_form_id, NP_PARTTYPE_FLD);
+           }
+         strcpy(func_name,func_bufr_row[(PDU_func_buffer->columns * i) +
+                                         n_filenm_col]);
+
+         ptr = (char *)strrchr(func_name, '.');
+
+         if (ptr)
+            *((char *) strrchr(func_name, '.')) = '\0';
+
+         ci$exec(file_name = func_name);
+         _pdm_debug("PDU_attr_value = <%s>", PDU_attr_value);
+         if (change_mode)
+           {
+	   FIfld_set_text(forms.part_operations_form_id,
+			  EP_PARTTYPE_FLD,0,0,PDU_attr_value,FALSE);
+           status = PDUep_parttype_fld();
+           }
+         else
+           {
+	   FIfld_set_text(forms.part_operations_form_id,
+			  NP_PARTTYPE_FLD,0,0,PDU_attr_value,FALSE);
+           status = PDUnp_parttype_fld();
+           }
+         PDUmessage(status, 's');
+         break;
+	 }
+      }
+   for (i = 0; i < PDU_func_buffer->rows; i = i+1)
+      {
+      if (strcmp(func_bufr_row[(PDU_func_buffer->columns * i)+n_name_col],
+		 "p_filedesc") == 0)
+	 {
+	 _pdm_debug("Generate value for the file description",PDU_DEBUG_FILE);
+	 if (new_mode == TRUE)
+           {
+	    FIfld_set_mode(forms.part_operations_form_id,
+			   FILE_INFO_MCF,0,FI_REVIEW);
+            FIg_display(forms.part_operations_form_id, FILE_INFO_MCF);
+            }
+	 else if (similar_mode == TRUE)
+            {
+	    FIfld_set_mode(forms.part_operations_form_id,
+			   SIMILAR_MODE_MCF,0,FI_REVIEW);
+            FIg_display(forms.part_operations_form_id, SIMILAR_MODE_MCF);
+            }
+	 else if (change_mode == TRUE)
+            {
+	    FIfld_set_mode(forms.part_operations_form_id,
+			   NEW_FILES_MCF,0,FI_REVIEW);
+            FIg_display(forms.part_operations_form_id, NEW_FILES_MCF);
+            }
+         strcpy(func_name,func_bufr_row[(PDU_func_buffer->columns * i) +
+                                         n_filenm_col]);
+
+         ptr = (char *)strrchr(func_name, '.');
+
+         if (ptr)
+            *((char *) strrchr(func_name, '.')) = '\0';
+
+         ci$exec(file_name = func_name);
+         _pdm_debug("PDU_attr_value = <%s>", PDU_attr_value);
+         str_len = strlen(PDU_attr_value);
+         if (str_len > 40)
+           {
+           search_str = (char *)PDUtranslate_message(PDM_E_FILE_DESC_TOO_LONG);
+           FIg_set_text(forms.part_operations_form_id,FI_MSG_FIELD, search_str);
+           break;
+           }
+	 if (new_mode == TRUE)
+	    FIfld_set_text(forms.part_operations_form_id,
+			   FILE_INFO_MCF,0,0,PDU_attr_value,FALSE);
+	 else if (similar_mode == TRUE)
+	    FIfld_set_text(forms.part_operations_form_id,
+			   SIMILAR_MODE_MCF,0,0,PDU_attr_value,FALSE);
+	 else if (change_mode == TRUE)
+	    FIfld_set_text(forms.part_operations_form_id,
+			   NEW_FILES_MCF,0,0,PDU_attr_value,FALSE);
+         break;
+	 }
+      }
+   for (i = 0; i < PDU_func_buffer->rows; i = i+1)
+      {
+      if (strcmp(func_bufr_row[(PDU_func_buffer->columns * i)+n_name_col],
+		 "n_cofilename") == 0)
+	 {
+	 _pdm_debug("Generate value for the local filename",PDU_DEBUG_FILE);
+	 if (new_mode == TRUE)
+           {
+	    FIfld_set_mode(forms.part_operations_form_id,
+			   FILE_INFO_MCF,1,FI_REVIEW);
+            FIg_display(forms.part_operations_form_id, FILE_INFO_MCF);
+            }
+	 else if (similar_mode == TRUE)
+            {
+	    FIfld_set_mode(forms.part_operations_form_id,
+			   SIMILAR_MODE_MCF,2,FI_REVIEW);
+            FIg_display(forms.part_operations_form_id, SIMILAR_MODE_MCF);
+            }
+	 else if (change_mode == TRUE)
+            {
+	    FIfld_set_mode(forms.part_operations_form_id,
+			   NEW_FILES_MCF,1,FI_REVIEW);
+            FIg_display(forms.part_operations_form_id, NEW_FILES_MCF);
+            }
+         strcpy(func_name,func_bufr_row[(PDU_func_buffer->columns * i) +
+                                         n_filenm_col]);
+
+         ptr = (char *)strrchr(func_name, '.');
+
+         if (ptr)
+            *((char *) strrchr(func_name, '.')) = '\0';
+
+         ci$exec(file_name = func_name);
+         str_len = strlen(PDU_attr_value);
+         if (str_len > 14)
+           {
+           search_str = (char *)PDUtranslate_message(PDM_E_FILENAME_TOO_LONG);
+           FIg_set_text(forms.part_operations_form_id,FI_MSG_FIELD, search_str);
+           break;
+           }
+         status = PDUcheck_char(PDU_attr_value,&spec_char);
+         _pdm_status("PDUcheck_char",status);
+
+         if (status != PDM_S_SUCCESS)
+           {
+       /* 
+           search_str = (char *) malloc (sizeof (char) * 100);
+           sprintf(search_str,"The local filename cannot contain the character ,%c'", spec_char);
+       */
+           search_str = (char *)PDUtranslate_message(PDM_E_INVALID_CHAR_IN_LOCFN); 
+           FIg_set_text(forms.part_operations_form_id,FI_MSG_FIELD, search_str);
+           break;
+           }
+
+	 if (new_mode == TRUE)
+	    FIfld_set_text(forms.part_operations_form_id,
+			   FILE_INFO_MCF,0,1,PDU_attr_value,FALSE);
+	 else if (similar_mode == TRUE)
+	    FIfld_set_text(forms.part_operations_form_id,
+			   SIMILAR_MODE_MCF,0,2,PDU_attr_value,FALSE);
+	 else if (change_mode == TRUE)
+	    FIfld_set_text(forms.part_operations_form_id,
+			   NEW_FILES_MCF,0,1,PDU_attr_value,FALSE);
+          break;
+	 }
+      }
+   for (i = 0; i < PDU_func_buffer->rows; i = i+1)
+      {
+      if (strcmp(func_bufr_row[(PDU_func_buffer->columns * i)+n_name_col],
+		 "n_cifilename") == 0)
+	 {
+	 _pdm_debug("Generate value for the storage filename",PDU_DEBUG_FILE);
+	 if (new_mode == TRUE)
+           {
+	    FIfld_set_mode(forms.part_operations_form_id,
+			   FILE_INFO_MCF,2,FI_REVIEW);
+            FIg_display(forms.part_operations_form_id, FILE_INFO_MCF);
+            }
+	 else if (similar_mode == TRUE)
+            {
+	    FIfld_set_mode(forms.part_operations_form_id,
+			   SIMILAR_MODE_MCF,3,FI_REVIEW);
+            FIg_display(forms.part_operations_form_id, SIMILAR_MODE_MCF);
+            }
+	 else if (change_mode == TRUE)
+            {
+	    FIfld_set_mode(forms.part_operations_form_id,
+			   NEW_FILES_MCF,2,FI_REVIEW);
+            FIg_display(forms.part_operations_form_id, NEW_FILES_MCF);
+            }
+         strcpy(func_name,func_bufr_row[(PDU_func_buffer->columns * i) +
+                                         n_filenm_col]);
+
+         ptr = (char *)strrchr(func_name, '.');
+
+         if (ptr)
+            *((char *) strrchr(func_name, '.')) = '\0';
+
+         ci$exec(file_name = func_name);
+         str_len = strlen(PDU_attr_value);
+         if (str_len > 14)
+           {
+           search_str = (char *)PDUtranslate_message(PDM_E_STG_FN_TOO_LONG);
+           FIg_set_text(forms.part_operations_form_id,FI_MSG_FIELD,search_str);
+           break;
+           }
+         status = PDUcheck_char(PDU_attr_value,&spec_char);
+         _pdm_status("PDUcheck_char",status);
+
+         if (status != PDM_S_SUCCESS)
+           {
+         /*
+           search_str = (char *) malloc (sizeof (char) * 100);
+           sprintf(search_str,"The storage filename cannot contain the character ,%c'", spec_char);
+         */
+           search_str = (char *)PDUtranslate_message(PDM_E_INVALID_CHAR_IN_STGFN);
+           FIg_set_text(forms.part_operations_form_id,FI_MSG_FIELD, search_str);
+           break;
+           }
+
+	 if (new_mode == TRUE)
+	    FIfld_set_text(forms.part_operations_form_id,
+			   FILE_INFO_MCF,0,2,PDU_attr_value,FALSE);
+	 else if (similar_mode == TRUE)
+	    FIfld_set_text(forms.part_operations_form_id,
+			   SIMILAR_MODE_MCF,0,3,PDU_attr_value,FALSE);
+	 else if (change_mode == TRUE)
+	    FIfld_set_text(forms.part_operations_form_id,
+			   NEW_FILES_MCF,0,2,PDU_attr_value,FALSE);
+          break;
+	 }
+       }
+   for (i = 0; i < PDU_func_buffer->rows; i = i+1)
+      {
+      if (strcmp(func_bufr_row[(PDU_func_buffer->columns * i)+n_name_col],
+		 "n_filetype") == 0)
+	 {
+	 _pdm_debug("Generate value for the file type",PDU_DEBUG_FILE);
+	 if (new_mode == TRUE)
+           {
+	    FIfld_set_mode(forms.part_operations_form_id,
+			   FILE_INFO_MCF,3,FI_REVIEW);
+            FIg_display(forms.part_operations_form_id, FILE_INFO_MCF);
+            }
+	 else if (similar_mode == TRUE)
+            {
+	    FIfld_set_mode(forms.part_operations_form_id,
+			   SIMILAR_MODE_MCF,4,FI_REVIEW);
+            FIg_display(forms.part_operations_form_id, SIMILAR_MODE_MCF);
+            }
+	 else if (change_mode == TRUE)
+            {
+	    FIfld_set_mode(forms.part_operations_form_id,
+			   NEW_FILES_MCF,3,FI_REVIEW);
+            FIg_display(forms.part_operations_form_id, NEW_FILES_MCF);
+            }
+         strcpy(func_name,func_bufr_row[(PDU_func_buffer->columns * i) +
+                                         n_filenm_col]);
+
+         ptr = (char *)strrchr(func_name, '.');
+
+         if (ptr)
+            *((char *) strrchr(func_name, '.')) = '\0';
+
+         ci$exec(file_name = func_name);
+         if (strcmp(PDU_attr_value,"M") == 0)
+           {
+           search_str = (char *)PDUtranslate_message(PDM_E_INVALID_FILETYPE);
+           FIg_set_text(forms.part_operations_form_id,FI_MSG_FIELD,search_str);
+           break;
+           }
+         else if (strcmp(PDU_attr_value,"m") == 0)
+           {
+           search_str = (char *)PDUtranslate_message(PDM_E_INVALID_FILETYPE);
+           FIg_set_text(forms.part_operations_form_id,FI_MSG_FIELD,search_str);
+           break;
+           }
+
+         str_len = strlen(PDU_attr_value);
+         if (str_len > 5)
+           {
+           search_str = (char *)PDUtranslate_message(PDM_E_FILETYPE_TOO_LONG);
+           FIg_set_text(forms.part_operations_form_id,FI_MSG_FIELD,search_str);
+           break;
+           }
+         status = PDUcheck_char(PDU_attr_value,&spec_char);
+         _pdm_status("PDUcheck_char",status);
+
+         if (status != PDM_S_SUCCESS)
+           {
+         /*
+           search_str = (char *) malloc (sizeof (char) * 100);
+           sprintf(search_str,"The file type cannot contain the character ,%c'", spec_char);
+         */
+           search_str = (char *)PDUtranslate_message(PDM_E_INVALID_CHAR_IN_FILETYPE);
+           FIg_set_text(forms.part_operations_form_id,FI_MSG_FIELD, search_str);
+           break;
+           }
+
+	 if (new_mode == TRUE)
+	    FIfld_set_text(forms.part_operations_form_id,
+			   FILE_INFO_MCF,0,3,PDU_attr_value,FALSE);
+	 else if (similar_mode == TRUE)
+	    FIfld_set_text(forms.part_operations_form_id,
+			   SIMILAR_MODE_MCF,0,4,PDU_attr_value,FALSE);
+	 else if (change_mode == TRUE)
+	    FIfld_set_text(forms.part_operations_form_id,
+			   NEW_FILES_MCF,0,3,PDU_attr_value,FALSE);
+         break;
+	 }
+       }
+      FIg_enable(forms.part_operations_form_id,NP_PROJECT_FLD);
+      FIg_enable(forms.part_operations_form_id,NP_CATALOG_FLD);
+      FIg_enable(forms.part_operations_form_id,NP_PARTNUM_FLD);
+      FIg_enable(forms.part_operations_form_id,NP_REV_FLD);
+      FIg_enable(forms.part_operations_form_id,NP_PARTTYPE_FLD);
+      FIg_enable(forms.part_operations_form_id,NP_DESC_FLD);
+      FIg_enable(forms.part_operations_form_id,NP_PROJECT_BTN);
+      FIg_enable(forms.part_operations_form_id,NP_CATALOG_BTN);
+      FIg_enable(forms.part_operations_form_id,NP_PARTNUM_BTN);
+      FIg_enable(forms.part_operations_form_id,NP_PARTTYPE_BTN);
+      FIg_enable(forms.part_operations_form_id,FI_CANCEL);
+      FIg_enable(forms.part_operations_form_id,FI_RESET);
+      FIg_enable(forms.part_operations_form_id,FILE_INFO_MCF);
+      FIg_enable(forms.part_operations_form_id,ATTRIBUTE_VALUE_MCF);
+      FIg_enable(forms.part_operations_form_id,NEW_MODE_BTN);
+      FIg_enable(forms.part_operations_form_id,CHANGE_MODE_BTN);
+      FIg_enable(forms.part_operations_form_id,SIMILAR_MODE_BTN);
+      FIg_enable(forms.part_operations_form_id,REVIEW_MODE_BTN);
+      if (!change_mode)
+        {
+        FIg_enable(forms.part_operations_form_id,ADD_BTN);
+        FIg_enable(forms.part_operations_form_id,SEARCH_BTN);
+        }
+      /*FIfld_pos_cursor(forms.part_operations_form_id,NP_PARTNUM_FLD,0,0,0,0,0,
+                       0);*/
+}

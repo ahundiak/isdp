@@ -1,0 +1,213 @@
+/***************************************************************************
+ * I/VDS
+ *
+ * File:        api/expression/COzBrowse.u
+ *
+ * Description: Runs a file browser
+ *
+ *
+ * Dependencies:
+ *
+ * History:
+ *      MM/DD/YY        AUTHOR          DESCRIPTION
+ *      08/01/01        pn              creation date
+ *
+ ***************************************************************************/
+
+#include <stdio.h>
+#include "cieveryone.h"
+
+#include "ciminimum.h"
+#include "cimacros.h"
+#include "igrdp.h"
+#include "igrtypedef.h"
+#include "godef.h"
+#include "go.h"
+#include "growner.h"
+#include "FI.h"
+#include "ACrg_collect.h"
+#include "VDmem_ppl.h"
+#include "v_slcdef.h"
+#include "v_pplslc.h"
+#include "VDfile.h"
+
+extern int ci_notification(),
+	   FIf_new(),
+	   FIf_erase(),
+	   FIf_display(),
+	   FIf_set_cmd_oid_os(),
+	   FIfld_set_text(),
+	   FIf_delete(),
+	   UI_message(),
+	   UI_prompt(),
+	   UI_status();
+
+
+#define theForm       "VDgfile.frm"
+#define theCommand    "Find Files"
+#define thePrompt     "Browse the Files"
+
+
+struct CIform_st
+{
+   int          form_label;
+   int          gadget_label;
+   double       value;
+   Form         form_ptr;
+}form_st;
+
+extern GRclassid        OPP_VDdrwTbl_class_id;
+Form	 form;
+IGRshort form_displayed;
+
+main()
+{
+IGRint		 	status, i, tolCnt, badCnt, goodCnt;
+struct GRobj_env 	*badTbl, *goodTbl, *tolTbl;
+IGRlong			msg, response;
+GRclassid               classids[1];
+OM_S_OBJID              *list;
+struct GRmd_env         loc_env;
+
+ 
+/* start the form */
+ init_form();
+ /* make the form visible */
+ wakeup();
+
+ /* display the default settings */
+ // printf("about to vdfile$InitForm\n");
+ vdfile$InitForm(form = form);
+ // printf("done vdfile$InitForm\n");
+
+        while(1)
+        {
+	  UI_message(theCommand);
+
+          ci$get( prompt   = thePrompt,
+                  response = &response );
+	  
+          switch( response )
+  	  {
+    	    case MOVE_ON:
+	      // printf("vdfile$notifiyForm execute\n");
+	      vdfile$NotifyForm(form = form,
+				gadget = form_st.gadget_label);
+	      //printf("vdfile$notifiyForm executed\n");
+	      switch( form_st.gadget_label )
+	    {
+
+	      
+	      case FI_ACCEPT:
+		delete();
+	        goto wrapup;
+		break;
+		
+	      case FI_CANCEL:
+		delete();
+		goto wrapup;
+		break;
+	   
+
+      	      default:
+	        goto the_loop;
+            }
+
+            case TERMINATE:
+              goto wrapup;
+          }
+the_loop:
+	  response = 0;
+	  
+        }
+
+wrapup:
+
+	form = NULL;
+	return 1;
+}
+
+/* --------------------------------------------------------
+ * Get the form started
+ */
+init_form()
+{
+  IGRint  retFlag;
+
+
+  retFlag = 0;
+
+  if( FIf_new( 0, theForm, ci_notification, &form ) )
+  {
+ 
+    goto wrapup;
+  }
+
+   if( form )
+  {
+    if( FIf_set_cmd_oid_os( form, MY_ID, OM_Gw_current_OS ) )
+    {
+      printf("something went wrong in FIf_set_cmd_oid_os\n");
+      goto wrapup;
+    }
+  }
+
+
+  // Done
+  retFlag = 1;
+
+wrapup:
+  return retFlag;
+}
+
+/* ----------------------------------------
+ * form notification routine
+ * ***/
+
+IGRint form_notification()
+{
+
+  switch ( form_st.gadget_label )
+  {
+    case FI_CANCEL:
+      ci$put( response = TERMINATE );
+      goto wrapup;
+  }
+
+  ci$put( response = MOVE_ON );
+
+wrapup:
+
+  return 1;
+
+
+}
+
+
+/****************************************************************/
+init ()
+{
+        UI_message("File Selection" );
+        UI_prompt(" Check the Form ");
+}
+delete()
+{
+  if( form ) FIf_delete( form );
+  form_displayed = FALSE;
+}
+wakeup()
+{
+  if( form ) 
+  {
+    FIf_display( form );
+    form_displayed = TRUE;
+  }
+}
+sleep()
+{
+  if( form_displayed == TRUE)
+  {
+    if( form ) FIf_erase( form );
+    form_displayed = FALSE;
+  }
+}

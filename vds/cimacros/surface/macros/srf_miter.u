@@ -1,0 +1,374 @@
+/* $Id: srf_miter.u,v 1.1.1.1 2001/01/04 21:07:21 cvs Exp $  */
+
+/* --------------------------------------------------------------------
+ * I/VDS
+ *
+ * File:	vds/cimacros/surface/macros / srf_miter.u
+ *
+ * Description:
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ *	$Log: srf_miter.u,v $
+ *	Revision 1.1.1.1  2001/01/04 21:07:21  cvs
+ *	Initial import to CVS
+ *	
+# Revision 1.1  1998/04/29  16:27:20  pinnacle
+# VDS 2.5.1
+#
+# Revision 1.1  1997/05/08  13:20:44  pinnacle
+# New project VDS 250
+#
+# Revision 1.1  1996/07/19  20:33:52  pinnacle
+# Create VDS 241 project
+#
+# Revision 1.1  1994/11/14  22:42:32  pinnacle
+# Create vds.240 from vds.232
+#
+# Revision 1.1  1994/11/08  16:07:00  pinnacle
+# create vds.232
+#
+ *
+ * History:
+ *	MM/DD/YY	AUTHOR		DESCRIPTION
+ *
+ * -------------------------------------------------------------------*/
+
+/*
+	 VDS 2.0 - PPM macro library - 92/07/09 (alc)
+ */
+   
+#include "cieveryone.h"
+#include "cimacros.h"
+#include "ci_mac_def.h"
+
+
+IGRboolean		is_scal, are_sec;
+
+IGRshort		rc;
+
+IGRint			i, k, ncros, n_mit;
+
+IGRlong			msg, stat;
+IGRchar			*temp_names[5], *feet_names[1];
+
+IGRint			temp_types[5];
+
+GRobj			ci_mac_def1;
+
+IGRdouble		xvec[3], yvec[3], mat[16], radi;
+IGRdouble		nvec[3],stpoint[3], bstab[38], vec1[3];
+IGRdouble		p1[3],p2[3], center[3],v1[3],v2[3];
+IGRdouble		bisvec[3],binbisvec[3], str_xyz[12];
+IGRdouble		bin1[3], bin2[3];
+
+struct GRlc_info	cross[1], trace_inf[1];
+struct GRmd_env		MOD_ENV;
+struct GRid	        CI_MACRO_ID;
+struct GRid		SRF_MITER;
+struct GRvg_construct   cst;
+struct IGRdisplay	dis;
+struct IGRbsp_curve	bsp_arc;
+struct IGRpolyline      str;
+
+struct ret_struct	diam, cpt[3];
+
+extern int 	BSnorvec(),
+		BSprepcircp(),
+		init_cnst_list(),
+		BScrossp(),
+		BSxln(),
+		BSmkvec();
+extern ASsuper_construct();
+
+/* ========================================================================= */
+
+main()
+{
+
+  temp_names[0]  = "diam";
+  temp_names[1]  = "n_mit";
+  temp_names[2]  = "cpt1";
+  temp_names[3]  = "cpt0";
+  temp_names[4]  = "cpt2";
+
+  temp_types[0]  = parameter_generic | double_type;
+  temp_types[1]  = parameter_generic | double_type;
+  temp_types[2]  = point_generic;
+  temp_types[3]  = point_generic;
+  temp_types[4]  = point_generic;
+
+  feet_names[0] = "ressur0";
+
+  ci_mac_def1   = NULL_OBJID;
+
+  ac$cimacdef(	cimacdef          = ci_mac_def1,
+		status	          = &stat,	
+		name              = "srf_miter",
+		temp_num          = 5,		
+		temp_names        = temp_names,
+		temp_types        = temp_types,
+		extern_feet_num   = 1,	
+		extern_feet_names = feet_names );
+}
+
+/* ========================================================================= */
+
+place ()
+{
+
+  construct_comp();
+
+  if( SRF_MITER.objid == NULL_OBJID ) return(0);
+
+  ci$send( msg	    = message  ci_macro.set_all_extern_feet
+			( &stat, 1, &SRF_MITER, &MOD_ENV ),
+	   targetid = CI_MACRO_ID.objid,
+	   targetos = CI_MACRO_ID.osnum );
+  return(1);
+}
+
+
+/* ========================================================================= */
+
+compute ()
+{
+
+  construct_comp();
+
+  if( SRF_MITER.objid == NULL_OBJID ) return(0);
+
+  ci$send( msg	    = message  ci_macro.set_all_extern_feet
+			( &stat, 1, &SRF_MITER, &MOD_ENV ),
+	   targetid = CI_MACRO_ID.objid,
+	   targetos = CI_MACRO_ID.osnum );
+  return(1);
+
+}
+
+/* ========================================================================= */
+
+
+construct_comp()
+{
+  init_cnst_list();
+  get_symb();
+
+  dis.color		= cnst_list.color;
+  dis.weight		= cnst_list.weight;
+  dis.style		= cnst_list.style;
+
+  cst.msg		= &msg;
+  cst.properties	= GRIS_LOCATABLE | GRIS_DISPLAYABLE | GRIS_NEW;
+  cst.display		= &dis;
+  cst.env_info		= &MOD_ENV;
+  cst.newflag		= FALSE;
+  cst.level		= cnst_list.level;
+  cst.geometry		= NULL;
+  cst.class_attr	= NULL;
+  cst.name		= NULL;
+
+  SRF_MITER.objid = NULL_OBJID;
+
+  msg = ci$send( msg      = message  ACcpx.ACfind_exp_temp_struct
+		           (&stat,0,(char *)&diam,&MOD_ENV),
+           targetid = CI_MACRO_ID.objid,
+           targetos = CI_MACRO_ID.osnum );
+  if( !(stat&msg&1) ){
+	status(" bad object for diamter " );
+	return;
+  }
+  radi = diam.var.root_pm_st.value; 
+  msg = ci$send( msg      = message  ACcpx.ACfind_exp_temp_struct
+		           (&stat,1,(char *)&diam,&MOD_ENV),
+           targetid = CI_MACRO_ID.objid,
+           targetos = CI_MACRO_ID.osnum );
+  if( !(stat&msg&1) ){
+	status(" bad object for num miter " );
+	return;
+  }
+
+  n_mit = diam.var.root_pm_st.value; 
+  if( n_mit < 2 ) n_mit = 2;
+  if( n_mit > 3 ) n_mit = 3;
+
+
+  radi = radi * 0.5;
+
+
+  for(k=2; k<5; k=k+1){
+
+     msg = ci$send( msg = message  ACcpx.ACfind_exp_temp_struct
+		(&stat,k, (char *)&cpt[k-2],&MOD_ENV ),
+ 	      	targetid = CI_MACRO_ID.objid ,
+	      	targetos = CI_MACRO_ID.osnum );
+
+     if( !(stat&msg&1) ){
+        SRF_MITER.objid = NULL_OBJID;
+	status(" bad object connect point " );
+	return;
+     }
+  }
+
+
+
+
+ /* --- define the tangent vector to cp1 and cp2 --- */
+    BSmkvec(&rc,v1,&(cpt[0].var.point_st.pt[0]),&(cpt[1].var.point_st.pt[0]) );
+    BSnorvec(&rc,v1);
+
+    BSmkvec(&rc,v2,&(cpt[1].var.point_st.pt[0]),&(cpt[2].var.point_st.pt[0]) );
+    BSnorvec(&rc,v2);
+
+ /*--- compute the normal to plane --- */
+
+    BScrossp(&rc,v1,v2,nvec);
+    BSnorvec(&rc,nvec);
+
+ /*--- place the circle a the connect point 1 --- */
+
+    bsp_arc.poles   = &bstab[0];
+    bsp_arc.knots   = &bstab[21];
+    bsp_arc.weights = &bsp_arc.knots[10];
+    for( k=0;k<3;k=k+1) stpoint[k] = cpt[0].var.point_st.pt[k] + radi*nvec[k];
+
+    msg = BSprepcircp(&rc,&(cpt[0].var.point_st.pt[0]),
+		      stpoint,v1,&bsp_arc,vec1,&stat);
+
+
+
+ /* --- compute the intersections of the two binormals which is --- */
+ /* --- the center of the bend radius --- */
+
+    BScrossp(&rc,v1,nvec,bin1);
+    BScrossp(&rc,v2,nvec,bin2); 
+
+    for(i=0;i<3;i=i+1){
+	p1[i] = cpt[0].var.point_st.pt[i] + 100.0 * bin1[i];
+	p2[i] = cpt[2].var.point_st.pt[i] + 100.0 * bin2[i];
+    }
+
+    BSxln(&rc,&(cpt[0].var.point_st.pt[0]), p1,
+	      &(cpt[2].var.point_st.pt[0]), p2,center);
+
+
+ /*--- compute the 2 or 3 vertices of the ligne string ---*/
+
+    str.points = (IGRdouble *)&str_xyz[0];
+
+    if( n_mit == 2) {
+
+    	str.num_points = 3;
+
+ /*--- set up the coordinates of the ligne string ---*/
+
+    	for(i=0;i<3;i=i+1){
+		str.points[i]   = cpt[0].var.point_st.pt[i];
+		str.points[i+3] = cpt[1].var.point_st.pt[i];
+		str.points[i+6] = cpt[2].var.point_st.pt[i];
+		trace_inf[0].proj_pnt[i] = str.points[i];
+	}
+#ifdef DEBUG
+    for(i=0;i<9;i=i+3)write("str.points[i][",i,"] =",  str.points[i],
+							str.points[i+1],
+							str.points[i+2],"\n");
+    write("str.num_points = ",str.num_points,"\n");
+#endif
+
+    }
+    else {
+    	str.num_points = 4;
+
+ /*--- set up the end coordinates of the ligne string ---*/
+
+    	for(i=0;i<3;i=i+1){
+		str.points[i]   = cpt[0].var.point_st.pt[i];
+		str.points[i+9] = cpt[2].var.point_st.pt[i];
+		trace_inf[0].proj_pnt[i] = str.points[i];
+	}
+
+        BSmkvec(&rc,bisvec,center,&(cpt[1].var.point_st.pt[0]));
+        BSnorvec(&rc,bisvec);
+        BSmkvec(&rc,binbisvec,center,&(cpt[0].var.point_st.pt[0]));
+        BSnorvec(&rc,binbisvec);
+    	for(i=0;i<3;i=i+1) p1[i] = center[i] + 
+				   100.0*bisvec[i] + 100.0*binbisvec[i];
+    	BSxln(&rc,&(cpt[0].var.point_st.pt[0]), &(cpt[1].var.point_st.pt[0]),
+              center,p1, &(str.points[3]));
+
+        BSmkvec(&rc,binbisvec,center,&(cpt[2].var.point_st.pt[0]));
+        BSnorvec(&rc,binbisvec);
+
+    	for(i=0;i<3;i=i+1) p1[i] = center[i] + 
+				   100.0*bisvec[i] + 100.0*binbisvec[i];
+    	BSxln(&rc,&(cpt[1].var.point_st.pt[0]), &(cpt[2].var.point_st.pt[0]),
+              center,p1, &(str.points[6]));
+
+    } 
+
+
+ /* --- creation of the cross circle --- */
+    cst.geometry   = (char *)&bsp_arc;
+    cross[0].located_obj.objid = NULL_OBJID;
+    cross[0].located_obj.osnum = MOD_ENV.md_id.osnum;
+    stat = ci$send(msg      = message GR3dcirarc.GRconstruct(&cst),
+ 	           targetid = cross[0].located_obj.objid,
+    	           targetos = cross[0].located_obj.osnum  );
+
+    if ( !(stat&1) ){
+	status(" bad circle creation");
+	SRF_MITER.objid = NULL_OBJID;
+    }
+
+ /* --- creation of the trace linestring --- */
+    cst.geometry   = (char *)&str;
+    trace_inf[0].located_obj.objid = NULL_OBJID;
+    trace_inf[0].located_obj.osnum = MOD_ENV.md_id.osnum;
+    stat = ci$send(msg       = message GR3dlinestr.GRaltconstruct(&cst),
+	           targetid  = trace_inf[0].located_obj.objid,
+	           targetos  = trace_inf[0].located_obj.osnum );
+
+    if ( !(stat&1) ){
+	status(" bad linestring creation");
+	SRF_MITER.objid = NULL_OBJID;
+    }
+
+    for(i=0;i<3;i=i+1){
+	cross[0].proj_pnt[i]     = bsp_arc.poles[i];
+	trace_inf[0].proj_pnt[i] = str.points[i];
+    }
+
+    cross[0].module_info = MOD_ENV;
+    trace_inf[0].module_info = MOD_ENV;
+
+    is_scal      = FALSE;
+    are_sec      = TRUE;
+    cst.geometry = (char *)NULL;
+
+    SRF_MITER.objid = NULL_OBJID;
+    SRF_MITER.osnum = MOD_ENV.md_id.osnum;
+    ncros = 1;
+
+    stat = ci$send(msg = message EMSgenbs.EMmove_cross_section
+				(&msg,&cst,ncros,cross,1,trace_inf,is_scal,
+				 are_sec,cpt[0].var.point_st.pt,mat,xvec,yvec ),
+	    	   targetid = SRF_MITER.objid,
+	    	   targetos = SRF_MITER.osnum);
+
+    ci$send(msg      = message GRgraphics.GRdelete(&msg,&MOD_ENV), 
+            targetid = trace_inf[0].located_obj.objid,
+            targetos = trace_inf[0].located_obj.osnum );
+    
+    ci$send(msg      = message GRgraphics.GRdelete(&msg,&MOD_ENV), 
+            targetid = cross[0].located_obj.objid,
+            targetos = cross[0].located_obj.osnum);
+
+    if ( !(stat&1) ){
+	status(" bad_creation");
+	SRF_MITER.objid = NULL_OBJID;
+    }
+
+}
+
+

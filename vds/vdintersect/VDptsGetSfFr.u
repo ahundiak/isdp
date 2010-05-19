@@ -1,0 +1,281 @@
+/***************************************************************************
+ * I/VDS
+ *
+ * File:   vds/vdintersect/VSptsGetSfFr.u
+ *
+ * Description:
+ *	Gets the object ids of the surface and frames to intersect. This 
+ *	information is input to function, VDptsIntersection, in file,
+ *	vdintersect/VDptsGetSfFr.I to get a list of intersecting points.
+ *
+ *	This file also displays and handles a form to obtain four pieces
+ *	of information:
+ *	  1. Process sequence desired: surface/frame intersection first or
+ *	     frame/frame intersection first
+ *	  2. Display intermediate lines,  yes/no
+ *	  3. Display intersection points, yes/no
+ *	  4. Write points to file, ./IntPoints, yes/no
+ *
+ * Dependencies:
+ *	Requires form, VDptsGetSF.fm
+ *
+ * History:
+ *      MM/DD/YY   AUTHOR       DESCRIPTION
+ *	09/05/97   ejm		CR 179701424: Get a list of points
+ *				resulting from surface/frame intersections,
+ *				using the vd$int2elem macro.
+ *
+ ***************************************************************************/
+
+#include	<stdio.h>
+#include	"OMerrordef.h"  /* OM_S_SUCCESS                            */ 
+#include	"ciminimum.h"   /* required by cimacros.h                  */ 
+#include	"cimacros.h"    /* incl cievent, cisend, cilocate, ciexec  */
+#include	"exmacros.h"    /* ex$putque                               */
+#include	"exproto.h"     /* EXputq2                                 */
+#include	"FI.h"          /* FI_SUCCESS = 0, typedef char * Form     */
+#include	"CIforms.h"     /* struct CIform_st, needs FI.h            */
+#include	"growner.h"     /* struct GRobj_env                        */
+#include	"VDptsForm.h"   /* VDPTS_FRM_T_SEQ, other toggle gadgets   */
+
+#define		FORM_NAME  "VDptsGetSF.fm"
+#define		FORM_LABEL 100
+
+
+/* External Functions */
+
+
+extern  IGRlong   VDptsIntersection();
+extern  int       ci_notification();
+
+extern  FIf_new(),
+        FIf_display(),
+        FIf_set_location(),
+        FIf_erase(),
+        FIf_delete(),
+        FIf_set_cmd_oid_os(),
+        FIg_set_state_off(),
+        FIg_get_state();
+
+/* External Variables */
+
+struct CIform_st form_st;
+Form             form_ptr;
+int		 form_displayed, form_exists;
+IGRchar		 msg_field[80];
+
+int     seq_state,   /* toggle states */
+        crv_state,
+        pts_state,
+        out_state;
+
+
+
+
+main() 
+{
+        IGRint                  response;
+	long                    stat;
+
+	struct GRobj_env	surface_info,
+	                	frame1_info,
+	                	frame2_info;
+
+
+
+	message(" Create Points by surface/frame intersection " );
+
+	/*
+	 * Initialization
+	 */
+
+	surface_info.obj_id.objid= NULL_OBJID ;
+	frame1_info.obj_id.objid = NULL_OBJID ;
+	frame2_info.obj_id.objid = NULL_OBJID ;
+
+
+	/*
+	 * Get the surface.
+	 */
+
+	if (!ci$locate (        prompt        = "Locate the surface",
+                                classes       = "EMSsubbs",
+				properties    = LC_LC_ONLY | LC_DP_ONLY | LC_RW,
+		                owner_action  = LC_RIGID_COMP | LC_RIGID_OWNER
+						| LC_FLEX_COMP | LC_REF_OBJECTS
+                		                | LC_FLEX_OWNER,
+                                md_env        = &surface_info.mod_env,
+                                response      = &response,
+                                obj           = &surface_info.obj_id.objid,
+                                osnum         = &surface_info.obj_id.osnum ))
+	{
+                printf("Error locating Surface\n");
+                goto quit ;
+       	}
+
+	/*
+	 * Get the frame Systems.
+	 */
+
+	if (!ci$locate ( 	prompt        = "Locate first frame system",
+				classes       = "SMfrm_syst",
+				properties    = IGN_LC_BIT,
+		                owner_action  = LC_RIGID_COMP | LC_RIGID_OWNER
+						| LC_FLEX_COMP | LC_REF_OBJECTS
+                		                | LC_FLEX_OWNER,
+				md_env        = &frame1_info.mod_env,
+				response      = &response,
+				obj           = &frame1_info.obj_id.objid,
+				osnum         = &frame1_info.obj_id.osnum ))
+	{
+		printf("Error locating Frame(s)1\n");
+		goto quit ;
+	}
+
+
+	if (!ci$locate (        prompt        = "Locate second frame system",
+                                classes       = "SMfrm_syst",
+                                properties    = IGN_LC_BIT,
+		                owner_action  = LC_RIGID_COMP | LC_RIGID_OWNER
+						| LC_FLEX_COMP | LC_REF_OBJECTS
+                		                | LC_FLEX_OWNER,
+                                md_env        = &frame2_info.mod_env,
+                                response      = &response,
+                                obj           = &frame2_info.obj_id.objid,
+                                osnum         = &frame2_info.obj_id.osnum ))
+	{
+                printf("Error locating Frame(s)2\n");
+                goto quit ;
+	}
+
+
+	form_init();  /* Display form */
+
+
+
+
+	/* Intersect Frame Systems with Surface */
+
+	VDptsIntersection( surface_info, frame1_info, frame2_info,
+			   seq_state, crv_state, pts_state, out_state );
+
+
+quit :
+
+	status(" ");
+}
+
+
+
+/* **************************** FORM INTERFACE ****************************** */
+
+init(){
+        strcpy(msg_field,"Create Surface/Frame Intersection Points");
+}
+
+wakeup(){
+        message(msg_field);
+        if( form_displayed )
+                FIf_display(form_ptr);
+}
+
+void return_error()
+{
+        status(" PPL Program  Unsuccessful ");
+        status ("");
+        message("");
+        exit;
+}
+
+int  form_init()
+{
+	int   sts, msg;
+
+	sts = 0;  /* FI_SUCCESS */
+
+
+
+	sts = FIf_new ( FORM_LABEL, FORM_NAME, ci_notification, &form_ptr );
+
+	if ( sts )   return_error();
+ 
+	form_exists = TRUE;
+ 
+	sts = FIf_set_cmd_oid_os( form_ptr, MY_ID, OM_Gw_current_OS );
+	if ( sts )
+	{
+        	form_exists = FALSE;
+		return_error();
+	}
+
+	FIf_set_location( form_ptr, 250, 250 );
+
+	sts = FIf_display( form_ptr );
+
+	if ( sts )  return_error();
+ 
+	form_displayed = TRUE;  /* Flag for sleep function */
+
+	while (1)
+	{
+		ci$get( response = &msg, prompt="Make Form Selections");
+		if( msg == MOVE_ON )  /* Double click, left button */
+		{
+			FIf_delete( form_ptr );
+			form_displayed = FALSE;
+			break;
+		}
+	}
+	return sts ;
+}
+
+void form_notification()
+{
+	int	status, msg, suc;
+	int	response;
+
+
+	status = OM_S_SUCCESS;
+	suc = OM_E_INVARG;
+
+	if (form_ptr == NULL ) return_error();
+
+ 
+	switch (form_st.gadget_label) {
+
+	case FI_ACCEPT :
+
+		status = ci$send ( 	msg = message CEO.erase_form_by_label(
+						      form_ptr, 0, &suc),
+					targetid = my_id );
+
+		FIg_get_state(form_ptr,VDPTS_FRM_T_SEQ,&seq_state);
+		FIg_get_state(form_ptr,VDPTS_FRM_T_CRV,&crv_state);
+		FIg_get_state(form_ptr,VDPTS_FRM_T_PTS,&pts_state);
+		FIg_get_state(form_ptr,VDPTS_FRM_T_OUT,&out_state);
+ 
+		FIg_set_state_off(form_ptr,FI_ACCEPT);
+
+		FIf_erase ( form_ptr );
+		ci$put ( response = MOVE_ON );
+
+		break;
+
+	case FI_CANCEL :
+		status = ci$send ( msg = message CEO.erase_form_by_label
+		                         ( form_ptr, 0, &suc),
+				   targetid = my_id);
+
+		FIg_set_state_off(form_ptr,FI_CANCEL);
+		FIf_delete( form_ptr );
+		response = TERMINATE ;
+		ex$putque ( msg = &msg, response = &response ) ; 
+		break;
+        } /* switch    */
+} /* form_notification */
+
+
+sleep(){
+        if( form_displayed )
+                FIf_erase(form_ptr);
+}

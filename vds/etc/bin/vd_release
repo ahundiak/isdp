@@ -1,0 +1,833 @@
+#!/bin/ksh
+# $Id: vd_release,v 1.7 2001/03/02 16:31:32 ad Exp $
+
+# -------------------------------------------------------------------
+# I/VDS
+#
+# File:		vds/etc/bin/vd_release 
+#
+# Description:
+#	
+#	This script will generate the following files for a release of VDS.
+#
+#	File Name		PROD	CLIX	ISL	Info
+#	---------		----	----	---	----
+#	product.def		yes	yes	yes	CLIX/ISL package
+#	product.clip		yes	yes		CLIX package
+#	product.isl		yes		yes	ISL package
+#
+#	install.sh		yes	yes	yes	All identical
+#	install.clip		yes	yes		All identical
+#	install.isl		yes		yes	All identical
+#
+#	remove.sh		yes	yes	yes	All identical
+#	remove.clip		yes	yes		All identical
+#	remove.isl		yes		yes	All identical
+#
+#
+#	File Information (release platform):
+#	====================================
+#	product.XXX	Product identification information and package info.
+#	install.XXX	Installation script for product.
+#	remove.XXX	Remove script for product
+#
+#	config.p	General product information.
+#	config_lite.p	EMS Lite adapted product information.
+#	include.p	Include files.
+#	vdshelp.p	Help files.
+#	library.p	Macro Libraries.
+#	datainfo.p	data_README file.
+#	database.p	Database ASCII files.
+
+#	pplXXX.p	PPL executables.
+#	cvrtXXX.p	Data convertor info		(C100)
+#	rptXXX.p	Report files			(C100)
+#	dataXXX.p	RIS data process		(C100/C400/ISL)
+#	vdsXXX.p	System depenend info		(C100/C400/ISL)
+#
+#	File Information (development platform):
+#	========================================
+#	devel.p		Development support files
+#				- spec
+#				- vdinclude
+#				- etc
+#				- config/english/messages
+#	libXXX.p	Library files to regenerate executable.
+#			oplclean/pplscan and etc/dload directory.
+#
+#	
+#
+# Dependencies:
+#
+# Revision History:
+#	$Log: vd_release,v $
+#	Revision 1.7  2001/03/02 16:31:32  ad
+#	Add sample_config
+#	
+#	Revision 1.6  2001/03/01 18:51:43  ad
+#	*** empty log message ***
+#	
+#	Revision 1.5  2001/01/24 19:00:25  build
+#	*** empty log message ***
+#	
+#	Revision 1.4  2001/01/24 18:21:51  build
+#	*** empty log message ***
+#	
+#	Revision 1.3  2001/01/24 17:57:59  build
+#	*** empty log message ***
+#	
+#	Revision 1.2  2001/01/21 18:37:03  build
+#	*** empty log message ***
+#	
+#	Revision 1.1.1.1  2001/01/04 21:07:29  cvs
+#	Initial import to CVS
+#	
+# History:
+#	MM/DD/YY	AUTHOR		DESCRIPTION
+#	07/24/95	TRD		Added batch directory to be 
+#					included in config.p
+#	12/21/95	adz		Add Files to config.p
+#					Add extern location control.
+#	02/25/96	adz		Add api directory.
+#       11/04/98        ah              Add bin/stopsign
+#	06/30/99	ah		Ass bin/Model
+#	01/22/00	adz		Change server to _ISL
+#	01/21/01	adz		Changes for CVS and .cvsingnore 
+#	03/01/01	adz		Add etc/makefiles directory
+#-------------------------------------------------------------------------------
+function cleanup {
+        /bin/rm ${TMPFILE} >/dev/null 2>&1
+        return 0
+
+} #cleanup
+
+#-------------------------------------------------------------------------------
+function sendEcho {
+
+	echo "-------------------------------------------------------------"
+	echo "\t\tSending $*"
+	echo ""
+
+	echo "\t\tSending $*" >> ${LOGFILE} 2>&1
+	echo ""		      >> ${LOGFILE} 2>&1
+
+} # sendEcho
+#
+#-------------------------------------------------------------------------------
+function sendInfo {
+
+	echo "\t\t$*"
+	echo "\t\t$*" >> ${LOGFILE} 2>&1
+
+} # sendInfo
+
+#-------------------------------------------------------------------------------
+function sendError {
+
+	echo "\t\tERROR $*"
+	echo "\t\tERROR $*"
+	echo "\t\tERROR $*"
+	echo "\t\tERROR $*"  >> ${LOGFILE} 2>&1
+	echo "\t\tERROR $*"  >> ${LOGFILE} 2>&1
+
+	exit 1;
+
+} # sendError
+
+#-------------------------------------------------------------------------------
+function Tput {
+        /usr/bin/tput $1
+} # Tput
+
+#-------------------------------------------------------------------------------
+function sendInfoFile {
+
+        echo "File $* not found"
+        echo "File $* not found" >> ${LOGFILE} 2>&1
+
+} # sendInfoFile 
+
+#-------------------------------------------------------------------------------
+function sendInfoDir {
+
+        echo "Directory $* not found"
+        echo "Directory $* not found" >> ${LOGFILE} 2>&1
+
+} # sendInfoDir
+
+#
+#-------------------------------------------------------------------------------
+#
+function getCpuId {
+
+    integer	RC
+
+    RC=0
+
+    case ${OPSYS} in
+	CLIX)
+		sendInfo "\n\t\tCLIPPER SUPPORTED."
+		sendInfo
+		if [ -x /bin/inqcpuid ] ; then		  
+			CPUID=`/bin/inqcpuid`
+		else
+			sendInfoFile "inqcpuid not found. load DELTOOLS"
+			RC=1
+		fi
+		;; # end CLIX
+
+	SunOS)
+		sendInfo "\n\t\tINTEL_SOLARIS SUPPORTED."
+		sendInfo
+		CPUID=$CPUISL
+		;; # end SunOS
+
+	IRIX)
+		sendInfo "\nIRIX NOT SUPPORTED."
+		RC=1
+		;; # end IRIX
+
+	*)
+		sendInfo "\nUnknown target operating system \"${OPSYS}\""
+		RC=1
+		;;
+    esac
+
+    return ${RC}
+}
+
+#
+#-------------------------------------------------------------------------------
+#
+function transInfo {
+
+	integer	RC
+
+	RC=0
+
+	if (	echo user ${REL_LOGIN} ${REL_PSWRD}
+		echo bin
+		echo put $1 ${REL_TRANS}/$2
+		echo quit
+		) | ftp -ni $REL_NODE ; then
+
+		sendEcho "FTP $2 to $REL_NODE"
+	else
+		sendError "FTP $1 FAILED"
+		RC=1
+	fi
+
+	return ${RC}
+}
+
+#-------------------------------------------------------------------------------
+#
+# Files for the conversion of VDS 1.4 -> VDS 2.0
+#
+#-------------------------------------------------------------------------------
+function sendConvert {
+
+    integer	RC
+
+    RC=0
+
+    if [ ${CPUID} != ${CPUREL} ] ; then return ${RC} ; fi
+
+    if [ -d $VDS/cvrt ] ; then
+	sendEcho "Convertion 1.4 -> 2.0 files"
+	cd $VDS
+	cleanup
+	find cvrt -print | cpio -o | compress > $TMPFILE
+	transInfo $TMPFILE cvrt${CPU100}.p
+	RC=$?
+    else
+	sendInfoDir "${VDS}/cvrt"
+	RC=1;
+    fi
+    return ${RC}
+}
+
+#-------------------------------------------------------------------------------
+#
+# Files for training
+#
+#-------------------------------------------------------------------------------
+function sendTraining {
+
+    integer	RC
+
+    RC=0
+
+    if [ ${CPUID} != ${CPUREL} ] ; then return ${RC} ; fi
+
+    if [ -d $VDS/training ] ; then
+	sendEcho "Training files"
+	cd $VDS
+	cleanup
+	find training \
+		$SKIPDATA \
+		! -name ".cvsignore" \
+		-print | cpio -o | compress > $TMPFILE
+	transInfo $TMPFILE training.p
+	RC=$?
+    else
+	sendInfoDir "${VDS}/training"
+	RC=1;
+    fi
+    return ${RC}
+}
+
+#-------------------------------------------------------------------------------
+#
+# Files for database information
+#
+#-------------------------------------------------------------------------------
+function sendDbReadme {
+
+    integer	RC
+
+    RC=0
+
+    if [ ${CPUID} != ${CPUREL} ] ; then return ${RC} ; fi
+
+    if [ -f $VDS/etc/version/data.README ] ; then
+	sendEcho "data.README"
+	cd $VDS/etc/version
+	cleanup
+	find . -name "data.README" -print | cpio -o | compress > $TMPFILE
+	transInfo $TMPFILE datainfo.p
+	RC=$?
+    else
+	sendInfoFile "${VDS}/etc/version/data.README"
+	RC=1;
+    fi
+    return ${RC}
+}
+#-------------------------------------------------------------------------------
+#
+# Configuration directory
+#
+function sendConfig {
+
+    integer	RC
+
+    RC=0
+
+    if [ -d $VDS/config/dload ] ; then
+
+	sendEcho "Executable $CPUID"
+
+	#
+	# copy the VDSloaddata to the bin directory.
+	#
+        if [ -d $VDS/vddb ] ; then
+
+	  if [ -f $VDS/vddb/bin/VDSloaddata ] ; then
+	    cp $VDS/vddb/bin/VDSloaddata $VDS/bin/.
+	  fi
+
+	  if [ -f $VDS/vddb/bin/AddPart ] ; then
+	    cp $VDS/vddb/bin/AddPart $VDS/bin/.
+	  fi
+	
+	  if [ -f $VDS/vddb/bin/GenData ] ; then
+	    cp $VDS/vddb/bin/GenData $VDS/bin/.
+	  fi
+	fi
+
+	cd $VDS
+	cleanup
+	find 	config/dload \
+		bin/Files \
+		bin/VD_isl_regex \
+		bin/VDSloaddata bin/AddPart bin/GenData bin/stopsign \
+		$SKIPDATA \
+		! -name ".cvsignore" \
+		-print | cpio -o | compress > $TMPFILE
+	transInfo $TMPFILE vds${CPUID}.p
+	RC=$?
+
+    else
+	sendInfoDir "$VDS/config/dload"
+	RC=1
+    fi
+    if [ ${RC} = "1" ] ; then return ${RC} ; fi
+
+#
+#	Delete the Database files.
+#
+    rm -rf $VDS/bin/VDSloaddata
+    rm -rf $VDS/bin/AddPart
+    rm -rf $VDS/bin/GenData
+
+    if [ -d $VDS/ppl/bin ] ; then
+	sendEcho "ppl files."
+	cd $VDS
+	cleanup
+	find ppl/bin ppl/examples \
+		$SKIPDATA \
+		-name "*.[eu]" \
+		! -name ".cvsignore" \
+		-print | cpio -o | compress > $TMPFILE
+	transInfo $TMPFILE ppl${CPUID}.p
+	RC=$?
+    else
+	sendInfoDir "$VDS/ppl/bin"
+	RC=1
+    fi
+    if [ ${RC} = "1" ] ; then return ${RC} ; fi
+
+#
+#	test release type to stop process.
+#
+
+    if [ ${CPUID} != ${CPUREL} ] ; then return ${RC} ; fi
+
+    ln $VDS/config/english/menus/src/*.otl $VDS/config/english/menus/.
+
+    if [ -d $VDS/config -a -d $VDS/bin ] ; then
+	sendEcho "configuration files."
+	cd $VDS
+	cleanup
+	find api bin config sample_config notes batch \
+		$SKIPDATA \
+		! -name "*.o" \
+		! -name "*.so" \
+		! -name "*.mb" \
+		! -name "Files" \
+		! -name "VD_isl_regex" \
+		! -name "*.cmd" \
+		! -name ".cvsignore" \
+		-print | cpio -o | compress > $TMPFILE
+	transInfo $TMPFILE config.p
+	RC=$?
+    else
+	if [ ! -d $VDS/config ] ; then 
+		sendInfoDir "$VDS/config"
+	fi
+	if [ ! -d $VDS/bin ] ; then
+		sendInfoDir "$VDS/bin"
+	fi
+	RC=1
+    fi
+    if [ ${RC} = "1" ] ; then return ${RC} ; fi
+
+    if [ -d $VDS/vdlite/config ] ; then
+	sendEcho "configuration VDS-Lite files."
+	cd $VDS/vdlite
+	cleanup
+	find config \
+		$SKIPDATA \
+		! -name "*.o" \
+		! -name "*.mb" \
+		! -name "Files" \
+		! -name "*.cmd" \
+		! -name ".cvsignore" \
+		-print | cpio -o | compress > $TMPFILE
+	transInfo $TMPFILE config_lite.p
+	RC=$?
+    else
+	if [ ! -d $VDS/vdlite/config ] ; then 
+		sendInfoDir "$VDS/config/vdlite"
+	fi
+    fi
+    if [ ${RC} = "1" ] ; then return ${RC} ; fi
+
+    if [ -d $VDS/ppl/bin ] ; then
+	sendEcho "ppl Libraries."
+	cd $VDS
+	cleanup
+	find ppl/bin \
+		$SKIPDATA \
+		! -name "*.e" \
+		! -name ".cvsignore" \
+		-print | cpio -o | compress > $TMPFILE
+	transInfo $TMPFILE library.p
+	RC=$?
+    else
+	sendInfoDir "$VDS/ppl/bin"
+	RC=1
+    fi
+    if [ ${RC} = "1" ] ; then return ${RC} ; fi
+
+    if [ -d $VDS/include ] ; then
+	sendEcho "include files."
+	cd $VDS
+	cleanup
+	find include \
+		$SKIPDATA \
+		! -name ".cvsignore" \
+		-print | cpio -o | compress > $TMPFILE 
+	transInfo $TMPFILE include.p 
+	RC=$?
+    else
+	sendInfoDir "$VDS/include"
+	RC=1
+    fi
+    return ${RC}
+}
+#-------------------------------------------------------------------------------
+#
+# Source files
+#
+function sendSource {
+
+	integer	RC
+
+	RC=0
+
+	if [ ${CPUID} != ${CPUREL} ] ; then return ${RC} ; fi
+
+	cd $VDS
+
+	sendEcho "Source files vd* ..."
+	cleanup
+	find vd* \
+		$SKIPDATA \
+		! -name "*.4ge" \
+		! -name "*.o" \
+		! -name "*.e" \
+		! -name ".cvsignore" \
+		-print | cpio -o | compress > $TMPFILE
+	transInfo $TMPFILE SrcVds.p
+	RC=$?
+	if [ ${RC} = "1" ] ; then return ${RC} ; fi
+
+	sendEcho "Source files sm* ..."
+	cleanup
+	find sm* \
+		$SKIPDATA \
+		! -name "*.o" \
+		! -name "*.e" \
+		! -name ".cvsignore" \
+		-print | cpio -o | compress > $TMPFILE
+	transInfo $TMPFILE SrcSman.p
+	RC=$?
+	if [ ${RC} = "1" ] ; then return ${RC} ; fi
+
+	sendEcho "Source files cimacros ..."
+	cleanup
+	find cimacros \
+		$SKIPDATA \
+		! -name "*.o" \
+		! -name "*.e" \
+		! -name ".cvsignore" \
+		-print | cpio -o | compress > $TMPFILE
+	transInfo $TMPFILE SrcPpl.p
+	RC=$?
+	if [ ${RC} = "1" ] ; then return ${RC} ; fi
+
+	sendEcho "Source files config ..."
+	cleanup
+	find config \
+		$SKIPDATA \
+		! -name "*.o" \
+		! -name "*.e" \
+		! -name ".cvsignore" \
+		-print | cpio -o | compress > $TMPFILE
+	transInfo $TMPFILE SrcConfig.p
+	RC=$?
+	if [ ${RC} = "1" ] ; then return ${RC} ; fi
+
+	sendEcho "Source files include ..."
+	cleanup
+	find include vdinclude \
+		$SKIPDATA \
+		! -name "*.o" \
+		! -name "*.e" \
+		! -name ".cvsignore" \
+		-print | cpio -o | compress > $TMPFILE
+	transInfo $TMPFILE SrcInclude.p
+	RC=$?
+	if [ ${RC} = "1" ] ; then return ${RC} ; fi
+
+	sendEcho "Source files other ..."
+	cleanup
+	find etc spec \
+		$SKIPDATA \
+		! -name "*.o" \
+		! -name "*.e" \
+		! -name ".cvsignore" \
+		-print | cpio -o | compress > $TMPFILE
+	transInfo $TMPFILE SrcOther.p
+	RC=$?
+	if [ ${RC} = "1" ] ; then return ${RC} ; fi
+        
+	sendEcho "Source EMS ..."
+	cleanup
+	find emsfixes vdassoc \
+		$SKIPDATA \
+		! -name "*.o" \
+		! -name "*.e" \
+		! -name ".cvsignore" \
+		-print | cpio -o | compress > $TMPFILE
+	transInfo $TMPFILE SrcEms.p
+	RC=$?
+
+	return ${RC}
+}
+#-------------------------------------------------------------------------------
+#
+# Development Files files
+#
+function sendDevel {
+
+	integer	RC
+
+	RC=0
+
+	sendEcho "Development files VDS ..."
+
+	cd $VDS
+	cleanup
+	find lib \
+		etc/draw_dload \
+		etc/dload \
+		etc/bin/oplclean \
+		etc/bin/pplscan \
+		etc/needed_dload \
+		$SKIPDATA \
+		! -name ".cvsignore" \
+		-print | cpio -o | compress > $TMPFILE
+	transInfo $TMPFILE lib${CPUID}.p
+	RC=$?
+	if [ ${RC} = "1" ] ; then return ${RC} ; fi
+
+	if [ ${CPUID} != ${CPUREL} ] ; then return ${RC} ; fi
+
+	cd $VDS
+	cleanup
+	find spec \
+		vdinclude \
+		config/*.cmd \
+		config/english/messages \
+		etc \
+		etc/version/product.def \
+			$SKIPDATA \
+			! -name "*.o" \
+			! -name ".cvsignore" \
+			-print | cpio -o | compress > $TMPFILE
+	transInfo $TMPFILE devel.p
+	RC=$?
+
+	return ${RC}
+}
+#-------------------------------------------------------------------------------
+#
+#  Send Data files
+#
+function sendData {
+
+    integer	RC
+
+    RC=0
+    if [ -d $VDS/vddb ] ; then
+
+	sendEcho "Database executables"
+	cd $VDS/vddb
+	cleanup
+	find bin \
+		$SKIPDATA \
+		! -name ".cvsignore" \
+		-print | cpio -o | compress > $TMPFILE
+	transInfo $TMPFILE data${CPUID}.p
+	RC=$?
+    else
+	sendInfoDir "$VDS/vddb"
+	RC=1
+    fi
+
+    if [ ${CPUID} != ${CPUREL} ] ; then return ${RC} ; fi
+
+    if [ -d $VDS/vddb ] ; then
+
+	sendEcho "Database files"
+	cleanup
+	cd $VDS/vddb
+	find data \
+		$SKIPDATA \
+		! -name ".cvsignore" \
+		-print | cpio -o | compress > $TMPFILE
+	transInfo $TMPFILE database.p
+	RC=$?
+    else
+	sendInfoDir "$VDS/vddb"
+	RC=1
+    fi
+
+    return ${RC}
+}
+#-------------------------------------------------------------------------------
+#
+#  Send Reports files
+#
+function sendReports {
+
+    integer	RC
+
+    RC=0
+
+    if [ ${CPUID} != ${CPUREL} ] ; then return ${RC} ; fi
+
+    if [ -d $VDS/vdreports/reports ] ; then
+
+	sendEcho "Reports files"
+	cd $VDS/vdreports
+	cleanup
+	find reports \
+		$SKIPDATA \
+		! -name ".cvsignore" \
+		-print | cpio -o | compress > $TMPFILE
+	transInfo $TMPFILE rpt${CPU100}.p
+	RC=$?
+    else
+	sendInfoDir "$VDS/vdreports/reports"
+	RC=1
+    fi
+
+    return ${RC}
+}
+#-------------------------------------------------------------------------------
+#
+# Start the procedure
+#
+if [ -f "/usr/bin/RELEASE" ] ; then
+	. /usr/bin/RELEASE
+	export REL_TRANS="$REL_TRANS/vds"
+else
+	sendInfo  "Files /usr/bin/RELEASE not defined"
+	sendError "QUIT PROCESSING."
+	exit 1
+fi
+
+ARGS_PASSED=$#
+ARG=$1
+
+LOGFILE="/usr/tmp/rel.log"
+SERVER="$REL_NODE.$REL_LOGIN.$REL_PSWRD"
+TMPCOMP="/usr/tmp"
+TMPFILE=$TMPCOMP/VD$RANDOM
+
+SKIPDATA="-name CVS -prune -o"
+
+OPSYS=`uname -s`
+FMU="fmu -a"
+CPUID=""
+CPU100="C100"
+CPU300="C300"
+CPU400="C400"
+CPUISL="_ISL"
+
+CPUREL="_ISL"
+
+getCpuId
+
+trap "cleanup ; Tput smso ; sendInfo '- INTERRUPT -' ; Tput rmso ; exit 2" 2 3
+
+#
+# Check the arguments send with the shell.
+#
+
+if [ $ARGS_PASSED -gt 1 ]
+then
+    sendError "Too many arguments. vd_release takes utmost one argument"
+    exit 1
+else
+    if [ $ARGS_PASSED -eq 1 ]
+    then
+        if [[ "$ARG" = @("y"|"yes"|"YES"|"Yes"|"1") ]]
+        then
+            answer="y"
+        else
+            sendError "Invalid argument passed!"
+	    sendInfo ""
+            exit 1
+        fi
+    else
+        unset answer
+    fi
+fi
+
+sendInfo "The release will be sent to $REL_NODE.$REL_LOGIN.$REL_PSWRD"
+sendInfo "\tREL_TRANS    : $REL_TRANS "
+sendInfo "\tREL_BIN      : $REL_BIN "
+sendInfo "\tSERVER       : $SERVER "
+sendInfo "\tOPSYS        : $OPSYS "
+sendInfo "\tCPUID        : $CPUID "
+sendInfo "\tCPUREL       : $CPUREL "
+sendInfo ""
+
+if [ "$answer" != "y" ] ; then
+  sendInfo "Like to continue (y/n) ?"
+  read answer
+  if [ "$answer" != "y" ]
+  then
+	sendInfo "Transfer aborted on your request..."
+	exit 1
+  fi
+fi
+
+if [ ! -d "${VDS}" ] ; then
+    if [ -x /usr/bin/banner ] ; then
+	echo "\n\n\n"
+	/usr/bin/banner "Define VDS"
+	echo "\n\n\n"
+    fi
+    exit 1
+fi
+
+#
+#	Release files
+#
+	if sendConfig ; then
+	    sendInfo "sendConfig Done"
+	    if sendDevel ; then
+		sendInfo "sendDevel"
+	    else
+		sendError "Error sendDevel"
+	    fi
+	else
+	    sendError "sendConfig"
+	fi
+#
+#	Source files
+#	
+	if sendSource ; then
+	    sendInfo "sendSource Done"
+	else
+	    sendError "sendSource"
+	fi
+#
+#	Database files
+#
+	if sendDbReadme ; then
+	    sendInfo "sendDbReadme Done"
+	    if sendData ; then
+		sendInfo "sendData Done"
+	    else
+		sendError "sendData"
+	    fi
+	else
+	    sendError "sendDbReadme"
+	fi
+#
+#	Reports files
+#
+	if sendReports ; then
+	    sendInfo "sendReports Done"
+        else
+            sendError "sendReports"
+        fi
+
+if [ -x /usr/bin/banner ] ; then
+
+	echo "\n\n\n"
+	/usr/bin/banner "Done VDS"
+	echo "\n\n\n"
+
+fi
+
+cleanup
+
+exit 0;
+

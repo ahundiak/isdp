@@ -1,0 +1,825 @@
+/* $Id: warea.u,v 1.1.1.1 2001/01/04 21:07:23 cvs Exp $  */
+
+/* --------------------------------------------------------------------
+ * I/VDS
+ *
+ * File:	vds/cimacros/wireframe/macros / warea.u
+ *
+ * Description:
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ *	$Log: warea.u,v $
+ *	Revision 1.1.1.1  2001/01/04 21:07:23  cvs
+ *	Initial import to CVS
+ *	
+# Revision 1.1  1998/04/29  16:27:20  pinnacle
+# VDS 2.5.1
+#
+# Revision 1.1  1997/05/08  13:20:44  pinnacle
+# New project VDS 250
+#
+# Revision 1.2  1996/11/11  14:44:46  pinnacle
+# Replaced: cimacros/wireframe/macros/warea.u for:  by v241_int for vds.241
+#
+# Revision 1.1  1996/07/19  20:33:52  pinnacle
+# Create VDS 241 project
+#
+# Revision 1.1  1994/11/14  22:42:32  pinnacle
+# Create vds.240 from vds.232
+#
+# Revision 1.1  1994/11/08  16:07:00  pinnacle
+# create vds.232
+#
+ *
+ * History:
+ *	MM/DD/YY	AUTHOR		DESCRIPTION
+ *
+ * -------------------------------------------------------------------*/
+
+/*
+	 VDS 2.0 - PPM macro library - 92/07/09 (alc)
+
+	History :
+	alc 	92/07/20 Resize macro definition because of a SIGSEGV in 2.0
+ */
+   
+#include "cieveryone.h"
+#include "cimacros.h"
+#include "ci_mac_def.h"
+#include "nddef.h"
+#include "macro.h"
+#include "bserr.h"
+#include "AS_status.h"
+
+#define MAX_TEMP		102
+#define MAX_CHA_TEMP		9		
+#define EPSILON			1.0E-2 
+
+struct   GRid		  	CUV, GCV, CI_MACRO_ID, GRID[MAX_TEMP];
+struct   GRmd_env         	MOD_ENV;      
+struct   GRvg_construct   	cst;
+struct   IGRdisplay	  	dis;
+struct   GRsymbology	  	symbology;
+struct	 GRmd_env	  	from_env;
+struct	 IGRbsp_curve	  	*cvs[4];
+struct	 IGRbsp_curve		*l1,*l2,*l3,*BsCrv,*par_curve,*fit_crv;
+struct   IGRpolyline      	geom;
+
+GRobj 	 			ci_mac_def1;
+
+IGRboolean	periodic;
+IGRshort	matrix_type, placetime;
+
+IGRlong		rc, msg, stat;
+IGRint      	num_ent, j, k,rotten_one, i, temp_types[MAX_TEMP];
+IGRint		real_num_ent, ind, num_inter, BsCrv_np, num_lin;
+
+IGRlong		num;
+IGRdouble	area[MAX_TEMP-2], tanl[3], tanr[3];
+IGRdouble 	matrix[16], pts[3*MAX_TEMP], VZ[3], pla_orig[3], VX[3], VY[3];
+IGRdouble	*int_pts, *u_par, *a, *b, ref_orig[3], v1[3], dist;
+IGRdouble	u_start, u_end, center[3];
+IGRdouble	start[3], end[3], dist1, dist2, dist3;
+
+IGRchar 	*temp_names[MAX_TEMP], *feet_names[MAX_TEMP];
+IGRchar	 	txt[MAX_CHA_TEMP],buff[MAX_TEMP*MAX_CHA_TEMP];
+IGRchar	 	buff_feet[MAX_TEMP*MAX_CHA_TEMP], tmp[80];
+
+OMuword	 	ass_cl, ft_cl, ln_cl, pt_cl;
+
+struct ret_struct	ref_rts, pt_rts[2];
+
+
+extern IGRchar		*malloc();
+extern int 		init_cnst_list(),
+			sprintf(),
+			BSmkvec(),
+			printf(),
+			free();
+
+extern  IGRdouble	BSdistptpt(),
+			BSdotp();
+
+extern	IGRboolean	BSpl_cv_int(),
+			BSpartofcv(),
+			BSrev_cv(),
+			BSfreecv();
+
+extern			BSalloccv(),
+			BSctrarplcv(),
+			BSdirfitcv();
+
+extern			ASsuper_construct();
+
+/* ========================================================================= */
+/* the main function is the one implementing the definition creation
+/* ========================================================================= */
+
+main ()
+{
+
+  temp_names[0]  = "ref";  
+  temp_names[1]  = "waterlev";  
+  temp_names[2]  = "scale";
+
+  temp_types[0]  = ref_generic;
+  temp_types[1]  = parameter_generic | double_type;
+  temp_types[2]  = parameter_generic | double_type;
+
+
+  for (i=3; i<MAX_TEMP; i=i+1){
+	j = i * MAX_CHA_TEMP;
+	sprintf(&buff[j],"crv%d",(i-2));
+	temp_names[i] = &buff[j];
+	temp_types[i] = line_generic | conic_generic | curve_generic;	
+  }
+
+  feet_names[0] = "rescrv";
+  feet_names[1] = "cdg";
+
+  for (i=2 ; i < MAX_TEMP ; i=i+1) {
+	j = i * MAX_CHA_TEMP;
+	sprintf(&buff_feet[j],"exp%d",(i-1));
+	feet_names[i] = &buff_feet[j];
+  }
+
+
+  ci_mac_def1 = NULL_OBJID;
+
+  ac$cimacdef( 	cimacdef          = ci_mac_def1,
+		prop 		  = ACvariable_template,
+		status 	          = &stat,
+		name              = "warea",
+              	temp_num          = MAX_TEMP,
+		temp_names        = temp_names,
+		temp_types	  = temp_types,
+	      	extern_feet_num   = MAX_TEMP,
+		extern_feet_names = feet_names );
+
+}
+
+/* ========================================================================= */
+
+place ()
+{
+
+  construct_comp();
+
+  if( GRID[0].objid == NULL_OBJID ) return(0);
+
+  ci$send( msg      = message  ci_macro.set_all_extern_feet
+		      (&stat, num_ent, GRID, &MOD_ENV ),
+	   targetid = CI_MACRO_ID.objid,
+	   targetos = CI_MACRO_ID.osnum );
+
+  return(1);
+
+}
+
+/* ========================================================================= */
+
+compute ()
+{
+
+  construct_comp();
+
+  if( GRID[0].objid == NULL_OBJID ) return(0);
+
+  ci$send( msg      = message  ci_macro.set_all_extern_feet
+		      (&stat, num_ent, GRID, &MOD_ENV ),
+	   targetid = CI_MACRO_ID.objid,
+	   targetos = CI_MACRO_ID.osnum );
+
+  return(1);
+
+}
+
+/* ========================================================================= */
+
+construct_comp()
+{
+
+#ifdef DEBUG
+write(" enter construct_comp \n");
+#endif
+
+  init_cnst_list();
+  get_symb();
+
+  b         = NULL;
+  a         = NULL;
+  int_pts   = NULL;
+  u_par     = NULL;
+  l1	    = NULL;
+  l2        = NULL;
+  l3        = NULL;
+  fit_crv   = NULL;
+  par_curve = NULL;
+
+
+  BSalloccv( (short ) 2, (long) 2, (short) 0, (short ) 0, &l1, &rc );
+  if( rc != BSSUCC ){
+  	write(" no enougth memory to allocate l1 " );
+	goto wrapup;
+  }
+
+  set_BSline( l1, &rc );
+
+  BSalloccv( (short ) 2, (long) 2, (short) 0, 
+	     (short ) 0, &l2, &rc );
+  if( rc != BSSUCC ){
+  	write(" no enougth memory to allocate l2 " );
+	goto wrapup;
+  }
+  set_BSline( l2, &rc );
+
+  BSalloccv( (short ) 2, (long) 2, (short) 0, (short ) 0, &l3, &rc );
+  if( rc != BSSUCC ){
+  	write(" no enougth memory to allocate l3 " );
+	goto wrapup;
+  }
+
+  set_BSline( l3, &rc );
+
+
+  
+ 
+  GRID[0].objid = NULL_OBJID;
+  GRID[0].osnum = MOD_ENV.md_id.osnum;
+
+
+  stat = ci$send(msg = message NDnode.NDget_objects(ND_ROOT,NULL,0,NULL,
+					     0,OM_K_MAXINT,&num_ent),
+	   	  targetid = CI_MACRO_ID.objid,
+	   	  targetos = CI_MACRO_ID.osnum);
+  if(!(stat&1)) goto wrapup;
+
+  /*--------------------------------------------------------------------*/
+  /* Get referential which will give me the origine and 3 direction     */
+  /*--------------------------------------------------------------------*/
+
+  msg = ci$send( msg      = message ACcpx.ACfind_exp_temp_struct
+				(&stat,0,(char *)&ref_rts, &MOD_ENV ),  
+           targetid = CI_MACRO_ID.objid,
+           targetos = CI_MACRO_ID.osnum);
+  if( !(stat&msg&1) ){
+		status(" bad template coordinate system ");
+		goto wrapup;
+  }
+  /*--------------------------------------------------------------------*/
+  /* Get height and scale factor                                        */
+  /*--------------------------------------------------------------------*/
+
+  for(i=1;i<3;i=i+1){
+  	msg = ci$send( msg      = message  ACcpx.ACfind_exp_temp_struct
+			        (&stat,i,(char *)&pt_rts[i-1],&MOD_ENV),
+           	 targetid = CI_MACRO_ID.objid,
+           	 targetos = CI_MACRO_ID.osnum );
+
+  	if( !(stat&msg&1) ){
+         	strcpy(txt," bad template ");
+		strcat(txt,itoa((i+1)));	
+		status(txt);
+		goto wrapup;
+  	}
+  }
+
+#ifdef DEBUG
+write(" after getting struct \n");
+#endif
+  /*--------------------------------------------------------------------*/
+  /* loop on the different curve                                        */
+  /*    . define the origine of the intersection plane			*/
+  /*	. get the abstract geometry					*/
+  /*    . build the close area and evaluate this area                   */
+  /*--------------------------------------------------------------------*/
+
+
+
+  /* define intersection plane origine, VX and VZ axis */
+
+  for( i=0; i<3; i=i+1 ){
+    j = 4 * i;
+
+
+    VX[i]       = ref_rts.var.ref_st.t[j];
+    VY[i]       = ref_rts.var.ref_st.t[j+1];
+    VZ[i]       = ref_rts.var.ref_st.t[j+2];
+
+    ref_orig[i] = ref_rts.var.ref_st.t[j+3];
+    pla_orig[i] = ref_orig[i] + pt_rts[0].var.root_pm_st.value * VZ[i];
+  }
+
+  /* malloc the l1 and l1 bsp struct close the contour */
+
+
+  /* get the curves and for each curve */ 
+  
+  ind = 0;
+
+  for(k=3; k<num_ent; k=k+1)
+  {
+     msg = ci$send( msg = message  ACcpx.ACfind_exp_temp_obj(&stat,k,&CUV),
+ 	      targetid = CI_MACRO_ID.objid,
+	      targetos = CI_MACRO_ID.osnum );
+
+     if( !(stat&msg&1) ) goto wrapup;
+
+     msg = ci$send( msg      = message NDmacro.ACreturn_foot(	
+						&stat ,
+						"",
+						&GCV, 
+						&matrix_type, 
+					        matrix ),
+	      targetid = CUV.objid,
+	      targetos = CUV.osnum );
+
+     if( !(stat&msg&1) ){
+		write(" bad element \n" );
+		goto wrapup;
+     }
+
+
+     ci$send(  msg = message GRvg.GRgenabsg( &msg,
+			                 &matrix_type, 
+				         matrix, 
+					 &BsCrv ),
+               targetid = GCV.objid,
+ 	       targetos = GCV.osnum );
+
+     /*--- check if I have to reverse the frame ---*/
+
+     BsCrv_np = BsCrv->num_poles;
+
+     dis_ref_pt( ref_orig, VZ, &(BsCrv->poles[0]), &dist1, &rc );
+     dis_ref_pt( ref_orig, VZ, &(BsCrv->poles[3*(BsCrv_np-1)]), &dist2, &rc);
+
+			
+     if( fabs( dist2 ) > fabs( dist1 ) ) BSrev_cv(&rc, BsCrv);
+
+
+     i = 8 * BsCrv_np;
+
+     int_pts  = (IGRdouble *) malloc(3*i);
+     u_par    = (IGRdouble *) malloc(i);
+     a        = (IGRdouble *) malloc(i);
+     b        = (IGRdouble *) malloc(i);
+
+	/*--- to evaluate the area we:
+		. intersect the current frame with the watter plane
+		. find how the frame is oriented to extract the
+		  good portion of the curve 
+		. build the partial curve
+		. build the contour curve
+		. evaluate the area
+	---*/
+
+	/*--- evaluate intersection between water plane and frame ---*/
+
+	BSpl_cv_int( &rc, BsCrv, pla_orig, VZ, &num_inter,int_pts,
+		     u_par, &j, a, b );
+
+#ifdef DEBUG
+write(" exit BSpl_cv_int  num_inter =", num_inter," rc = ",rc,"\n");
+for(i=0;i<3*num_inter;i=i+3) write("int_pts[",(i/3),"] = ",int_pts[i],
+						           int_pts[i+1],
+					                   int_pts[i+2],"\n");
+#endif
+
+	if( (rc != BSSUCC) || (num_inter == 0 ) ){
+
+		BSmkvec(&rc,v1,pla_orig,&(BsCrv->poles[3*(BsCrv_np-1)]) );
+
+
+		if( fabs( BSdotp(&rc,v1,VZ ) ) < 0.0017 ){
+
+			area[k-3] = 0.0;
+			dist = BSdotp(&rc, VX,v1);
+
+			for(i=0; i<3; i=i+1){ 
+				pts[ind+i] = pla_orig[i] + dist * VX[i];
+				if( k == 3 ) start[i] = pts[ind+i];
+				else         end[i]   = pts[ind+i];
+			}
+
+			ind = ind + 3;
+			goto loop1;
+		}
+
+		BSmkvec(&rc,v1,pla_orig,BsCrv->poles );
+		if( fabs( BSdotp(&rc,VZ,v1) ) < 0.0017 ){
+			int_pts[0] = BsCrv->poles[0];
+			int_pts[1] = BsCrv->poles[1];
+			int_pts[2] = BsCrv->poles[2];
+			u_par[0];
+			num_inter = 1;
+			goto step0;
+		}
+
+		goto loop1;
+	}
+	
+	/*--- check if the intersection is coincident with the center line
+	      then We have no area					  
+	 ---*/
+step0:
+	dis_ref_pt( ref_orig, VY, int_pts, &dist1, &rc );
+	if( fabs(dist1) < EPSILON ) goto loop1;
+
+
+	/*--- evaluate :
+		.  malloc struct for the partial curve
+		.  find the good orientation to have the 3 curve well
+		   oriented
+		.  the partial curve between the base line and water plane
+	        .  set up the poles of l1 and l2 
+	---*/
+
+
+#ifdef DEBUG
+write(" enter BSalloccv par_curve \n");
+#endif
+
+	num = BsCrv->num_poles + 2 * BsCrv->order - 1;
+
+  	BSalloccv(BsCrv->order,num,BsCrv->rational,
+		  BsCrv->num_boundaries,&par_curve,&rc);
+  	if( rc != BSSUCC ) {
+		write( " error in BSalloccv for partial curve \n");
+		goto wrapup;
+  	}
+
+
+	u_start = u_par[0];
+	u_end   = 1.0;
+
+  	BSpartofcv( &rc, BsCrv, u_start, u_start, u_end, par_curve );
+  	if( rc != BSSUCC ){
+		write( " error in BSpartofcv \n");
+		goto wrapup;
+	}
+
+	j = 3 * ( par_curve->num_poles - 1 );
+
+#ifdef DEBUG
+	write(" u_start = ", u_start, u_end, "\n");
+	write(" par_curve->num_poles=",par_curve->num_poles,"\n");
+ 	write("  j before set", j, "\n");
+#endif
+
+	dis_ref_pt( ref_orig, VY, &(par_curve->poles[j]), &dist2, &rc );
+
+	if( fabs(dist2) > EPSILON ){
+
+
+		for( i=0; i<3; i=i+1 ){
+	   	   l1->poles[i]   = par_curve->poles[j+i];
+	   	   l1->poles[i+3] = par_curve->poles[j+i] - dist2*VY[i]+
+				    pt_rts[0].var.root_pm_st.value * VZ[i];
+	   	   l2->poles[i]   = l1->poles[i+3];
+	   	   l2->poles[i+3] = l2->poles[i] + 
+			    	    pt_rts[0].var.root_pm_st.value * VZ[i];
+	   	   l3->poles[i]   = l2->poles[i+3];
+	   	   l3->poles[i+3] = par_curve->poles[i];
+		}
+	 	num_lin = 4;
+        	cvs[0] = l1;
+        	cvs[1] = l2;
+	        cvs[2] = l3;
+	        cvs[3] = par_curve;
+	}
+	else{
+		for( i=0; i<3; i=i+1 ){
+	   	   l1->poles[i]   =  par_curve->poles[j+i];
+	   	   l1->poles[i+3] = l1->poles[i] + 
+			    	    pt_rts[0].var.root_pm_st.value * VZ[i];
+	   	   l2->poles[i]   = l1->poles[i+3];
+	   	   l2->poles[i+3] = par_curve->poles[i];
+		}
+	 	num_lin = 3;
+        	cvs[0] = l1;
+        	cvs[1] = l2;
+	        cvs[2] = par_curve;
+	}
+
+#ifdef DEBUG
+	write(" l1->poles[0] = ", l1->poles[0],
+		l1->poles[1], l1->poles[2], "\n");
+	write(" l1->poles[2] = ", l1->poles[3],
+		l1->poles[4], l1->poles[5], "\n");
+
+	write(" l2->poles[0] = ", l2->poles[0],
+		l2->poles[1], l2->poles[2], "\n");
+	write(" l2->poles[2] = ", l2->poles[3],
+		l2->poles[4], l2->poles[5], "\n");
+
+	if( num_lin == 4 ){
+		write(" l3->poles[0] = ", l3->poles[0],
+			l3->poles[1], l3->poles[2], "\n");
+		write(" l3->poles[2] = ", l3->poles[3],
+			l3->poles[4], l3->poles[5], "\n");
+	}
+
+	write(" par_curve->poles[0] = ", par_curve->poles[0],
+		par_curve->poles[1], par_curve->poles[2], "\n");
+	write(" par_curve->poles[end] = ", 
+		par_curve->poles[3*( par_curve->num_poles -1 ) ],
+		par_curve->poles[3*( par_curve->num_poles -1 ) + 1 ],
+		par_curve->poles[3*( par_curve->num_poles -1 ) + 2 ], "\n");
+#endif
+
+
+
+	/*--- evaluate the area ---*/
+#ifdef DEBUG
+write("enter BSctrarplcv \n");
+#endif
+	BSctrarplcv( num_lin, cvs, center, &(area[k-3]), &rc );
+	if( rc != BSSUCC ){
+		write("error in BSctrarplcv for frame ",(k-3),"\n");
+		goto wrapup;
+	}
+#ifdef DEBUG
+write("center ", center[0], center[1], center[2]," area ",area[k-3],"\n");
+#endif
+ 
+
+//	BSmkvec( &rc, v1, ref_orig, int_pts );
+
+step1:
+	BSmkvec( &rc, v1, pla_orig, int_pts );
+	dist = BSdotp(&rc, VX,v1);	
+
+	for(i=0; i<3; i=i+1){ 
+		pts[ind+i] = pla_orig[i] + dist * VX[i];
+		if( k == 3 ) start[i] = pts[ind+i];
+		else         end[i]   = pts[ind+i];
+		pts[ind+i] = pts[ind+i] + 
+			     area[k-3] * pt_rts[1].var.root_pm_st.value * VZ[i];
+	}
+
+	ind = ind + 3;
+
+loop1:
+	if( par_curve != NULL ) { BSfreecv(&rc,par_curve); par_curve = NULL; }
+	if( b       != NULL )   { free(b); b = NULL;}
+        if( a       != NULL )   { free(a); a = NULL;}
+	if( u_par   != NULL )   { free(u_par); u_par = NULL;}
+	if( int_pts != NULL )   { free(int_pts); int_pts = NULL;}
+
+   }/* end loop on k elements */
+
+
+
+#ifdef DEBUG
+	write("number true section area = ",(ind/3),"\n");
+	for(i=0;i<ind;i=i+3)
+	write("pts[",i/3,"] = ", pts[i],pts[i+1],pts[i+2]," area ",area[(i/3)],
+	"\n");
+#endif
+
+
+  /*--------------------------------------------------------------------*/
+  /* set symbology						        */
+  /*--------------------------------------------------------------------*/
+
+
+  dis.color		= cnst_list.color;
+  dis.weight		= cnst_list.weight;
+  dis.style		= cnst_list.style;
+
+  cst.msg		= &msg;
+  cst.properties	= GRIS_LOCATABLE | GRIS_DISPLAYABLE;
+  cst.display		= &dis;
+  cst.env_info		= &MOD_ENV;
+  cst.newflag		= 0;
+  cst.level		= cnst_list.level;
+  cst.class_attr	= 0;
+  cst.name		= 0;
+
+  /*--------------------------------------------------------------------*/
+  /* build a point a point or a bspl to show area variation curve       */
+  /*--------------------------------------------------------------------*/
+
+	
+	fit_crv = NULL;
+
+	num_ent = ind / 3;
+
+	
+	if ( num_ent == 0 ) goto wrapup;
+
+	else if ( num_ent == 1 ){
+
+  		geom.num_points = 1;
+		geom.points = pts;
+
+        	if( dis.weight < 3 ) dis.weight = 3; 
+
+  		cst.geometry		= (char *)&geom;
+
+  		stat = ci$send( msg   = message GR3dpoint.GRaltconstruct(&cst),
+        	        	targetid  = GRID[0].objid,
+ 	                	targetos  = GRID[0].osnum );
+
+		if( !(stat&1) )	GRID[0].objid = NULL_OBJID;
+
+		goto wrapup ;
+	}
+	else{
+		if( num_ent >= 4 ) k = 4;
+		else k = num_ent;
+
+		periodic = FALSE;
+		j = num_ent + k - 1; 
+		
+  		BSalloccv( (short ) k, (long) j, (short) 0, 
+	     	(short ) 0, &fit_crv, &rc );
+  		if( rc != BSSUCC ){
+  			write(" no enougth memory to allocate fit_cv " );
+			goto wrapup;
+  		}
+
+		BSdirfitcv( num_ent, pts, k, (int) 0, (int) 0, periodic,
+			    tanl, tanr, fit_crv, &rc );
+		if( rc != BSSUCC ){
+			write("error in BSdirfitcv \n");
+			goto wrapup;
+		}  
+
+		cst.geometry		= (char *)fit_crv;
+
+   		stat = ci$send( msg    = message GRbcsubbc.GRconstruct(&cst),
+	   			targetid = GRID[0].objid,
+	   			targetos = GRID[0].osnum );
+		if( !(stat&1) )	GRID[0].objid = NULL_OBJID;
+
+	}
+
+
+  /*--------------------------------------------------------------------*/
+  /*         build the bsp geometry to evaluate the volume              */
+  /*--------------------------------------------------------------------*/
+
+
+	j = 3 * ( fit_crv->num_poles - 1 );
+
+	for( i=0; i<3; i=i+1){
+		l1->poles[i]   = fit_crv->poles[j+i];
+		l1->poles[i+3] = end[i]; 
+		l2->poles[i]   = end[i];
+		l2->poles[i+3] = start[i];
+		l3->poles[i]   = start[i];
+		l3->poles[i+3] = fit_crv->poles[i];
+	}
+
+	cvs[0] = fit_crv;
+	cvs[1] = l1;
+	cvs[2] = l2;
+	cvs[3] = l3;
+
+
+	BSctrarplcv( (int) 4, cvs, center, &(area[num_ent]), &rc );
+	if( rc != BSSUCC ){
+		write("error in BSctrarplcv to evaluate volume\n");
+		goto wrapup;
+	}
+
+	area[num_ent] = area[num_ent] / pt_rts[1].var.root_pm_st.value;
+
+	num_ent = num_ent + 1;
+
+  /*--------------------------------------------------------------------*/
+  /*         create center of gravity                                   */
+  /*--------------------------------------------------------------------*/
+
+		GRID[1].objid = NULL_OBJID;
+  		GRID[1].osnum = MOD_ENV.md_id.osnum;
+
+  		geom.num_points = 1;
+		geom.points = center;
+
+        	if( dis.weight < 3 ) dis.weight = 3; 
+
+  		cst.geometry		= (char *)&geom;
+
+  		stat = ci$send( msg   = message GR3dpoint.GRaltconstruct(&cst),
+        	        	targetid  = GRID[1].objid,
+ 	                	targetos  = GRID[1].osnum );
+
+		if( !(stat&1) )	GRID[1].objid = NULL_OBJID;
+
+
+  /*--------------------------------------------------------------------*/
+  /*         create all the expression                                  */
+  /*--------------------------------------------------------------------*/
+
+
+#ifdef DEBUG
+	write(" before  Gexp.create num_ent =",num_ent,"\n");
+#endif
+
+	for(i=0; i<num_ent; i=i+1){
+
+		GRID[i+2].objid = NULL_OBJID;
+  		GRID[i+2].osnum = MOD_ENV.md_id.osnum;
+
+        	tmp[0] = '\0';
+  		sprintf( tmp, "%g", area[i] );
+
+  		stat = ci$send(  msg      = message Gexp.create
+		 				( NULL,tmp , &msg ),
+                   		targetid = GRID[i+2].objid,
+		   		targetos = GRID[i+2].osnum);
+#ifdef DEBUG
+	write(" exit Gexp.create num =",i,"  stat =",stat,"\n");
+#endif
+		if( !stat&1 ){
+			for(k=0;k<i+1;k=k=1){
+				ci$send(msg = message Root.GRdelete(0),
+	        			targetid = GRID[k].objid,
+					targetos = GRID[k].osnum);
+
+				GRID[k].objid = NULL_OBJID;
+			}
+			goto wrapup;
+		}
+	}
+
+	num_ent = num_ent + 2;
+
+wrapup:
+
+	if( fit_crv   != NULL ) { BSfreecv(&rc,fit_crv);   fit_crv   = NULL; }	
+	if( par_curve != NULL ) { BSfreecv(&rc,par_curve); par_curve = NULL; }
+	if( b         != NULL ) { free(b);                 b         = NULL; }
+        if( a         != NULL ) { free(a);                 a         = NULL; }
+	if( u_par     != NULL ) { free(u_par);             u_par     = NULL; }
+	if( int_pts   != NULL ) { free(int_pts);           int_pts   = NULL; }
+	if( l3        != NULL ) { BSfreecv(&rc,l2);        l3        = NULL; }
+	if( l2        != NULL ) { BSfreecv(&rc,l2);        l2        = NULL; }
+	if( l1        != NULL ) { BSfreecv(&rc,l1);        l1        = NULL; }
+
+	
+}
+
+/*===========================================================================*/
+
+dis_ref_pt( orig, vdir, pt, dist, rc )
+/*	    I   , I   , I , O   , O					     */
+
+
+IGRdouble	*orig;
+IGRdouble	*vdir;
+IGRdouble	*pt;
+IGRdouble	*dist;
+IGRlong		*rc;
+
+
+/*..........................  beginning of code  ............................*/
+
+
+{
+
+	IGRdouble	vv[3];
+
+	BSmkvec(rc,vv,orig,pt);
+	*dist = BSdotp(rc,vv,vdir);
+	return;
+}
+
+/*===========================================================================*/
+
+set_BSline( Bsline, rc )
+/*	    I     , O							     */
+
+struct	IGRbsp_curve	*Bsline;
+IGRlong			*rc;
+
+/*..........................  beginning of code  ............................*/
+
+
+{
+
+	IGRint		j;
+
+  	Bsline->order = 2;
+  	Bsline->num_poles = 2;
+  	Bsline->num_boundaries = 0;
+  	Bsline->rational = FALSE;
+  	Bsline->num_knots = 4;
+  	Bsline->non_uniform = FALSE;
+  	Bsline->planar = TRUE;
+  	Bsline->phy_closed = FALSE;
+
+	for(j=0;j<2;j=j+1){
+		Bsline->knots[j]   = 0.0; 
+		Bsline->knots[j+2] = 1.0; 
+	}
+	return;
+}
+
+/*===========================================================================*/
+

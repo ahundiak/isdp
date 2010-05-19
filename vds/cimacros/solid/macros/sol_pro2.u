@@ -1,0 +1,565 @@
+/* $Id: sol_pro2.u,v 1.1.1.1 2001/01/04 21:07:21 cvs Exp $  */
+
+/* --------------------------------------------------------------------
+ * I/VDS
+ *
+ * File:	vds/cimacros/solid/macros / sol_pro2.u
+ *
+ * Description:
+ *      This macro is used for the case where the curve is compisite
+ *      curve
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ *	$Log: sol_pro2.u,v $
+ *	Revision 1.1.1.1  2001/01/04 21:07:21  cvs
+ *	Initial import to CVS
+ *	
+# Revision 1.1  1998/04/29  16:27:20  pinnacle
+# VDS 2.5.1
+#
+# Revision 1.2  1998/02/01  13:51:00  pinnacle
+# ah
+#
+# Revision 1.1  1997/05/08  13:20:44  pinnacle
+# New project VDS 250
+#
+# Revision 1.1  1996/07/19  20:33:52  pinnacle
+# Create VDS 241 project
+#
+# Revision 1.1  1996/04/11  19:10:48  pinnacle
+# Created: cimacros/solid/macros/sol_pro2.u by yzhu for vds.240
+#
+ *
+ * History:
+ *	MM/DD/YY	AUTHOR		DESCRIPTION
+ *      04/11/96        Yzhu            create 
+ * 	02/01/98	ah		Moved AS_status.h down 
+ * -------------------------------------------------------------------*/
+
+#include "cieveryone.h"
+#include "cimacros.h"
+#include "ci_mac_def.h"
+#include "EMSmsgdef.h"
+#include "msdef.h"
+#include "nddef.h"
+#include "macro.h"
+#include "AS_status.h"
+
+#define EPSILON 	1.0E-7 
+
+OMuword			pl_cl, loc_cl;
+IGRboolean		is_planar, copy;
+
+IGRlong 		EMSrtmsg;
+
+IGRdouble 	 	matrix[16], st_len, sw_len, vec[3], lvec, t_plan[6];
+IGRdouble 		trans_mat[16], VZ[3], point[3];
+
+IGRchar 		*temp_names[5], *feet_names[1],txt[20];
+IGRint			temp_types[5], num_temp;
+
+IGRshort	 	matrix_type;
+
+IGRint			i, j, k;
+
+IGRlong			rc, stat, msg;
+GRobj 			ci_mac_def1, SUR, SURF;
+
+struct IGRplane 	plane;
+
+struct GRid		CUV, GCV, CI_MACRO_ID, SOL;
+struct GRmd_env		MOD_ENV,from_env, srf_env;
+struct IGRbsp_curve     *BsCrv;
+struct IGRbsp_surface   *BsSrf;
+struct GRvg_construct   cst;
+struct IGRdisplay	dis;
+struct GRlc_info	lc_info;
+struct GRprops          props;
+struct ret_struct	temp_rts[4];
+
+
+extern IGRdouble	BSdotp(),
+			BSdistptpts();
+extern IGRint 		init_cnst_list(),
+			printf(),
+			BStst_plan(),
+			MAtypemx() ;
+extern IGRlong		EMsweep_surface_via_lift_face_mod();
+extern			ASsuper_construct();
+
+/* ========================================================================= */
+/* the main function is the one implementing the definition creation
+/* ========================================================================= */
+
+main ()
+{
+
+  temp_names[0]  = "stlen";  
+  temp_names[1]  = "swlen";  
+  temp_names[2]  = "pnt1";  
+  temp_names[3]  = "pnt2";  
+  temp_names[4]  = "crv0";
+
+  temp_types[0]   = parameter_generic | double_type;
+  temp_types[1]   = parameter_generic | double_type;
+  temp_types[2]   = point_generic;
+  temp_types[3]   = curve_generic | conic_generic | line_generic | point_generic ;
+  temp_types[4]   = curve_generic | conic_generic | line_generic | other_generic ;
+
+  feet_names[0] = "solid";
+  ci_mac_def1 = NULL_OBJID;
+
+  ac$cimacdef( 	cimacdef          = ci_mac_def1,
+		status 	          = &stat, 	
+		name              = "sol_pro2",
+              	temp_num          = 5, 		
+		temp_names        = temp_names,
+		temp_types	  = temp_types,
+	      	extern_feet_num   = 1, 	
+		extern_feet_names = feet_names );
+}
+
+/* ========================================================================= */
+
+place ()
+{
+  construct_pjs();
+
+  if( SOL.objid == NULL_OBJID ) return(0);
+
+  ci$send( msg = message  ci_macro.set_all_extern_feet
+	 ( &stat, 1,&SOL, &MOD_ENV ),
+	   targetid = CI_MACRO_ID.objid,
+	   targetos = CI_MACRO_ID.osnum );
+  return(1);
+
+}
+
+/* ========================================================================= */
+
+compute ()
+{
+
+  construct_pjs();
+
+  if( SOL.objid == NULL_OBJID ) return(0);
+
+  ci$send( msg = message  ci_macro.set_all_extern_feet
+	 ( &stat, 1,&SOL, &MOD_ENV ),
+	   targetid = CI_MACRO_ID.objid,
+	   targetos = CI_MACRO_ID.osnum );
+  return(1);
+}
+
+/* ========================================================================= */
+
+construct_pjs()
+{
+  OM_S_OBJID my_stupid_id  ;
+  IGRboolean sym_dist_flag ; 
+  struct GRmd_env       curve_module_info ; 
+
+  SOL.objid = NULL_OBJID;
+  SOL.osnum = MOD_ENV.md_id.osnum;
+  plane.point = &t_plan[0];
+  plane.normal = &t_plan[3];
+
+  stat = ci$send(msg = message NDnode.NDget_objects(ND_ROOT,NULL,0,NULL,
+					     0,OM_K_MAXINT,&num_temp),
+	   	  targetid = CI_MACRO_ID.objid,
+	   	  targetos = CI_MACRO_ID.osnum);
+  if(!(stat&1)) return;
+
+/*--------------------------------------------------------------------------*/
+/*-----       retrieve the first four templates                       ------*/
+/*--------------------------------------------------------------------------*/
+
+  for(i=0; i<(num_temp-1); i=i+1){
+  	msg = ci$send( msg      = message  ACcpx.ACfind_exp_temp_struct
+		           (&stat, i, (char *)&(temp_rts[i]),&MOD_ENV ),
+	   	 targetid = CI_MACRO_ID.objid,
+	   	 targetos = CI_MACRO_ID.osnum );
+  	if( !(msg&stat&1) ){
+         	strcpy(txt," bad object template ");
+		strcat(txt,itoa((i+1)));
+		status(txt);	
+		return;
+  	}
+  }
+
+/*--------------------------------------------------------------------------*/
+/*-----       retrieve the curve to sweep                             ------*/
+/*--------------------------------------------------------------------------*/
+
+  msg = ci$send( msg = message  ACcpx.ACfind_exp_temp_obj(
+						&stat,(num_temp-1),&CUV),
+           targetid = CI_MACRO_ID.objid,
+           targetos = CI_MACRO_ID.osnum );
+
+  #ifdef DEBUGPLUS
+    printf("CI_MACRO_ID  = %d/%d \n", CI_MACRO_ID.objid, CI_MACRO_ID.osnum) ; 
+    printf("CUV id/osnum = %d/%d \n", CUV.objid, CUV.osnum) ; 
+  #endif
+
+  if( !(msg&stat&1) ) return;
+
+  msg = ci$send( msg      = message NDmacro.ACreturn_foot(	
+						&stat ,
+						"",
+						&GCV, 
+						&from_env.md_env.matrix_type, 
+						from_env.md_env.matrix ),
+	   targetid = CUV.objid,
+	   targetos = CUV.osnum );
+
+  if( !(msg&stat&1) ){
+	status(" bad curve " );
+	return;
+  }
+
+
+ /*
+        Get curve module info (92/05/12)
+  */
+
+  curve_module_info.md_id.osnum = GCV.osnum ;
+  curve_module_info.md_env.matrix_type = from_env.md_env.matrix_type ;
+  for (i = 0 ; i < 16 ; i = i+1)
+        curve_module_info.md_env.matrix[i] = from_env.md_env.matrix[i] ;
+
+
+  #ifdef DEBUGPLUS
+    printf("GCV id/osnum = %d/%d \n", GCV.objid, GCV.osnum) ; 
+  #endif
+
+  from_env.md_id.osnum = GCV.osnum;
+
+  msg = ci$send( msg = message  GRvg.GRdetplane( 
+					         &EMSrtmsg,
+                                                 /* 
+			       		         &MOD_ENV.md_env.matrix_type,
+			       		         MOD_ENV.md_env.matrix,
+                                                  */
+			       		         &from_env.md_env.matrix_type,
+			       		         from_env.md_env.matrix, /* ! */
+                                                 &plane),
+
+		 targetid = GCV.objid,
+		 targetos = GCV.osnum );
+  if( !(msg&EMSrtmsg&1) ) { 	
+		write(" Element not planar \n"); 
+		return;
+  }
+
+
+  ci$send( msg = message GRvg.GRgeomprops( &msg,
+			                   &from_env.md_env.matrix_type,
+			                   from_env.md_env.matrix,
+			                   &props ),
+           targetid = GCV.objid,
+           targetos = GCV.osnum );
+
+
+  if( num_temp == 4 ){
+
+	#ifdef DEBUG
+		write("enter in num_temp 4 \n");
+	#endif
+
+  	if( props.type == 1 ) {
+
+	#ifdef DEBUGPLUS
+		write("props.type == 1 \n");
+	#endif
+
+  		ci$send( msg = message GRvg.GRgenabsg(
+					&EMSrtmsg,
+			       		&from_env.md_env.matrix_type,
+			       		from_env.md_env.matrix, 
+					(char *)&BsSrf ),
+           	 	 targetid = GCV.objid,
+ 	   	 	 targetos = GCV.osnum );
+
+   		BStst_plan( (BsSrf->u_num_poles * BsSrf->v_num_poles ),
+		    	     BsSrf->poles,BsSrf->weights,
+                    	     &is_planar,VZ,&rc);
+
+		for(i=0;i<3;i=i+1) point[i] = BsSrf->poles[i];
+	}
+	else{
+  		ci$send( msg = message GRvg.GRgenabsg(
+					&EMSrtmsg,
+			       		&from_env.md_env.matrix_type,
+			       		from_env.md_env.matrix, 
+					(char *)&BsCrv ),
+           	 	 targetid = GCV.objid,
+ 	   	 	 targetos = GCV.osnum );
+
+
+	        VZ[0] = BSdistptpts( &rc, BsCrv->poles,
+				   &BsCrv->poles[3*(BsCrv->num_poles-1)]);
+
+		if( VZ[0] > 1.0E-12 ){
+			write("curve not closed \n");
+			return;
+		}
+
+   		BStst_plan( (BsCrv->num_poles),
+		    	     BsCrv->poles,BsCrv->weights,
+                    	     &is_planar,VZ,&rc);
+
+		for(i=0;i<3;i=i+1) point[i] = BsCrv->poles[i];
+	}
+
+
+	
+	temp_rts[3] = temp_rts[2];
+
+        for( j=0;j<3;j=j+1 ){ 
+		temp_rts[2].var.point_st.pt[j] = point[j];
+		vec[j] = temp_rts[3].var.point_st.pt[j] - 
+			 temp_rts[2].var.point_st.pt[j];
+	}
+
+	lvec = BSdotp(&msg,vec,VZ);
+    	for( j=0;j<3;j=j+1 ) 
+		temp_rts[3].var.point_st.pt[j] = point[j] + 
+					       lvec * VZ[j];
+
+  }
+
+/*--------------------------------------------------------------------------*/
+/*-----       check if the two axis point are coincident              ------*/
+/*--------------------------------------------------------------------------*/
+     lvec = 0.0;
+     for(j=0; j<3; j=j+1){
+          vec[j] = temp_rts[3].var.point_st.pt[j] - 
+                   temp_rts[2].var.point_st.pt[j];
+  
+	  lvec = lvec + vec[j] * vec[j];
+     }
+     
+     lvec = sqrt(lvec);
+     if( lvec < EPSILON ) return; 
+
+     sw_len = temp_rts[1].var.root_pm_st.value;
+     if( fabs(sw_len) < EPSILON ) sw_len = 1.0;
+     st_len = temp_rts[0].var.root_pm_st.value;
+
+
+
+     copy = FALSE;
+
+/*--------------------------------------------------------------------------*/
+/*-----   if the profile has to be move do it                         ------*/
+/*--------------------------------------------------------------------------*/
+
+
+   if( ( fabs(st_len) > EPSILON ) || (fabs((1.0 - sw_len)) > EPSILON ) )
+   {
+
+	copy = TRUE;
+
+  	/* set the GRxform matrix */
+	  for(i=0;i<16;i=i+1) trans_mat[i]=0.0;
+	  trans_mat[0]  = 1.0;
+	  trans_mat[5]  = 1.0;
+	  trans_mat[10] = 1.0;
+	  trans_mat[15] = 1.0;
+
+
+     	for(j=0; j<3; j=j+1)
+     	{
+      	      vec[j] = vec[j] / lvec;
+      	      temp_rts[2].var.point_st.pt[j] = temp_rts[2].var.point_st.pt[j] + 
+						st_len * vec[j];
+      	      temp_rts[3].var.point_st.pt[j] = temp_rts[2].var.point_st.pt[j] + 
+						sw_len * vec[j];
+      	      vec[j] = st_len * vec[j];
+     	}
+
+     	trans_mat[3]  =  vec[0];
+     	trans_mat[7]  =  vec[1];
+     	trans_mat[11] =  vec[2];
+
+	/*
+		Copy object
+	 */
+
+	CUV.objid = NULL_OBJID;
+        from_env.md_id.osnum = GCV.osnum;
+	stat = ci$send( msg	   = message GRgraphics.GRcopy(
+							 &msg,
+							 &from_env,
+                                             	         &MOD_ENV,
+							 &CUV.objid ),
+                  		targetid = GCV.objid,
+	          		targetos = GCV.osnum  );
+	as$status(sts = stat) ;
+  	if( !( stat & msg & 1 ) ) return OM_E_ABORT ;
+
+	CUV.osnum = MOD_ENV.md_id.osnum ;
+	srf_env   = MOD_ENV ; 			/* - 91/12/11 - */
+
+  	/*-----------------------------------------------*/
+  	/*| We now can apply the xform to the object     */
+  	/*-----------------------------------------------*/
+
+	MAtypemx(&msg,trans_mat,&matrix_type);
+	GCV.objid = NULL_OBJID;
+	GCV.osnum = MOD_ENV.md_id.osnum;
+
+  	stat = ci$send(msg	= message GRgraphics.GRxform(
+					&msg, &MOD_ENV, &matrix_type, trans_mat,
+					&GCV.objid ),
+		       targetid = CUV.objid,
+	               targetos = CUV.osnum  );
+	as$status(sts = stat) ;
+  	if( !( stat & msg & 1 ) ) return OM_E_ABORT ;
+
+   }/* end if ( fabs(st_len) > EPSILON ) || (fabs((1.0 - sw_len)) > EPSILON ) */
+
+   else  srf_env = from_env ;		/* - 91/12/11 - */
+
+/*----------------------------------------------------------------------*/
+/*--------          set up the construction list               --- -----*/
+/*----------------------------------------------------------------------*/
+
+  init_cnst_list();
+  get_symb();
+
+  dis.color		= cnst_list.color;
+  dis.weight		= cnst_list.weight;
+  dis.style		= cnst_list.style;
+
+  cst.msg		= &msg;
+  cst.properties	= GRIS_LOCATABLE | GRIS_NEW | GRIS_DISPLAYABLE;
+  cst.display		= &dis;
+  cst.env_info		= &MOD_ENV;
+  cst.newflag		= FALSE;
+  cst.level		= cnst_list.level;
+  cst.geometry		= NULL;
+  cst.class_attr	= NULL;
+  cst.name		= NULL;
+
+
+
+  if( props.type == 1 ) {
+
+/* it's a surface, in french c'est une surface  */   
+	
+	 lc_info.located_obj = GCV;
+	 lc_info.module_info = srf_env;
+	 lc_info.geom_parms.u = 0.5;
+	 lc_info.geom_parms.v = 0.5;
+	 lc_info.geom_parms.polygon_inx = 0;
+  	 lc_info.geom_parms.leaf_id.objid = NULL_OBJID;
+
+	 #ifdef DEBUG
+	   write("Call to EMsweep_surface_via_lift_face_mod() \n");
+	 #endif
+
+         my_stupid_id  = NULL_OBJID ;
+	 sym_dist_flag = FALSE ; 			/* EMS 2.1 */
+         stat = EMsweep_surface_via_lift_face_mod(
+        	 &lc_info,
+        	 temp_rts[2].var.point_st.pt,
+        	 temp_rts[3].var.point_st.pt,
+        	 &cst,
+        	 my_stupid_id,
+        	 &SURF,
+		 sym_dist_flag,
+        	 &msg );
+	
+         if( !( stat & msg & 1 ) ){
+		#ifdef DEBUG
+		write("Error in EMsweep_surface_via_lift_face_mod \n");
+		#endif
+
+   		if( ( fabs(st_len) > EPSILON ) || 
+		    (fabs((1.0 - sw_len)) > EPSILON ) )
+     		ci$send(msg      = message GRgraphics.GRdelete(&msg,&MOD_ENV), 
+             		targetid = GCV.objid, targetos = GCV.osnum );
+		return;
+	 }
+  }
+  else {
+
+/* it is a curve */
+
+   #ifdef DEBUGPLUS
+   printf("from_env.md_id.osnum of GCV = %d \n", from_env.md_id.osnum) ; 
+   #endif
+
+   if( copy == TRUE ){
+
+     stat = ci$send( msg  = message EMSproject.EMplace_surface_of_projection(
+						&cst,
+						&GCV,
+						&srf_env, /* ! */
+						NULL,
+						0,
+						temp_rts[2].var.point_st.pt,
+						temp_rts[3].var.point_st.pt,
+						1,
+						&SURF),
+	    targetid = SUR,
+            targetos = MOD_ENV.md_id.osnum); 
+
+	if( !(stat&1) ){
+		#ifdef DEBUG
+			write(" error in EMplace_surface_of_projection \n");
+		#endif
+
+   		if( ( fabs(st_len) > EPSILON ) || 
+		    (fabs((1.0 - sw_len)) > EPSILON ) )
+     		ci$send(msg      = message GRgraphics.GRdelete(&msg,&MOD_ENV), 
+             		targetid = GCV.objid, targetos = GCV.osnum );
+     		SOL.objid = NULL_OBJID;
+		return;
+	}
+
+   }
+   else{
+	SUR = NULL_OBJID;
+	SURF = NULL_OBJID;
+
+        stat = ci$send( msg = message EMSproject.EMplace_surface_of_projection(
+                                                &cst,
+                                                &GCV,
+                                                &curve_module_info,
+                                                NULL,
+                                                0,
+						temp_rts[2].var.point_st.pt,
+						temp_rts[3].var.point_st.pt,
+                                                1,
+						&SURF),
+	    		targetid = SUR,
+            		targetos = MOD_ENV.md_id.osnum); 
+        as$status(sts = stat) ;
+
+   	if ( !(stat&1) ){
+		SOL.objid = NULL_OBJID;
+		return;
+   	}
+
+     }
+  }
+
+  #ifdef DEBUG
+	printf("Before EMSsfsolid.EMcap_thyself()... \n") ;
+  #endif
+
+  stat = ci$send( msg = message EMSsfsolid.EMcap_thyself ( 
+						&EMSrtmsg, &cst, &SURF ),
+           targetid = SOL.objid, targetos = SOL.osnum );
+
+    if( !(stat&EMSrtmsg&1) ){
+     SOL.objid = NULL_OBJID;
+     ci$send(msg      = message GRgraphics.GRdelete(&msg,&MOD_ENV), 
+             targetid = SURF );
+  }
+
+}

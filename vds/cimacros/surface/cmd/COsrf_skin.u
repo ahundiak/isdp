@@ -1,0 +1,249 @@
+/* $Id: COsrf_skin.u,v 1.1.1.1 2001/01/04 21:07:21 cvs Exp $  */
+
+/* --------------------------------------------------------------------
+ * I/VDS
+ *
+ * File:	vds/cimacros/surface/cmd / COsrf_skin.u
+ *
+ * Description:
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ *	$Log: COsrf_skin.u,v $
+ *	Revision 1.1.1.1  2001/01/04 21:07:21  cvs
+ *	Initial import to CVS
+ *	
+# Revision 1.1  1998/04/29  16:27:20  pinnacle
+# VDS 2.5.1
+#
+# Revision 1.1  1997/05/08  13:20:44  pinnacle
+# New project VDS 250
+#
+# Revision 1.1  1996/07/19  20:33:52  pinnacle
+# Create VDS 241 project
+#
+# Revision 1.3  1996/04/23  14:25:58  pinnacle
+# Replaced: cimacros/surface/cmd/COsrf_skin.u for:  by yzhu for vds.240
+#
+# Revision 1.2  1996/04/11  19:07:50  pinnacle
+# Replaced: cimacros/surface/cmd/COsrf_skin.u for:  by yzhu for vds.240
+#
+# Revision 1.1  1994/11/14  22:42:32  pinnacle
+# Create vds.240 from vds.232
+#
+# Revision 1.1  1994/11/08  16:07:00  pinnacle
+# create vds.232
+#
+ *
+ * History:
+ *	MM/DD/YY	AUTHOR		DESCRIPTION
+ *      4/10/96         yzhu            Add entry for srf_skin3 and srf_skin4
+ *                                      srf_skin: for one trace + no compcurve
+ *                                                cross       
+ *                                      srf_skin2: for two trace + no compcurve
+ *                                                cross       
+ *                                      srf_skin3: for one trace + compcureve
+ *                                                cross       
+ *                                      srf_skin4: for two trace + compcureve
+ *                                                cross       
+ * -------------------------------------------------------------------*/
+
+/*
+	VDS 2.1 - PPM macro library
+	92/07/27	Get rid of internal data (not used)
+	93/01/19	Put filters to locate curves only...
+ */
+   
+#include "ciminimum.h"
+#include "cimacros.h"
+#include "OMprimindex.h"
+#include "OMprimitives.h"
+
+#define  MAX_CHA 	80
+
+struct GRmd_env		MOD_ENV;
+struct GRid 		TEMP[33];
+GRobj 			MAC1;
+IGRshort           	num_cross;
+IGRint 			suc, num_trace,stat;
+IGRchar            	txt[20], mes_f[80];
+IGRchar 		class_name[MAX_CHA];
+
+extern ASmake_source_from_env();
+
+main()
+{
+  strcpy(mes_f,"<Assoc> Place Skinning Surface");
+  message(mes_f);
+  while(1)
+  {
+
+	  if ( !ci$locate ( prompt       = "Identify first trace",
+                            properties   = LC_LC_ONLY | LC_DP_ONLY | LC_RW,
+         	  	    owner_action = LC_RIGID_COMP  |
+                	                   LC_RIGID_OWNER | LC_FLEX_COMP |
+                        	           LC_FLEX_OWNER  | LC_REF_OBJECTS,
+			    classes      = "GRcurve",	/* 93/01/19 */
+		    	    obj     	 = &(TEMP[0].objid),
+			    osnum   	 = &(TEMP[0].osnum),
+			    md_env       = &MOD_ENV   ) ) exit;
+     	  ASmake_source_from_env( &TEMP[0],&MOD_ENV,&TEMP[0] );	
+
+  	  if ( !ci$locate ( prompt       = "Identify second trace/Move-on",
+                            properties   = LC_LC_ONLY | LC_DP_ONLY | LC_RW,
+           		    owner_action = LC_RIGID_COMP  |
+                	                   LC_RIGID_OWNER | LC_FLEX_COMP |
+                	                   LC_FLEX_OWNER  | LC_REF_OBJECTS,
+			    classes      = "GRcurve",	/* 93/01/19 */
+			    obj          = &(TEMP[1].objid),
+			    osnum        = &(TEMP[1].osnum),
+			    md_env       = &MOD_ENV   ) )
+	  {
+		num_trace = 0;
+		num_cross = 1;
+  	  }
+	  else
+	  {
+		num_trace = 1;
+		num_cross = 2;
+     	        ASmake_source_from_env( &TEMP[1],&MOD_ENV,&TEMP[1] );	
+
+	  }
+
+	  while(1)
+	  {
+	     strcpy(txt,"Identify cross ");
+	     strcat(txt,itoa(num_cross-num_trace));
+
+	     if(!ci$locate( prompt  = txt,
+                            properties   = LC_LC_ONLY | LC_DP_ONLY | LC_RW,
+  	        	    owner_action = LC_RIGID_COMP  |
+          		                   LC_RIGID_OWNER | LC_FLEX_COMP |
+                		           LC_FLEX_OWNER  | LC_REF_OBJECTS,
+			    classes      = "GRcurve",	/* 93/01/19 */
+	        	    obj     = &(TEMP[num_cross].objid),
+                	    osnum   = &(TEMP[num_cross].osnum),
+		            md_env       = &MOD_ENV ) ) break;
+
+     	  ASmake_source_from_env( &TEMP[num_cross],&MOD_ENV,&TEMP[num_cross] );	
+
+	     num_cross = num_cross + 1;
+	  }
+
+	  if( num_trace == 0 )
+	  {
+	  	if( num_cross < 2 ) exit;
+
+	  	MAC1 = NULL_OBJID;
+   	        ci$get_module_info(md_env = &MOD_ENV);
+
+                /* TR 179527187 */
+  		class_name[0] = '\0';
+  		stat=
+  		om$get_classname(
+                        classname = class_name,
+                        objid   = TEMP[1].objid,
+                        osnum   = TEMP[1].osnum  );
+
+  		if(strcmp("AScompcurve", class_name) == 0) { 
+                        ci$send( msg        = message nci_macro.init( &suc,
+                                                              0,
+                                                              "srf_skin3",
+                                                              num_cross,
+                                                              TEMP,
+                                                              NULL,
+                                                              &MOD_ENV ),
+                        targetid = MAC1,
+                        targetos = MOD_ENV.md_id.osnum );
+
+                   if( suc == 0 ){
+                        write("placement of nci_macro \"srf_skin3\" failed\n");
+                        status("placement of nci_macro \"srf_skin3\" failed");
+                        ci$send(msg = message Root.delete(0),
+                                targetid = MAC1,
+                                targetos = MOD_ENV.md_id.osnum );
+                   }
+                }
+
+                else { 
+	  	ci$send( msg	    = message nci_macro.init( &suc,
+							      0,
+							      "srf_skin",
+							      num_cross, 
+							      TEMP,
+							      NULL,
+							      &MOD_ENV ),
+		        targetid = MAC1,
+		        targetos = MOD_ENV.md_id.osnum );
+
+		    if( suc == 0 ){
+			write("placement of nci_macro \"srf_skin\" failed\n");
+			status("placement of nci_macro \"srf_skin\" failed");
+      			ci$send(msg = message Root.delete(0),
+		      		targetid = MAC1,
+		      		targetos = MOD_ENV.md_id.osnum );
+		    }
+                }
+
+	  }
+	  else
+	  {
+	  	if( num_cross < 3 ) exit;
+
+		MAC1 = NULL_OBJID;
+   	        ci$get_module_info(md_env = &MOD_ENV);
+
+                /* TR 179527187 */
+                class_name[0] = '\0';
+                stat=
+                om$get_classname(
+                        classname = class_name,
+                        objid   = TEMP[2].objid,
+                        osnum   = TEMP[2].osnum  );
+
+                if(strcmp("AScompcurve", class_name) == 0) {
+
+	  	    ci$send( msg	    = message nci_macro.init( 	&suc,
+							     	0,
+								"srf_skin4",
+								num_cross,
+								TEMP,
+								NULL,
+								&MOD_ENV ),
+			 targetid = MAC1,
+        	   	 targetos = MOD_ENV.md_id.osnum );
+		    if( suc == 0 ){
+			write("placement of nci_macro \"srf_skin4\" failed\n");
+			status("placement of nci_macro \"srf_skin4\" failed");
+      			ci$send(msg = message Root.delete(0),
+		      		targetid = MAC1,
+		      		targetos = MOD_ENV.md_id.osnum );
+		    }
+	        }
+                else {
+                  ci$send( msg            = message nci_macro.init(   &suc,
+                                                                0,
+                                                                "srf_skin2",
+                                                                num_cross,
+                                                                TEMP,
+                                                                NULL,
+                                                                &MOD_ENV ),
+                         targetid = MAC1,
+                         targetos = MOD_ENV.md_id.osnum );
+                    if( suc == 0 ){
+                        write("placement of nci_macro \"srf_skin2\" failed\n");
+                        status("placement of nci_macro \"srf_skin2\" failed");
+                        ci$send(msg = message Root.delete(0),
+                                targetid = MAC1,
+                                targetos = MOD_ENV.md_id.osnum );
+                    }
+                }
+             }
+  }
+}
+wakeup()
+{
+	  message(mes_f);
+}
+
