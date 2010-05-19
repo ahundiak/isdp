@@ -1,0 +1,97 @@
+/* -----------------------------------------------
+ * Provides a means to sync the std_pcmk table between
+ * Two database
+ *
+ * From the source database, 
+ * run ci=pcmk_list which generates pcmk_list.txt
+ *
+ * Login to the destination database and
+ * run ci=pcmk_update
+ *
+ * Be careful about editing pcmk_list.txt, mess it up and the
+ * table will not be loaded properly
+ */
+#include "VDppl.h"
+#include "VDrisc.h"
+
+IGRint cnt;
+
+/* -----------------------------------------------
+ * Insert 1 record with some error checking
+ * Fail silently, let the user check his work
+ */
+IGRint insert(buf)
+  IGRchar *buf;
+{
+  IGRstat retFlag;
+  
+  IGRchar sql[128];
+  IGRchar pcmk[64];
+  IGRchar *p;
+  
+  // Init
+  retFlag = 0;
+  
+  // Peel piece marks
+  p = strchr(buf,' ');
+  if (p == NULL) goto wrapup;
+  *p = 0;
+  strcpy(pcmk,buf);
+  if (strlen(pcmk) != 4) goto wrapup;
+  
+  // Fix up key
+  strcpy(buf,p+1);
+  for(p = buf + strlen(buf) - 1; (p >= buf) && (*p <= ' '); p = p - 1);
+  *(p+1) = 0;
+  
+  // Build the update
+  sprintf(sql,"Insert into std_pcmk values ('%s',%s);",buf,pcmk);
+  vdris$Execute(sql = sql);
+  
+  // Done
+  cnt = cnt + 1;
+  retFlag = 1;
+  
+ wrapup:
+  return retFlag;
+}
+
+/* -----------------------------------------------
+ * Main Processor
+ */ 
+main()
+{
+  FILE   *file;
+  IGRchar buf[256];
+  
+  // Init
+  file = NULL;
+  cnt  = 0;
+  
+  // Say Hi
+  UI_status("Updating std_pcmk from pcmk_list.txt");
+  
+  // Make sure file is around
+  file = fopen("pcmk_list.txt","rt");
+  if (file == NULL) {
+    UI_status("File 'pcmk_list.txt' not found");
+    goto wrapup;
+  }
+
+  // Empty the table
+  vdris$Execute(sql = "Delete from std_pcmk;");
+
+  // Cycle through
+  while(fgets(buf,sizeof(buf),file)) {
+    insert(buf);
+  }
+  
+  // Close up
+  fclose(file);
+  file = NULL;
+  sprintf(buf,"Inserted %d standard piece marks",cnt);
+  UI_status(buf);
+  
+ wrapup:
+  if (file) fclose(file);
+}
