@@ -1,0 +1,1226 @@
+/* $Id: ext_bound2.u,v 1.2 2001/01/11 19:04:50 art Exp $  */
+
+/* --------------------------------------------------------------------
+ * I/VDS
+ *
+ * File:	vds/cimacros/surface/macros / ext_bound.u
+ *
+ * Description:
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ *	$Log: ext_bound2.u,v $
+ *	Revision 1.2  2001/01/11 19:04:50  art
+ *	sp merge
+ *	
+# Revision 1.1  2000/10/16  17:21:20  pinnacle
+# ah
+#
+# Revision 1.2  2000/03/28  17:18:08  pinnacle
+# ah
+#
+# Revision 1.1  1999/12/06  17:16:28  pinnacle
+# tr179900967
+#
+# Revision 1.1  1998/04/29  16:27:20  pinnacle
+# VDS 2.5.1
+#
+# Revision 1.1  1997/05/08  13:20:44  pinnacle
+# New project VDS 250
+#
+# Revision 1.1  1996/07/19  20:33:52  pinnacle
+# Create VDS 241 project
+#
+# Revision 1.1  1994/11/14  22:42:32  pinnacle
+# Create vds.240 from vds.232
+#
+# Revision 1.1  1994/11/08  16:07:00  pinnacle
+# create vds.232
+#
+ *
+ * History:
+ *	MM/DD/YY	AUTHOR		DESCRIPTION
+ *
+ * -------------------------------------------------------------------*/
+
+/*
+	------------------------------------------------------------------
+
+	File Name :		ext_bound.u
+	Creation date :		December 16, 1991
+	Revision date : 	November 11, 1992
+	Revision date : 	February 01, 1993
+	Product name :		I/VDS 2.1 - PPM macro library
+	Author :		Alain CLAUDE
+				ISDC Paris
+
+	Description :
+
+		This macro allows to get the external boundaries of a given
+		surface (EMSsurface), and to build a composite curve (class
+		AScompcurve) from the EMS_OPT_CONNECTABLE edges of a 
+		composite surface (EMScompsurf) or of a simple surface
+		(EMSsubbs).
+		
+		Use EMSsurface.EMgetedges() message.
+
+	History :
+		91/12/31	Rename xbound macro to ext_bound, and make
+			the previous release of ext_bound (91/12/11)
+			obsolete.
+		92/01/20	Use EMSedge.EMgetxyzobj() instead of
+			EMSedge.EMget_bcxyz_geom() to allow ext_bound
+			macro to be nested in another macro in a library
+			(in this case MOD_ENV.md_id.osnum != 2).
+		92/07/03	Put graphic properties (displayable, locatable)
+			of macro to the foot if it is a composite curve.
+		92/08/04	Set the number of feet to 100
+		92/08/12	GRcopy doesn't return MSSUCC in 2.0
+		92/08/14	EMgetxyzobj doesn't return EMS_S_SUCCESS in 2.1
+		92/11/11	Fix symbology initialization problem
+		93/02/01	Change GRcompcurve to AScompcurve, so
+				that other associative elements can
+				attach to the feet, when there's more than one
+				boundary, e.g. edge attributes.
+	        93/08/23        Jean Jasinczuk:
+		                Test Equality between point with bas tol in
+				find_compcurve_edges and not with EPSILON
+
+  99/11/19 ah Cloned ext_bound, have it use the neat_plate routines for 
+              calculating surface edges
+
+  00/03/28 ah Chopped it down even further, place/compute does everything
+	------------------------------------------------------------------
+ */
+
+#if 0
+#define DEBUG 	1	 /* for debugging purpose */
+#define DEBUGPLUS 	1	 /* for debugging purpose */
+#endif
+
+#define MACRO_NAME	"ext_bound2"
+#define MAX_TEMP	1
+#define MAX_FEET	100
+#define MAX_CHAR_FEET	10
+
+#if 0
+#define EPSILON		1.0E-7
+#endif
+
+#include <stdio.h>
+#include "cieveryone.h"
+#include "cimacros.h"
+#include "ci_mac_def.h"
+
+#include "msdef.h"
+#include "nddef.h"
+#include "macro.h"
+#include "grmacros.h"  
+#include "EMSmsgdef.h"
+#include "EMSopt.h"
+#include "EMSbnddef.h"
+#include "EMSbnd.h"
+#include "grdpbdef.h"
+#include "grdpbmacros.h"
+
+#include "AS_status.h"
+
+#include "VDppl.h"
+
+extern char *malloc() ;
+extern int  free()    ;
+extern double fabs()  ;
+extern  sleep() ;		/* temporary */
+extern  GRdisplay_object() ;	/* temporary */
+extern	ASget_active_symb(), ASsuper_construct() ;
+extern  pr_mat() ;		/* see $ASSRC/gopara */
+extern int VDSadj_pt();       /* In VDSspace/imp : test equality of two points*/
+extern int GRdpb_get();
+
+struct GRid CI_MACRO_ID ;    
+// struct GRmd_env MOD_ENV ; 
+
+/* Definition of edges_info_def structure (this PPL file only) */
+struct edges_info_def {
+   IGRboolean  phy_closed ; 	/* 0 => edge is not physically closed    */
+   IGRboolean  in_usage   ;	/* 1 => edge has been "treated"          */
+   IGRpoint    point1 	  ;	/* First  end point of edge */
+   IGRpoint    point2     ;	/* Second end point of edge */
+   IGRpoint    bout	  ;	/* either point1 or point 2 */
+   } ;
+
+
+/*
+    -------------------------------------------------------------------------
+    IGRlong make_loopset() :
+    ----------------------
+	If no loopset exists, just create it.
+	We suppose that a surface of EMScompsurf class has a loopset for
+	each of its sub-surfaces of EMSsubbs class.
+
+	A return code of 1 indicates that there a successful completion.
+    -------------------------------------------------------------------------
+*/
+
+IGRlong make_loopset(OBJptr, OBJ_ENVptr)
+	struct GRid	*OBJptr     ; /* I */
+	struct GRmd_env	*OBJ_ENVptr ; /* I */
+{
+IGRlong			sts, msg ;
+OMuword			surf_cl  ;
+OMuint			count_loop ;
+OM_S_CHANSELECT 	to_loopset ;
+
+#ifdef DEBUG
+printf("Call to make_loopset() for surface %d/%d\n", OBJptr->objid,
+						     OBJptr->osnum) ;
+printf("OBJ_ENV.md_id objid/osnum  = %d/%d \n",  OBJ_ENVptr->md_id.objid,
+						 OBJ_ENVptr->md_id.osnum) ;
+printf("OBJ_ENV.md_env.matrix_type = %d \n",
+					OBJ_ENVptr->md_env.matrix_type) ;
+#endif
+
+sts = om$get_classid(	osnum		= OBJptr->osnum,
+			objid		= OBJptr->objid,
+			p_classid	= &surf_cl) ;
+if (sts != OM_S_SUCCESS) {
+	#ifdef DEBUG
+	om$report_error(sts = sts) ;
+	printf("make_loopset() : error in om$get_classid() \n") ;
+	#endif
+	return 0 ; /* error */
+	}
+
+if (om$is_ancestry_valid(superclassname = "EMSsubbs",
+		         subclassid   = surf_cl) == OM_S_SUCCESS) {
+	#ifdef DEBUGPLUS
+	printf("make_loopset() : EMSsubbs case \n") ;
+	#endif
+
+	count_loop = 0 ;
+	to_loopset.type       = OM_e_name ;
+	to_loopset.u_sel.name = "EMSsubbs.to_loopset" ; 	
+	sts = om$get_channel_count(osnum	= OBJptr->osnum,
+				objid 		= OBJptr->objid,
+				p_chanselect 	= &to_loopset,
+				count		= &count_loop) ;
+	if (sts != OM_S_SUCCESS) {
+		#ifdef DEBUG
+		printf("objid/osnum = %d/%d \n", OBJptr->objid, OBJptr->osnum) ; 
+		/* */
+		om$report_error(sts = sts) ;
+		printf("make_loopset() : error in om$get_channel_count() \n") ;
+		#endif
+		return 0 ; /* error */
+		}
+	if (! count_loop) {
+		#ifdef DEBUG
+		printf("---> make a loopset \n") ;
+		#endif
+		sts = ci$send(	msg = message EMSsubbs.EMmk_nat_bdry(&msg,
+						&OBJ_ENVptr->md_env,
+						NULL),
+				targetid = OBJptr->objid,
+				targetos = OBJptr->osnum) ;
+		as$status(sts = sts) ;
+		}
+	} /* if */ 
+
+/* else : Object is of EMScompsurf class => NOP */
+
+return 1 ; /* OK */
+
+} /* make_loopset() */
+
+
+/*
+    -------------------------------------------------------------------------
+    IGRint next_suitable_edge() :
+    ----------------------
+	This function returns the index of the next edge which is available 
+	(in_usage == 0) and not physically closed (phy_closed == 0), from a 
+	given origine in the list edges_info.
+
+	This function is used by find_compcurve_edges(). 
+
+	Convention : if no suitable edge has been found, num_edges is returned
+		(this indicates that the list has been scrolled).
+   -------------------------------------------------------------------------
+*/
+
+IGRint next_suitable_edge(num_edges, edges_info, origine)
+	IGRint			num_edges	 ; /* I */
+	struct edges_info_def	*edges_info	 ; /* I */
+	IGRint			origine		 ; /* I */ 
+{
+IGRint	iedge ;
+
+#ifdef DEBUGPLUS
+printf("     Call to next_suitable_edge() \n") ;
+#endif
+
+if (origine >= num_edges) {
+	return num_edges ;	/* convention */
+	}
+for (iedge = origine ; iedge < num_edges ; iedge = iedge + 1) {
+	if ((edges_info[iedge].in_usage   == 0) &&
+	    (edges_info[iedge].phy_closed == 0)) {
+		break ; 	/* next suitable edge */
+		}
+	}
+return iedge ;
+} /* next_suitable_edge() */
+
+
+/*
+    -------------------------------------------------------------------------
+    IGRlong find_compcurve_edges() :
+    ------------------------------
+	also known as "bout a bout" (French expression).
+
+	Given a list of edges, this function creates a list composed of
+	the first next available edges which are not physically closed,
+	in order to build later a composite curve.
+
+	A return code of 1 indicates that there is a solution.
+   -------------------------------------------------------------------------
+*/
+
+IGRlong find_compcurve_edges
+		(num_edges, build_edges, edges_info, compcurve_edges, iptr)
+	IGRint			num_edges	 ; /* I */
+	struct GRlc_info 	*build_edges     ; /* I */
+	struct edges_info_def	*edges_info	 ; /* I */
+	struct GRlc_info 	*compcurve_edges ; /* O */
+	IGRint			*iptr		 ; /* O */ /* Number of edges */
+{
+IGRint ipass, istart, inext, icur, icomp, flag, origine ;
+double                  tol;
+long                    nput, nret, msg;
+
+
+#ifdef DEBUGPLUS
+printf("Call to find_compcurve_edges() \n") ;
+#endif
+
+/* Jean 93/08/23 */
+/* Get the basis tolerance */
+nput = sizeof(tol);
+gr$get_basis_tolerance (msg = &msg, sizbuf = &nput,
+   buffer = &tol, nret = &nret) ;
+
+#ifdef DEBUGPLUS
+printf("Tol is %g\n",tol);
+#endif 
+
+istart = next_suitable_edge(num_edges, edges_info, 0) ;
+if (istart == num_edges) {
+	/* no more suitable edge */
+	return 0 ; /* no solution */
+	}
+
+edges_info[istart].bout[0] = edges_info[istart].point2[0] ; /* choice */
+edges_info[istart].bout[1] = edges_info[istart].point2[1] ; 
+edges_info[istart].bout[2] = edges_info[istart].point2[2] ; 
+
+icomp   = 0 ;
+edges_info[istart].in_usage = 1 ;
+compcurve_edges[icomp] = build_edges[istart] ;
+icomp   = icomp + 1  ;
+icur    = istart     ;
+origine = icur + 1   ;
+
+for (ipass = 0 ; ipass < num_edges-1 ; ipass = ipass+1) {
+
+	#ifdef DEBUGPLUS
+	printf("--------------- Pass number %d \n", ipass+1) ;
+	#endif
+
+   while (1) {
+	flag = 0 ; /* reset flag */
+	inext = next_suitable_edge(num_edges, edges_info, origine) ;
+
+	if (inext == num_edges) {
+		break ; /* break while() */
+		}
+
+/* Jean 93/08/23 Modify the test */
+	if (VDSadj_pt(edges_info[inext].point1,edges_info[icur].bout,tol))
+#if 0
+ (fabs(edges_info[inext].point1[0] - edges_info[icur].bout[0]) < EPSILON) &&
+ (fabs(edges_info[inext].point1[1] - edges_info[icur].bout[1]) < EPSILON) &&
+ (fabs(edges_info[inext].point1[2] - edges_info[icur].bout[2]) < EPSILON) )
+#endif
+	 { 
+		edges_info[inext].bout[0] = edges_info[inext].point2[0] ; 
+		edges_info[inext].bout[1] = edges_info[inext].point2[1] ; 
+		edges_info[inext].bout[2] = edges_info[inext].point2[2] ; 
+		flag = 1 ; 
+		}
+
+	if (VDSadj_pt(edges_info[inext].point2,edges_info[icur].bout,tol))
+#if 0
+ (fabs(edges_info[inext].point2[0] - edges_info[icur].bout[0]) < EPSILON) &&
+ (fabs(edges_info[inext].point2[1] - edges_info[icur].bout[1]) < EPSILON) &&
+ (fabs(edges_info[inext].point2[2] - edges_info[icur].bout[2]) < EPSILON) )
+#endif
+	      {
+		edges_info[inext].bout[0] = edges_info[inext].point1[0] ; 
+		edges_info[inext].bout[1] = edges_info[inext].point1[1] ; 
+		edges_info[inext].bout[2] = edges_info[inext].point1[2] ; 
+		flag = 1 ; 
+	      }
+
+	if (flag) {
+		/* "bout a bout" possible with this inext */
+		#ifdef DEBUGPLUS
+		printf("Bout a bout possible for edges %d and %d\n", icur, inext) ;
+		#endif
+		if (icomp >= num_edges) {
+			#ifdef DEBUG
+			printf("Error in find_compcurve_edges() \n") ;
+			#endif
+			return 0 ; /* error */
+			}
+		edges_info[inext].in_usage = 1 ; /* mark up */
+		compcurve_edges[icomp] = build_edges[inext] ;
+		icomp = icomp + 1 ;
+		icur  = inext ;
+		origine = icur+1 ;
+		} /* if flag */
+	else {
+		origine = origine + 1 ; /* look at next of next in this pass */
+		}
+      } /* while (1) */
+
+   if (VDSadj_pt(edges_info[istart].point1,edges_info[icur].bout,tol))
+#if 0
+ (fabs(edges_info[istart].point1[0] - edges_info[icur].bout[0]) < EPSILON) &&
+ (fabs(edges_info[istart].point1[1] - edges_info[icur].bout[1]) < EPSILON) &&
+ (fabs(edges_info[istart].point1[2] - edges_info[icur].bout[2]) < EPSILON) )
+#endif
+    {
+	/* => We are ready to build a closed composite curve */
+	break ;       /* => break for () */
+	}
+   else {
+	origine = 0 ; /* => start another pass */
+	}
+
+   }    /* for ()    */
+
+*iptr = icomp ;
+return 1 ; /* There is a solution */
+} /* find_compcurve_edges() */
+
+
+/*
+    -------------------------------------------------------------------------
+    IGRlong evaluate_xbound() :
+    -------------------------
+		Use EMSsurface.EMgetedges() message which works for both
+	the EMSsubbs class and both the EMScompsurf class.
+
+    Main internal variables :
+	num_edges	number of found edges (EMS_OPT_CONNECTABLE)
+	num_sol		number of solutions (= number of macro feet)
+	edges_list	list of edges in the UV  space
+	build_edges	list of constructed edges in the XYZ space
+	edges_info	list of associated information about edges
+	compcurve_edges list of "suitable" edges to make a composite curve
+    -------------------------------------------------------------------------
+*/
+extern VDefpGenerateNeatEdges();
+
+IGRlong evaluate_xbound(compute_flag, BOUNDtab)
+	IGRboolean  	compute_flag ; /* I : FALSE (place), TRUE (compute) */
+	struct GRid 	*BOUNDtab ;    /* O : list of external boundaries   */   
+	/* a boundary is either a composite curve or a physically closed edge */
+{
+IGRlong rc_evaluate, sts, msg, option, rotten  ;
+IGRint	i, j, buf_size, iedge, num_edges, num_ent, num_sol ;
+IGRint			surf_copy ; /* flag */
+OMuint			count     ;
+OM_S_CHANSELECT		to_owners ;
+GRobjid			newobjid  ;
+IGRshort		active_level   ;
+struct IGRdisplay	active_display ;
+struct GRlc_info	*build_edges     ;
+struct GRlc_info 	*compcurve_edges ; 
+struct GRid		*edges_list  ;
+struct GRid		OBJ, CURVE   ;
+struct GRmd_env		OBJ_ENV ;
+
+struct edges_info_def 	*edges_info ;
+
+GRobjid			xyzobj  ; 	/* EMSedge.EMgetxyzobj() */
+struct GRsymbology	xyzsymb ; 	/* EMSedge.EMgetxyzobj() */
+struct GRprops		properties ;	/* GRvg.GRgeomprops()    */
+
+IGRshort		action, macro_props, comp_props ; /* 92/07/03 */
+
+TGRobj_env srfOE;
+IGRint     edgeCnt;
+
+
+#if 0
+	printf("\n") ;
+	printf("   macro id/osnum    = %d/%d \n", CI_MACRO_ID.objid, CI_MACRO_ID.osnum) ;  
+	printf("   modulenv id/osnum = %d/%d \n", MOD_ENV.md_id.objid, MOD_ENV.md_id.osnum) ;  
+	printf("   modulenv mattype  = %d \n\n",  MOD_ENV.md_env.matrix_type)  ;
+	pr_mat("   modulenv matrix            ",  4, 4, MOD_ENV.md_env.matrix) ;
+#endif
+
+
+/* Initialization */
+rc_evaluate  = 0 ;
+num_sol      = 0 ; 		     /* Number of solutions (feet)         */
+option       = EMS_OPT_CONNECTABLE ; /* Option for EMSsurface.EMgetedges() */
+edges_list   = NULL ;
+build_edges  = NULL ;
+edges_info   = NULL ;
+
+/* */
+sts = ci$send(msg = message NDnode.NDget_objects(ND_ROOT,&OBJ,1,NULL,
+                                             0,1,&num_ent),
+               targetid = CI_MACRO_ID.objid,
+               targetos = CI_MACRO_ID.osnum);
+if(!(sts & 1) || (num_ent != 1)){
+	#ifdef DEBUG
+	printf("Problem when sending NDnode.NDget_objects() message \n") ;
+	#endif
+	rc_evaluate = 0 ;
+	goto quit ;
+	}
+
+sts = ci$send(	msg = message NDnode.ASreturn_go(&OBJ,
+				  &OBJ_ENV.md_env.matrix_type,
+				  OBJ_ENV.md_env.matrix),
+                targetid = OBJ.objid,
+                targetos = OBJ.osnum) ;
+if (!(sts & 1)) {
+	#ifdef DEBUG
+	printf("Problem when sending NDnode.ASreturn_go() message \n") ;
+	#endif
+	rc_evaluate = 0 ;
+	goto quit ;
+	}
+OBJ_ENV.md_id.objid = MOD_ENV.md_id.objid ;
+OBJ_ENV.md_id.osnum = OBJ.osnum ;
+
+/* 
+	0) Copy of the parent surface in order to get a "pure" surface 
+	   (not attached to a solid for example) if this is a owned
+	   surface.  Otherwise, EMS_OPT_CONNECTABLE gets confused... 
+ */
+
+to_owners.type		= OM_e_name ;
+to_owners.u_sel.name 	= "GRconnector.to_owners" ;
+count     = 0 ;
+surf_copy = 0 ;
+
+sts = om$get_channel_count(	osnum		= OBJ.osnum,
+				objid		= OBJ.objid,
+				p_chanselect	= &to_owners,
+				count		= &count) ;
+if (sts != OM_S_SUCCESS) {
+	#ifdef DEBUG
+	om$report_error(sts = sts) ;
+	printf("evaluate_xbound() : om$get_channel_count() failed \n") ;
+	#endif
+	rc_evaluate = 0 ; /* error */
+	goto quit ;
+	}
+
+/* if ((count != 0) || (OBJ.osnum != MOD_ENV.md_id.osnum)) { */
+if (count != 0) {
+	/* 
+	   Surface is owned (e.g. face of a solid) => just copy it
+	 */
+	#ifdef DEBUG
+	printf("objid/osnum of input surface is %d/%d \n", OBJ.objid,
+							   OBJ.osnum) ;
+	#endif
+	sts = ci$send(	msg = message EMSsurface.GRcopy(&msg,
+							&OBJ_ENV,
+							&MOD_ENV,
+							&newobjid),
+			targetid = OBJ.objid, 
+			targetos = OBJ.osnum) ;
+	if (sts & msg & 1) {	/* success */
+		OBJ.objid = newobjid ;
+		OBJ.osnum = MOD_ENV.md_id.osnum ;
+		/* */
+		OBJ_ENV.md_id.objid = MOD_ENV.md_id.objid ;
+		OBJ_ENV.md_id.osnum = MOD_ENV.md_id.osnum ;
+		OBJ_ENV.md_env.matrix_type = MOD_ENV.md_env.matrix_type ;
+		for (i = 0 ; i < 16 ; i = i+1) {
+			OBJ_ENV.md_env.matrix[i] = MOD_ENV.md_env.matrix[i] ;
+			}
+		/* */
+		surf_copy = 1        ; /* flag */
+		#ifdef DEBUG
+		printf("objid/osnum of copied surface is %d/%d \n", OBJ.objid,
+								    OBJ.osnum) ;
+		#endif
+		}
+	else {
+		#ifdef DEBUG
+		om$report_error(sts = sts) ;
+		printf("evaluate_xbound() : EMSsurface.GRcopy() failed\n") ;
+		#endif
+ 		sts = 0 ; as$status(sts = sts) ; /* go on however */
+		}
+	} /* if count or surface in another OS */
+
+
+
+/*
+	1) Loopset check (make natural boundaries if necessary)
+ */
+
+sts = make_loopset(&OBJ, &OBJ_ENV) ;
+if (!(sts & 1)) {
+	#ifdef DEBUG
+	printf("Warning : function make_loopset() unsuccessful \n") ;
+	#endif
+	}
+
+  /* ---------------------------------------------------------------------
+   * 29 November 1999
+   * Skip rest of the bs, just use
+   * neat_plate routine to gather list of edges
+   */
+  srfOE.obj_id  = OBJ;
+  srfOE.mod_env = OBJ_ENV;
+
+  VDefpGenerateNeatEdges(&srfOE,&MOD_ENV,&edgeCnt,BOUNDtab);
+
+  if (edgeCnt > 0) rc_evaluate = 1;
+  else             rc_evaluate = 0;
+
+  goto quit ;
+
+/*
+	2) Get the surface edges (option EMS_OPT_CONNECTABLE) in (U, V) space,
+	   and convert them into the XYZ space.
+ */
+
+num_edges = 0;
+sts = ci$send(msg = message EMSsurface.EMgetedges(
+				&msg,
+				option,
+				&edges_list,
+				&buf_size,
+				&num_edges,
+				NULL,
+ 				NULL,
+				NULL,
+				NULL),
+	targetid = OBJ.objid, 
+	targetos = OBJ.osnum) ;
+
+if (!(sts & 1)) {
+	#ifdef DEBUG
+	printf("Problem when sending EMSsurface.EMgetedges() message \n") ;
+	#endif
+	rc_evaluate = 0 ;
+	goto quit ;
+	}
+
+if (msg != EMS_S_Success) {
+	#ifdef DEBUG
+	printf("Error in processing EMSsurface.EMgetedges() message \n") ;
+	#endif
+	rc_evaluate = 0 ;
+	goto quit ;
+	}
+
+#ifdef DEBUG
+printf("\n");
+printf("nb edges found : %d\n", num_edges);
+#endif
+
+/* */
+if (num_edges == 0) {
+	#ifdef DEBUG
+	printf("evaluate_xbound() : no connectable edge found\n");
+	#endif
+	status("macro ext_bound : no connectable edge found\n") ;
+	rc_evaluate = 0 ; goto quit ;
+	}
+
+/* Conversion to the XYZ space */
+
+sts = ASget_active_symb(&active_level, &active_display) ;
+if (!(sts & 1)) {
+	#ifdef DEBUG
+	printf("evaluate_xbound() : ASget_active_symb() failed... \n") ;
+	#endif
+	/* continue however */
+	}
+
+build_edges     = (struct GRlc_info *) malloc
+			(sizeof(struct GRlc_info) * num_edges) ;
+edges_info      = (struct edges_info_def *) malloc
+			(sizeof(struct edges_info_def) * num_edges) ;
+compcurve_edges = (struct GRlc_info *) malloc
+			(sizeof(struct GRlc_info) * num_edges) ;
+
+if ( (build_edges == NULL) || 
+     (edges_info == NULL)  || (compcurve_edges == NULL) ) {
+	#ifdef DEBUG
+	printf("evaluate_xbound() : malloc error for build_edges or edges_info or compcurve_edges \n") ;
+	#endif
+	rc_evaluate = 0 ; /* error */
+	goto quit ;
+	}
+
+#ifdef DEBUG
+/* our surface */
+printf("OBJ_ENV %d %d\n",OBJ_ENV.md_id.objid,OBJ_ENV.md_id.osnum);
+printf("mat_type %d\n",OBJ_ENV.md_env.matrix_type);
+pr_mat("OBJ_ENV",4,4,OBJ_ENV.md_env.matrix);
+#endif
+
+for (iedge = 0 ; iedge < num_edges ; iedge = iedge+1) {
+
+	xyzsymb.level        = active_level   ;
+	xyzsymb.display_attr = active_display ; 
+	sts = ci$send(msg = message EMSedge.EMgetxyzobj(
+					&msg,
+					0,		/* options   */
+					&OBJ_ENV.md_env,/* xyzinfo   */
+					NULL,		/* xyzcv     */
+					NULL,		/* xyzcvtype */
+					&xyzsymb,	/* xyzsymb   */
+					NULL,		/* xyzattr   */
+					OBJ.osnum,	/* xyzos     */
+					&xyzobj),	/* Output    */
+		targetid = edges_list[iedge].objid,
+		targetos = edges_list[iedge].osnum) ;
+	if (! (sts & msg & 1)) {
+		sts = 0 ; as$status(sts = sts) ;
+		#ifdef DEBUG
+		printf("evaluate_xbound() : EMSedge.EMgetxyzobj() failed for edge n %d... \n", iedge) ;
+		#endif
+		rc_evaluate = 0 ; goto quit ;
+		}
+	/* */
+	sts = ci$send(	msg = message EMSedge.GRcopy(&msg,
+							&OBJ_ENV,
+							&MOD_ENV,
+							&newobjid),
+			targetid = xyzobj, 
+			targetos = OBJ.osnum) ;
+	if (!(sts & msg & 1)) {
+		sts = 0 ; as$status(sts = sts) ;
+		#ifdef DEBUG
+		printf("evaluate_xbound() : EMSedge.GRcopy() failed for edge n %d... \n", iedge) ;
+		#endif
+		rc_evaluate = 0 ; goto quit ;
+		}
+	
+	build_edges[iedge].located_obj.objid = newobjid ;
+	build_edges[iedge].located_obj.osnum = MOD_ENV.md_id.osnum ;
+	build_edges[iedge].module_info       = MOD_ENV ;
+
+	/* Mark closed edges : 	0   ---> edge is not physically closed */
+	/* 			> 0 ---> edge is physically closed     */
+
+	sts = ci$send(	msg	 = message GRvg.GRgeomprops(&msg,
+		&(build_edges[iedge].module_info.md_env.matrix_type),
+		build_edges[iedge].module_info.md_env.matrix,
+		&properties),
+			targetid = build_edges[iedge].located_obj.objid,
+			targetos = build_edges[iedge].located_obj.osnum ) ;
+	if (!(sts & msg & 1)) {
+		sts = 0 ; as$status(sts = sts) ;
+		#ifdef DEBUG
+		printf("evaluate_xbound() : GRvg.GRgeomprops() failed for edge n %d... \n", iedge) ;
+		#endif
+		rc_evaluate = 0 ; goto quit ;
+		}
+
+	edges_info[iedge].phy_closed = properties.phy_closed ;
+	edges_info[iedge].in_usage   = 0 ;
+
+	/* Get end points for each edge in the XYZ space */
+	sts = ci$send(msg = message GRcurve.GRendpts(&msg,
+			&build_edges[iedge].module_info.md_env.matrix_type,
+			build_edges[iedge].module_info.md_env.matrix,
+			edges_info[iedge].point1,
+			edges_info[iedge].point2),
+		targetid = build_edges[iedge].located_obj.objid,
+		targetos = build_edges[iedge].located_obj.osnum) ;
+	if (!(sts & msg & 1)) {
+		sts = 0 ; as$status(sts = sts) ;
+		#ifdef DEBUG
+		printf("evaluate_xbound() : GRcurve.GRendpts() failed \n") ;
+		#endif
+		rc_evaluate = 0 ; /* error */
+		goto quit ;
+		}
+
+#if 0
+	/* useless */
+	gr$display_object(object_id	= &build_edges[iedge].located_obj,
+			  md_env	= &MOD_ENV,
+			  mode 		= GRhd)     ;	/* highlight draw */
+	printf("Build edge n %d : id/osnum   = %d/%d \n", iedge, build_edges[iedge].located_obj.objid,
+						         build_edges[iedge].located_obj.osnum) ;
+	printf("                  phy_closed = %d \n", edges_info[iedge].phy_closed) ;
+	printf("                  point1     = %f, %f, %f \n", 
+edges_info[iedge].point1[0], edges_info[iedge].point1[1], edges_info[iedge].point1[2]) ;
+	printf("                  point2     = %f, %f, %f \n", 
+edges_info[iedge].point2[0], edges_info[iedge].point2[1], edges_info[iedge].point2[2]) ;
+	sleep(2) ;
+#endif
+
+	} /* for iedge */
+
+/*
+	3) Handle the list of edges, and make composite curve,
+	   and store eventually closed edge (for instance circles 
+	   for a cylindric surface)
+
+	Note : the numbering of the macro feet respects the order with which
+		the edges has been found in the list.
+ */
+
+	while (1) {
+
+		for (iedge = 0 ; iedge < num_edges ; iedge = iedge + 1) {
+			if (edges_info[iedge].in_usage == 0) {
+				break ; 	/* next available edge */
+				}
+			}
+		if (iedge == num_edges) {
+			break ; /* no more available edge => break while */
+			}
+
+		if (edges_info[iedge].phy_closed) {
+			/* 
+			   => Closed edge 
+			 */
+			edges_info[iedge].in_usage = 1 ;
+			if (num_sol < MAX_FEET) {
+				BOUNDtab[num_sol] = build_edges[iedge].located_obj ;
+				num_sol = num_sol + 1 ;
+				}
+			else {
+				printf("Maximum number of feet exceeded for macro %s\n", MACRO_NAME) ;
+				rc_evaluate = 0 ; /* error */
+				goto quit ;
+				}
+			} /* if phy_closed */
+
+		else {
+			/* 
+			   => Make a closed composite curve with edges which
+			   are available (in_usage == 0) and non phy_closed 
+			 */	
+			sts = find_compcurve_edges(num_edges, 
+						build_edges, 
+						edges_info, 
+						compcurve_edges, 
+						&i) ;
+
+			if (!(sts & 1)) {
+				/* Just in case to avoid infinite loop */
+				#ifdef DEBUG
+				printf("Echec pour find_compcurve_edges() \n");
+				#endif
+				break ; /* break while */
+				}
+
+#if 0
+			for (j = 0 ; j < i ; j = j+1) {
+				printf("id/osnum = %d/%d \n", 
+					compcurve_edges[j].located_obj.objid, 
+					compcurve_edges[j].located_obj.osnum) ; 
+				}
+#endif
+
+			/* 
+				- Get graphic properties of macro (needed only
+				  if the foot is a composite curve - 92/07/03).
+				- Construct the composite curve. 
+			 */
+
+		if (compute_flag) {
+			sts = ci$send(	msg = message GRgraphics.GRgetprops(
+							&msg, 
+							&macro_props),
+					targetid = CI_MACRO_ID.objid,
+					targetos = CI_MACRO_ID.osnum) ; 
+			as$status(sts = sts) ;
+			if (!(sts & msg & 1)) {
+				rc_evaluate = 0 ; goto quit ;
+				}
+			
+			#ifdef DEBUG
+			if (macro_props & GRIS_DISPLAYABLE)
+				write("ci macro is diplayable \n") ;
+			else
+				write("ci macro is not diplayable \n") ;
+			#endif
+			} /* if compute */
+
+		/* Construct the composite curve */
+			CURVE.objid	= NULL_OBJID ;
+			CURVE.osnum	= MOD_ENV.md_id.osnum ;
+			sts = ci$send(	msg = message AScompcurve.EMmakecomp(
+				    &msg,
+				    &MOD_ENV,
+				    i,	             /* number of edges */
+				    compcurve_edges, /* struct GRlc_info * */
+				    &rotten ),
+					targetid = CURVE.objid,
+					targetos = CURVE.osnum )  ;
+			as$status(sts = sts);
+			if (!(sts & 1)) { rc_evaluate = 0 ; goto quit ; }
+			if (msg != MSSUCC) {
+				#ifdef DEBUG
+				printf("Failure for message AScompcurve.EMmakecomp() \n") ;
+				printf("rotten_one = %d \n", rotten) ; 
+				/* entry that made compositing not possible */
+				#endif
+				rc_evaluate = 0 ; goto quit ;
+				} 
+
+			sts = ci$send(	msg = message GRvg.GRputsymb(
+				    			&msg, &xyzsymb),
+				targetid = CURVE.objid,
+				targetos = CURVE.osnum )  ; /* 92/11/11 */
+			as$status(sts = sts) ;
+
+		/* Put graphic properties to the composite (92/07/03) */
+
+		if (compute_flag) {
+
+			comp_props = GRIS_DISPLAYABLE ;
+			if (macro_props & GRIS_DISPLAYABLE)
+				action = 1 ; /* set with mask */
+			else
+				action = 0 ; /* clear with mask */
+			sts = ci$send(	msg = message GRvg.GRchgprops(
+				    		&msg, &action, &comp_props),
+				targetid = CURVE.objid,
+				targetos = CURVE.osnum ); as$status(sts = sts);
+			if (!(sts & msg & 1)) { 
+				sts = ci$send(	msg	 = message GRvg.GRdelete(&msg, &MOD_ENV),
+					targetid = CURVE.objid,
+					targetos = CURVE.osnum ) ;
+				as$status(sts = sts);
+				rc_evaluate = 0 ; goto quit ; 
+				}
+
+			comp_props = GRIS_LOCATABLE ;
+			if (macro_props & GRIS_LOCATABLE)
+				action = 1 ; /* set with mask */
+			else
+				action = 0 ; /* clear with mask */
+			sts = ci$send(	msg = message GRvg.GRchgprops(
+				    		&msg, &action, &comp_props),
+				targetid = CURVE.objid,
+				targetos = CURVE.osnum ); as$status(sts = sts);
+			if (!(sts & msg & 1)) { 
+				sts = ci$send(	msg	 = message GRvg.GRdelete(&msg, &MOD_ENV),
+						targetid = CURVE.objid,
+						targetos = CURVE.osnum )  ;
+				rc_evaluate = 0 ; goto quit ; 
+				}
+
+			#ifdef DEBUG
+			sts = ci$send(	msg = message GRgraphics.GRgetprops(
+							&msg, 
+							&comp_props),
+				targetid = CURVE.objid,
+				targetos = CURVE.osnum) ; 
+				as$status(sts = sts) ;
+			if (!(sts & msg & 1)) { rc_evaluate = 0 ; goto quit ; }
+			if (comp_props & GRIS_DISPLAYABLE)
+				write("composite curve is diplayable \n") ;
+			else
+				write("composite curve is not diplayable \n") ;
+			#endif
+
+			} /* if compute */
+
+			/* 
+				=> Update list of feet 
+			 */
+
+			if (num_sol < MAX_FEET) {
+				BOUNDtab[num_sol] = CURVE ;
+				num_sol = num_sol + 1 ;
+				}
+			else {
+				printf("Maximum number of feet exceeded for macro %s\n", MACRO_NAME) ;
+				sts = ci$send(	msg	 = message GRvg.GRdelete(&msg, &MOD_ENV),
+						targetid = CURVE.objid,
+						targetos = CURVE.osnum )  ;
+				as$status(sts = sts);
+				rc_evaluate = 0 ; /* error */
+				goto quit ;
+				}
+
+			} /* else */
+		} /* while (1) */
+
+/*
+	4) Set the rest of feet (MAX_FEET) to NULL_OBJID 
+ */
+
+#ifdef DEBUG
+	printf("Number of solution is %d\n", num_sol) ;
+#endif
+
+	for (i = num_sol ; i < MAX_FEET ; i = i+1) {
+		BOUNDtab[i].objid = NULL_OBJID ;
+		BOUNDtab[i].osnum = MOD_ENV.md_id.osnum ;
+		}
+
+	rc_evaluate = 1 ; /* OK */
+
+quit :
+
+	if (edges_list) {
+		free(edges_list)  ; edges_list  = NULL ;
+		}
+	if (build_edges) {
+		free(build_edges) ; build_edges = NULL ;
+		}
+	if (edges_info) {
+		free(edges_info)  ; edges_info  = NULL ;
+		}
+	if (compcurve_edges) {
+		free(compcurve_edges) ; compcurve_edges  = NULL ;
+		}
+	if (surf_copy == 1) {
+		/* Delete copy of owned surface */
+		sts = ci$send(	msg	 = message EMSsurface.GRdelete(
+				    &msg,
+				    &OBJ_ENV),
+				targetid = OBJ.objid,
+				targetos = OBJ.osnum )  ;
+		as$status(sts = sts);
+		if (!(sts & msg & 1)) {
+			#ifdef DEBUG
+			printf("Warning : EMSsurface.GRdelete() failed\n") ;
+			#endif
+			}
+		}
+
+	#ifdef DEBUG
+	printf("End of evaluate_xbound()\n") ;
+	#endif
+
+	return rc_evaluate ;
+} /* evaluate_xbound() */
+
+
+/*
+    -------------------------------------------------------------------------
+ */
+
+
+/* ------------------------------------------------------------------------- */
+/*    The main function is the one implementing the definition creation      */
+/* ------------------------------------------------------------------------- */
+
+
+main ()
+{
+IGRint  i ;
+IGRlong stat ;
+IGRchar *temp_names[MAX_TEMP] ;
+IGRchar *feet_names[MAX_FEET] ;
+IGRchar buffer[MAX_CHAR_FEET * MAX_FEET] ;
+IGRint  temp_types[MAX_TEMP]  ;
+GRobj   ci_mac_def1    ;
+
+temp_names[0] = "surface"  ; 		/* locate only class EMSsurface  */ 
+temp_types[0] = other_generic ;   /* surface_generic not in parametric.h */
+
+/* Set feet names */
+feet_names[0] =  "boundary" ;
+for (i = 1 ; i < MAX_FEET ; i = i + 1) {
+	sprintf(&buffer[i*MAX_CHAR_FEET], "bound%d", i+1)  ;
+	feet_names[i] = &buffer[i*MAX_CHAR_FEET] ;
+	}
+
+ci_mac_def1 = NULL_OBJID ;
+
+ac$cimacdef( 	cimacdef          = ci_mac_def1,
+		status 	          = &stat, 	
+		name              = MACRO_NAME,
+              	temp_num          = MAX_TEMP, 		
+		temp_names        = temp_names,
+		temp_types	  = temp_types,
+	      	extern_feet_num   = MAX_FEET,
+		extern_feet_names = feet_names ) ;
+} /* main() */
+
+#if 0
+/* ------------------------------------------------------------------------- */
+
+place ()
+{
+IGRboolean  compute_flag ;
+IGRlong     sts, msg ;
+struct GRid BOUND[MAX_FEET] ; /* external boundary(ies) : composite curve */
+
+compute_flag = FALSE ;
+sts = evaluate_xbound(compute_flag, &BOUND[0]) ; /* get surface boundaries */
+if (!(sts & 1)) {
+	#ifdef DEBUG
+	printf("\nplace() : error in evaluate_xbound()\n\n") ; 
+	#endif
+	return 0 ;
+	}
+
+sts = ci$send(msg = message ci_macro.set_all_extern_feet
+				(&msg, MAX_FEET, &BOUND[0], &MOD_ENV),
+	targetid = CI_MACRO_ID.objid,
+	targetos = CI_MACRO_ID.osnum) ; as$status(sts = sts) ;
+if (!(sts & msg & 1)) {
+	printf("Error with ci_macro.set_all_extern_feet() in place() method \n") ;
+	return 0 ;
+	}
+
+return 1 ;
+} /* place() */
+
+
+/* ------------------------------------------------------------------------- */
+
+compute ()
+{
+IGRboolean  compute_flag ;
+IGRlong     sts, msg ;
+struct GRid BOUND[MAX_FEET] ;
+
+compute_flag = TRUE ;
+sts = evaluate_xbound(compute_flag, &BOUND[0]) ;
+if (!(sts & 1)) {
+	#ifdef DEBUG
+	printf("\ncompute() : error in evaluate_xbound()\n\n") ; 
+	#endif
+	return 0 ;
+	}
+
+sts = ci$send(msg = message ci_macro.set_all_extern_feet
+				(&msg, MAX_FEET, &BOUND[0], &MOD_ENV),
+	targetid = CI_MACRO_ID.objid,
+	targetos = CI_MACRO_ID.osnum) ; as$status(sts = sts) ;
+if (!(sts & msg & 1)) {
+	#ifdef DEBUG
+	printf("Error with ci_macro.set_all_extern_feet() in compute() method \n") ;
+	#endif
+	return(0) ;
+	}
+return(1);
+} /* compute() */
+
+
+/*
+	------------------------------------------------------------------
+ */
+#endif
+
+#include "VDobj.h"
+extern VDefpComputeNeatEdges();
+
+/* -------------------------------------------------------
+ * Initial placement
+ */
+place()
+{
+  IGRstat    retFlag;
+  IGRstat    sts, msg ;
+  TGRobj_env macOE;
+  TGRid      edgeIDs[MAX_FEET];
+  IGRint     edgeCnt;
+
+  retFlag = 0;
+
+  macOE.obj_id  = CI_MACRO_ID;
+  macOE.mod_env = MOD_ENV;
+
+  sts = VDefpComputeNeatEdges(&macOE,0,&edgeCnt,edgeIDs);
+  if (!(sts & 1)) {
+    goto wrapup;
+  }
+
+  // Toss out first object
+  if (edgeCnt) {
+    vdobj$Delete(objID = &edgeIDs[0]);
+    edgeCnt = edgeCnt - 1;
+  }
+  
+  sts = ci$send(msg = message ci_macro.
+                set_all_extern_feet(&msg, 
+                                     edgeCnt, 
+                                    &edgeIDs[1], 
+                                    &MOD_ENV),
+	targetid = CI_MACRO_ID.objid,
+	targetos = CI_MACRO_ID.osnum); 
+  if (!(sts & msg & 1)) {
+    goto wrapup;
+  }
+
+  retFlag = 1;
+
+wrapup:
+  return retFlag;
+}
+
+/* -------------------------------------------------------
+ * recompute
+ */
+compute()
+{
+  IGRstat    retFlag;
+  IGRstat    sts, msg ;
+  TGRobj_env macOE;
+  TGRid      edgeIDs[MAX_FEET];
+  IGRint     edgeCnt;
+
+  // Init
+  retFlag = 0;
+
+  macOE.obj_id  = CI_MACRO_ID;
+  macOE.mod_env = MOD_ENV;
+
+  // Process
+  sts = VDefpComputeNeatEdges(&macOE,1,&edgeCnt,edgeIDs);
+  if (!(sts & 1)) {
+    goto wrapup;
+  }
+
+  // Toss out first object
+  if (edgeCnt) {
+    vdobj$Delete(objID = &edgeIDs[0]);
+    edgeCnt = edgeCnt - 1;
+  }
+
+  // Add feet
+  sts = ci$send(msg = message ci_macro.
+                set_all_extern_feet(&msg, 
+                                     edgeCnt, 
+                                    &edgeIDs[1], 
+                                    &MOD_ENV),
+	targetid = CI_MACRO_ID.objid,
+	targetos = CI_MACRO_ID.osnum); 
+  if (!(sts & msg & 1)) {
+    goto wrapup;
+  }
+
+  retFlag = 1;
+
+wrapup:
+  return retFlag;
+}
