@@ -1,0 +1,455 @@
+/* $Id: add_reps.u,v 1.1.1.1 2001/01/04 21:09:02 cvs Exp $  */
+
+/* --------------------------------------------------------------------
+ * I/VDS
+ *
+ * File:	vds/vdppl / add_reps.u
+ *
+ * Description:
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ *	$Log: add_reps.u,v $
+ *	Revision 1.1.1.1  2001/01/04 21:09:02  cvs
+ *	Initial import to CVS
+ *	
+# Revision 1.1  1998/04/29  16:27:20  pinnacle
+# VDS 2.5.1
+#
+# Revision 1.1  1997/05/08  13:20:44  pinnacle
+# New project VDS 250
+#
+# Revision 1.2  1996/11/21  20:08:28  pinnacle
+# ah Form Prob
+#
+# Revision 1.1  1996/07/19  20:33:52  pinnacle
+# Create VDS 241 project
+#
+# Revision 1.1  1994/11/14  22:42:32  pinnacle
+# Create vds.240 from vds.232
+#
+# Revision 1.1  1994/11/08  16:07:00  pinnacle
+# create vds.232
+#
+ *
+ * History:
+ *	MM/DD/YY	AUTHOR		DESCRIPTION
+ *
+ * -------------------------------------------------------------------*/
+
+/* 
+	This command is used to create and modify VDS representations.
+Written by Jim Hanson 10-16-92
+*/
+#include "string.h"
+#include "cieveryone.h"
+#include "cimacros.h"
+#include "exmacros.h"
+#include "ex.h"
+#include "DItypedef.h"
+#include "DIdef.h"
+#include "DIglob.h"
+#include "DIprims.h"
+#include "ACrg_collect.h"
+#include "macro.h"
+#include "fi.h"
+
+extern double atof();
+
+#define FI_REVIEW		1
+#define FI_SINGLE_SELECT	2
+#define FI_MULTI_SELECT		3
+#define FI_APPEND		4
+#define FI_INSERT		0
+#define CHECK			1
+#define RUN			2
+#define QUIT			4
+#define MESS2			10
+#define LIST			12
+#define TITLE			11
+#define FIELD_NAME		14
+
+
+typedef char * Form;
+
+struct CIform_st
+ {
+   int		form_label;
+   int		gadget_label;
+   double	value;
+   Form		form_ptr;
+ }form_st;
+
+int	pos, l,	sel_flag, h, save_gadget, num_reps, response;
+Form	form;
+char	*evt_name, save_text[132], text[132];
+short	form_exists,
+	form_displayed, 
+	test_wakeup;
+
+
+char		txt[40], txt1[40],txt2[40], 
+		name[40], dirname[40], 
+		objname[40];
+char		formula[120];
+struct sup 	*xdup;
+struct GRid	OBJECT, OBJS[1000], *grobjs;
+struct GRmd_env	MOD_ENV;
+struct ACrg_coll attrib[20];
+int		tot_up, prop;
+int		msg, type, list_len, nb_attr, 
+		i, j, k, *list;
+double		value, pnt[3];
+
+extern int EX_get_global();
+extern char	*malloc();
+extern	int 	free();
+extern int	EX_get_oid_nodname();
+extern int	DIfind();
+extern int	DImain();
+extern int	DIsplit();
+extern int	DIfast_trans();
+extern int	EX_filename1();
+extern	int     ci_notification(),
+		FIf_new(),
+		FIf_delete(),
+		FIf_display(),
+		FImcf_insert_col(),
+		FImcf_set_num_cols(),
+		FIf_erase(),
+		FIf_set_cmd_oid_os(),
+		FIg_display(),
+		FIg_erase(),
+		FIg_get_state(),
+		FIg_get_text(),
+		FIg_set_text(),
+		FIg_set_state_off(),
+		FIfld_get_text(),
+		FIfld_get_list_num_rows(),
+		FIfld_get_list_text(),
+		FIfld_erase_cursor(),
+		FIfld_pos_cursor(),
+		FIfld_get_num_rows(),
+		FIfld_set_active_row(),
+		FIfld_set_active_char(),
+		FIfld_set_text(),
+		FIfld_get_select(),
+		FIfld_set_select(),
+		FIfld_set_list_select(),
+		FIfld_set_list_size(),
+		FIfld_set_list_num_rows(),
+		FIfld_set_num_rows(),
+		FIfld_set_mode(),
+		FIfld_set_list_default_text();
+
+
+main()
+{
+#ifdef DEBUG
+write("entering main()\n");
+#endif
+	test_wakeup = 1;
+	form_exists = FALSE;
+	form_displayed = FALSE;
+
+	if(FIf_new( 0, "VDChangeRep", ci_notification, &form ))
+	{
+		write("error initializing form\n");
+		goto ret_error_exit;
+	}
+	else form_exists = TRUE;
+
+	FIg_set_text(form, TITLE, "Add Representations");
+	FIg_set_text(form, FIELD_NAME, "Representation Types and values");
+	FIfld_set_mode(form, LIST, 0, FI_INSERT);
+
+	if(get_reps() == -1){ status("no reps found"); exit;}
+
+	if( form )
+	{
+		if(FIf_set_cmd_oid_os( form, MY_ID, OM_Gw_current_OS ))
+		{
+			write("something went wrong in FIf_set_cmd_oid_os\n");
+			form_exists = FALSE;	
+			goto ret_error_exit;
+		}
+
+
+		if(FIf_display( form ))
+		{
+			write("something went wrong in FIf_set_cmd_oid_os\n");
+			form_exists = FALSE;	
+			goto ret_error_exit;
+		}
+	}
+	else form_displayed = TRUE;
+	
+	while(1)
+	{
+		ci$getevent( 	prompt	 = "",
+  				mask     = GRm_RJT_MOVEON | GRm_MOVE_ON | GRm_BACK_UP | GRm_STRING,
+				data 	 = evt_name, 
+				response = &response);
+
+		//write("response=",response,'\n');
+
+ 		if (response == EX_BACK_UP )
+		{
+			break;
+		}
+		else if( response == STRING)
+		{
+			write("got a string\n");
+		}
+		else if(response == MOVE_ON || save_gadget == 4 || save_gadget == 1) break;	
+	}
+
+ret_error_exit:
+	status("");
+	message("");
+#ifdef DEBUG
+write("exiting main()\n");
+#endif
+}
+
+form_notification()
+{
+int	num;
+#ifdef DEBUG
+write("entering form_notification()\n");
+write("got something from the form\ngadget=[",form_st.gadget_label,"] response=",response,'\n');
+#endif
+
+  save_gadget = form_st.gadget_label;
+  switch ( form_st.gadget_label )
+  {
+    case CHECK:
+	#ifdef DEBUG
+	write("hit the check mark\n");
+	#endif
+	if( add_reps() == -1){ write("no reps available\n");}
+	ci$put( response = MOVE_ON );
+	break;
+
+    case QUIT: 
+	#ifdef DEBUG
+	write("hit the X mark\n");
+	#endif
+	ci$put( response = MOVE_ON );
+        break;
+
+    case RUN: 
+	#ifdef DEBUG
+	write("hit run\n");
+	#endif
+	if( add_reps() == -1){ status("no reps available"); ci$put( response = MOVE_ON );}
+	//
+        break;
+
+    case MESS2:
+	FIfld_get_text( form, MESS2, (int)form_st.value, 0,100, save_text, &sel_flag, &pos);
+	#ifdef DEBUG
+	write("mess2 was selected and text was=",save_text,'\n');
+	#endif
+        break;
+
+    case LIST:
+	#ifdef DEBUG
+	write("list poked at (int)form_st.value=",(int)form_st.value,'\n');
+	#endif
+	break;
+  }
+#ifdef DEBUG
+write("exiting form_notification()\n");
+#endif
+}
+
+wakeup()
+{
+#ifdef DEBUG
+write("entering wakeup()\n");
+#endif
+	if( test_wakeup == 1)
+	{
+		if (form) FIf_display( form );
+		form_displayed = TRUE;
+	}
+#ifdef DEBUG
+write("exiting wakeup()\n");
+#endif
+}
+
+sleep()
+{
+#ifdef DEBUG
+write("entering sleep()\n");
+#endif
+	if( form_displayed == TRUE)
+	{
+		if (form) FIf_erase( form );
+		form_displayed = FALSE;
+	}
+#ifdef DEBUG
+write("exiting sleep()\n");
+#endif
+}
+
+delete()
+{
+
+#ifdef DEBUG
+write("entering delete()\n");
+#endif
+		if (form) FIf_erase( form );
+		if (form) FIf_delete( form );
+
+#ifdef DEBUG
+write("exiting delete()\n");
+#endif
+}
+
+int get_reps()
+{
+struct GRid	OBJECT;
+struct GRmd_env	MOD_ENV;
+char		txt[40], txt1[40],*equal,name[40];
+struct ACrg_coll attrib[50];
+double	value;
+int	msg,type,list_len,nb_attr,i;
+extern int	EX_get_oid_nodname();
+extern	char    *strchr(), *strncpy();
+
+ 	ci$get_module_info( md_env = &MOD_ENV);
+
+	OBJECT.objid = NULL_OBJID;
+
+ 	ex$get_objid_from_NOD (   
+		NODname   = "IGENOD",
+                objname   = "ACpossible_symb",
+                pobjid    = &OBJECT.objid,
+                mod_osnum = MOD_ENV.md_id.osnum);
+
+ 	OBJECT.osnum = MOD_ENV.md_id.osnum;
+
+	#ifdef DEBUG
+ 	write("ex$get_objid_from_NOD\n");
+	write("object id=",OBJECT.objid,'\n');
+	#endif
+
+	if( OBJECT.objid == NULL_OBJID) 
+	{
+		status("no representation available");
+		return(-1);
+	}
+
+	list_len=50;
+
+	ci$send ( msg = message ACrg_collect.AClist_attribute(
+		&msg,
+		list_len,
+		attrib,
+		&nb_attr),
+		targetid = OBJECT.objid,
+		targetos = OBJECT.osnum);
+
+	#ifdef DEBUG
+	write(nb_attr,"representations\n");
+	#endif
+
+	for(i=0;i<nb_attr;i=i+1)
+	{
+		#ifdef DEBUG
+		write("[",i,"] ", attrib[i].name,"[",attrib[i].desc.value.att_exp,"]\n");
+		#endif
+		strcpy(text,attrib[i].name);
+		strcat(text,"=");
+		strcat(text,itoa((int)attrib[i].desc.value.att_exp));
+		FIfld_set_text( form, LIST, i,0, text,FALSE);
+	}
+
+	FIfld_set_list_num_rows( form, LIST, 0, nb_attr);
+	FIfld_get_list_num_rows( form, LIST, 0, &num_reps);
+
+	#ifdef DEBUG
+	write("number of rows=",num_reps,'\n');
+	#endif
+
+}
+
+int add_reps()
+{
+struct GRid	OBJECT;
+struct GRmd_env	MOD_ENV;
+char		txt[132], txt1[132],*equal,name[132];
+struct ACrg_coll attrib[20];
+double	value;
+int	msg,type,list_len,i, count;
+extern int	EX_get_oid_nodname();
+extern	char    *strchr(), *strncpy();
+
+ 	ci$get_module_info( md_env = &MOD_ENV);
+
+	OBJECT.objid = NULL_OBJID;
+
+ 	ex$get_objid_from_NOD (   
+		NODname   = "IGENOD",
+                objname   = "ACpossible_symb",
+                pobjid    = &OBJECT.objid,
+                mod_osnum = MOD_ENV.md_id.osnum);
+
+ 	OBJECT.osnum = MOD_ENV.md_id.osnum;
+
+	FIfld_get_num_rows( form, LIST, &num_reps);
+
+	#ifdef DEBUG
+	write("number of rows=",num_reps,'\n');
+	#endif
+
+	count=0;
+	for(i=0;i<num_reps;i=i+1)
+	{
+
+		for(j=0;j<132;j=j+1){ txt1[j]=0; txt[j]=0; name[j]=0;}
+
+		FIfld_get_text(form,LIST,i,0,132,name,&sel_flag,&pos);
+
+		#ifdef DEBUG
+		write("before parsing ",name,'\n');
+		#endif
+
+		if(strcmp(name,"") == 0) { continue;}
+
+ 	   	equal = strchr(name,'=');
+
+           	if( equal != NULL ) // if an equal was found 
+           	{
+			for(j=0;j<strlen(attrib[count].name);j=j+1) attrib[i].name[j]=0;	
+			strncpy(txt1,name,strlen(name) - strlen(equal));
+			strcpy(attrib[count].name, txt1);
+			strcpy(txt,equal+1);
+			attrib[count].desc.value.att_exp = atof(txt);
+			attrib[count].desc.type = 2;
+			#ifdef DEBUG
+			write(txt1,"=",txt,'\n');
+			#endif
+			FIfld_set_text( form, LIST, count,0, name,FALSE);
+			count=count+1;
+		}
+		else
+		{
+			status("found an error");
+		}
+	}
+
+	ci$send ( msg = message ACrg_collect.ACset_list_attribute( 
+		&msg,
+		count,
+		attrib ),
+		targetid = OBJECT.objid,
+		targetos = OBJECT.osnum);	
+
+	FIfld_set_num_rows( form, LIST, count);
+	return(0);
+}
+

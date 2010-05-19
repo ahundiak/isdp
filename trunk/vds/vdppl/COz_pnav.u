@@ -1,0 +1,840 @@
+/* $Id: COz_pnav.u,v 1.1.1.1 2001/01/04 21:09:02 cvs Exp $  */
+
+/* --------------------------------------------------------------------
+ * I/VDS
+ *
+ * File:	vds/vdppl / COz_pnav.u
+ *
+ * Description:
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ *	$Log: COz_pnav.u,v $
+ *	Revision 1.1.1.1  2001/01/04 21:09:02  cvs
+ *	Initial import to CVS
+ *	
+# Revision 1.4  2000/03/10  18:41:12  pinnacle
+# Replaced: vdppl/COz_pnav.u for:  by impd252 for vds
+#
+# Revision 1.3  2000/02/25  14:02:56  pinnacle
+# ah
+#
+# Revision 1.2  2000/02/22  19:38:06  pinnacle
+# (No comment)
+#
+# Revision 1.1  1998/04/29  16:27:20  pinnacle
+# VDS 2.5.1
+#
+# Revision 1.1  1997/05/08  13:20:44  pinnacle
+# New project VDS 250
+#
+# Revision 1.2  1996/11/21  20:08:28  pinnacle
+# ah Form Prob
+#
+# Revision 1.1  1996/07/19  20:33:52  pinnacle
+# Create VDS 241 project
+#
+# Revision 1.3  1996/03/22  22:56:48  pinnacle
+# Replaced: vdppl/COz_pnav.u for:  by jwfrosch for vds.240
+#
+# Revision 1.2  1996/03/22  22:12:04  pinnacle
+# Replaced: vdppl/COz_pnav.u for:  by jwfrosch for vds.240
+#
+# Revision 1.1  1994/11/14  22:42:32  pinnacle
+# Create vds.240 from vds.232
+#
+# Revision 1.1  1994/11/08  16:07:00  pinnacle
+# create vds.232
+#
+ *
+ * History:
+ * MM/DD/YY  AUTHOR  DESCRIPTION
+ * 02/22/00  pn      TR 179901024 fix deletion of used forms problem
+ * 02/25/00  ah      Original fix core dumping because delete() was being called twice
+ * 03/10/00  adz      Avoid crash when called with option id/os.
+ * -------------------------------------------------------------------*/
+
+/* dither buttons like original nav */
+/* send locate to message	    */
+/* clean up locate		    */
+/* make lines much longer	    */
+/* enable reset button  ??	    */
+
+#include <stdio.h>
+
+#ifndef _SYS_TYPES_H
+#	include <sys/types.h>
+#endif
+#ifndef _SYS_STAT_H
+#	include <sys/stat.h>
+#endif
+/*
+#ifndef  _SYS_PARAM_H
+#	include <sys/param.h>
+#endif
+*/
+#include "UNIXerrdef.h"
+
+
+#include "OMerrordef.h"
+#include "OMprimitives.h"
+
+#include "ciminimum.h"
+#include "cimacros.h"
+#include "FI.h"
+#include "string.h"
+#include "grmacros.h"
+
+/* The following lines prevent redefinition of superfluous constants */
+#undef FI_ALPHA
+#undef FI_INT
+#undef FI_DOUBLE
+#include "CIforms.h"
+
+#include "dp.h"
+#include "msdef.h"
+#include "exdef.h"
+#include "godef.h"
+#include "gr.h"
+#include "igr.h"
+#include "igrdp.h"
+#include "griodef.h"
+#include "go.h"
+#include "ex.h"
+#include "grio.h"
+
+#include "DIdef.h"
+#include "DItypedef.h"
+#include "DIglob.h"
+#include "DIprims.h"
+#include "exmacros.h"
+
+
+#define FRM_NAME	"VDnav_1"
+#define FRM_LABEL	101
+#define FRM_TEXT	 11
+
+#define FORM_NAME	"VDnav_0"
+#define FORM_LABEL	100
+#define CURRENT		 11
+#define PARENTS		 12
+#define CHILDREN	 13
+#define OWNERS		 14
+#define COMPONENTS	 15
+#define NAVIGATE	 16
+#define EVENT		 17
+#define SPECFNAME	 24
+#define CLASSNAME	 26
+#define ERASESPECF	 28
+
+/************************************************************
+  External functions.
+ ************************************************************/
+extern	ci_notification();	/* The forms system automatically calls	*/
+				/* this function, which in turn calls	*/
+				/* your form_notification function	*/
+
+extern	FIf_set_cmd_oid_os(),	/* This function tells the forms system */
+				/* to notify this command file when the */
+				/* user manipulates the form		*/
+	FIf_new(),		/* Creates the form			*/
+	FIf_display(),		/* Draws the form			*/
+	FIf_erase(),		/* Erases the form			*/
+	FIf_delete(),		/* Removes the form			*/
+	FIf_reset(),
+	FIg_set_text(),
+	FIfld_get_num_rows(),
+	FIfld_set_select(),
+	FIfld_set_text(),
+	FIfld_get_select(),
+	FIfld_set_num_rows(),
+	FIfld_get_text(),
+	FIg_disable(),
+	FIg_enable();
+extern	FIf_collapse(),
+	FIf_uncollapse(),
+	FIf_set_collapse_location();
+
+extern	int	EX_getpath();
+extern	int	EX_inq_language();
+extern		GRdisplay_object();
+extern		VDstat();
+
+/************************************************************
+  Global variables.
+ ************************************************************/
+int	first_time;	/* Set to TRUE in init() and used in main()
+			   to prevent multiple execution of form_init() */
+int	test_wakeup;	/* The wakeup function uses this flag to
+			   test if the main function has started yet. */
+
+int	form_exists,	/* The delete function uses this flag
+			   to test if the form exists */
+	form_displayed,	/* The sleep function uses this flag
+			   to test if the form is displayed */
+	not_done;	/* This value is set to 0 when the user
+			   selects the cancel or exit & save buttons */
+
+int	frm_exists,		/* The delete function uses this flag
+			   to test if the form exists */
+	frm_displayed;	/* The sleep function uses this flag
+			   to test if the form is displayed */
+
+Form form;  /* Use this variable for the forms functions. */
+Form frm;   /* Use this variable for the forms functions. */
+
+struct CIform_st form_st; /* This structure contains information on
+				which form and gadget was manipulated. */
+
+int r_pos, sel_flag, num_rows;
+
+
+void return_error()
+/************************************************************
+ * FUNCTION:  return_error()
+ *
+ * DESCRIPTION: This function exits the PPL command file.
+ ************************************************************/
+{
+    status ("");	/* Clear the status  field */
+    message("");	/* Clear the message field */
+    exit;
+}
+
+
+void form_init()
+/************************************************************
+ * FUNCTION:  form_init()
+ *
+ * DESCRIPTION: This function initializes the form.
+ ************************************************************/
+{
+    int		error;
+
+    /*************************
+     Create (load) the form.
+    *************************/
+    error = FIf_new ( FORM_LABEL, FORM_NAME, ci_notification, &form );
+    if ( form == NULL )
+    {
+	write( "Could not create the form.\n", "Error code = ", error, "\n");
+	return_error();
+    }
+
+    form_exists = TRUE;  /* Flag for delete function */
+
+    /*************************
+     Create (load) the form.
+    *************************/
+    error = FIf_new ( FRM_LABEL, FRM_NAME, ci_notification, &frm );
+    if ( frm == NULL )
+    {
+	write( "Could not create the form.\n", "Error code = ", error, "\n");
+	return_error();
+    }
+
+    frm_exists = TRUE;  /* Flag for delete function */
+
+    /**********************************************
+     Tell the Forms System to notify this command
+     file when the user manipulates the form.
+    **********************************************/
+    error = FIf_set_cmd_oid_os( form, MY_ID, OM_Gw_current_OS );
+    if ( error )
+    {
+	write( "Could not link to the Forms System.\n",	"Error code = ", error, "\n");
+	form_exists = FALSE;
+	return_error();
+    }
+
+    /*******************
+     Display the form.
+    *******************/
+    error = FIf_display( form );
+    if ( error )
+    {
+	write( "Could not display the form.\n",	"Error code = ", error, "\n");
+	return_error();
+    }
+    FIf_set_collapse_location( form, 1, 700 );
+    FIf_set_collapse_location( frm , 1, 760 );
+
+    form_displayed = TRUE;  /* Flag for sleep function */
+}
+
+
+int form_notification( )
+/************************************************************
+ * FUNCTION:  form_notification()
+ *
+ * DESCRIPTION: The forms system automatically calls this
+ *   function when the user manipulates a gadget on the form.
+ *
+ * RETURNS: none
+ ************************************************************/
+{
+    ci$put( response = MOVE_ON );  /* Give control to the main function */
+}
+
+init()
+{
+    first_time = TRUE;
+    form = NULL ;
+    frm  = NULL ;
+    form_exists = 0 ;
+    frm_exists = 0 ;
+}
+
+wakeup ()
+/************************************************************
+ * FUNCTION:  wakeup()
+ *
+ * DESCRIPTION: This function is called when the command file
+ *    is started and when it resumes after an interruption.
+ ************************************************************/
+{
+    /* Display the form unless the command file is just starting */
+    if ( test_wakeup == 1 && not_done )
+    {
+	if (form) FIf_display ( form );  /* Redisplay the form */
+	form_displayed = TRUE; /* Set flag for sleep function */
+    }
+}
+
+
+sleep ()
+/************************************************************
+ * FUNCTION:  sleep()
+ *
+ * DESCRIPTION: This function is called immediately before the
+ *    command file is interrupted.
+ ************************************************************/
+{
+    /* Erase the form if it is displayed */
+    if ( form_displayed == TRUE )
+    {
+	if (form) FIf_erase ( form );
+	form_displayed = FALSE;
+	if (frm) FIf_erase ( frm );
+	frm_displayed = FALSE;
+    }
+}
+
+
+delete ()
+/************************************************************
+ * FUNCTION: delete()
+ *
+ * DESCRIPTION: This function is called when the command file
+ *    ends or is terminated.
+ ************************************************************/
+{
+    /* Erase the form if it is displayed */
+    if ( frm_displayed == TRUE )
+    {
+	if (frm) FIf_erase ( frm );
+	frm_displayed = FALSE;
+    }
+    if ( form_displayed == TRUE )
+    {
+	if (form) FIf_erase ( form );
+	form_displayed = FALSE;
+    }
+    
+    // Fixes TR 179901024 
+    /* Delete the form if it exists */
+    if (form) {
+      FIf_delete( form );
+      form = NULL;
+      form_exists = 0;
+    }
+    if (frm) {
+      FIf_delete( frm );
+      frm = NULL;
+      frm_exists = 0;
+      
+    }
+    
+    status ("");	/* Clear the status  field */
+    message("");	/* Clear the message field */
+    //exit;
+}
+
+/********************************************************/
+/* This function returns a string with info on element	*/
+/********************************************************/
+char *info(objid,osnum)
+GRobj objid;
+GRspacenum osnum;
+{
+    char class_name[40],  string[80];
+    char object_name[DI_PATH_MAX], exp_str[DI_PATH_MAX];
+    char *c;
+    int  stat;
+    struct GRid macro;
+
+    om$get_classname(	objid	  = objid,
+			osnum	  = osnum,
+			classname = class_name  );
+    sprintf(string,"%d %d %s",objid,osnum,class_name);
+
+    /* add object name, if it exists */
+    stat = di$untranslate(objname = object_name,
+			  objid   = objid,
+			  osnum   = osnum);
+    if (stat == DIR_S_SUCCESS)
+    {
+	strcat(string," ");
+	strcat(string,object_name);
+    }
+
+    if ( strcmp(class_name,"nci_macro") == 0 ||
+	 strcmp(class_name, "ci_macro") == 0 )
+    {
+	stat =
+	ci$send(msg = message ACcpx.find_macro(&macro),
+		targetid = objid,
+		targetos = osnum);
+	if( stat&1){
+	stat =
+	ci$send(msg = message ACcpx_defn.ACgive_name( &c ),
+		targetid = macro.objid,
+		targetos = macro.osnum);
+	if( stat&1){ strcat( string, " " ); strcat( string, c ); }
+	}
+    }
+
+
+
+    /* Add output of expression string, if it exists */
+    if (   strcmp(class_name,"expression") == 0
+	|| strcmp(class_name,"Gexp")	   == 0
+	|| strcmp(class_name,"text_exp")   == 0)
+    {
+	strcpy(exp_str,"");
+	stat = ci$send(msg =  message expression.DIgive_output(exp_str),
+		targetid = objid,
+		targetos = osnum);
+	if (stat == 1) strcat(string,exp_str);
+    }
+
+    return(string);
+}
+
+/*********************************************************/
+/* This function feeds information into the form gadgets */
+/*********************************************************/
+void nav_dspl_gdgt(current, channel_name, gadget_nr)
+struct GRid	current;
+char		*channel_name;
+int		gadget_nr;
+{
+    int			msg, channel_count,i;
+    GRobj		*channel_objids;
+    OM_S_CHANSELECT	my_chansel;
+
+    channel_count  = 0;
+    channel_objids = NULL;
+
+    my_chansel.type       = OM_e_name;
+    my_chansel.u_sel.name = channel_name;
+
+    /* find the number of objects on the channel */
+
+    msg = om$get_channel_count (
+				osnum		= current.osnum,
+				objid		= current.objid,
+				p_chanselect	= &my_chansel,
+				count		= &channel_count );
+    if ( channel_count > 0 )
+    {
+	channel_objids = ( GRobj * ) om$malloc (size = sizeof( GRobj ) * channel_count);
+
+	if ( channel_objids )
+	{
+	    msg=ci$get_channel_objects( objid	  = current.objid,
+					osnum	  = current.osnum,
+					channname = channel_name,
+					obj_list  = channel_objids,
+					count	  = &channel_count );
+	}
+    }
+
+    for(i=0; i<channel_count; i=i+1)
+	FIfld_set_text(form,gadget_nr,i,0,info(channel_objids[i],current.osnum),FALSE);
+
+    if ( channel_objids ) om$dealloc ( ptr = channel_objids );
+}
+
+/*********************************************************/
+/* This function feeds information into the form gadgets */
+/*********************************************************/
+void navigate(current)
+struct GRid	current;
+{
+    char	class_name[40];
+
+    /* Erase all fields */
+    if( form == NULL ){
+	form_init();
+	first_time = FALSE;
+    }
+
+    FIfld_set_num_rows(form,CURRENT,0);
+    FIfld_set_num_rows(form,PARENTS,0);
+    FIfld_set_num_rows(form,CHILDREN,0);
+    FIfld_set_num_rows(form,OWNERS,0);
+    FIfld_set_num_rows(form,COMPONENTS,0);
+
+    gr$display_object( object_id = &current, mode = GRbdhd);	/* HILITE */
+
+    FIfld_set_text(form,CURRENT,0,0,info(current.objid,current.osnum),FALSE);
+
+    om$get_classname(	objid	  = current.objid,
+			osnum	  = current.osnum,
+			classname = class_name  );
+
+    FIfld_set_text(form,CLASSNAME,0,0,class_name,FALSE);
+
+    /* find and display all children */
+    nav_dspl_gdgt(current, "children", CHILDREN);
+
+    /* find and display all parents */
+    nav_dspl_gdgt(current, "father", PARENTS);
+
+    /* find and display all owners */
+    nav_dspl_gdgt(current, "to_owners", OWNERS);
+
+    /* find and display all components */
+    nav_dspl_gdgt(current, "to_components", COMPONENTS);
+}
+
+/************************************************************
+ * FUNCTION	: find_spec_file()
+ *
+ * DESCRIPTION	: This function returns the absolute pathname
+ *		  of the '.S' file (if it exists) of a Class.
+ ************************************************************/
+
+int find_spec_file ( msg, relName, absName )
+
+long	*msg ;
+char	*relName, *absName ;
+{
+    int		i0, found_it, sts;
+    char	dir[DI_PATH_MAX] ;
+    struct stat	buffer ;
+
+    *msg	= UNIX_E_ENOENT ;
+    *absName	= '\0' ;
+    found_it	= 0;
+
+    for( i0 = 0 ; ; i0=i0+1 )
+    {
+	if( ! ex$get_path(	index	= i0,
+				path	= dir,
+				len	= sizeof( dir ) )
+	    || ! *dir )
+	{
+		break ;
+	}
+	strcat( dir, relName ) ;
+	buffer.st_mode = 0;
+	/*
+	sts = VDstat( dir, &buffer );
+	printf ( "i0 = %d, sts = %d\n", i0, sts );
+	if ( ! sts ) printf ( "buffer.st_mode = %x, S_IFMT = %x, S_IFREG = %x, buffer.st_mode & S_IFMT = %x\n",
+		(ushort)buffer.st_mode, S_IFMT, S_IFREG, (ushort)buffer.st_mode & S_IFMT);
+	*/
+
+	if( VDstat( dir, &buffer ) == 0 && (buffer.st_mode & S_IFMT) == S_IFREG )
+	{
+		/*
+		 * Found it !
+		 */
+	    strcpy( absName, dir ) ;
+	    *msg = MSSUCC ;
+	    found_it = OM_S_SUCCESS;
+	    break ;
+	}
+    }
+    return ( found_it );
+}
+
+/************************************************************
+ * FUNCTION	: display_spec_file()
+ *
+ * DESCRIPTION	: This function displays the text of a file
+ *		  in a FORM
+ ************************************************************/
+
+display_spec_file(SpecName)
+char	*SpecName;
+{
+    FILE	*fp0;
+    char	strng1[DI_PATH_MAX];
+    int		i1;
+
+    fp0 = fopen(SpecName, "r");
+    FIf_reset ( frm );
+
+    if ( fp0 != NULL )
+    {
+	i1 = 0;
+	while ( fgets(strng1,sizeof strng1,fp0) )
+	{
+	    FIfld_set_text(frm,FRM_TEXT,i1,0,strng1,FALSE);
+	    i1=i1+1;
+	}
+    }
+    if ( fp0 ) fclose ( fp0 );
+}
+
+/*****************************************************************************/
+main()
+{
+    int			i, mask, response;
+    struct GRevent	event;
+    struct GRid		object_grid, previous_grid;
+    double		pnt[3];
+    char		line[DI_PATH_MAX];
+
+    int		sts, error;
+    long	ival, msg ;
+    char	class_name[40];
+    char	relName[DI_PATH_MAX], absName[DI_PATH_MAX] ;
+
+  while( 1 )
+  {
+    ival = -1;
+    previous_grid = object_grid;
+
+    ci$getevent( prompt   = "Identify element/ key in objid",
+		 response = &response,
+		 mask	  = mask,
+		 event    = &event,
+		 stackable= 1 );
+
+
+    if( response == EX_OBJID )
+    {
+	write("into EX_OBJID\n");
+	object_grid.osnum = event.located_object[0].located_obj.osnum;
+	object_grid.objid = event.located_object[0].located_obj.objid;
+    }
+    else if( response == EX_VALUE )
+    {
+	ival = event.event.value;
+	if( ival >= 0 )
+	{
+	  object_grid.objid = ival;
+	  ci$get(value = object_grid.osnum, prompt = "key in osnum");
+	}
+    }
+    else if( response == EX_DATA )
+    {
+	pnt[0] = event.event.button.x;
+	pnt[1] = event.event.button.y;
+	pnt[2] = event.event.button.z;
+
+	ci$put(point = pnt);
+
+	ci$locate(  prompt	 = "Locate element",
+		    properties   = IGN_LC_BIT | IGN_DP_BIT | IGN_MOD_BIT | IGN_RW_BIT,
+		    owner_action = LC_RIGID_COMP
+				    | LC_RIGID_OWNER | LC_FLEX_COMP
+				    | LC_FLEX_OWNER  | LC_REF_OBJECTS,
+		    accept_point = pnt,
+		    response	 = &response,
+		    obj		 = &object_grid.objid,
+		    osnum	 = &object_grid.osnum);
+
+	if ( ! first_time )navigate(object_grid);
+    }
+
+    if ( om$is_objid_valid ( osnum = object_grid.osnum, objid = object_grid.objid ) == OM_S_SUCCESS &&
+	 previous_grid != object_grid )
+    {
+	gr$display_object( object_id = &previous_grid, mode = GRhe);	/* ERASEHILITE */
+    }
+
+    if ( first_time )
+    {
+	form_init();	/* Set up the form */
+	first_time = FALSE;
+    }
+
+    /* Make sure that navigate() is executed in case 
+       elements are selected by only using keyin's */
+
+    if ( ! first_time && form_st.gadget_label == 0 )
+    {
+	navigate(object_grid);
+    }
+    if ( form )
+    {
+	FIf_uncollapse( form );
+	FIf_display   ( form );
+    }
+    
+
+    /************************************************************
+    Loop until the user presses the cancel button.
+    ************************************************************/
+    not_done	= TRUE;
+    test_wakeup = TRUE;
+
+//    while (not_done)
+    {
+	/* Determine which gadget was manipulated */
+
+	switch ( form_st.gadget_label )
+	{
+	   case CURRENT:
+	   case PARENTS:
+	   case CHILDREN:
+	   case OWNERS:
+	   case COMPONENTS:
+
+		strcpy(line,"");
+		gr$display_object( object_id = &object_grid, mode = GRhe);	/* ERASEHILITE */
+
+		/* un-highlight all selections except currently selected row */
+		FIfld_get_num_rows(form, CURRENT, &num_rows);
+		if (form_st.gadget_label != CURRENT) for (i=0; i<num_rows; i=i+1)   FIfld_set_select(form,CURRENT,i,0,FALSE);
+		FIfld_get_num_rows(form, PARENTS, &num_rows);
+		if (form_st.gadget_label != PARENTS) for (i=0; i<num_rows; i=i+1)   FIfld_set_select(form,PARENTS,i,0,FALSE);
+		FIfld_get_num_rows(form, CHILDREN, &num_rows);
+		if (form_st.gadget_label != CHILDREN)for (i=0; i<num_rows; i=i+1)   FIfld_set_select(form,CHILDREN,i,0,FALSE);
+		FIfld_get_num_rows(form, OWNERS, &num_rows);
+		if (form_st.gadget_label != OWNERS)  for (i=0; i<num_rows; i=i+1)   FIfld_set_select(form,OWNERS,i,0,FALSE);
+		FIfld_get_num_rows(form, COMPONENTS, &num_rows);
+		if (form_st.gadget_label != COMPONENTS)for (i=0; i<num_rows; i=i+1) FIfld_set_select(form,COMPONENTS,i,0,FALSE);
+
+		/* get current selected row */
+		FIfld_get_num_rows(form, CURRENT, &num_rows);
+		for (i=0; i<num_rows; i=i+1)
+		{
+		    FIfld_get_select(form,CURRENT,i,0,&sel_flag);
+		    if (sel_flag) FIfld_get_text(form,CURRENT,i,0,200,line,&sel_flag,&r_pos);
+		}
+		FIfld_get_num_rows(form, PARENTS, &num_rows);
+		for (i=0; i<num_rows; i=i+1)
+		{
+		    FIfld_get_select(form,PARENTS,i,0,&sel_flag);
+		    if (sel_flag) FIfld_get_text(form,PARENTS,i,0,200,line,&sel_flag,&r_pos);
+		}
+		FIfld_get_num_rows(form, CHILDREN, &num_rows);
+		for (i=0; i<num_rows; i=i+1)
+		{
+		    FIfld_get_select(form,CHILDREN,i,0,&sel_flag);
+		    if (sel_flag) FIfld_get_text(form,CHILDREN,i,0,200,line,&sel_flag,&r_pos);
+		}
+		FIfld_get_num_rows(form, OWNERS, &num_rows);
+		for (i=0; i<num_rows; i=i+1)
+		{
+		    FIfld_get_select(form,OWNERS,i,0,&sel_flag);
+		    if (sel_flag) FIfld_get_text(form,OWNERS,i,0,200,line,&sel_flag,&r_pos);
+		}
+		FIfld_get_num_rows(form, COMPONENTS, &num_rows);
+		for (i=0; i<num_rows; i=i+1)
+		{
+		    FIfld_get_select(form,COMPONENTS,i,0,&sel_flag);
+		    if (sel_flag) FIfld_get_text(form,COMPONENTS,i,0,200,line,&sel_flag,&r_pos);
+		}
+
+
+		/* if a line is selected turn event buttons on */
+		if (strcmp(line,""))
+		{
+		    FIg_enable(form, NAVIGATE);
+		    FIg_enable(form, EVENT);
+
+		    object_grid.objid = atoi(strtok(line," "));
+		    object_grid.osnum = atoi(strtok(NULL," "));
+
+		    gr$display_object( object_id = &object_grid, mode = GRbdhd);	/* HILITE */
+		}
+		else
+		{
+		    FIg_disable(form, NAVIGATE);
+		    FIg_disable(form, EVENT);
+		}
+
+		break;
+
+
+	   case NAVIGATE:
+		navigate(object_grid);
+		FIg_disable(form, NAVIGATE);
+		FIg_disable(form, EVENT);
+		break;
+
+	   case EVENT:
+		break;
+
+	   case FI_CANCEL:
+		gr$display_object( object_id = &object_grid, mode = GRhe);	/* ERASEHILITE */
+		not_done = 0;
+
+		delete();	/* This ends execution & erases form(s) */
+
+		break;
+
+	    case FI_ACCEPT :
+
+		if ( form ) sts = FIf_collapse ( form );
+		if ( frm  ) sts = FIf_collapse ( frm  );
+
+		break;
+
+	   case ERASESPECF:
+		if (frm) FIf_erase ( frm );
+		break;
+
+	   case SPECFNAME:
+
+		FIfld_get_text(form,CLASSNAME,0,0,40, class_name, &sel_flag, &r_pos);
+
+		/* Build the relative name to the '.S' file of the Class */
+		sprintf(relName, "spec/%s.S",class_name);
+
+
+		sts = find_spec_file ( &msg, relName, absName);
+		if (sts != OM_S_SUCCESS || msg != MSSUCC )
+		{
+		    if ( frm_displayed == TRUE )
+		    {
+			FIf_reset ( frm );
+			FIf_erase ( frm );
+			frm_displayed = FALSE;
+		    }
+		}
+		else
+		{
+		    error = FIf_uncollapse( frm );
+		    error = FIf_display( frm );
+		    if ( error )
+		    {
+			write( "Could not display the form.\n",	"Error code = ", error, "\n");
+			return_error();
+		    }
+
+		    frm_displayed = TRUE;	/* Flag for sleep function */
+
+		    /* Display the '.S' file of the Class in a FORM */
+		    display_spec_file(absName);
+
+		}
+		break;
+
+	   default:
+		break;
+	}
+	form_st.gadget_label = 0;
+    }
+  }
+}
+
+/* ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ */

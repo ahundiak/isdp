@@ -1,0 +1,265 @@
+/* $Id: ACren_temp.u,v 1.1.1.1 2001/01/04 21:09:01 cvs Exp $  */
+
+/* --------------------------------------------------------------------
+ * I/VDS
+ *
+ * File:	vds/vdppl / ACren_temp.u
+ *
+ * Description:
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ *	$Log: ACren_temp.u,v $
+ *	Revision 1.1.1.1  2001/01/04 21:09:01  cvs
+ *	Initial import to CVS
+ *	
+# Revision 1.1  1998/04/29  16:27:20  pinnacle
+# VDS 2.5.1
+#
+# Revision 1.1  1997/05/08  13:20:44  pinnacle
+# New project VDS 250
+#
+# Revision 1.1  1996/07/19  20:33:52  pinnacle
+# Create VDS 241 project
+#
+# Revision 1.1  1994/11/14  22:42:32  pinnacle
+# Create vds.240 from vds.232
+#
+# Revision 1.1  1994/11/08  16:07:00  pinnacle
+# create vds.232
+#
+ *
+ * History:
+ *	MM/DD/YY	AUTHOR		DESCRIPTION
+ *
+ * -------------------------------------------------------------------*/
+
+/* Copy macro definition from a macro library to another - jla */
+
+#include <stdio.h>
+#include "cieveryone.h"
+#include "cimacros.h"
+#include "acdef.h"
+#include "acmacros.h"
+#include "macro.h"
+#include "grdpbdef.h"
+#include "grdpb.h"
+#include "grdpbmacros.h"
+#include "nddef.h"
+#include "AS_status.h"
+#include "asbox.h"
+#include "madef.h"
+#include "exdef.h"
+#include "exmacros.h"
+#include "DItypedef.h"
+#include "DIdef.h"
+#include "DIglob.h"
+#include "DIprims.h"
+
+extern MAidmx(),ACconstruct_wd(),ACfind_macro_defn(),ACadd_macro_name(),
+       EX_get_modid_given_osnum(),
+       DIuntranslate(),DIfast_trans(),
+       UI_message(),UI_status(),
+       printf();
+
+extern char *strrchr();
+
+struct stemp dtemp[100],*dt;
+struct sup   dsup[100] ,*ut;
+int tsize,usize,wcount,prop;
+
+int ed_num;
+char *old_temp[10],*new_temp[10];
+char ol[160],nw[160],pmpt[80];
+FILE *input_file;
+
+main()
+{
+ int status,msg,rc;
+ char macro_name[80],*occ_macro_name;
+ char full_name[DI_PATH_MAX];
+ struct GRid wd,macro,def_GRid;
+ int index,i,m_1;
+ struct GRmd_env md_env;
+ struct ret_struct	r_val;
+ 
+ for(i=0;i<10;i=i+1)
+  {
+  old_temp[i]=&ol[i*16];
+  new_temp[i]=&nw[i*16];
+  }
+
+ /* Initialize module env */
+
+ md_env.md_env.matrix_type = MAIDMX;
+ MAidmx(&msg,md_env.md_env.matrix);
+
+
+ input_file = NULL;
+
+ UI_message("Edit macro template in definition");
+
+ ci$get(prompt = "Keyin name of input file or return for tty input",
+	string = macro_name,
+	rc = rc);
+ if(!(rc&1)) exit;
+
+ if(macro_name[0] == '\0') input_file = NULL;
+ else 
+  {
+   input_file = fopen(macro_name,"r");
+   if(input_file == NULL)
+    {
+     UI_status("Can not open file");
+    }
+  }
+  
+ ci$get(prompt = "Keyin number of templates to edit",
+	value = ed_num,
+	rc = rc);
+ if(!(rc&1)) exit;
+ for(i=0;i<ed_num;i=i+1)
+   {
+    sprintf(pmpt,"Keyin name of old template %d",i);
+    ci$get(prompt = pmpt,
+   	string = old_temp[i],
+   	rc = rc);
+    if(!(rc&1)) exit;
+    sprintf(pmpt,"Keyin new name for %s",old_temp[i]);
+    ci$get(prompt = pmpt,
+   	string = new_temp[i],
+	rc = rc);
+    if(!(rc&1)) exit;
+    (new_temp[i])[macro_MAX_CHAR-1] = '\0';
+   }
+
+ while(1)
+  {
+   /* Get the macro name to copy */
+
+   if(input_file == NULL)
+    {
+     ci$get(prompt = "Keyin the name of the macro edit",
+	    string = macro_name,
+	    rc = rc);
+     if(!(rc&1)) continue;
+    }
+   else
+    {
+     status = fscanf(input_file,"%s",macro_name);
+     if(status != 1) break;
+    }
+
+   if(macro_name[0] == '#')
+     {
+      printf("does NOT copy %s\n",macro_name);
+      continue;
+     }
+
+   /* Get working directory */
+   status = ac$construct_wd(mode = AC_INQ,
+			    dir = &wd);
+  
+   /* Get macro description */
+
+   status = ac$find_macro_defn(action = ACfind_no_load,
+			    macro_name = macro_name,
+			    p_macro_defn_id = &macro );
+   if(!(status&1)) 
+	{
+	printf("Failed to find macro %s\n",macro_name);
+	continue;
+	}
+
+   status = di$untranslate(objid = macro.objid,
+                         osnum = macro.osnum,
+                         objname = full_name);
+   def_GRid.objid=NULL_OBJID;
+   if((status&1))
+    { 
+    strcat(full_name,"$def");
+    status = di$translate(objname = full_name,
+                       p_objid = &def_GRid.objid,
+                       p_osnum = &def_GRid.osnum);
+    if((status&1)) 
+     {
+     printf("def_id was %d %d\n",def_GRid.objid,def_GRid.osnum);
+     }
+    }
+ 
+ 
+      status=ci$send(msg = message ACcpx_defn.ACgive_temp_desc
+			(&tsize, &dt ),
+		     targetid=macro.objid,
+		     targetos=macro.osnum);
+      as$status();
+      status=ci$send(msg = message ACmacro_defn.ACgive_upscan
+			(&usize,&prop, &ut ),
+		     targetid=macro.objid,
+		     targetos=macro.osnum);
+      as$status();
+  	for(wcount=0;wcount<tsize;wcount=wcount+1)
+	  {
+          for(i=0;i<ed_num;i=i+1)
+	   {
+//	   printf("testing %s against %s\n",dt[wcount].name,old_temp[i]);
+           if(!strcmp(dt[wcount].name,old_temp[i]))
+	    {
+	    strcpy(dt[wcount].name,new_temp[i]);
+	    printf("Changed temp %s in macro %s\n",old_temp[ed_num],macro_name);
+            if(def_GRid.objid != NULL_OBJID)
+	     {
+	     m_1=-1;
+             status=ci$send(msg = message NDmacro.ACgive_structure
+			(&msg,&m_1,old_temp[i],&r_val,&md_env),
+		     targetid=def_GRid.objid,
+		     targetos=def_GRid.osnum);
+             as$status();
+             status=ci$send(msg = message ACdiowner.ACrem_attribute
+			(&msg,old_temp[i]),
+		     targetid=def_GRid.objid,
+		     targetos=def_GRid.osnum);
+             as$status();
+             if(r_val.type==double_type)
+              {
+              sprintf(full_name,"%f",r_val.var.root_pm_st.value);
+              status=ci$send(msg = message ACdiowner.ACadd_attribute_by_type
+			(&msg,2,new_temp[i],full_name),
+		     targetid=def_GRid.objid,
+		     targetos=def_GRid.osnum);
+              as$status();
+              }
+	     else if(r_val.type==text_type)
+	      {
+              status=ci$send(msg = message ACdiowner.ACadd_attribute_by_type
+			(&msg,1,new_temp[i],r_val.var.text_st.text_string),
+		     targetid=def_GRid.objid,
+		     targetos=def_GRid.osnum);
+              as$status();
+	      }
+             }
+
+	    }
+           }
+          dtemp[wcount]=dt[wcount];
+	  strcpy(dsup[wcount].prompt,dtemp[wcount].name);
+	  strcpy(dsup[wcount].up_scan,".");
+	  strcpy(dtemp[wcount].down_scan,".");
+	  dtemp[wcount].back=wcount;
+	  dsup[wcount].type=dtemp[wcount].type;
+	  }
+	status = ci$send(msg = message ACmacro_defn.ACtake_template
+			(tsize,dsup,tsize,dtemp ),
+		     targetid=macro.objid,
+		     targetos=macro.osnum);
+        as$status();
+ 
+
+ } /* end loop on macro to copy */
+} 
+
+delete()
+{
+ if(input_file) fclose(input_file);
+}

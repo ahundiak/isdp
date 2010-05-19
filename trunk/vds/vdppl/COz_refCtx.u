@@ -1,0 +1,131 @@
+/* $Id: COz_refCtx.u,v 1.1 2001/09/12 21:06:13 ramarao Exp $  */
+/* --------------------------------------------------------------------
+ * I/VDS
+ *
+ * File:        isdp/vds/vdppl/COz_refCtx.u
+ *
+ * Description: PPL to show if there is any problem with 
+ *		  ACpretendin --> GRcontext --> GRreffiles
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ *      $Log: COz_refCtx.u,v $
+ *      Revision 1.1  2001/09/12 21:06:13  ramarao
+ *      Gives a warning in case of GRcontext problems TR# 5583 and TR# 5111.
+ *
+ *
+ * History:
+ *      MM/DD/YY        AUTHOR          DESCRIPTION
+ *      09/12/01        Rama Rao        File Creation.
+ * -------------------------------------------------------------------*/
+
+#include "VDppl.h"
+#include "VDobj.h"
+#include "VDchn.h"
+#include "vdVALmacros.h"
+
+extern 	VDpms_find_objects(), VD_bulkDisplayByGRids();
+
+extern GRclassid	OPP_ACpretendin_class_id;
+
+extern OM_S_CHANSELECT 	AS_listeners;
+
+main()
+{
+IGRlong                 sts;
+IGRint                  i, loc_cnt, listener_cnt, refCnt;
+IGRboolean		disp;
+GRobjid                 *loc_list;
+GRspacenum		osnum;
+OM_S_OBJECT_LINKAGE	refId, listeners[2];
+OM_S_CHANSELECT		GRcontext_to_reffile;
+struct GRid             obj_chk, context_id, go_id;
+struct GRmd_env         cur_env;
+
+   loc_cnt  = 0;
+   loc_list = NULL;
+   disp     = FALSE; 
+
+   sts = MSSUCC;
+
+   om$make_chanselect( channame = "GRcontext.to_reffile",
+		       p_chanselect = &GRcontext_to_reffile ) ;
+
+   ci$get_module_info( md_env = &cur_env );
+   osnum = cur_env.md_id.osnum;
+
+   loc_cnt = 0;
+   VDpms_find_objects( osnum, OPP_ACpretendin_class_id, &loc_cnt, NULL ); 
+   if( !loc_cnt ) goto wrapup;
+
+   loc_list  = ( GRobjid * ) malloc( sizeof(GRobjid)*loc_cnt );
+   VDpms_find_objects( osnum, OPP_ACpretendin_class_id, &loc_cnt, loc_list );
+
+   for( i=0; i<loc_cnt; i=i+1 )
+   {
+     obj_chk.objid = loc_list[i];
+     obj_chk.osnum = osnum;
+
+     listener_cnt = 0;
+
+     om$get_channel_objects( objid    = obj_chk.objid,
+			     osnum    = obj_chk.osnum,
+			     p_chanselect = &AS_listeners,
+			     size     = 2,
+			     list     = listeners,
+			     count    = &listener_cnt  );
+
+     if( !listener_cnt ) continue;
+
+     context_id.objid = listeners[0].S_objid;
+     context_id.osnum = listeners[0].osnum;
+
+     if( !vdobj$IsAncestryValid( objID          = &context_id,
+                                 superClassName = "GRcontext" ) & 1 )
+     {
+	go_id.objid = listeners[0].S_objid;
+	go_id.osnum = listeners[0].osnum;
+
+	context_id.objid = listeners[1].S_objid;
+	context_id.osnum = listeners[1].osnum;
+     }
+
+     refCnt = 0;
+     refId.S_objid = NULL_OBJID;
+     om$get_channel_objects( objid    = context_id.objid,
+			     osnum    = context_id.osnum,
+			     p_chanselect = &GRcontext_to_reffile,
+			     size     = 1,
+			     list     = &refId,
+			     count    = &refCnt );
+     if( ( refCnt != 0 ) && ( refId.S_objid != NULL_OBJID ) ) continue;
+
+     if( disp == FALSE )
+     {
+        status( "Problem with GRcontexts for the hilighted drawings." );
+        disp = TRUE;
+     }
+
+     go_id.objid  = NULL_OBJID;
+     vdchn$GetChildrenByClass( objID = &obj_chk,
+			       className = "VDdrwObj",
+			       childID = &go_id );
+
+     if( go_id.objid != NULL_OBJID )
+	VD_bulkDisplayByGRids( &cur_env, GRhd, 1, &go_id );
+
+     go_id.objid  = NULL_OBJID;
+     vdchn$GetChildrenByClass( objID = &obj_chk,
+                               className = "VDdrawing",
+                               childID = &go_id );
+
+     if( go_id.objid != NULL_OBJID )
+        VD_bulkDisplayByGRids( &cur_env, GRhd, 1, &go_id );
+   }
+
+wrapup:
+   if( disp == FALSE ) status( "No Problems." );
+   if( loc_list    ) { free( loc_list    ); loc_list    = NULL; }
+   return 1;
+}

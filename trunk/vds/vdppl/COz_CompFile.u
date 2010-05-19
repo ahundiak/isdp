@@ -1,0 +1,122 @@
+/* $Id: COz_CompFile.u,v 1.2 2001/10/31 17:34:01 ramarao Exp $  */
+
+/***************************************************************************
+ * I/VDS
+ *
+ * File:        vds/vdppl/COz_CompFile.u
+ *
+ * Description: Recomputes objects in active file.
+ *
+ * Dependencies: 
+ *
+ * Revision History:
+ *      $Log: COz_CompFile.u,v $
+ *      Revision 1.2  2001/10/31 17:34:01  ramarao
+ *      Added a check not to recompute 'Root' object.
+ *
+ *      Revision 1.1  2001/03/23 21:45:25  ramarao
+ *      PPL to recompute all objects in active file.
+ *
+ *
+ * History:
+ *      MM/DD/YY        AUTHOR          DESCRIPTION
+ *      03/23/01        Rama Rao        File Creation.
+ ***************************************************************************/
+
+#include "VDppl.h"
+#include "VDobj.h"
+#include "nddef.h"
+#include "ndmacros.h"
+
+//#include "coparamac.h"
+
+extern	NDmod_batch(), NDexec_batch(), NDget_mod_batch(), NDwait_batch(),
+	VD_matchRE(), VDpms_findall_ancestryobjects();
+
+extern GRclassid	OPP_ACncpx_class_id;
+
+/* --------------------------------------
+ * The main routine
+ */
+int main(argc,argv)
+int   argc;
+char *argv[];
+{
+IGRlong			msg, sts;
+IGRint                	i, j, nb_class, loc_cnt, wtBatch, cnType, state;
+IGRchar                 response[40], macName[100];
+GRclassid		classid[1];
+OM_S_OBJID		*loc_list;
+struct GRid           	obj_chk;
+struct GRmd_env		cur_env;
+extern IGRboolean     	ASbroadcast_in_progress ;
+IGRboolean            	saveBroad;
+
+  loc_cnt    = 0;
+  nb_class   = 1;
+  loc_list   = NULL;
+
+  sts = MSSUCC;
+  msg = MSSUCC;
+
+  message( "Recompute Objects in Active File" );
+
+  ci$get( string = response,
+          prompt = "Do you want to really recompute [ y/n ]" );
+  if( response[0] != 'y' && response[0] != 'Y' ) return 1;
+
+  classid[0] = OPP_ACncpx_class_id;
+
+  ci$get_module_info( md_env = &cur_env );
+
+  loc_cnt = 0;
+  VDpms_findall_ancestryobjects( cur_env.md_id.osnum, nb_class,
+                                 classid, &loc_cnt, NULL );
+  if( !loc_cnt ) goto wrapup;
+
+  loc_list = ( OM_S_OBJID * ) malloc( sizeof(OM_S_OBJID)*loc_cnt );
+  VDpms_findall_ancestryobjects(  cur_env.md_id.osnum, nb_class,
+                                  classid, &loc_cnt, loc_list );
+
+  cnType = ND_COMP;
+
+  for( i=0; i<loc_cnt; i=i+1 )
+  {
+      obj_chk.objid = loc_list[i];
+      obj_chk.osnum = cur_env.md_id.osnum;
+
+      ci$send( msg = message ACncpx.ACget_STATE( &state ),
+               targetid = obj_chk.objid,
+               targetos = obj_chk.osnum );
+      if( state & ncpx_root ) continue;
+
+      if( argc > 1 )
+      {
+	 vdobj$Get( objID = &obj_chk, macName = macName );
+	 for( j=1; j<argc; j=j+1 )
+	   if( VD_matchRE( argv[j], macName ) )  break;
+
+	 if( j == argc ) continue;
+      }
+
+      nd$wait_batch( type       = GR_GEOM_POSTED,
+                     l_object   = &obj_chk,
+                     l_obj_info = &cnType,
+                     nb_obj     = 1            );
+  }
+
+  nd$mod_batch( request    = ND_INQ,
+                p_ret_mode = &wtBatch );
+
+  saveBroad = ASbroadcast_in_progress ;
+  ASbroadcast_in_progress = FALSE ;
+
+  if( wtBatch != ND_DEFER )
+     nd$exec_batch( mode = ND_DISP_ROOT|ND_DISP_BODY );
+
+  ASbroadcast_in_progress = saveBroad ;
+
+wrapup:
+  if( loc_list   ) { free( loc_list   ); loc_list   = NULL; }
+  return 1;
+}

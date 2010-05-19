@@ -1,0 +1,239 @@
+/* $Id: COdrw_orient.u,v 1.1.1.1 2001/01/04 21:09:02 cvs Exp $  */
+
+/* --------------------------------------------------------------------
+ * I/VDS
+ *
+ * File:        /vds/vdppl/COdrw_orient.u
+ *
+ * Description:
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ *      $Log: COdrw_orient.u,v $
+ *      Revision 1.1.1.1  2001/01/04 21:09:02  cvs
+ *      Initial import to CVS
+ *
+# Revision 1.1  1999/02/18  22:36:36  pinnacle
+# tr179801788
+#
+ *
+ * History:
+ *      MM/DD/YY        AUTHOR          DESCRIPTION
+ *      02/18/99        ylong           place orientation for tr179801788
+ * -------------------------------------------------------------------*/
+
+
+#include "VDppl.h"
+
+#define  EPS	0.000001	
+
+extern double fabs();
+extern int    toupper();
+extern int    isspace();
+extern int    BSmult_mats();
+extern int    GRdpb_get();
+extern        VD_PlaceCell();
+extern long   VD_bulkDisplayByGRids();
+
+main()
+{
+  struct GRid           obj,
+                        cell_id ; 
+  struct GRmd_env       mod_env;
+  IGRchar               cell_name[GR_MAX_CHAR],
+                        cell_lib[GR_MAX_CHAR],
+                        c_name[80];
+  IGRint                msg, flag, status, i;
+
+  long                  sts, ret_size, size ;
+  IGRmatrix		matrix;
+  IGRdouble		scale[3],
+                        p0[3],
+  			angle;
+  BSrc       		bsrc;
+
+  struct GRdpb_scale	dpb_scale;
+  enum GRdpmode         dpmode ;
+
+
+  sts = OM_E_ABORT ;
+  status = 0 ;
+
+  strcpy(cell_lib, "UCM_SYM.LIB");
+
+  flag = FALSE;
+
+  message("Place Orientation");
+  while(1) {
+
+        status = ci$locate(prompt       = "Locate object",
+	                   owner_action =  LC_RIGID_COMP
+	                                 | LC_RIGID_OWNER | LC_FLEX_COMP
+	                                 | LC_FLEX_OWNER  | LC_REF_OBJECTS,
+	                   md_env       = &mod_env,
+	                   obj          = &obj.objid,
+	                   osnum        = &obj.osnum ) ;
+        if( !status ) {
+             break;
+        }
+	
+	sts = om$get_classname( objid     = obj.objid,
+	                        osnum     = obj.osnum,
+	                        classname = c_name );
+
+	sts =  om$is_ancestry_valid( subclassname   = c_name ,
+ 	                             superclassname = "GRdrawview" );
+	
+        if( sts != OM_S_SUCCESS ) {
+                printf(" sts is not equal to OM_S_SUCCESS !!!\n");
+		goto wrap_up;
+	}
+	
+	status =
+	ci$send(msg = message GRdrawview.GRget_model_matrix(	&sts,
+								&mod_env,
+								flag,
+								matrix ),
+		targetid = obj.objid,
+	 	targetos = obj.osnum );
+
+        break;      
+
+	wrap_up:
+	continue;
+  }
+   
+
+  if( !(sts & 1) && !status) goto terminate ;
+
+  strcpy(cell_name, "NULL");
+  /*
+   * Place orientation on 2D view
+   */
+
+  /*  the projection of X on the view is 0  */
+  if( fabs(matrix[0]) < EPS && fabs(matrix[4]) < EPS ) {
+
+       if( fabs(matrix[2]) < EPS && fabs(matrix[5]) < EPS )  {
+
+           if( matrix[1] > 0. && matrix[6] > 0. )  {
+             /*
+                         ^ UP
+                         |
+                         |--> PORT
+             */
+             strcpy(cell_name, "CS_OB_2");
+           }
+           else if(matrix[1] < 0. && matrix[6] > 0.) {
+             /*
+                         ^ UP
+                         |
+                 PORT <--| 
+             */
+             strcpy(cell_name, "CS_OB_1");
+           }
+        }
+  }
+
+  /*  the projection of Y on the view is 0  */
+  else if( fabs(matrix[1]) < EPS && fabs(matrix[5]) < EPS ) {
+
+      if( fabs(matrix[2]) < EPS && fabs(matrix[4]) < EPS ) {
+
+           if(matrix[0] > 0. && matrix[6] > 0. )  {
+             /*
+                        ^ UP
+                        |
+                 AFT <--|
+             */
+             strcpy(cell_name, "CS_AFT_1");
+           }
+           else if(matrix[0] < 0. && matrix[6] > 0.) {
+             /*
+                      ^ U
+                      |
+                      |--> A
+             */
+             strcpy(cell_name, "CS_AFT_2");
+           }
+      }
+  }
+
+
+  /*
+   * Place orientation on iso view
+   */
+
+  /*  Y (PORT) is vertical on iso view  */
+  if( fabs(matrix[1]) < EPS && matrix[5] > 0. ) {
+
+      if( matrix[0] < 0. && matrix[2] > 0. &&
+          matrix[4] > 0. && matrix[6] > 0. ) {
+
+             strcpy(cell_name, "CS_AFT_ISO") ;
+      }
+  }
+
+  /*  Z (UP) is vertical on iso view  */
+  if( fabs(matrix[2]) < EPS && matrix[6] > 0. ) {
+
+      if( matrix[0] > 0. && matrix[1] < 0. &&
+          matrix[4] > 0. && matrix[5] > 0. ) {
+
+             strcpy(cell_name, "CS_OBPORT_ISO") ;
+      }
+  }
+
+  prompt("");
+		 
+  if( strcmp( cell_name, "NULL") == 0 ) {
+       UI_status(" No corresponding orientation in Cell Lib so far.");
+       goto terminate ;
+  }
+
+  ci$get(point = p0 ,prompt="Enter position for orientation");
+
+  /*
+   *  Get the active angle (in radians)
+   */
+  size = sizeof (IGRdouble);
+  sts = gr$get_active_angle (msg    = &msg,
+                             sizbuf = &size,
+                             buffer = &angle,
+                             nret   = &ret_size);
+  if (!( msg & 1 )) { angle = 0. ;}
+
+  /*
+   *  Get the active scale.
+   */
+  size = sizeof(struct GRdpb_scale);
+  sts = gr$get_active_scale (msg    = &msg,
+                             sizbuf = &size,
+                             buffer = &dpb_scale,
+                             nret   = &ret_size);
+  if(!(msg & 1)) { 
+	scale[0] = 1. ;
+	scale[1] = 1. ;
+	scale[2] = 1. ;
+  }
+  else {
+	scale[0] = dpb_scale.Active_xscale;
+	scale[1] = dpb_scale.Active_yscale;
+	scale[2] = dpb_scale.Active_zscale;
+  }
+
+  VD_PlaceCell( &msg,
+                 cell_lib,
+                 cell_name, 
+                 p0,
+                 angle,
+                 scale,
+                &mod_env,
+                &cell_id );
+
+  VD_bulkDisplayByGRids( &mod_env, dpmode, 1, &cell_id );
+  
+  terminate:
+  message("");
+}

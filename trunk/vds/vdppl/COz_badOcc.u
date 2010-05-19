@@ -1,0 +1,111 @@
+/* $Id: COz_badOcc.u,v 1.1 2001/10/20 18:37:20 ramarao Exp $ */
+/*************************************************************************
+ * I/VDS
+ *
+ * File:        isdp/vds/vdppl/COz_badOcc.u
+ *
+ * Description: PPL to show all the construction macros whose parents
+ *		are missing.
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ *      $Log: COz_badOcc.u,v $
+ *      Revision 1.1  2001/10/20 18:37:20  ramarao
+ *      Implemented CR# 4033.
+ *
+ *
+ * History:
+ *      MM/DD/YY   AUTHOR               DESCRIPTION
+ *      10/20/01   Rama Rao             File Creation
+ *************************************************************************/
+
+#include "VDppl.h"
+#include "VDobj.h"
+#include "VDmac.h"
+#include "vdVALmacros.h"
+
+extern VDpms_findall_ancestryobjects();
+
+extern GRclassid	OPP_ACconst_class_id;
+
+main()
+{
+IGRlong			sts;
+IGRint			i, j, loc_cnt, nb_class, tot_temp, state;
+IGRchar			macName[100], tmpStr[200];
+GRclassid		classid[1];
+OMuword			osnum;
+OM_S_OBJID		*loc_list;
+struct GRid		obj_chk, defID, parentID;
+struct  stemp   	*dtemp;
+struct GRmd_env		cur_env;
+
+   sts = MSSUCC;
+
+   loc_cnt  = 0;
+   loc_list = NULL;
+   nb_class = 1;
+
+   ci$get_module_info( md_env = &cur_env );
+   osnum = cur_env.md_id.osnum;
+
+   classid[0] = OPP_ACconst_class_id;
+
+   loc_cnt = 0;
+   VDpms_findall_ancestryobjects( osnum, nb_class, classid, &loc_cnt, NULL );
+   if( !loc_cnt ) goto wrapup;
+
+   loc_list  = ( GRobjid * ) malloc( sizeof(GRobjid)*loc_cnt );
+   if( loc_list == NULL ) goto wrapup;
+
+   VDpms_findall_ancestryobjects( osnum, nb_class, classid, 
+				  &loc_cnt, loc_list );
+
+   vd$VAL_openLog();
+
+   for( i=0; i<loc_cnt; i=i+1 ) 
+   {
+      obj_chk.objid = loc_list[i];
+      obj_chk.osnum = osnum; 
+
+      sts = ci$send( msg = message ACncpx.ACget_STATE( &state ),
+                     targetid = obj_chk.objid,
+                     targetos = obj_chk.osnum );
+      if( state & ncpx_root ) continue;
+
+      vdmac$Get( objID = &obj_chk, defID = &defID );
+
+      sts = ci$send( msg = message ACcpx_defn.ACgive_temp_desc( 
+					&tot_temp, &dtemp ),
+		     targetid = defID.objid,
+		     targetos = defID.osnum  );
+      if( sts&1 )
+      {
+	for( j=0; j<tot_temp; j=j+1 )
+        {
+	   parentID.objid = NULL_OBJID;
+           vdobj$GetParent( objID = &obj_chk, 
+                            idx = j, parentID = &parentID );
+	   if( parentID.objid == NULL_OBJID ) 
+           {
+	      vdobj$Get( objID = &obj_chk, macName = macName );
+
+              sprintf( tmpStr, "<%s> is missing <%s> parent.",
+				macName, dtemp[j].name  );
+
+              vd$VAL_addObject( GRid     = obj_chk,
+                                PostText = tmpStr    );
+	      break;
+	   }
+        }
+	if( j == tot_temp ) continue;
+      }
+   }
+
+   vd$VAL_closeLog();
+
+wrapup:
+   if( loc_list ) { free( loc_list );  loc_list = NULL; }
+   return sts;
+}

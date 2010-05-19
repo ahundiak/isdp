@@ -1,0 +1,344 @@
+/* $Id: COpdmSearch.u,v 1.1.1.1 2001/01/04 21:09:02 cvs Exp $  */
+
+/***************************************************************************
+ * I/VDS
+ *
+ * File:        vds/vdppl/COpdmSearch.u
+ *
+ * Description: Searches xml copy of pdm
+ *
+ * Dependencies: 
+ *
+ * Revision History:
+ *      $Log: COpdmSearch.u,v $
+ *      Revision 1.1.1.1  2001/01/04 21:09:02  cvs
+ *      Initial import to CVS
+ *
+# Revision 1.3  2000/02/18  15:32:08  pinnacle
+# New xml stream
+#
+# Revision 1.2  2000/01/10  21:12:42  pinnacle
+# New xml interface
+#
+# Revision 1.1  1999/04/21  19:46:54  pinnacle
+# pdm search
+#
+ *
+ * History:
+ * MM/DD/YY  AUTHOR  DESCRIPTION
+ * 04/21/99  ah      Created
+ * 01/10/00  ah      New xml interface
+ * 02/18/00  ah      Tweaked to deal with new xml stream structure
+ ***************************************************************************/
+#include "VDppl.h"
+#include "VDfrm.h"
+
+#include "VDxml.h"
+#include "VDxmlPDM.h"
+
+TVDxmlPDMInfo   pdmInfo;
+
+extern calloc();
+
+#define theCommand "Search PDM Data File"
+#define thePrompt  "Do Something"
+
+Form   form;
+struct CIform_st form_st;
+
+#define form_name "VDpdmSearch.F"
+
+extern VDSverify_login();
+extern IGRchar VDSenvir_name[];
+
+/* ------------------------------------------------
+ * Fills the pick list of xml files
+ */
+fillList()
+{
+  IGRstat retFlag;
+  IGRstat sts;
+
+  IGRint i;
+  TVDxmlFileInfos fileInfos;
+
+  IGRchar *p;
+  IGRchar  envFile[64];
+
+  // Init
+  retFlag = 0;
+  vdfrm$SetListText(form   = form,
+                    gadget = VDXML_PDM_FORM_FILES,
+                    rows   = 0);
+
+  // Init the info data
+  memset(&fileInfos,0,sizeof(fileInfos));
+  fileInfos.max = 64;
+  fileInfos.info = calloc(fileInfos.max,sizeof(TVDxmlFileInfo));
+  if (fileInfos.info == NULL) goto wrapup;
+
+  // Load up pick list
+  VDxmlFindXMLFiles(1,"config/xml",VDXML_IN_PDM_ROOT,&fileInfos);
+
+  for(i = 0; i < fileInfos.cnt; i = i + 1) {
+
+    vdfrm$SetListText(form   = form,
+                      gadget = VDXML_PDM_FORM_FILES,
+                      row    = i,
+                      txt    = fileInfos.info[i].io.fileName);
+
+    // printf("FILE %s\n",fileInfos.info[i].fileName);
+ 
+  }
+  vdfrm$SetText(form   = form, 
+                gadget = VDXML_PDM_FORM_FILES, 
+                txt    = fileInfos.info[0].io.fileName);
+
+  // If logged in, set default to current enviroment 
+  sts = VDSverify_login();
+  if (sts & 1) {
+    p = strchr(VDSenvir_name,'_');
+    if (p) {
+      sprintf(envFile,"/%s.xml",p+1);
+      for(i = 0; i < fileInfos.cnt; i = i + 1) {
+
+        p = strstr(fileInfos.info[i].io.fileName,envFile);
+
+        if (p) {
+          vdfrm$SetText(form   = form, 
+                        gadget = VDXML_PDM_FORM_FILES, 
+                        txt    = fileInfos.info[i].io.fileName);
+          i = fileInfos.cnt;
+        }
+      }
+    }
+  }
+
+  // Done
+  retFlag = 1;
+
+wrapup:
+  if (fileInfos.info) free(fileInfos.info);
+  return retFlag;
+}
+
+/* ------------------------------------------------
+ * Main routine
+ */
+main()
+{
+  int sts,msg;
+  int response;
+
+  // Create the form  
+  sts = init_form();
+  if (!(sts & 1)) goto wrapup;
+
+  // Disable query if not logged in
+  sts = VDSverify_login();
+  if (!(sts & 1)) {
+    VIg_disable(form,VDXML_PDM_FORM_GENERATE);
+  }
+
+  // Fill in list of xml files
+  fillList();
+
+  // Do it
+  UI_message(theCommand);
+  UI_prompt (thePrompt);
+
+  form_st.gadget_label = 0;
+
+  vdfrm$DisplayForm(form = form);
+
+  while(1) {
+
+    ci$get(prompt   = thePrompt, 
+           response = &response);
+
+    switch(response) {
+      case MOVE_ON:
+      case RESET:
+      case TERMINATE:
+        goto wrapup;
+    }
+  }
+
+wrapup:
+  return 1;
+}
+
+/* ---------------------------------------------------
+ * User clicked on list of files
+ */
+IGRstat listFile()
+{
+  IGRstat retFlag;
+  IGRint  row;
+  IGRint  pos;
+
+  IGRchar buf[256];
+
+  // Init 
+  retFlag = 0;
+
+  // Get the selected row
+  row = -1;
+  VIfld_get_active_row(form,VDXML_PDM_FORM_LIST,&row,&pos);
+  if (row < 0) goto wrapup;
+
+  // Pull some data
+  vdfrm$GetText(form   = form,
+                gadget = VDXML_PDM_FORM_LIST,
+                row    = row,
+                col    = 0,
+                txt    = pdmInfo.catName);
+
+  vdfrm$GetText(form   = form,
+                gadget = VDXML_PDM_FORM_LIST,
+                row    = row,
+                col    = 1,
+                txt    = pdmInfo.partName);
+
+  vdfrm$GetText(form   = form,
+                gadget = VDXML_PDM_FORM_LIST,
+                row    = row,
+                col    = 2,
+                txt    = pdmInfo.partRev);
+
+  vdfrm$GetText(form   = form,
+                gadget = VDXML_PDM_FORM_LIST,
+                row    = row,
+                col    = 3,
+                txt    = pdmInfo.partDesc);
+
+  vdfrm$GetText(form   = form,
+                gadget = VDXML_PDM_FORM_LIST,
+                row    = row,
+                col    = 4,
+                txt    = pdmInfo.fileName);
+
+  // Display
+  sprintf(buf,"%s - %s",pdmInfo.fileName,pdmInfo.partDesc);
+  vdfrm$SetText(form = form, gadget = 10, txt = buf);
+  sprintf(buf,"%s - %s",pdmInfo.catName,pdmInfo.partName);
+  UI_status(buf);
+  
+  // Done
+  retFlag = 1;
+
+wrapup:
+  return retFlag;
+}
+ 
+/* ---------------------------------------------------
+ * Form notification routine
+ */
+IGRstat form_notification()
+{
+  IGRstat retFlag;
+  IGRint  gadget;
+
+  // Init
+  retFlag = 0;
+  gadget = form_st.gadget_label;
+
+  // printf("Gadget %d\n",gadget);
+
+  // A few always get's handled
+  switch (gadget) {
+
+  case FI_CANCEL:
+    ci$put(response = TERMINATE);
+    goto wrapup;
+
+  case FI_ACCEPT:
+    ci$put(response = TERMINATE);
+    goto wrapup;
+
+  case VDXML_PDM_FORM_FILES:
+  case VDXML_PDM_FORM_SEARCH:
+    VDxmlPDMSearchFile(form);
+    break;
+
+  case VDXML_PDM_FORM_LIST:
+    listFile();
+    break;
+  
+  case VDXML_PDM_FORM_GENERATE:
+    VDxmlPDMQueryCatsParts();
+    fillList();
+    break;
+  }
+  
+  retFlag = 1;
+
+wrapup:
+  return retFlag;
+
+}
+
+/* --------------------------------------------------------
+ * Get the form started
+ */
+init_form()
+{
+  IGRstat retFlag;
+  IGRstat sts;
+  Form    existingForm;
+  
+  retFlag = 0;
+
+  // Already running?
+  sts = vdfrm$GetFormByName(name = form_name, form = &existingForm);
+  if (existingForm) {
+    UI_status("Search PDM Environment - Already Running");
+    goto wrapup;
+  }
+
+  // Create it
+  vdfrm$CreateForm(label  = 100,
+                   name   = form_name,
+                   notify = ci_notification,
+                   objid  = MY_ID,
+                   form   = &form);
+
+  if (form == 0) {
+    UI_status("Could not init Search PDM Environment form");
+    goto wrapup;
+  }
+  
+  // Position it
+  vdfrm$LoadFormPosition(form = form);
+
+  // Done
+  retFlag = 1;
+
+wrapup:
+  return retFlag;
+}
+
+/* ------------------------------------------
+ * Usual command object messages
+ */
+init()
+{
+  form = NULL;
+}
+sleep() 
+{
+}
+wakeup()
+{
+  UI_message(theCommand);
+  if (form) vdfrm$DisplayForm(form = form);;
+}
+delete()
+{
+  if (form) {
+    vdfrm$SaveFormPosition(form = form);
+    vdfrm$DeleteForm      (form = form);
+  }
+  form = NULL;
+}
+

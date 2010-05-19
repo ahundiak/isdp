@@ -1,0 +1,290 @@
+/***************************************************************************
+ * I/VDS
+ *
+ * File:        api/expression/APIexec_exp.u
+ *
+ * Description: Identifies the VDS object.
+ *
+ *
+ * Dependencies:
+ *
+ * History:
+ *      MM/DD/YY        AUTHOR          DESCRIPTION
+ *      12/19/97        i-india         creation date
+ *
+ ***************************************************************************/
+
+#include <stdio.h>
+#include "cieveryone.h"
+
+#include "ciminimum.h"
+#include "cimacros.h"
+#include "igrdp.h"
+#include "igrtypedef.h"
+#include "godef.h"
+#include "go.h"
+#include "growner.h"
+#include "FI.h"
+#include "ACrg_collect.h"
+#include "VDmem_ppl.h"
+#include "v_slcdef.h"
+#include "v_pplslc.h"
+#include "VDtblCmdDef.h"
+
+extern int VDremove_object();
+extern int VDdrw_CheckTblValid();
+extern int VDdrw_hiliteTable();
+extern int VDdrw_removeBadTbl();
+extern int VDdrw_displayForm();
+extern int ci_notification(),
+	   FIf_new(),
+	   FIf_erase(),
+	   FIf_display(),
+	   FIf_set_cmd_oid_os(),
+	   FIfld_set_text(),
+	   FIf_delete(),
+	   UI_message(),
+	   UI_prompt(),
+	   UI_status();
+extern VDpms_findall_ancestryobjects();
+
+extern GRclassid        OPP_VDdrwTbl_class_id;
+
+#define theForm       "VDcheckTbl.frm"
+#define theCommand    "Check Tables"
+#define thePrompt     "Check Tables, accept when removing"
+
+struct CIform_st
+{
+   int          form_label;
+   int          gadget_label;
+   double       value;
+   Form         form_ptr;
+}form_st;
+
+
+Form	 form;
+IGRshort form_displayed;
+
+
+main()
+{
+IGRint		 	status, i, tolCnt, badCnt, goodCnt;
+struct GRobj_env 	*badTbl, *goodTbl, *tolTbl;
+IGRlong			msg, response;
+GRclassid               classids[1];
+OM_S_OBJID              *list;
+struct GRmd_env         loc_env;
+IGRint			is_good;
+
+
+	tolCnt   = 0;
+	badCnt   = 0;
+	goodCnt  = 0;
+    	list     = NULL;
+    	badTbl   = NULL;
+    	goodTbl  = NULL;
+    	tolTbl   = NULL;
+
+ 	init_form();
+
+  	ci$get_module_info( md_env = &loc_env);
+  	classids[0] = OPP_VDdrwTbl_class_id;
+
+	/*
+	** Find the total numbers of tables.
+	*/
+  	VDpms_findall_ancestryobjects( loc_env.md_id.osnum, 
+				       1, 
+				       classids,
+                                       &tolCnt, 
+				       NULL );
+        if( !tolCnt ) 
+        {
+	  UI_status( "No table in the file!" );
+   	  return 1;
+        }
+
+	/*
+	** Allocate memory
+	*/
+  	list = _MALLOC( tolCnt, OM_S_OBJID );
+	if( list == NULL ) goto wrapup;
+
+  	badTbl = _MALLOC( tolCnt, struct GRobj_env );
+	if( badTbl == NULL ) goto wrapup;
+
+  	goodTbl = _MALLOC( tolCnt, struct GRobj_env ) ;
+	if( goodTbl == NULL ) goto wrapup;
+
+  	tolTbl = _MALLOC( tolCnt, struct GRobj_env ) ;
+	if( tolTbl == NULL ) goto wrapup;
+
+  	VDpms_findall_ancestryobjects( loc_env.md_id.osnum,
+				       1, 
+				       classids,
+                                       &tolCnt, 
+				       list );
+
+	/*
+	** Check if any table corrupted.
+	*/
+ 	for( i = 0 ; i < tolCnt ; i = i+1 )
+	{
+	  tolTbl[i].mod_env = loc_env;
+	  tolTbl[i].obj_id.objid = list[i];
+	  tolTbl[i].obj_id.osnum = loc_env.md_id.osnum;
+
+ 	  status =
+	  VDdrw_CheckTblValid( &msg,
+			       &tolTbl[i],
+			       &is_good );
+	  if( is_good )
+	  {
+	    goodTbl[goodCnt] = tolTbl[i];
+	    goodCnt = goodCnt + 1;
+	  }
+	  else
+	  {
+            badTbl[badCnt] = tolTbl[i];
+            badCnt = badCnt + 1;
+          }
+	}
+
+        if( badCnt == 0 )
+        {
+	  UI_status( "All tables are good!" );
+          goto wrapup;
+        }
+
+        status = VDdrw_displayForm( &msg, 
+				    form, 
+				    goodCnt, 
+				    goodTbl, 
+				    badCnt, 
+				    badTbl );
+
+        while(1)
+        {
+	  UI_message(theCommand);
+
+          ci$get( prompt   = thePrompt,
+                  response = &response );
+
+          switch( response )
+  	  {
+    	    case MOVE_ON:
+
+            switch( form_st.gadget_label )
+	    {
+	      case FI_ACCEPT:
+                status = VDdrw_removeBadTbl( &msg, 
+				             badCnt, 
+				             badTbl );
+	        goto wrapup;
+
+    	      case VD_DRW_CHECK_TABLE:
+		status = VDdrw_hiliteTable( &msg,
+					    form );
+	        goto the_loop;
+
+      	      default:
+	        goto the_loop;
+            }
+
+            case TERMINATE:
+              goto wrapup;
+          }
+the_loop:
+	  response = 0;
+        }
+
+
+wrapup:
+
+     _FREE( list );
+     list = NULL;
+     _FREE( badTbl );
+     badTbl = NULL;
+     _FREE( goodTbl );
+     goodTbl = NULL;
+     _FREE( tolTbl );
+     tolTbl = NULL;
+}
+
+/* --------------------------------------------------------
+ * Get the form started
+ */
+init_form()
+{
+  IGRint  retFlag;
+
+
+  retFlag = 0;
+
+  if( FIf_new( 0, theForm, ci_notification, &form ) )
+  {
+    UI_status("Could not create Check Tables form");
+    goto wrapup;
+  }
+
+  if( form )
+  {
+    if( FIf_set_cmd_oid_os( form, MY_ID, OM_Gw_current_OS ) )
+    {
+      printf("something went wrong in FIf_set_cmd_oid_os\n");
+      goto wrapup;
+    }
+  }
+
+  // Done
+  retFlag = 1;
+
+wrapup:
+  return retFlag;
+}
+
+/****************************************************************/
+IGRint form_notification()
+{
+  switch ( form_st.gadget_label )
+  {
+    case FI_CANCEL:
+      ci$put( response = TERMINATE );
+      goto wrapup;
+  }
+
+  ci$put( response = MOVE_ON );
+
+wrapup:
+
+  return 1;
+}
+
+/****************************************************************/
+init ()
+{
+        UI_message(" Checking Tables ..." );
+        UI_prompt(" Check the form ");
+}
+delete()
+{
+  if( form ) FIf_delete( form );
+  form_displayed = FALSE;
+}
+wakeup()
+{
+  if( form ) 
+  {
+    FIf_display( form );
+    form_displayed = TRUE;
+  }
+}
+sleep()
+{
+  if( form_displayed == TRUE)
+  {
+    if( form ) FIf_erase( form );
+    form_displayed = FALSE;
+  }
+}

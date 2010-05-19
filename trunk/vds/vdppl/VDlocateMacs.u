@@ -1,0 +1,292 @@
+/* $Id: VDlocateMacs.u,v 1.1 2001/01/18 20:41:09 hans Exp $  */
+ /* --------------------------------------------------------------------
+ * I/VDS
+ *
+ * File:	VDlocateMacs.u
+ *
+ * Description:
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ *	$Log: VDlocateMacs.u,v $
+ *	Revision 1.1  2001/01/18 20:41:09  hans
+ *	SP16 additions/modifications
+ *	
+# Revision 1.5  2000/10/04  15:37:28  pinnacle
+# Replaced: vds/vdppl/VDlocateMacs.u for:  by jvhanson for Service Pack
+#
+# Revision 1.4  2000/10/04  15:25:28  pinnacle
+# Replaced: vds/vdppl/VDlocateMacs.u for:  by jvhanson for Service Pack
+#
+# Revision 1.3  2000/08/18  18:27:02  pinnacle
+# Replaced: vds/vdppl/VDlocateMacs.u for:  by jvhanson for Service Pack
+#
+# Revision 1.2  2000/08/18  14:30:48  pinnacle
+# Replaced: vds/vdppl/VDlocateMacs.u for:  by jvhanson for Service Pack
+#
+# Revision 1.1  2000/08/17  22:12:34  pinnacle
+# Created: vds/vdppl/VDlocateMacs.u by jvhanson for Service Pack
+#
+ *
+ * History:
+ *	MM/DD/YY	AUTHOR		DESCRIPTION
+ *	08/16/00	jvh		Creation date
+ *	10/05/00	jvh		Added support for wild cards in the name
+ *	10/05/00	jvh		Added support for the PPL info
+ *
+ * -------------------------------------------------------------------*/
+
+/*
+ * PPL VDlocateMacs.u
+ *
+ * This PPL provides a very fast function to find ALL objects of a particular CLASSID
+ * in the specified object space (no locate required !!!).
+ *
+ * Usage: "ci=VDLocateMacs"
+ *
+ * Following is an example of how to find & list ALL OPP_nci_macro_class_id's in OS 2
+ */
+
+#include <stdio.h>
+#include <cieveryone.h>
+#include <cimacros.h>
+#include "OMindex.h"
+#include <grmacros.h>
+
+#define  tmpfilename	".process.log"
+#define	 NUMTYPES	3
+
+extern			VDpms_find_objects();
+
+extern GRclassid	OPP_nci_macro_class_id;
+extern GRclassid	OPP_ci_macro_class_id;
+extern GRclassid	OPP_ACconst_class_id;
+
+#include "VDpplInfo.h"
+ppl_info()
+{
+	VDpplInitInfo( &PPL_INFO );
+
+	/* Define Command info structure */
+
+	strcpy( PPL_INFO.title, "Find all macros in current file by name" );
+        strcpy( PPL_INFO.product, "ISDP I/VDS" );
+        strcpy( PPL_INFO.version, "02.06.01.15" );
+        strcpy( PPL_INFO.desc_short, "Find the macros and output them into the VSvalidate form" );
+
+        PPL_INFO.desc_count = 2 ;   /* maximnum 10 */
+	
+        PPL_INFO.desc[0]="This command will scan the current file and output the list to the VSvalidate form." ;
+        PPL_INFO.desc[1]="Wild cards '*' can be used in the name, for the macro to find." ;
+        return 1;
+}
+
+
+IGRint checkNames ( macname, inputname  )
+IGRchar *macname ;
+IGRchar *inputname ;
+{
+IGRint	i, j, k, found, iswild, junk;
+IGRchar	tmpStr[60];
+
+	//printf("in checkNames macname[%s], inputstring[%s]\n", macname, inputname  );
+	
+	strcpy( tmpStr, inputname);
+	found = TRUE;	
+	k=0;
+		
+	iswild = FALSE;
+	for(j=0;j<strlen(macname);j=j+1){
+	
+		if( (macname[j] != tmpStr[k] && iswild == FALSE) || tmpStr[k] == '*'  ){
+		
+			found = FALSE;
+			/* the characters don't match check if except[k]='*' */
+			if( tmpStr[k] == '*' ){
+				#ifdef DEBUG
+				printf("found a wildcard at %d ", k );
+				printf("next dec[%d] chr[%c]\n", tmpStr[k+1], tmpStr[k+1] );
+				#endif
+				
+				iswild = TRUE;
+				
+				if( tmpStr[k+1] == 0 || tmpStr[k+1] == 10){
+					#ifdef DEBUG
+					printf("FOUND a MATCH[%s][%s]\n", macname, tmpStr );
+					#endif
+					
+					found = TRUE;
+					break;
+				}else{
+					j=j-1;
+					k=k+1;
+				}
+			}else{
+				#ifdef DEBUG
+				printf("names don't match\n");
+				#endif
+				
+				found = FALSE;
+				break;
+			}
+			
+		} else if( macname[j] != tmpStr[k] && iswild == TRUE ){ 
+			#ifdef DEBUG
+			printf("ne iswild is true char[%c] j[%d] and char[%c] k[%d]\n", 
+				macname[j],  j , tmpStr[k],  k );
+			#endif
+			junk = 1;
+		} else { 
+			#ifdef DEBUG
+			printf("char[%c] j[%d] and k[%d]\n", macname[j],  j , k );
+			#endif
+			
+			found = TRUE;
+			iswild = FALSE;
+			k=k+1; 
+		}
+	}
+	if( found == TRUE ){
+		#ifdef DEBUG
+		printf("FOUND a MATCH[%s][%s]\n", macname, tmpStr );
+		#endif
+		//break;
+	}
+return found;
+}
+
+
+main()
+{
+  IGRchar	       *c, macname[40], msgstr[60];
+  IGRint	        i0, j0, k0, m0, cnt, cnt1, sts;
+  IGRint		displist[2000];
+  IGRchar		*macro_names[2000];
+  IGRlong     		msg;
+  IGRdouble		pnt[3];
+  IGRdouble 		num;
+  struct GRevent  	jimbo;
+  FILE			*logfile ;
+  IGRchar		msg_str[128];
+  IGRchar		outputfilename[128];
+  
+  struct GRid	        obj_id;
+  struct GRmd_env       ModuleInfo;
+  
+  struct GRid           macro;
+  OM_S_OBJID	       *list;
+  GRclassid	        class_id[NUMTYPES];
+
+  class_id[0] = OPP_ci_macro_class_id;
+  class_id[1] = OPP_nci_macro_class_id;
+  class_id[2] = OPP_ACconst_class_id;
+
+
+  if( logfile == NULL ){
+	  logfile = ( FILE * ) fopen( tmpfilename , "w") ;
+	  if ( logfile == NULL) {
+		printf("could not open the log file \n" ) ;
+		fclose( logfile);
+		exit;
+	  }
+  }
+ 
+  message ( "locate all macro's by name" );
+
+again:
+
+  macname[0] = 0;
+  
+  ci$get( string=macname, prompt="Key in macro name to find");
+  
+  status("");
+  
+  if( strcmp( macname, "" ) == 0 ){
+  	status("Key in a macro name");
+  	goto again;
+  }
+
+	cnt = 0;
+	for( i0=0; i0<NUMTYPES; i0=i0+1){
+		sts = VDpms_find_objects ( 2, class_id[i0], &cnt1, NULL );
+  		cnt = cnt + cnt1;
+  	}
+  
+	list = ( OM_S_OBJID * ) om$malloc ( size = cnt * sizeof ( OM_S_OBJID ) );
+
+	ci$get_module_info ( md_env = &ModuleInfo );
+
+	if ( list )
+	{
+		cnt = 0;
+		for( i0=0; i0<NUMTYPES; i0=i0+1){
+			sts = VDpms_find_objects ( 2, class_id[i0], &cnt1, &list[cnt] );
+			cnt = cnt + cnt1;
+    		}
+    		
+		j0 = 0;
+		obj_id.osnum  = 2;
+
+		for ( i0=0; i0 < cnt; i0=i0+1)
+		{
+			c = NULL;
+			sts = ci$send (	msg	 = message ACcpx.find_macro ( &macro ),
+				targetid = list[i0],
+				targetos = (OMuword)2);
+				
+      			sts = ci$send (	msg	 = message ACcpx_defn.ACgive_name ( &c ),
+				targetid = macro.objid,
+				targetos = macro.osnum);
+
+      			obj_id.objid  = list[i0];
+      			
+			#ifdef DEBUG
+			printf("looking for %s, [%d]=%s\n", macname, i0+1, c );
+			#endif
+
+			if ( checkNames ( c, macname ) == TRUE){
+			//if ( strcmp ( c, macname ) == 0 ){
+				macro_names[j0] = c;
+				displist[j0] = i0;
+				j0 = j0+1;
+			}
+		}
+    
+		sprintf ( msgstr, "Number of %s's found=%d out of %d macros\n", macname, j0 , cnt  );
+		
+		#ifdef DEBUG
+		printf ( "%s", msgstr );
+		#endif
+		
+		fprintf ( logfile , "%s", msgstr );
+    		
+		//now roll through and display the objects
+    
+		for(i0=0;i0<j0;i0=i0+1){
+    
+			obj_id.objid  = list[displist[i0]];
+			sprintf( msgstr , "ID[%d, %d] macro name[%s]\n", 
+					obj_id.objid , obj_id.osnum, macro_names[i0] );
+			#ifdef DEBUG
+			printf ( "%s", msgstr );
+			#endif
+			fprintf ( logfile , "%s", msgstr );
+		}
+		#ifdef DEBUG
+		printf ( "\n");
+		#endif
+
+		if (list){
+			om$dealloc ( ptr = list );
+			list = NULL;
+		}
+	}
+wrapup:
+
+	if( logfile != NULL ){
+		fclose( logfile);
+		logfile = NULL;
+	}
+	status("done");
+}

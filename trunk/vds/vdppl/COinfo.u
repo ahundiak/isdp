@@ -1,0 +1,377 @@
+/***************************************************************************
+ * I/VDS
+ *
+ * File:        COinfo.u
+ *
+ * Description:
+ *
+ * Dependencies:
+ *              .
+ *
+ * Revision History:
+ *
+ * History:
+ *      MM/DD/YY        AUTHOR          DESCRIPTION
+ *      09/25/00        jvh             form interface to the ppl information
+ *
+ ***************************************************************************/
+#include <stdio.h>
+#include "ciminimum.h"
+#include "cimacros.h"
+#include "exmacros.h" 
+#include "FI.h"
+#include "CIforms.h"
+#include "VDpplInfo.h"
+
+#define	 EXIT		4 
+#define	 LIST		16 
+
+#define  FORMNAME 	"VDpplInfo.fm"
+#define  FLABEL		1
+#define  cmdtitle	"PPL infomation command"
+
+IGRint	form_exists; 	 //global flag to say if form exists or not
+IGRint	form_displayed ; //global flag to say if form is displayed or not
+IGRint	what_to_do;	 //global flag to change behavior of the form
+IGRchar	msg_str[ 128 ] ; //global string for messages
+IGRchar	msg_str1[ 128 ] ; //global string for messages
+IGRchar	msg_str2[ 128 ] ; //global string for messages
+
+Form	STFORM ;	 //form id
+
+struct CIform_st form_st; //form structure that has events on the form
+
+extern FIf_new ();
+extern FIf_set_cmd_oid_os ();
+extern FIf_delete ();
+extern FIf_display ();
+extern FIf_erase ();
+extern FIfld_set_text ();
+extern FIg_reset ();
+/*
+extern FIfld_get_num_rows ();
+extern FIfld_get_value ();
+extern FIfld_set_value ();
+extern FIfld_get_select ();
+extern FIg_disable ();
+extern FIg_enable ();
+extern FIg_erase ();
+extern FIfld_set_list_num_rows ();
+extern FIg_reset ();
+extern FIfld_get_list_text ();
+extern FIfld_set_list_text ();
+extern FIfld_get_text ();
+extern FIg_get_value ();
+extern FIg_get_text ();
+extern FIfld_set_select ();
+extern FIfld_get_active_row ();
+extern FIg_get_state ();
+extern FIg_set_text ();
+extern FIfld_set_default_text ();
+extern FIfld_get_list_num_rows ();
+extern FIfld_get_list_select ();
+extern FIg_display ();
+extern FIfld_delete_rows();
+extern FIfld_set_list_scroll();
+*/
+extern ci_notification ();
+extern int EX_getpath();
+extern int FI_append_form_path ();
+
+/******************************************************/
+
+ppl_info()
+{
+	VDpplInitInfo( &PPL_INFO );
+
+	/* Define Command info structure */
+
+	strcpy( PPL_INFO.title, "View PPL programmers command information" );
+        strcpy( PPL_INFO.product, "ISDP I/VDS" );
+        strcpy( PPL_INFO.version, "02.06.01.15" );
+        strcpy( PPL_INFO.desc_short, "Form driven review of PPL information." );
+
+        PPL_INFO.desc_count = 1 ;   /* maximnum 10 */
+	
+        PPL_INFO.desc[0]="This command asks the user for a PPL name and then goes off and calls the ppl_info() function on the PPL, if the function is supported then the information is returned." ;
+        return 1;
+}
+
+
+
+/******************************************************/
+
+IGRint findTheForm( fileName, filePath )
+IGRchar *fileName, *filePath;
+{
+IGRint  i, msg ;
+IGRchar initPath[1024] ;
+FILE   *file;
+
+  file = NULL ;
+  
+  //search the local directory first
+  sprintf(filePath,"%s", fileName );
+  file = NULL;
+  file = fopen(filePath,"rt");
+  if ( file ) {
+      #ifdef DEBUG
+      printf("%s found in local dir\n",fileName );
+      #endif
+      sprintf(filePath,"./" );
+      
+      fclose( file );
+      file = NULL;
+      msg=TRUE;
+      goto wrapup;
+  }
+  
+  #ifdef DEBUG
+  printf("%s NOT found in local dir\n",fileName );
+  #endif
+
+  //If not found locally, flip through product paths.
+  i = 0;
+  msg = FALSE;
+  while(1) {
+
+    *initPath = 0;
+    ex$get_path(index = i,
+                path  = initPath,
+                len   = sizeof(initPath),
+                type  = EX_CONFIG_PATH);
+
+    if (*initPath == 0) goto wrapup;
+
+    sprintf(filePath,"%sconfig/english/forms/%s", initPath , fileName );
+    file = NULL;
+    file = fopen(filePath,"rt");
+    if ( file ) {
+
+      #ifdef DEBUG_findfiles
+      printf("Setup %s\n",filePath);
+      #endif
+      
+      sprintf(filePath,"%sconfig/english/forms", initPath );
+      fclose( file );
+      file = NULL;
+      msg=TRUE;
+      goto wrapup;
+    }
+
+    i=i+1;
+  }
+wrapup:
+
+return msg;
+
+}
+
+
+
+/******************************************************************/
+void form_init ( )
+{
+IGRchar			form_path[256];
+IGRint			pstatus;
+IGRint			sts ;
+  
+  if( form_exists == TRUE ) return;
+
+  /*
+   Tell I/Forms where to find our form path 
+  */
+
+  sts = findTheForm ( FORMNAME , form_path );
+  if( sts == FALSE){ return; }
+  
+  FI_append_form_path ( form_path );
+
+  /*
+   the initialization of the form, which includes setting linking the form
+   to the command object; Get the form input and display the found
+   information in the form.
+  */
+ 
+  pstatus = FIf_new(	FLABEL ,		
+  			FORMNAME,
+  			ci_notification,
+  			&STFORM ) ;
+  			
+  /* check to see if we were succesful in creating the form */
+  
+  if ( (pstatus != FI_SUCCESS) || ( STFORM == NULL) )
+  {
+      printf ("FATAL: Cannot initialize the form\nError code=%d\n",pstatus);
+      goto wrapup;
+  }
+
+  /* set this global flag so we know if the form exists in other functions.*/
+  
+  form_exists = TRUE;
+
+  /*
+   MY_ID and OM_Gw_current_OS are symbolic constants that are defined in
+   the "ciminimum.h" include file. 
+  */
+
+  pstatus = FIf_set_cmd_oid_os ( STFORM , MY_ID , OM_Gw_current_OS ) ;
+  if (pstatus != FI_SUCCESS)
+  {
+      printf ("FATAL: Cannot link to the I/Forms system\nError code = %d\n", 
+      		pstatus);
+      /*
+       The form has been loaded into memory at this point.  we need to
+       delete it from memory at this point.  
+      */
+      FIf_delete ( STFORM );
+      form_exists = FALSE;
+      form_displayed = FALSE;
+      goto wrapup;
+  }
+
+wrapup:  
+  
+  return ;
+}
+
+/******************************************************************/
+void form_disp (  )
+{
+IGRint			pstatus;
+
+  /*
+   display the form
+  */
+
+  if( form_exists == TRUE ){
+    
+    pstatus = FIf_display ( STFORM ) ;
+    if( pstatus != FI_SUCCESS ){
+
+      printf ("FATAL: Cannot display the form\nError code = ", pstatus);
+      FIf_delete ( STFORM ) ;
+      form_exists = FALSE;
+      form_displayed = FALSE;
+      goto wrapup;
+    }
+    form_displayed = TRUE;
+    
+  } else {
+  
+    #ifdef DEBUG
+    printf("form does not exist\n");
+    #endif
+    form_displayed = FALSE;   
+    status("form not found");
+    
+  }
+  
+wrapup: 
+ 
+  return ;
+}
+
+
+/******* system call when ppl is executed **********/
+
+main( argc, argv)
+int	argc;
+char	**argv;
+{
+IGRchar	pplName[128];
+  message( cmdtitle );
+  
+  form_init ();
+  
+  if( form_exists != TRUE ){ 
+  
+  	#ifdef DEBUG
+  	printf("form not initialized, exiting\n");
+  	#endif
+  	
+  	status("form not found, exiting");
+  	exit;
+  }
+  
+  while(1){
+  
+again:
+    if( argc < 2 ){
+  	ci$get( string = pplName, prompt="Key in ppl file to get information from");
+  	FIg_reset (STFORM, LIST);
+
+  	if( strcmp( pplName, "" ) == 0 ){ goto again;}
+    } else {
+	  /* fill in the form here */
+	  sprintf( pplName, "%s",argv[1] );
+    }
+    
+    form_disp(  );
+    FillInForm( pplName );  
+    argc = 0; 
+  }  
+
+}
+
+/****** system call to kill the ppl ********/
+
+delete ()
+{
+
+  if( form_exists == TRUE )
+  {
+     FIf_delete ( STFORM );
+     form_exists = FALSE;
+     form_displayed = FALSE;
+  }
+}
+
+/********************************************************************/
+
+form_notification ()
+{
+  switch (form_st.gadget_label) {
+      
+    case EXIT: 
+      ci$put( response = TERMINATE );
+      break;
+  }  /** switch **/
+}
+
+/********************************************************************/
+
+FillInForm( pplstring )
+IGRchar	*pplstring;
+{
+	long		sts; 
+	IGRint		i, num_lines;
+	struct VDpplInfo	myINFO ;
+	IGRchar		outputstring[20000];
+	GRname		tstring;
+
+	/* Load the PPL */
+	sts = VDpplGetInfo ( pplstring, &myINFO );
+	if (!(sts&1)) {
+		sprintf(outputstring,"No information found for %s, msg=%d.\n\n", 
+			pplstring, sts );
+		FIfld_set_text ( STFORM , LIST, 0, 0, outputstring , 0 );
+
+	}else{
+
+		/* print out the result */
+		
+		sprintf( outputstring,"\nTitle     : %s\nVersion   : %s\nShort Desc: %s\n\n", 
+			myINFO.title, myINFO.version, myINFO.desc_short );
+		
+		for(i=0;i<myINFO.desc_count;i=i+1){
+			sprintf( tstring ,"\t%s\n\n", myINFO.desc[i] );
+			strcat( outputstring, tstring );
+		}
+		FIfld_set_text ( STFORM , LIST, 0, 0, outputstring , 0 );
+	}
+return 1;
+
+}
+
+/************************* THE END ***********************/

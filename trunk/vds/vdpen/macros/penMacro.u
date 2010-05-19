@@ -1,0 +1,820 @@
+/* $Id: penMacro.u,v 1.4 2001/10/09 17:06:59 ylong Exp $  */
+
+/* --------------------------------------------------------------------
+ * I/VDS
+ *
+ * File:        vds/vdpen/macros/penMacro.u
+ *
+ * Description:
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ *      $Log: penMacro.u,v $
+ *      Revision 1.4  2001/10/09 17:06:59  ylong
+ *      *** empty log message ***
+ *
+ *      Revision 1.3  2001/05/12 22:09:31  ylong
+ *      CR5209, TR5109
+ *
+ *      Revision 1.2  2001/02/16 14:59:08  ylong
+ *      *** empty log message ***
+ *
+# Revision 1.1  2000/10/17  18:27:32  pinnacle
+# clear invalid osnum
+#
+# Revision 1.10  2000/03/21  21:41:44  pinnacle
+# ylong
+#
+# Revision 1.9  2000/01/13  20:43:30  pinnacle
+# TR179900998
+#
+# Revision 1.8  1999/10/07  21:01:16  pinnacle
+# ylong
+#
+# Revision 1.7  1999/08/08  17:22:08  pinnacle
+# ylong
+#
+# Revision 1.6  1999/07/30  20:44:56  pinnacle
+# (No comment)
+#
+# Revision 1.4  1999/06/15  15:48:24  pinnacle
+# ylong
+#
+# Revision 1.1  1999/05/03  16:55:54  pinnacle
+# initial revision
+#
+ *
+ * History:
+ *      MM/DD/YY        AUTHOR          DESCRIPTION
+ *	07/30/99	ylong		TR179900764
+ *	08/08/99	ylong		TR179900792
+ *	10/07/99	ylong		Revised for TR179900900
+ *	01/13/2k	ylong		TR179900998
+ *	03/20/00	ylong		TR179901196
+ * -------------------------------------------------------------------*/
+/*
+ * written by Jim Hanson
+ * this macro will take a coordinate system, and two collectors and output
+ * a curve and 2 collectors
+ */
+#include <stdio.h>   
+#include <strings.h>   
+#include "cieveryone.h"
+#include "cimacros.h"
+#include "ci_mac_def.h"
+#include "cimath.h"
+#include "nddef.h"
+#include "macro.h"
+#include "ACrg_collect.h"
+#include "expmacros.h"
+#include "vd_ve.h"
+#include "v_edgedef.h"
+#include "v_edgemacros.h"
+
+#include "igetypedef.h"	 // added by ylong for TR179900764 & TR179900792
+#include "igrtypedef.h"
+#include "igrdp.h"
+#include "gr.h"
+#include "grdpbdef.h"
+#include "grdpb.h"
+#include "grdpbmacros.h" 
+
+/*
+#define	 DEBUG	1
+#define	 vdsDEBUG
+*/
+#include "v_dbgmacros.h"
+
+#define	PI	3.1415926
+#define EXP_DOUBLE 0
+extern int	EXP_translate_exp();
+extern int	EXP_create();
+extern int	VD_drwGetACcpxInfo();
+extern 		VDahGetActiveSymbology();
+
+#define MAX_TEMP		3
+#define MAX_FEET		3
+#define MAX_CHA_TEMP		9
+#define MAX_ATTRS		100
+
+struct GRid	CI_MACRO_ID;
+
+struct   GRlc_info	entries[MAX_TEMP];
+IGRint		        stat, msg, i, j, m;
+IGRint			outCount;
+IGRint			numReturned, moreNumReturned;
+IGRdouble 	 	pt1[3*MAX_TEMP];
+IGRchar			*temp_names[MAX_TEMP], *feet_names[MAX_FEET];
+IGRint			temp_types[MAX_TEMP], num_crv;
+IGRchar			buff_TEMP[MAX_TEMP*MAX_CHA_TEMP];
+IGRchar			CoordName[80];
+struct GRid 		CRV,GCV,CUV, CUV1, TMPMAC;
+struct GRid		GRIDS[3], MACROGRIDS[50], COLL[3];
+GRobj			comps[10];
+GRobj 			ci_mac_def1;
+
+struct GRvg_construct	cst;
+struct GRmd_env		MOD_ENV;
+struct IGRdisplay	dis;
+struct ret_struct	order, pole;
+char			tmp_name[6];
+char			names[30];
+char			cRep;
+struct ACrg_coll  	collAttrs[MAX_ATTRS];
+IGRboolean		symbFlag ;
+
+extern IGRint 		init_cnst_list();
+extern			ASsuper_construct();
+extern GRclassid OPP_ACconst_class_id;
+extern GRdelete_object();
+
+extern int	GRdpb_get(); // added by ylong for TR179900764 & TR179900792
+
+/* ========================================================================= */
+/* the main function is the one implementing the definition creation
+/* ========================================================================= */
+
+main ()
+{  
+  
+SetProc( penMacro -- main ); Begin
+
+  temp_names[0] = "cs"; temp_types[0] = ref_generic;
+  temp_names[1] = "InputColl"; temp_types[1] = gen_rg_collect;
+  temp_names[2] = "DataColl"; temp_types[2] = gen_rg_collect;
+
+  feet_names[0] = "crv";
+  feet_names[1] = "Attributes";
+  feet_names[2] = "cs";
+
+  ci_mac_def1 = NULL_OBJID;
+
+  ac$cimacdef( 	cimacdef          = ci_mac_def1,
+		status 	          = &stat, 	
+		name              = "penMacro",
+              	temp_num          = MAX_TEMP,
+		temp_names        = temp_names,
+		temp_types        = temp_types,
+	      	extern_feet_num   = MAX_FEET,
+	 	extern_feet_names = feet_names );
+End
+
+}
+
+/* ========================================================================= */
+
+place ()
+{
+
+  SetProc( penMacro -- place ) ; Begin
+
+  symbFlag = TRUE ;
+
+  construct_comp();
+
+  if( GRIDS[0].objid == NULL_OBJID ) return(0);
+
+  ci$send( msg = message  ci_macro.set_all_extern_feet
+		(&stat, MAX_FEET, GRIDS, &MOD_ENV ),
+	   	targetid = CI_MACRO_ID.objid,
+	   	targetos = CI_MACRO_ID.osnum);
+  End
+  return(1);
+}
+/* ========================================================================= */
+
+compute ()
+{
+
+  SetProc(penMacro -- compute); Begin
+
+  symbFlag = FALSE ;
+
+  construct_comp();
+
+  if( GRIDS[0].objid == NULL_OBJID ) return(0);
+
+
+  ci$send( msg = message  ci_macro.set_all_extern_feet
+		(&stat, MAX_FEET, GRIDS, &MOD_ENV ),
+	   	targetid = CI_MACRO_ID.objid,
+	   	targetos = CI_MACRO_ID.osnum);
+
+  End
+  return(1);
+
+}
+
+
+/* ========================================================================= */
+
+construct_comp()
+{
+
+struct GRsymbology	symb;
+IGRint			size;
+IGRchar			txt[128];
+
+	SetProc(penMacro -- construct_comp); Begin
+/*--------------------------------------------------------------------------*/
+/*----------------    retrieve symbology from the system  ------------------*/
+/*--------------------------------------------------------------------------*/
+
+	init_cnst_list();
+	GRIDS[0].objid == NULL_OBJID;
+	GRIDS[1].objid == NULL_OBJID;
+	GRIDS[2].objid == NULL_OBJID;
+
+/*--------------------------------------------------------------------------*/
+/*----------------    retrieve the coordinate system   ---------------------*/
+/*--------------------------------------------------------------------------*/
+
+	msg = ci$send( msg = message  ACcpx.ACfind_exp_temp_obj(
+		&stat,
+		0,
+		&MACROGRIDS[0]),
+		targetid = CI_MACRO_ID.objid,
+		targetos = CI_MACRO_ID.osnum );
+
+	if( !(stat&msg&1) ) return FALSE;
+
+	msg = ci$send( msg = message NDmacro.ACreturn_foot(	
+		&stat ,
+		"",
+		&CUV, 
+		&MOD_ENV.md_env.matrix_type, 
+	        MOD_ENV.md_env.matrix ),
+		targetid = MACROGRIDS[0].objid,
+		targetos = MACROGRIDS[0].osnum );
+
+	CUV1 = CUV ;
+
+	__DBGpr_obj("MACROGRIDS[0]", MACROGRIDS[0]);
+	__DBGpr_obj("CUV", CUV);
+
+	if(!(stat&msg&1))
+	{
+		printf("couldn't retrieve coord sys id, msg=%d, stat=%d\n", 
+				msg, stat );
+		return FALSE;
+	}
+
+	/* get the name of the coordinate system */
+	msg = VD_drwGetACcpxInfo( &CUV, CoordName, FALSE );
+	if(!(msg&1))
+	{
+	  printf("couldn't retrieve the name from coord sys, msg=%d\n", msg);
+	  return FALSE;
+	}
+
+
+	/* 
+	 * TR179901196, by ylong. If place a macro, use active symbology,
+	 * if modify macro, use original one
+	 */
+	if( symbFlag ) {
+		VDahGetActiveSymbology(&symb) ;
+	}
+	else {
+		msg = ci$send (	msg	 = message GRvg.GRgetsymb(&stat, &symb),
+				targetid = CI_MACRO_ID.objid,
+				targetos = CI_MACRO_ID.osnum );
+	}
+
+/*--------------------------------------------------------------------------*/
+/*----------------    retrieve the collectors   ----------------------------*/
+/*--------------------------------------------------------------------------*/
+
+  	m=0;
+  	for(i=1; i<3; i=i+1)
+  	{
+
+		msg = ci$send( msg = message  ACcpx.ACfind_exp_temp_obj(
+			&stat,
+			i,
+			&CUV),
+        		targetid = CI_MACRO_ID.objid,
+        		targetos = CI_MACRO_ID.osnum );
+
+		if( !(stat&msg&1) ) return;
+
+		msg = ci$send( msg = message NDmacro.ACreturn_foot(	
+			&stat ,
+			"",
+			&COLL[i], 
+			&MOD_ENV.md_env.matrix_type, 
+		        MOD_ENV.md_env.matrix ),
+			targetid = CUV.objid,
+			targetos = CUV.osnum );
+
+#ifdef DEBUG
+		printf("\tCOLL[%d]<%d, %d>, CUV<%d, %d>\n", 
+			i, COLL[i].objid, COLL[i].osnum, CUV.objid, CUV.osnum);
+#endif
+
+		if(!(stat&msg&1))
+		{
+			printf("couldn't retrieve the # %d collector\n", i );
+			return;
+		}
+  	}
+
+
+	/* get all the data out of the input collector for macro placement */
+
+	msg = ci$send( msg = message  ACrg_collect.AClist_attribute(
+			&stat,
+			MAX_ATTRS,
+			collAttrs,
+			&numReturned),
+        		targetid = COLL[1].objid,
+        		targetos = COLL[1].osnum );
+
+	__DBGpr_obj("COLL[1]", COLL[1]);
+ 	__DBGpr_int("numReturned", numReturned);
+
+	if( !(msg&stat&1)) return FALSE;
+
+	for (i=1; i<numReturned; i=i+1)
+	{
+		if( collAttrs[i].desc.type == 1 ) {
+			strcpy( txt, collAttrs[i].desc.value.att_txt );
+		}
+		else {
+			strcpy( txt, ftoa(collAttrs[i].desc.value.att_exp));
+		}
+		if(!cre_exp( txt, &MACROGRIDS[i] ) ) return FALSE;
+	}
+
+#ifdef DEBUG
+	__DBGpr_str("input id's for macro",collAttrs[0].desc.value.att_txt);
+	for(i=0;i<numReturned;i=i+1){
+		printf("\ti = %d", i );
+		__DBGpr_obj("MACROGRIDS", MACROGRIDS[i]);
+	}
+	__DBGpr_com("*********************");
+#endif
+
+ 	TMPMAC.objid = NULL_OBJID;
+	TMPMAC.osnum = MOD_ENV.md_id.osnum;
+
+	msg = om$construct ( classid = OPP_ACconst_class_id,
+				p_objid = &TMPMAC.objid,
+				osnum = TMPMAC.osnum);
+
+  	stat = ci$send( msg = message ACncpx.ACmplace(
+			&msg,  
+			AChdr_noprotect,
+			cRep,    
+			collAttrs[0].desc.value.att_txt,
+			numReturned,	
+			MACROGRIDS,
+			&MOD_ENV),
+			targetid = TMPMAC.objid,
+			targetos = TMPMAC.osnum);
+
+   	if( !(stat&1&msg) ) {
+		printf("ACmplace failed msg=%d, stat=%d\n",msg,stat);
+		GRIDS[0].objid = NULL_OBJID;
+		return(0);
+	}
+
+#ifdef DEBUG
+	msg = putName( &TMPMAC, FALSE );
+#endif
+
+	GRIDS[0] = TMPMAC;
+
+	/* now get the curve out of this placement */
+	/* copy the curve out into GRIDS[0] */
+
+	msg = CopyCurve( TMPMAC, &GRIDS[0]);
+
+	__DBGpr_obj("GRIDS[0]", GRIDS[0]);
+
+	msg = ci$send( msg = message GRvg.GRputsymb(	
+		&stat ,
+		&symb),
+		targetid = GRIDS[0].objid,
+		targetos = GRIDS[0].osnum );
+
+	msg = ci$send( msg = message GRvg.GRputsymb(	
+		&stat ,
+		&symb),
+		targetid = CI_MACRO_ID.objid,
+		targetos = CI_MACRO_ID.osnum );
+
+	/* if all went well you should clean up all the
+	   expressions and the macro you placed */
+
+	for (i=1; i<numReturned; i=i+1){
+
+		GRdelete_object( &msg, NULL, &MACROGRIDS[i], 0);
+
+	}
+
+	GRdelete_object( &msg, NULL, &TMPMAC, 0);
+
+	/* construct a new collector that has all the expressions
+	   so that they are all visible to the end user */
+
+	GRIDS[1].objid = NULL_OBJID;
+	GRIDS[1].osnum = MOD_ENV.md_id.osnum;
+
+	msg = om$construct( 
+		classname = "ACrg_collect",
+		osnum = GRIDS[1].osnum,
+		p_objid = &GRIDS[1].objid);
+	if( !(1&msg) ) {
+		__DBGpr_com(" construct ACrg_collect Failed 1");
+		GRIDS[1].objid = NULL_OBJID ;
+	}
+
+#ifdef	DEBUG1
+	msg = putName( &GRIDS[1], TRUE);
+#endif
+
+	collAttrs[0].desc.type = 1;
+	strcpy(collAttrs[0].name , "CoordSystem");
+	strcpy(collAttrs[0].desc.value.att_txt, CoordName);
+
+	msg = ci$send( msg = message  ACrg_collect.AClist_attribute(
+			&stat,
+			MAX_ATTRS,
+			&collAttrs[1],
+			&numReturned),
+       		targetid = COLL[2].objid,
+       		targetos = COLL[2].osnum );
+
+	if( !(1&msg) ) {
+		__DBGpr_com(" ACrg_collect.AClist_attribute Failed 2");
+	}
+
+	/* correct long_axis name */
+	for (i=1; i<numReturned; i=i+1) {
+		if( !strncmp(collAttrs[i].name, "long_axis", 9) &&
+		      strlen(collAttrs[i].name) != strlen("long_axis") )
+		{
+		   strcpy(collAttrs[i].name, "long_axis");
+		   msg = ci$send(
+				msg	= message ACrg_collect.ACset_list_attribute (
+						&stat,
+						numReturned, 
+						&collAttrs[1]),	
+				targetid = COLL[2].objid,
+				targetos = COLL[2].osnum );
+		   break;
+		}
+	}
+	
+	msg = ci$send( msg = message  ACrg_collect.AClist_attribute(
+			&stat,
+			MAX_ATTRS,
+			&collAttrs[numReturned+1],
+			&moreNumReturned),
+       		targetid = COLL[1].objid,
+       		targetos = COLL[1].osnum );
+
+	if( !(1&msg&stat) ) {
+		__DBGpr_com("ACrg_collect.AClist_attribute Failed 3");
+	}
+	
+	SetLongAxis(CUV1, COLL[2], collAttrs, (numReturned + moreNumReturned + 1));
+
+	msg = ci$send( msg = message ACrg_collect.ACadd_list_attribute(
+			&stat,
+			numReturned + moreNumReturned + 1,
+			collAttrs),
+			targetid = GRIDS[1].objid,
+			targetos = GRIDS[1].osnum);
+	if( !(1&msg&stat) ) {
+		__DBGpr_com("ACrg_collect.ACadd_list_attribute Failed 4");
+		GRIDS[1].objid = NULL_OBJID ;
+	}
+
+	/*
+	 * Copy the Coordinate System as child.
+	 */
+	
+	GRIDS[2].objid = NULL_OBJID;
+	GRIDS[2].osnum = MOD_ENV.md_id.osnum;
+	msg = ci$send( msg = message GRgraphics.GRcopy (
+                                                &stat,
+                                                &MOD_ENV,
+                                                &MOD_ENV,
+                                                &GRIDS[2].objid ),
+                                 targetid = CUV1.objid,
+                                 targetos = CUV1.osnum );
+   	if( !(stat&1&msg) ) {
+		__DBGpr_com("GRcopy failed");
+		GRIDS[2].objid = NULL_OBJID ;
+        }	
+
+	__DBGpr_com("CScopy");
+	__DBGpr_obj("feet GRIDS[0]",GRIDS[0]);
+	__DBGpr_obj("feet GRIDS[1]",GRIDS[1]);
+	__DBGpr_obj("feet GRIDS[2]",GRIDS[2]);
+	__DBGpr_obj("CUV1",CUV1);
+
+
+	End
+
+}
+
+/****************************************************************/
+
+int cre_exp( exp_value, EXP_GRid )
+char		*exp_value;
+struct GRid	*EXP_GRid;
+{ 
+char		exp_name[80];
+char		*equal;
+int		stat, mask, response;
+short		sender_class;
+struct GRevent	event;
+struct GRid	TMPGRID;
+
+	SetProc(penMacro -- cre_exp); Begin
+
+	strcpy(exp_name, exp_value);
+	if(exp_name[0] == 0 ) return FALSE;
+
+	// try to find an "=" in the tring //
+
+	equal = strchr(exp_value,'=');
+
+	EXP_GRid->objid = NULL_OBJID;
+	EXP_GRid->osnum = MOD_ENV.md_id.osnum;
+
+	if( equal != NULL ){
+
+		__DBGpr_str("found =, create expression", exp_value);
+
+		*equal = '\0';
+		exp$translate(exp_name = exp_value,
+				p_exp_id = &EXP_GRid->objid,
+				p_osnum  = &EXP_GRid->osnum );
+
+		if( EXP_GRid->objid == NULL_OBJID ){
+
+			stat = exp$create(exp_name = exp_value,
+				  exp_syntax = equal + 1,
+				  p_exp_id = &EXP_GRid->objid,
+			          p_osnum  = &EXP_GRid->osnum,
+				  osnum = MOD_ENV.md_id.osnum );
+
+			__DBGpr_obj("translate not found expression created", 
+					*EXP_GRid);
+
+			if( stat != 1 ){
+       	      		    	printf(" syntax error \n"); 
+			  	return FALSE;
+			}
+		}
+	}else{
+		stat = exp$create(exp_syntax = exp_value,
+			  p_exp_id = &EXP_GRid->objid,
+		          p_osnum  = &EXP_GRid->osnum,
+			  osnum = MOD_ENV.md_id.osnum );
+
+#ifdef DEBUG
+		__DBGpr_obj("expression created", *EXP_GRid);
+#endif
+
+		if( stat != 1 ){
+			printf(" syntax error \n"); 
+		  	return FALSE;
+		}
+	}
+
+	ci$send(msg = message NDnode.NDchg_state( 
+		(char)16,(char)16 ),
+		targetid = EXP_GRid->objid,
+		targetos = EXP_GRid->osnum);
+
+
+	TMPGRID.objid = EXP_GRid->objid;
+	TMPGRID.osnum = EXP_GRid->osnum;
+
+#ifdef DEBUG
+	__DBGpr_com("in expr about to add name");
+	stat = putName( &TMPGRID, FALSE);
+#endif
+
+	End
+	return TRUE;
+}
+
+/***********************************************************/
+
+int	putName( InGrid , hide)
+struct GRid	*InGrid;
+int		hide;
+{
+char	tmpname[30];
+int	msg;
+int	stat;
+
+	SetProc(penMacro -- putName) ; Begin
+
+	if ( hide == FALSE ){
+
+		sprintf( tmpname,"M%d%d",InGrid->objid, InGrid->osnum);	
+
+		stat = ci$send( msg = message GRvg.GRputname(
+			&msg,
+			tmpname),
+			targetid = InGrid->objid,
+			targetos = InGrid->osnum);
+
+		if ( !(stat&msg&1) ) return FALSE;
+	}
+	End
+	return TRUE;
+}
+
+/******************************************/
+int CopyCurve( InObject, OutObject )
+struct GRid	InObject, *OutObject;
+{
+struct VDve_elem_buf	buf ;
+struct GRid		TMPOBJ;
+int	msg;
+int	sts;
+
+	SetProc(penMacro -- CopyCurve); Begin
+
+	/* write out the geometry */
+
+        buf.count       = 0 ;
+        buf.buf_siz     = 0 ;
+        buf.obj_info_p  = NULL ;
+
+        sts = vd_$select_obj_comps(   msg     = &msg,
+                                	option  = VD_K_gm_WIREFRAME,
+					grIds	= &InObject,
+					theEnv	= &MOD_ENV,
+                                	elmList = &buf );
+
+#ifdef DEBUG1
+        printf(" NUMBER COMP %d\n", buf.count );
+        for( i=0; i<buf.count; i=i+1 ) 
+		printf( "obj[%d]=[%d, %d]\n", i, 
+			buf.obj_info_p[i].obj_id.objid,
+			buf.obj_info_p[i].obj_id.osnum );
+        printf(" NUMBER COMP %d\n", buf.count );
+#endif
+
+	TMPOBJ.objid = buf.obj_info_p[0].obj_id.objid;
+	TMPOBJ.osnum = buf.obj_info_p[0].obj_id.osnum;
+
+	stat = ci$send( msg = message GRvg.GRcopy(
+		&msg,
+		&MOD_ENV,
+		&MOD_ENV,
+		&TMPOBJ.objid),
+		targetid = TMPOBJ.objid,
+		targetos = TMPOBJ.osnum);
+
+#ifdef DEBUG
+	__DBGpr_obj("TMPOBJ of copied curve", TMPOBJ);
+	msg = putName(  &TMPOBJ, FALSE );
+#endif
+
+	OutObject->objid = TMPOBJ.objid;
+	OutObject->osnum = TMPOBJ.osnum;
+
+wrapup:
+	End
+	return TRUE;
+
+}
+
+/*--------------------------------------------------------
+ * Added for CR5209
+ */
+int	SetLongAxis( csID, collID, attrs, nbAttrs )
+	struct GRid		csID;
+	struct GRid		collID;
+	struct ACrg_coll	*attrs;
+	IGRint			nbAttrs;
+{
+	int		retFlag;
+	IGRlong		sts, msg;
+	IGRint		m, sel, iWidth, iLongAxis;
+	IGRchar		text[128];
+	IGRdouble	val[10];
+	IGRdouble	cm[16], cosin, angle;
+	IGRdouble	loc_vec[3], max, dot_prod;
+	IGRdouble	width, depth;
+	IGRint		orient, loc_orient;
+	
+
+	retFlag = 0;
+
+	if (	csID.objid	== NULL_OBJID || 
+		attrs		== NULL_OBJID ||
+		nbAttrs		== 0		) {
+		goto wrapup;
+	}
+
+	width = 0;
+	depth = 0;
+	iWidth = -1;
+	iLongAxis = -1;
+	for( m = 0; m < nbAttrs; m = m+1 ) {
+		if( !strcmp( attrs[m].name, "width" ) ) {
+			iWidth = m;
+		}
+
+		if( !strncmp( attrs[m].name, "long_axis", 9 ) ) {
+			iLongAxis = m;
+		}
+	}
+
+	for(m = 0; m < 3; m = m+1) {
+		loc_vec[m] = 0.;
+	}
+
+	if( iWidth < 0 ) {
+		strcpy(attrs[iLongAxis].desc.value.att_txt, "N/A");
+		retFlag = 1;
+		goto wrapup;
+	}
+	else if ( iWidth < (nbAttrs-1) ) {
+		width = attrs[iWidth].desc.value.att_exp;
+		depth = attrs[iWidth+1].desc.value.att_exp;
+		if( width < depth ) {
+			loc_orient = 1;
+		}
+		else {
+			loc_orient = 0;
+		}
+
+		loc_vec[loc_orient] = 1.0;
+	}
+	else {
+		goto wrapup;
+	}
+
+	sts = ci$send(  msg      = message GRgencs.GRgetmatrix (&msg, cm),
+                        targetid = csID.objid,
+                        targetos = csID.osnum );
+	if( !(sts&msg&1) ) {
+		printf("GRgencs.GRgetmatrix failed");
+		goto wrapup;
+	}
+
+	max = 0.;
+	for( m = 0; m < 3; m = m+1 ) {
+		dot_prod =	cm[m*4+0]*loc_vec[0] + 
+				cm[m*4+1]*loc_vec[1] + 
+				cm[m*4+2]*loc_vec[2];
+		if( fabs(dot_prod) > max ) {
+			max = fabs(dot_prod);
+			orient = m;
+		}
+	}
+	
+	switch( orient ) {
+
+	case 0:		/* X */
+		cosin = fabs( cm[loc_orient+0] );
+		if( cosin > 1.0 ) cosin = 1.0;
+		angle = acos( cosin )*180/PI ;
+		strcpy(text, " 1 ");
+		break;
+	case 1:		/* Y */
+		cosin = fabs( cm[loc_orient+4] );
+		if( cosin > 1.0 ) cosin = 1.0;
+		angle = acos( cosin )*180/PI ;
+		strcpy(text, " 2 ");
+		break;
+	case 2:		/* Z */
+		cosin = fabs( cm[loc_orient+8] );
+		if( cosin > 1.0 ) cosin = 1.0;
+		angle = acos( cosin )*180/PI ;
+		strcpy(text, " 3 ");
+		break;
+	default:	/* NA */
+		angle = 45.0;		/* doesn't matter what value */
+		strcpy(text, "N/A");
+		break;
+	};
+
+	if( angle > 1.0 && (180.0 - angle) > 1.0 ) strcpy(text, "N/A");
+
+	strcpy(attrs[iLongAxis].desc.value.att_txt, text);
+
+	if( collID.objid == NULL_OBJID ) goto wrapup;
+
+	sts = ci$send(	msg	 = message ACrg_collect.ACmod_list_attribute
+                                           ( &msg, 1, &attrs[iLongAxis] ),
+			targetid = collID.objid,
+			targetos = collID.osnum  );
+
+	retFlag = 1;
+wrapup:
+	return retFlag;
+}

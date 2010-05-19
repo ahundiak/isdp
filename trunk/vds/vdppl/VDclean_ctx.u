@@ -1,0 +1,213 @@
+/* $Id: VDclean_ctx.u,v 1.4 2001/08/14 20:19:01 ramarao Exp $  */
+
+/* --------------------------------------------------------------------
+ * I/VDS
+ *
+ * File:	VDclean_ctx.u
+ *
+ * Description:
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ *	$Log: VDclean_ctx.u,v $
+ *	Revision 1.4  2001/08/14 20:19:01  ramarao
+ *	Made VDclean_ctx ppl obsolete.
+ *	
+ *	Revision 1.3  2001/01/18 22:15:43  hans
+ *	SP16 modifications
+ *	
+ *	Revision 1.2  2001/01/18 20:39:56  hans
+ *	SP16 additions/modifications
+ *	
+# Revision 1.1  2000/05/04  19:29:18  pinnacle
+# Created: vds/vdppl/VDclean_ctx.u by jwfrosch for Service Pack
+#
+# Revision 1.2  2000/03/03  21:01:14  pinnacle
+# Replaced: vdppl/VDclean_ctx.u for:  by impd252 for vds
+#
+# Revision 1.1  2000/01/10  20:57:34  pinnacle
+# Created: vdppl/VDclean_ctx.u by impd252 for vds
+#
+ *
+ * History:
+ *	MM/DD/YY	AUTHOR		DESCRIPTION
+ *	01/07/00	HF		Creation date
+ *      05/04/00        HF              Modified for TR 179901364
+ *
+ * -------------------------------------------------------------------*/
+
+/*
+ * PPL VDclean_ctx.u
+ *
+ * This PPL provides a very fast function to find ALL objects of a particular CLASSID
+ * in the specified object space (no locate required !!!).
+ *
+ * Usage: "ci=VDclean_ctx"
+ *
+ * Following is an example of how to find & list ALL OPP_GRcontext_class_id's in OS 2
+ */
+
+#include <stdio.h>
+#include <cieveryone.h>
+#include <cimacros.h>
+#include "OMindex.h"
+#include "madef.h"
+
+extern                  VDpms_find_objects();
+extern int              VDprocess_GRcontext_list();
+extern int              VDRegenerateContext();
+
+extern GRclassid        OPP_GRcontext_class_id;
+extern                  VDcomment;
+
+struct obj_dflg
+{
+  OM_S_OBJID  objid;
+  int         index;
+  int         dflag;
+};
+
+main()
+{
+  int                   i0, j0, k0, m0, n0, cnt, sts, chcnt[5], f_defer_flag;
+  long                  msg;
+
+  struct GRid           obj_id, conID;
+  struct GRmd_env       ModuleInfo;
+  struct obj_dflg      *obj_del;
+  OM_S_OBJID           *list;
+  GRclassid             class_id;
+  OM_S_CHANSELECT       my_chansel[5];
+  OM_S_OBJECT_LINKAGE   objet;
+
+  status( "Obsolete: Use VDclean_ctx1 ppl" );
+  return 1;
+
+  my_chansel[0].type       = OM_e_name;
+  my_chansel[1].type       = OM_e_name;
+  my_chansel[2].type       = OM_e_name;
+  my_chansel[3].type       = OM_e_name;
+  my_chansel[4].type       = OM_e_name;
+
+  my_chansel[0].u_sel.name = "to_super";
+  my_chansel[1].u_sel.name = "to_reffile";
+  my_chansel[2].u_sel.name = "to_misc";
+  my_chansel[3].u_sel.name = "to_nested_files";
+
+  class_id = OPP_GRcontext_class_id;
+
+  printf  ("++++++++++++++++++++++++++++++++++++++\n");
+  printf  ( "Delete all obsolete GRcontext objects\n" );
+  message ( "Delete all obsolete GRcontext objects" );
+  fflush  ( 0 );
+
+  list = NULL;
+  sts = VDpms_find_objects ( (OMuword)2, (OMuword)class_id, &cnt, list );
+
+  printf ( "\nVDpms_find_objects() : sts = %d, Number of objects = %d\n", sts, cnt );
+  fflush ( 0 );
+
+  if ( cnt > 0 )
+  {
+    list    = ( OM_S_OBJID * )      om$malloc ( size = cnt * sizeof ( OM_S_OBJID ) );
+    obj_del = ( struct obj_dflg * ) om$calloc ( size = cnt * sizeof ( struct obj_dflg ) );
+  }
+  else
+  {
+    return;
+  }
+
+  ci$get_module_info ( md_env = &ModuleInfo );
+
+  if ( list )
+  {
+    sts = VDpms_find_objects ( (OMuword)2, (OMuword)class_id, &cnt, list );
+
+    for ( i0=0; i0 < cnt; i0=i0+1)
+    {
+      obj_del[i0].objid = list[i0];
+      obj_del[i0].index = i0;
+    }
+
+    // Now pre-process this list; finding candidates for deleting ...
+    sts  = VDprocess_GRcontext_list ( cnt, obj_del );
+
+    m0 = 0;
+    obj_id.osnum  = 2;
+    objet.osnum   = 2;
+
+    for ( i0=0; i0 < cnt; i0=i0+1)
+    {
+      objet.S_objid = obj_del[i0].objid;
+      obj_id.objid  = obj_del[i0].objid;
+      conID.objid   = obj_del[i0].objid;
+      conID.osnum   = 2;
+
+      for ( k0=0; k0 < 4; k0=k0+1)
+      {
+        sts = om$get_channel_count ( osnum        = objet.osnum,
+                                     objid        = objet.S_objid,
+                                     p_chanselect = &my_chansel[k0],
+                                     count        = &chcnt[k0] );
+      }
+
+      // Check each GRcontext object, that is NOT to be deleted, and try to regenerate if it has an invalid matrix ...
+      sts = 1;
+      if ( obj_del[i0].dflag == 0 )
+      {
+        sts = VDRegenerateContext ( &conID );
+      }
+      // Delete all GRcontext objects that either:
+      // - have 3 empty channel connections, or
+      // - fail to regenerate successfully,  or
+      // - delete flag has been set, (meaning that there are only connections to other GRcontext objects...)
+      if ( chcnt[1] == 0 && chcnt[2] == 0 )
+      {
+        if ( chcnt[3] == 0 || sts == 0 || obj_del[i0].dflag == 1 )
+        {
+          sts = ci$send ( msg      = message GRcontext.GRdeletectx ( &msg, &ModuleInfo ),
+                          targetid = obj_del[i0].objid);
+          if ( ! ( 1 & /*sts &*/ msg ) )
+          {
+            printf ("GRcontext.GRdeletectx error: sts = %#x, msg = %#x, ctxID[%d] = %d\n", sts, msg, i0, obj_del[i0].objid);
+            fflush  ( 0 );
+          }
+          else
+          {
+            m0 = m0+1;
+            if ( VDcomment )
+            {
+              printf ( "    ctxID[%d] %d, to_super %d, to_reffile %d, to_misc %d, to_nested_files %d, del_flag = %d - DELETED\n",
+                       i0, obj_del[i0].objid, chcnt[0], chcnt[1], chcnt[2], chcnt[3], obj_del[i0].dflag );
+            }
+          }
+          if ( obj_del[i0].dflag ) n0 = n0 + 1;
+        }
+        else if ( VDcomment )
+        {
+          printf ( "    ctxID[%d] %d, to_super %d, to_reffile %d, to_misc %d, to_nested_files %d\n",
+                   i0, obj_del[i0].objid, chcnt[0], chcnt[1], chcnt[2], chcnt[3] );
+        }
+      }
+      else
+      {
+        printf ( "    ctxID[%d] %d, to_super %d, to_reffile %d, to_misc %d, to_nested_files %d\n",
+                 i0, obj_del[i0].objid, chcnt[0], chcnt[1], chcnt[2], chcnt[3] );
+      }
+    }
+    printf ( "\nNumber of GRcontext's = %d, # of deleted(obsolete) GRcontext's = %d, (# dflag = %d)\n", cnt, m0, n0 );
+    printf  ("--------------------------------------\n");
+
+    if (list)
+    {
+      om$dealloc ( ptr = list );
+      list = NULL;
+    }
+    if (obj_del)
+    {
+      om$dealloc ( ptr = obj_del );
+      obj_del = NULL;
+    }
+  }
+}
