@@ -1,0 +1,2038 @@
+/* $Id: crv_corner.u,v 1.1.1.1 2001/01/04 21:07:22 cvs Exp $  */
+
+/* --------------------------------------------------------------------
+ * I/VDS
+ *
+ * File:	vds/cimacros/wireframe/macros / crv_corner.u
+ *
+ * Description:
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ *	$Log: crv_corner.u,v $
+ *	Revision 1.1.1.1  2001/01/04 21:07:22  cvs
+ *	Initial import to CVS
+ *	
+# Revision 1.1  1998/04/29  16:27:20  pinnacle
+# VDS 2.5.1
+#
+# Revision 1.1  1997/05/08  13:20:44  pinnacle
+# New project VDS 250
+#
+# Revision 1.1  1996/07/19  20:33:52  pinnacle
+# Create VDS 241 project
+#
+# Revision 1.2  1995/10/07  14:12:40  pinnacle
+# Replaced: cimacros/wireframe/macros/crv_corner.u for:  by azuurhou for vds.240
+#
+# Revision 1.1  1994/11/14  22:42:32  pinnacle
+# Create vds.240 from vds.232
+#
+# Revision 1.1  1994/11/08  16:07:00  pinnacle
+# create vds.232
+#
+ *
+ * History:
+ *	MM/DD/YY	AUTHOR		DESCRIPTION
+ *
+ * -------------------------------------------------------------------*/
+
+/*
+	 VDS 2.1 - PPM macro library - 92/10/14
+	 92-09-22 - if BSfillet function exits with error then the ci_macros
+		    will behaves as with a radius equal to 0.0
+ */
+   
+/*
+	------------------------------------------------------------------
+	
+	File name :		crv_corner.u
+	Revision date :		92/08/20
+	Authors :		Jean-Luc LOSCHUTZ
+	Product :		I/VDS - PPMmacro library
+
+	Description :
+	-----------
+
+		<Assoc> Place Corner Curve
+
+		This function is a generalisation of the fillet with the
+		idea to be more consistant on topological point of view.
+		In fact we build a 2D or 3D corner cut curve which could
+		be true or pseudo fillet or chamfer.
+		This function has a variable number of templates, the last
+		template his optional however does not contain any instance
+		data to handle for example, the quadrant in wich the
+		fillet has to be placed. The reason for that: the 2 given
+		curves should have a common and single corner vertice.
+		when I say common, I am looking for a common point which is
+		with in a tolearnce equal to 5*BSTOLCHRDHT to avoid
+		stabilite problems comming for intersection algorithm for
+		example.
+		As result We build fulltime only one object.
+		
+
+  		temp_names[0] = "crv0";
+			first curve located.
+
+  		temp_names[1] = "crv1";
+			second curve located.
+
+  		temp_names[2] = "StartRad";
+			radius of the corner in the fillet case, or curvilign
+			length in chamfer case.
+
+  		temp_names[3] = "EndRad";
+			to have maximun flexibilite for the chamfer case I need
+			the length attach to the second curve.
+
+  		temp_names[4] = "CornerType";
+			CornerType = 0 means We build something like a fillet.
+			CornerType = 1 We build a Chanfer.
+
+  		temp_names[5] = "TrimOption";
+			a parameter to express the kind of resulting curve
+			you want.
+			TrimOption = 0, I build just the "fillet part"
+			TrimOption = 1, I construct a merge curve defined
+					By the parial curve of the first
+				        curve located and the fillet.
+			TrimOption = 2, I construct a merge curve defined
+					By  the fillet piece and the parial 
+					curve of the second curve located.
+			TrimOption = 3, I construct a merge curve defined
+					By  The 3 pieces connected altogether.
+
+  		temp_names[6] = "ratio";
+			-1.0<=ratio<=1.0, this expression let the customer,
+			to define any transition blend curve from a circle
+			if ratio = 0.0, to a pseudo parabola if ratio = 1.0.
+
+  		temp_names[7] = "vector";
+			This object could be just a line or a referential to
+			define in which plane we construct our apparent
+			fillet for thr 3D case.
+			If the 2 curves are not coplanar and I do not get
+			the parent then I construct the virtual fillet in
+			the plane defined by the 2 derivates at the common
+			point.
+		--->	NOTE that today If I manage the fillet with radius
+			equal to 0.0, I need to has a piece of code to
+			resolve the problem of having the customer building
+			a corner on the top of colinear curve as I do in
+			crv_fillet.
+
+
+
+	-------
+	92/08/20	JLL	Creation date
+	92/10/14	ALC	Integration in VDS 2.1	
+	----------------------------------------------------------------------
+*/
+
+#include <stdio.h>
+#include "cieveryone.h"
+#include "cimacros.h"
+#include "ci_mac_def.h"
+#include "nddef.h"
+#include "macro.h"
+#include "bserr.h"
+#include "EMSdpb.h"
+#include "igrdp.h"
+#include "bsparameters.h"
+#include "madef.h"
+#include "growner.h"
+extern int		BSmkvec(), GRabsg_del_by_objid();
+
+#define MACRO_NAME    		"crv_corner" 
+#define MAX_TEMP		8
+
+ 
+struct GRid		CI_MACRO_ID;
+IGRlong			stat, msg;
+IGRint		        i, j, m;
+IGRchar			*temp_names[MAX_TEMP], *feet_names[3];
+IGRint			temp_types[MAX_TEMP];
+
+struct GRid 		RESCRV;
+struct GRvg_construct	cst;
+struct GRmd_env		MOD_ENV;
+struct IGRdisplay	dis;
+struct IGRbsp_curve	*bsp_crv;
+struct EMdpbinfo 	dpbinfo;
+struct IGResbc		esbc;
+
+
+
+extern  IGRboolean	BSfreecv();
+
+extern IGRint 		init_cnst_list(),
+			EMdpb_getinfo();
+extern			ASsuper_construct();
+extern IGRboolean       BSxtractpar();
+extern IGRboolean	BSnorvec();
+extern IGRdouble	BSdotp();
+extern IGRboolean       BSxtractpar();
+extern IGRint		BSalloccv();
+extern IGRboolean	BSfreecv();
+extern IGRint		BScveval();
+extern IGRint 		BSmdstptcv(),
+			BScrossp(),
+                 	BSfillet();
+
+extern IGRdouble	BSlenvec(),
+			modulo();
+extern IGRint		BSxln();
+extern IGRboolean	BSrev_cv();
+extern void		BStst_plan();
+extern void		BSmergarrcv();
+extern void 		OrderCrv(), 
+			BuildCrv() ;
+extern	void		VDppl_ang_v1v2();
+
+
+/* ========================================================================= */
+/* the main function is the one implementing the definition creation
+/* ========================================================================= */
+
+main ()
+{
+
+GRobj 		ci_mac_def1;
+
+ 
+  temp_names[0] = "crv0";
+  temp_types[0] = line_generic | conic_generic | curve_generic;
+  temp_names[1] = "crv1";
+  temp_types[1] = line_generic | conic_generic | curve_generic;
+  temp_names[2] = "StartRad";
+  temp_types[2] = parameter_generic | double_type;  
+  temp_names[3] = "EndRad";
+  temp_types[3] = parameter_generic | double_type;  
+  temp_names[4] = "CornerType";
+  temp_types[4] = parameter_generic | double_type;
+  temp_names[5] = "TrimOption";
+  temp_types[5] = parameter_generic | double_type;
+  temp_names[6] = "ratio";
+  temp_types[6] = parameter_generic | double_type;
+  temp_names[7] = "vector";
+  temp_types[7] = line_generic | ref_generic;
+ 
+
+  feet_names[0] = "rescrv";
+
+
+  ci_mac_def1 = NULL_OBJID;
+
+  ac$cimacdef( 	cimacdef          = ci_mac_def1,
+		prop		  = ACvariable_template,
+		status 	          = &stat, 	
+		name              = MACRO_NAME,
+              	temp_num          = MAX_TEMP,
+		temp_names        = temp_names,
+		temp_types        = temp_types,
+	      	extern_feet_num   = 1,
+	 	extern_feet_names = feet_names );
+}
+
+/* ========================================================================= */
+
+place ()
+{
+
+  construct_comp();
+
+  if( RESCRV.objid == NULL_OBJID ) return(0);
+
+  EMdpb_getinfo (&msg, &dpbinfo);
+
+  esbc.is_curvedis = TRUE;
+  esbc.is_polydis  = (IGRboolean) 
+			   dpbinfo.props & EMDPB_POLYGON_DISPLAY_ON;  
+
+  ci$send(msg = message GRvg.GRputattr( &msg, (IGRchar *) &esbc ),
+	         targetid = RESCRV.objid,
+	         targetos = RESCRV.osnum);
+
+  ci$send( msg = message  ci_macro.set_all_extern_feet
+		(&stat, 1, &RESCRV, &MOD_ENV ),
+	   	targetid = CI_MACRO_ID.objid,
+	   	targetos = CI_MACRO_ID.osnum);
+
+
+  return(1);
+}
+/* ========================================================================= */
+
+compute ()
+{
+
+  construct_comp();
+
+  if( RESCRV.objid == NULL_OBJID ) return(0);
+
+  ci$send( msg = message  ci_macro.set_all_extern_feet
+		(&stat, 1, &RESCRV, &MOD_ENV ),
+	   	targetid = CI_MACRO_ID.objid,
+	   	targetos = CI_MACRO_ID.osnum);
+
+  return(1);
+
+}
+
+
+/* ========================================================================= */
+
+construct_comp()
+{
+
+IGRint			NumTemp;
+IGRint			i, k;
+IGRlong			stat, msg;
+struct	GRid		ASCRV;
+struct 	GRobj_env	CRV[2], OrdCrv[2];
+struct	IGRbsp_curve    *bsp_curve[2], *bsp_arc, *MergeCrv, *CrvSol;
+struct	IGRbsp_curve    *proj_cv1, *proj_cv2;
+struct ret_struct	expr, ProjRef;
+IGRdouble		ri, re, ratio, dtmp;
+IGRint			CornerType, TrimOption;
+IGRdouble		ProjDir[3], ProjPt[3];
+IGRlong			size;
+IGRshort		iv[2];
+IGRdouble		SearchTol, BaseTol;
+IGRboolean		AdjNeeded, PhyClosed;
+IGRdouble		PaStart, PaEnd;
+IGRboolean		ForcedPlanar;
+IGRboolean		IsPlanar, IsAlign;
+IGRdouble		eval1[6], eval2[6];
+struct IGRpolyline      geom;
+IGRlong			Colinear;
+IGRint			SizeOf3Dbl;
+
+	RESCRV.objid = NULL_OBJID;
+	RESCRV.osnum = MOD_ENV.md_id.osnum;
+	bsp_curve[0] = NULL;
+	bsp_curve[1] = NULL;
+	bsp_arc      = NULL;
+        MergeCrv     = NULL;
+	proj_cv1     = NULL;
+        proj_cv2     = NULL;
+	CrvSol	     = NULL;
+
+
+/*=========================================================================*/
+/*  retrieve the number of parents to know if we have a directio of	   */ 
+/*    projection imposed.					           */
+/*=========================================================================*/
+
+
+  stat = ci$send(msg = message NDnode.NDget_objects(ND_ROOT,NULL,0,NULL,
+					     0,OM_K_MAXINT,&NumTemp),
+	   	  targetid = CI_MACRO_ID.objid,
+	   	  targetos = CI_MACRO_ID.osnum);
+  if(!(stat&1)) return;
+
+/*=========================================================================*/
+/* retrieve the two curves from which we will evaluate the coner cut       */
+/*=========================================================================*/
+
+  for(i=0;i<2;i=i+1){
+
+     	msg = ci$send( msg      = message  ACcpx.ACfind_exp_temp_obj(
+							&stat,i,&ASCRV),
+ 	      	       targetid = CI_MACRO_ID.objid ,
+	      	       targetos = CI_MACRO_ID.osnum);
+     	if( !(msg&stat&1) ){
+		printf("Error in ACfind_exp_temp_obj for curve %d\n",i);
+	 	return;
+     	}
+
+     	msg = ci$send( msg      = message NDmacro.ACreturn_foot(	
+				&stat ,
+				"",
+				&(CRV[i].obj_id), 
+				&CRV[i].mod_env.md_env.matrix_type, 
+				CRV[i].mod_env.md_env.matrix ),
+	      	       targetid = ASCRV.objid,
+	      	       targetos = ASCRV.osnum );
+
+     	if( !(msg&stat&1) ){
+		printf("Error in ACreturn_foot for curve %d\n",i);
+		return;
+     	}
+
+   }
+
+/*=========================================================================*/
+/* retrieve all the expressions					           */
+/*=========================================================================*/
+
+  for(i=2;i<7;i=i+1){
+
+  	msg = ci$send( msg = message  ACcpx.ACfind_exp_temp_struct(
+					&stat, i, (IGRchar *)&expr,&MOD_ENV ),
+           	 targetid = CI_MACRO_ID.objid,
+           	 targetos = CI_MACRO_ID.osnum );
+  	if( !(stat&msg&1) ){
+		printf("Error in ACfind_exp_temp_struct for expression %d\n",i);
+		return;
+	}
+
+	switch(i){
+
+		case 2:{
+			ri = expr.var.root_pm_st.value;
+			break;
+		}
+		case 3:{
+			re = expr.var.root_pm_st.value;
+			break;
+		}
+		case 4:{
+			CornerType = (IGRint)expr.var.root_pm_st.value;
+			if(CornerType <= 0 ) CornerType = 0;
+			else		     CornerType = 1;
+			break;
+		}
+		case 5:{
+			TrimOption = (IGRint)expr.var.root_pm_st.value;
+			if(TrimOption <= 0 ) TrimOption = 0;
+			else if(TrimOption > 3) TrimOption = 3;
+
+			break;
+		}
+		case 6:{
+			ratio = expr.var.root_pm_st.value;
+			break;
+		}
+		default: goto wrapup;
+	}/* end of switch */
+
+
+  }
+
+  if( CornerType == 0 ) re = ri;
+  
+/*=========================================================================*/
+/* retrieve the coordinate system if 8 parents and evaluate an point	   */
+/*   and the normal of the plane of projection				   */
+/*=========================================================================*/
+
+  if( NumTemp == 8 ){
+
+  	msg = ci$send( msg = message  ACcpx.ACfind_exp_temp_struct(
+					&stat,7,(IGRchar *)&ProjRef,&MOD_ENV ),
+           	 targetid = CI_MACRO_ID.objid,
+           	 targetos = CI_MACRO_ID.osnum );
+  	if( !(stat&msg&1) ){
+		printf("Error in ACfind_exp_temp_struct for expression %d\n",i);
+		return;
+	}
+
+	if(ProjRef.type == ref_generic){
+		ProjDir[0] = ProjRef.var.ref_st.t[2];
+		ProjDir[1] = ProjRef.var.ref_st.t[6];
+		ProjDir[2] = ProjRef.var.ref_st.t[10];
+		ProjPt[0]  = ProjRef.var.ref_st.t[3];
+		ProjPt[1]  = ProjRef.var.ref_st.t[7];
+		ProjPt[2]  = ProjRef.var.ref_st.t[11];
+	} 
+	else if(ProjRef.type == line_generic){
+		for(k=0; k<3; k=k+1){
+			 ProjDir[k] = ProjRef.var.line_st.v0[k];
+			 ProjPt[k]  = ProjRef.var.line_st.p0[k];
+		}
+	}
+  }
+
+/*==========================================================================*/
+/*	find if the curves are well ordred and connected		    */
+/*==========================================================================*/
+
+  BSxtractpar(&msg,BSTOLBASIS,&BaseTol);
+  BSxtractpar(&msg,BSTOLCHRDHT,&SearchTol);
+  SearchTol = 5.0 * SearchTol;
+
+  OrderCrv( CRV, 2, SearchTol, BaseTol, 
+	    OrdCrv, iv, &AdjNeeded, &PhyClosed, &msg);
+
+  #ifdef DEBUG
+  	__DBGpr_grid("CRV[0] =",&CRV[0].obj_id );
+  	__DBGpr_grid("CRV[1] =",&CRV[1].obj_id );
+  	__DBGpr_grid("OrdCrv[0] =",&OrdCrv[0].obj_id );
+  	__DBGpr_grid("OrdCrv[1] =",&OrdCrv[1].obj_id );
+  	printf("iv[0] = %d, iv[1] = %d\n",iv[0],iv[1]);
+  #endif
+
+  if( msg != BSSUCC ){
+	printf("curves are not connected \n");
+	goto wrapup;
+  }
+
+
+/*=========================================================================*/
+/*	retrieve the  Bsgeometry of the well ordered curves		   */
+/*=========================================================================*/
+
+  for(i=0;i<2;i=i+1){
+
+     GRabsg_del_by_objid(&OrdCrv[i].obj_id.objid,&OrdCrv[i].obj_id.osnum );
+
+     stat = ci$send( msg = message GRvg.GRgetsize( 	
+					&msg,
+			     		&OrdCrv[i].mod_env.md_env.matrix_type,
+			     		OrdCrv[i].mod_env.md_env.matrix,
+			     		&size ),
+	  	     targetid = OrdCrv[i].obj_id.objid,
+	  	     targetos = OrdCrv[i].obj_id.osnum );
+     if( !(msg&stat&1) ){
+	  printf("Error in GRvg.GRgetsize for curve =%d\n",i);
+	  goto wrapup;
+     }
+
+     bsp_curve[i] = (struct IGRbsp_curve *) om$malloc(size = size);
+     if( bsp_curve[i] == NULL ){
+	 printf("Error in om$malloc for curve =%d\n",i);
+         goto wrapup;
+     }
+ 
+     stat = ci$send( msg = message GRvg.GRgetgeom( 	
+					&msg,
+			     		&OrdCrv[i].mod_env.md_env.matrix_type,
+			     		OrdCrv[i].mod_env.md_env.matrix,
+			     		(char *)bsp_curve[i] ),
+	  	     targetid = OrdCrv[i].obj_id.objid,
+	  	     targetos = OrdCrv[i].obj_id.osnum );
+     if( !(msg&stat&1) ){
+	 printf("Error in retrieving the BSgeometry of curve =%d\n",i);
+         goto wrapup;
+     }
+
+  }
+
+  /* --- reverse curve direction if needed, info given by OrderCrv() ---*/
+ 
+  if( iv[0] == -1 )BSrev_cv(&msg,bsp_curve[0]); 
+  if( iv[1] == -1 )BSrev_cv(&msg,bsp_curve[1]); 
+
+  /*=========================================================================*/
+  /*     build a merge curve to test if I am in planar case or not           */
+  /*     In the same time the input curve could be ajusted to get a common   */
+  /*     point                                                               */
+  /*=========================================================================*/
+
+  BuildMergeCrv( bsp_curve[0], bsp_curve[1], AdjNeeded, PhyClosed, 
+		 &MergeCrv, &IsPlanar, &msg );
+  if( msg != BSSUCC ){
+	printf("Error in BuildMergeCrv\n");
+	goto wrapup;
+  }
+  
+  #ifdef DEBUG
+	__DBGpr_vec("End pole of bsp_curve[0]", 
+		     &bsp_curve[0]->poles[3*(bsp_curve[0]->num_poles-1)], 3 );
+	__DBGpr_vec("First pole of bsp_curve[1]", &bsp_curve[1]->poles[0], 3 );
+  #endif
+
+  /* --- if the radius ri is NULL we can now build the resultin curve; */
+
+   	init_cnst_list();
+   	get_symb();
+
+   	dis.color	= cnst_list.color;
+   	dis.weight	= cnst_list.weight;
+   	dis.style	= cnst_list.style;
+
+   	cst.msg		= &msg;
+   	cst.properties	= GRIS_LOCATABLE | GRIS_DISPLAYABLE;
+   	cst.display	= &dis;
+   	cst.env_info	= &MOD_ENV;
+   	cst.newflag	= FALSE;
+   	cst.level	= cnst_list.level;
+   	cst.class_attr	= NULL;
+   	cst.name	= NULL;
+
+  /*========================================================================*/
+  /* here We manage the case colinear case				    */
+  /*========================================================================*/
+
+   AreCrvsAln( &Colinear, bsp_curve[0], bsp_curve[1], BaseTol );
+   if( Colinear == BSSUCC ) { 
+
+	#ifdef DEBUG
+		write("poles are align\n");
+	#endif
+
+align:
+
+	SizeOf3Dbl = 3 * sizeof(IGRdouble);
+
+	switch(TrimOption){
+
+		case 0:{
+  			geom.num_points = 1;
+			geom.points = &bsp_curve[1]->poles[0];
+  			cst.geometry = (char *)&geom;
+
+     			stat = ci$send(msg = message GR3dpoint.GRaltconstruct(
+								&cst),
+	   	       		       targetid = RESCRV.objid,
+	  	       		       targetos = RESCRV.osnum );
+   			if( !(stat&1) ){
+		 		printf("Error in GR3dpoint.GRaltconstruct\n");
+		 		RESCRV.objid = NULL_OBJID;
+			}
+
+			goto wrapup;
+
+		}
+		case 1:{
+  			geom.num_points = 2;
+			geom.points = eval1;
+
+  		        if( OrdCrv[0].obj_id.objid != CRV[0].obj_id.objid ){
+
+				i = 3 * ( bsp_curve[1]->num_poles - 1 );
+
+  				if( iv[1] == -1 ){
+				      memcpy((IGRchar*)eval1, 
+					     (IGRchar *)&bsp_curve[1]->poles[i],
+					      SizeOf3Dbl );
+				      memcpy((IGRchar*)&eval1[3], 
+					     (IGRchar *)&bsp_curve[1]->poles[0],
+					      SizeOf3Dbl );
+				}
+				else{
+				      memcpy((IGRchar*)eval1, 
+					     (IGRchar *)&bsp_curve[1]->poles[0],
+					      SizeOf3Dbl );
+				      memcpy((IGRchar*)&eval1[3], 
+					     (IGRchar *)&bsp_curve[1]->poles[i],
+					      SizeOf3Dbl );
+				}
+			}
+			else{
+
+				i = 3 * ( bsp_curve[0]->num_poles - 1 );
+
+  				if( iv[0] == -1 ){
+				      memcpy((IGRchar*)eval1, 
+					     (IGRchar *)&bsp_curve[0]->poles[i],
+					      SizeOf3Dbl );
+				      memcpy((IGRchar*)&eval1[3], 
+					     (IGRchar *)&bsp_curve[0]->poles[0],
+					      SizeOf3Dbl );
+				}
+				else{
+				      memcpy((IGRchar*)eval1, 
+					     (IGRchar *)&bsp_curve[0]->poles[0],
+					      SizeOf3Dbl );
+				      memcpy((IGRchar*)&eval1[3], 
+					     (IGRchar *)&bsp_curve[0]->poles[i],
+					      SizeOf3Dbl );
+				} 
+
+			}
+
+			cst.geometry = (char *)&geom;
+     			stat = ci$send(msg = message GR3dlineseg.GRaltconstruct(
+								&cst),
+	   	       		       targetid = RESCRV.objid,
+	  	       		       targetos = RESCRV.osnum );
+
+   			if( !(stat&1) ){
+		 	     printf("Error in GR3dlineseg.GRaltconstruct 1\n");
+		 	     RESCRV.objid = NULL_OBJID;
+			}
+
+			goto wrapup;
+
+		}
+		case 2:{
+  			geom.num_points = 2;
+			geom.points = eval1;
+
+
+  		        if( OrdCrv[1].obj_id.objid != CRV[1].obj_id.objid ){
+
+				i = 3 * ( bsp_curve[0]->num_poles - 1 );
+
+  				if( iv[0] == -1 ){
+				      memcpy((IGRchar*)eval1, 
+					     (IGRchar *)&bsp_curve[0]->poles[i],
+					      SizeOf3Dbl );
+				      memcpy((IGRchar*)&eval1[3], 
+					     (IGRchar *)&bsp_curve[0]->poles[0],
+					      SizeOf3Dbl );
+				}
+				else{
+				      memcpy((IGRchar*)eval1, 
+					     (IGRchar *)&bsp_curve[0]->poles[0],
+					      SizeOf3Dbl );
+				      memcpy((IGRchar*)&eval1[3], 
+					     (IGRchar *)&bsp_curve[0]->poles[i],
+					      SizeOf3Dbl );
+				} 
+			}
+			else{
+				i = 3 * ( bsp_curve[1]->num_poles - 1 );
+
+  				if( iv[1] == -1 ){
+				      memcpy((IGRchar*)eval1, 
+					     (IGRchar *)&bsp_curve[1]->poles[i],
+					      SizeOf3Dbl );
+				      memcpy((IGRchar*)&eval1[3], 
+					     (IGRchar *)&bsp_curve[1]->poles[0],
+					      SizeOf3Dbl );
+				}
+				else{
+				      memcpy((IGRchar*)eval1, 
+					     (IGRchar *)&bsp_curve[1]->poles[0],
+					      SizeOf3Dbl );
+				      memcpy((IGRchar*)&eval1[3], 
+					     (IGRchar *)&bsp_curve[1]->poles[i],
+					      SizeOf3Dbl );
+				}
+
+			}
+
+			cst.geometry = (char *)&geom;
+
+     			stat = ci$send(msg = message GR3dlineseg.GRaltconstruct(
+								&cst),
+	   	       		       targetid = RESCRV.objid,
+	  	       		       targetos = RESCRV.osnum );
+
+   			if( !(stat&1) ){
+		 	     printf("Error in GR3dlineseg.GRaltconstruct 2\n");
+		 	     RESCRV.objid = NULL_OBJID;
+			}
+
+			goto wrapup;
+
+		}
+		case 3:{
+  			geom.num_points = 2;
+			geom.points = eval1;
+			i = 3 * ( MergeCrv->num_poles - 1 );
+			memcpy((IGRchar*)eval1, 
+			       (IGRchar *)&MergeCrv->poles[0],
+			        SizeOf3Dbl );
+			memcpy((IGRchar*)&eval1[3], 
+			       (IGRchar *)&MergeCrv->poles[i],
+			        SizeOf3Dbl );
+
+			cst.geometry = (char *)&geom;
+
+     			stat = ci$send(msg = message GR3dlineseg.GRaltconstruct(
+								&cst),
+	   	       		       targetid = RESCRV.objid,
+	  	       		       targetos = RESCRV.osnum );
+
+   			if( !(stat&1) ){
+		 	     printf("Error in GR3dlinesg.GRaltconstruct 3\n");
+		 	     RESCRV.objid = NULL_OBJID;
+			}
+
+			goto wrapup;
+
+		}
+		default: goto wrapup;
+
+	}
+
+  }
+
+  /*========================================================================*/
+  /* here We manage the case when the radius is close to 0.0 and the result */
+  /* dependant to the TrimOption value					    */
+  /*========================================================================*/
+
+  if( (ri <= BaseTol) || (re <= BaseTol)  ){
+
+zerorad:
+
+	switch(TrimOption){
+
+		case 0:{
+  			geom.num_points = 1;
+			geom.points = &bsp_curve[1]->poles[0];
+  			cst.geometry = (char *)&geom;
+
+     			stat = ci$send(msg = message GR3dpoint.GRaltconstruct(
+								&cst),
+	   	       		       targetid = RESCRV.objid,
+	  	       		       targetos = RESCRV.osnum );
+   			if( !(stat&1) ){
+		 		printf("Error in GR3dpoint.GRaltconstruct\n");
+		 		RESCRV.objid = NULL_OBJID;
+			}
+
+			goto wrapup;
+
+		}
+		case 1:{
+
+  		        if( OrdCrv[0].obj_id.objid != CRV[0].obj_id.objid ){
+  				if( iv[1] == -1 )BSrev_cv(&msg,bsp_curve[1]); 
+  				cst.geometry = (char *)bsp_curve[1];
+			}
+			else{
+  				if( iv[0] == -1 )BSrev_cv(&msg,bsp_curve[0]); 
+  				cst.geometry = (char *)bsp_curve[0];
+			}
+
+     			stat = ci$send(msg = message GRbcsubbc.GRconstruct(
+								&cst),
+	   	       		       targetid = RESCRV.objid,
+	  	       		       targetos = RESCRV.osnum );
+
+   			if( !(stat&1) ){
+		 		printf("Error in GRbcsubbc.GRaltconstruct 1\n");
+		 		RESCRV.objid = NULL_OBJID;
+			}
+
+			goto wrapup;
+
+		}
+		case 2:{
+
+  		        if( OrdCrv[1].obj_id.objid != CRV[1].obj_id.objid ){
+  				if( iv[0] == -1 )BSrev_cv(&msg,bsp_curve[0]); 
+  				cst.geometry = (char *)bsp_curve[0];
+			}
+			else{
+  				if( iv[1] == -1 )BSrev_cv(&msg,bsp_curve[1]); 
+  				cst.geometry = (char *)bsp_curve[1];
+			}
+
+
+     			stat = ci$send(msg = message GRbcsubbc.GRconstruct(
+								&cst),
+	   	       		       targetid = RESCRV.objid,
+	  	       		       targetos = RESCRV.osnum );
+
+   			if( !(stat&1) ){
+		 		printf("Error in GRbcsubbc.GRconstruct 2\n");
+		 		RESCRV.objid = NULL_OBJID;
+			}
+
+			goto wrapup;
+
+		}
+		case 3:{
+
+			cst.geometry = (char *)MergeCrv;
+     			stat = ci$send(msg = message GRbcsubbc.GRconstruct(
+								&cst),
+	   	       		       targetid = RESCRV.objid,
+	  	       		       targetos = RESCRV.osnum );
+
+   			if( !(stat&1) ){
+		 		printf("Error in GRbcsubbc.GRaltconstruct 2\n");
+		 		RESCRV.objid = NULL_OBJID;
+			}
+
+			goto wrapup;
+
+		}
+		default: goto wrapup;
+
+	}
+
+
+  }
+
+
+/*===========================================================================*/
+/*	project the curves if we got a cs or a line			     */
+/*									     */
+/*===========================================================================*/
+
+  if( NumTemp == 8 ){
+	#ifdef DEBUG
+	printf("enter NumTemp == 8\n");
+	#endif
+
+	ProjCrvOnToPlan( ProjDir, ProjPt, bsp_curve[0], bsp_curve[1],
+			 &proj_cv1, &proj_cv2, &msg );
+	if( msg != BSSUCC ){
+		printf("Error in ProjCrvOnToPlan 1\n");
+		goto wrapup;
+	}
+
+	AreCrvsAln( &Colinear, proj_cv1, proj_cv2, BaseTol );
+	if( Colinear == BSSUCC ) goto align;
+
+	ForcedPlanar = TRUE;
+	
+	Build2DCorner( proj_cv1, proj_cv2, CornerType, ri, re, ratio, 
+		       ForcedPlanar, &PaStart, &bsp_arc, &PaEnd, &IsAlign,&msg);
+	if( msg != BSSUCC ){
+		printf("Error in crv_corner, fillet radius too large ri = %f\n",
+			ri);
+		printf("Error Build2DCorner for NON planar case 1\n");
+
+//		goto wrapup;
+		goto zerorad;
+		
+	}
+
+	Eval3DFillet( bsp_arc, ProjPt, ProjDir, PaStart, bsp_curve[0], 
+		      PaEnd, bsp_curve[1], CornerType,  &msg );
+	if( msg != BSSUCC ){
+		printf("Error Eval3DFilletr for NON planar case 1\n");
+		goto wrapup;
+	}
+
+
+		
+	Merge3DCurves( CRV, OrdCrv, bsp_arc, PaStart, bsp_curve[0], 
+		       PaEnd, bsp_curve[1], TrimOption, iv,  &CrvSol, &msg );
+	if( msg != BSSUCC ){
+		printf("error in Merge3DCurves 1 \n");
+		goto wrapup;
+	}
+
+  }
+  else if( IsPlanar == TRUE ){
+
+	#ifdef DEBUG
+		printf(" We got 7 templates and the curves are Planar\n");
+	#endif
+
+
+	ForcedPlanar = FALSE; 
+	Build2DCorner( bsp_curve[0], bsp_curve[1], CornerType, ri, re, ratio, 
+	       	       ForcedPlanar, &PaStart, &bsp_arc, &PaEnd, &IsAlign,&msg);
+	if( msg != BSSUCC ){
+		printf("Error in crv_corner, fillet radius too large ri = %f\n",
+			ri);
+		printf("Error Build2DCorner for planar case\n");
+		goto zerorad;
+//		goto wrapup;
+	}
+
+	Merge3DCurves( CRV, OrdCrv, bsp_arc, PaStart, bsp_curve[0], 
+		       PaEnd, bsp_curve[1], TrimOption, iv, &CrvSol, &msg );
+	if( msg != BSSUCC ){
+		printf("error in Merge3DCurves 2 \n");
+		goto wrapup;
+	}
+
+  }
+  else if( IsPlanar == FALSE ){
+
+	/* --- evaluate a projection plane defined by the two derivates at
+	       the common point
+        --- */
+
+	#ifdef DEBUG
+		printf(" We got 7 templates and the curves are NOT Planar\n");
+	#endif
+
+   	BScveval ( bsp_curve[0] , (IGRdouble)1.0, (IGRint)1, eval1, &msg);
+   	BScveval ( bsp_curve[1] , (IGRdouble)0.0, (IGRint)1, eval2, &msg);
+
+	BScrossp(&msg, &eval1[3], &eval2[3], ProjDir);
+	BSnorvec(&msg,ProjDir);
+
+	ProjCrvOnToPlan( ProjDir, ProjPt, bsp_curve[0], bsp_curve[1],
+			 &proj_cv1, &proj_cv2, &msg );
+	if( msg != BSSUCC ){
+		printf("Error in ProjCrvOnToPlan 2\n");
+		goto wrapup;
+	}
+
+	AreCrvsAln( &Colinear, proj_cv1, proj_cv2, BaseTol );
+	if( Colinear == BSSUCC ) goto align;
+
+	ForcedPlanar = TRUE;
+	
+	Build2DCorner( proj_cv1, proj_cv2, CornerType, ri, re, ratio, 
+		       ForcedPlanar, &PaStart, &bsp_arc, &PaEnd, &IsAlign,&msg);
+	if( msg != BSSUCC ){
+
+		printf("Error in crv_corner, fillet radius too large ri = %f\n",
+			ri);
+		printf("Error Build2DCorner for NON planar case 2\n");
+		goto zerorad;
+//		goto wrapup;
+	}
+
+	Eval3DFillet( bsp_arc, ProjPt, ProjDir, PaStart, bsp_curve[0], 
+		      PaEnd, bsp_curve[1], CornerType,  &msg );
+	if( msg != BSSUCC ){
+		printf("Error Eval3DFilletr for NON planar case 2\n");
+		goto wrapup;
+	}
+
+
+		
+	Merge3DCurves( CRV, OrdCrv, bsp_arc, PaStart, bsp_curve[0], 
+		       PaEnd, bsp_curve[1], TrimOption, iv, &CrvSol, &msg );
+	if( msg != BSSUCC ){
+		printf("error in Merge3DCurves 3 \n");
+		goto wrapup;
+	}
+
+  }
+  else{
+	printf("cas non traite\n");
+	goto wrapup;
+  }
+
+/*--------------------------------------------------------------------------*/
+/*----------------    ready to build the feet                 --------------*/
+/*--------------------------------------------------------------------------*/
+
+	if( TrimOption == 0 )  	cst.geometry    = (IGRchar *) bsp_arc;
+	else			cst.geometry    = (IGRchar *) CrvSol;
+
+   	stat = ci$send( msg      = message GRbcsubbc.GRconstruct(&cst),
+                        targetid = RESCRV.objid,
+			targetos = RESCRV.osnum );
+
+	if(!(stat&1) )	 RESCRV.objid = NULL_OBJID;
+
+wrapup:
+	if( bsp_curve[0] != NULL ) om$dealloc(ptr = bsp_curve[0]);
+	if( bsp_curve[1] != NULL ) om$dealloc(ptr = bsp_curve[1]);
+	if( MergeCrv != NULL ) BSfreecv(&msg,MergeCrv);
+	if( proj_cv1 != NULL ) BSfreecv(&msg,proj_cv1);
+	if( bsp_arc != NULL ) BSfreecv(&msg,bsp_arc);
+	if( proj_cv2 != NULL ) BSfreecv(&msg, proj_cv2);
+	if( CrvSol != NULL ) BSfreecv(&msg, CrvSol);
+	
+}
+
+/*==========================================================================*/
+Build2DCorner( crv1, crv2, type, ri, re, ratio, ForcedPlanar, PaStart,
+	       CrvCorner, PaEnd, IsAlign, msg)
+
+struct IGRbsp_curve	*crv1;
+struct IGRbsp_curve	*crv2;
+IGRint			type;
+IGRdouble		ri;
+IGRdouble		re;
+IGRdouble		ratio;
+IGRboolean		ForcedPlanar; /* to say that we want Bezier curve */
+IGRdouble		*PaStart;
+struct	IGRbsp_curve	**CrvCorner;
+IGRdouble		*PaEnd;
+IGRboolean		*IsAlign;
+IGRlong			*msg;
+
+{
+
+IGRlong			rc;
+IGRdouble		p[3];
+IGRint			order;
+IGRint			i;
+IGRdouble		TwoThird, OneThird;
+IGRdouble		eval1[6], eval2[6], pnt1[3], pnt2[3], DirPnt[3];
+IGRdouble		bstab[38],par[2], center[3], MinDist;
+IGRdouble		vn[3], angle, ecmax;
+IGRdouble		BasePar, UnMratio;
+
+struct	IGRbsp_curve	bsp_arc;
+
+extern	IGRboolean	BSptsdlcv();
+extern			POapparcbz();
+
+
+*msg  = BSFAIL;
+*CrvCorner = NULL;
+
+#ifdef DEBUG
+printf(" Begin of Build2DCorner type = %d\n",type);
+#endif
+
+if( type == 0 ){
+
+	/*--- to avoid malloc ---*/
+   	bsp_arc.poles   = &bstab[0];
+   	bsp_arc.knots   = &bstab[21];
+   	bsp_arc.weights = &bsp_arc.knots[10];
+
+	/*--- evaluate an approximated centerd point call DirPnt and
+	      approximated solution on each curves 
+        ---*/
+
+   	BScveval ( crv1 , (IGRdouble)1.0, (IGRint)1, eval1, &rc);
+   	BScveval ( crv2 , (IGRdouble)0.0, (IGRint)1, eval2, &rc);
+   	BSnorvec(&rc,&eval1[3]);
+   	BSnorvec(&rc,&eval2[3]);
+
+   	for(i=0;i<3;i=i+1) DirPnt[i] = crv2->poles[i] + (ri+re) * 0.5 * 
+				       ( eval2[i+3] - eval1[3+i] );
+	#ifdef DEBUG
+	__DBGpr_vec("DirPnt=", DirPnt, 3 );
+	#endif
+
+   	BSmdstptcv ( crv1, DirPnt, &par[0], pnt1, &MinDist ,&rc);
+   	if( rc != BSSUCC ) {
+		printf("Error in BSmdstptcv on crv1\n");
+		goto wrapup;
+	}
+
+	
+   	BSmdstptcv ( crv2, DirPnt, &par[1], pnt2, &MinDist ,&rc);
+   	if( rc != BSSUCC ) {
+		printf("Error in BSmdstptcv on crv2\n");
+		goto wrapup;
+	}
+
+        #ifdef DEBUG
+	__DBGpr_vec("pnt1=", pnt1, 3 );
+	__DBGpr_vec("pnt2=", pnt2, 3 );
+	printf("enter BSfillet\n");
+	#endif
+
+  	BSfillet( &rc, crv1, crv2, pnt1, pnt2, DirPnt, 
+                  &ri, &bsp_arc, center, par );
+	if( rc != BSSUCC ){
+		printf("Error in BSfillet rc = %d \n",rc);
+		goto wrapup;
+	}
+	*PaStart = par[0];
+	*PaEnd   = par[1];
+
+   	if( (fabs(ratio) > 1.0E-5) || ( ForcedPlanar == TRUE) ){
+
+		order = 4;
+
+		BSalloccv( (IGRshort) 4,
+                   	   (IGRlong ) 4, 
+		   	   (IGRshort) 0, 
+		   	   (IGRshort) 0, 
+		   	   CrvCorner, 
+		   	   &rc ) ; 
+		if( rc != BSSUCC ) {
+			printf("Error in BSalloccv non rational CrvCorner\n");
+			goto wrapup ;
+		}
+
+   		BScveval ( crv1 , (IGRdouble)par[0], (IGRint)0, eval1, &rc);
+   		BScveval ( crv2 , (IGRdouble)par[1], (IGRint)0, eval2, &rc);
+
+		for(i=0;i<3;i=i+1){
+			 pnt1[i] = eval1[i] - center[i];
+			 pnt2[i] = eval2[i] - center[i];
+			 DirPnt[i] = pnt1[i] +  pnt2[i];
+		}
+	
+		BSnorvec(&rc,pnt1);
+		BSnorvec(&rc,pnt2);
+		BSnorvec(&rc,DirPnt);
+		BScrossp(&rc,pnt1,pnt2,vn);
+		BSnorvec(&rc,vn);
+		#ifdef DEBUG
+		__DBGpr_vec("pnt1", pnt1, (IGRshort)3 );
+		__DBGpr_vec("pnt2", pnt2, (IGRshort)3 );
+		__DBGpr_vec("DirPnt", DirPnt, (IGRshort)3 );
+		__DBGpr_vec("vn", vn, (IGRshort)3 );
+		#endif
+		VDppl_ang_v1v2(pnt1, pnt2, vn, &angle, &rc );
+
+		POapparcbz( center, vn, ri, DirPnt, angle, 4, 
+			    &((*CrvCorner)->poles[0]), &ecmax, &rc );
+
+		/*--- set rest of the sturture for CrvCorner ---*/	
+
+		(*CrvCorner)->order          = (IGRshort)order;
+		(*CrvCorner)->periodic       = FALSE;
+		(*CrvCorner)->non_uniform    = TRUE;
+		(*CrvCorner)->num_poles      = (IGRlong)order;
+		(*CrvCorner)->num_knots      = (IGRlong)2*order;
+		(*CrvCorner)->rational       = (IGRboolean)FALSE;
+		(*CrvCorner)->planar         = FALSE;
+		(*CrvCorner)->phy_closed     = FALSE;
+		(*CrvCorner)->num_boundaries = (IGRshort) 0;
+
+		for(i=0;i<order;i=i+1){
+			(*CrvCorner)->knots[i]       = 0.0;
+			(*CrvCorner)->knots[order+i] = 1.0;
+		}
+
+		/* --- apply the ratio --- */
+		
+		if( fabs(ratio) > 1.0E-5 ){
+		
+		  if( ratio > 0.0 ){
+
+			BSxln(&rc,&((*CrvCorner)->poles[0]),
+				  &((*CrvCorner)->poles[3]),
+				  &((*CrvCorner)->poles[9]),
+				  &((*CrvCorner)->poles[6]), pnt1 );
+			if( rc != BSSUCC ){
+				*msg = BSSUCC;
+				return;
+			}
+			UnMratio = 1.0 - ratio;
+
+			for(i=0;i<3;i=i+1){
+			  ((*CrvCorner)->poles[3+i]) = 
+			  UnMratio * ((*CrvCorner)->poles[i+3]) + ratio*pnt1[i];
+
+			  ((*CrvCorner)->poles[6+i]) = 
+			  UnMratio * ((*CrvCorner)->poles[6+i]) + ratio*pnt1[i];
+			}
+		  }
+		  else{
+
+			ecmax = -1.0 * ratio;
+			UnMratio = 1.0 - ecmax;
+
+			for(i=0;i<3;i=i+1){
+			  ((*CrvCorner)->poles[3+i]) = 
+			  		UnMratio * ((*CrvCorner)->poles[i]) + 
+			  		ecmax * ((*CrvCorner)->poles[i+3]);
+
+			  ((*CrvCorner)->poles[6+i]) = 
+			  		UnMratio * ((*CrvCorner)->poles[9+i]) + 
+				        ecmax * ((*CrvCorner)->poles[6+i]);
+			}
+		  }
+
+		}
+		
+	}
+	else{
+
+    		BSalloccv( (IGRshort) bsp_arc.order,
+                   	   (IGRlong ) bsp_arc.num_poles, 
+		   	   (IGRshort) bsp_arc.rational, 
+		   	   (IGRshort) bsp_arc.num_boundaries, 
+		   	   CrvCorner, 
+		   	   &rc ) ; 
+		if( rc != BSSUCC ) {
+			printf("Error in BSalloccv for CrvCorner\n");
+			goto wrapup ;
+		}
+
+		(*CrvCorner)->order          = bsp_arc.order;
+		(*CrvCorner)->periodic       = bsp_arc.periodic;
+		(*CrvCorner)->non_uniform    = bsp_arc.non_uniform;
+		(*CrvCorner)->num_poles      = bsp_arc.num_poles;
+		(*CrvCorner)->num_knots      = bsp_arc.num_knots;
+		(*CrvCorner)->rational       = bsp_arc.rational;
+		(*CrvCorner)->planar         = bsp_arc.planar;
+		(*CrvCorner)->phy_closed     = bsp_arc.phy_closed;
+		(*CrvCorner)->num_boundaries = bsp_arc.num_boundaries;
+
+		memcpy((IGRchar*)&(*CrvCorner)->knots[0],
+		       (IGRchar *)&bsp_arc.knots[0],
+		       (IGRint) (bsp_arc.num_knots * sizeof(IGRdouble)) );
+
+		memcpy((IGRchar*)&(*CrvCorner)->poles[0],
+		       (IGRchar *)&bsp_arc.poles[0],
+		       (IGRint) (3*bsp_arc.num_poles * sizeof(IGRdouble)) );
+
+		memcpy((IGRchar*)&(*CrvCorner)->weights[0],
+		       (IGRchar *)&bsp_arc.weights[0],
+		       (IGRint) (bsp_arc.num_poles * sizeof(IGRdouble)) );
+
+	}
+
+}/* --- end blend corner --- */
+
+else{
+
+	/*--- malloc the curve for the corner cut part ---*/
+	/*--- evaluate the start and the end poles of the corner cut */
+
+    	BSalloccv( (IGRshort) 4,
+                   (IGRlong ) 4, 
+		   (IGRshort) 0, 
+		   (IGRshort) 0, 
+		   CrvCorner, 
+		   &rc ) ; 
+	if( rc != BSSUCC ) {
+		printf("Error in BSalloccv for CrvCorner\n");
+		goto wrapup ;
+	}
+
+	(*CrvCorner)->order = 4;
+	order = 4;
+
+	/*--- evaluate the start pole of the corner cut */
+
+   	BScveval ( crv1 , (IGRdouble)0.9, (IGRint)0, p, &rc);
+
+	BasePar = 1.0;
+	BSptsdlcv(&rc, crv1, &BasePar, p,  &re, &((*CrvCorner)->poles[0]));
+	if( rc != BSSUCC ){
+		printf("Error in BSptsdlcv on crv1 \n");
+		goto wrapup;
+	}
+
+	/*--- evaluate the end pole of the corner cut */
+
+   	BScveval ( crv2 , (IGRdouble)0.1, (IGRint)0, p, &rc);
+	BasePar = 0.0;
+	BSptsdlcv(&rc, crv2, &BasePar, p,  &ri, &((*CrvCorner)->poles[9]));
+	if( rc != BSSUCC ){
+		printf("Error in BSptsdlcv on crv1 \n");
+		goto wrapup;
+	}
+
+	/*-- evaluate the the 2 internal poles ---*/
+
+	OneThird = 1.0 / 3.0;
+	TwoThird = 2.0 / 3.0;
+
+
+	for(i=0;i<3;i=i+1){
+	   (*CrvCorner)->poles[3+i] = TwoThird * ((*CrvCorner)->poles[i]) +
+				 OneThird * ((*CrvCorner)->poles[9+i]);
+	   (*CrvCorner)->poles[6+i] = OneThird * ((*CrvCorner)->poles[i]) +
+				 TwoThird * ((*CrvCorner)->poles[9+i]);
+	}
+
+
+   	BSmdstptcv ( crv1, &((*CrvCorner)->poles[0]), PaStart, pnt1, &ecmax,&rc);
+   	if( rc != BSSUCC ) {
+		printf("Error in BSmdstptcv2 on crv1\n");
+		goto wrapup;
+	}
+
+   	BSmdstptcv ( crv2, &((*CrvCorner)->poles[9]), PaEnd, pnt1, &ecmax, &rc);
+   	if( rc != BSSUCC ) {
+		printf("Error in BSmdstptcv2 on crv1\n");
+		goto wrapup;
+	}
+
+
+	/*--- set rest of the sturture for CrvCorner ---*/	
+
+	(*CrvCorner)->order          = (IGRshort)order;
+	(*CrvCorner)->periodic       = FALSE;
+	(*CrvCorner)->non_uniform    = TRUE;
+	(*CrvCorner)->num_poles      = (IGRlong)order;
+	(*CrvCorner)->num_knots      = (IGRlong)2*order;
+	(*CrvCorner)->rational       = (IGRboolean)FALSE;
+	(*CrvCorner)->planar         = FALSE;	/* to be reset later on */
+	(*CrvCorner)->phy_closed     = FALSE;
+	(*CrvCorner)->num_boundaries = (IGRshort) 0;
+
+	for(i=0;i<order;i=i+1){
+		(*CrvCorner)->knots[i]       = 0.0;
+		(*CrvCorner)->knots[order+i] = 1.0;
+	}
+
+}/*--- end of straight corner --- */
+
+
+
+*msg = BSSUCC;
+return;
+
+wrapup:
+	if( (*CrvCorner) != NULL ) BSfreecv(&rc,(*CrvCorner));
+
+}
+
+/*==========================================================================*/
+/*                                                                          */
+/*             are poles aligned		                            */
+/*                                                                          */
+/*  AreCrvsAln( rc, bsp1, bsp2, tol )                                       */
+/*              O , I   , I   , I                                           */
+/*==========================================================================*/
+
+
+AreCrvsAln( rc, bsp1, bsp2, tol )
+
+IGRlong				*rc;
+struct 	IGRbsp_curve 		*bsp1;
+struct 	IGRbsp_curve 		*bsp2;
+IGRdouble			tol;
+
+{
+
+
+    IGRint		i, iD3, j, irc;
+    IGRdouble		v1[3], v2[3], w[3], ptdir[9];
+    IGRdouble		toltol;
+
+	
+	toltol = tol * tol;
+
+   	BScveval ( bsp1 , 0.0, 1, ptdir, &irc);
+	j = 3 * (bsp1->num_poles-1);
+	for(i=0;i<3;i=i+1) ptdir[6+i] = bsp1->poles[j+i];
+ 
+        if( bsp1->num_poles == 2 ) goto deux;
+
+        if( !bsp1->rational ){
+		#ifdef DEBUG
+		write("curve NOT rational\n");
+		#endif
+
+            for( i=6;i<3*bsp1->num_poles;i=i+3 ){
+
+		BSmkvec( &irc,v2,&(bsp1->poles[0]),&(bsp1->poles[i]) );
+		BScrossp( &irc, &ptdir[3],v2,w);
+
+		if( BSdotp(&irc,w,w) > toltol ){
+
+		   #ifdef DEBUG
+		   write("poles not align 1l\n");
+		   #endif
+
+		   *rc = BSFAIL;
+		   return(OM_W_ABORT);
+		}
+	    }
+	}
+	else{
+		#ifdef DEBUG
+		write("curve rational\n");
+		#endif
+            for( i=6;i<3*bsp1->num_poles;i=i+3 ){
+		iD3 = i / 3;
+		for(j=0;j<3;j=j+1) 
+			v2[j] = bsp1->poles[i+j] /bsp1->weights[iD3] - ptdir[j];
+		BScrossp( &irc, &ptdir[3],v2,w);
+
+		if( BSdotp(&irc,w,w) > toltol ){
+		   #ifdef DEBUG
+		   write("poles not align 2\n");
+		   #endif
+		   *rc = BSFAIL;
+		   return(OM_W_ABORT);
+		}
+	    }
+	}
+
+deux:
+        if( !bsp2->rational ){
+		#ifdef DEBUG
+		write("curve NOT rational\n");
+		#endif
+
+            for( i=3;i<3*bsp2->num_poles;i=i+3 ){
+
+		BSmkvec( &irc,v2,&(bsp1->poles[0]),&(bsp2->poles[i]) );
+		BScrossp( &irc, &ptdir[3],v2,w);
+
+		if( BSdotp(&irc,w,w) > toltol ){
+		   #ifdef DEBUG
+		   write("poles not align 3\n");
+		   #endif
+
+		   *rc = BSFAIL;
+		   return(OM_W_ABORT);
+		}
+	    }
+	}
+	else{
+		#ifdef DEBUG
+		write("curve rational\n");
+		#endif
+            for( i=3;i<3*bsp2->num_poles;i=i+3 ){
+		iD3 = i / 3;
+		for(j=0;j<3;j=j+1) 
+			v2[j] = bsp2->poles[i+j] /bsp2->weights[iD3] - ptdir[j];
+		BScrossp( &irc, &ptdir[3],v2,w);
+
+		if( BSdotp(&irc,w,w) > toltol ){
+		   #ifdef DEBUG
+		   write("poles not align 2\n");
+		   #endif
+
+		   *rc = BSFAIL;
+		   return(OM_W_ABORT);
+		}
+	    }
+	}
+
+
+warpup:
+	*rc = BSSUCC;
+        return(OM_S_SUCCESS);
+
+}/* end of arepolaln */
+
+/*==========================================================================*/
+
+BuildMergeCrv( crv1, crv2, AdjNeeded, PhyClosed, MergeCrv, IsPlanar, msg )
+
+struct	IGRbsp_curve	*crv1;
+struct	IGRbsp_curve    *crv2;
+IGRboolean		AdjNeeded;
+IGRboolean		PhyClosed;
+struct	IGRbsp_curve	**MergeCrv;
+IGRboolean		*IsPlanar;
+IGRlong			*msg;
+
+{
+
+BSrc		rc;
+IGRlong		NumPoles;
+IGRshort	order;
+IGRshort	rational;
+IGRint		k, ind1, ind2;
+IGRdouble	n1[3];
+struct	IGRbsp_curve *curves[2];
+
+
+extern	IGRboolean	BSmerge_cv();
+
+	curves[0] = NULL;
+	curves[1] = NULL;
+	*MergeCrv = NULL;
+	*msg = BSFAIL;
+
+	if( AdjNeeded == TRUE ){
+		ind1 = 3 * (crv1->num_poles -1); 
+		for(k=0;k<3;k=k+1){
+		    crv1->poles[ind1+k] = ( crv1->poles[ind1+k] +
+					    crv2->poles[k] ) * 0.5;
+		    crv2->poles[k]      = crv1->poles[ind1+k];
+		}
+	}
+	if( PhyClosed == TRUE ){
+		ind1 = 3 * (crv2->num_poles -1); 
+		for(k=0;k<3;k=k+1){
+		    crv2->poles[ind1+k] = ( crv2->poles[ind1+k] +
+					    crv1->poles[k] ) * 0.5;
+		    crv1->poles[k]      = crv2->poles[ind1+k];
+		}
+	}
+
+	curves[0] = crv1;
+        curves[1] = crv2;
+	BSmergarrcv( 2, curves, MergeCrv, &rc );
+	if( rc != BSSUCC ){
+		printf("Error in BSmergarrcv 2\n");
+		goto wrapup;
+	}
+
+
+	BStst_plan( (IGRint)(*MergeCrv)->num_poles, 
+		    &((*MergeCrv)->poles[0]),
+		    &((*MergeCrv)->weights[0]),
+		    IsPlanar, n1, &rc); 
+	if( (rc != BSSUCC) ){ 
+		printf("Curves are not coplanar\n");
+		return;
+	}
+	
+	*msg = BSSUCC;
+	return;
+	
+	
+wrapup:
+        if( (*MergeCrv) != NULL ) BSfreecv(&rc,(*MergeCrv));
+	*MergeCrv = NULL;
+ 
+	return;	
+
+}
+
+/*==========================================================================*/
+
+ProjCrvOnToPlan( ProjDir, ProjPt, crv1, crv2, proj_crv1, proj_crv2, msg )
+
+IGRdouble		*ProjDir;
+IGRdouble		*ProjPt;
+struct	IGRbsp_curve	*crv1;
+struct	IGRbsp_curve	*crv2;
+struct	IGRbsp_curve	**proj_crv1;
+struct	IGRbsp_curve	**proj_crv2;
+IGRlong			*msg;
+
+{
+
+BSrc	rc;
+
+
+extern	IGRboolean	BSprj_cv_pl();
+
+	*proj_crv1 = NULL;
+	*proj_crv2 = NULL;
+	*msg = BSFAIL;
+
+	BSalloccv( (IGRshort) crv1->order,
+               	   (IGRlong ) crv1->num_poles, 
+	   	   (IGRshort) crv1->rational, 
+	   	   (IGRshort) crv1->num_boundaries, 
+	   	   proj_crv1, 
+	   	   &rc );
+ 
+	if( rc != BSSUCC ) {
+		printf("Error in BSalloccv for proj_crv1\n");
+		goto wrapup;
+	}
+
+	BSalloccv( (IGRshort) crv2->order,
+               	   (IGRlong ) crv2->num_poles, 
+	   	   (IGRshort) crv2->rational, 
+	   	   (IGRshort) crv2->num_boundaries, 
+	   	   proj_crv2, 
+	   	   &rc );
+ 
+	if( rc != BSSUCC ) {
+		printf("Error in BSalloccv for proj_crv2\n");
+		goto wrapup;
+	}
+
+	BSprj_cv_pl( &rc, crv1, ProjPt, ProjDir, ProjDir, (*proj_crv1));
+	if( rc != BSSUCC ) {
+		printf("Error in BSprj_cv_pl for proj_crv1\n");
+		goto wrapup;
+	}
+
+	BSprj_cv_pl( &rc, crv2, ProjPt, ProjDir, ProjDir, (*proj_crv2));
+	if( rc != BSSUCC ) {
+		printf("Error in BSprj_cv_pl for proj_crv2\n");
+		goto wrapup;
+	}
+
+	*msg = BSSUCC;
+	return;
+
+
+wrapup:
+        if( (*proj_crv1) != NULL ) BSfreecv(&rc,(*proj_crv1));
+        if( (*proj_crv2) != NULL ) BSfreecv(&rc,(*proj_crv2));
+	*proj_crv1 = NULL;
+	*proj_crv2 = NULL;
+	return;
+}
+
+/*==========================================================================*/
+
+Eval3DFillet( bsp_arc, ProjPt, ProjDir, pa1, crv1, pa2, crv2, CornerType,  msg )
+
+struct	IGRbsp_curve	*bsp_arc;
+IGRdouble		*ProjPt;
+IGRdouble		*ProjDir;
+IGRdouble		pa1;
+struct	IGRbsp_curve	*crv1;
+IGRdouble		pa2;
+struct	IGRbsp_curve	*crv2;
+IGRint			CornerType;
+IGRlong			*msg;
+
+{
+
+BSrc		rc;
+IGRint		k;
+IGRdouble	eval1[6];
+IGRdouble	n1[3], intx[3], pt1[3], pt2[3];
+IGRint		SizeOf3Dbl;
+
+extern	void	BSxlnpl();
+
+*msg = BSFAIL;
+
+SizeOf3Dbl = 3 * sizeof(IGRdouble);
+
+#ifdef DEBUG
+printf("pa1 = %lf, p2 = %lf\n", pa1, pa2);
+#endif
+
+if( CornerType == 0 ){
+
+	/* evaluate the Two first Poles */
+
+	BSmkvec( &rc,n1,&bsp_arc->poles[0],&bsp_arc->poles[3] );
+	BSnorvec( &rc, n1 );
+   	BScveval ( crv1, pa1, 1, eval1, &rc);
+	for(k=0;k<3;k=k+1) pt2[k] = eval1[k] + 10.0 * eval1[3+k];
+
+	BSxlnpl( &rc, n1, &(bsp_arc->poles[3]), eval1, pt2,intx);
+	if( rc != BSSUCC ){
+		printf("Error in BSxlnpl 1\n");
+		return;
+	}
+
+	#ifdef DEBUG
+	__DBGpr_vec("intx1 =",intx, 3);
+	#endif
+
+	memcpy((IGRchar*)&bsp_arc->poles[0], (IGRchar *)eval1, SizeOf3Dbl );
+	memcpy((IGRchar*)&bsp_arc->poles[3], (IGRchar *)intx, SizeOf3Dbl );
+
+	/* evaluate the 2 last Poles */
+
+	BSmkvec( &rc,n1,&bsp_arc->poles[9],&bsp_arc->poles[6] );
+	BSnorvec( &rc, n1 );
+   	BScveval ( crv2, pa2, 1, eval1, &rc);
+	for(k=0;k<3;k=k+1) pt2[k] = eval1[k] + 10.0 * eval1[3+k];
+	BSxlnpl( &rc, n1, &(bsp_arc->poles[6]), eval1, pt2,intx);
+	if( rc != BSSUCC ){
+		printf("Error in BSxlnpl 2\n");
+		return;
+	}
+	
+	#ifdef DEBUG
+	__DBGpr_vec("intx2 =",intx, 3);
+	#endif
+
+	memcpy((IGRchar*)&bsp_arc->poles[9], (IGRchar *)eval1, SizeOf3Dbl );
+	memcpy((IGRchar*)&bsp_arc->poles[6], (IGRchar *)intx, SizeOf3Dbl );
+
+
+}/* end of traitement for fillet corner */
+
+else{
+
+	/*--- evaluate the 2 first poles --- */
+
+   	BScveval ( crv1, pa1, 1, eval1, &rc);
+	BScrossp(&rc, ProjDir, &eval1[3], pt1);
+	BScrossp(&rc, pt1, &eval1[3], n1);
+	BSnorvec(&rc,n1);
+	for(k=0;k<3;k=k+1) pt2[k] = bsp_arc->poles[3+k] + 10.0 * ProjDir[k];
+	BSxlnpl( &rc, n1, eval1, &(bsp_arc->poles[3]), pt2,intx);
+	if( rc != BSSUCC ){
+		printf("Error in BSxlnpl 3\n");
+		return;
+	}
+	memcpy((IGRchar*)&bsp_arc->poles[0], (IGRchar *)eval1, SizeOf3Dbl );
+	memcpy((IGRchar*)&bsp_arc->poles[3], (IGRchar *)intx, SizeOf3Dbl );
+
+	/*--- evaluate the 2 last poles --- */
+
+   	BScveval ( crv2, pa2, 1, eval1, &rc);
+	BScrossp(&rc, ProjDir, &eval1[3], pt1);
+	BScrossp(&rc, pt1, &eval1[3], n1);
+	BSnorvec(&rc,n1);
+	for(k=0;k<3;k=k+1) pt2[k] = bsp_arc->poles[9+k] + 10.0 * ProjDir[k];
+	BSxlnpl( &rc, n1, eval1, &(bsp_arc->poles[6]), pt2,intx);
+	if( rc != BSSUCC ){
+		printf("Error in BSxlnpl 4\n");
+		return;
+	}
+	memcpy((IGRchar*)&bsp_arc->poles[6], (IGRchar *)intx, SizeOf3Dbl );
+	memcpy((IGRchar*)&bsp_arc->poles[9], (IGRchar *)eval1, SizeOf3Dbl );
+
+
+}/* end of traitement for chamfer corner */
+
+ *msg = BSSUCC;
+ return;
+
+}
+/*==========================================================================*/
+
+Merge3DCurves( CRVOBJ, SORTOBJ, bsp_arc, pa1, crv1, pa2, crv2, 
+	       TrimOption, iv, MergeCrv, msg )
+
+struct	GRobj_env	*CRVOBJ;
+struct	GRobj_env	*SORTOBJ;
+struct	IGRbsp_curve	*bsp_arc;
+IGRdouble		pa1;
+struct	IGRbsp_curve	*crv1;
+IGRdouble		pa2;
+struct	IGRbsp_curve	*crv2;
+IGRint			TrimOption;
+IGRshort		*iv;
+struct	IGRbsp_curve	**MergeCrv;
+IGRlong			*msg;
+
+{
+
+BSrc			rc;
+IGRdouble		par_dir, past, paend;
+IGRdouble		TwoThird, OneThird;
+IGRint			NumCrv;
+struct	IGRbsp_curve	*curves[3];
+IGRint			bsp_arc_ind;
+IGRint			k;
+
+extern	IGRboolean	BSpartofcv();
+
+*msg = BSFAIL;
+*MergeCrv = NULL;
+TwoThird = 2.0 / 3.0;
+OneThird = 1.0 / 3.0;
+
+for(k=0;k<3;k=k+1) curves[k] = NULL;
+ 
+
+switch(TrimOption){
+
+	case 0:{
+
+		*msg = BSSUCC;
+		return;
+	}
+	case 1:{
+
+		NumCrv = 2;
+
+	        if( SORTOBJ[0].obj_id.objid != CRVOBJ[0].obj_id.objid ){
+
+			past  = pa2;
+			paend = 1.0;
+			par_dir = TwoThird * past + OneThird * paend;
+
+			BSalloccv( (IGRshort) crv2->order,
+               	   	   	   (IGRlong ) crv2->num_poles, 
+	   	   	   	   (IGRshort) crv2->rational, 
+	   	   	   	   (IGRshort) crv2->num_boundaries, 
+	   	   	   	   &curves[1], 
+	   	   	   	   &rc );
+ 
+			if( rc != BSSUCC ) {
+				printf("Error in BSalloccv for partof1\n");
+				goto wrapup;
+			}
+
+  			BSpartofcv( &rc, crv2, past, par_dir, 
+				    paend, curves[1] );
+  			if( rc != BSSUCC ){
+				printf("Error in BSpartofcv 1\n");
+				return;
+			}
+
+			BSrev_cv(&rc,bsp_arc);
+			curves[0] = bsp_arc;
+
+		}
+		else{
+			past = 0.0;
+			paend = pa1;
+			par_dir = TwoThird * past + OneThird * paend;
+
+			BSalloccv( (IGRshort) crv1->order,
+               	   	   	   (IGRlong ) crv1->num_poles, 
+	   	   	   	   (IGRshort) crv1->rational, 
+	   	   	   	   (IGRshort) crv1->num_boundaries, 
+	   	   	   	   &curves[0], 
+	   	   	   	   &rc );
+ 
+			if( rc != BSSUCC ) {
+				printf("Error in BSalloccv for partof1\n");
+				goto wrapup;
+			}
+
+  			BSpartofcv( &rc, crv1, past, par_dir, 
+				    paend, curves[0] );
+  			if( rc != BSSUCC ){
+				printf("Error in BSpartofcv 1\n");
+				return;
+
+			}
+
+			curves[1] = bsp_arc;
+		}
+
+		break;
+	}
+	case 2:{
+
+		NumCrv = 2;
+
+	        if( SORTOBJ[1].obj_id.objid != CRVOBJ[1].obj_id.objid ){
+
+			past  = 0.0;
+			paend = pa1;
+			par_dir = TwoThird * past + OneThird * paend;
+
+		   if( iv[0] == - 1){
+
+			BSalloccv( (IGRshort) crv1->order,
+               	   	   	   (IGRlong ) crv1->num_poles, 
+	   	   	   	   (IGRshort) crv1->rational, 
+	   	   	   	   (IGRshort) crv1->num_boundaries, 
+	   	   	   	   &curves[1], 
+	   	   	   	   &rc );
+ 
+			if( rc != BSSUCC ) {
+				printf("Error in BSalloccv for partof1\n");
+				goto wrapup;
+			}
+
+
+  			BSpartofcv( &rc, crv1, past, par_dir, 
+				    paend, curves[1] );
+  			if( rc != BSSUCC ){
+				printf("Error in BSpartofcv 1\n");
+				return;
+			}
+
+			BSrev_cv(&rc,curves[1]);
+			BSrev_cv(&rc,bsp_arc);
+			curves[0] = bsp_arc;
+		   }
+		   else{
+			
+			BSalloccv( (IGRshort) crv1->order,
+               	   	   	   (IGRlong ) crv1->num_poles, 
+	   	   	   	   (IGRshort) crv1->rational, 
+	   	   	   	   (IGRshort) crv1->num_boundaries, 
+	   	   	   	   &curves[0], 
+	   	   	   	   &rc );
+ 
+			if( rc != BSSUCC ) {
+				printf("Error in BSalloccv for partof1\n");
+				goto wrapup;
+			}
+
+  			BSpartofcv( &rc, crv1, past, par_dir, 
+				    paend, curves[0] );
+  			if( rc != BSSUCC ){
+				printf("Error in BSpartofcv 1\n");
+				return;
+			}
+
+			curves[1] = bsp_arc;
+		   }
+		}
+		else{
+
+			past  = pa2;
+			paend = 1.0;
+			par_dir = TwoThird * past + OneThird * paend;
+
+		   if( iv[1] == - 1){
+
+			BSalloccv( (IGRshort) crv2->order,
+               	   	   	   (IGRlong ) crv2->num_poles, 
+	   	   	   	   (IGRshort) crv2->rational, 
+	   	   	   	   (IGRshort) crv2->num_boundaries, 
+	   	   	   	   &curves[0], 
+	   	   	   	   &rc );
+ 
+			if( rc != BSSUCC ) {
+				printf("Error in BSalloccv for partof1\n");
+				goto wrapup;
+			}
+
+
+  			BSpartofcv( &rc, crv2, past, par_dir, 
+				    paend, curves[0] );
+  			if( rc != BSSUCC ){
+				printf("Error in BSpartofcv 1\n");
+				return;
+			}
+	
+			BSrev_cv(&rc,curves[0]);
+			BSrev_cv(&rc,bsp_arc);
+			curves[1] = bsp_arc;
+		   }
+		   else{
+			
+			BSalloccv( (IGRshort) crv2->order,
+               	   	   	   (IGRlong ) crv2->num_poles, 
+	   	   	   	   (IGRshort) crv2->rational, 
+	   	   	   	   (IGRshort) crv2->num_boundaries, 
+	   	   	   	   &curves[1], 
+	   	   	   	   &rc );
+ 
+			if( rc != BSSUCC ) {
+				printf("Error in BSalloccv for partof1\n");
+				goto wrapup;
+			}
+
+  			BSpartofcv( &rc, crv2, past, par_dir, 
+				    paend, curves[1] );
+  			if( rc != BSSUCC ){
+				printf("Error in BSpartofcv 1\n");
+				return;
+			}
+
+			curves[0] = bsp_arc;
+		   }
+
+		}/* end if SORTOBJ[1].obj_id.objid == CRVOBJ[1].obj_id.objid */
+
+		break;
+
+	}
+	case 3:{
+
+		NumCrv = 3;
+
+		past  = 0;
+		paend = pa1;
+		par_dir = TwoThird * past + OneThird * paend;
+
+		BSalloccv( (IGRshort) crv1->order,
+               	   	   (IGRlong ) crv1->num_poles, 
+	   	   	   (IGRshort) crv1->rational, 
+	   	   	   (IGRshort) crv1->num_boundaries, 
+	   	   	   &curves[0], 
+	   	   	   &rc );
+ 
+		if( rc != BSSUCC ) {
+			printf("Error in BSalloccv for partof1\n");
+			goto wrapup;
+		}
+
+  		BSpartofcv( &rc, crv1, past, par_dir, 
+			    paend, curves[0] );
+  		if( rc != BSSUCC ){
+			printf("Error in BSpartofcv 1\n");
+			return;
+		}
+
+		curves[1] = bsp_arc;
+
+		past  = pa2;
+		paend = 1.0;
+		par_dir = TwoThird * past + OneThird * paend;
+
+		BSalloccv( (IGRshort) crv2->order,
+               	   	   (IGRlong ) crv2->num_poles, 
+	   	   	   (IGRshort) crv2->rational, 
+	   	   	   (IGRshort) crv2->num_boundaries, 
+	   	   	   &curves[2], 
+	   	   	   &rc );
+ 
+		if( rc != BSSUCC ) {
+			printf("Error in BSalloccv for partof1\n");
+			goto wrapup;
+		}
+
+  		BSpartofcv( &rc, crv2, past, par_dir, 
+			    paend, curves[2] );
+  		if( rc != BSSUCC ){
+			printf("Error in BSpartofcv 1\n");
+			return;
+		}
+
+		break;
+
+	}
+	default: goto wrapup;
+
+}
+
+BSmergarrcv( NumCrv, curves, MergeCrv, &rc );
+if( rc != BSSUCC ){
+	printf("Error in BSmergarrcv 2\n");
+	goto wrapup;
+}
+
+*msg = BSSUCC;
+return;		
+
+
+
+
+wrapup:
+
+	if( (*MergeCrv) != NULL ) BSfreecv(&rc,(*MergeCrv));
+	*MergeCrv = NULL;
+
+wrapup1:
+
+        for(k=0;k<3;k=k+1){
+		if( (curves[k] != NULL) && ( curves[k] != bsp_arc ) ){
+			BSfreecv(&rc,curves[k]);
+			curves[0] = NULL;
+		}
+	}
+
+	return;
+
+	
+}

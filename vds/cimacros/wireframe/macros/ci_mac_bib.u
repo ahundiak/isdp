@@ -1,0 +1,1551 @@
+/* $Id: ci_mac_bib.u,v 1.1.1.1 2001/01/04 21:07:22 cvs Exp $  */
+
+/* --------------------------------------------------------------------
+ * I/VDS
+ *
+ * File:	vds/cimacros/wireframe/macros / ci_mac_bib.u
+ *
+ * Description:
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ *	$Log: ci_mac_bib.u,v $
+ *	Revision 1.1.1.1  2001/01/04 21:07:22  cvs
+ *	Initial import to CVS
+ *	
+# Revision 1.1  1998/04/29  16:27:20  pinnacle
+# VDS 2.5.1
+#
+# Revision 1.4  1998/01/15  22:36:12  pinnacle
+# Replaced: cimacros/wireframe/macros/ci_mac_bib.u for:  by mdong for vds
+#
+# Revision 1.3  1998/01/02  19:53:32  pinnacle
+# Replaced: cimacros/wireframe/macros/ci_mac_bib.u for:  by yzhu for vds
+#
+# Revision 1.2  1998/01/02  19:40:24  pinnacle
+# Replaced: cimacros/wireframe/macros/ci_mac_bib.u for:  by yzhu for vds
+#
+# Revision 1.1  1997/05/08  13:20:44  pinnacle
+# New project VDS 250
+#
+# Revision 1.1  1996/07/19  20:33:52  pinnacle
+# Create VDS 241 project
+#
+# Revision 1.1  1994/11/14  22:42:32  pinnacle
+# Create vds.240 from vds.232
+#
+# Revision 1.1  1994/11/08  16:07:00  pinnacle
+# create vds.232
+#
+ *
+ * History:
+ *	MM/DD/YY	AUTHOR		DESCRIPTION
+ *      01/02/98	yzhu		add check_exp_gtzero
+ * -------------------------------------------------------------------*/
+
+/*
+	 VDS 2.0 - PPM macro library - 92/07/09 (alc)
+ */
+   
+#include "ciminimum.h"
+#include "OMminimum.h"
+#include "cimacros.h"
+#include "cieveryone.h"
+#include "expmacros.h"
+#include "DItypedef.h"
+#include "DIdef.h"
+#include "DIglob.h"
+#include "DIprims.h"
+#include "AS_status.h"
+#include "VDSudp_mac.h"
+#include "msdef.h"
+/* if bugs be carefull with these defines */
+
+#define EXP_SCALAR 0
+#define EXP_DISTANCE 1
+#define EXP_ANGLE 2
+
+#define EXP_DOUBLE 0  /* For jla modif */
+
+
+extern int 	sscanf();
+extern int
+		DImain(),
+		DIfast_trans(),
+		EXP_translate_exp(),
+		EXP_create_double(),
+		EXP_create();
+extern 		sprintf();
+extern	char    *strchr();
+extern  char    *strpbrk();
+extern  int  	printf();
+extern		UI_status();
+
+char		dbg_txt[120];		// text used for debug purposes
+
+extern	char *	malloc();
+extern		free();
+/* extern 	int 	VDStranslate(); */
+
+// #define DEBUG 1
+#ifdef DEBUG
+#    define TRACE(txt)	write("ci_mac_bib: ", txt, '\n');
+#else
+#    define TRACE(txt)	;
+#endif
+									
+/*======================================================================*/
+/*      manage the user interface to locate an expression		*/
+/*======================================================================*/
+
+int loc_exp( loc_suc, loc_message, loc_prompt, exp_prompt, exp_default, 
+             EXP_GRid )
+
+char		loc_prompt[80];	/* prompt to ask the name of the expression */
+char		exp_prompt[80]; /* prompt ask a value			    */
+char		loc_message[80];/* prompt to set the message field          */
+struct GRid	*EXP_GRid;	/* return objid & osnum of the expression   */
+int		*loc_suc;       /* return status			    */
+double   	exp_default;    /* default value of the expression          */
+                                /* must be setup                            */
+{ 
+
+char		expc_prompt[256];
+char		*exp_true_name;
+char		exp_name[80];
+char		*exp_value, exp_true_value[80];
+char		*equal;
+int		stat, mask, response;
+short		sender_class;
+
+struct GRmd_env	MOD_ENV;
+struct GRevent	event;
+
+TRACE( "loc_exp: BEGIN" )
+
+        message(loc_message);
+	strcpy(expc_prompt,exp_prompt);
+        strcat(expc_prompt," (default = ");
+        strcat(expc_prompt,ftoa(exp_default));
+        strcat(expc_prompt,")");
+
+	ci$get_module_info(md_env = &MOD_ENV);
+
+
+step0:
+	EXP_GRid->objid = NULL_OBJID;
+
+	mask =  GRm_RJT_MOVEON | GRm_STRING | GRm_OBJID | GRm_BACK_UP;
+
+        do
+        {
+           *loc_suc = ci$getevent( prompt = loc_prompt, response = &response,
+	     			   data   = exp_value,  mask     = mask,
+				   event = &event,
+                                   stackable = 1 );
+           status("");
+           if( (response == EX_RJT_MOVEON) || (response == EX_BACK_UP ) )
+           { 
+		*loc_suc = 0; 
+		return(0);
+	   }
+
+        }
+  	while( *loc_suc != 1 );
+
+
+/* we got an object via the navigate graph */
+
+	if( response == EX_OBJID )
+        {
+	  om$get_classid( osnum     = event.located_object[0].located_obj.osnum,
+			  objid     = event.located_object[0].located_obj.objid,
+			  p_classid = &sender_class );
+
+	  stat = om$is_ancestry_valid( subclassid     = sender_class,
+				       superclassname = "expression" );
+	  if( stat  != 1 ) goto step0;
+	  EXP_GRid->objid = event.located_object[0].located_obj.objid;
+	  EXP_GRid->osnum = event.located_object[0].located_obj.osnum;
+	  return(1);
+        }
+
+
+/* a caracter string has been returned */
+
+        if( response == STRING )
+        {
+           strcpy(exp_name, exp_value);
+           if(exp_name[0] == 0 ) goto step1;
+
+/* try to find an "=" in the tring */
+
+ 	   equal = strchr(exp_value,'=');
+           if( equal != NULL )
+           {
+          	*equal = '\0';
+	  	stat = exp$translate(exp_name = exp_value,
+			             p_exp_id = &EXP_GRid->objid,
+			             p_osnum  = &EXP_GRid->osnum );
+
+                if( EXP_GRid->objid == NULL_OBJID )
+                {
+			stat = exp$create(exp_name = exp_value,
+					  exp_syntax = equal + 1,
+					  osnum      = MOD_ENV.md_id.osnum,
+			      		  p_exp_id = &EXP_GRid->objid,
+			                  p_osnum  = &EXP_GRid->osnum );
+
+			if( stat != 1 )
+                        {
+	                  UI_status(" syntaxe error ");
+			  goto step0;
+			}
+		}
+                else if( stat == 1 ){
+			status(" left hand side already defined ");
+			goto step0;
+		}
+            }/* end of process if we got "expxx = value" */
+
+	    else
+            {
+		#ifdef DEBUG
+			write("check objname =", exp_name,"\n");
+		#endif
+
+          	vds$translate (objname = exp_name, 
+                	       p_objid = &(EXP_GRid->objid),
+                               p_osnum = &(EXP_GRid->osnum) );
+		
+
+          	if ( (EXP_GRid->objid) == NULL_OBJID )
+          	{
+
+/*---  		try to create an unname expression 			---*/
+
+			EXP_GRid->objid = NULL_OBJID;			
+			exp_true_name = NULL;
+			strcpy(exp_true_value, exp_value);
+			stat = exp$create(exp_name   = exp_true_name,
+					  exp_syntax = exp_true_value,
+					  osnum      = MOD_ENV.md_id.osnum,
+			      		  p_exp_id   = &EXP_GRid->objid,
+			                  p_osnum    = &EXP_GRid->osnum );
+
+			if( stat == 1 ) goto step3;
+
+/*--- 		fin de la modify					---*/
+
+step1:	   	        UI_status("expression does not exist");
+step2:           	
+	   		EXP_GRid->osnum = MOD_ENV.md_id.osnum ;           
+	   		mask =  GRm_RJT_MOVEON | GRm_BACK_UP | GRm_STRING;
+
+           		do
+           		{
+             		   *loc_suc = ci$getevent( prompt    = expc_prompt, 
+                                                   response  = &response,
+	      			                   data      = exp_value, 
+                                                   mask      = mask,
+                                                   stackable = 1 );
+
+             		   if( (response == EX_RJT_MOVEON) ||  
+   	                       (response == EX_BACK_UP)  ) goto step0;
+
+           		}
+           		while( *loc_suc != 1 );
+
+	   		if( exp_value[0] == 0 )
+                             strcpy( exp_value, ftoa(exp_default));
+
+			if(exp_name[0] == '\0' ) exp_true_name = NULL;
+			else		     exp_true_name = exp_name;
+			#ifdef DEBUG
+			  write("exp_true_name = ",exp_true_name,"\n");
+			  write("exp_value     = ",exp_value,"\n");
+			#endif 
+			stat = exp$create(exp_name   = exp_true_name,
+					  exp_syntax = exp_value,
+					  osnum      = MOD_ENV.md_id.osnum,
+			      		  p_exp_id   = &EXP_GRid->objid,
+			                  p_osnum    = &EXP_GRid->osnum );
+			if( stat != 1 )
+                        {
+	                  UI_status(" syntaxe error "); 
+			  goto step0;
+			}
+
+	  	} /*  string was null */ 
+
+
+            } /* expression did'nt exist */   
+	    return(1);
+
+step3:
+	    ci$send(msg      = message NDnode.NDchg_state( 
+                                                   (char)16,(char)16 ),
+                    targetid = EXP_GRid->objid,
+                    targetos = EXP_GRid->osnum	 ); 
+
+	    return(1);
+
+	} /* end of process string */
+}
+
+/*======================================================================*/
+/*      check if exp < 0						*/
+/*======================================================================*/
+int check_exp_gtzero( suc, EXP_GRid )
+struct GRid     *EXP_GRid;      /* return objid & osnum of the expression   */
+int             *suc;       /* return status                            */
+{
+struct exp_st1
+{ int           type;
+  double        value;
+} expr;
+
+        ci$send( msg     = message  NDnode.NDgive_structure(
+                                        suc,(char *)&expr,(char *)0 ),
+                    targetid = EXP_GRid->objid,
+                    targetos = EXP_GRid->osnum   );
+        if( !(*suc & 1) ) return 0;
+
+        if( expr.value < 0  )
+        {
+          UI_status("expression can not be negative");
+          printf("expression can not be negative\n");
+          *suc = 0;
+          return 0;
+        }
+        return 1;
+
+
+}
+
+
+/*======================================================================*/
+/*      tcheck if an expression is in a given range			*/
+/*======================================================================*/
+
+
+check_exp_rng( suc, EXP_objid, low_rng, hig_rng )
+
+GRobj 		EXP_objid;
+int		*suc;
+double		low_rng, hig_rng;
+
+{
+
+struct exp_st 
+{ int		type; 
+  double	value;
+} expr;
+
+
+
+	ci$send( msg	 = message  NDnode.NDgive_structure(
+					suc,(char *)&expr,(char *)0 ),  
+		targetid = EXP_objid );
+        
+        if( *suc != 1 ) return;
+
+	if( expr.value < low_rng || expr.value > hig_rng  )
+	{
+	  UI_status("expression is outside of range");
+	  *suc = 0;
+	}
+
+}
+
+
+/*======================================================================*/
+/*      locate an object or a expression				*/
+/*======================================================================*/
+
+int loc_obj_exp( loc_suc, loc_message, loc_prompt, exp_prompt, exp_default, 
+                 class_obj,EXP_GRid )
+
+int		*loc_suc;       /* return status			    */
+char		loc_prompt[80];	/* prompt to ask the name of the expression */
+char		exp_prompt[80]; /* prompt ask a value			    */
+char		loc_message[80];/* prompt to set the message field          */
+double   	exp_default;    /* default value of the expression          */
+                                /* must be setup                            */
+struct GRid	*EXP_GRid;	/* return objid & osnum of the expression   */
+char		*class_obj;	/* classes filter for located object	    */
+
+
+{
+
+char		expc_prompt[256];
+char		*exp_true_name;
+char		exp_name[80];
+char		*exp_value, exp_true_value[80];
+char		*equal;
+int		stat, mask, response;
+short		sender_class;
+
+struct GRmd_env	MOD_ENV;
+struct GRevent	event;
+
+extern ASmake_source_from_env();
+
+
+        message(loc_message);
+	strcpy(expc_prompt,exp_prompt);
+        strcat(expc_prompt," (default = ");
+        strcat(expc_prompt,ftoa(exp_default));
+        strcat(expc_prompt,")");
+
+	ci$get_module_info(md_env = &MOD_ENV);
+
+step0:
+
+	EXP_GRid->objid = NULL_OBJID;
+
+	mask = GRm_RJT_MOVEON | GRm_BACK_UP | GRm_STRING | GRm_DATA | GRm_OBJID;
+
+        do
+        {
+        
+           *loc_suc = ci$getevent( prompt = loc_prompt, response = &response,
+	     			   data   = exp_value,  mask     = mask,
+				   event = &event,
+				   stackable = 1 );
+
+           if( (response == EX_RJT_MOVEON) || (response == EX_BACK_UP ) )
+           {
+		*loc_suc = 0; 
+                return(0);
+           }
+        }while( *loc_suc != 1 );
+
+/* we got an object via the navigate graph */
+
+	if( response == EX_OBJID )
+        {
+	  om$get_classid( osnum     = event.located_object[0].located_obj.osnum,
+			  objid     = event.located_object[0].located_obj.objid,
+			  p_classid = &sender_class );
+
+	  stat = om$is_ancestry_valid( subclassid     = sender_class,
+				       superclassname = "expression" );
+	  if( stat  != 1 ) goto step0;
+	  EXP_GRid->objid = event.located_object[0].located_obj.objid;
+	  EXP_GRid->osnum = event.located_object[0].located_obj.osnum;
+ 	  *loc_suc = 2; 
+	  return(1);
+        }
+
+/* we recieved a data point to locate an abject */
+
+        if ( response == DATA )
+        {
+		ci$put( point = (double *)exp_value );
+		if ( !ci$locate( prompt = loc_prompt,
+                                 owner_action = LC_RIGID_COMP
+                                              | LC_RIGID_OWNER | LC_FLEX_COMP
+                                              | LC_FLEX_OWNER  | LC_REF_OBJECTS,
+				 obj    = &(EXP_GRid->objid), 
+				 osnum  = &(EXP_GRid->osnum),
+				 md_env = &MOD_ENV,
+				 classes= class_obj,
+				 stackable = 1 ))
+        	{
+             		EXP_GRid->objid = NULL_OBJID;
+             		*loc_suc = 0;
+                        return(0);
+        	}
+		else
+		{
+			ASmake_source_from_env(EXP_GRid,&MOD_ENV,EXP_GRid);	
+			*loc_suc = 1;
+                        return(0);
+		}
+        }
+	else if ( response == STRING )
+        {
+           strcpy(exp_name, exp_value);
+           if(exp_name[0] == 0 ) goto step1;
+
+/* try to find an "=" in the tring */
+
+ 	   equal = strchr(exp_value,'=');
+           if( equal != NULL )
+           {
+          	*equal = '\0';
+	  	stat = exp$translate(exp_name = exp_value,
+			             p_exp_id = &EXP_GRid->objid,
+			             p_osnum  = &EXP_GRid->osnum );
+                if( EXP_GRid->objid == NULL_OBJID )
+                {
+			stat = exp$create(exp_name = exp_value,
+					  exp_syntax = equal + 1,
+					  osnum      = MOD_ENV.md_id.osnum,
+			      		  p_exp_id = &EXP_GRid->objid,
+			                  p_osnum  = &EXP_GRid->osnum );
+
+			if( stat != 1 )
+                        {
+	                  UI_status(" syntaxe error "); 
+			  goto step0;
+			}
+		}
+                else if( stat == 1 ){
+			status(" left hand side already defined ");
+			goto step0;
+		}
+
+            }/* end of process if an equal has been found */
+
+
+/* it was a null string or the expression did'nt exist */
+	  
+	    else
+            {	        
+          	vds$translate (objname = exp_name, 
+                	      p_objid = &(EXP_GRid->objid),
+                              p_osnum = &(EXP_GRid->osnum) );
+
+
+          	if ( (EXP_GRid->objid) == NULL_OBJID )
+          	{
+
+			EXP_GRid->objid = NULL_OBJID;			
+			exp_true_name = NULL;
+			strcpy(exp_true_value, exp_value);
+			stat = exp$create(exp_name   = exp_true_name,
+					  exp_syntax = exp_true_value,
+					  osnum      = MOD_ENV.md_id.osnum,
+			      		  p_exp_id   = &EXP_GRid->objid,
+			                  p_osnum    = &EXP_GRid->osnum );
+
+			if( stat == 1 ) goto step3;
+
+
+step1:	   	        UI_status("expression does not exist");
+step2:    
+	   		EXP_GRid->osnum = MOD_ENV.md_id.osnum ;           
+	   		mask =  GRm_RJT_MOVEON | GRm_BACK_UP | GRm_STRING;
+
+           		do
+           		{
+             		   *loc_suc = ci$getevent( prompt    = expc_prompt, 
+                                                   response  = &response,
+	      			                   data      = exp_value, 
+                                                   mask      = mask,
+                                                   stackable = 1 );
+
+             		   if( (response == EX_RJT_MOVEON) ||  
+   	                       (response == EX_BACK_UP)  ) goto step0;
+
+           		}
+           		while( *loc_suc != 1 );
+
+	   		if(exp_value[0] == 0)
+                             strcpy( exp_value, ftoa(exp_default));
+			if(exp_name[0] == '\0' ) exp_true_name = NULL;
+			else		     exp_true_name = exp_name;
+
+			stat = exp$create(exp_name   = exp_true_name,
+					  exp_syntax = exp_value,
+					  osnum      = MOD_ENV.md_id.osnum,
+			      		  p_exp_id   = &EXP_GRid->objid,
+			                  p_osnum    = &EXP_GRid->osnum );
+			if( stat != 1 )
+                        {
+	                  UI_status(" syntaxe error "); 
+			  goto step2;
+			}
+
+
+	  	} /*  string was null */ 
+
+
+            } /* expression did'nt exist */   
+	    *loc_suc = 2;
+	    return(1);
+
+step3:
+	    ci$send(msg      = message NDnode.NDchg_state( 
+                                                   (char)16,(char)16 ),
+                    targetid = EXP_GRid->objid,
+                    targetos = EXP_GRid->osnum	 ); 
+
+	    *loc_suc = 2;
+	    return(1);
+
+	} /* end of process string */
+
+}
+/*======================================================================*/
+
+int loc_cre_exp( loc_suc, loc_message, loc_prompt, exp_default, 
+                 EXP_GRid, exp_name)
+
+char		loc_prompt[80];	/* prompt to ask the name of the expression */
+char		loc_message[80];/* prompt to set the message field          */
+char		exp_name[80];   /* return the created parameter name        */
+struct GRid	*EXP_GRid;	/* return objid & osnum of the expression   */
+int		*loc_suc;       /* return status			    */
+double   	exp_default;    /* default value of the expression          */
+                                /* must be setup                            */
+{ 
+
+char		*exp_value;
+int		stat, mask, response;
+short		sender_class;
+
+struct GRmd_env	MOD_ENV;
+struct GRevent	event;
+
+TRACE( "loc_exp: BEGIN" )
+
+        message(loc_message);
+
+step0:
+	mask =  GRm_RJT_MOVEON | GRm_STRING | GRm_OBJID | GRm_BACK_UP;
+
+        do
+        {
+           *loc_suc = ci$getevent( prompt = loc_prompt, response = &response,
+	     			   data   = exp_value,  mask     = mask,
+				   event = &event,
+                                   stackable = 1 );
+	   status("");
+           if( (response == EX_RJT_MOVEON) || (response == EX_BACK_UP ) )
+           { 
+		EXP_GRid->objid = NULL_OBJID;
+		*loc_suc = 0; 
+		return(0);
+	   }
+
+        }
+  	while( *loc_suc != 1 );
+
+/* we got an object via the navigate graph */
+
+	if( response == EX_OBJID )
+        {
+	goto step0;
+        }
+
+
+
+/* a caracter string has been returned */
+
+        if( response == STRING )
+        {
+          strcpy(exp_name, exp_value);
+          if(exp_name[0] == 0 ) goto step0;
+
+          di$translate (objname = exp_name, 
+                        p_objid = &(EXP_GRid->objid),
+                        p_osnum = &(EXP_GRid->osnum) );
+
+          if ( (EXP_GRid->objid) == NULL_OBJID )
+          {
+		ci$get_module_info(md_env = &MOD_ENV);
+	   	EXP_GRid->osnum = MOD_ENV.md_id.osnum ;
+      
+                ci$send(msg      = message expression.place ( exp_name, "0" ),
+                       targetid = EXP_GRid->objid,
+                       targetos = EXP_GRid->osnum	 );
+
+	  	return(1); 
+
+	  }/* expression did'nt exist, we create it */ 
+
+	  UI_status("expression exists enter new name");
+          goto step0;
+	}
+}
+
+
+/*======================================================================*/
+/*      manage the user interface to locate an expression		*/
+/*======================================================================*/
+
+int dim_loc_exp( loc_suc, loc_message, loc_prompt, exp_prompt, exp_default, 
+                 EXP_GRid,exp_name )
+
+char		loc_prompt[80];	/* prompt to ask the name of the expression */
+char		exp_prompt[80]; /* prompt ask a value			    */
+char		loc_message[80];/* prompt to set the message field          */
+struct GRid	*EXP_GRid;	/* return objid & osnum of the expression   */
+char		exp_name[80];   /* return the created parameter name        */
+int		*loc_suc;       /* return status 		 	    */
+				/*  loc_suc = 0 reset without anything      */
+				/*  loc_suc = 1 success name & GRid         */
+				/*  loc_suc = 2 success name without GRid    */
+double   	exp_default;    /* default value of the expression          */
+                                /* must be setup                            */
+{ 
+
+//char		exp_name[80];
+char		*exp_value;
+char		*equal;
+int		stat, mask, response;
+short		sender_class;
+
+struct GRmd_env	MOD_ENV;
+struct GRevent	event;
+
+TRACE( "loc_exp: BEGIN" )
+
+        message(loc_message);
+
+
+step0:
+	mask =  GRm_RJT_MOVEON | GRm_STRING | GRm_OBJID | GRm_BACK_UP;
+
+        do
+        {
+           *loc_suc = ci$getevent( prompt = loc_prompt, response = &response,
+	     			   data   = exp_value,  mask     = mask,
+				   event = &event,
+                                   stackable = 1 );
+
+           if( (response == EX_RJT_MOVEON) || (response == EX_BACK_UP ) )
+           { 
+		EXP_GRid->objid = NULL_OBJID;
+		*loc_suc = 0; 
+		return(0);
+	   }
+
+        }
+  	while( *loc_suc != 1 );
+
+
+/* we got an object via the navigate graph */
+
+	if( response == EX_OBJID )
+        {
+	  om$get_classid( osnum     = event.located_object[0].located_obj.osnum,
+			  objid     = event.located_object[0].located_obj.objid,
+			  p_classid = &sender_class );
+
+	  stat = om$is_ancestry_valid( subclassid     = sender_class,
+				       superclassname = "expression" );
+	  if( stat  != 1 ) goto step0;
+	  EXP_GRid->objid = event.located_object[0].located_obj.objid;
+	  EXP_GRid->osnum = event.located_object[0].located_obj.osnum;
+	  return(1);
+        }
+
+
+/* a caracter string has been returned */
+
+        if( response == STRING )
+        {
+           strcpy(exp_name, exp_value);
+           if(exp_name[0] == 0 ) goto step0;
+
+/* try to find an "=" in the tring */
+
+ 	   equal = strchr(exp_value,'=');
+           if( equal != NULL )
+           {
+          	*equal = '\0';
+	  	exp$translate(exp_name = exp_value,
+			      p_exp_id = &EXP_GRid->objid,
+			      p_osnum  = &EXP_GRid->osnum );
+                if( EXP_GRid->objid == NULL_OBJID )
+                {
+			stat = exp$create(exp_name = exp_value,
+					  exp_syntax = equal + 1,
+					  osnum      = MOD_ENV.md_id.osnum,
+			      		  p_exp_id = &EXP_GRid->objid,
+			                  p_osnum  = &EXP_GRid->osnum );
+
+			if( stat != 1 )
+                        {
+	                  UI_status(" syntaxe error "); 
+			  goto step0;
+			}
+		}
+
+            }/* end of process if an equal has been found */
+
+
+/* it was a null string or the expression did'nt exist */
+	  
+	    else
+            {	        
+          	di$translate (objname = exp_name, 
+                	      p_objid = &(EXP_GRid->objid),
+                              p_osnum = &(EXP_GRid->osnum) );
+
+
+          	if ( (EXP_GRid->objid) == NULL_OBJID )
+          	{
+step1:	   	        UI_status("expression does not exist");
+step2:           		ci$get_module_info(md_env = &MOD_ENV);
+	   		EXP_GRid->osnum = MOD_ENV.md_id.osnum ;           
+	   		mask =  GRm_RJT_MOVEON | GRm_BACK_UP | GRm_STRING;
+
+           		do
+           		{
+             		   *loc_suc = ci$getevent( prompt    = exp_prompt, 
+                                                   response  = &response,
+	      			                   data      = exp_value, 
+                                                   mask      = mask,
+                                                   stackable = 1 );
+
+             		   if( (response == EX_RJT_MOVEON) ||  
+   	                       (response == EX_BACK_UP)  ) 
+                           {
+		             EXP_GRid->objid = NULL_OBJID;
+		             *loc_suc = 2; 
+		             return(0);
+			   }
+           		}
+           		while( *loc_suc != 1 );
+
+	   		if(exp_value[0] == 0)
+                        {
+		             EXP_GRid->objid = NULL_OBJID;
+		             *loc_suc = 2; 
+		             return(0);
+			}
+                        
+	  	} /*  string was null */ 
+
+                else UI_status(" expression already exist " );
+
+            } /* expression did'nt exist */ 
+
+  
+
+	    ci$send(msg      = message NDnode.NDchg_state( 
+                                                   (char)16,(char)16 ),
+                    targetid = EXP_GRid->objid,
+                    targetos = EXP_GRid->osnum	 ); 
+
+	    return(1);
+
+	} /* end of process string */
+}
+
+/* EB Feb 20th
+/* these functions are now hardcoded in nci_macroi.I
+/* */
+
+/* lib_ACgive_foot( suc, foot_name, real_foot_name, foot ,CI_MACRO_ID)
+/* int *suc;
+/* char * foot_name;
+/* char * real_foot_name;
+/* struct GRid *foot,CI_MACRO_ID;
+/* {
+/*  int ix;		/* index */
+/*  int sts;
+/*  OM_S_CHANSELECT chansel;
+/*  struct GRid pied;
+/* 
+/* #ifdef DEBUG
+/* write("\nci_mac_bib.ACgive_foot, foot_name:",foot_name,'\n');
+/* write("ci_mac_bib.ACgive_foot, real_foot_name:",real_foot_name,'\n');
+/* #endif
+/* 
+/* 	if( foot_name[0] != '$' ){
+/* #ifdef DEBUG
+/* write("calling normal message\n");
+/* #endif
+/* 		sts=ci$send( msg = message ov_ci_mac.ACgive_foot
+/* 					( suc, foot_name, foot),
+/* 		         targetid = CI_MACRO_ID.objid,
+/* 		         targetos = CI_MACRO_ID.osnum ,
+/*                           mode = WRT_message);
+/* #ifdef DEBUG
+/* write("success",*suc,"ft  ",foot->objid,"\n");
+/* #endif
+/* 		return(sts);
+/* 	}
+/* 
+/* 	chansel.type = OM_e_name;
+/* 	chansel.u_sel.name = "GRcmpowner.to_components";
+/* 
+/* 	/**** must find pied from cimacid feetname real_foot_name ****/
+/* 	sts=ci$send( msg = message ov_ci_mac.ACgive_foot( suc, real_foot_name, &pied),
+/* 	         targetid = CI_MACRO_ID.objid,
+/* 	         targetos = CI_MACRO_ID.osnum,
+/*                           mode = WRT_message );
+/* 
+/* 	if(!(1&sts) ) return sts;
+/*         if(*suc==0) return 0;
+/* 
+/* #ifdef DEBUG
+/* 	write(".ACgive_foot  pied:", pied.objid,'\n');
+/* #endif
+/* 	ix = -1;
+/* 	sscanf(&foot_name[1],"%d", &ix );
+/* 	if( !get_surf_at_index(pied, ix, foot ) )
+/* 		return *suc = 0;
+/* 
+/* #ifdef DEBUG
+/* 	write("ci_mac_bib.ACgive_foot, foot:",foot->objid,',',foot->osnum,'\n');
+/* #endif
+/* 	*suc=4; /*return real graphic object */
+/*     return 1;
+/* }
+/* 
+/* 
+/* lib_ACgive_path(suc, go_obj, foot_name, real_foot_name,  CI_MACRO_ID)
+/* int *suc;
+/* struct GRid *go_obj;
+/* char *foot_name;
+/* char * real_foot_name;
+/* struct GRid CI_MACRO_ID;
+/* {
+/*  int i,scount,sts;
+/*  struct GRid pied;
+/*  OM_S_CHANSELECT chansel;
+/* 
+/*     chansel.type = OM_e_name;
+/*     chansel.u_sel.name = "GRcmpowner.to_components";
+/* 
+/* #ifdef DEBUG
+/* write("\nentering ACgivepath, CI_MACRO_ID:", CI_MACRO_ID.objid, CI_MACRO_ID.osnum,
+/*     		"  go_obj:", go_obj->objid,go_obj->osnum, 
+/* 		"  real_foot_name:",real_foot_name,'\n');
+/* #endif
+/* 
+/*     /**** must find pied from CI_MACRO_ID feetname real_foot_name ****/
+/*     sts =ci$send( msg = message ov_ci_mac.ACgive_foot
+/* 					( suc, real_foot_name, &pied),
+/*              targetid = CI_MACRO_ID.objid,
+/*              targetos = CI_MACRO_ID.osnum,
+/*              mode = WRT_message  );
+/*     if(*suc==0) return 0;
+/* 
+/* #ifdef DEBUG
+/* write("ACgivepath after ov_ci_mac.ACgive_foot pied:", pied.objid,'\n');
+/* #endif
+/* 
+/*     /* get the index of the object go_obj*/
+/*     get_index_of_surf(pied, &i, *go_obj );
+/*     if( i != -1 ){
+/*       sprintf(foot_name,"$%d", i );
+/*       *suc=1;
+/* 
+/* #ifdef DEBUG
+/*       write("ACgivepath, foot_name created: ",foot_name ,'\n');
+/* #endif
+/* 
+/*       return 1;
+/*     }
+/*     
+/* #ifdef DEBUG
+/* write("ACgivepath failed, call normal message \n");
+/* #endif
+/*     sts=ci$send( msg = message ov_ci_mac.ACgive_path
+/*     				(suc, go_obj,  foot_name),
+/*                  targetid = CI_MACRO_ID.objid,
+/*     	         targetos = CI_MACRO_ID.osnum ,
+/*                  mode = WRT_message);
+/* 
+/* #ifdef DEBUG
+/* write("\nexiting ci_mac_bib.ACgive_path, foot_name:",foot_name,'\n');
+/* write("ci_mac_bib.ACgive_path, real_foot_name:",real_foot_name,'\n');
+/* #endif
+/* 
+/*     return sts;
+/* }
+/* */
+
+
+lib_ACconsume( msg, foot_name, foot ,CI_MACRO_ID)
+int *msg;
+char * foot_name;
+struct GRid *foot,CI_MACRO_ID;
+{
+int status,suc;
+struct GRid par_id, cimacid,  pied;
+char wstr[80];
+OM_S_CHANSELECT chansel;
+
+    chansel.type = OM_e_name;
+    chansel.u_sel.name = "GRconnector.to_owners";
+
+   status=ci$send( msg = message ov_ci_mac.ACgive_foot
+					( &suc, foot_name, foot),
+		         targetid = CI_MACRO_ID.objid,
+		         targetos = CI_MACRO_ID.osnum );
+   as$status( );
+
+   if(suc == 0)
+    {*msg=0; return(1);}
+
+   status=ci$send( msg = message ov_ci_mac.ACfree_rtn_str( ),
+		         targetid = CI_MACRO_ID.objid,
+		         targetos = CI_MACRO_ID.osnum );
+   as$status( );
+   
+
+   status=ci$send( msg = message Root.wild_disconnect( chansel ),
+		         targetid = foot->objid,
+		         targetos = foot->osnum );
+   as$status( );
+
+   return(1);
+}
+
+get_conn_surf(solid, surf_list_id, surf_list_os)
+struct GRid solid;
+GRobj *surf_list_id;
+short *surf_list_os;
+/*
+ * EB 8 dec new version:
+ * - does mallocs
+ * - if NULL passed in surf_list_id, only returns the size
+ */
+{
+	int			  count, i, j, status;
+	int			  size1, size2, maxsize;
+	OM_S_CHANSELECT           cmp_chan;
+	OM_S_OBJECT_LINKAGE       *ls_list1, *ls_list2;
+#ifdef DEBUG
+	char			  classname[64];
+#endif
+
+#ifdef DEBUG
+write("entering get_conn_surf\n");
+#endif
+	size1 =0;
+	status = om$make_chanselect (
+               channame = "GRcmpowner.to_components",
+               p_chanselect = &cmp_chan);
+	as$status();
+
+	status = om$get_channel_count (
+	       osnum		= (int)solid.osnum,
+	       objid		= solid.objid,
+               p_chanselect	= &cmp_chan,
+               count		= &size1);
+	as$status();
+
+#ifdef DEBUG
+write("get_conn_surf after get_channel_count, size1 = ", size1, "\n");
+#endif
+	if( size1 < 0 || !(1&status ) )
+		return -1;
+
+	ls_list1 = ( OM_S_OBJECT_LINKAGE *)
+				malloc(size1*sizeof(OM_S_OBJECT_LINKAGE ));
+	status = om$get_channel_objects
+             (
+	      osnum		= (int)solid.osnum,
+	      objid		= solid.objid,
+              p_chanselect	= &cmp_chan,
+              list		= ls_list1,
+	      size		= size1, 
+	      count		= &j);
+	as$status();
+#ifdef DEBUG
+write("get_conn_surf after get_channel_objects j = ", j, "\n");
+#endif
+
+	if( j != size1 || !(1&status ) )
+		return -1;
+
+	/* get the max size for malloc */
+	maxsize = 0;
+	for(i=0; i<size1; i=i+1){
+		j = 0;
+		status = om$get_channel_count (
+		       osnum		= ls_list1[i].osnum,
+ 		       objid		= ls_list1[i].S_objid,
+        	       p_chanselect	= &cmp_chan,
+	               count		= &j);
+
+#ifdef DEBUG
+write("get_conn_surf after get_channel_count ",i, " size=", j, "\n");
+#endif
+
+		if( j <= 0  || !(1&status ) )
+			continue;
+
+		if( maxsize < j )
+			maxsize = j;
+	}
+	if( maxsize > 1 )
+		ls_list2 = ( OM_S_OBJECT_LINKAGE *)
+				malloc(maxsize*sizeof( OM_S_OBJECT_LINKAGE ));
+
+	/* see if we must go down one more level */
+	count = 0;
+	for(i=0; i<size1; i=i+1){
+#ifdef DEBUG
+write("in loop for, i=", i, '\n' );
+#endif
+		size2 = 0;
+		status = om$get_channel_count (
+		       osnum		= ls_list1[i].osnum,
+ 		       objid		= ls_list1[i].S_objid,
+        	       p_chanselect	= &cmp_chan,
+	               count		= &size2);
+
+		if( size2 > 0  && (1&status ) ){
+		  status = om$get_channel_objects
+        	     (
+		      osnum		= ls_list1[i].osnum,
+		      objid		= ls_list1[i].S_objid,
+	              p_chanselect	= &cmp_chan,
+        	      list		= ls_list2,
+		      size		= size2, 
+		      count		= &j);
+
+		  if( j != size2 || !(1&status ) )
+			size2 = 0;
+		} else
+			size2 = 0;
+
+		if( !size2 ){
+			/* take the object itself */
+			if( surf_list_id != NULL ){
+			   surf_list_id[count] = ls_list1[i].S_objid;
+			   surf_list_os[count] = ls_list1[i].osnum;
+			}
+			count = count+1;
+		} else for(j=0; j<size2; j=j+1){
+			if( surf_list_id != NULL ){
+			   surf_list_os[count] = ls_list2[j].osnum;
+			   surf_list_id[count] = ls_list2[j].S_objid;
+			}
+			count = count+1;
+		}
+	}
+
+	free( ls_list1 );
+	if( maxsize > 1 )
+		free( ls_list2 );
+
+#ifdef DEBUG
+
+	write("\nget_conn_surf: count = ", count, " for ", solid.objid,'\n' );
+
+	if( surf_list_id == NULL )
+		return count;
+
+	for(i=0;i<count;i=i+1)
+		write(surf_list_id[i]);
+	write("\n");
+	
+	om$get_classname ( objid= solid.objid,
+			  osnum = solid.osnum,
+                          classname = classname  );
+	write("\nget_conn_surf for [", solid.objid,',',solid.osnum,
+			"]\tclassname:",classname,'\n');
+	for(i=0; i<count; i=i+1 ){
+		om$get_classname ( objid= surf_list_id[i],
+			  osnum = surf_list_os[i],
+                          classname = classname  );
+		write('\t',i,'\t','[',surf_list_id[i],',',surf_list_os[i],
+			"]\tclassname:",classname,'\n');
+	}
+#endif
+	return count;
+}
+/*****************
+   
+	added Dec 8th
+	E BEEKER
+
+  ***********************************/
+
+get_surf_at_index(solid, ix, surf_id )
+struct GRid solid, *surf_id;
+int ix;
+/*
+ * returns the surface id given its index in a solid
+ * on error return 0 and NULL_OBJID
+ * uses get_conn_surf
+ */
+{
+	int	size;
+	GRobj	*surf_list_id;
+	short	*surf_list_os;
+
+	surf_list_id = NULL;
+	size = get_conn_surf(solid, surf_list_id, surf_list_os);
+
+	if( ix < 0 || ix >= size || size < 0 /* error */ ){
+		surf_id->objid =  NULL_OBJID;
+		return 0;
+	}
+
+	surf_list_id = ( GRobj *)malloc( size * sizeof(GRobj));
+	surf_list_os = ( short *)malloc( size * sizeof(short));
+
+	get_conn_surf(solid, surf_list_id, surf_list_os);
+
+	surf_id->objid =  surf_list_id[ix];
+	surf_id->osnum =  surf_list_os[ix];
+
+	free( surf_list_id );
+	free( surf_list_os );
+
+	return 1;
+}
+
+get_index_of_surf(solid, ix, surf_id )
+struct GRid solid, surf_id;
+int *ix;
+/*
+ * returns the index of a given surface in a solid
+ * if not found returns -1
+ * uses get_conn_surf
+ */
+{
+	int	size, i;
+	GRobj	*surf_list_id;
+	short	*surf_list_os;
+
+	surf_list_id = NULL;
+#ifdef DEBUG
+write("get_index_of_surf, before get_conn_surf\n" );
+#endif
+	size = get_conn_surf(solid, surf_list_id, surf_list_os);
+#ifdef DEBUG
+write("get_index_of_surf, after get_conn_surf, size = ", size, "\n" );
+#endif
+
+	*ix = -1;	/* error returned value */
+	if(  size < 0 /* error */ ){
+		return 0;
+	}
+
+	surf_list_id = ( GRobj *)malloc( size * sizeof(GRobj));
+	surf_list_os = ( short *)malloc( size * sizeof(short));
+	get_conn_surf(solid, surf_list_id, surf_list_os);
+
+	for(i=0; i<size; i=i+1 ){
+		if( surf_id.objid ==  surf_list_id[i]
+		 && surf_id.osnum ==  surf_list_os[i] ){
+			*ix = i;
+			break;
+		}
+	}
+	free( surf_list_id );
+	free( surf_list_os );
+#ifdef DEBUG
+write("get_index_of_surf, returning ix = ", *ix , "\n" );
+#endif
+}
+
+
+
+/*****************
+   
+	added Nov 20th
+	E BEEKER
+
+  ***********************************/
+
+#include "expmacros.h"
+#include "DItypedef.h"
+#include "DIdef.h"
+#include "DIglob.h"
+#include "DIprims.h"
+
+extern int	DIuntranslate();
+extern 		strncpy();
+extern	char    *strrchr();
+
+double		dbl;
+int		sts;
+
+str_to_exp(str, exp)
+char * str;
+struct GRid * exp;
+/*
+ * converts a string into an expression
+ */
+{
+  char *stmp;
+  GRspacenum	cur_os;
+
+
+  ci$get_module_info(md_os = &cur_os);
+
+  stmp = strchr(str, '=');
+  if( stmp == NULL ){
+	if( ( str[0] >= '0' &&  str[0] <= '9' ) || str[0] == '.' ){
+		/* it is a value */
+		sts = exp$create(exp_name = "",
+				  exp_syntax = str,
+				  osnum      = cur_os,
+		      		  p_exp_id = &exp->objid,
+		                  p_osnum  = &exp->osnum );
+		if( sts != 1 ){
+	                  status(" syntax error in depth "); 
+			  exit;
+		}
+	} else {
+		/* the expression is supposed to exist */
+	  	exp$translate(exp_name = str,
+			      p_exp_id = &exp->objid,
+			      p_osnum  = &exp->osnum );
+		if(exp->objid == NULL_OBJID ){
+	                  status("expression for depth does not exist"); 
+			  exit;
+		}
+	}
+  } else {
+	*stmp = '\0';
+	/* if the expression exists and the value has not changed
+	   do nothing */
+  	exp$translate(exp_name = str,
+		      p_exp_id = &exp->objid,
+		      p_osnum  = &exp->osnum );
+	if(exp->objid != NULL_OBJID ){
+		ci$send( msg = message expression.NDgive_value(&dbl),
+			targetid = exp->objid,
+		        targetos = exp->osnum );
+
+#ifdef DEBUG
+write("expression.give_value, expr:", str, "   dbl = ",dbl,"  rhs:", atof(&stmp[1]), '\n');
+#endif
+
+		if( dbl == atof(&stmp[1]) )
+			return;
+	} else
+		exp->osnum = 2;
+#ifdef DEBUG
+write("before expression.place str = ",str,"   &stmp[1]:", &stmp[1], '\n' );
+#endif
+	ci$send( msg = message expression.place(str, &stmp[1]),
+		targetid = exp->objid,
+		targetos = exp->osnum );
+  }
+
+#ifdef DEBUG
+write("str_to_exp: have created or retrieved:", exp->objid, exp->osnum, '\n' );
+#endif
+}
+
+exp_to_str(str, exp)
+char * str;
+struct GRid * exp;
+/*
+ * converts an expression into a string 
+ */
+{
+	char st1[80], *stmp, *stmp2;
+	char exname[80], *exn;
+	
+	strcpy(str, "");	// default value
+
+  	di$untranslate( objname = exname ,
+		objid = exp->objid,
+		osnum = exp->osnum );
+
+	exn = strrchr( exname, ':' );
+	if( exn == NULL )
+		exn = exname;
+	else
+		exn = exn + 1;
+
+#ifdef DEBUG
+write("exp_to_str: exn = ",exn, '\n' );
+#endif
+
+	strcpy(st1, "");
+  	ci$send ( msg = message expression.list( st1 ),
+		targetid = exp->objid,
+		targetos = exp->osnum );
+
+	stmp = strchr( st1, '=' );
+	if( stmp == NULL )
+		return;
+
+	do
+		stmp=stmp+1;
+	while( *stmp == ' ' );
+
+	stmp2 = strchr( stmp, '[' );
+	if( stmp2 != NULL ){
+		do
+			stmp2=stmp2-1;
+		while( *stmp == ' ' );
+		*stmp2 = '\0';
+	}
+
+	sprintf(str, "%s=%s", exn, stmp );
+#ifdef DEBUG
+write("exp_to_str: str = ",str, '\n' );
+#endif
+}
+
+
+/*
+ * locates either a solid, or a CPX
+ */
+loc_solid( solgrid )
+struct GRid *solgrid;
+{
+ OM_S_CLASSLIST elig_classes;
+ OMuword        eliclass[2];
+ int OPP_ci_macro_class_id;
+ int OPP_EMSsolid_class_id;
+ int ret_sts;
+#ifdef DEBUG
+ char classname[80];
+#endif
+
+ om$get_classid( classname = "ci_macro",
+		p_classid = &OPP_ci_macro_class_id );
+
+ om$get_classid( classname = "EMSsolid",
+		p_classid = &OPP_EMSsolid_class_id );
+
+ elig_classes.w_count = 2;
+ elig_classes.w_flags = OM_CLST_subclass;
+ eliclass[0] = OPP_ci_macro_class_id;
+ eliclass[1] = OPP_EMSsolid_class_id;
+ elig_classes.p_classes = eliclass;
+
+ ret_sts = ci$locate(obj     = &solgrid->objid,
+		osnum   = &solgrid->osnum,
+		response = &M_response,
+                prompt  = "locate solid",
+                eligible_classes = &elig_classes  );
+
+#ifdef DEBUG
+
+	om$get_classname ( objid= solgrid->objid,
+			  osnum = solgrid->osnum,
+                          classname = classname  );
+	write("\nlocated sol: [", solgrid->objid,',',solgrid->osnum,
+			"]\tclassname:",classname,'\n');
+#endif
+
+ return ret_sts;
+}
+
+/*======================================================================*/
+
+int cre_exp_name( loc_suc, loc_message, loc_prompt,exp_name )
+
+char		loc_prompt[80];	/* prompt to ask the name of the expression */
+char		loc_message[80];/* prompt to set the message field          */
+char		exp_name[80];   /* return the created parameter name        */
+int		*loc_suc;       /* return loc_suc = 0 reset      	    */
+				/*        loc_suc = 1 SUCCESS    	    */
+{ 
+
+char		*exp_value;
+int		stat, mask, response;
+short		sender_class;
+struct GRid     EXP_GRid;
+struct GRmd_env	MOD_ENV;
+struct GRevent	event;
+
+TRACE( "loc_exp: BEGIN" )
+
+        message(loc_message);
+
+step0:
+	mask =  GRm_RJT_MOVEON | GRm_STRING | GRm_OBJID | GRm_BACK_UP;
+
+        do
+        {
+           *loc_suc = ci$getevent( prompt = loc_prompt, response = &response,
+	     			   data   = exp_value,  mask     = mask,
+				   event = &event,
+                                   stackable = 1 );
+
+           if( (response == EX_RJT_MOVEON) || (response == EX_BACK_UP ) )
+           { 
+                
+		*loc_suc = 1;
+                exp_name[0] = '\0'; 
+		return(0);
+	   }
+
+        }
+  	while( *loc_suc != 1 );
+
+/* we got an object via the navigate graph */
+
+	if( response == EX_OBJID )
+        {
+	goto step0;
+        }
+
+
+
+/* a caracter string has been returned */
+
+        if( response == STRING )
+        {
+          strcpy(exp_name, exp_value);
+          if(exp_name[0] == 0 ) 
+          { 
+		*loc_suc = 1;
+	        return;
+          }
+
+          di$translate (objname = exp_name, 
+                        p_objid = &(EXP_GRid.objid),
+                        p_osnum = &(EXP_GRid.osnum) );
+
+/* it was a null string or the expression did'nt exist */
+
+          if ( (EXP_GRid.objid) != NULL_OBJID )
+          {
+	  	status("expression exists enter new name");
+          	goto step0;
+          }
+          *loc_suc = 1;
+	}
+}
+
+
+
+/*======================================================================*/
+/*      create unnamed expression by Knowing a defaul value		*/
+/*======================================================================*/
+
+int CreDefUnExp( suc, default_value, exp_GRid )
+
+IGRint		*suc;	      	/* return code MSSUCC */
+IGRdouble	default_value; 	/* the value of the expression */
+struct	GRid	*exp_GRid;	/* the return GRid */
+
+{
+
+IGRshort		cur_os;
+IGRint			stat;
+IGRchar			*exp_true_name;
+struct  GRmd_env	MOD_ENV;
+
+
+	ci$get_module_info(md_os = &cur_os);
+
+	exp_GRid->objid = NULL_OBJID;
+	exp_true_name 	= NULL;
+	*suc 		= MSSUCC;
+
+	stat = exp$create( exp_name   = exp_true_name,
+			   exp_value  = (IGRdouble) default_value,
+			   osnum      = cur_os,
+	      		   p_exp_id   = &(exp_GRid->objid),
+	                   p_osnum    = &(exp_GRid->osnum) );
+
+
+	if( stat != 1 ){
+		UI_status(" error in creating expression ");
+		*suc = MSFAIL;
+		return;
+	}
+
+    	stat = ci$send(msg      = message NDnode.NDchg_state( 
+                                                  (char)16,(char)16 ),
+			targetid = exp_GRid->objid,
+                    	targetos = exp_GRid->osnum	 ); 
+
+}
+

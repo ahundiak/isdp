@@ -1,0 +1,231 @@
+/* $Id: COimp_bd.u,v 1.1.1.1 2001/01/04 21:07:19 cvs Exp $  */
+
+/* --------------------------------------------------------------------
+ * I/VDS
+ *
+ * File:	vds/cimacros/general/cmd / COimp_bd.u
+ *
+ * Description:
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ *	$Log: COimp_bd.u,v $
+ *	Revision 1.1.1.1  2001/01/04 21:07:19  cvs
+ *	Initial import to CVS
+ *	
+# Revision 1.1  1998/04/29  16:27:20  pinnacle
+# VDS 2.5.1
+#
+# Revision 1.2  1998/02/27  03:28:48  pinnacle
+# Replaced: cimacros/general/cmd/COimp_bd.u for:  by vgnair for vds
+#
+# Revision 1.1  1997/05/08  13:20:44  pinnacle
+# New project VDS 250
+#
+# Revision 1.1  1996/07/19  20:33:52  pinnacle
+# Create VDS 241 project
+#
+# Revision 1.2  1996/06/13  22:41:34  pinnacle
+# Replaced: cimacros/general/cmd/COimp_bd.u for:  by v240_int for vds.240
+#
+# Revision 1.1  1994/11/14  22:42:32  pinnacle
+# Create vds.240 from vds.232
+#
+# Revision 1.1  1994/11/08  16:07:00  pinnacle
+# create vds.232
+#
+ *
+ * History:
+ *	MM/DD/YY	AUTHOR		DESCRIPTION
+ *
+ * -------------------------------------------------------------------*/
+
+/*
+	 VDS 2.0 - PPM macro library - 92/07/09 (alc)
+ */
+   
+#include "ciminimum.h"
+#include "cimacros.h"
+#include "OMprimindex.h"
+#include "OMprimitives.h"
+#include "msdef.h"
+#include "ciexec.h"
+
+
+GRobj 			ci_mac_bib_FileId;
+IGRint			resp_exp;
+
+struct OM_sd_classlist	classlist;
+OMuword			classid[2];
+
+struct GRmd_env		MOD_ENV;
+struct GRid 	TEMP[30];
+GRobj 		MAC1; 
+short           num_bound;
+int 		suc;
+char		loc_mes[80],loc_prompt[80], exp_prompt[80];
+double		exp_default;
+
+char            txt[40];
+
+struct
+ {
+  int               num_bound; /* number of boundaries  */
+ } var;
+ 
+extern		ASmake_source_from_env();
+
+
+main()
+{ 
+
+
+
+
+step0:
+     resp_exp = 0;
+//TR-179800682     status("Reset to create expression solid location");
+       status("Reset to create expression surface location");
+exp1:
+
+
+  while(1)
+  {
+
+
+step1:
+        ci$locate ( 	 prompt       = "Identify surface / external boundary",
+                         properties   = LC_DP_ONLY | LC_RW,
+		         owner_action = LC_RIGID_COMP  |
+                                        LC_RIGID_OWNER | LC_FLEX_COMP |
+                                        LC_FLEX_OWNER  | LC_REF_OBJECTS,
+		   	 obj          = &(TEMP[0].objid),
+		  	 osnum        = &(TEMP[0].osnum),
+		         eligible_classes = &classlist,
+		    	 response     = &M_response,
+			 md_env       = &MOD_ENV  );
+
+
+	status("");
+	if( (M_response == EX_RJT_MOVEON) && (resp_exp == 0) ){
+		resp_exp = 1;
+		ask_expressions();
+		goto exp1;
+	}
+	else if( (M_response == EX_DATA)   ){
+		if(  resp_exp == 0 ) cre_default_expressions();
+	   	ASmake_source_from_env( &TEMP[0],&MOD_ENV,&TEMP[0]);	
+	}
+	else if( M_response == EX_BACK_UP ){ 
+		resp_exp = 1;
+		ask_expressions();
+		goto exp1;
+	}
+	else exit;
+
+	num_bound = 0;
+
+	while(1)
+	{
+  	     message(loc_mes);
+	     strcpy(txt,"Identify boundary ");
+	     strcat(txt,itoa(num_bound+1));
+	     if(num_bound != 0) strcat(txt," / Move on");
+
+	     if(!ci$locate( prompt       = txt,
+                            properties   = LC_LC_ONLY | LC_DP_ONLY | LC_RW,
+	                    owner_action = LC_RIGID_COMP  |
+	                                   LC_RIGID_OWNER | LC_FLEX_COMP |
+	                                   LC_FLEX_OWNER  | LC_REF_OBJECTS,
+			    classes      = "GRcurve",
+		            md_env       = &MOD_ENV,
+		            obj          = &(TEMP[num_bound+2].objid),
+	                    osnum        = &(TEMP[num_bound+2].osnum) )) break;
+
+	     ASmake_source_from_env( &TEMP[num_bound+2],&MOD_ENV,
+				     &TEMP[num_bound+2]);	
+
+	     num_bound = num_bound + 1;
+	}
+
+	MAC1		= NULL_OBJID;
+	var.num_bound = num_bound;
+
+   	ci$get_module_info(md_env = &MOD_ENV);
+
+	#ifdef DEBUG
+		write(" enter nci_macro.init\n");
+	#endif
+
+	ci$send( msg = message nci_macro.init( 	&suc,
+						0,	
+						"imp_bd",
+						num_bound+2,
+		   				TEMP,
+						&var,
+						&MOD_ENV ),
+		 targetid = MAC1,
+           	 targetos = MOD_ENV.md_id.osnum);
+
+   	  if( suc == 0 ){
+		write("placement of nci_macro \"imp_bd\" failed\n");
+		status("placement of nci_macro \"imp_bd\" failed");
+      		ci$send(msg = message Root.delete(0),
+	      		targetid = MAC1,
+	      		targetos = MOD_ENV.md_id.osnum );
+   	  }
+
+//TR-179800682     status("Backup to create new expression solid location");
+       status("Backup to create new expression surface location");
+  }
+}
+
+/*==========================================================================*/
+init(){
+
+  	om$get_classid( classname = "GRcurve",
+		  	p_classid = &classid[0]);
+  	om$get_classid( classname = "EMSsubbs",
+		  	p_classid = &classid[1]);
+  	classlist.w_count = 2;
+  	classlist.w_flags = OM_CLST_subclass;
+  	classlist.p_classes = classid;
+
+  	strcpy(loc_mes,"Associative Impose Surface Boundaries");
+
+ 	ci$load ( file_name = "ci_mac_bib.u",
+		  load      = LOAD,
+	  	  file_id   = &ci_mac_bib_FileId,
+		  stat      = &suc );
+	if( suc != CI_S_SUCCESS ) exit;
+
+}
+
+wakeup(){
+	message(loc_mes);
+}
+
+ask_expressions(){
+//-TR-17980062       strcpy(loc_prompt,"enter expression solid location");
+       strcpy(loc_prompt,"enter expression surface location");
+       strcpy(exp_prompt,"enter value");
+       exp_default = 1.0;
+       push (char *)&suc,loc_mes,loc_prompt,exp_prompt,exp_default,
+            (char *)&TEMP[1];
+       ci$run( file_id   = &ci_mac_bib_FileId,
+ 	       entry     = "loc_exp" );
+       if( suc != 1 ) exit;
+
+}
+
+cre_default_expressions(){
+
+         push (char *)&suc, (IGRdouble)1.0, (char *)&TEMP[1];
+         ci$run( file_id = &ci_mac_bib_FileId,
+ 	         entry   = "CreDefUnExp" );
+         if( suc != MSSUCC ) exit;
+
+}
+/*==========================================================================*/
+

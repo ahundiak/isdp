@@ -1,0 +1,570 @@
+/* $Id: COsol_draft.u,v 1.1.1.1 2001/01/04 21:07:20 cvs Exp $  */
+
+/* --------------------------------------------------------------------
+ * I/VDS
+ *
+ * File:	vds/cimacros/solid/cmd / COsol_draft.u
+ *
+ * Description:
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ *	$Log: COsol_draft.u,v $
+ *	Revision 1.1.1.1  2001/01/04 21:07:20  cvs
+ *	Initial import to CVS
+ *	
+# Revision 1.1  1998/04/29  16:27:20  pinnacle
+# VDS 2.5.1
+#
+# Revision 1.1  1997/05/08  13:20:44  pinnacle
+# New project VDS 250
+#
+# Revision 1.1  1996/07/19  20:33:52  pinnacle
+# Create VDS 241 project
+#
+# Revision 1.1  1994/11/14  22:42:32  pinnacle
+# Create vds.240 from vds.232
+#
+# Revision 1.1  1994/11/08  16:07:00  pinnacle
+# create vds.232
+#
+ *
+ * History:
+ *	MM/DD/YY	AUTHOR		DESCRIPTION
+ *
+ * -------------------------------------------------------------------*/
+
+/*
+	 VDS 2.0 - PPM macro library - 92/07/09 (alc)
+ */
+   
+#include "cieveryone.h"
+#include "cisend.h"
+#include "cievent.h"
+#include "cierrordef.h"
+#include "cilocate.h"
+#include "ciexec.h"
+#include "madef.h"
+#include "msdef.h"
+
+#include "fontdef.h"
+#include "font.h"
+#include "fontmacros.h"
+
+#include "asbox.h"
+
+#include "FI.h"
+#include "FEI.h"
+#include "CIforms.h"
+#include "exfi.h"
+/* #include "fi.h" */
+
+#include "ci_mac_bib.h"
+#include "nddef.h"
+
+/*
+ *	CO to place a draftted solid
+ *	Etienne BEEKER	
+ *	27 oct 89
+ *	this CO is written in pplic
+ *	and uses the same form than lift
+ */
+
+// #define DEBUG 1
+
+
+#define MAX_STATES	1024
+#define SUC_CAP 	134250505
+#define PHY_CLO		16
+
+#define	ANGLE		18
+#define	HAUTEUR		20
+#define	CHECK_COIN	19
+#define	FILLET		21
+#define	LEAVE		4
+#define	ACCEPT		1
+#define	BORROW		26
+
+#define Transient	1
+
+struct 
+{
+  int response;
+  int *data;
+} e;
+
+int 	Mes, i, j, count, sts, keyindex;
+GRobj	obj;	
+struct	GRid    FORM_ID;
+
+int	bfillet, bcheck_coin;
+char 	utogg;
+int 	form_label, gadget_label;
+char 	stangle[64];
+char 	sthauteur[64];
+
+struct EXFI_data_st *form_data, my_form_data;
+
+struct GRid 	TEMP[4];
+struct GRmd_env	MOD_ENV;
+GRobj 		MAC1;
+int 		suc;
+double		dbl;
+double		acc_point[3];
+
+int current_state;
+int states[MAX_STATES];
+
+extern	int	sprintf();
+extern	sscanf(), strncpy();
+
+extern	printf();
+extern	char	CS_path_name[200];
+
+place_cimac()
+{
+#if DEBUG
+write("-->>>> place_cimac()\n");
+#endif
+
+    ci$get_module_info(md_env = &MOD_ENV);
+    MAC1 = NULL_OBJID;
+    ci$send(msg      = message  nci_macro.init( &suc,
+			     0,
+			     "sol_draft",
+			     4,
+                             TEMP,
+			     NULL,
+			     &MOD_ENV ),
+          targetid = MAC1,
+          targetos = MOD_ENV.md_id.osnum );
+
+   return 1;
+}
+
+init(){
+	TEMP[0].objid = NULL_OBJID;
+	TEMP[1].objid = NULL_OBJID;
+	TEMP[2].objid = NULL_OBJID;
+	TEMP[3].objid = NULL_OBJID;
+}
+
+display_pm(pexpr1, pexpr2, pexpr3)
+struct GRid *pexpr1;
+struct GRid *pexpr2;
+struct GRid *pexpr3;
+// display the parameters in the form 
+{
+
+  if( pexpr1->objid != NULL_OBJID ){
+
+	exp_to_str(my_form_data.value.alpha, pexpr1);
+
+	my_form_data.label = ANGLE;
+	my_form_data.type = EXFI_ALPHA;
+	ci$send ( msg  = message FIform.put_by_value ( &sts, 1, &my_form_data ),
+              targetid = FORM_ID.objid,
+              targetos = Transient);
+  }
+
+  if( pexpr2->objid != NULL_OBJID ){
+
+	exp_to_str(my_form_data.value.alpha, pexpr2);
+
+	my_form_data.label = HAUTEUR;
+	my_form_data.type = EXFI_ALPHA;
+	ci$send ( msg  = message FIform.put_by_value ( &sts, 1, &my_form_data ),
+              targetid = FORM_ID.objid,
+              targetos = Transient);
+  }
+
+  if( pexpr3->objid != NULL_OBJID ){
+  	ci$send ( msg = message expression.NDgive_value( &dbl ),
+		targetid = pexpr3->objid,
+		targetos = pexpr3->osnum );
+	if( dbl == 1.0 ){
+		my_form_data.value.state = 0;
+	} else {
+		my_form_data.value.state = 1;
+	}
+
+	my_form_data.label = FILLET;
+	my_form_data.type = EXFI_STATE;
+	ci$send ( msg  = message FIform.put_by_value
+				( &sts, 1, &my_form_data ),
+       	      targetid = FORM_ID.objid,
+              targetos = Transient);
+  }
+
+  my_form_data.value.state = 0;
+  my_form_data.label = BORROW;
+  my_form_data.type = EXFI_STATE;
+  ci$send ( msg  = message FIform.put_by_value( &sts, 1, &my_form_data ),
+       	      targetid = FORM_ID.objid,
+              targetos = Transient);
+
+}
+
+borrow_pm(cimacid)
+struct GRid *cimacid;
+/*
+ * takes the parameters of an existing construction
+ */
+{
+	int pcount;
+	struct GRid	pm1, pm2, pm3;
+
+	/* read the parents */
+	pcount = 0;
+	ci$send( msg = message NDnode.NDget_objects
+			(ND_ROOT, &pm1, 1, NULL, 1, 1, &pcount ),
+		     targetid = cimacid->objid,
+		     targetos = cimacid->osnum );
+	pcount = 0;
+	ci$send( msg = message NDnode.NDget_objects
+			(ND_ROOT, &pm2, 1, NULL, 2, 2, &pcount ),
+		     targetid = cimacid->objid,
+		     targetos = cimacid->osnum );
+
+	pcount = 0;
+	ci$send( msg = message NDnode.NDget_objects
+			(ND_ROOT, &pm3, 1, NULL, 3, 3, &pcount ),
+		     targetid = cimacid->objid,
+		     targetos = cimacid->osnum );
+
+	display_pm(&pm1, &pm2, &pm3);
+}
+
+modify(cimacid)
+struct GRid *cimacid;
+/*
+ * to modify interactively the parameters of the ci_macro
+ * called from outside
+ */
+{
+	int pcount;
+	struct GRid old1, old2, old3;
+
+	/* read the parents */
+	pcount = 0;
+	ci$send( msg = message NDnode.NDget_objects
+			(ND_ROOT, &TEMP[1], 1, NULL, 1, 1, &pcount ),
+		     targetid = cimacid->objid,
+		     targetos = cimacid->osnum );
+
+	pcount = 0;
+	ci$send( msg = message NDnode.NDget_objects
+			(ND_ROOT, &TEMP[2], 1, NULL, 2, 2, &pcount ),
+		     targetid = cimacid->objid,
+		     targetos = cimacid->osnum );
+
+	pcount = 0;
+	ci$send( msg = message NDnode.NDget_objects
+			(ND_ROOT, &TEMP[3], 1, NULL, 3, 3, &pcount ),
+		     targetid = cimacid->objid,
+		     targetos = cimacid->osnum );
+
+	old1 = TEMP[1];
+	old2 = TEMP[2];
+	old3 = TEMP[3];
+
+	get_exps(&TEMP[1],&TEMP[2],&TEMP[3]);
+
+	if( old1.objid != TEMP[1].objid )
+		ci$send( msg = message NDnode.NDchange_connect
+						(1, &old1, &TEMP[1] ),
+		     targetid = cimacid->objid,
+		     targetos = cimacid->osnum );
+
+	if( old2.objid != TEMP[2].objid )
+		ci$send( msg = message NDnode.NDchange_connect
+						(1, &old2, &TEMP[2] ),
+		     targetid = cimacid->objid,
+		     targetos = cimacid->osnum );
+
+
+	if( old3.objid != TEMP[3].objid )
+		ci$send( msg = message NDnode.NDchange_connect
+						(1, &old3, &TEMP[3] ),
+		     targetid = cimacid->objid,
+		     targetos = cimacid->osnum );
+}
+
+get_exps(pexpr1, pexpr2 , pexpr3 )
+struct GRid *pexpr1;
+struct GRid *pexpr2;
+struct GRid *pexpr3;
+// special input function
+{
+  char stmp[80];
+
+//  init the form
+  FORM_ID.osnum = Transient;
+/*  sprintf(stmp,"%sgrnucdp/config/english/forms/lift.frm", CS_path_name ); */
+  strcpy( stmp, "lift.frm" );
+  ci$send( msg = message FIform.init_form(&sts, 1, MY_ID,
+				             (short) 1, &obj, utogg, stmp ),
+          construct = 1,
+          targetid = FORM_ID.objid,
+          targetos = Transient );
+
+  ci$send( msg = message FIform.display_form(&Mes, -1, -1), 
+           targetid = FORM_ID.objid,
+           targetos = FORM_ID.osnum );
+
+  /* if expressions are not NULL, display them */
+  display_pm(pexpr1, pexpr2, pexpr3);
+
+  /* loops to read the form */
+  do
+  {
+    prompt ( "enter data" );
+    ci$getevent (response = &e.response,
+		 data     =  e.data,
+		 stackable = 1 );
+
+    if( e.response == TERMINATE)
+      exit;
+
+    if( e.response == CMD_STRING )
+    {
+      begincmd(e.data);
+      endcmd();
+    }
+  } while(e.response != FORM_FINISHED);
+
+  ci$send ( msg = message FIform.delete ( 1 ),
+            targetid = FORM_ID.objid,
+            targetos = FORM_ID.osnum );
+
+  str_to_exp(stangle, pexpr1);
+  str_to_exp(sthauteur, pexpr2);
+  // bcheck_coin unused
+  if( bfillet )
+	str_to_exp("un=1.", pexpr3);
+  else
+	str_to_exp("zero=0.", pexpr3);
+
+  M_response = 1;
+  return 1;
+}
+
+sleep()
+{
+      ci$send ( msg = message FIform.erase_form ( 1 ),
+                targetid = FORM_ID.objid,
+                targetos = FORM_ID.osnum );
+}
+
+wakeup ()
+{
+  message("<Assoc> Place Drafted Solid");
+  ci$send( msg = message FIform.display_form(&Mes, -1, -1), 
+           targetid = FORM_ID.objid,
+           targetos = FORM_ID.osnum );
+}
+
+
+delete()
+{
+      ci$send ( msg = message FIform.delete ( 1 ),
+                targetid = FORM_ID.objid,
+                targetos = FORM_ID.osnum );
+}
+
+form_input()
+/*
+ * well known function by ppl users 
+ */
+{
+  struct GRid cpx, cimacid2;
+
+  gadget_label = form_data->label;
+
+  if(gadget_label == ACCEPT) {
+	/* let's read the data */
+	my_form_data.label = FILLET;
+	my_form_data.type = EXFI_STATE;
+	ci$send ( msg  = message FIform.get_by_value ( &sts, 1, &my_form_data ),
+              targetid = FORM_ID.objid,
+              targetos = Transient);
+	bfillet = ! my_form_data.value.state;
+
+	my_form_data.label = ANGLE;
+	my_form_data.type = EXFI_ALPHA;
+	ci$send ( msg  = message FIform.get_by_value ( &sts, 1, &my_form_data ),
+              targetid = FORM_ID.objid,
+              targetos = Transient);
+	strcpy ( stangle, my_form_data.value.alpha );
+
+	my_form_data.label = HAUTEUR;
+	my_form_data.type = EXFI_ALPHA;
+	ci$send ( msg  = message FIform.get_by_value ( &sts, 1, &my_form_data ),
+              targetid = FORM_ID.objid,
+              targetos = Transient);
+	strcpy ( sthauteur, my_form_data.value.alpha );
+
+	ci$put( response = FORM_FINISHED );
+  } else if(gadget_label == LEAVE )
+	ci$put( response = TERMINATE );
+  else if( gadget_label == BORROW ){
+
+	ci$locate( prompt       = "locate construction to share the param with",
+	           obj          = &(cimacid2.objid),
+                   osnum        = &(cimacid2.osnum),
+                   classes      = "ci_macro" );
+
+	my_form_data.value.state = 0;
+	my_form_data.label = BORROW;
+	my_form_data.type = EXFI_STATE;
+	ci$send ( msg  = message FIform.put_by_value( &sts, 1, &my_form_data ),
+       		targetid = FORM_ID.objid,
+        	targetos = Transient);
+
+	borrow_pm(&cimacid2);
+   }
+}
+
+int locate_cv(cvgrid)
+struct GRid *cvgrid;
+{
+   char			not_planar[20], not_closed[20];
+   int 			suc, phy_clo;
+   double		tplane[6];
+
+   struct IGRplane 	plane;
+   struct GRprops       GRprops;
+
+   extern ASmake_source_from_env();
+
+   while( 1 ){
+	if(!ci$locate( prompt       = "locate curve ",
+	       response	    = &M_response,
+	       classes	    = "GRcurve",
+               properties   = LC_LC_ONLY | LC_DP_ONLY | LC_RW,
+               owner_action = LC_RIGID_COMP  |
+               	              LC_RIGID_OWNER | LC_FLEX_COMP |
+                       	      LC_FLEX_OWNER  | LC_REF_OBJECTS,
+	       obj          = &cvgrid->objid,
+               osnum        = &cvgrid->osnum,
+               md_env       = &MOD_ENV        )) break;
+
+        ASmake_source_from_env( cvgrid,&MOD_ENV,cvgrid );	
+
+	plane.point = &tplane[0];
+	plane.normal = &tplane[3];
+	ci$send( msg = message  GRvg.GRdetplane( &suc,
+		       		         &MOD_ENV.md_env.matrix_type,
+		       		         MOD_ENV.md_env.matrix,
+                                         &plane),
+			 targetid = cvgrid->objid,
+			 targetos = cvgrid->osnum );
+
+	if(suc != SUC_CAP)
+	{
+       	    status("curve is not planar");
+	    write('');
+	    continue;
+	}
+
+	ci$send( msg = message  GRvg.GRgeomprops( &suc,
+	       			&MOD_ENV.md_env.matrix_type, 
+	       			MOD_ENV.md_env.matrix,
+	       			&GRprops ),
+			 targetid = cvgrid->objid,
+			 targetos = cvgrid->osnum );
+
+#ifdef DEBUG
+write("GRprops.phy_closed=",GRprops.phy_closed,"\n");
+#endif
+
+	if( (GRprops.phy_closed != PHY_CLO) &&
+	    (GRprops.phy_closed != 1) ){
+            	    status("curve is not closed");
+		    write('');
+		    continue;
+	} else {
+
+#ifdef DEBUG
+write("exiting locate_cv\n");
+#endif
+
+//		M_response = DATA;
+		break;
+	}
+    }
+}
+
+
+state_default(){
+    if (M_response == TERMINATE){
+	current_state = current_state+1;
+	states[current_state] = -1;
+	return 1;
+    }
+    return 0;
+} /* end state_default */
+
+state_get_exps(){
+	message("Associative Draft Solid");
+    get_exps(&TEMP[1],&TEMP[2],&TEMP[3]);
+    if( state_default() ) return 1;
+    if (M_response == 0){
+	/* current state unchanged */
+	return 1;
+    }
+    if (1){
+	current_state = current_state+1;
+	states[current_state] = 1;
+	return 1;
+    }
+} /* end state_get_exps */
+
+state_get_curve(){
+    locate_cv(&TEMP[0]);
+    if( state_default() ) return 1;
+    if (M_response == D_RESET){
+	current_state = current_state+1;
+	states[current_state] = 0;
+	return 1;
+    }
+    if (M_response == DATA){
+	M_response = place_cimac();
+	/* current state unchanged */
+	return 1;
+    }
+    if (1){
+	/* current state unchanged */
+	return 1;
+    }
+} /* end state_get_curve */
+
+terminate(){ exit; }
+
+
+error(s) char *s; { status(s);  exit;}
+
+
+
+main(){
+	current_state = 0;
+	states[0] = 0;
+	while(1){
+	    if(current_state < 0 ){
+	    	error("no previous state, exit");
+	    	return 0;
+	    }
+	    if(current_state >= MAX_STATES){
+	    	error("state table overflow, exit");
+	    	return 0;
+	    }
+	    switch(states[current_state]){
+	    case -1: terminate(); return(1);
+	    case 0: state_get_exps(); break;
+	    case 1: state_get_curve(); break;
+	    default: error("software error, unknown state\n");
+	             return(0);
+	    } /* switch */
+	} /* while */
+} /* main */

@@ -1,0 +1,217 @@
+/* $Id: COcpymov.u,v 1.1.1.1 2001/01/04 21:07:21 cvs Exp $  */
+
+/* --------------------------------------------------------------------
+ * I/VDS
+ *
+ * File:	vds/cimacros/wireframe/cmd / COcpymov.u
+ *
+ * Description:
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ *	$Log: COcpymov.u,v $
+ *	Revision 1.1.1.1  2001/01/04 21:07:21  cvs
+ *	Initial import to CVS
+ *	
+# Revision 1.1  1998/04/29  16:27:20  pinnacle
+# VDS 2.5.1
+#
+# Revision 1.1  1997/05/08  13:20:44  pinnacle
+# New project VDS 250
+#
+# Revision 1.1  1996/07/19  20:33:52  pinnacle
+# Create VDS 241 project
+#
+# Revision 1.3  1996/06/11  23:08:10  pinnacle
+# Replaced: cimacros/wireframe/cmd/COcpymov.u for:  by yzhu for vds.240
+#
+# Revision 1.2  1996/02/06  04:40:40  pinnacle
+# Replaced: cimacros/wireframe/cmd/COcpymov.u for:  by rgade for vds.240
+#
+# Revision 1.1  1994/11/14  22:42:32  pinnacle
+# Create vds.240 from vds.232
+#
+# Revision 1.1  1994/11/08  16:07:00  pinnacle
+# create vds.232
+#
+ *
+ * History:
+ *	MM/DD/YY	AUTHOR		DESCRIPTION
+ *
+ * -------------------------------------------------------------------*/
+
+/*
+	 VDS 2.1 - PPM macro library
+
+	History :
+	93/01/26 alc Update prompts, and set filter for the vector location
+ */
+   
+#include "ciminimum.h"
+#include "cimacros.h"
+#include "igr.h"
+#include "cieveryone.h"
+#include "EMSmsgdef.h"
+#include "msdef.h"
+#include "ciexec.h"
+
+
+GRobj 		ci_mac_bib_FileId;
+
+
+char		loc_mes[80],loc_prompt[80], exp_prompt[80];
+double          exp_default;
+char            class_name[80];
+long            sts;
+struct GRmd_env	MOD_ENV   ;
+struct GRid 	TEMP[100] ;
+GRobj 		MAC1;
+short           num_ent;
+int 		suc;
+char            txt[40];
+OMuword		class_id, classVRCorrection;
+IGRboolean      Route_Correction;
+
+extern ASmake_source_from_env();
+extern OMuword          OPP_VDSroot_class_id;
+extern int	printf();
+
+struct
+{
+	int 	num_ent;
+	int	num_old;
+}var;
+
+
+
+main()
+{
+step0:
+
+
+/* get expression for number of copies */
+
+     strcpy(loc_prompt,"Enter expression name for number of copies");
+     strcpy(exp_prompt,"Enter number of copies");
+     exp_default = 1;
+     push (char *)&suc,loc_mes,loc_prompt,exp_prompt,exp_default,
+          (char *)&TEMP[0];
+     ci$run( file_id   = &ci_mac_bib_FileId,
+ 	     entry     = "loc_exp" );
+     if( suc != 1 ) exit;
+
+     sts = OM_S_SUCCESS ;
+     Route_Correction = TRUE ;
+     sts =
+     om$get_classid( classname       = "VRCorrection",
+                      p_classid       = &classVRCorrection );
+     if( !( sts&1 )){ Route_Correction = FALSE ; }
+
+
+/* get translation vector */
+
+     while(1)
+     {
+step1:
+     	message(loc_mes);
+
+        if(!ci$locate( prompt       = "Locate translation vector",
+                       properties   = LC_LC_ONLY | LC_DP_ONLY | LC_RW,
+                       owner_action = LC_RIGID_COMP
+                                      | LC_RIGID_OWNER | LC_FLEX_COMP
+                                      | LC_FLEX_OWNER  | LC_REF_OBJECTS,
+	               obj          = &(TEMP[1].objid),
+                       osnum        = &(TEMP[1].osnum),
+		       classes	    = "GRlinear",
+		       md_env       = &MOD_ENV      ) ) goto step0;
+
+	ASmake_source_from_env( &TEMP[1],&MOD_ENV,&TEMP[1]);	
+
+step2:
+        num_ent = 0;
+
+        while(1)
+        {
+           strcpy(txt,"Locate object to copy and move ");
+           strcat(txt,itoa(num_ent + 1));
+     	   message(loc_mes);
+
+           if(!ci$locate( prompt       = txt,
+                          properties   = LC_LC_ONLY | LC_DP_ONLY | LC_RW,
+                          owner_action = LC_RIGID_COMP
+                                         | LC_RIGID_OWNER | LC_FLEX_COMP
+                                         | LC_FLEX_OWNER  | LC_REF_OBJECTS,
+	                  obj          = &(TEMP[num_ent+2].objid),
+                          osnum        = &(TEMP[num_ent+2].osnum),
+		          classes      = "GRgraphics",
+		          md_env       = &MOD_ENV ) ) break;
+
+            om$get_classid(  	osnum      	= TEMP[num_ent+2].osnum,
+                        	objid           = TEMP[num_ent+2].objid,
+                        	p_classid       = &class_id   ) ;
+
+            if(( om$is_ancestry_valid(
+				superclassid  = OPP_VDSroot_class_id,
+                                subclassid    = class_id ) == OM_S_SUCCESS )||
+             (( Route_Correction ) &&
+              ( om$is_ancestry_valid(
+				superclassid  = classVRCorrection,
+                                subclassid    = class_id ) == OM_S_SUCCESS ))){
+	      status("Invalid Object Located, please relocate.");
+              goto step2 ;
+            }
+
+	   ASmake_source_from_env( &TEMP[num_ent+2],&MOD_ENV,&TEMP[num_ent+2]);	
+
+           num_ent = num_ent + 1;
+        }
+   
+        if( num_ent == 0 ) goto step1;
+
+   	ci$get_module_info(md_env = &MOD_ENV);
+        MAC1 = NULL_OBJID;
+   	num_ent = num_ent+2;
+	var.num_ent = num_ent;
+	var.num_old = 0;
+   	ci$send(msg      = message nci_macro.init( &suc,
+						  0,
+						  "cpymov",
+						  num_ent,
+                                                  TEMP,
+						  &var,
+						  &MOD_ENV ),
+	        targetid = MAC1,
+		targetos = MOD_ENV.md_id.osnum );
+
+	if( suc == 0 ){
+		write("placement of nci_macro \"cpymov\" failed\n");
+		status("placement of nci_macro \"cpymov\" failed");
+      		ci$send(msg = message Root.delete(0),
+			targetid = MAC1,
+			targetos = MOD_ENV.md_id.osnum );
+        }
+        
+	goto step2;
+
+    }
+}
+
+
+/*==========================================================================*/
+init(){
+
+     	strcpy(loc_mes,"<Assoc> Copy and Move Element N Times") ;
+
+ 	ci$load ( file_name = "ci_mac_bib.u",
+		  load      = LOAD,
+	  	  file_id   = &ci_mac_bib_FileId,
+		  stat      = &suc );
+	if( suc != CI_S_SUCCESS ) exit;
+
+}
+
+wakeup(){
+	message(loc_mes);
+}
+

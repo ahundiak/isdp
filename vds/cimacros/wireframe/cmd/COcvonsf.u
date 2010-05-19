@@ -1,0 +1,196 @@
+/* $Id: COcvonsf.u,v 1.1.1.1 2001/01/04 21:07:22 cvs Exp $  */
+
+/* --------------------------------------------------------------------
+ * I/VDS
+ *
+ * File:	vds/cimacros/wireframe/cmd / COcvonsf.u
+ *
+ * Description:
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ *	$Log: COcvonsf.u,v $
+ *	Revision 1.1.1.1  2001/01/04 21:07:22  cvs
+ *	Initial import to CVS
+ *	
+# Revision 1.1  1998/04/29  16:27:20  pinnacle
+# VDS 2.5.1
+#
+# Revision 1.1  1997/05/08  13:20:44  pinnacle
+# New project VDS 250
+#
+# Revision 1.1  1996/07/19  20:33:52  pinnacle
+# Create VDS 241 project
+#
+# Revision 1.1  1994/11/14  22:42:32  pinnacle
+# Create vds.240 from vds.232
+#
+# Revision 1.1  1994/11/08  16:07:00  pinnacle
+# create vds.232
+#
+ *
+ * History:
+ *	MM/DD/YY	AUTHOR		DESCRIPTION
+ *
+ * -------------------------------------------------------------------*/
+
+/*
+	 VDS 2.0 - PPM macro library - 92/07/09 (alc)
+ */
+   
+/*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
+/*                                 COcvonsf                                   */
+/*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
+
+#include "cieveryone.h"
+#include "cimacros.h"
+#include "asmacros.h"
+#include "OMerrordef.h"
+#include "asmacros.h"
+#include "codef.h"
+#include "msdef.h"
+#include "ASmessages.h"
+#include "AS_status.h"
+#include "msmacros.h"
+#include "grdpbdef.h"
+#include "grdpb.h"
+#include "grdpbmacros.h"
+#include "gotextdef.h"
+
+struct  GRmd_env  md_env,             /* Environment located                  */
+		  c_md_env;	     
+int     count;                        /* Number of object to place            */
+long    sts;                          /* returned message from a function     */
+long 	msg;			      /* returned message from a function     */
+struct  GRid  select_obj;             /* Identifier of the selected object    */
+struct  GRid  context_id;             /* Identifier of the context            */
+struct  GRid  src_id;                 /* Identifier of the src object         */
+char   loc_prompt[MAX_PROMPT_SIZE];   /* locate prompt                        */
+char   acc_prompt[MAX_PROMPT_SIZE];   /* accept prompt                        */
+struct GRas asso_list;
+short props;
+OM_S_OBJID as;
+enum GRdpmode dp_mode;
+int	response;
+double  point[3];
+
+/* User messages */
+
+/* External functions */
+
+extern ASmake_source();
+extern GRfindcontext();
+extern int MSmessage();
+extern	printf();
+
+main()
+  {
+  message("<Assoc> Align Curve to Surface");  
+
+  ci$get_module_info( md_env = &c_md_env );
+
+  while(1){
+    /* Locate the surface and make a source with it */
+  
+    strcpy(loc_prompt, "Identify surface");
+    select_obj.objid = NULL_OBJID;   
+    while (TRUE) { //Locate a surface
+      ci$locate (prompt          = loc_prompt,
+             acc_prompt      = "Accept with curve to attach to surface"    ,
+             relocate_prompt = "No surface found"    ,
+             classes         = "EMSsubbs"    ,
+             md_env          = &md_env,
+	     accept_point    = point,
+             obj             = &select_obj.objid,
+             osnum           = &select_obj.osnum,
+             properties      = LC_LC_ONLY | LC_DP_ONLY | LC_RW,
+             owner_action    = LC_RIGID_COMP
+                               | LC_RIGID_OWNER | LC_FLEX_COMP
+                               | LC_FLEX_OWNER  | LC_REF_OBJECTS,
+             response        = &response  );
+      if(response == EX_BACK_UP)   // or double reset
+                return;
+      if(response != DATA)continue;
+      if (select_obj.objid != NULL_OBJID)  break;
+    }
+
+    /* Get the context identifier */
+
+    sts = GRfindcontext(&msg,&md_env.md_env.matrix_type,md_env.md_env.matrix,
+                          &md_env.md_id.osnum,&context_id);
+
+    if((sts != OM_S_SUCCESS)||(msg != MSSUCC)) context_id.objid = NULL_OBJID;
+
+    as$make_source(go_grid      = select_obj,
+                     context_grid = context_id,
+                     as_os        = c_md_env.md_id.osnum,
+                     as_grid      = &src_id);
+    asso_list.num_parents = 1;
+    asso_list.parents = &src_id;
+   
+    status("");
+    ci$put(point = point);
+
+    while(1){
+      /* Locate object to attach to the surface */
+  
+      strcpy(loc_prompt, "Identify curve to attach to surface");
+      if(!ci$locate
+            (prompt       = loc_prompt,
+             md_env       = &md_env,
+  	     obj          = &select_obj.objid,
+  	     osnum        = &select_obj.osnum,
+             relocate_prompt = "No curve found"    ,
+             classes         = "GRcurve"    ,
+             properties      = LC_LC_ONLY | LC_DP_ONLY | LC_RW,
+             owner_action    = LC_RIGID_COMP
+                               | LC_RIGID_OWNER | LC_FLEX_COMP
+                               | LC_FLEX_OWNER  | LC_REF_OBJECTS,
+             response        = &response  ) ) {break;}
+
+      // reject if the object is rigidly owned
+      if(response != DATA)continue;
+      if(select_obj.osnum != c_md_env.md_id.osnum) continue;
+     
+      sts = ci$send(msg = message GRgraphics.GRgetprops(&msg,&props),
+      			targetos = select_obj.osnum,
+		       targetid = select_obj.objid);
+
+      if(!(sts&1) || props&GR_RIGID_RELATIONSHIP) continue;
+
+  
+      /* Erase previous position, Place the object and display new position */
+
+      dp_mode = GRbe;
+      sts = ci$send(msg = message GRgraphics.GRdisplay(&msg,
+					&md_env.md_env.matrix_type,
+	 				md_env.md_env.matrix,
+                                        &dp_mode,&md_env.md_id),
+      			targetos = select_obj.osnum,
+                      	targetid = select_obj.objid);
+
+      as=NULL_OBJID;
+      asso_list.go_objid = select_obj;
+
+      sts = ci$send(msg = message ASindexcv.NDplace(&asso_list,&c_md_env,NULL),
+		       targetid = as,
+		       construct = 1);
+                if( !( sts & SUCC ) ) {
+                        printf( "ASindexcv.NDplace failed\n" ) ;
+                        as$status(sts=sts);
+                        return(0) ;
+                        }
+  
+      dp_mode = GRbd;
+      sts = ci$send(msg = message GRgraphics.GRdisplay(&msg,
+					&c_md_env.md_env.matrix_type,
+					c_md_env.md_env.matrix,
+                                        &dp_mode,&c_md_env.md_id),
+                       targetid = as);
+
+    }/* end while */ 
+  }/* end while */ 
+}/* end main */ 
+
+/*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/

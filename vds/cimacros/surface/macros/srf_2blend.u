@@ -1,0 +1,306 @@
+/* $Id: srf_2blend.u,v 1.1.1.1 2001/01/04 21:07:21 cvs Exp $  */
+
+/* --------------------------------------------------------------------
+ * I/VDS
+ *
+ * File:	vds/cimacros/surface/macros / srf_2blend.u
+ *
+ * Description:
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ *	$Log: srf_2blend.u,v $
+ *	Revision 1.1.1.1  2001/01/04 21:07:21  cvs
+ *	Initial import to CVS
+ *	
+# Revision 1.1  1998/04/29  16:27:20  pinnacle
+# VDS 2.5.1
+#
+# Revision 1.1  1997/05/08  13:20:44  pinnacle
+# New project VDS 250
+#
+# Revision 1.1  1996/07/19  20:33:52  pinnacle
+# Create VDS 241 project
+#
+# Revision 1.2  1996/02/16  09:44:32  pinnacle
+# Replaced: cimacros/surface/macros/srf_2blend.u for:  by svkadamb for vds.240
+#
+# Revision 1.1  1994/11/14  22:42:32  pinnacle
+# Create vds.240 from vds.232
+#
+# Revision 1.1  1994/11/08  16:07:00  pinnacle
+# create vds.232
+#
+ *
+ * History:
+ *	MM/DD/YY	AUTHOR		DESCRIPTION
+ *
+ * -------------------------------------------------------------------*/
+
+/*
+	 VDS 2.0 - PPM macro library - 92/07/09 (alc)
+	 92/07/27	Get rid of internal data (not used)
+ */
+   
+/**************************************************************************/
+/* this command will creat a blend end surface 	*/
+/* written by jim hanson 7/18/8 modified 2/2/89	*/
+/* 29/8/90 JL-LOSCHUTZ modified for reference and rewrite it */
+/**************************************************************************/
+
+#include "cieveryone.h"
+#include "cimacros.h"
+#include "ci_mac_def.h"
+#include "cimath.h"
+#include "AS_status.h" 
+
+struct GRsymbology	symbology;
+struct GRid		CI_MACRO_ID;
+struct IGRdisplay 	dis;
+struct GRvg_construct 	cst;
+struct GRmd_env    	MOD_ENV;
+struct GRid	   	SURF, SUR;
+struct GRlc_info   	base_surf[2];
+struct ret_struct	temp1_rts;
+
+IGRshort	        side1,side2,dir1,dir2;
+IGRlong		   	msg, stat, i;
+IGRdouble             	point1[3],pnt1[3],pnt2[3];
+IGRdouble             	uval1[2],uval2[2];
+double			parms[2];
+IGRchar 		*temp_names[31], *feet_names[1];
+IGRint			temp_types[3];
+GRobj 	           	ci_mac_def1;
+
+
+extern int        	init_cnst_list(),
+			printf();
+extern		ASsuper_construct();
+
+
+
+/* ========================================================================= */
+/* the main function is the one implementing the definition creation
+/* ========================================================================= */
+
+main ()
+{
+
+  temp_names[0]  = "surf1";  
+  temp_names[1]  = "surf2";  
+  temp_names[2]  = "pnt1";
+
+  temp_types[0] = other_generic;
+  temp_types[1] = other_generic;
+  temp_types[2] = point_generic;
+
+  feet_names[0] = "res_surf";
+
+  ci_mac_def1 = NULL_OBJID;
+
+  ac$cimacdef( 	cimacdef          = ci_mac_def1,
+		status 	          = &stat, 	
+		name              = "srf_2blend",
+              	temp_num          = 3, 		
+		temp_names        = temp_names,
+		temp_types        = temp_types,
+	      	extern_feet_num   = 1, 	
+		extern_feet_names = feet_names );
+}
+
+/* ========================================================================= */
+
+compute ()
+{
+  construct_comp();
+
+  if( SURF.objid == NULL_OBJID ) return(0);
+
+  ci$send( msg = message  ci_macro.set_all_extern_feet
+	 ( &stat, 1, &SURF, &MOD_ENV ),
+	   targetid = CI_MACRO_ID.objid,
+	   targetos = CI_MACRO_ID.osnum );
+  return(1);
+}
+
+/* ========================================================================= */
+
+place ()
+{
+  construct_comp();
+
+  if( SURF.objid == NULL_OBJID ) return(0);
+
+  ci$send( msg = message  ci_macro.set_all_extern_feet
+	 ( &stat, 1, &SURF, &MOD_ENV ),
+	   targetid = CI_MACRO_ID.objid,
+	   targetos = CI_MACRO_ID.osnum );
+  return(1);
+}
+
+/* ========================================================================= */
+
+construct_comp()
+{
+   SURF.objid  = NULL_OBJID;
+   SURF.osnum  = MOD_ENV.md_id.osnum;
+
+  for(i=0; i<2; i=i+1){
+
+  	msg = ci$send( msg = message  ACcpx.ACfind_exp_temp_obj(&stat,i,&SUR),
+           	targetid = CI_MACRO_ID.objid,
+           	targetos = CI_MACRO_ID.osnum );
+
+  	if( !(msg&stat&1) ) return;
+
+  	msg = ci$send( msg      = message NDmacro.ACreturn_foot(
+				&stat ,
+				"",
+				&base_surf[i].located_obj, 
+				&base_surf[i].module_info.md_env.matrix_type, 
+				base_surf[i].module_info.md_env.matrix ),
+	   	targetid = SUR.objid,
+	   	targetos = SUR.osnum );
+
+  	if(!(msg&stat&1)){
+
+		#ifdef DEBUG
+		write( "NDmacro.ACreturn_foot=",NDmacro.ACreturn_foot,"\n");
+		#endif
+  		as$status(sts=stat);
+		return;	
+  	}
+
+  	base_surf[i].module_info.md_id.osnum = base_surf[i].located_obj.osnum;
+
+  }
+
+
+//****************************************************************************
+
+   msg = ci$send( msg = message  ACcpx.ACfind_exp_temp_struct
+		(&stat,2,(char *)&temp1_rts,&MOD_ENV ),
+	    	targetid = CI_MACRO_ID.objid,
+	    	targetos = CI_MACRO_ID.osnum );
+
+  if(!(msg&stat&1)) return;
+
+  for (i=0; i<3; i=i+1) point1[i]=temp1_rts.var.point_st.pt[i];
+
+  stat = ci$send( msg = message GRvg.GRptproject(
+				&msg,
+				&base_surf[0].module_info.md_env.matrix_type, 
+				base_surf[0].module_info.md_env.matrix,
+				point1,
+				pnt1,
+				uval1),
+		targetid = base_surf[0].located_obj.objid,
+		targetos = base_surf[0].located_obj.osnum );
+  if(!(msg&stat&1)) return;
+
+  stat = ci$send( msg = message GRvg.GRptproject(
+				&msg,
+				&base_surf[1].module_info.md_env.matrix_type, 
+				base_surf[1].module_info.md_env.matrix,
+				point1,
+				pnt2,
+				uval2),
+		targetid = base_surf[1].located_obj.objid,
+		targetos = base_surf[1].located_obj.osnum );
+  if(!(msg&stat&1)) return;
+
+
+#ifdef DEBUG
+ write("uvals are ",uval1,uval2,'\n');
+ write("points are ",pnt1,pnt2,point1,'\n');
+#endif
+
+//****************************************************************************
+
+  if(uval1[0] < 0.5 && uval1[1] < 0.5)
+	{ 
+	if(uval1[0] <  uval1[1]) 
+		{side1=20; dir1=0;} else {side1=22; dir1=0;}
+	} 
+
+  if(uval1[0] > 0.5 && uval1[1] < 0.5)
+	{ 
+	if((1.0-uval1[0]) <  uval1[1]) 
+		{side1=19; dir1=0;} else {side1=22; dir1=1;}
+	} 
+
+  if(uval1[0] > 0.5 && uval1[1] > 0.5)
+	{ 
+	if((1.0-uval1[0]) < (1.0- uval1[1])) 
+		{side1=19; dir1=1;} else {side1=21; dir1=1;}
+	} 
+
+  if(uval1[0] < 0.5 && uval1[1] > 0.5)
+	{ 
+	if(uval1[0] < (1.0- uval1[1])) 
+		{side1=20; dir1=1;} else {side1=21; dir1=0;}
+	} 
+//****************************************************************************
+
+  if(uval2[0] < 0.5 && uval2[1] < 0.5)
+	{ 
+	if(uval2[0] <  uval2[1]) 
+		{side2=20; dir2=0;} else {side2=22; dir2=0;}
+	} 
+
+  if(uval2[0] > 0.5 && uval2[1] < 0.5)
+	{ 
+	if((1.0 - uval2[0]) <  uval2[1]) 
+		{side2=19; dir2=0;} else {side2=22; dir2=1;}
+	} 
+
+  if(uval2[0] > 0.5 && uval2[1] > 0.5)
+	{ 
+	if((1.0 - uval2[0]) < (1.0 - uval2[1])) 
+		{side2=19; dir2=1;} else {side2=21; dir2=1;}
+	} 
+
+  if(uval2[0] < 0.5 && uval2[1] > 0.5)
+	{ 
+	if(uval2[0] < (1.0 - uval2[1])) 
+		{side2=20; dir2=1;} else {side2=21; dir2=0;}
+	} 
+
+/****************************************************************************
+
+write(" s1,d1,s2,d2\n");
+write( side1,dir1,side2,dir2,'\n',"*******************************\n");
+
+****************************************************************************/
+  init_cnst_list();
+  get_symb();
+
+  dis.color		= cnst_list.color;
+  dis.weight		= cnst_list.weight;
+  dis.style		= cnst_list.style;
+
+  cst.msg		= &msg;
+  cst.properties	= GRIS_LOCATABLE | GRIS_NEW | GRIS_DISPLAYABLE;
+  cst.display		= &dis;
+  cst.env_info		= &MOD_ENV;
+  cst.newflag		= 0;
+  cst.level		= cnst_list.level;
+  cst.geometry		= NULL;
+  cst.class_attr	= 0;
+  cst.name		= 0;
+
+
+  stat = ci$send( msg = message EMSgenbs.EMblend_surface(
+	&base_surf[0].located_obj,side1,dir1,point1,
+        &base_surf[1].located_obj,side2,dir2,point1,&cst),
+           targetid = SURF.objid,targetos = SURF.osnum);
+
+ 
+    if( !(stat&1) )
+     {
+	write("something went wrong\n");
+ 	 SURF.objid = NULL_OBJID;
+     } 
+  status("Done");
+}

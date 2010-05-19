@@ -1,0 +1,407 @@
+/* $Id: extelm.u,v 1.1.1.1 2001/01/04 21:07:22 cvs Exp $  */
+
+/* --------------------------------------------------------------------
+ * I/VDS
+ *
+ * File:	vds/cimacros/wireframe/macros / extelm.u
+ *
+ * Description:
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ *	$Log: extelm.u,v $
+ *	Revision 1.1.1.1  2001/01/04 21:07:22  cvs
+ *	Initial import to CVS
+ *	
+# Revision 1.1  1998/04/29  16:27:20  pinnacle
+# VDS 2.5.1
+#
+# Revision 1.1  1997/05/08  13:20:44  pinnacle
+# New project VDS 250
+#
+# Revision 1.1  1996/07/19  20:33:52  pinnacle
+# Create VDS 241 project
+#
+# Revision 1.1  1994/11/14  22:42:32  pinnacle
+# Create vds.240 from vds.232
+#
+# Revision 1.1  1994/11/08  16:07:00  pinnacle
+# create vds.232
+#
+ *
+ * History:
+ *	MM/DD/YY	AUTHOR		DESCRIPTION
+ *
+ * -------------------------------------------------------------------*/
+
+/*
+	 VDS 2.0 - PPM macro library - 92/07/09 (alc)
+ */
+   
+
+#include <stdio.h>
+
+#include "cieveryone.h"
+#include "cimacros.h"
+#include "ci_mac_def.h"
+#include "EMSmsgdef.h"
+#include "AS_status.h"
+#include "macro.h"
+
+#define	MAX_SEG		10
+#define EPS 1.e-6
+
+IGRlong			EMS_ret;
+IGRshort		mat_type;
+IGRdouble		matrix[16];
+IGRboolean      	want_status;
+IGRchar 		*temp_names[3], *feet_names[2], str[40], tmp[40];
+IGRint			temp_types[3];
+
+IGRint			stat, msg, i, j, num_surfaces;
+GRobj 			ci_mac_def1, list[1], COMP, SURF;
+
+IGRdouble               org[3], out_in[20], pnt[6], scaling_factor;
+
+IGRint			chan_index;
+
+OM_S_CHANSELECT		notify_chan, to_object;
+
+IGRdouble		density;
+
+struct GRid		CUV, GCV, CI_MACRO_ID, GRid_list[2], MPROP;
+struct	GRid		par_list[3];
+
+struct GRmd_env		MOD_ENV;
+struct GRvg_construct   cst;
+struct IGRdisplay	dis;
+
+struct IGRpolyline      geom;
+
+
+extern		BScveval(), BSmdstptcv(), ASextract_cv();
+
+
+
+extern int 		init_cnst_list(),
+			sprintf(),
+			printf(),
+			ASsuper_construct();
+
+extern IGRboolean ASbroadcast_in_progress;
+
+/* ========================================================================= */
+/* the main function is the one implementing the definition creation
+/* ========================================================================= */
+
+main ()
+{
+  temp_names[0]  = "curve";  
+  temp_names[1]  = "pt1";  
+  temp_names[2]  = "ind_pt";
+
+  temp_types[0]  = line_generic | conic_generic | curve_generic;
+  temp_types[1]  = point_generic;
+  temp_types[2]  = double_type;
+
+  feet_names[0]  = "ext_cv";
+
+  ci_mac_def1 = NULL_OBJID;
+
+  ac$cimacdef( 	cimacdef	=  ci_mac_def1,
+		prop		= 0,
+		status 		= &stat,
+		name		= "extelm",
+              	temp_num	= 3, 
+		temp_names	= temp_names,
+		temp_types	= temp_types,
+	      	extern_feet_num = 1, 
+		extern_feet_names = feet_names );
+}
+
+/* ========================================================================= */
+
+compute ()
+{
+IGRint		nb_comp;
+
+
+  construct_comp( &nb_comp, GRid_list );
+
+  if( nb_comp == 0 )	return	0;
+
+  if( GRid_list[0].objid == NULL_OBJID )	return	0; 
+
+   ci$send( msg = message  ci_macro.set_all_extern_feet
+	 ( &stat, nb_comp, GRid_list, &MOD_ENV ),
+	   targetid = CI_MACRO_ID.objid,
+	   targetos = CI_MACRO_ID.osnum );
+
+
+  return(1);
+}
+
+/* ========================================================================= */
+
+place ()
+{
+IGRlong		msg, sts;
+struct	GRid	my_as_sup;
+IGRint		nb_comp;
+IGRdouble	my_acc_pt[3];
+IGRint		my_int_val;
+
+
+  construct_comp( &nb_comp, GRid_list );
+
+  if( nb_comp == 0 )	return	0;
+
+  if( GRid_list[0].objid == NULL_OBJID )	return	0; 
+
+	/*| get support */
+	sts = ci$send(	msg	 = message ACcpx.ACfind_exp_temp_obj
+					( &msg, 0, &my_as_sup ),
+			targetid = CI_MACRO_ID.objid,
+			targetos = CI_MACRO_ID.osnum );
+	as$status( sts = sts );
+
+	/*| consume support */
+	consume_and_display( my_as_sup, 1, 0, &MOD_ENV );
+
+  ci$send( msg = message  ci_macro.set_all_extern_feet
+	 ( &stat, nb_comp, GRid_list, &MOD_ENV ),
+	   targetid = CI_MACRO_ID.objid,
+	   targetos = CI_MACRO_ID.osnum );
+
+  return(1);
+}
+
+/* ========================================================================= */
+NDdelete(md_env)
+
+struct GRmd_env *md_env;
+
+{
+
+struct GRid	my_as_sup;
+	
+
+	   if( md_env->md_id.objid == -1 ) goto wrapup ;
+
+           ci$send( msg = message  ACcpx.ACfind_exp_temp_obj
+					(&stat,0,&my_as_sup),
+                    targetid = CI_MACRO_ID.objid,
+	            targetos = CI_MACRO_ID.osnum );
+	   if(!stat) goto wrapup;
+
+	   consume_and_display( my_as_sup, 0, 1, md_env );
+
+wrapup:
+        ci$send( msg      = message ov_ci_mac.NDdelete(md_env),
+	         targetid = CI_MACRO_ID.objid,
+	         targetos = CI_MACRO_ID.osnum,
+                 mode     = WRT_message );
+ return(1);
+}
+
+
+/* ========================================================================= */
+
+construct_comp( num_seg, seg_list )
+
+IGRint		*num_seg;
+struct	GRid	*seg_list;
+
+{
+
+struct	GRid	sup_go;
+IGRlong		sts;
+struct	GRmd_env	sup_env;
+struct	GRid		bsp_to_del;
+
+      seg_list[0].objid = NULL_OBJID;
+      seg_list[0].osnum = MOD_ENV.md_id.osnum;
+
+      ci$send( msg     = message  ACcpx.ACfind_exp_temp_obj
+					(&stat,0,&par_list[0]),
+ 	      targetid = CI_MACRO_ID.objid,
+	      targetos = CI_MACRO_ID.osnum );
+
+      ci$send( msg     = message  ACcpx.ACfind_exp_temp_obj
+					(&stat,1,&par_list[1]),
+ 	      targetid = CI_MACRO_ID.objid,
+	      targetos = CI_MACRO_ID.osnum );
+
+      ci$send( msg     = message  ACcpx.ACfind_exp_temp_obj
+					(&stat,2,&par_list[2]),
+ 	      targetid = CI_MACRO_ID.objid,
+	      targetos = CI_MACRO_ID.osnum );
+
+ 	sts = ci$send(msg = message NDnode.ASreturn_go(&sup_go,
+						   &sup_env.md_env.matrix_type,
+						    sup_env.md_env.matrix),
+		  targetid = par_list[0].objid,
+		  targetos = par_list[0].osnum);
+	as$status( sts = sts, action = RET_STATUS );
+
+	/*| copy du graphic */
+	sts = ci$send(msg          = message GRgraphics.GRcopy(&msg,
+                	                  &sup_env,&MOD_ENV,
+                        	          &(bsp_to_del.objid)),
+		   targetid = sup_go.objid,
+		   targetos = sup_go.osnum);
+	as$status( sts = sts );
+	bsp_to_del.osnum	= MOD_ENV.md_id.osnum;
+
+	LLbs_extend( bsp_to_del, par_list, &MOD_ENV, seg_list );
+	*num_seg	= 1;
+}
+
+
+/*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
+/*                          FCT LLbs_extend                                   */
+/*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
+
+LLbs_extend( bsp_to_ext, parent, md_env, segment )
+
+struct	GRid		bsp_to_ext;
+struct	GRid		*parent; 
+struct	GRmd_env	*md_env; 
+struct	GRid		*segment;
+
+  {
+  IGRlong   status;              /* Status returned by om                     */
+  IGRlong   msg;                 /* Status returned by a function             */
+  IGRpoint  point0;              /* Point 0 of the B_spline                   */
+  IGRpoint  point1;              /* Point 1 of the B_spline                   */
+  struct ret_struct  ext_point;  /* Definition of the extend point            */
+  struct ret_struct  ind_pt;
+  IGRpoint	extend_point;
+
+  status = OM_S_SUCCESS ;
+
+      status=ci$send(msg=message NDnode.NDgive_structure
+						(&msg,&ext_point, md_env),
+                     targetos = parent[1].osnum,
+                     targetid = parent[1].objid);
+      as$status(action = RET_STATUS);
+
+      status=ci$send(msg=message NDnode.NDgive_structure
+						(&msg, &ind_pt, md_env),
+                     targetos = parent[2].osnum,
+                     targetid = parent[2].objid );
+      as$status(action = RET_STATUS);
+	/*" ind_pt : %f\n", ind_pt.var.root_pm_st.value */
+
+	/*| get pts extrem */
+	 status = ci$send(msg    = message GRbspline.GRendpts(&msg,
+                                       &md_env->md_env.matrix_type,
+					md_env->md_env.matrix,
+                                        point0, point1),
+                             targetos = bsp_to_ext.osnum,
+                             targetid = bsp_to_ext.objid);
+	as$status();
+
+
+	if( ind_pt.var.root_pm_st.value < 0.5 ){
+
+          	status = ci$send(msg    = message GRbspline.GRptextend(&msg,
+                                                      md_env,
+                                                      point0,
+                                                      ext_point.var.point_st.pt,
+                                                      extend_point),
+                               targetos = bsp_to_ext.osnum,
+                               targetid = bsp_to_ext.objid);
+		as$status();
+         } else {
+
+          	status = ci$send(msg   = message GRbspline.GRptextend(&msg,
+                                                      md_env,
+                                                      point1,
+                                                      ext_point.var.point_st.pt,
+                                                      extend_point),
+                             targetos = bsp_to_ext.osnum,
+                             targetid = bsp_to_ext.objid);
+          	as$status();
+         }
+
+  segment[0] = bsp_to_ext;
+
+return	(status);
+}
+
+/* ***************** FCT consume_and_display () ***********************	*/
+
+consume_and_display( as_sup, c_mod, d_mod, md_env )
+
+struct	GRid		as_sup;
+IGRshort		c_mod;
+IGRshort		d_mod;
+struct	GRmd_env	*md_env;
+
+{
+IGRlong			sts, msg;
+struct	GRid		go_sup;
+struct	GRmd_env	sup_env;
+enum	GRdpmode	pen;
+
+
+	sts = ci$send(	msg	 = message NDnode.ASreturn_go(
+					&go_sup,
+					&sup_env.md_env.matrix_type,
+					sup_env.md_env.matrix ),
+			targetid = as_sup.objid,
+			targetos = as_sup.osnum );
+	as$status( sts = sts );
+
+	if( c_mod ){
+
+		if( d_mod )	pen = GRbd;
+		else		pen	= GRbehe;
+
+		sts = ci$send(	msg	 = message GRgraphics.GRdisplay(
+						&msg,
+						&sup_env.md_env.matrix_type,
+						sup_env.md_env.matrix,
+						&pen,
+						&md_env->md_id ),
+				targetid = go_sup.objid,
+				targetos = go_sup.osnum );
+		as$status( sts = sts );
+
+		sts = ci$send( msg	 = message NDmacro.ACconsume( 
+						&msg,
+						"",
+						0,
+						0,
+						md_env ),
+				targetid = as_sup.objid,
+				targetos = as_sup.osnum );
+		as$status( sts = sts );
+
+	} else {
+
+		sts = ci$send(	msg	 = message NDnodein.ACunconsume
+						( &msg, "" ),
+				targetid = as_sup.objid,
+				targetos = as_sup.osnum );
+		as$status( sts = sts );
+
+		if( d_mod )	pen = GRbd;
+		else		pen	= GRbehe;
+	
+		sts = ci$send(	msg	 = message GRgraphics.GRdisplay(
+						&msg,
+						&sup_env.md_env.matrix_type,
+						sup_env.md_env.matrix,
+						&pen,
+						&md_env->md_id ),
+				targetid = go_sup.objid,
+				targetos = go_sup.osnum );
+		as$status( sts = sts );
+	  }
+
+return	1;
+}
+

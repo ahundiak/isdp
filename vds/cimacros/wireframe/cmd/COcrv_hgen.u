@@ -1,0 +1,543 @@
+/* $Id: COcrv_hgen.u,v 1.1.1.1 2001/01/04 21:07:22 cvs Exp $  */
+
+/* --------------------------------------------------------------------
+ * I/VDS
+ * File:        vds/cimacros/wireframe/cmd / COcrv_hgen.u
+ *
+ * Description:
+ *	This command will connect points that are gathered in a fence 
+ *	operation, where the closest points are touching. It will also 
+ *	include tangent conditions where defined.
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ *      $Log: COcrv_hgen.u,v $
+ *      Revision 1.1.1.1  2001/01/04 21:07:22  cvs
+ *      Initial import to CVS
+ *
+# Revision 1.1  1998/04/29  16:27:20  pinnacle
+# VDS 2.5.1
+#
+# Revision 1.1  1997/07/17  20:06:52  pinnacle
+# Created: cimacros/wireframe/cmd/COcrv_hgen.u by yzhu for vds
+#
+ *
+ * History:
+ *      MM/DD/YY        AUTHOR          DESCRIPTION
+ *      7/15/97         yzhu            copy from COcrv_hom.u (Hull)
+ * -------------------------------------------------------------------*/
+
+
+/* 
+This command will connect points that are gathered in a fence operation,
+where the closest points are touching. It will also include tangent conditions
+where defined.
+
+written by Jim Hanson
+5-4-93
+9-15-93 added tangents
+*/
+
+
+#include "cieveryone.h"
+#include "cimacros.h"
+#include "cimath.h"
+#include "cilocate.h"
+#include "grmacros.h"
+#include "grwireframe.h"
+#include "grgs.h"
+#include "grgsmacros.h"
+#include "growner.h"
+#include "ciexec.h"
+
+char *ptr, txt[20], name[30], answer[5];
+
+struct OM_sd_classlist	classlist;
+OMuword			classid[3], point_cl, line_cl, curve_cl;
+
+IGRshort 	type;
+struct GRid	set_grid, TEMP, TEMP1[4];
+struct GRobj_env *if_obj;
+struct GRid	fence_grid,clipping_grid;
+struct GRid	*l_obj, *OBJECTS;
+GRclassid	obj_class;
+IGRint		msg,Stat,*index;
+IGRint		count,icount,countb,size_ob;
+struct		GRevent grevent;
+IGRint		size, suc;
+IGRlong		resp;
+double		*ipoints, *opoints, len, min, pnt[3], pnt1[3], pnt2[3], pnt4[3], pnt3[3];
+int		point, next,i,j,k;
+int		obj1,obj2,osn1,osn2;
+GRobj 		ci_mac_bib_FileId, MAC1;
+double  	end2[3],height; 
+short   	mtype, OMsts;
+char		loc_prompt[80], exp_prompt[80], loc_mes[80];
+double		exp_default;
+struct GRmd_env MOD_ENV;
+
+struct
+{
+  int   beg;
+  int   end;
+} var;
+
+
+struct IGRbsp_curve *bspline;
+
+extern int	GRget_endpoints();
+extern	GRgetcurve_struct();
+extern	GRfree_curve();
+extern int	GRdisplay_object();
+extern ASmake_source_from_env();
+extern char	*malloc();
+extern 		free();
+extern		printf();
+extern		GRgs_fun(); 
+extern 		GRgsmgr_fun();
+
+
+
+#define		MSSUCC		0x08008009	/* successful completion */
+
+main() 
+{
+	ipoints = NULL;
+	index = NULL;
+	OBJECTS = NULL;
+	ptr = NULL;
+
+// GET THE MODULUS ENVIRONMENT
+	message( loc_mes );
+
+	ci$get_module_info(md_env = &MOD_ENV);
+
+ 	ci$load ( file_name = "ci_mac_bib.u",
+		  load      = LOAD,
+	  	  file_id   = &ci_mac_bib_FileId,
+		  stat      = &msg );
+
+	if( msg != CI_S_SUCCESS ) exit;
+
+	/* GET THE EXPRESSION FOR THE ORDER */
+
+       strcpy(loc_prompt,"enter expression for order");
+       strcpy(exp_prompt,"enter value");
+       exp_default = 4.0;
+
+       push (char *)&suc,loc_mes,loc_prompt,exp_prompt,exp_default,
+            (char *)&TEMP1[0];
+       ci$run( file_id   = &ci_mac_bib_FileId,
+ 	       entry     = "loc_exp" );
+       if( suc != 1 ) exit;
+
+
+	/* GET THE EXPRESSION FOR THE NUMBER OF SPANS OF CURVE */
+span2:
+       strcpy(loc_prompt,"enter expression for number of curve spans");
+       strcpy(exp_prompt,"enter value");
+       exp_default = 1.0;
+
+       push (char *)&suc,loc_mes,loc_prompt,exp_prompt,exp_default,
+            (char *)&TEMP1[1];
+       ci$run( file_id   = &ci_mac_bib_FileId,
+ 	       entry     = "loc_exp" );
+       if( suc != 1 ) goto span2;
+
+
+	/* GET THE EXPRESSION FOR THE NUMBER OF DISTRIBUTION POINTS */
+samp:
+       strcpy(loc_prompt,"enter expression for sample points");
+       strcpy(exp_prompt,"enter value");
+       exp_default = 25.0;
+
+       push (char *)&suc,loc_mes,loc_prompt,exp_prompt,exp_default,
+            (char *)&TEMP1[2];
+       ci$run( file_id   = &ci_mac_bib_FileId,
+ 	       entry     = "loc_exp" );
+       if( suc != 1 ) goto samp;
+
+
+  while(1)
+  {
+
+	message(loc_mes  );
+
+
+skip:	ci$getevent(	event 		= &grevent,
+			response 	= &resp ,
+			prompt		= "Locate Set to Connect" ,
+			stackable 	= 1 ,
+			mask 		= GRm_SPECIFIED_OBJ | GRm_RESET );
+
+ 	set_grid.objid = grevent.located_object[0].located_obj.objid;
+ 	set_grid.osnum = grevent.located_object[0].located_obj.osnum;
+
+	if( resp == RESET)
+	{
+		break;
+	}
+	else if( resp == SPECIFIED_OBJ ) 
+	{
+		// test ancestry here.
+		/* get clipping polygon */
+
+		gr$gsget_fence( msg = &msg,fence_id = &clipping_grid );
+
+		if( msg != MSSUCC ) clipping_grid.objid = NULL_OBJID;
+
+		count = 0;
+
+        	gr$gsinqcount(	msg = &msg,
+			count = &count,
+			senderid = NULL_OBJID,
+			object_id = &set_grid );
+			
+        	if( msg != MSSUCC ) 
+		{ 
+			printf( "gr$gsinqcount failed" ); 
+			exit; 
+		}
+		ipoints=(double *) malloc (count*3*sizeof(double));
+		index= (int *) malloc (count*3*sizeof(int));
+		OBJECTS = (struct GRid *) malloc ((count+6)*sizeof(struct GRid));
+
+		//printf( "%d objects in fence \n", count );
+
+		size_ob = count * sizeof( struct GRobj_env );
+
+		ptr = malloc( size_ob );
+
+		if_obj = ( struct GRobj_env *) ptr;
+
+        	if(  if_obj == NULL) 
+		{ 
+			printf( "malloc failed" ); 
+			exit; 
+		}
+
+		l_obj  = ( struct GRid * ) if_obj;
+
+        	gr$gsget_objects(	msg = &msg,
+					array = if_obj,
+					size = size_ob,
+					count = &count,
+					from_obj = 0,
+					to_obj  = count - 1,
+					senderid = NULL_OBJID,
+					object_id = &set_grid);
+
+		point = 0;
+
+		for( icount=0; icount<count; icount=icount+1 ) 
+		{
+
+			TEMP.objid = if_obj[icount].obj_id.objid;
+			TEMP.osnum = if_obj[icount].obj_id.osnum;
+
+			OMsts = om$get_classname( objid		= TEMP.objid,
+						  osnum		= TEMP.osnum,
+                	        		  classname	= name  );
+
+			//printf("TEMP: %d, %d [%s]\n",TEMP.objid,TEMP.osnum,name);
+
+		        OMsts =
+			ci$send( msg = message ASnode.ASreturn_go(
+                           			&TEMP, NULL, NULL ),
+
+                                targetid = TEMP.objid,
+                                targetos = TEMP.osnum );
+
+			countb = countb + 1;
+
+			OMsts = om$get_classname( objid		= TEMP.objid,
+						  osnum		= TEMP.osnum,
+                	        		  classname	= name  );
+
+			//printf("TEMP: %d, %d [%s]\n",TEMP.objid,TEMP.osnum,name);
+
+			if( om$is_ancestry_valid (
+				subclassname=name,
+                        	superclassname="GRpoint" ) == OM_S_SUCCESS )
+			{
+
+				l_obj[point] = TEMP;
+				//printf( "Point %d  object space id: %d  object space #: %d\n", point, l_obj[point].objid, l_obj[point].osnum );
+				ci$send(msg = message GRcurve.GRendpts(
+					&msg,
+					&MOD_ENV.md_env.matrix_type,
+					MOD_ENV.md_env.matrix,
+					&ipoints[point*3],
+					end2),
+					targetid = l_obj[point].objid,
+					targetos = l_obj[point].osnum);
+				point = point + 1;
+			}
+			else
+			{ 
+				continue;
+			}
+		}// end of for(icount)
+	}
+	else if( resp == MOVE_ON ) 
+	{ 
+		goto samp;
+	}
+	else
+	{
+		/* goto samp; */
+		goto skip;
+	}
+	
+
+	count = point + 3;
+
+
+
+
+st_tgt:
+	     /* identify start tangent */
+
+             ci$locate(  prompt       = "Locate start tangent/Reject for end tangent",
+		         eligible_classes = &classlist,
+                         properties   = LC_LC_ONLY | LC_DP_ONLY | LC_RW,
+                         owner_action = LC_RIGID_COMP
+                                        | LC_RIGID_OWNER | LC_FLEX_COMP
+                                        | LC_FLEX_OWNER  | LC_REF_OBJECTS,
+	                 obj          = &OBJECTS[count].objid,
+                         osnum        = &OBJECTS[count].osnum,
+                  	 acc_prompt   = "Accept with end tangent/Reject",
+		  	 accept_point = pnt,
+		    	 response     = &M_response,
+		         md_env       = &MOD_ENV );
+
+	     if( M_response == EX_RJT_MOVEON ){
+          	var.beg  = 0;
+	     }
+	     else if( (M_response == EX_DATA)   ){
+          	var.beg  = 1;
+		TEMP = OBJECTS[count];
+		ASmake_source_from_env( &OBJECTS[count],&MOD_ENV,&OBJECTS[count]);	
+          	count = count+1;	
+		ci$put(point = pnt);
+	     }
+	     else if( M_response == EX_BACK_UP ) goto skip;
+	     else exit;
+
+	     /* identify end tangent */
+
+             ci$locate(  prompt       = "Locate end tangent",
+		         eligible_classes = &classlist,
+                         properties   = LC_LC_ONLY | LC_DP_ONLY | LC_RW,
+                         owner_action = LC_RIGID_COMP
+                                        | LC_RIGID_OWNER | LC_FLEX_COMP
+                                        | LC_FLEX_OWNER  | LC_REF_OBJECTS,
+	                 obj          = &OBJECTS[count].objid,
+                         osnum        = &OBJECTS[count].osnum,
+		    	 response     = &M_response,
+		         md_env       = &MOD_ENV );
+	     status("");
+	     if( M_response == EX_RJT_MOVEON ) var.end = 0;
+	     else if( (M_response == EX_DATA)   ){
+             	var.end = 1;
+	     	ASmake_source_from_env( &OBJECTS[count],
+					&MOD_ENV,&OBJECTS[count]);
+	     	count = count + 1;
+	     }
+	     else if( M_response == EX_BACK_UP ) goto st_tgt;
+	     else exit;
+
+no_st_tan:
+
+     if( var.beg == 0) /* if not start tan was defined get the start point */
+     {	
+try_again:
+    	if(!ci$locate( prompt       = "locate the start point",
+                    properties   = IGN_LC_BIT | IGN_DP_BIT | IGN_MOD_BIT | IGN_RW_BIT,
+                    owner_action = LC_RIGID_COMP
+                                    | LC_RIGID_OWNER | LC_FLEX_COMP
+                                    | LC_FLEX_OWNER  | LC_REF_OBJECTS,
+	            obj          = &TEMP.objid,
+                    osnum        = &TEMP.osnum) )goto skip;
+
+	//write("first point id=",TEMP.objid,',',TEMP.osnum,'\n');
+
+	OMsts =
+	ci$send( msg = message ASnode.ASreturn_go( &TEMP, NULL, NULL ),
+                 targetid = TEMP.objid,
+                 targetos = TEMP.osnum );
+
+	OBJECTS[3].objid = NULL_OBJID;
+	obj1 = TEMP.objid;
+	osn1 = TEMP.osnum;
+
+	for(i=0;i<point;i=i+1)
+	{
+		obj2 = l_obj[i].objid;
+		osn2 = l_obj[i].osnum;
+
+		if( obj1 == obj2 && osn1 == osn2 )
+		{
+			//write("found it\n");
+			index[i] = 1;
+			v_equal( &ipoints[i*3], pnt);
+			OBJECTS[3] = TEMP;
+			break;
+		} 
+	}
+
+	if(OBJECTS[3].objid == NULL_OBJID)
+	{
+		status("point not found"); 
+		goto try_again;
+	}
+
+	//write("start point was ",i,", count=",count,'\n');
+      }
+      else
+      {
+		gr$get_endpoints(
+			msg = &msg,
+			md_env = &MOD_ENV,
+			object_id = &TEMP,
+			point1 = pnt4,
+			point2 = pnt1);
+	
+		min = 10000000;
+		for(i=0;i< point;i=i+1)
+		{
+			v_sub( pnt4,&ipoints[i*3],pnt2);
+			v_sub( pnt1,&ipoints[i*3],pnt3);
+			if( v_len(pnt2) < v_len(pnt3))
+			{ 
+				len = v_len(pnt2); 
+			}
+			else
+			{
+				len = v_len(pnt3); 
+			}
+
+			if( len < min )
+			{
+				min = len;
+				OBJECTS[3] = l_obj[i];
+				v_equal( &ipoints[i*3], pnt);
+				next = i;
+			}
+			//write("point no=",i," length=",len,", min=",min,'\n');
+		}
+		index[next] = 1;
+		//write("object ",next," id=",OBJECTS[3].objid, OBJECTS[3].osnum," was the closest\n");
+      }
+
+
+	min = 10000000;
+
+	for(j=0;j<point;j=j+1)
+	{
+		//write("j=",j,'\n');
+		for(k=0;k<point;k=k+1)
+		{
+			//write("k=",k,'\n');
+			if( index[k] == 1) continue;
+			v_sub( pnt,&ipoints[k*3],pnt1);
+			len = v_len(pnt1);
+			if( len < min )
+			{
+				min = len;
+				OBJECTS[j+4] = l_obj[k];
+				next = k;
+			}
+			//write("point no=",k," length=",len,", min=",min,'\n');
+		}
+		min = 1000000;
+		index[next] = 1;
+		v_equal(&ipoints[next*3],pnt);
+		//write("\npoint=",next,'\n','\n');
+		
+	}
+
+	OBJECTS[0] = TEMP1[0];
+	OBJECTS[1] = TEMP1[1];
+	OBJECTS[2] = TEMP1[2];
+
+	#ifdef DEBUG
+	write("object ids\n");
+	for(i=0;i< count;i=i+1) write(OBJECTS[i].objid,'\n');
+	#endif
+
+   	MAC1 = NULL_OBJID;
+
+   	ci$send( msg = message nci_macro.init( 
+		&msg,
+		0,
+		"crv_hgen", 
+		count,
+		OBJECTS, 
+		&var, 
+		&MOD_ENV    ),
+	        targetid = MAC1,
+		targetos = MOD_ENV.md_id.osnum );
+
+	if( msg == 0 )
+	{
+		write("placement of nci_macro \"crv_hgen\" failed\n");
+		status("placement of nci_macro \"crv_hgen\" failed");
+
+      		ci$send(msg = message Root.delete(0),
+			targetid = MAC1,
+			targetos = MOD_ENV.md_id.osnum );
+
+	}
+
+
+	status( " " );
+}//end of while
+delete_1();
+}//end of main
+
+delete_1() 
+{
+	printf( "freeing memory\n" );
+	if( ptr != NULL ){ free(ptr); ptr = NULL; }
+	if( ipoints != NULL ){ free(ipoints); ipoints = NULL; }
+	if( index != NULL ){ free(index); index = NULL; }
+	if( OBJECTS != NULL ){ free(OBJECTS); OBJECTS = NULL; }
+	printf( "done freeing memory\n" );
+	
+}
+
+/*==========================================================================*/
+init(){
+
+ 	om$get_classid( classname = "GRpoint",
+		 	p_classid = &point_cl);
+ 	om$get_classid( classname = "GR3dlineseg",
+		 	p_classid = &line_cl);
+ 	om$get_classid( classname = "GRbspline",
+		 	p_classid = &curve_cl);
+
+	classid[0] = point_cl;
+	classid[1] = line_cl;
+	classid[2] = curve_cl;
+
+ 	classlist.w_count = 3;
+ 	classlist.w_flags = OM_CLST_subclass;
+ 	classlist.p_classes = classid;
+
+ 	strcpy(loc_mes,"<Assoc> Homogenius Curve");
+
+ 	ci$load ( file_name = "ci_mac_bib.u",
+		  load      = LOAD,
+	  	  file_id   = &ci_mac_bib_FileId,
+		  stat      = &suc );
+	if( suc != CI_S_SUCCESS ) exit;
+
+}
+
+wakeup()
+{
+	message(loc_mes);
+}
+

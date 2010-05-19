@@ -1,0 +1,921 @@
+/* $Id: srf_Hmiter.u,v 1.1.1.1 2001/01/04 21:07:21 cvs Exp $  */
+
+/* --------------------------------------------------------------------
+ * I/VDS
+ *
+ * File:	vds/cimacros/surface/macros / srf_Hmiter.u
+ *
+ * Description:
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ *	$Log: srf_Hmiter.u,v $
+ *	Revision 1.1.1.1  2001/01/04 21:07:21  cvs
+ *	Initial import to CVS
+ *	
+# Revision 1.1  1998/04/29  16:27:20  pinnacle
+# VDS 2.5.1
+#
+# Revision 1.1  1997/05/08  13:20:44  pinnacle
+# New project VDS 250
+#
+# Revision 1.1  1996/07/19  20:33:52  pinnacle
+# Create VDS 241 project
+#
+# Revision 1.4  1996/03/15  18:10:20  pinnacle
+# Replaced: cimacros/surface/macros/srf_Hmiter.u for:  by kddinov for vds.240
+#
+# Revision 1.2  1995/10/07  14:20:04  pinnacle
+# Replaced: cimacros/surface/macros/srf_Hmiter.u for:  by azuurhou for vds.240
+#
+# Revision 1.1  1994/11/14  22:42:32  pinnacle
+# Create vds.240 from vds.232
+#
+# Revision 1.1  1994/11/08  16:07:00  pinnacle
+# create vds.232
+#
+ *
+ * History:
+ *	MM/DD/YY	AUTHOR		DESCRIPTION
+ *
+ * -------------------------------------------------------------------*/
+
+/*
+	VDS 2.1 - PPM macro library
+	Description : Place Mitered Elbow by Curve and Section
+
+	92/12/15 Set pos_orient to TRUE (to be consistent with EMS 2.1)
+
+	93/6/23 Jean : Incorrect parameter in GRgetrang replace. 
+ */
+   
+#include "cieveryone.h"
+#include "cimacros.h"
+#include "ci_mac_def.h"
+#include "asmacros.h"
+#include "AS_status.h"
+#include "bserr.h"
+#include "nddef.h"
+#include "macro.h"
+#include "madef.h"
+
+
+#define   EPS 		1.0E-6
+#define   PDS_FLAG	1
+
+IGRchar			*temp_names[6], *feet_names[1], txt[40];
+IGRint			temp_types[6];
+GRobj			ci_mac_def1;	
+struct GRid	        CI_MACRO_ID;
+struct GRmd_env		MOD_ENV;	/* current module env		*/
+
+IGRshort		matrix_type;
+IGRint			i, j, k;
+IGRint			n_mit;		/* number of mitered area 	*/
+IGRlong			stat;
+IGRlong			msg;
+IGRlong			rc;
+IGRdouble		v01[3];		/* v01 = cp1 - cp0		*/
+IGRdouble		len01;		/* length of v01		*/
+IGRdouble		op1[3];		/* op1 = cp2 - cp0		*/
+IGRdouble		v12[3];		/* v12 = cp2 - cp1		*/
+IGRdouble		len12;		/* length of v12		*/
+IGRdouble		n_v01v02[3];    /* normal of plane v01 v02	*/
+IGRdouble               n_v01v12[3];
+IGRdouble		throat_rad;
+IGRdouble		str[310];
+IGRdouble		bin1[3], bin2[3];
+IGRdouble		center[3];
+IGRdouble		dist;
+IGRdouble		rad_max;
+IGRdouble		teta;
+IGRdouble		range[6];
+IGRdouble		of_rad;
+IGRdouble		true_rad;
+IGRdouble		op12[3]; 
+IGRdouble		op2[3];
+IGRdouble		op22[3];
+IGRshort		one, four;
+IGRint			num_points;
+IGRlong			num_pts;
+IGRdouble		rotmat[16], rotmat2[16],t1[4];
+IGRshort		v_order;
+IGRshort		u_order;
+IGRshort		num_b;
+IGRboolean		rational;
+unsigned IGRchar 	curve_type;
+IGRboolean 		pos_orient_flag;
+IGRboolean		ext_flag;
+IGRint			size, s24;
+OMuword	   		obj_cl;
+struct GRmd_env		SEC_ENV;	/* module env of the section	*/
+
+struct GRid		SRF_MITER, AS_SEC, SEC;
+struct IGRbsp_curve     *cv;
+struct IGRbsp_surface   *sf;
+struct IGRdisplay	dis;
+struct GRvg_construct   cst;
+struct GRprops          props;
+struct ret_struct	diam, cpt[3], ret_crv;
+
+extern	GRclassid	OPP_GR3dcircle_class_id;
+
+
+extern IGRint 		BSnorvec(),
+			init_cnst_list(),
+			BScrossp(),
+			BSxln(),
+			BSmkvec(),
+			MAinvmx(),
+			ASany_give_struct(),
+			MAidmx(),
+			MAmulmx(),
+			MAtypemx(),
+			free() ;
+
+extern			BSallocsf();
+extern 			BSxlnpl();
+
+extern IGRboolean	BSfreesf();
+
+
+extern char     	*memcpy(),
+			*malloc();
+
+extern IGRdouble	atan2(), 
+			BSlenvec(),
+			BSdotp(),
+			modulo();
+
+extern IGRboolean 	MAgrotmx();
+
+extern			ASsuper_construct();
+extern	void		VDppl_ang_v1v2();
+
+extern			GRabsg_del_by_objid();
+extern			set_mitsrf();
+/* ========================================================================= */
+
+main()
+{
+
+  temp_names[0]  = "t_rad";
+  temp_names[1]  = "n_mit";
+  temp_names[2]  = "sect";
+  temp_names[3]  = "cpt1";
+  temp_names[4]  = "cpt0";
+  temp_names[5]  = "cpt2";
+
+  temp_types[0]  = parameter_generic | double_type;
+  temp_types[1]  = parameter_generic | double_type;
+  temp_types[2]  = curve_generic | conic_generic | line_generic;
+  temp_types[3]  = point_generic;
+  temp_types[4]  = point_generic;
+  temp_types[5]  = point_generic;
+
+  feet_names[0] = "ressur0";
+
+  ci_mac_def1   = NULL_OBJID;
+
+  ac$cimacdef(	cimacdef          = ci_mac_def1,
+		status	          = &stat,	
+		name              = "srf_Hmiter",
+		temp_num          = 6,		
+		temp_names        = temp_names,
+		temp_types	  = temp_types,
+		extern_feet_num   = 1,	
+		extern_feet_names = feet_names );
+}
+
+/* ========================================================================= */
+
+place ()
+{
+
+  construct_comp();
+
+  if( SRF_MITER.objid == NULL_OBJID ) return(0);
+
+  ci$send( msg	    = message  ci_macro.set_all_extern_feet
+			( &stat, 1, &SRF_MITER, &MOD_ENV ),
+	   targetid = CI_MACRO_ID.objid,
+	   targetos = CI_MACRO_ID.osnum );
+  return(1);
+}
+
+
+/* ========================================================================= */
+
+compute ()
+{
+
+  construct_comp();
+
+  ci$send( msg	    = message  ci_macro.set_all_extern_feet
+			( &stat, 1, &SRF_MITER, &MOD_ENV ),
+	   targetid = CI_MACRO_ID.objid,
+	   targetos = CI_MACRO_ID.osnum );
+  return(1);
+}
+
+/* ========================================================================= */
+
+
+construct_comp()
+{
+  IGRboolean world;
+
+  sf = NULL;
+  cv = NULL;
+  SRF_MITER.objid = NULL_OBJID;
+/*----------------------------------------------------------------------*/
+/*-------------        retrieve the throat radius      -----------------*/
+/*----------------------------------------------------------------------*/
+
+  msg = ci$send( msg      = message  ACcpx.ACfind_exp_temp_struct
+		           (&stat,0,(char *)&diam,&MOD_ENV),
+                 targetid = CI_MACRO_ID.objid,
+                 targetos = CI_MACRO_ID.osnum );
+  if( !(msg&stat&1) ){
+	status(" bad object for diamter " );
+	return;
+  }
+  throat_rad = diam.var.root_pm_st.value; 
+
+  if (throat_rad <= 0) {				/* 3-96 KDD */
+	status(" The radius must be >= 0");
+	return;
+  }
+
+/*----------------------------------------------------------------------*/
+/*-------------        retrieve the number of miter      ---------------*/
+/*----------------------------------------------------------------------*/
+
+  msg = ci$send( msg      = message  ACcpx.ACfind_exp_temp_struct
+		           (&stat,1,(char *)&diam,&MOD_ENV),
+                 targetid = CI_MACRO_ID.objid,
+                 targetos = CI_MACRO_ID.osnum );
+  if( !(msg&stat&1) ){
+	status(" bad object for num miter " );
+	return;
+  }
+
+  if (diam.var.root_pm_st.value <= 0) {			/* 3-96 KDD */
+	status("The miter must be >= 0");
+	return;
+  }
+
+  if( diam.var.root_pm_st.value < 2 ) diam.var.root_pm_st.value = 2;
+  else 
+  if( diam.var.root_pm_st.value > 100 ) diam.var.root_pm_st.value = 100;
+
+  n_mit = diam.var.root_pm_st.value; 
+
+/*----------------------------------------------------------------------*/
+/*-------------        get the section                 -----------------*/
+/*----------------------------------------------------------------------*/
+
+  msg = ci$send( msg = message  ACcpx.ACfind_exp_temp_obj(&stat,2,&AS_SEC),
+ 	   targetid = CI_MACRO_ID.objid,
+	   targetos = CI_MACRO_ID.osnum );
+
+  if( !(msg&stat&1) ) return;
+  msg = ci$send( msg      = message NDmacro.ACreturn_foot(	
+						&stat ,
+						"",
+						&SEC, 
+						&SEC_ENV.md_env.matrix_type, 
+						SEC_ENV.md_env.matrix ),
+	   targetid = AS_SEC.objid,
+	   targetos = AS_SEC.osnum );
+
+  if( !(msg&stat&1) ){
+	write("bad section\n");
+  	as$status(sts=stat);
+	return;	
+  }
+
+	  init_cnst_list();
+	  get_symb();
+
+	  dis.color		= cnst_list.color;
+	  dis.weight		= cnst_list.weight;
+	  dis.style		= cnst_list.style;
+
+	  cst.msg		= &msg;
+	  cst.properties	= GRIS_LOCATABLE | GRIS_DISPLAYABLE | GRIS_NEW;
+	  cst.display		= &dis;
+	  cst.env_info		= &MOD_ENV;
+	  cst.newflag		= FALSE;
+	  cst.level		= cnst_list.level;
+	  cst.geometry		= NULL;
+	  cst.class_attr	= NULL;
+	  cst.name		= NULL;
+
+  SEC_ENV.md_id.osnum = SEC.osnum;
+
+  /* --------------   get the connect point coordinates   ------------------ */
+
+  for(k=3; k<6; k=k+1){
+
+     msg = ci$send( msg = message  ACcpx.ACfind_exp_temp_struct
+		(&stat,k, (char *)&cpt[k-3],&MOD_ENV ),
+ 	      	targetid = CI_MACRO_ID.objid ,
+	      	targetos = CI_MACRO_ID.osnum );
+
+     if( !(stat&msg&1) ){
+        SRF_MITER.objid = NULL_OBJID;
+	status(" bad object connect point " );
+	return;
+     }
+  }
+
+
+ /* --- define the tangent vector to cp1 and cp2 and normal to  plane --- */
+
+    BSmkvec(&rc,v01,&(cpt[0].var.point_st.pt[0]),&(cpt[1].var.point_st.pt[0]) );
+    BSmkvec(&rc,v12,&(cpt[1].var.point_st.pt[0]),&(cpt[2].var.point_st.pt[0]) );
+    BScrossp(&rc,v01,v12,n_v01v12);
+    BSnorvec(&rc,n_v01v12);
+
+
+
+
+ /* --- check if the 3 points are aligned if true the surface is just  --- */
+ /* --- a surface of projection --- */
+
+	#ifdef DEBUG
+	  write(" begin n_v01v12 = ",n_v01v12[0],n_v01v12[1],n_v01v12[2],"\n");
+	#endif
+
+    if( ( fabs(n_v01v12[0]) <= EPS ) && 
+        ( fabs(n_v01v12[1]) <= EPS ) && 
+	( fabs(n_v01v12[2]) <= EPS ) ){
+
+
+
+   	pos_orient_flag = TRUE ; /* 92/12/15 */
+
+	AS_SEC.objid = NULL_OBJID;
+    	SRF_MITER.objid = NULL_OBJID;
+    	SRF_MITER.osnum = MOD_ENV.md_id.osnum;
+
+/*
+	not needed - 92/12/15	
+  	ci$send( msg = message GRvg.GRgeomprops( &stat,
+			       		   	 &SEC_ENV.md_env.matrix_type,
+			       		   	 SEC_ENV.md_env.matrix,
+			       		   	 &props ),
+           	 targetid = SEC.objid,
+ 	   	 targetos = SEC.osnum );
+ */
+
+   	stat = ci$send( msg = message EMSproject.EMplace_surface_of_projection(
+					&cst,
+					(struct GRid *)&SEC,
+					&SEC_ENV,
+					(struct IGRbsp_curve *) NULL,
+					0,
+					cpt[0].var.point_st.pt,
+					cpt[2].var.point_st.pt,
+					pos_orient_flag,
+					&SRF_MITER.objid),
+	    	targetid = AS_SEC.objid,
+            	targetos = MOD_ENV.md_id.osnum );
+ 
+   	if ( !(stat&1) ){
+		SRF_MITER.objid = NULL_OBJID;
+		printf(" EMSproject.EMplace_surface_of_projection failed \n");
+   	}
+
+	return;
+
+    }
+
+
+
+	ext_flag = FALSE;
+
+	/* --- if we have 2 sectors then ovoid a lot of computations --- */
+
+	if( n_mit == 2 ){
+
+    		BSnorvec(&rc,v01);
+		BSnorvec(&rc,v12);
+
+		for(i=0;i<3;i=i+1){
+		   str[i]   = cpt[0].var.point_st.pt[i];
+		   str[i+3] = cpt[1].var.point_st.pt[i];
+		   str[i+6] = cpt[2].var.point_st.pt[i];
+		   bin1[i]  = cpt[1].var.point_st.pt[i] - v01[i] + v12[i];
+		}
+
+		BSxlnpl(&rc,v12,&(cpt[2].var.point_st.pt[0]),
+			&(cpt[1].var.point_st.pt[0]), bin1, center );
+
+		ext_flag = FALSE;
+		#ifdef DEBUG
+    		write("center = ",center[0],center[1],center[2],"\n");
+		#endif
+
+		num_points = 3;
+		goto eval;
+	}
+
+        /* --- evaluate the maxi radius of curvature and teta  --- */
+
+	len01 = BSlenvec(&rc,v01);
+	len12 = BSlenvec(&rc,v12);
+	dist = len12 - len01;
+	ext_flag = FALSE;
+
+	if( fabs(dist) <= EPS ){
+
+    		BSmkvec(&rc,op1,&(cpt[0].var.point_st.pt[0]),
+                        	&(cpt[2].var.point_st.pt[0]) );
+    		BSnorvec(&rc,op1);
+    		rad_max  = fabs( BSdotp(&rc,v01,op1) );
+		VDppl_ang_v1v2(v01, op1, n_v01v12, &teta, &rc );
+		rad_max = rad_max / sin(teta);
+
+	}else if( len01 < len12 ){
+    		for(i=0; i<3; i=i+1)
+		   op1[i] = v01[i] + len01*v12[i]/len12;
+    		BSnorvec(&rc,op1);
+    		rad_max  = fabs( BSdotp(&rc,v01,op1) );
+		VDppl_ang_v1v2(v01, op1, n_v01v12, &teta, &rc );
+		rad_max = rad_max / sin(teta);      
+		ext_flag = TRUE;
+
+	}else {
+    		for(i=0; i<3; i=i+1)
+		   op1[i] = v12[i] + len12*v01[i]/len01;
+    		BSnorvec(&rc,op1);
+		rad_max  = fabs( BSdotp(&rc,v12,op1) );
+		VDppl_ang_v1v2(op1, v12, n_v01v12, &teta, &rc );
+        	rad_max = rad_max / sin(teta);
+
+        }
+
+    	rad_max = fabs( rad_max );
+
+#ifdef DEBUG
+     write("----- teta = ",teta," rad_max =",rad_max,"\n");
+#endif
+
+    	BSnorvec(&rc,v01);
+	BSnorvec(&rc,v12);
+    	BScrossp(&rc,v01,n_v01v12,bin1);
+        BSnorvec(&rc,bin1);
+    	BScrossp(&rc,v12,n_v01v12,bin2); 
+        BSnorvec(&rc,bin2);
+
+
+ /* --- evaluate the true radius of curvature depending of the type 
+	and position of the section --- */
+
+        om$get_classid(	osnum		= SEC.osnum	,
+			objid		= SEC.objid	,
+			p_classid	= &obj_cl	) ;
+
+
+     if( om$is_ancestry_valid( superclassid = OPP_GR3dcircle_class_id,
+ 	 	               subclassid   = obj_cl ) == OM_S_SUCCESS ) {
+
+		/* --- it's a circle --- */
+
+        	as$any_give_structure( go_grid = SEC,
+			 inst    = &ret_crv,
+			 mod_env = &MOD_ENV );
+
+    		for(i=0; i<3; i=i+1)
+			op1[i] = ret_crv.var.circle_st.cent_p[i] - 
+				 cpt[0].var.point_st.pt[i];
+
+		of_rad = BSdotp(&rc,bin1,op1);
+		of_rad = of_rad - ret_crv.var.circle_st.rad;
+
+	}
+	else{
+
+ 		/* --- it's a general section find the range of the section 
+		       to evaluate the true radius of curvature  --- */
+
+	        world = FALSE;      
+     		ci$send( msg = message GRgraphics.GRgetrang( 
+ 					&msg,
+					&SEC_ENV.md_env.matrix_type, 
+					SEC_ENV.md_env.matrix, 
+					/*(IGRboolean) FALSE, Jean 23/6/93 (Invalid argument) */
+					 &world, /* Replace preceding line */ 
+					 range ),
+	  	 	targetid = SEC.objid,
+	  	 	targetos = SEC.osnum );
+
+		
+    		BSmkvec(&rc,op1,range,&(range[3]));
+		if( BSdotp(&rc,bin1,op1) < 0 )
+    		    BSmkvec(&rc,op1,&(cpt[0].var.point_st.pt[0]),&(range[3]));
+		else
+    		    BSmkvec(&rc,op1,&(cpt[0].var.point_st.pt[0]),range);
+
+		of_rad = BSdotp(&rc,bin1,op1);
+
+	} /* end if go different to a circle */
+
+
+
+
+
+ /* --- find the bend radius and the center of curvature --- */
+
+
+        true_rad = throat_rad - of_rad;
+
+#ifdef DEBUG
+    write("true_rad  = ",true_rad," rad_max =",rad_max,"\n");
+#endif
+
+
+
+	/* --- check if the given throat radius is compatible with the
+	       context --- */
+
+	dist = rad_max - true_rad;
+
+        if( fabs(dist) > EPS ){   
+		if( true_rad > rad_max ){
+		  throat_rad = rad_max + of_rad;
+
+       		  strcpy(txt," Bend radius is reset to its maximum value "); 
+		  strcat(txt,ftoa(throat_rad));			/* 3-96 KDD */
+		  status(txt);
+
+		  true_rad = rad_max;
+
+		}
+		else ext_flag = TRUE;
+	}
+
+
+	/* --- evaluate the real center of curvature --- */
+
+    	for(i=0;i<3;i=i+1){
+		op1[i]  = cpt[0].var.point_st.pt[i] - true_rad*bin1[i];
+		op12[i] = cpt[1].var.point_st.pt[i] - true_rad*bin1[i];
+		op2[i]  = cpt[2].var.point_st.pt[i] - true_rad*bin2[i];
+		op22[i] = cpt[1].var.point_st.pt[i] - true_rad*bin2[i];
+    	}
+
+    	BSxln(&rc,op1,op12,op2,op22,center);
+
+        BSmkvec(&rc,op12,&(cpt[0].var.point_st.pt[0]),center );
+        BSmkvec(&rc,op22,&(cpt[2].var.point_st.pt[0]),center );
+
+
+	if( len12 < len01 ){
+		dist = BSdotp(&rc,op22,v12);
+		if( fabs(dist) > EPS ){
+			 if( n_mit > 2 )ext_flag = TRUE;
+			#ifdef DEBUG
+				write("ext_flag = TRUE len12 < len01 \n");
+			#endif
+		}
+
+	}
+
+ /* --- depending if we have offset at the origine and or the end
+        define :
+		the origine of the string
+		the point where starts the arc
+		the end point of the arc
+		the end point of the string
+                                                                   --- */
+		
+		num_points = n_mit+1;
+		for(i=0;i<3;i=i+1) str[i] = cpt[0].var.point_st.pt[i];
+
+
+	
+		/* --- we have an offset at the origin then 
+		       evaluate the origine of the arc --- */
+
+		j = 0;
+
+		dist =  BSdotp(&rc,v01,op12);
+		if( fabs(dist) > EPS ){ 
+			j = 3;
+			num_points = num_points + 1;
+			for(i=0;i<3;i=i+1)
+			 str[i+3] = str[i] + dist*v01[i];
+        	}
+
+
+		/* --- evaluate the first half miter sector --- */
+
+		dist = teta / (n_mit-1);
+ 
+		MAgrotmx(&rc,n_v01v12,center,&dist,rotmat2);
+        	t1[3] = 1.0;
+		one = 1;
+		four = 4;
+		s24 = 3;
+
+        	setdbl(t1,&(str[j]),s24);
+		j = j+3;
+        	MAmulmx(&rc,&four,&four,&one,rotmat2,t1,&(str[j]));
+
+		if( PDS_FLAG == 1 ){
+			op1[0] = str[j];
+			op1[1] = str[j+1];
+			op1[2] = str[j+2];
+			BSxln(&rc,center,op1,
+			&(cpt[0].var.point_st.pt[0]), 
+		        &(cpt[1].var.point_st.pt[0]), 
+			&(str[j]) );
+		}
+
+		/* --- evaluate the n_mit - 2 internal sector --- */
+
+		teta = dist * 2.0;
+
+		MAgrotmx(&rc,n_v01v12,center,&teta,rotmat);
+		
+		for(i=j;i<=3*(num_points-3);i=i+3){
+	    		setdbl(t1,&(str[i]),s24);
+			k = i+3;
+  	    		MAmulmx(&rc,&four,&four,&one,rotmat,t1,&(str[k]));
+        	}
+
+		/* --- evaluate the last half miter sector --- */
+
+	        if( ext_flag == TRUE){
+        		setdbl(t1,&(str[k]),s24);
+			k = k+3;
+        		MAmulmx(&rc,&four,&four,&one,rotmat2,t1,&(str[k]));
+			num_points = num_points + 1;
+		}
+		
+		setdbl(&(str[k+3]),cpt[2].var.point_st.pt,s24);
+
+
+
+
+
+eval:
+
+	/* --- get the Bspline geometry of the section --- */
+
+
+     	ci$send( msg = message GRvg.GRgetsize( 
+				&stat,
+				&SEC_ENV.md_env.matrix_type, 
+				SEC_ENV.md_env.matrix,
+			     	&size ),
+	         targetid = SEC.objid,
+	         targetos = SEC.osnum );
+
+     	cv = (struct IGRbsp_curve *) malloc(size);
+
+     	ci$send( msg = message GRvg.GRgetgeom(
+				&stat,
+				&SEC_ENV.md_env.matrix_type, 
+				SEC_ENV.md_env.matrix,
+	     		        cv ),
+	         targetid = SEC.objid,
+	         targetos = SEC.osnum );
+
+
+	#ifdef DEBUG
+	  write("BSallocsf\n");
+	#endif
+	u_order = cv->order;
+	v_order = 2;
+	rational = cv->rational;
+	num_pts = num_points;
+
+	num_b = 0;
+	BSallocsf( (IGRshort)   u_order,
+		   (IGRshort)   v_order,
+		   (IGRlong)    cv->num_poles,
+		   (IGRlong)    num_pts,
+		   (IGRboolean) rational,
+		   		num_b,
+		   		&sf,
+				&rc );
+
+	set_mitsrf( &stat,center,n_v01v12,str,num_points,ext_flag,cv,sf ) ; 
+/*      ci_set_mitsrf( &stat,center,n_v01v12,str,num_points,ext_flag,cv,sf );*/
+
+
+
+
+
+	/* --- we construct the mitered surface --- */
+
+	  cst.geometry		= (char *)sf;
+
+  	  SRF_MITER.osnum = MOD_ENV.md_id.osnum;
+
+	  ci$send( msg = message EMSgenbs.GRconstruct(&cst), 
+           	   targetid = SRF_MITER.objid,
+           	   targetos = SRF_MITER.osnum );
+
+	  if( sf != NULL ) {BSfreesf(&rc,sf); sf = NULL;}
+	  if( cv != NULL ) {free(cv); cv = NULL;}
+}
+
+/*=========================================================================*/
+/*   			evaluate the general surface 			   */
+/*									   */
+ci_set_mitsrf( rc, cen, nor, pts, n_pts, ext_flag, cv, sf)
+/*	       O , I  , I  , I  , I    , I       , I , O		   */
+/*=========================================================================*/
+
+
+IGRlong			*rc;
+IGRdouble		*cen;
+IGRdouble		*nor;
+IGRdouble		*pts;
+IGRint			n_pts;
+IGRboolean		ext_flag;
+struct IGRbsp_curve	*cv;
+struct IGRbsp_surface   *sf;
+
+{
+
+IGRint			i, j, k, l, k1, k2, k3;
+IGRint			num_p, num_p3;
+IGRint			n_sec;
+IGRdouble		nvec[3], vdif[3], dir[3], ptt[3];
+IGRdouble		a, s, quot;
+
+
+
+
+/*--------------------        beginning of code      ------------------------*/
+
+
+	num_p = cv->num_poles;
+	num_p3 = 3 * cv->num_poles;
+
+
+	/* --- copy the first row --- */
+
+	if( cv->rational != FALSE ){
+
+	    for(i=0;i<num_p3;i=i+3){
+
+		j = i / 3;
+		k1 = i + 1;
+		k2 = i + 2;
+		sf->poles[i]  = cv->poles[i]  / cv->weights[j];
+		sf->poles[k1] = cv->poles[k1] / cv->weights[j];
+		sf->poles[k2] = cv->poles[k2] / cv->weights[j];
+
+	    }
+	}
+	else{
+	    for(i=0;i<num_p3;i=i+3){
+		k1 = i + 1;
+		k2 = i + 2;
+		sf->poles[i]  = cv->poles[i];
+		sf->poles[k1] = cv->poles[k1];
+		sf->poles[k2] = cv->poles[k2];
+	    }
+	}
+
+	/* --- for each section project the poles in the next section --- */
+
+
+	if( ext_flag == TRUE )  n_sec = n_pts - 2;
+	else			n_sec = n_pts - 1;
+	
+	
+	for( i=0; i<n_sec; i=i+1){
+
+	   BSmkvec(rc,vdif,cen,&(pts[3*(i+1)]));
+	   BScrossp(rc,vdif,nor,nvec);
+	   BSnorvec(rc,nvec);
+	   BSmkvec(rc,dir,&(pts[3*i]),&(pts[3*(i+1)]));
+	   BSnorvec(rc,dir);
+	   s = BSdotp(rc,dir,nvec);
+
+	   for( k=0;k<num_p3;k=k+3){
+		k1 = i*num_p3 + k;
+		k2 = i*num_p3 + k + 1;
+		k3 = i*num_p3 + k + 2;
+
+		vdif[0] = cen[0] - sf->poles[k1];
+		vdif[1] = cen[1] - sf->poles[k2];
+		vdif[2] = cen[2] - sf->poles[k3];
+
+    		quot = ( vdif[0] * nvec[0] + 
+			 vdif[1] * nvec[1] + 
+			 vdif[2] * nvec[2] ) / s;
+
+		sf->poles[k1+num_p3] = sf->poles[k1] + quot * dir[0];
+		sf->poles[k2+num_p3] = sf->poles[k2] + quot * dir[1];
+		sf->poles[k3+num_p3] = sf->poles[k3] + quot * dir[2];
+
+	   }
+
+	}/* loop on each section */
+
+	/* --- if the last section is just an extent then copy and move ---*/
+
+	if( ext_flag == TRUE ){
+
+	   BSmkvec(rc,vdif,&(pts[3*(n_pts-2)]),&(pts[3*(n_pts-1)]));
+	   #ifdef DEBUG
+		write("vdif=",vdif[0],vdif[1],vdif[2],"\n");
+	   #endif
+
+	   i = num_p3*(n_pts-2);
+	   j = num_p3*(n_pts-1);
+
+	   for( k=i;k<j;k=k+3){
+		sf->poles[num_p3+k]   = sf->poles[k]   + vdif[0];
+		sf->poles[num_p3+k+1] = sf->poles[k+1] + vdif[1];
+		sf->poles[num_p3+k+2] = sf->poles[k+2] + vdif[2];
+	   }
+	}
+
+	/* --- if the curve is rational apply the weights factor to the poles
+	       and set up the sf->weights			        --- */
+
+	if( cv->rational != FALSE ){
+
+	    for(k=0;k<n_pts;k=k+1){
+		l = k * num_p3;
+	    	for(i=0;i<num_p3;i=i+3){
+		    j = i / 3;
+		    sf->poles[l+i]   = sf->poles[l+i]   * cv->weights[j];
+		    sf->poles[l+i+1] = sf->poles[l+i+1] * cv->weights[j];
+		    sf->poles[l+i+2] = sf->poles[l+i+2] * cv->weights[j];
+	    	}
+	    }
+            
+
+	    j = num_p;
+
+	    for(k=0;k<n_pts;k=k+1){
+		i = k * num_p;
+		setdbl(&(sf->weights[i]),cv->weights,j);
+	    }
+
+	}
+
+	/* --- set sf structure	---*/
+
+	sf->u_order       = cv->order;
+	sf->v_order       = 2;
+	sf->u_periodic    = FALSE;
+	sf->v_periodic    = FALSE;
+	sf->u_non_uniform = cv->non_uniform;
+	sf->v_non_uniform = TRUE;
+	sf->u_num_poles   = cv->num_poles;
+	sf->v_num_poles   = n_pts;
+	sf->u_num_knots   = cv->num_knots;
+	sf->v_num_knots   = n_pts + 2;
+
+	j = cv->num_knots;
+	setdbl(sf->u_knots,cv->knots,j);
+
+	a = n_pts - 1;
+
+	for(i=1;i<n_pts;i=i+1) sf->v_knots[i+1] = i / a;
+	sf->v_knots[0]       = 0.0;
+	sf->v_knots[1]       = 0.0;
+	sf->v_knots[n_pts]   = 1.0;
+	sf->v_knots[n_pts+1] = 1.0;
+
+	sf->rational       = cv->rational;
+	sf->planar         = FALSE;
+	sf->u_phy_closed   = cv->phy_closed;
+	sf->v_phy_closed   = FALSE;
+	sf->pos_orient	   = TRUE;
+	sf->on_off         = FALSE;
+	sf->num_boundaries = 0; 
+
+	*rc = BSSUCC;
+	return;
+}
+/*=========================================================================*/
+setdbl( t_to, t_from, num )
+/*      O   , I     , I							   */
+/*=========================================================================*/
+
+
+IGRdouble *t_to;
+IGRdouble *t_from;
+IGRint	  num;
+
+{
+
+IGRint	i;
+
+	for(i=0;i<num;i=i+1) t_to[i] = t_from[i];
+
+}

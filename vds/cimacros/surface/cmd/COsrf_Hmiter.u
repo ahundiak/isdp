@@ -1,0 +1,188 @@
+/* $Id: COsrf_Hmiter.u,v 1.1.1.1 2001/01/04 21:07:21 cvs Exp $  */
+
+/* --------------------------------------------------------------------
+ * I/VDS
+ *
+ * File:	vds/cimacros/surface/cmd / COsrf_Hmiter.u
+ *
+ * Description:
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ *	$Log: COsrf_Hmiter.u,v $
+ *	Revision 1.1.1.1  2001/01/04 21:07:21  cvs
+ *	Initial import to CVS
+ *	
+# Revision 1.1  1998/04/29  16:27:20  pinnacle
+# VDS 2.5.1
+#
+# Revision 1.1  1997/05/08  13:20:44  pinnacle
+# New project VDS 250
+#
+# Revision 1.2  1997/01/03  14:38:30  pinnacle
+# Replaced: cimacros/surface/cmd/COsrf_Hmiter.u for:  by mdong for vds.241
+#
+# Revision 1.1  1996/07/19  20:33:52  pinnacle
+# Create VDS 241 project
+#
+# Revision 1.3  1996/05/28  12:18:22  pinnacle
+# Replaced: cimacros/surface/cmd/COsrf_Hmiter.u for:  by ksundar for vds.240
+#
+# Revision 1.2  1996/03/15  23:18:48  pinnacle
+# Replaced: cimacros/surface/cmd/COsrf_Hmiter.u for:  by tlbriggs for vds.240
+#
+# Revision 1.1  1994/11/14  22:42:32  pinnacle
+# Create vds.240 from vds.232
+#
+# Revision 1.1  1994/11/08  16:07:00  pinnacle
+# create vds.232
+#
+ *
+ * History:
+ *	MM/DD/YY	AUTHOR		DESCRIPTION
+ *
+ * -------------------------------------------------------------------*/
+
+/*
+	VDS 2.1 - PPM macro library
+	Description : Associative Place Mitered Elbow by Curve and Section
+
+	History :
+	92/12/15 alc Update prompts
+ */
+   
+#include "ciminimum.h"
+#include "cimacros.h"
+#include "msdef.h"
+#include "ciexec.h"
+
+GRobj 			ci_mac_bib_FileId;
+
+struct GRmd_env		MOD_ENV;
+struct GRid 		TEMP[6];
+GRobj 			MAC1;
+int 			suc,i;
+int			num_point;
+char			loc_mes[80],loc_prompt[80], exp_prompt[80],txt[40];
+char			exp_class[40];
+double			exp_default;
+
+extern ASmake_source_from_env();
+
+main()
+{
+
+
+   while(1){
+
+step1:
+       strcpy(loc_prompt,"Enter expression number of miter");
+       strcpy(exp_prompt,"Enter number of miter");
+       exp_default = 2.0;
+       push (char *)&suc,loc_mes,loc_prompt,exp_prompt,exp_default,
+            (char *)&TEMP[1];
+       ci$run(  file_id  = &ci_mac_bib_FileId,
+                entry    = "loc_exp" );
+       if( suc != 1 ) exit;
+ 
+       strcpy(loc_prompt,"Enter bend radius of the mitered sections");
+       strcpy(exp_prompt,"Enter bend radius of the mitered sections");
+       exp_default = 1.0;
+       push (char *)&suc,loc_mes,loc_prompt,exp_prompt,exp_default,
+            (char *)&TEMP[0];
+       ci$run(  file_id  = &ci_mac_bib_FileId,
+                entry    = "loc_exp" );
+       if( suc != 1 ) goto step1;
+
+
+       if(!ci$locate( prompt       = "Identify section",
+    		      obj          = &(TEMP[2].objid),
+                      osnum        = &(TEMP[2].osnum),
+		      classes      = "GRcurve",
+                      properties   = LC_LC_ONLY | LC_DP_ONLY | LC_RW,
+	              owner_action = LC_RIGID_COMP
+                                     | LC_RIGID_OWNER | LC_FLEX_COMP
+                                     | LC_FLEX_OWNER  | LC_REF_OBJECTS,
+                      md_env     = &MOD_ENV )) goto step1;
+
+		     ASmake_source_from_env( &TEMP[2],&MOD_ENV,&TEMP[2]);	
+
+
+       while(1){
+
+step2:
+
+       	   num_point = 0;
+
+           while(num_point < 3){
+       		strcpy(txt,"Identify cpt");
+		if( num_point == 0 ) strcat(txt,"1");
+		if( num_point == 1 ) strcat(txt,"0");
+		if( num_point == 2 ) strcat(txt,"2");
+        	if(!ci$locate( prompt       = txt,
+	        	       obj          = &(TEMP[num_point+3].objid),
+                       	       osnum        = &(TEMP[num_point+3].osnum),
+		       	       classes      = "GRpoint",
+                               properties   = LC_LC_ONLY | LC_DP_ONLY | LC_RW,
+	                       owner_action = LC_RIGID_COMP
+                                              | LC_RIGID_OWNER | LC_FLEX_COMP
+                                              | LC_FLEX_OWNER  | LC_REF_OBJECTS,
+                               md_env     = &MOD_ENV )) goto step1;
+		ASmake_source_from_env( &TEMP[num_point+3],
+					&MOD_ENV,&TEMP[num_point+3]);	
+
+		status("");
+        	num_point = num_point + 1;
+           }
+
+           if( num_point < 3){
+		status(" bad number of connect points ");
+		goto step2;
+           }
+
+   	   ci$get_module_info(md_env = &MOD_ENV);
+
+      	   MAC1 = NULL_OBJID;
+
+      	   ci$send(msg = message nci_macro.init(     &suc,
+						     0,
+						     "srf_Hmiter",
+						     6,
+						     TEMP,
+						     NULL,
+						     &MOD_ENV ),
+	            	targetid = MAC1,
+			targetos = MOD_ENV.md_id.osnum );
+
+      	   if( suc == 0 ){
+		write("placement of nci_macro \"srf_Hmiter\" failed\n");
+		status("placement of nci_macro \"srf_Hmiter\" failed");
+      		ci$send(msg = message Root.delete(0),
+			targetid = MAC1,
+			targetos = MOD_ENV.md_id.osnum );
+      	   }
+       }
+
+  }
+}
+
+/*==========================================================================*/
+init(){
+
+    	strcpy(loc_mes,"<Assoc> Place Mitered Elbow by Section and Points");
+
+ 	ci$load ( file_name = "ci_mac_bib.u",
+		  load      = LOAD,
+	  	  file_id   = &ci_mac_bib_FileId,
+		  stat      = &suc );
+	if( suc != CI_S_SUCCESS ) exit;
+}
+
+wakeup(){
+	message(loc_mes);
+}
+/*==========================================================================*/
+
+
+

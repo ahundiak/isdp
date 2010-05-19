@@ -1,0 +1,334 @@
+/* $Id: COcrv_corner.u,v 1.1.1.1 2001/01/04 21:07:22 cvs Exp $  */
+
+/* --------------------------------------------------------------------
+ * I/VDS
+ *
+ * File:	vds/cimacros/wireframe/cmd / COcrv_corner.u
+ *
+ * Description:
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ *	$Log: COcrv_corner.u,v $
+ *	Revision 1.1.1.1  2001/01/04 21:07:22  cvs
+ *	Initial import to CVS
+ *	
+# Revision 1.1  1998/04/29  16:27:20  pinnacle
+# VDS 2.5.1
+#
+# Revision 1.1  1997/05/08  13:20:44  pinnacle
+# New project VDS 250
+#
+# Revision 1.1  1996/07/19  20:33:52  pinnacle
+# Create VDS 241 project
+#
+# Revision 1.1  1994/11/14  22:42:32  pinnacle
+# Create vds.240 from vds.232
+#
+# Revision 1.1  1994/11/08  16:07:00  pinnacle
+# create vds.232
+#
+ *
+ * History:
+ *	MM/DD/YY	AUTHOR		DESCRIPTION
+ *
+ * -------------------------------------------------------------------*/
+
+#include 	"stdio.h"
+#include 	"ciminimum.h"
+#include 	"cimacros.h"
+#include 	"cieveryone.h"
+#include 	"EMSmsgdef.h"
+#include 	"msdef.h"
+#include 	"ciexec.h"
+
+	GRobj 				ci_mac_bib_FileId;
+	IGRboolean			resp_exp;
+	IGRchar				loc_mes[81];
+	IGRchar				mess[132];
+	IGRint				msg, i, suc;
+	GRobj				MAC1;
+	struct 		GRid		TEMP[8];
+	struct 		GRmd_env	MOD_ENV;
+	IGRboolean			flag_rad1, flag_rad2;
+	IGRboolean			flag_corn, flag_trim, flag_rate;
+	IGRdouble			def_rad1, def_rad2;
+	IGRdouble			def_corn, def_trim, def_rate;
+	struct		OM_sd_classlist	classlist;
+	OMuword				classid[2], ln_cl, cs_cl;
+	IGRint				num_temp;
+
+	extern 				ASmake_source_from_env();
+
+main()
+{
+
+	IGRchar				loc_prompt[81];
+	IGRboolean			modify;
+	IGRdouble			value;
+
+
+	/* Generation of expressions */
+	flag_rad1 = FALSE;		def_rad1 = 0.0;
+	flag_rad2 = FALSE;		def_rad2 = 0.0;
+	flag_corn = FALSE;		def_corn = 0.0;
+	flag_trim = FALSE;		def_trim = 3.0;
+	flag_rate = FALSE;		def_rate = 0.0;
+
+	ask_expressions ( &flag_rad1, &flag_rad2,
+			  &flag_corn, &flag_trim, &flag_rate);
+
+
+while(TRUE) {
+
+	strcpy ( loc_prompt,
+		 "Locate start curve, reject to modify expressions");
+	modify = FALSE;
+
+step0:	
+	ci$locate ( prompt       = loc_prompt,
+	       	    obj	         = &(TEMP[0]).objid,
+	       	    osnum        = &(TEMP[0]).osnum,
+		    classes      = "GRcurve",
+		    properties   =  LC_LC_ONLY | LC_DP_ONLY | LC_RW,
+                    owner_action =  LC_RIGID_COMP
+                       		  | LC_RIGID_OWNER | LC_FLEX_COMP
+                       		  | LC_FLEX_OWNER  ,
+	            response     = &M_response,
+                    md_env       = &MOD_ENV );
+
+	if (M_response != EX_DATA) {
+		if (modify == FALSE) {
+			ask_expressions ( &flag_rad1, &flag_rad2,
+			  		  &flag_corn, &flag_trim, &flag_rate);
+			strcpy ( loc_prompt, "Locate start curve");
+			modify = TRUE;
+		}
+		goto step0;
+	}
+
+step1:	
+	ci$locate ( prompt       = "Locate end curve",
+	       	    obj	         = &(TEMP[1]).objid,
+	       	    osnum        = &(TEMP[1]).osnum,
+		    classes      = "GRcurve",
+		    properties   =  LC_LC_ONLY | LC_DP_ONLY | LC_RW,
+                    owner_action =  LC_RIGID_COMP
+                       		  | LC_RIGID_OWNER | LC_FLEX_COMP
+                       		  | LC_FLEX_OWNER  ,
+	            response     = &M_response,
+                    md_env       = &MOD_ENV );
+
+	if (M_response != EX_DATA) goto step1;
+
+	if (  (TEMP[1].objid == TEMP[0].objid)
+	   && (TEMP[1].osnum == TEMP[0].osnum) ) {
+		printf ( "End curve must be different from start curve\n");
+		goto step1;
+	}
+
+step3:	
+	ci$locate ( prompt       = "Locate coordinate system or direction line / <MOVE_ON>",
+	       	    obj	         = &(TEMP[7]).objid,
+	       	    osnum        = &(TEMP[7]).osnum,
+		    eligible_classes = &classlist,
+		    properties   =  LC_LC_ONLY | LC_DP_ONLY | LC_RW,
+                    owner_action =  LC_RIGID_COMP
+                       		  | LC_RIGID_OWNER | LC_FLEX_COMP
+                       		  | LC_FLEX_OWNER  ,
+	            response     = &M_response,
+                    md_env       = &MOD_ENV );
+
+	if (M_response != EX_DATA) num_temp = 7;
+	else			   num_temp = 8;
+
+	#ifdef DEBUG
+	for (i=0;i<num_temp;i=i+1) {
+		if ( (i >= 2) && (i <= 6) ) {
+			give_value ( i, &value);
+			printf( "TEMP[%d] : (%d/%d) = %f\n",
+				i, TEMP[i].objid, TEMP[i].osnum, value);
+		}
+		else {
+			printf( "TEMP[%d] : (%d/%d)\n",
+				i, TEMP[i].objid, TEMP[i].osnum);
+		}
+	}
+	#endif
+
+	ASmake_source_from_env( &TEMP[0], &MOD_ENV, &TEMP[0] );
+	ASmake_source_from_env( &TEMP[1], &MOD_ENV, &TEMP[1] );
+	if (num_temp == 8)
+		ASmake_source_from_env( &TEMP[7], &MOD_ENV, &TEMP[7] );
+
+
+	MAC1 = NULL_OBJID;
+	ci$send ( msg     = message nci_macro.init( 
+				     &msg,
+				     0,
+				     "crv_corner",
+				     num_temp,
+				     TEMP,
+				     NULL,
+				     &MOD_ENV ),
+	      	  targetid = MAC1,
+		  targetos = MOD_ENV.md_id.osnum );
+
+	if (msg == 0) {
+		printf("placement of nci_macro \"crv_corner\" failed\n");
+		status("placement of nci_macro \"crv_corner\" failed");
+      		ci$send ( msg      = message Root.delete(0),
+	      		  targetid = MAC1,
+	      		  targetos = MOD_ENV.md_id.osnum );
+	}
+
+
+}/* --- end of first while --- */
+
+}
+/*==========================================================================*/
+init()
+{
+ 	strcpy (loc_mes,"<Assoc> Place Curve Corner");
+
+        om$get_classid ( classname = "GR3dlineseg", p_classid = &ln_cl);
+        om$get_classid ( classname = "GRlbsys", p_classid = &cs_cl);
+
+        classid[0] = ln_cl;
+        classid[1] = cs_cl;
+        classlist.w_count = 2;
+        classlist.w_flags = OM_CLST_subclass;
+        classlist.p_classes = classid;
+
+ 	ci$load ( file_name = "ci_mac_bib.u",
+		  load      = LOAD,
+	  	  file_id   = &ci_mac_bib_FileId,
+		  stat      = &suc );
+	if (suc != CI_S_SUCCESS) exit;
+}
+/*==========================================================================*/
+wakeup()
+{
+	message(loc_mes);
+}
+/*==========================================================================*/
+ask_exp ( exp_val, exp_flag, loc_prompt, exp_prompt, num_template)
+
+	IGRdouble	exp_val;
+	IGRboolean	*exp_flag;
+	IGRchar		*loc_prompt;
+	IGRchar		*exp_prompt;
+	IGRint		num_template;
+
+{
+	if (*exp_flag == FALSE) cre_def_exp( exp_val, exp_flag, num_template);
+       	push (char *) &suc, loc_mes, loc_prompt, exp_prompt, exp_val,
+             (char *)&TEMP[num_template];
+       	ci$run ( file_id   = &ci_mac_bib_FileId,
+ 	         entry     = "loc_exp" );
+       	if (suc != 1) 	resp_exp = FALSE;
+	else		resp_exp = TRUE;
+}
+/*==========================================================================*/
+cre_def_exp ( exp_def, exp_flag, num_template)
+
+	IGRdouble	exp_def;
+	IGRboolean	*exp_flag;
+	IGRint		num_template;
+
+{
+       	push (char *)&suc, (IGRdouble)exp_def, (char *)&TEMP[num_template];
+       	ci$run ( file_id = &ci_mac_bib_FileId,
+         	 entry   = "CreDefUnExp" );
+	if (suc != MSSUCC) exit;
+
+	*exp_flag = TRUE;
+	resp_exp = TRUE;
+}
+/*==========================================================================*/
+ask_expressions ( flag_rad1, flag_rad2, flag_corn, flag_trim, flag_rate)
+
+	IGRboolean	*flag_rad1;
+	IGRboolean	*flag_rad2;
+	IGRboolean	*flag_corn;
+	IGRboolean	*flag_trim;
+	IGRboolean	*flag_rate;
+
+{
+	IGRdouble	radius;
+	IGRdouble	corner;
+	
+	/* Generation of expressions */
+     	resp_exp = FALSE;
+	ask_exp ( def_rad1, flag_rad1,
+		  "Enter expression for radius or reject for full definition",
+		  "Enter radius value",
+		  2);
+	if (resp_exp == FALSE) {
+
+		/* Modify corner type */
+     		resp_exp = FALSE;
+		ask_exp ( def_corn, flag_corn,
+		  	  "Enter expression for corner type (default = 0)",
+		  	  "Enter corner type value",
+		  	  4);
+		give_value ( 4, &corner);
+
+		if (corner == def_corn) {
+			/* Ask for radius */
+			ask_exp ( def_rad1, flag_rad1,
+		  		  "Enter expression for radius",
+		  		  "Enter radius value",
+		  		  2);
+
+			/* Set radius in final radius */
+			give_value ( 2, &radius);
+			cre_def_exp ( radius, flag_rad2, 3);
+		}
+		else {
+			/* Ask for start radius */
+			ask_exp ( def_rad1, flag_rad1,
+		  		  "Enter expression for start radius",
+		  		  "Enter radius value",
+		  		  2);
+
+			/* Ask for final radius */
+			ask_exp ( def_rad2, flag_rad2,
+		  		  "Enter expression for final radius",
+		  		  "Enter radius value",
+		  		  3);
+		}
+
+		/* Ask for trim option */
+		ask_exp ( def_trim, flag_trim,
+	  		  "Enter expression for trim option (default 3)",
+	  		  "Enter trim option value",
+	  		  5);
+
+		/* Ask for ratio option */
+		ask_exp ( def_rate, flag_rate,
+	  		  "Enter expression for ratio option (default 0)",
+	  		  "Enter ratio option value",
+	  		  6);
+	}
+	else {
+		give_value ( 2, &radius);
+		cre_def_exp ( radius,   flag_rad2, 3);
+		cre_def_exp ( def_corn, flag_corn, 4);
+		cre_def_exp ( def_trim, flag_trim, 5);
+		cre_def_exp ( def_rate, flag_rate, 6);
+	}
+}
+/*==========================================================================*/
+give_value ( number, value)
+
+	IGRint		number;
+	IGRdouble	*value;
+
+{
+	ci$send ( msg      = message expression.NDgive_value (value),
+	  	  targetid = TEMP[number].objid,
+	  	  targetos = TEMP[number].osnum );
+}
+/*==========================================================================*/

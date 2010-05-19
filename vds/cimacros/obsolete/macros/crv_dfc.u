@@ -1,0 +1,728 @@
+/* $Id: crv_dfc.u,v 1.1.1.1 2001/01/04 21:07:20 cvs Exp $  */
+
+/* --------------------------------------------------------------------
+ * I/VDS
+ *
+ * File:	vds/cimacros/obsolete/macros / crv_dfc.u
+ *
+ * Description:
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ *	$Log: crv_dfc.u,v $
+ *	Revision 1.1.1.1  2001/01/04 21:07:20  cvs
+ *	Initial import to CVS
+ *	
+# Revision 1.1  1998/04/29  16:27:20  pinnacle
+# VDS 2.5.1
+#
+# Revision 1.1  1997/05/08  13:20:44  pinnacle
+# New project VDS 250
+#
+# Revision 1.1  1996/07/19  20:33:52  pinnacle
+# Create VDS 241 project
+#
+# Revision 1.1  1994/11/14  22:42:32  pinnacle
+# Create vds.240 from vds.232
+#
+# Revision 1.1  1994/11/08  16:07:00  pinnacle
+# create vds.232
+#
+ *
+ * History:
+ *	MM/DD/YY	AUTHOR		DESCRIPTION
+ *
+ * -------------------------------------------------------------------*/
+
+/*
+	 VDS 2.0 - PPM macro library - 92/07/09 (alc)
+	(THIS MACRO IS OBSOLETE - to be removed)
+ */
+   
+#include "cieveryone.h"
+#include "cimacros.h"
+#include "ci_mac_def.h"
+#include "macro.h"
+#include "bserr.h"
+#include "macro.h"
+#include "msdef.h"
+
+#define MAX_TEMP		100
+#define MAX_CHA_TEMP		10
+#define EPS			1.0E-6 
+
+struct GRid	CI_MACRO_ID;
+
+struct var
+{
+  int    num_pts;
+  int    beg;
+  int    end;
+}*me;
+
+IGRlong			size;
+IGRboolean		periodic, pks[3];
+IGRlong		        stat, msg;
+IGRshort		order, mat_type;
+IGRdouble		matrix[16], u, u_max, dist_cou, max_dist;
+IGRint			number_of_points, j_max, degre, num_knots, num_seg;
+IGRint			ind;
+struct GRsymbology	symbology;
+IGRdouble 	 	pt1[3*(MAX_TEMP+2)],beg_tan[3],end_tan[3], pj_pnt[3];
+IGRdouble		fromtopt[6];
+IGRint      		num_crv,m;
+IGRint		        i, j, k, npts;
+GRobj 			ci_mac_def1;
+IGRchar	 		*temp_names[MAX_TEMP], *feet_names[1];
+IGRint			temp_types[MAX_TEMP];
+
+IGRchar	 		txt[MAX_CHA_TEMP],buff[MAX_TEMP*MAX_CHA_TEMP];
+IGRchar			stati[80];
+
+
+IGRshort		dirfit;
+IGRint			*span, code, maxind;
+IGRdouble		beg_w1, end_w1, beg_w2, end_w2, 
+			beg_crv[3], end_crv[3], tolerance, avgerr, maxerr,
+			*weights, *pars, *knots;
+
+struct GRvg_construct	cst;
+struct GRmd_env		MOD_ENV;
+struct IGRdisplay	dis;
+struct GRid		COMP, CUV, GCV;
+struct IGRbsp_curve     *fit_crv, *str;
+struct ret_struct	temp_rts;
+
+
+
+
+extern char 		*malloc();
+extern int 		init_cnst_list(),
+			free(),
+			BSdirfitcv(),
+			BSmdstptcv(),
+			BSfindspn(),
+			sprintf();
+extern			ASsuper_construct();
+extern                  GRabsg_del_by_objid();
+extern			BSmkvec();
+extern IGRdouble	BSdotp();
+
+extern			BSfitratcv(), BSktsprsfft(), BSkts_f_app(),
+			BSkts_f_fit();
+extern	IGRboolean	BSfreecv();
+
+/* ========================================================================= */
+/* the main function is the one implementing the definition creation
+/* ========================================================================= */
+
+main ()
+{
+
+  temp_names[0] = "exp";
+  temp_names[1] = "string";
+  temp_names[2] = "start_tgt";  
+  temp_names[3] = "end_tgt";
+
+  temp_types[0] = parameter_generic | double_type;
+  temp_types[1] = curve_generic;
+  temp_types[2] = point_generic | line_generic;
+  temp_types[3] = point_generic | line_generic;
+
+  for (i=4; i<MAX_TEMP; i=i+1){
+	j = i * MAX_CHA_TEMP;
+	sprintf(&buff[j],"pnt%d",(i-4));
+	temp_names[i] = &buff[j];
+	temp_types[i] = point_generic;
+  }
+  
+  
+  feet_names[0] = "frame_curve";
+  ci_mac_def1   = NULL_OBJID;
+
+  ac$cimacdef( 	cimacdef =  ci_mac_def1,
+//		prop = ACvariable_template | ACwith_instances,
+		prop = ACvariable_template,
+		status 	 = &stat, 	
+		name = "crv_dfc",
+//		int_size = sizeof(struct var),
+              	temp_num = MAX_TEMP, 	
+		temp_names = temp_names,
+		temp_types = temp_types,
+	      	extern_feet_num = 1, 	
+		extern_feet_names = feet_names );
+
+}
+
+/* ========================================================================= */
+
+place ()
+{
+  	construct_comp();
+   
+	if( COMP.objid == NULL_OBJID ) return(0);
+
+  	ci$send( msg = message  ci_macro.set_all_extern_feet
+				(&stat, 1, &COMP, &MOD_ENV ),
+	   	 targetid = CI_MACRO_ID.objid,
+	   	 targetos = CI_MACRO_ID.osnum);
+
+  	return(1);
+}
+
+
+/* ========================================================================= */
+
+compute ()
+{
+  	construct_comp();
+
+	if( COMP.objid == NULL_OBJID ) return(0);
+
+  	ci$send( msg = message  ci_macro.set_all_extern_feet
+				(&stat, 1, &COMP, &MOD_ENV ),
+	   	 targetid = CI_MACRO_ID.objid,
+	   	 targetos = CI_MACRO_ID.osnum);
+
+  	return(1);
+}
+
+/* ========================================================================= */
+
+construct_comp()
+{
+
+	COMP.objid  = NULL_OBJID;
+	COMP.osnum  = MOD_ENV.md_id.osnum;
+	str         = NULL;
+	knots = NULL;
+	span 	    = NULL;
+	weights	    = NULL;
+	pars	    = NULL;
+	fit_crv	    = NULL;
+/*--------------------------------------------------------------------------*/
+/*----------------    get the order	        ----------------------------*/
+/*--------------------------------------------------------------------------*/
+
+
+  	msg = ci$send( msg = message  ACcpx.ACfind_exp_temp_struct(
+				&stat, 0, (IGRchar *)&temp_rts,&MOD_ENV ),
+           	 targetid = CI_MACRO_ID.objid,
+           	 targetos = CI_MACRO_ID.osnum );
+
+
+  	if( !(stat&msg&1) ){
+		#ifdef DEBUG
+		write(" bad expression for the order\n ");
+		#endif
+		goto wrapup;
+	}
+  	order = temp_rts.var.root_pm_st.value;
+
+/*--------------------------------------------------------------------------*/
+/*----------------    get the linestring to interpolate    -----------------*/
+/*--------------------------------------------------------------------------*/
+
+
+
+   	msg = ci$send( msg = message  ACcpx.ACfind_exp_temp_obj(&stat,1,&CUV),
+        	       targetid = CI_MACRO_ID.objid,
+             	       targetos = CI_MACRO_ID.osnum );
+   	if( !(stat&msg&1) ) {
+		#ifdef DEBUG
+			write(" error in retrieving linestring\n");
+		#endif
+		goto wrapup;
+	}
+
+   	msg = ci$send( msg      = message NDmacro.ACreturn_foot(	
+						&stat ,
+						"",
+						&GCV, 
+						&mat_type, 
+					        matrix ),
+		  targetid = CUV.objid,
+	          targetos = CUV.osnum );
+
+	if( !(stat&msg&1) ){
+		#ifdef DEBUG
+		write(" bad element\n " );
+		#endif
+		goto wrapup;
+  	}
+
+
+	GRabsg_del_by_objid( &GCV.objid, &GCV.osnum );
+
+  	ci$send( msg = message GRvg.GRgetsize( &msg,
+			     		       &mat_type,
+			     		       matrix,
+			     		       &size ),
+	  	 targetid = GCV.objid,
+	  	 targetos = GCV.osnum );
+
+
+	str = (struct IGRbsp_curve *) malloc(size);
+
+  	ci$send( msg = message GRvg.GRgetgeom( &msg,
+			     		       &mat_type,
+			     		       matrix,
+			     		       str ),
+	  	 targetid = GCV.objid,
+	  	 targetos = GCV.osnum );
+
+	k = 3 * ( str->num_poles - 1);
+	npts = 3 * (me->num_pts + 1);
+   	for(j=0; j<3; j=j+1){
+     		pt1[j]      = str->poles[j];
+     		pt1[npts+j] = str->poles[k+j];
+	}
+
+
+/*--------------------------------------------------------------------------*/
+/*----------------    get the start tangent            ---------------------*/
+/*--------------------------------------------------------------------------*/
+	m = 2;
+
+  	if (me->beg == 1 ){
+  		msg = ci$send( msg = message  ACcpx.ACfind_exp_temp_struct(
+				&stat, 2, (IGRchar *)&temp_rts,&MOD_ENV ),
+           	 	 targetid = CI_MACRO_ID.objid,
+           	 	 targetos = CI_MACRO_ID.osnum );
+  		if( !(stat&msg&1) ){
+			#ifdef DEBUG
+				write(" error in start tangent\n ");
+			#endif
+			goto wrapup;
+		}
+		
+		set_tgt( &msg, (IGRint)1, str, &temp_rts, beg_tan );
+		if( msg != BSSUCC ) goto wrapup;
+		#ifdef DEBUG
+		   write("beg_tan =",beg_tan[0],beg_tan[1],beg_tan[2],"\n");
+		#endif
+		m = m + 1;
+	}
+	else { 
+		beg_tan[0] = 0.0 ; beg_tan[1] = 0.0 ; beg_tan[2] = 0.0;
+	}
+
+/*--------------------------------------------------------------------------*/
+/*----------------    get the end tangent              ---------------------*/
+/*--------------------------------------------------------------------------*/
+
+  	if(me->end == 1 ){
+
+  		msg = ci$send( msg = message  ACcpx.ACfind_exp_temp_struct(
+				&stat, m, (IGRchar *)&temp_rts,&MOD_ENV ),
+           	 	 targetid = CI_MACRO_ID.objid,
+           	 	 targetos = CI_MACRO_ID.osnum );
+  		if( !(stat&msg&1) ){
+			#ifdef DEBUG
+				write(" error in end tangent\n ");
+			#endif
+			goto wrapup;
+		}
+		
+		set_tgt( &msg, (IGRint)2, str, &temp_rts, end_tan );
+		if( msg != BSSUCC ) goto wrapup;
+		#ifdef DEBUG
+		   write("end_tan =",end_tan[0],end_tan[1],end_tan[2],"\n");
+		#endif
+		m = m + 1;
+	}
+	else{ 
+		end_tan[0] = 0.0 ; end_tan[1] = 0.0 ; end_tan[2] = 0.0;
+	}
+
+/*--------------------------------------------------------------------------*/
+/*----------------    get the node points              ---------------------*/
+/*--------------------------------------------------------------------------*/
+
+
+	npts = 3;
+
+  	for(k=0; k<me->num_pts; k=k+1)
+  	{
+  		msg = ci$send( msg = message  ACcpx.ACfind_exp_temp_struct(
+				&stat, (m+k), (IGRchar *)&temp_rts,&MOD_ENV ),
+           	 	 targetid = CI_MACRO_ID.objid,
+           	 	 targetos = CI_MACRO_ID.osnum );
+  		if( !(stat&msg&1) ){
+			status(" bad pole ");
+			goto wrapup;
+		}
+
+   		for(j=0;j<3;j=j+1)pt1[npts+j] = temp_rts.var.point_st.pt[j];
+
+     		npts = npts + 3;
+	}
+
+
+	k = 3*(me->num_pts+2);
+	#ifdef DEBUG
+	   for(j=0; j<k; j=j+3)
+	   write(" pt1[",(j/3),"]=",pt1[j],pt1[j+1],pt1[j+2],"\n");
+	#endif
+
+
+
+/*--------------------------------------------------------------------------*/
+/*-------  evaluate the interpolation                  ---------------------*/
+/*--------------------------------------------------------------------------*/
+
+	degre = order -1;
+	number_of_points = me->num_pts + 2;
+	periodic = FALSE;
+	code = 2;
+	if( (me->beg == 1) || (me->end == 1) ) code = 2;
+
+	num_knots   = number_of_points + 2 * order-1;
+	num_seg     = number_of_points - 1;
+
+	span  = (IGRint *) malloc( number_of_points * sizeof(IGRint) );
+	if( span == NULL ) goto wrapup;
+	pars  = (IGRdouble *) malloc( number_of_points * sizeof(IGRdouble) );
+	if( pars == NULL ) goto wrapup;
+  	knots = (IGRdouble *) malloc(num_knots * sizeof(IGRdouble) );
+	if( knots == NULL ) goto wrapup;
+
+	u_max = number_of_points - 1;	
+
+	for(j=1;j<number_of_points;j=j+1) pars[j] = (IGRdouble)j / u_max;
+
+	pars[0]       		          = 0.0;
+	pars[number_of_points - 1]        = 1.0;
+
+
+
+	pks[0] = TRUE;
+	pks[1] = FALSE;
+	pks[2] = FALSE;
+	BSktsprsfft( number_of_points,
+		     pt1,
+		     (IGRdouble *)NULL,
+		     (IGRshort)order,
+		     (IGRboolean)periodic,
+		     (IGRint)num_seg,
+		     pks,
+		     (IGRdouble *)pars,
+		     &num_knots,
+		     (IGRdouble *)knots,
+		     (IGRint *)&span[0],
+		     &msg );	
+  	if( msg != BSSUCC ){
+		#ifdef DEBUG
+			write(" error in  BSktsprsfft\n");
+		#endif
+		goto wrapup;
+	}
+/*
+
+	BSkts_f_fit( order,
+		     periodic,
+		     (IGRint) order,
+		     tolerance,
+		     num_seg,
+		     number_of_points,
+		     pars,
+		     &num_knots,
+		     knots,
+		     span,
+		     &msg);
+
+*/
+
+	beg_w1 = 1.0;
+	end_w1 = 1.0;
+	beg_w2 = 1.0;
+	beg_w2 = 1.0;
+	dirfit = 1;
+	tolerance = 0.1;
+
+	#ifdef DEBUG
+
+	     for(j=0; j<number_of_points; j=j+1)
+		write("pars[",j,"]=",pars[j],"\n");
+	     for(j=0; j<number_of_points; j=j+1)
+		write(" span[",j,"]=",span[j],"\n");
+	     for(j=0; j<num_knots; j=j+1)
+		     write("knots[",j,"]=",knots[j],"\n");
+	      write("me->beg=",me->beg,"me->end=",me->end,"code=",code,"\n");
+	      write("dirfit=",dirfit,"num_knots =",num_knots,"\n");
+	      write("enter BSfitratcv\n");
+	#endif
+
+
+  	BSfitratcv(
+			number_of_points,
+			pt1,
+			weights,
+			pars,
+			span,
+			(IGRshort)order,
+			num_knots,
+			knots,
+			(IGRboolean)periodic,
+			(IGRint)code,
+			(IGRint)me->beg,
+			(IGRint)me->end,
+			beg_tan,
+			end_tan,
+			beg_crv,
+			end_crv,
+			beg_w1,
+			end_w1,
+			beg_w2,
+			beg_w2,
+			dirfit,
+			tolerance,
+			&fit_crv,
+			&avgerr,
+			&maxerr,
+			&maxind,
+			pj_pnt,
+			&msg  );
+
+  	if( msg != BSSUCC ){
+		#ifdef DEBUG
+			write(" error in  BSfitratcv\n");
+		#endif
+		goto wrapup;
+	}
+
+
+	k = 3 * ( str->num_poles - 2);
+	max_dist = 0;
+        ind = 3;
+	for(j=3;j<=k;j=j+3){
+
+		#ifdef DEBUG
+			write("pole[",j/3,"]=",str->poles[j],str->poles[j+1],
+					       str->poles[j+2],"\n");
+			write("pt1[",ind/3,"]=",pt1[ind],pt1[ind+1], 
+						pt1[ind+2],"\n");
+                #endif
+
+		if( ( fabs( (str->poles[j] - pt1[ind]) )     <= EPS ) &&
+		    ( fabs( (str->poles[j+1] - pt1[ind+1]) ) <= EPS ) &&
+		    ( fabs( (str->poles[j+2] - pt1[ind+2]) ) <= EPS ) ){
+			ind = ind + 3;
+			continue;
+		}
+
+		#ifdef DEBUG
+			write("j=",j,"ind=",ind,"\n");
+		#endif
+
+   		BSmdstptcv(fit_crv,&str->poles[j],&u,pj_pnt, 
+							&dist_cou ,&msg);
+   		if( msg != BSSUCC ) {
+			#ifdef DEBUG
+			write("error in proj point",(j/3),"\n");
+			#endif
+			goto wrapup;
+		}
+	        if( dist_cou > max_dist ){
+			 max_dist = dist_cou;
+			 for(i=0;i<3;i=i+1){
+				fromtopt[i]   = pj_pnt[i];
+				fromtopt[i+3] = str->poles[j+i];
+			 }
+			 u_max = u;
+			 j_max = j;
+		}
+	}
+
+	strcat(stati,"  maximun error = ");
+  	strcat(stati,ftoa(max_dist));
+        message(stati);
+
+
+
+
+  	init_cnst_list();
+  	get_symb();
+
+  	dis.color		= cnst_list.color;
+  	dis.weight		= cnst_list.weight;
+  	dis.style		= cnst_list.style;
+
+  	cst.msg			= &msg;
+  	cst.properties		= GRIS_LOCATABLE | GRIS_NEW | GRIS_DISPLAYABLE;
+  	cst.display		= &dis;
+  	cst.env_info		= &MOD_ENV;
+  	cst.newflag		= 0;
+  	cst.level		= cnst_list.level;
+  	cst.geometry		= (char *)fit_crv;
+  	cst.class_attr		= 0;
+  	cst.name		= 0;
+
+  	stat = ci$send(msg      = message GRbcsubbc.GRconstruct(&cst),
+                       targetid = COMP.objid,
+	               targetos = COMP.osnum);
+
+  	if( !(stat&1) ) COMP.objid = NULL_OBJID;
+	else display_max_error( &msg, fromtopt, (IGRdouble) 10.0, &cst );
+
+wrapup:
+  	if( knots != NULL )       { free(knots);               knots = NULL; }
+  	if( str         != NULL ) { free(str);                   str = NULL; }
+	if( span 	!= NULL ) { free(span);                 span = NULL; }
+	if( weights	!= NULL ) { free(weights);           weights = NULL; }
+	if( pars	!= NULL ) { free(pars);                 pars = NULL; }
+	if( fit_crv	!= NULL ) { BSfreecv(&stat,fit_crv); fit_crv = NULL; }
+	return;
+}
+
+/*=========================================================================*/
+
+set_tgt( rc, flag, string, ret, tan )
+
+IGRlong			*rc;
+IGRint			flag;    /* flag = 1 - > start tangent */
+struct IGRbsp_curve	*string;
+struct ret_struct 	*ret;
+IGRdouble		*tan;
+
+{
+		
+IGRdouble vdif[3], v1[3];
+IGRint	  ind;
+
+	#ifdef DEBUG
+		write("begin set_tgt\n");
+		write(" flag =",flag,"ret->type=",ret->type,"\n");
+	#endif
+
+	if( flag == 1 ){
+
+	    BSmkvec(rc,vdif,&string->poles[0],&string->poles[3]);
+		
+	    if( ret->type == line_generic ){
+		if( BSdotp(rc,vdif,ret->var.line_st.v0) < 0.0 ){
+			tan[0] = -1.0 * ret->var.line_st.v0[0];
+			tan[1] = -1.0 * ret->var.line_st.v0[1];
+			tan[2] = -1.0 * ret->var.line_st.v0[2];
+		}
+		else{
+			tan[0] = ret->var.line_st.v0[0];
+			tan[1] = ret->var.line_st.v0[1];
+			tan[2] = ret->var.line_st.v0[2];
+		}
+		*rc = BSSUCC; 
+		return;		
+	    }
+	    else if( ret->type == point_generic ){
+
+	    	BSmkvec(rc,tan,string->poles,ret->var.point_st.pt);
+		if( BSdotp(rc,vdif,tan) < 0.0 ){
+			tan[0] = -1.0 * tan[0];
+			tan[1] = -1.0 * tan[1];
+			tan[2] = -1.0 * tan[2];
+		}
+
+		*rc = BSSUCC;
+		return;
+	    }
+	    else goto wraperr;
+	}
+	else if ( flag == 2 ){
+	    ind = 3 * (string->num_poles-1);
+	    BSmkvec(rc,vdif,&string->poles[ind-3],&string->poles[ind]);
+
+	    if( ret->type == line_generic ){
+		if( BSdotp(rc,vdif,ret->var.line_st.v0) < 0.0 ){
+			tan[0] = -1.0 * ret->var.line_st.v0[0];
+			tan[1] = -1.0 * ret->var.line_st.v0[1];
+			tan[2] = -1.0 * ret->var.line_st.v0[2];
+		}
+		else{
+			tan[0] = ret->var.line_st.v0[0];
+			tan[1] = ret->var.line_st.v0[1];
+			tan[2] = ret->var.line_st.v0[2];
+		}
+
+		*rc = BSSUCC;
+		return;		
+	    }
+	    else if( ret->type == point_generic ){
+
+	    	BSmkvec(rc,tan,&string->poles[ind],ret->var.point_st.pt);
+		if( BSdotp(rc,vdif,tan) < 0.0 ){
+			tan[0] = -1.0 * tan[0];
+			tan[1] = -1.0 * tan[1];
+			tan[2] = -1.0 * tan[2];
+		}
+
+		*rc = BSSUCC;		
+		return;
+	    }
+	    else goto wraperr;
+
+	}
+
+wraperr:	*rc = BSFAIL;
+
+}
+
+/*=========================================================================*/
+
+display_max_error( rc, fromtopt, ratio, cst )
+
+IGRlong			*rc;
+IGRdouble		*fromtopt;
+IGRdouble		ratio;
+struct GRvg_construct	*cst;
+
+{
+
+struct IGRpolyline	line;
+IGRint			GRdpmode;
+struct GRid		display_info, lineGRid;
+IGRlong			OMsts, msgmsg;
+IGRint			i;
+IGRdouble		unMratio;
+extern IGRint		GRfindmod();
+
+
+     	GRfindmod(&display_info);
+	GRdpmode = GRbd;
+	lineGRid.objid = NULL_OBJID;
+	lineGRid.osnum = cst->env_info->md_id.osnum;
+	line.num_points = 2;
+	unMratio = 1.0 - ratio;
+
+	for(i=0;i<3;i=i+1) 
+	fromtopt[i+3] = unMratio * fromtopt[i] + ratio * fromtopt[i+3];
+
+        line.points = (IGRdouble *) fromtopt;
+	cst->geometry = (char *)&line;
+
+
+  	OMsts = ci$send( msg       = message GR3dlineseg.GRaltconstruct(cst),
+        	         targetid  = lineGRid.objid,
+ 	                 targetos  = lineGRid.osnum ) ;
+ 	if( !(OMsts&1) ){ *rc = MSFAIL; return; }
+ 
+       	OMsts = ci$send( msg      = message GRgraphics.GRdisplay(
+                 		     &msgmsg,
+				     &cst->env_info->md_env.matrix_type,
+              			     cst->env_info->md_env.matrix,
+				     &GRdpmode, 
+				     &display_info),
+                         targetid = lineGRid.objid,
+		         targetos = lineGRid.osnum );
+  
+ 	if( !(OMsts&msgmsg&1) ){ *rc = MSFAIL; return; }
+
+  	OMsts = ci$send( msg      = message  GRgraphics.GRdelete( 
+							&msgmsg,
+                                                        &cst->env_info ),
+                 targetid = lineGRid.objid,
+		 targetos = lineGRid.osnum );
+ 	if( !(OMsts&msgmsg&1) ){ *rc = MSFAIL; return; }
+
+	*rc = MSSUCC;
+}

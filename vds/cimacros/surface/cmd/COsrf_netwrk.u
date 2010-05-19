@@ -1,0 +1,151 @@
+/* $Id: COsrf_netwrk.u,v 1.1.1.1 2001/01/04 21:07:21 cvs Exp $  */
+
+/* --------------------------------------------------------------------
+ * I/VDS
+ *
+ * File:	vds/cimacros/surface/cmd / COsrf_netwrk.u
+ *
+ * Description:
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ *	$Log: COsrf_netwrk.u,v $
+ *	Revision 1.1.1.1  2001/01/04 21:07:21  cvs
+ *	Initial import to CVS
+ *	
+# Revision 1.1  1998/04/29  16:27:20  pinnacle
+# VDS 2.5.1
+#
+# Revision 1.1  1997/05/08  13:20:44  pinnacle
+# New project VDS 250
+#
+# Revision 1.1  1996/07/19  20:33:52  pinnacle
+# Create VDS 241 project
+#
+# Revision 1.1  1994/11/14  22:42:32  pinnacle
+# Create vds.240 from vds.232
+#
+# Revision 1.1  1994/11/08  16:07:00  pinnacle
+# create vds.232
+#
+ *
+ * History:
+ *	MM/DD/YY	AUTHOR		DESCRIPTION
+ *
+ * -------------------------------------------------------------------*/
+
+/*
+	 VDS 2.0 - PPM macro library - 92/07/09 (alc)
+ */
+   
+#include "ciminimum.h"
+#include "cimacros.h"
+
+struct GRmd_env	MOD_ENV;
+struct GRid 	TEMP[40];
+GRobj 		MAC1;
+int 		msg,num_ent;
+char            txt[20];
+char		loc_mes[80];
+
+struct 
+{
+int	num_u;
+int	num_v;
+}var;
+
+extern ASmake_source_from_env();
+
+main()
+{
+  strcpy(loc_mes,"<Assoc> Surface by Network of Curves");
+  message(loc_mes);
+
+ while(1)
+ {
+top:   	var.num_u = 0;
+	num_ent = 0;
+u_again:
+   while(1)
+   {
+     strcpy(txt,"Identify u curve ");
+     strcat(txt,itoa(var.num_u+1));
+
+        if(!ci$locate( prompt       = txt,
+                       properties   = LC_LC_ONLY | LC_DP_ONLY | LC_RW,
+                       owner_action = LC_RIGID_COMP
+                                      | LC_RIGID_OWNER | LC_FLEX_COMP
+                                      | LC_FLEX_OWNER  | LC_REF_OBJECTS,
+		       classes      = "GRcurve",
+	               obj          = &(TEMP[num_ent].objid),
+                       osnum        = &(TEMP[num_ent].osnum),
+		       md_env       = &MOD_ENV  ))break;
+
+	status("");
+     	ASmake_source_from_env( &TEMP[num_ent],&MOD_ENV,&TEMP[num_ent] );	
+
+	var.num_u = var.num_u + 1;
+   	num_ent = num_ent + 1;
+   }
+   if( num_ent < 2 ) { 
+	status(" You should identify two curves at least ");
+	var.num_u = 0;
+	num_ent = 0;
+	goto u_again;
+   }
+   var.num_v = 0;
+v_again:
+   while(1)
+   {
+     strcpy(txt,"Identify v curve ");
+     strcat(txt,itoa(var.num_v+1));
+
+        if(!ci$locate( prompt       = txt,
+                       properties   = LC_LC_ONLY | LC_DP_ONLY | LC_RW,
+                       owner_action = LC_RIGID_COMP
+                                      | LC_RIGID_OWNER | LC_FLEX_COMP
+                                      | LC_FLEX_OWNER  | LC_REF_OBJECTS,
+		       classes      = "GRcurve",
+	               obj          = &(TEMP[num_ent].objid),
+                       osnum        = &(TEMP[num_ent].osnum),
+		       md_env       = &MOD_ENV  ))break;
+	status("");
+     	ASmake_source_from_env( &TEMP[num_ent],&MOD_ENV,&TEMP[num_ent] );	
+
+	var.num_v = var.num_v + 1;
+   	num_ent = num_ent + 1;
+   }
+   if( var.num_v < 2 ){	
+	status(" You should identify two curves at least ");
+	var.num_v = 0;
+	goto v_again;
+   }
+#ifdef DEBUG
+   write("number of entries=",num_ent,'\n');
+   write("var.num_u=",var.num_u,'\n');
+   write("var.num_v=",var.num_v,'\n');
+#endif
+
+   MAC1 = NULL_OBJID;
+   ci$get_module_info(md_env = &MOD_ENV);
+
+   ci$send(msg  = message nci_macro.init( 
+		&msg,0,"srf_netwrk",num_ent,TEMP,&var,&MOD_ENV ),
+	   	targetid = MAC1,
+           	targetos = MOD_ENV.md_id.osnum );
+
+   if( msg == 0 ){
+			write("placement of nci_macro \"srf_netwrk\" failed\n");
+			status("placement of nci_macro \"srf_netwrk\" failed");
+      			ci$send(msg      = message Root.delete(0),
+	      			targetid = MAC1,
+	      			targetos = MOD_ENV.md_id.osnum );
+            }
+ }
+}
+
+wakeup(){
+	message(loc_mes);
+}
+

@@ -1,0 +1,171 @@
+/* $Id: COsol_union.u,v 1.1.1.1 2001/01/04 21:07:20 cvs Exp $  */
+
+/* --------------------------------------------------------------------
+ * I/VDS
+ *
+ * File:	vds/cimacros/solid/cmd / COsol_union.u
+ *
+ * Description:
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ *	$Log: COsol_union.u,v $
+ *	Revision 1.1.1.1  2001/01/04 21:07:20  cvs
+ *	Initial import to CVS
+ *	
+# Revision 1.1  1998/04/29  16:27:20  pinnacle
+# VDS 2.5.1
+#
+# Revision 1.1  1997/05/08  13:20:44  pinnacle
+# New project VDS 250
+#
+# Revision 1.1  1996/07/19  20:33:52  pinnacle
+# Create VDS 241 project
+#
+# Revision 1.3  1996/03/15  04:59:28  pinnacle
+# Replaced: cimacros/solid/cmd/COsol_union.u for:  by rgade for vds.240
+#
+# Revision 1.1  1994/11/14  22:42:32  pinnacle
+# Create vds.240 from vds.232
+#
+# Revision 1.1  1994/11/08  16:07:00  pinnacle
+# create vds.232
+#
+ *
+ * History:
+ *	MM/DD/YY	AUTHOR		DESCRIPTION
+ *
+ * -------------------------------------------------------------------*/
+
+/*
+	 VDS 2.0 - PPM macro library - 92/07/09 (alc)
+	 92/08/06	Refresh command object
+ */
+
+
+#include <stdio.h>
+#include "cieveryone.h"
+#include "AS_status.h"
+#include "ciminimum.h"
+#include "cimacros.h"
+#include "emsbool.h"
+
+#define MAX_TEMP 33
+
+struct GRid 	TEMP[MAX_TEMP],AREA_OBJ[MAX_TEMP] ;
+GRobj 		MAC1 ; 
+short        	num_solid ;
+long		stat, msg,i ;
+char            txt[81], mes_f[80];
+IGRboolean	found;
+
+struct GRmd_env	MOD_ENV ;
+
+struct
+ {
+  int               num_solid ; /* number of solid to do operation */
+  enum EMSbooltype  booltype  ; /* operation type */	
+ } var;
+
+extern ASmake_source_from_env();
+extern UI_status();
+ 
+
+main()
+{ 
+  strcpy(mes_f,"<Assoc> Union of Solids");
+  found = FALSE;
+
+  while(1) {
+  	message(mes_f) ;
+      	var.booltype = EMSbool_union ;
+  	strcpy(txt,"Identify first solid");
+
+  	if( !ci$locate ( prompt  = txt,
+                   properties      = LC_LC_ONLY | LC_DP_ONLY | LC_RW,
+		   classes	= "EMSsolid",
+                   owner_action    = LC_RIGID_COMP | LC_RIGID_OWNER
+                                     | LC_FLEX_COMP  | LC_FLEX_OWNER
+                                     | LC_REF_OBJECTS,
+		   obj     = &(TEMP[0].objid),
+		   osnum   = &(TEMP[0].osnum),
+		   md_env  = &MOD_ENV   )) exit;
+
+        AREA_OBJ[0].objid = TEMP[0].objid;
+        AREA_OBJ[0].osnum = TEMP[0].osnum;
+
+
+
+	ASmake_source_from_env( &TEMP[0],&MOD_ENV,&TEMP[0] );	
+  	num_solid = 1 ;
+
+  	while(1) {
+     		strcpy(txt,"Identify solid ") ;
+     		strcat(txt,itoa(num_solid+1)) ;
+     		if (num_solid >= 2)
+                	strcat(txt," / Move on") ;
+
+     		if(!ci$locate( prompt  = txt,
+                    properties      = LC_LC_ONLY | LC_DP_ONLY | LC_RW,
+		    classes	= "EMSsolid",
+                    owner_action = LC_RIGID_COMP
+                                    | LC_RIGID_OWNER | LC_FLEX_COMP
+                                    | LC_FLEX_OWNER  | LC_REF_OBJECTS,
+	            obj     = &(TEMP[num_solid].objid),
+                    osnum   = &(TEMP[num_solid].osnum),
+		    md_env  = &MOD_ENV )) break;
+
+        	AREA_OBJ[num_solid].objid = TEMP[num_solid].objid;
+        	AREA_OBJ[num_solid].osnum = TEMP[num_solid].osnum;
+                    
+
+                for( i=0; i<num_solid; i=i+1 ) 
+                	if( TEMP[num_solid].objid == AREA_OBJ[i].objid &&
+                    		TEMP[num_solid].osnum == AREA_OBJ[i].osnum     )
+                	{
+			    found = TRUE;
+			    break;
+			}
+                if ( found ) {
+                       UI_status("The Solid is already  selected.");
+		       found = FALSE;
+                       continue;
+                }
+		ASmake_source_from_env
+			( &TEMP[num_solid],&MOD_ENV,&TEMP[num_solid] );	
+     		num_solid = num_solid + 1 ;
+		if (num_solid >= MAX_TEMP) {
+			status("Maximum number of solids reached") ;
+			return OM_E_ABORT ;
+			}
+		}
+
+  	if( num_solid < 2 ) exit;
+
+  	MAC1	      = NULL_OBJID ;
+  	var.num_solid = num_solid  ;
+  	ci$get_module_info(md_env = &MOD_ENV) ;
+
+  	status("processing");
+  	stat = ci$send( msg = message nci_macro.init
+		( &msg,0, "nboolean", num_solid,TEMP, &var,&MOD_ENV),  
+		targetid = MAC1,
+		targetos = MOD_ENV.md_id.osnum) ;
+	if (!(stat & msg & 1)) {
+		stat = 0 ; as$status(sts = stat) ;
+		write("placement of nci_macro \"nboolean\" failed\n");
+		status("placement of nci_macro \"nboolean\" failed");
+      		stat = ci$send(msg = message Root.delete(0),
+			targetid = MAC1,
+			targetos = MOD_ENV.md_id.osnum ) ;
+		as$status(sts = stat) ;
+		}
+ 	else  { status("") ; return(OM_S_SUCCESS) ; }
+	}
+} /* main() */
+
+
+wakeup() {
+	message(mes_f);
+	}

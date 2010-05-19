@@ -1,0 +1,335 @@
+/* $Id: crv_prtlin.u,v 1.1.1.1 2001/01/04 21:07:22 cvs Exp $  */
+
+/* --------------------------------------------------------------------
+ * I/VDS
+ *
+ * File:	vds/cimacros/wireframe/macros / crv_prtlin.u
+ *
+ * Description:
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ *	$Log: crv_prtlin.u,v $
+ *	Revision 1.1.1.1  2001/01/04 21:07:22  cvs
+ *	Initial import to CVS
+ *	
+# Revision 1.1  1998/04/29  16:27:20  pinnacle
+# VDS 2.5.1
+#
+# Revision 1.1  1997/05/08  13:20:44  pinnacle
+# New project VDS 250
+#
+# Revision 1.1  1996/07/19  20:33:52  pinnacle
+# Create VDS 241 project
+#
+# Revision 1.1  1994/11/14  22:42:32  pinnacle
+# Create vds.240 from vds.232
+#
+# Revision 1.1  1994/11/08  16:07:00  pinnacle
+# create vds.232
+#
+ *
+ * History:
+ *	MM/DD/YY	AUTHOR		DESCRIPTION
+ *
+ * -------------------------------------------------------------------*/
+
+/*
+	 VDS 2.1 - PPM macro library 
+	 92/10/06	Fix templates list order
+ */
+   
+
+#include "cieveryone.h"
+#include "cimacros.h"
+#include "ci_mac_def.h"
+#include "EMSbnddef.h"
+#include "EMSbnd.h"
+#include "EMSopt.h"
+#include "bstypes.h"
+#include "bsisfprtlns.h"
+#include "madef.h"
+#include "bserr.h"
+#include "macro.h"
+#include "OMmacros.h"
+#include "AS_status.h"
+#include "stdio.h"
+
+#define MAX_FEET		33
+#define MAX_CHA_FEET		10
+#define MAX_CHA_ROOT		7
+
+/* #define DEBUG  /* */
+
+IGRchar			*temp_names[3];
+IGRint			temp_types[3];
+IGRchar 	 	buff[MAX_FEET*MAX_CHA_FEET], *feet_names[MAX_FEET];
+GRobj 			ci_mac_def1;
+
+IGRshort	 	mat_type;
+IGRdouble 	 	matrix[16];
+IGRdouble		*ptr;
+IGRlong			stat, msg;
+IGRdouble		vector[3];
+IGRint 			numgrps, i, j;
+unsigned IGRshort 	options;
+struct EMSpartolbasis   partolbasis;
+struct BSpartgrp 	*partgrps, *curgrp, *curgrp_next, *grp, *nextgrp;
+struct IGRpolyline	geom;
+
+struct GRid		AS_SRF, GO_SRF, CI_MACRO_ID, GRid_feet[MAX_FEET];
+struct GRmd_env		MOD_ENV;
+struct IGRbsp_surface	*par_surf;
+struct GRvg_construct   cst;
+struct IGRdisplay	dis;
+struct ret_struct	temp_rts[2];
+OM_S_OBJID		null_obj;
+IGRboolean 		good;
+
+extern IGRint 		init_cnst_list(),
+			MAidmx();
+
+extern			GRabsg_del_by_objid(), printf(), ASsuper_construct();
+extern 			free ();
+extern IGRboolean	 EFplace_line_string();
+/* ========================================================================= */
+/* the main function is the one implementing the definition creation
+/* ========================================================================= */
+
+main ()
+{
+
+  temp_names[0]  = "stpnt";  
+  temp_names[1]  = "edpnt";  
+  temp_names[2]  = "srf";
+
+  temp_types[0]  = point_generic;  
+  temp_types[1]  = point_generic;  
+  temp_types[2]  = other_generic;
+
+  
+   for (i=0; i<MAX_FEET; i=i+1){
+	sprintf(&buff[i*MAX_CHA_FEET],"parting%d",i);
+	feet_names[i] = &buff[i*MAX_CHA_FEET];
+   }
+
+  ci_mac_def1 = NULL_OBJID;
+
+  ac$cimacdef( 	cimacdef          = ci_mac_def1,
+		status 	          = &stat,
+	 	name              = "crv_prtlin",
+      		temp_num          = 3,
+		temp_names        = temp_names,
+		temp_types        = temp_types,
+		extern_feet_num   = MAX_FEET,
+	 	extern_feet_names = feet_names );
+}
+
+/* ========================================================================= */
+
+place ()
+{
+
+
+  construct_part();
+
+  if( GRid_feet[0].objid == NULL_OBJID ) return(0);
+
+  ci$send( msg	    = message  ci_macro.set_all_extern_feet
+		 		( &stat, numgrps, GRid_feet, &MOD_ENV ),
+	   targetid = CI_MACRO_ID.objid,
+	   targetos = CI_MACRO_ID.osnum );
+  return(1);
+
+}
+
+/* ========================================================================= */
+
+compute ()
+{
+
+  construct_part();
+
+  if( GRid_feet[0].objid == NULL_OBJID ) return(0);
+
+  ci$send( msg	    = message  ci_macro.set_all_extern_feet
+		 		( &stat, numgrps, GRid_feet, &MOD_ENV ),
+	   targetid = CI_MACRO_ID.objid,
+	   targetos = CI_MACRO_ID.osnum );
+  return(1);
+
+}
+
+/* ========================================================================= */
+
+construct_part()
+{
+
+  GRid_feet[0].objid = NULL_OBJID;
+  GRid_feet[0].osnum = MOD_ENV.md_id.osnum;
+
+
+/*--------------------------------------------------------------------------*/
+/* 		get the lower left point	 				    */
+/*--------------------------------------------------------------------------*/
+
+  stat = ci$send( msg = message  ACcpx.ACfind_exp_temp_struct( 
+						&msg,
+						0,
+						(IGRchar *)&temp_rts[0],
+						&MOD_ENV ),
+	   targetid = CI_MACRO_ID.objid,
+	   targetos = CI_MACRO_ID.osnum );
+
+  if( !(stat&msg&1) ){
+	status(" bad lower left point" );
+	return;
+  }
+
+/*--------------------------------------------------------------------------*/
+/* 		get the end point	 				    */
+/*--------------------------------------------------------------------------*/
+  stat = ci$send( msg = message  ACcpx.ACfind_exp_temp_struct( 
+						&msg,
+						1,
+						(IGRchar *)&temp_rts[1],
+						&MOD_ENV ),
+	   targetid = CI_MACRO_ID.objid,
+	   targetos = CI_MACRO_ID.osnum );
+
+  if( !(stat&msg&1) ){
+	status(" bad upper right point" );
+	return;
+  }
+
+/*--------------------------------------------------------------------------*/
+/* 		get the support surface	 				    */
+/*--------------------------------------------------------------------------*/
+
+  stat = ci$send( msg = message  ACcpx.ACfind_exp_temp_obj(&msg,2,&AS_SRF),
+	   targetid = CI_MACRO_ID.objid,
+	   targetos = CI_MACRO_ID.osnum );
+ if( !(stat&msg&1) ){
+	status("bad surface");
+	return;
+ }
+
+
+  stat = ci$send( msg      = message NDmacro.ACreturn_foot(	
+							&msg,
+						    	"",
+							&GO_SRF, 
+							&mat_type, 
+							matrix     ),
+	   targetid = AS_SRF.objid,
+	   targetos = AS_SRF.osnum );
+
+ if( !(stat&msg&1) ) return;
+
+/*--------------------------------------------------------------------------*/
+/* 	construct the new object  			    		    */
+/*--------------------------------------------------------------------------*/
+
+
+  init_cnst_list();
+  get_symb();
+
+  cst.level		= cnst_list.level;
+  dis.color 		= cnst_list.color;
+  dis.weight		= cnst_list.weight;
+  dis.style		= cnst_list.style;
+
+  cst.msg		= &msg;
+  cst.properties	= GRIS_LOCATABLE | GRIS_DISPLAYABLE;
+  cst.display		= &dis;
+  cst.env_info		= &MOD_ENV;
+  cst.newflag		= 0;
+  cst.geometry		= NULL;
+  cst.class_attr	= NULL;
+  cst.name		= NULL;
+
+
+
+/*
+  partolbasis.is_valid = TRUE;
+  partolbasis.in_world = TRUE;
+  partolbasis.mattyp   = &MOD_ENV.md_env.matrix_type;
+  partolbasis.mat      = MOD_ENV.md_env.matrix;
+*/
+
+  options = EMStrimWorldData;
+
+
+  for(i=0;i<3;i=i+1) vector[i] = temp_rts[1].var.point_st.pt[i] - 
+				 temp_rts[0].var.point_st.pt[i];
+
+  stat = ci$send( msg      = message EMSsubbs.EMpartingLines(	
+					&msg,
+					&MOD_ENV,
+					vector,
+					options,
+					&partolbasis,
+					&numgrps,
+					&partgrps ),
+	   	  targetid = GO_SRF.objid,
+	   	  targetos = GO_SRF.osnum );
+
+  #ifdef DEBUG
+	write(" numgrps = ",numgrps,"\n");
+  #endif
+      grp = partgrps;
+      for(i = 0; i < numgrps; i=i+1)
+      {
+#	ifdef DEBUG
+        printf("construct the curve: %d, nb points: %d\n",i,  grp->num);
+        ptr= (double *) &grp->pts[0][0];
+        for(j=0;j<grp->num;j=j+1)
+	    printf("pt: %d -> %lf, %lf, %lf\n",j,ptr[j*3+0],ptr[j*3+1],ptr[j*3+2]);
+#       endif
+
+	geom.num_points    = grp->num;
+	geom.points        = (double *) &grp->pts[0][0];
+	cst.geometry       = (IGRchar *)&geom;
+  	GRid_feet[i].objid = NULL_OBJID;
+  	GRid_feet[i].osnum = MOD_ENV.md_id.osnum;
+
+  	stat = ci$send(msg    = message GR3dlinestr.GRaltconstruct(&cst),
+	   			targetid = GRid_feet[i].objid,
+	   			targetos = GRid_feet[i].osnum );
+	if( !(stat&1) )write("construct failed i =",i,"\n");
+
+        grp = grp->next;
+      } /* for i < numgrps */
+
+
+  if(partgrps)
+   {
+    grp = partgrps;
+    for(i = 0; i < numgrps; i=i+1)
+    {
+#     ifdef DEBUG
+      printf("free the memory for: %d\n", i);
+#     endif
+      nextgrp = grp->next;
+      if( grp->pts != NULL )
+		 om$dealloc(ptr = &grp->pts[0][0]);
+      if( grp->par != NULL )
+		om$dealloc(ptr = grp->par);
+      om$dealloc(ptr = grp);
+      grp = nextgrp;
+    }
+  }
+
+  if( !(stat&msg&1) ){
+	write("error\n");
+	GRid_feet[0].objid = NULL_OBJID;
+	return;
+  }
+
+
+
+}
+
+
+

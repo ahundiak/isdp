@@ -1,0 +1,922 @@
+/* $Id: crv_fillet.u,v 1.1.1.1 2001/01/04 21:07:22 cvs Exp $  */
+
+/* --------------------------------------------------------------------
+ * I/VDS
+ *
+ * File:	vds/cimacros/wireframe/macros / crv_fillet.u
+ *
+ * Description:
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ *	$Log: crv_fillet.u,v $
+ *	Revision 1.1.1.1  2001/01/04 21:07:22  cvs
+ *	Initial import to CVS
+ *	
+# Revision 1.1  1998/04/29  16:27:20  pinnacle
+# VDS 2.5.1
+#
+# Revision 1.1  1997/05/08  13:20:44  pinnacle
+# New project VDS 250
+#
+# Revision 1.1  1996/07/19  20:33:52  pinnacle
+# Create VDS 241 project
+#
+# Revision 1.2  1995/10/07  14:14:36  pinnacle
+# Replaced: cimacros/wireframe/macros/crv_fillet.u for:  by azuurhou for vds.240
+#
+# Revision 1.1  1994/11/14  22:42:32  pinnacle
+# Create vds.240 from vds.232
+#
+# Revision 1.1  1994/11/08  16:07:00  pinnacle
+# create vds.232
+#
+ *
+ * History:
+ *	MM/DD/YY	AUTHOR		DESCRIPTION
+ *
+ * -------------------------------------------------------------------*/
+
+/*
+	 VDS 2.0 - PPM macro library - 92/07/09 (alc)
+ */
+   
+/*******************************************************************/
+/*
+/*     JLL   design date: december 88
+/*
+/*     make fillet between two coplanar curves  
+/*
+/*******************************************************************/
+
+#include <stdio.h>
+#include "cieveryone.h"
+#include "cimacros.h"
+#include "ci_mac_def.h"
+#include "bserr.h"
+#include "asmacros.h"
+#include "macro.h"
+#include "nddef.h"
+
+#define   PI  		3.14159265358979323846
+#define	  EPSILON	1.0E-10
+
+
+#define NUM_INT		20
+
+
+OMuword	   		ft_cl ;
+IGRint			k;
+IGRshort		mat_type;
+
+IGRdouble 		radius, norc[3], lvec, matrix[16], bstab[38], pq[3];
+IGRdouble		cross_vec1[3], cross_vec2[3];
+
+IGRchar 		*temp_names[3], *feet_names[1],txt[10];
+IGRint			temp_types[3];
+
+IGRlong			stat, msg, size, rc;
+IGRint			j, flag;
+IGRint			relative_position, ind_cou;
+
+GRobj 			ci_mac_def1;
+
+struct GRid		GRid_list, CI_MACRO_ID,GCV[2],CUV;
+struct GRmd_env		MOD_ENV;
+struct GRvg_construct   cst;
+struct IGRdisplay	dis;
+struct IGRbsp_curve     *bsp_curve[2], bsp_arc;
+struct ret_struct	expr;
+struct IGRpolyline      geom;
+
+IGRboolean              rem_dup, out_pt_alloc, out_over_alloc;
+IGRint		        num_in_pts, num_in_over, nint, nover;
+IGRdouble               int_pts[3*NUM_INT], par0[NUM_INT],par1[NUM_INT];
+IGRdouble		end_pts[3*NUM_INT], over0[3*NUM_INT], over1[3*NUM_INT];
+IGRdouble               *xint_pts, *xend_pts;
+IGRdouble               *xpar0, *xpar1, *xover0, *xover1;
+IGRdouble		eval0[9], eval1[9];
+IGRdouble		dotv0pq, dotv1pq, nor0[3], nor1[3], parll[2];
+IGRdouble		center[6],line_0[6],line_1[6],pt[9];
+IGRdouble		z0_pnt[3], z1_pnt[3], dir_pnt[3], fpar[2], dmin;
+IGRdouble		min_dist, proj_pt[3];
+IGRboolean		on_curve0, on_curve1;
+IGRlong			ii;
+
+struct IGRarc		ell;
+
+struct var
+{
+  double data_point[3];
+  double dir0;
+  double dir1;
+  int    int_index;
+} *me;
+
+extern IGRint 		init_cnst_list(),
+			BSmdstptcv(),
+ 	        	BScvcvint(),
+			BScveval(),
+			BSmkvec(),
+			BScrossp(),
+			BSnorvec(),
+			BSarc3pts(),
+                	BSfillet(),
+			asprinter_set_name(),
+			asprinter_print_symb(),
+			asprinter_print_parents(),
+			free();
+
+extern IGRdouble	atan2(), 
+			BSdistptpt(),
+			BSlenvec(),
+			BSdotp(),
+			modulo();
+extern			ASsuper_construct();
+extern	void		VDppl_ang_v1v2();
+
+                 
+extern IGRchar     	*malloc();
+extern 			GRabsg_del_by_objid();
+
+/* ========================================================================= */
+/* the main function is the one implementing the definition creation
+/* ========================================================================= */
+
+main ()
+{
+
+  temp_names[0]  = "crv0";  
+  temp_names[1]  = "crv1";  
+  temp_names[2]  = "radius";
+
+  temp_types[0]  = line_generic | conic_generic | curve_generic;	 
+  temp_types[1]  = line_generic | conic_generic | curve_generic;	 
+  temp_types[2]  = parameter_generic | double_type;
+	 
+  feet_names[0]  = "curve";
+
+  ci_mac_def1 = NULL_OBJID;
+
+  ac$cimacdef( 	cimacdef          = ci_mac_def1,
+		prop	          = ACwith_instances,
+		status 	          = &stat, 	
+		name              = "crv_fillet",
+		int_size          = sizeof( struct var),
+              	temp_num 	  = 3, 		
+		temp_names        = temp_names,
+		temp_types	  = temp_types,
+	      	extern_feet_num   = 1, 	
+		extern_feet_names = feet_names );
+}
+
+/* ========================================================================= */
+
+place ()
+{
+  flag = 0;
+  find_inter();
+
+  if( GRid_list.objid == NULL_OBJID ) return(0);
+
+  ci$send( msg	=   message ci_macro.store_internal(&msg, me),
+  	   targetid = CI_MACRO_ID.objid,
+	   targetos = CI_MACRO_ID.osnum );
+
+  ci$send( msg = message  ci_macro.set_all_extern_feet
+	 ( &stat, 1,&GRid_list, &MOD_ENV ),
+	   targetid = CI_MACRO_ID.objid,
+	   targetos = CI_MACRO_ID.osnum );
+  return(1);
+
+}
+
+/* ========================================================================= */
+
+compute ()
+{
+  flag = 1;
+  find_inter();
+
+  if( GRid_list.objid == NULL_OBJID ) return(0);
+
+  ci$send( msg = message  ci_macro.set_all_extern_feet
+	 ( &stat, 1,&GRid_list, &MOD_ENV ),
+	   targetid = CI_MACRO_ID.objid,
+	   targetos = CI_MACRO_ID.osnum );
+  return(1);
+
+}
+
+/* ========================================================================= */
+
+find_inter()
+{
+   
+
+   GRid_list.objid = NULL_OBJID;
+   GRid_list.osnum = MOD_ENV.md_id.osnum;
+
+/*--------------------------------------------------------------------------*/
+/*----------------   get the radisus  --------------------------------------*/
+/*--------------------------------------------------------------------------*/
+   msg = ci$send( msg = message ACcpx.ACfind_exp_temp_struct( 
+							&stat,
+						        2,
+						        (char *) &expr,
+						        &MOD_ENV),
+  	    targetid = CI_MACRO_ID.objid,
+	    targetos = CI_MACRO_ID.osnum );
+
+  if( !(msg&stat&1) ){
+	status(" bad object for expression  radius" );
+	return;
+  }
+
+   radius = fabs(expr.var.root_pm_st.value);
+
+
+/*--------------------------------------------------------------------------*/
+/*----------------   get the two curves             ------------------------*/
+/*--------------------------------------------------------------------------*/
+
+
+   for(j=0; j<2; j=j+1)
+   {
+	msg = ci$send( msg = message  ACcpx.ACfind_exp_temp_obj(&stat,j,&CUV),
+           	       targetid = CI_MACRO_ID.objid,
+                       targetos = CI_MACRO_ID.osnum );
+	if( !(msg&stat&1) ) goto wrapup;
+
+  	stat = ci$send( msg      = message NDmacro.ACreturn_foot(
+								&msg ,
+								"",&GCV[j], 
+							   	&mat_type, 
+							   	matrix ),
+	         targetid = CUV.objid,
+	         targetos = CUV.osnum );
+	if( !(msg&stat&1) ) goto wrapup;
+
+	GRabsg_del_by_objid(&GCV[j].objid,&GCV[j].osnum );
+
+  	stat = ci$send( msg = message GRvg.GRgetexsize( 
+						&msg,
+			     		       	&mat_type,
+			     		       	matrix,
+			     		       	&size ),
+	  	 targetid = GCV[j].objid,
+	  	 targetos = GCV[j].osnum );
+	if( !(msg&stat&1) ) goto wrapup;
+
+	bsp_curve[j] = (struct IGRbsp_curve *) malloc(size);
+
+  	stat = ci$send( msg = message GRvg.GRgetexgeom( 
+						&msg,
+			     		       	&mat_type,
+			     		       	matrix,
+			     		       	bsp_curve[j] ),
+	  	 targetid = GCV[j].objid,
+	  	 targetos = GCV[j].osnum );
+	if( !(msg&stat&1) ) goto wrapup;
+
+   }
+
+/*--------------------------------------------------------------------------*/
+/*   Piece of code added to manage fillets at the limite, when the 2 	    */
+/*   parent curves are colinear even they have more than 2 poles and or they*/
+/*   overlap                                                                */
+/*--------------------------------------------------------------------------*/
+
+   
+	ArePolAln( &rc, bsp_curve[0], eval0 );
+	if( rc != BSSUCC )goto endkludge;
+
+	#ifdef DEBUG
+		write("poles curve[0] aligned\n");
+	#endif
+
+	ArePolAln( &rc, bsp_curve[1], eval1 );
+	if( rc != BSSUCC ) goto endkludge;
+
+	#ifdef DEBUG
+		write("poles curve[1] aligned\n");
+	#endif
+
+	CheckOverPart( &rc, eval0, eval1, int_pts );
+	if( rc == BSSUCC ){
+		#ifdef DEBUG
+			write("curves are colinear\n");
+		#endif
+		geom.points = int_pts;		
+		goto generpoint;
+	}
+
+	#ifdef DEBUG
+		write("curves are NOT colinear\n");
+	#endif
+
+endkludge:
+
+/*--------------------------------------------------------------------------*/
+/*   if one curve is a line then I extent it two simulate an infinit line   */
+/*--------------------------------------------------------------------------*/
+
+  for(j=0;j<2;j=j+1){
+
+	if( bsp_curve[j]->order == 2 && bsp_curve[j]->num_poles >= 2 && 
+	       !bsp_curve[j]->phy_closed){
+
+		   ii = 3 * ( bsp_curve[j]->num_poles - 2 );
+
+	    	   for(k=0;k<3;k=k+1){
+		      bsp_curve[j]->poles[k] = 
+					501 * bsp_curve[j]->poles[k] -
+					500 * bsp_curve[j]->poles[k+3];
+		      bsp_curve[j]->poles[k+ii+3] = 
+		 			501 * bsp_curve[j]->poles[ii+3+k] -
+					500 * bsp_curve[j]->poles[ii+k];
+	           }
+
+	}
+
+  }
+
+/*--------------------------------------------------------------------------*/
+/*    to define the good angular sector where the fillet should stay we:    */
+/*      . find the intersection point between the two curves                */
+/*	. we select the nearest point from data point at placement time     */
+/*        and store his index if there is multiple intersections.           */
+/*      . we evaluate two directions variables var.dir0 and var.dir1 only   */
+/*        at placement time. Be carefull it is not so simple espacally      */
+/*        when the angular sector is > to 90 degrees.			    */
+/*      . evaluate a project point direction points for BSfillet function   */
+/*--------------------------------------------------------------------------*/
+
+   rem_dup = TRUE;
+   out_pt_alloc = FALSE;
+   out_over_alloc = FALSE;
+   num_in_pts = NUM_INT;
+   num_in_over = 0;
+   xint_pts = NULL;
+   xpar0 = NULL;
+   xpar1 = NULL;
+   xend_pts = NULL;
+   xover0   = NULL;
+   xover1   = NULL;
+
+  
+   BScvcvint( bsp_curve[0], bsp_curve[1],
+              rem_dup,
+	      num_in_pts, num_in_over,
+              int_pts,
+	      par0, par1,
+	      end_pts,
+	      over0, over1,
+	      &nint,
+	      &nover,
+              &out_pt_alloc, &out_over_alloc,
+              &xint_pts,
+              &xpar0, &xpar1,
+	      &xend_pts,
+	      &xover0, &xover1,
+	      &rc );
+
+   if ( rc != BSSUCC ){
+#ifdef DEBUG
+write("BScvcvint =",rc,"\n");
+#endif
+	free(bsp_curve[0]);
+	free(bsp_curve[1]); 
+	return(0);
+   }
+
+
+
+/* evaluate the two derivates and compute the right direction flag */
+
+   if( flag == 0 )
+   {
+/*--------------------------------------------------------------------------*/
+/*------------ 		place time			        ------------*/
+/*--------------------------------------------------------------------------*/
+
+        if( nint > 1 )
+        {
+/*--------------------------------------------------------------------------*/
+/* 		find the nearest point for the user data_point              */
+/*--------------------------------------------------------------------------*/
+
+	    for(j=0;j<nint;j=j+1)
+	    {
+                lvec = BSdistptpt(&rc,&int_pts[3*j],&me->data_point);
+                if( j == 0 ){
+			dmin = lvec;
+                	me->int_index = 0;
+           	}
+                else{
+             		if( lvec < dmin ) {
+				dmin = lvec;
+				me->int_index = j;
+                	}
+                }
+	    }
+	}
+        else  me->int_index = 0;
+
+        ind_cou =  me->int_index;       
+   	BScveval ( bsp_curve[0] , par0[ind_cou], 1, eval0, &rc);
+   	BScveval ( bsp_curve[1] , par1[ind_cou], 1, eval1, &rc);
+
+/*--------------------------------------------------------------------------*/
+/* evaluate the good var.dir0 and var.dir1 variables                        */
+/*--------------------------------------------------------------------------*/
+
+   	for(j=0;j<3;j=j+1)
+   	  pq[j] = me->data_point[j] - int_pts[3*ind_cou+j];
+
+	BScrossp(&msg,&eval0[3],pq,cross_vec1);
+
+        BScrossp(&msg,pq,&eval1[3],cross_vec2);
+
+        me->dir1 = 1.0;
+        if( BSdotp(&msg,cross_vec1,cross_vec2)  < 0.0 ) me->dir1 = -1.0 ;
+        BSnorvec(&msg,&eval0[3]);
+        BSnorvec(&msg,&eval1[3]);
+
+        for(j=0;j<3;j=j+1) dir_pnt[j] = eval0[3+j] + me->dir1 * eval1[3+j] ;
+
+        dotv0pq = BSdotp(&msg,dir_pnt,pq);
+        for(j=0;j<3;j=j+1) dir_pnt[j] = dotv0pq *  dir_pnt[j];
+
+        me->dir0 = 1.0;
+        if( BSdotp(&msg,&eval0[3],dir_pnt)  < 0.0 ) me->dir0 = -1.0 ;
+        me->dir1 = 1.0;
+        if( BSdotp(&msg,&eval1[3],dir_pnt)  < 0.0 ) me->dir1 = -1.0 ;
+        
+   }
+   else {
+/*--------------------------------------------------------------------------*/
+/*------------ 		compute time			        ------------*/
+/*--------------------------------------------------------------------------*/
+
+           if( me->int_index > nint-1 ) ind_cou = 0;
+           else ind_cou = me->int_index;
+#ifdef DEBUG
+write("nint =",nint,"ind_cou =",ind_cou,"\n");
+#endif
+
+	   BScveval ( bsp_curve[0] , par0[ind_cou], 1, eval0, &msg);
+	   BScveval ( bsp_curve[1] , par1[ind_cou], 1, eval1, &msg);
+   }
+#ifdef DEBUG
+write("me->dir0 =",me->dir0,"me->dir1 =",me->dir1,"\n");
+#endif
+  
+
+   if( radius <= EPSILON ){
+
+	geom.points = eval0;
+
+generpoint:
+
+  	geom.num_points = 1;
+
+  	init_cnst_list();
+  	get_symb();
+
+  	dis.color		= cnst_list.color;
+   	dis.weight		= cnst_list.weight;
+  	dis.style		= cnst_list.style;
+
+  	cst.msg			= &msg;
+  	cst.properties		= GRIS_LOCATABLE | GRIS_NEW | GRIS_DISPLAYABLE;
+  	cst.display		= &dis;
+  	cst.env_info		= &MOD_ENV;
+  	cst.newflag		= 0;
+  	cst.level		= cnst_list.level;
+  	cst.geometry		= NULL;
+  	cst.class_attr		= 0;
+  	cst.name		= 0;
+
+  	cst.geometry = (char *)&geom;
+
+     	stat = ci$send(msg      = message GR3dpoint.GRaltconstruct(&cst),
+	   	       targetid = GRid_list.objid,
+	  	       targetos = GRid_list.osnum );
+
+   	if( !(stat&1) ){
+		 write(" error dans const \n");
+		 GRid_list.objid = NULL_OBJID;
+	}
+
+   	free(bsp_curve[0]);
+   	free(bsp_curve[1]); 
+	
+	return;
+
+   } 
+/*--------------------------------------------------------------------------*/
+/* evaluate the dir point dir_pnt and projection points z0_pnt and z1_pnt   */
+/* small overhead at placement time                                         */
+/*--------------------------------------------------------------------------*/
+
+   BSnorvec(&msg,&eval0[3]);
+   BSnorvec(&msg,&eval1[3]);
+   for(j=0;j<3;j=j+1) dir_pnt[j] = me->dir0*eval0[3+j] + me->dir1*eval1[3+j] ;
+   BSnorvec(&msg,dir_pnt);
+   for(j=0;j<3;j=j+1) dir_pnt[j] = int_pts[3*ind_cou + j] + 
+                                   dir_pnt[j]*radius;
+
+#ifdef DEBUG
+write("dir_pnt =",dir_pnt[0],dir_pnt[1],dir_pnt[2],"\n");
+#endif
+
+   BSmdstptcv (bsp_curve[0],dir_pnt,&par0[0],z0_pnt, &min_dist ,&rc);
+   if( rc != BSSUCC ) {
+#ifdef DEBUG
+write("project the dir_pnt on bsp_curve[0] rc =",rc,"\n");
+#endif
+	free(bsp_curve[0]);
+	free(bsp_curve[1]); 
+	return(0);
+   }
+   BSmdstptcv (bsp_curve[1],dir_pnt,&par1[0],z1_pnt, &min_dist ,&rc);
+   if( rc != BSSUCC ){
+#ifdef DEBUG
+write("project the dir_pnt on bsp_curve[1] rc =",rc,"\n");
+#endif
+
+	free(bsp_curve[0]);
+	free(bsp_curve[1]); 
+	return(0);
+   }
+/*--------------------------------------------------------------------------*/
+/* 		compute the fillet bs struct 				    */
+/*--------------------------------------------------------------------------*/
+
+   bsp_arc.poles   = &bstab[0];
+   bsp_arc.knots   = &bstab[21];
+   bsp_arc.weights = &bsp_arc.knots[10];
+
+  BSfillet( &rc, bsp_curve[0], bsp_curve[1], z0_pnt, z1_pnt, dir_pnt, 
+            &radius, &bsp_arc, center, fpar );
+
+  if ( rc != BSSUCC ){
+#ifdef DEBUG
+write("BSfillet rc =",rc,"\n");
+#endif
+	free(bsp_curve[0]);
+	free(bsp_curve[1]); 
+	return(0);
+  }
+
+  me->data_point[0] = center[0];
+  me->data_point[1] = center[1];
+  me->data_point[2] = center[2];
+
+#ifdef DEBUG
+	write("me->data_point = ",me->data_point[0],me->data_point[1],
+			         me->data_point[2],"\n");
+	write("me->dir0 = ",me->dir0," me->dir1 = ",me->dir1,"\n");
+	write("me->int_index = ",me->int_index,"\n");
+#endif
+/*--------------------------------------------------------------------------*/
+/* 		create the arc		 				    */
+/*--------------------------------------------------------------------------*/
+
+   BScveval ( bsp_curve[0] , fpar[0], 0, eval0, &msg);
+   BScveval ( bsp_curve[1] , fpar[1], 0, eval1, &msg);
+
+/* compute VX,VY axis */
+
+   for( j=0; j<3; j=j+1 ){
+	pq[j]     = eval1[j] - eval0[j];
+	z0_pnt[j] = eval0[j] - center[j];
+        z1_pnt[j] = eval1[j] - center[j];
+   }
+
+   BScrossp(&stat,z0_pnt,z1_pnt,nor0);
+   BSnorvec(&stat,nor0);
+
+/* the new true center and true radius */
+
+   BScrossp(&stat,pq,nor0,nor1);
+   BSnorvec(&stat,nor1);
+
+   ell.sec_axis = z0_pnt[0]*nor1[0] + z0_pnt[1]*nor1[1] + z0_pnt[2]*nor1[2];
+
+   ell.prim_axis = 0.0;
+
+   for( j=0; j<3; j=j+1 ){
+	ell.origin[j] =  0.5 * (eval1[j] + eval0[j]) - ell.sec_axis * nor1[j];
+        pq[0]	      =  eval0[j] - ell.origin[j];
+	ell.prim_axis =  ell.prim_axis + pq[0] * pq[0];
+        eval0[j]      =  eval0[j] - ell.origin[j];
+        eval1[j]      =  eval1[j] - ell.origin[j];
+   }
+
+   ell.prim_axis = sqrt( ell.prim_axis );
+   ell.sec_axis  = ell.prim_axis;
+   BSnorvec(&stat,eval0);
+
+/* compute the sweep angle between the two vector */
+
+   ell.start_angle = 0.0;
+   VDppl_ang_v1v2( eval0, eval1, nor0, &ell.sweep_angle, &stat );
+
+
+
+
+/* compute the VX & VZ axis */
+
+   BScrossp(&stat,nor0,eval0,eval1);
+//   BSnorvec(&stat,eval1);
+
+
+   for(j=0;j<3;j=j+1){
+		k = 4*j;
+		ell.rot_matrix[k]    = eval0[j];
+		ell.rot_matrix[k+1]  = eval1[j];
+		ell.rot_matrix[k+2]  = nor0[j];
+		ell.rot_matrix[k+3]  = 0.0;
+		ell.rot_matrix[12+j] = 0.0;
+   }
+
+   ell.rot_matrix[15] = 1.0;
+
+   init_cnst_list();
+   get_symb();
+
+   dis.color		= cnst_list.color;
+   dis.weight		= cnst_list.weight;
+   dis.style		= cnst_list.style;
+
+   cst.msg		= &msg;
+   cst.properties	= GRIS_LOCATABLE | GRIS_DISPLAYABLE;
+   cst.display		= &dis;
+   cst.env_info		= &MOD_ENV;
+   cst.newflag		= FALSE;
+   cst.level		= cnst_list.level;
+   cst.class_attr	= NULL;
+   cst.name		= NULL;
+
+// Construct the graphic object
+   cst.geometry   = (char *)&ell;
+
+
+   stat = ci$send(msg      = message GR3dcirarc.GRaltconstruct(&cst),
+	   	  targetid = GRid_list.objid,
+	  	  targetos = GRid_list.osnum );
+
+   if( !(stat&1) ) write(" error dans const \n");
+
+wrapup:
+   if( bsp_curve[0] != NULL ){ free(bsp_curve[0]); bsp_curve[0] = NULL; }
+   if( bsp_curve[1] != NULL ){ free(bsp_curve[1]); bsp_curve[1] = NULL; }
+
+}
+
+/*=========================================================================*/
+
+NDprint( md_env, stream )
+struct	GRmd_env	*md_env;
+FILE			*stream;
+
+{
+  char                name[MAX_CHAR];      /* Name of the object to print     */
+  char 		      class_name[OM_K_MAXCLASS_LEN];
+  char		      macro_name[12];
+  IGRlong 	      msg;
+  int 		      i, j;
+  int		      count;
+  unsigned int 	      *dum;
+  int		      size;
+
+  struct GRid parent_list[3];
+
+  size = sizeof( struct var);
+
+  /* Get the name of this object */
+
+  strcpy(macro_name,"crv_fillet");
+
+  as$printer_set_name(	objid  = CI_MACRO_ID.objid ,
+ 			prefix ="CI_MACRO",
+			name   = name);
+  if( strcmp(name,"")==0 ) return(OM_S_SUCCESS);
+
+
+  if (strcmp(name,"")!=0)
+    {
+
+  	as$printer_print_parents( objid = CI_MACRO_ID.objid,
+		      	 	  osnum = CI_MACRO_ID.osnum,
+				  count = &count );
+
+  	/* Print the instances (crv_fillet) and message */
+      	/* must fill the internal */
+   
+	dum = (unsigned int *) me;
+
+      	for(i=0; i< ( size / 4) ; i=i+1)
+      	{
+
+        	fprintf(stream, "ci_mac_inter[%d] = %#X; \n", i,*dum);
+		dum = dum + 1;
+      	}
+/*
+     	if(size % 4 )
+     	{
+      		fprintf(stream, "ci_mac_inter[%d] = 0x",i);
+
+      		for(j=0; j< (size % 4) ; j=j+1)
+        	fprintf(stream, "%x", meme[ ((i) + j) ] );
+ 
+      		for(j=0; j< 4 - (size % 4) ; j=j+1)
+        	fprintf(stream, "00");
+
+      		fprintf(stream, ";\n");
+     	}
+*/
+
+/* To make it also work for nci_macro jla 11/oct/90 */
+
+     	om$get_classname(objid     = CI_MACRO_ID.objid,
+		      	 osnum     = CI_MACRO_ID.osnum,
+		         classname =  class_name);
+		 
+    
+     	fprintf(stream, 
+	"send %s.obj_init(&suc, \"%s\", %d, list, ci_mac_inter) to %s;\n",
+	class_name, macro_name, count, name );
+
+
+  	/* print in clear for SGAO  */
+
+	#ifdef DEBUG
+	write("me->dir0 =",me->dir0,"me->dir1 =",me->dir1,"\n");
+	#endif
+
+  	for (i=0; i<3 ; i=i+1)
+      	fprintf(stream,"/* center[%d] =%lf;*/\n",i,me->data_point[i]);
+  	fprintf(stream,"/* dir0 =%f*/\n",me->dir0);
+  	fprintf(stream,"/* dir1 =%f*/\n",me->dir1);
+  	fprintf(stream,"/* index =%d*/\n",me->int_index);
+   }
+
+   return(OM_S_SUCCESS);
+}
+
+/*==========================================================================*/
+/*                                                                          */
+/*             are poles aligned		                            */
+/*                                                                          */
+/*  ArePolAln( rc, bsp, ptdir )                                             */
+/*             O , I  , I                                                   */
+/*==========================================================================*/
+
+
+ArePolAln( rc, bsp, ptdir )
+
+IGRlong				*rc;
+struct 	IGRbsp_curve 		*bsp;
+IGRdouble			*ptdir;
+
+
+
+
+{
+
+
+    IGRint		i, iD3, j, irc;
+    IGRdouble		v1[3], v2[3], w[3];
+
+
+	
+
+   	BScveval ( bsp , 0.0, 1, ptdir, &irc);
+	j = 3 * (bsp->num_poles-1);
+	for(i=0;i<3;i=i+1) ptdir[6+i] = bsp->poles[j+i];
+ 
+        if( bsp->num_poles ==2 ) goto warpup;
+
+        if( !bsp->rational ){
+		#ifdef DEBUG
+		write("curve NOT rational\n");
+		#endif
+
+            for( i=6;i<3*bsp->num_poles;i=i+3 ){
+
+		BSmkvec( &irc,v2,&(bsp->poles[0]),&(bsp->poles[i]) );
+		BScrossp( &irc, &ptdir[3],v2,w);
+
+		if( BSdotp(&irc,w,w) > EPSILON ){
+		   *rc = BSFAIL;
+		   return(OM_W_ABORT);
+		}
+	    }
+	}
+	else{
+		#ifdef DEBUG
+		write("curve rational\n");
+		#endif
+            for( i=6;i<3*bsp->num_poles;i=i+3 ){
+		iD3 = i / 3;
+		for(j=0;j<3;j=j+1) 
+			v2[j] = bsp->poles[i+j] / bsp->weights[iD3] - ptdir[j];
+		BScrossp( &irc, &ptdir[3],v2,w);
+
+		if( BSdotp(&irc,w,w) > EPSILON ){
+		   *rc = BSFAIL;
+		   return(OM_W_ABORT);
+		}
+	    }
+	}
+
+warpup:
+	*rc = BSSUCC;
+        return(OM_S_SUCCESS);
+
+}/* end of arepolaln */
+
+/*==========================================================================*/
+/*                                                                          */
+/*  check if the to segment overlap		                            */
+/*                                                                          */
+/*  CheckOverPart( rc, ptdir1, ptdir2, ptsol )                              */
+/*                                                                          */
+/*==========================================================================*/
+
+CheckOverPart( rc, ptdir1, ptdir2, ptsol ) 
+
+
+IGRlong		*rc;	/* if rc = BSSUCC the 2 curves overlap and a ptsol
+				   is evaluated                             */
+IGRdouble	*ptdir1;/* ptdir1[0-2] contains the strat points of the bsp */
+			/* ptdir1[3-5] contains the derivate at u=0.0       */
+			/* ptdir1[6-8] contains the end point of the bsp    */
+IGRdouble	*ptdir2;
+IGRdouble	*ptsol;
+
+{
+
+IGRint		i;
+IGRdouble	w[3], t[2], a, b, c;
+
+
+	BScrossp( rc, &ptdir1[3],&ptdir2[3],w);
+
+	if( BSdotp(rc,w,w) > EPSILON ){
+	        #ifdef DEBUG
+		a = BSdotp(rc,w,w);
+		write("no overlap a =",a,"\n");
+		#endif
+		*rc = BSFAIL;
+	}
+
+	else{
+		#ifdef DEBUG
+		write("overlap\n");
+		#endif
+		BSmkvec(rc,&ptdir1[3],ptdir1,&ptdir1[6]);
+		c = BSdotp(rc,&ptdir1[3],&ptdir1[3]);
+
+		BSmkvec(rc,w,ptdir1,ptdir2);
+		t[0] = BSdotp(rc,&ptdir1[3],w);
+		BSmkvec(rc,w,ptdir1,&ptdir2[6]);
+		t[1] = BSdotp(rc,&ptdir1[3],w);
+
+		#ifdef DEBUG
+			write("a =",t[0],";b =",t[1],";c =",c,"\n");
+		#endif
+
+		a = ( fabs(t[0]) ) / c;
+		b = ( fabs(t[1]) ) / c;
+
+		#ifdef DEBUG
+			write("a =",a,";b =",b,"\n");
+		#endif
+
+		if      ( a < EPSILON )
+				for(i=0;i<3;i=i+1) ptsol[i] = ptdir1[i];
+		else if ( fabs((1.0-a)) < EPSILON ) 
+				for(i=0;i<3;i=i+1) ptsol[i] = ptdir1[6+i];
+		else if ( b < EPSILON ) 
+				for(i=0;i<3;i=i+1) ptsol[i] = ptdir1[i];
+		else if ( fabs((1.0-b)) < EPSILON ) 
+				for(i=0;i<3;i=i+1) ptsol[i] = ptdir1[6+i];
+		else{
+		
+		    for(i=0;i<3;i=i+1)
+			ptsol[i] = ( ptdir1[i] + ptdir1[i+6] + 
+				     ptdir2[i] + ptdir2[i+6] ) / 4.0;
+		}
+
+		*rc = BSSUCC;
+	}
+
+
+	return;
+
+}

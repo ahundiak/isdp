@@ -1,0 +1,374 @@
+/* $Id: srf_bend.u,v 1.1.1.1 2001/01/04 21:07:21 cvs Exp $  */
+
+/* --------------------------------------------------------------------
+ * I/VDS
+ *
+ * File:	vds/cimacros/surface/macros / srf_bend.u
+ *
+ * Description:
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ *	$Log: srf_bend.u,v $
+ *	Revision 1.1.1.1  2001/01/04 21:07:21  cvs
+ *	Initial import to CVS
+ *	
+# Revision 1.1  1998/04/29  16:27:20  pinnacle
+# VDS 2.5.1
+#
+# Revision 1.1  1997/05/08  13:20:44  pinnacle
+# New project VDS 250
+#
+# Revision 1.1  1996/07/19  20:33:52  pinnacle
+# Create VDS 241 project
+#
+# Revision 1.1  1994/11/14  22:42:32  pinnacle
+# Create vds.240 from vds.232
+#
+# Revision 1.1  1994/11/08  16:07:00  pinnacle
+# create vds.232
+#
+ *
+ * History:
+ *	MM/DD/YY	AUTHOR		DESCRIPTION
+ *
+ * -------------------------------------------------------------------*/
+
+/*
+	VDS 2.1 - PPM macro library
+	Description :	<Assoc> Place Tube Bend
+	Revision date : 92/09/04
+ */
+   
+#include "cieveryone.h"
+#include "cimacros.h"
+#include "ci_mac_def.h"
+#include "AS_status.h"
+
+
+#define EPSILON			1.0E-10
+
+
+IGRboolean		is_scal, are_sec;
+
+IGRshort		matrix_type;
+
+IGRdouble		matrix[16];
+
+IGRint			j, ncros;
+
+IGRlong			msg, stat, rc;
+
+IGRchar			*temp_names[3], *feet_names[1];
+
+IGRint			temp_types[3];
+
+IGRint			temp_type[3];
+
+GRobj 			ci_mac_def1;
+
+IGRdouble		org[3], xvec[3], yvec[3], mat[16] ;
+double			radi, rade ;
+IGRdouble		vec[3],nvec[3],stpoint[3], bstab[38];
+IGRdouble		ptdv1[6], ptdv2[6], ptab[6];
+
+struct GRlc_info	cross[2], trace_inf[1];
+struct GRmd_env		MOD_ENV;
+struct GRid		CIRI, CIRE, GRid_list, CUV, CI_MACRO_ID;
+struct GRvg_construct   cst;
+struct IGRdisplay	dis;
+struct IGRplane 	plane;
+struct IGRbsp_curve	*bspcurve,bsp_arc;
+struct ret_struct	diam;
+
+
+extern int 	BSnorvec(),
+		BSprepcircp(),
+		BScveval(),
+		init_cnst_list(),
+		BScrossp(),
+		printf();
+extern		ASsuper_construct();
+extern double fabs() ;
+
+
+/* ========================================================================= */
+
+main()
+{
+
+  temp_names[0]  = "st_rad";
+  temp_names[1]  = "end_rad";
+  temp_names[2]  = "crv0";
+
+  temp_types[0]  = parameter_generic | double_type;
+  temp_types[1]  = parameter_generic | double_type;
+  temp_types[2]  = curve_generic | conic_generic | line_generic;
+
+  feet_names[0] = "ressur";
+  ci_mac_def1   = NULL_OBJID;
+
+  ac$cimacdef(	cimacdef          = ci_mac_def1,
+		status	          = &stat,
+	  	name              = "srf_bend",
+		temp_num          = 3,      
+		temp_names        = temp_names,
+		temp_types	  = temp_types,
+		extern_feet_num   = 1,	  
+		extern_feet_names = feet_names );
+}
+
+/* ========================================================================= */
+
+place ()
+{
+
+  construct_comp();
+
+  if( GRid_list.objid == NULL_OBJID ) return(0);
+
+  stat = ci$send( msg	    = message  ci_macro.set_all_extern_feet
+			( &msg, 1,&GRid_list, &MOD_ENV ),
+	   targetid = CI_MACRO_ID.objid,
+	   targetos = CI_MACRO_ID.osnum ) ; as$status(sts = stat) ;
+  return(1);
+}
+
+/* ========================================================================= */
+
+compute ()
+{
+
+  construct_comp();
+
+  if( GRid_list.objid == NULL_OBJID ) {
+	#ifdef DEBUG
+	printf("Error in construct_comp() \n") ;
+	#endif
+	return(0) ;
+	}
+  stat = ci$send( msg	    = message  ci_macro.set_all_extern_feet
+			( &msg, 1,&GRid_list, &MOD_ENV ),
+	   targetid = CI_MACRO_ID.objid,
+	   targetos = CI_MACRO_ID.osnum ) ; as$status(sts = stat) ;
+
+  return(1);
+}
+
+/* ========================================================================= */
+
+construct_comp()
+{
+#ifdef DEBUG
+  printf("Begin of construct_comp() \n") ;
+#endif
+
+  GRid_list.objid = NULL_OBJID;
+
+  msg = ci$send( msg      = message  ACcpx.ACfind_exp_temp_struct
+		           (&stat,0,(char *)&diam,&MOD_ENV),
+           targetid = CI_MACRO_ID.objid,
+           targetos = CI_MACRO_ID.osnum );
+  if( !(stat&msg&1) ){
+	status(" bad object for diamter " );
+	return;
+  }
+  radi = diam.var.root_pm_st.value; 
+  msg = ci$send( msg      = message  ACcpx.ACfind_exp_temp_struct
+		           (&stat,1,(char *)&diam,&MOD_ENV),
+           targetid = CI_MACRO_ID.objid,
+           targetos = CI_MACRO_ID.osnum );
+  if( !(stat&msg&1) ){
+	status(" bad object for diamter " );
+	return;
+  }
+  rade = diam.var.root_pm_st.value; 
+
+  if( ( radi <= EPSILON ) && ( rade <= EPSILON ) ) return;
+
+  radi = radi * 0.5;
+  rade = rade * 0.5;
+
+
+  msg = ci$send( msg		= message  ACcpx.ACfind_exp_temp_obj(
+						&stat,2,&CUV),
+	         targetid	= CI_MACRO_ID.objid,
+	         targetos	= CI_MACRO_ID.osnum );
+  if( !(stat&msg&1) ) return;
+
+  msg = ci$send( msg      = message NDmacro.ACreturn_foot(	
+				&stat ,
+				"",
+				&trace_inf[0].located_obj, 
+				&trace_inf[0].module_info.md_env.matrix_type, 
+				trace_inf[0].module_info.md_env.matrix ),
+	   targetid = CUV.objid,
+	   targetos = CUV.osnum );
+
+  if( !(stat&msg&1) ){
+	write("bad curve \n");
+  	as$status(sts=stat);
+	return;	
+  }
+
+
+   ci$send( msg	    = message GRvg.GRgenabsg(
+				&msg,
+				&trace_inf[0].module_info.md_env.matrix_type,
+				trace_inf[0].module_info.md_env.matrix,
+				&bspcurve) ,
+	   targetid = trace_inf[0].located_obj.objid,
+           targetos = trace_inf[0].located_obj.osnum  );
+
+
+   for(j=0;j<3;j=j+1)trace_inf[0].proj_pnt[j] = bspcurve->poles[j];
+   trace_inf[0].module_info.md_id.osnum = trace_inf[0].located_obj.osnum;
+
+
+   init_cnst_list();
+   get_symb();
+
+   dis.color		= cnst_list.color;
+   dis.weight		= cnst_list.weight;
+   dis.style		= cnst_list.style;
+
+   cst.msg		= &msg;
+   cst.properties	= GRIS_LOCATABLE | GRIS_DISPLAYABLE;
+   cst.display		= &dis;
+   cst.env_info		= &MOD_ENV;
+   cst.newflag		= FALSE;
+   cst.level		= cnst_list.level;
+   cst.geometry		= NULL;
+   cst.class_attr	= NULL;
+   cst.name		= NULL;
+
+   bsp_arc.poles   = &bstab[0];
+   bsp_arc.knots   = &bstab[21];
+   bsp_arc.weights = &bsp_arc.knots[10];
+
+   ncros = 1;
+
+	#ifdef DEBUG
+	printf("radi is %f \n", radi) ;	
+	printf("rade is %f \n", rade) ;	
+	#endif
+
+   if( fabs(radi -  rade) >	1.E-10 ){
+
+  	   plane.point  = &ptab[0];
+  	   plane.normal = &ptab[3];
+  	   stat = ci$send( msg = message  GRvg.GRdetplane( 
+				&msg,
+			       	&trace_inf[0].module_info.md_env.matrix_type,
+			       	trace_inf[0].module_info.md_env.matrix,
+                                &plane),
+		    targetid = trace_inf[0].located_obj.objid,
+		    targetos = trace_inf[0].located_obj.osnum );
+	    if(!(stat & 1)) return;
+
+	    ncros = 2;
+	    BScveval(bspcurve , 0.0, 1, ptdv1, &msg);
+	    BScveval(bspcurve , 1.0, 1, ptdv2, &msg);
+
+	/* --- place the start circle --- */
+
+            BSnorvec(&msg,&ptdv1[3]);
+//	    BScrossp(&msg,&ptdv1[3],&(plane.normal[0]),nvec);
+    	    if( radi < EPSILON ) radi = 1.0E-4; 
+    	    for (j=0;j<3;j=j+1) stpoint[j] = ptdv1[j] + radi*plane.normal[j];
+            msg = BSprepcircp(&rc,&ptdv1[0],stpoint,
+                              &ptdv1[3],&bsp_arc,nvec,&stat);
+            cst.geometry   = (char *)&bsp_arc;
+            CIRI.objid = NULL_OBJID;
+            CIRI.osnum = MOD_ENV.md_id.osnum;
+
+            stat = ci$send(msg      = message GR3dcirarc.GRconstruct(&cst),
+	            targetid = CIRI.objid,
+	            targetos = CIRI.osnum  ) ; as$status(sts = stat) ;
+
+            for (j=0;j<3;j=j+1) cross[0].proj_pnt[j] = bsp_arc.poles[j];
+            cross[0].located_obj = CIRI;
+            cross[0].module_info = MOD_ENV;
+
+	/* --- place the end circle --- */
+
+            BSnorvec(&msg,&ptdv2[3]);
+//	    BScrossp(&msg,&ptdv2[3],&(plane.normal[0]),nvec);
+    	    if( rade < EPSILON ) rade = 1.0E-4; 
+    	    for (j=0;j<3;j=j+1) stpoint[j] = ptdv2[j] + rade*plane.normal[j];
+            msg = BSprepcircp(&rc,&ptdv2[0],stpoint,
+                              &ptdv2[3],&bsp_arc,nvec,&stat);
+            cst.geometry   = (char *)&bsp_arc;
+            CIRE.objid = NULL_OBJID;
+            CIRE.osnum = MOD_ENV.md_id.osnum;
+
+            stat = ci$send(msg      = message GR3dcirarc.GRconstruct(&cst),
+	            targetid = CIRE.objid,
+	            targetos = CIRE.osnum  ) ;  as$status(sts = stat) ;
+
+            for (j=0;j<3;j=j+1) cross[0].proj_pnt[j] = bsp_arc.poles[j];
+            cross[1].located_obj = CIRE;
+            cross[1].module_info = MOD_ENV;
+   }
+   else
+   {
+        BScveval (bspcurve , 0.0, 1, ptdv1, &msg);
+        BSnorvec(&msg,&ptdv1[3]);
+        nvec[0] = -1.0*ptdv1[4];
+        nvec[1] = ptdv1[3];
+        nvec[2] = 0.0;
+
+        if( (nvec[0] == 0.0) && (nvec[1] == 0.0) ) nvec[0] = 1.0;
+
+	BScrossp(&msg,&ptdv1[3],nvec,vec);
+        BSnorvec(&msg,vec);
+
+    	if( radi < EPSILON ) radi = 1.0E-4; 
+    	for (j=0;j<3;j=j+1) stpoint[j] = ptdv1[j] + radi*vec[j];
+
+        msg = BSprepcircp(&rc,&ptdv1[0],stpoint,&ptdv1[3],&bsp_arc,nvec,&stat);
+
+        cst.geometry   = (char *)&bsp_arc;
+        CIRI.objid = NULL_OBJID;
+        CIRI.osnum = MOD_ENV.md_id.osnum;
+        ci$send(msg      = message GR3dcirarc.GRconstruct(&cst),
+	        targetid = CIRI.objid,
+	        targetos = CIRI.osnum  );
+
+        for (j=0;j<3;j=j+1) cross[0].proj_pnt[j] = bsp_arc.poles[j];
+        cross[0].located_obj = CIRI;
+        cross[0].module_info = MOD_ENV;
+    }
+    
+    GRid_list.osnum = MOD_ENV.md_id.osnum;
+
+    is_scal      = FALSE;
+    are_sec      = TRUE;
+    cst.geometry = NULL;
+
+    stat = ci$send(msg = message EMSgenbs.EMmove_cross_section
+				(&msg,&cst,ncros,cross,1,trace_inf,is_scal,
+				are_sec,org,mat,xvec,yvec ),
+	    	   targetid = GRid_list.objid,
+	    	   targetos = GRid_list.osnum);
+
+
+    ci$send(msg      = message GRgraphics.GRdelete(&msg,&MOD_ENV), 
+            targetid = CIRI.objid,
+            targetos = CIRI.osnum);
+    
+    if( ncros == 2 )
+    ci$send(msg      = message GRgraphics.GRdelete(&msg,&MOD_ENV), 
+            targetid = CIRE.objid,
+            targetos = CIRE.osnum);
+
+    if ( !(stat&1) )  GRid_list.objid = NULL_OBJID;
+
+#ifdef DEBUG
+  printf("End of construct_comp() \n") ;
+#endif
+
+}
+/* ========================================================================= */
+
