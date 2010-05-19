@@ -1,0 +1,381 @@
+/* $Id: COz_checkLib.u,v 1.1.1.1 2001/01/04 21:09:02 cvs Exp $  */
+
+/***************************************************************************
+ * I/VDS
+ *
+ * File:	vdppl/COz_checkLib.u
+ *
+ * Description:
+ *		Check macro library attachments in file by checking
+ *		the ACtmp_def objects in each design file.
+ *		Check also for nested macros of equipment objects.
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ *	$Log: COz_checkLib.u,v $
+ *	Revision 1.1.1.1  2001/01/04 21:09:02  cvs
+ *	Initial import to CVS
+ *	
+# Revision 1.1  1998/04/29  16:27:20  pinnacle
+# VDS 2.5.1
+#
+# Revision 1.1  1997/05/08  13:20:44  pinnacle
+# New project VDS 250
+#
+# Revision 1.1  1996/07/19  20:33:52  pinnacle
+# Create VDS 241 project
+#
+# Revision 1.1  1995/07/11  20:14:16  pinnacle
+# Created: vdppl/COz_checkLib.u by azuurhou for vds.240
+#
+ *
+ * History:
+ *	MM/DD/YY	AUTHOR		DESCRIPTION
+ *	07/08/95	adz		creation date
+ *
+ ***************************************************************************/
+
+#include <stdio.h>
+#include "OMerrordef.h"
+#include "OMminimum.h"
+#include "OMprimitives.h"
+#include "ciminimum.h"
+#include "cimacros.h"
+#include "igrtypedef.h"
+#include "igetypedef.h"
+#include "exdef.h"
+#include "exmacros.h" 
+#include "exproto.h"
+#include "FI.h"
+#include "msmacros.h"
+#include "acdef.h"
+#include "acmacros.h"
+#include "macro.h"
+
+#include "DIdef.h"
+#include "DItypedef.h"
+#include "DIglob.h"
+#include "DIprims.h"
+
+
+/* include/protypes */
+
+extern	int	EX_findmod();
+extern	int	ACfind_macro_defn();
+
+extern	char	*strrchr();
+extern	int	strcmp();
+
+/**
+#define	DEBUG		1
+ **/
+#define	resDEBUG	1
+
+#define		MAX_FILES	1000
+#define		MAX_NAMES	30
+
+
+main()
+{
+int			status;
+long			msg;
+OM_S_OBJID		mod_id;
+OMuword			classid;
+GRspacenum		cur_os;
+
+struct	GRid		macroId ;
+
+IGRchar			*p ;
+
+IGRchar			*fileList[MAX_FILES],
+			*missList[MAX_FILES],
+			*missMacro[MAX_FILES];
+
+IGRchar			*p_miss,
+			*p_file,
+			*p_macro;
+
+IGRchar			missBuffer[MAX_FILES * MAX_NAMES],
+			fileBuffer[MAX_FILES * MAX_NAMES],
+			macroBuffer[MAX_FILES * MAX_NAMES];
+			
+IGRchar			file_name[DI_PATH_MAX],
+			echoProc[DI_PATH_MAX],
+			macro_name[DI_PATH_MAX];
+
+IGRint			i, j, os, id, max,
+			maxMiss,
+			maxMacro,
+			maxList ;
+
+extern	GRclassid	OPP_ACtmp_defn_class_id;
+extern	GRclassid	OPP_VDequipment_class_id;
+
+	/*
+	 * Get the number of files attached.
+	 */
+
+	UI_message(" Check Macros and Libraries " );
+
+#ifdef	DEBUG
+	printf(" MaxOS : %d \n", OM_Gw_maxOS );
+#endif
+
+	/*
+	 * Get starting object space.
+	 */
+
+	ex$get_cur_mod( id = &mod_id, osnum = &cur_os );
+
+	/*
+	 * Store all the filename in a buffer to check against.
+	 */
+	maxList		= 0 ;
+	maxMiss		= 0 ;
+	maxMacro	= 0 ;
+
+	p_file	= fileBuffer ;
+	p_miss	= missBuffer ;
+	p_macro	= macroBuffer ;
+
+	for( os = cur_os ; os < OM_Gw_maxOS ; os=os+1 ) {
+
+	  if( OM_GA_OSDs[ os ] ){
+	
+		strcpy( file_name, OM_GA_OSDs[os]->name );
+
+	        if( p = strrchr( file_name, '/' ) )     p = p +1 ;
+		else                                    p = file_name ;
+
+#ifdef	DEBUG
+		printf("\tName[%d]: %s\t->%s\n", os, p, OM_GA_OSDs[os]->name );
+#endif
+		
+		strcpy( p_file, p );
+		fileList[maxList] = p_file;
+		
+		p_file	= p_file +MAX_NAMES ;
+		maxList	= maxList + 1;
+	  }
+	}
+
+	/*
+	 * Show the available files/libraries.
+	 */
+#ifdef	DEBUG
+	for( os=0 ; os<maxList ; os=os+1 ){
+		printf("BUFFER[%d]: %s\n", os, fileList[os] );
+	}
+#endif
+
+	for( os=cur_os ; os<OM_Gw_maxOS ; os=os+1 ) {
+
+	  if( OM_GA_OSDs[ os ] ){
+
+	    sprintf( echoProc, "Processing %.0f%% ",
+                                (double)((os-cur_os)*100./(double)maxList) );
+	    sprintf( file_name, "Check: %s", OM_GA_OSDs[os]->name );
+
+	    UI_status( file_name );
+	    UI_echo( echoProc );
+
+	    max = OM_GA_OSDs[os]->CurSpaceMapSize ;
+
+	    for( id=0 ; id<max ; id=id+1 ) {
+
+              status = 
+	      om$get_classid(objid = id, osnum = os, p_classid = &classid ) ;
+              if( !( status & 1 )) continue ;
+
+              if( om$is_ancestry_valid(
+                                superclassid    = OPP_ACtmp_defn_class_id,
+                                subclassid      = classid ) == OM_S_SUCCESS ){
+
+		  status =
+		  ci$send( msg = message ACtmp_defn.ACget_mac_name(
+					file_name,
+					macro_name ),
+			 targetid = id,
+			 targetos = os );
+		  if( !( status & 1 )) continue ;
+
+		  if( strcmp( file_name, "." ) == 0 ) continue ;
+
+		  for( i=0 ; i<maxList ; i=i+1 ){
+			if( strcmp( fileList[i], file_name ) == 0 ) break;
+		  }
+
+		  if( i==maxList ){
+#ifdef	DEBUG
+		    printf(" Macro\t: %s\t%s\tmissing file \n",
+						macro_name, file_name);
+#endif
+
+		    for( j=0; j<maxMiss ; j=j+1 ){
+		      if( strcmp( missList[j], file_name ) == 0 ) break;
+		    }
+		    if( j==maxMiss ){
+			/*
+			 * Add in the list.
+			 */
+			strcpy( p_miss, file_name );
+			missList[maxMiss] = p_miss;
+		
+			p_miss	= p_miss +MAX_NAMES ;
+			maxMiss	= maxMiss + 1;
+		    }
+		  }
+
+		  /*
+		   * Check if macro is there.
+		   */
+		  status =
+		  ac$find_macro_defn(	action		= ACfind_no_load,
+					macro_name	= macro_name,
+					p_macro_defn_id	= &macroId );
+		  if( !( status&1 )){
+			/*
+			 * macro is not there.
+			 */
+		    for( j=0; j<maxMacro ; j=j+1 ){
+		      if( strcmp( missMacro[j], macro_name ) == 0 ) break;
+		    }
+		    if( j==maxMacro ){
+			/*
+			 * Add in the list.
+			 */
+#ifdef	DEBUG
+			printf(" Macro\t: %s\t%s\tmissing macro \n",
+						macro_name, file_name);
+#endif
+			strcpy( p_macro, macro_name );
+			missMacro[maxMacro] = p_macro;
+		
+			p_macro	= p_macro +MAX_NAMES ;
+			maxMacro = maxMacro + 1;
+		    }
+		  }
+		continue ;
+
+	      } /* if ACtmp_defn */
+
+              if( om$is_ancestry_valid(
+                                superclassid    = OPP_VDequipment_class_id,
+                                subclassid      = classid ) == OM_S_SUCCESS ){
+		  status =
+		  ci$send(msg = message VDSroot.VDGetGraphMac( &msg,macro_name),
+			 targetid = id,
+			 targetos = os );
+		  if( !( status & 1 )) continue ;
+
+		  /*
+		   * Check if macro is there.
+		   */
+		  status =
+		  ac$find_macro_defn(	action		= ACfind_no_load,
+					macro_name	= macro_name,
+					p_macro_defn_id	= &macroId );
+		  if( !( status&1 )){
+			/*
+			 * macro is not there.
+			 */
+		    for( j=0; j<maxMacro ; j=j+1 ){
+		      if( strcmp( missMacro[j], macro_name ) == 0 ) break;
+		    }
+		    if( j==maxMacro ){
+			/*
+			 * Add in the list.
+			 */
+
+#ifdef	DEBUG
+			printf(" Macro\t: %s\tmissing Equipment\n",
+						macro_name );
+#endif
+			strcpy( p_macro, macro_name );
+			missMacro[maxMacro] = p_macro;
+		
+			p_macro	= p_macro +MAX_NAMES ;
+			maxMacro = maxMacro + 1;
+		    }
+		  }
+	      } /* if VDequipment */
+
+	      continue ;
+
+	    } /* for object in os */
+	  }
+	} /* for all os's */
+
+
+
+
+	UI_status( "" );
+	UI_echo( "" );
+
+
+
+
+	if( maxMiss ){
+
+#ifdef	resDEBUG
+	  printf("\tMISSING LIBRARIES: %d\n\n", maxMiss );
+#endif
+	  sprintf(echoProc, "MISSING LIBRARIES: %d", maxMiss );
+	  fileBuffer[0] = '\0';	
+	  j=0;
+	  while( j<maxMiss ){
+
+#ifdef	resDEBUG
+	    printf("\t[%d] :\t%s\n", j, missList[j] );
+#endif
+	    sprintf( fileBuffer, "%s\n\t%s\t", fileBuffer,missList[j] );
+	    j=j+1 ;
+	    if( j<maxMiss ){
+
+#ifdef	resDEBUG
+	    printf("\t[%d] :\t%s\n", j, missList[j] );
+#endif
+		sprintf( fileBuffer, "%s, %s", fileBuffer,missList[j] );
+		j=j+1;
+	    }
+	  }
+	  EX_error_box( FI_CURRENT_SCREEN, fileBuffer, echoProc );
+	}
+	else{
+
+#ifdef	resDEBUG
+	  printf("\t\tNO MISSING LIBRARIES\n\n");
+#endif
+	  strcpy( fileBuffer, "No missing libraries found" );
+	  EX_error_box(FI_CURRENT_SCREEN, fileBuffer, "MISSING LIBRARIES");
+	}
+
+	if( maxMacro ){
+
+#ifdef	resDEBUG
+	  printf("\tMISSING MACROS: %d\n\n", maxMacro );
+#endif
+	  sprintf(echoProc, "MISSING MACROS: %d", maxMacro );
+	  fileBuffer[0] = '\0';	
+	  j=0 ;
+	  while( j<maxMacro ){
+
+#ifdef	resDEBUG
+	    printf("\t[%d] :\t%s\n", j, missMacro[j] );
+#endif
+	    sprintf( fileBuffer, "%s\n\t%s\t", fileBuffer, missMacro[j] );
+	    j=j+1 ;
+	    if( j<maxMacro ){
+
+#ifdef	resDEBUG
+	    printf("\t[%d] :\t%s\n", j, missMacro[j] );
+#endif
+		sprintf( fileBuffer, "%s, %s", fileBuffer,missMacro[j] );
+		j=j+1;
+	    }
+	  }
+	  EX_error_box( FI_CURRENT_SCREEN, fileBuffer, echoProc );
+	}
+}
+

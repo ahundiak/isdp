@@ -1,0 +1,147 @@
+/* $Id: COz_tblValid.u,v 1.2 2002/05/15 14:03:19 ylong Exp $  */
+/* --------------------------------------------------------------------
+ * I/VDS
+ *
+ * File:        vds/vdppl/COz_tblValid.u
+ *
+ * Description:
+ *	This PPL, COz_tblVali.u, is used to,
+ *	0. Validate paths - chech and replace object paths in each row
+ *	   with tree number and node number combination.
+ *	1. Validate Table - chech and fix row numbers and positions, if they
+ *	   are not correct.
+ *	2. Export table parameters to a text file so that we can check if
+ *	   the table is fine.
+ *
+ * Dependencies:
+ *	Fuctions are implemented in isdp/vds/vdtbl/func/VDdrw_tblValid.I
+ *
+ * Revision History:
+ *      $Log: COz_tblValid.u,v $
+ *      Revision 1.2  2002/05/15 14:03:19  ylong
+ *      *** empty log message ***
+ *
+ *      Revision 1.1  2002/04/04 21:06:56  ylong
+ *      *** empty log message ***
+ *
+ *
+ * History:
+ *      MM/DD/YY        AUTHOR          DESCRIPTION
+ *      04/04/02        ylong           Created.
+ *      05/14/02        ylong           added Validate paths.
+ * -------------------------------------------------------------------*/
+#include "VDppl.h"
+#include "VDmem_ppl.h"
+#include "VDobj.h"
+#include "cievent.h"
+
+extern int	VDtblExport();
+extern int	VDtblValidateRows();
+extern int	VDtblValidateOTMpaths();
+
+main(argc,argv)
+  IGRint   argc;
+  IGRchar *argv[];
+
+{ 
+  IGRint        sts, msg;
+  IGRint        response, opt;
+  IGRstat       retFlag;
+  IGRchar       prompt[80], cmdMsg[80], stsMsg[80], fileName[80];
+  TGRid		locObj;
+
+  retFlag = 0 ;
+  strcpy( prompt, "Select Table");
+  strcpy( cmdMsg, "Validate or Export table");
+
+  response = 0;
+  opt = 0;
+
+  while(1)
+  {
+    UI_message(cmdMsg);
+    sts = ci$locate (
+                prompt                  = prompt,
+                classes                 = "VDdrwTbl",
+                properties              = LC_LC_ONLY | LC_DP_ONLY | LC_RW,
+                owner_action            = LC_RIGID_COMP | LC_RIGID_OWNER |
+                                          LC_FLEX_COMP  | LC_FLEX_OWNER  |
+                                          LC_REF_OBJECTS,
+                response                = &response,
+                obj                     = &locObj.objid,
+                osnum                   = &locObj.osnum );
+
+    switch(response)
+    {
+
+    case EX_OBJID:
+        break;
+
+    case EX_DATA:               /* single object selected */
+	do {
+		ci$get(	prompt	= "0 - Valid Paths, 1 - Validate Table, 2 - Export Table",
+			value	= opt );
+	} while( opt < 0 || opt > 2 );
+
+	if( opt == 0 ) {
+		sts = VDtblValidateOTMpaths(&locObj);
+		strcpy(stsMsg, "OTM paths validated successfully");
+	}
+	if( opt == 1 ) {
+		sts = VDtblValidateRows(&locObj);
+		strcpy(stsMsg, "Table validated successfully");
+	}
+	if( opt == 2 ) {
+		fileName[0] = '\0';
+		ci$get( prompt  = "Give ouput file name:",
+			string	= fileName);
+		if( !(*fileName) ) strcpy( fileName, "tbl.txt" );
+		sts = VDtblExport(&locObj, fileName);
+		sprintf(stsMsg, "Export table done (file: %s)", fileName);
+	}
+	if(sts) UI_status(stsMsg);
+	else	UI_status("Export table failed\n");
+	goto wrapup;
+
+    case EX_RJT_MOVEON:         /* move on */
+        break;
+    } // Switch
+  }   // while
+
+wrapup:
+  UI_message("");
+  UI_prompt("");
+  return 1;
+}
+
+/* ------------------------------------------
+ * Usual command object messages
+ *
+ * Startup always starts here
+ */
+init()
+{
+  IGRstat retFlag;
+  IGRstat sts;
+
+  retFlag = 1;
+  
+  return retFlag;
+}
+
+sleep() 
+{
+  return 1;
+}
+
+wakeup()
+{
+  return 1;
+}
+
+delete()
+{
+  return 1;
+}
+
+

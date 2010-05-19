@@ -1,0 +1,345 @@
+/***************************************************************************
+ * I/VDS
+ *
+ * File:        vdppl/COz_RefMgr.u
+ *
+ * Description: Check reference file manager.
+ *
+ *
+ * Dependencies:
+ *
+ * History:
+ *      MM/DD/YY        AUTHOR          DESCRIPTION
+ *      10/22/00        Ming            Creation
+ *
+ ***************************************************************************/
+
+#include <stdio.h>
+#include "cieveryone.h"
+
+#include "ciminimum.h"
+#include "cimacros.h"
+#include "exmacros.h"
+#include "igrdp.h"
+#include "igrtypedef.h"
+#include "godef.h"
+#include "go.h"
+#include "VDmem_ppl.h"
+#include "v_slcdef.h"
+#include "v_pplslc.h"
+
+extern GRclassid OPP_GRmodule_class_id,
+		 OPP_GRreffile_class_id,
+		 OPP_GRcontext_class_id,
+	 	 OPP_VDcontext_class_id;
+extern int 	 UI_message(),
+	   	 UI_status(),
+		 EX_get_oid_nodname(),
+	         GRconfirm_box();
+
+
+#define theCommand    "Check Reference File Manager"
+
+main()
+{
+IGRint		 	status, i, valid_cnt, invalid_cnt;
+IGRlong			msg, count, response, count_ctx;
+IGRshort		count_nested;
+IGRulong		prop_mask;
+struct GRmd_env         loc_env;
+OM_S_OBJID      	Super_id;
+GRobjid         	*objlist;
+GRspacenum      	*oslist;
+OM_S_CHANSELECT         contextChan;
+OM_S_OBJECT_LINKAGE     *contextObj;
+IGRchar			error_msg[2000], tmp_str[2000];
+struct GRid		obj;
+IGRshort 		form_displayed;
+OMuword       		classid;
+
+
+	objlist = NULL;
+	oslist  = NULL;
+    	contextObj = NULL;
+	error_msg[0] = '\0';
+	tmp_str[0] = '\0';
+	form_displayed = FALSE;
+
+	UI_message( theCommand );
+
+  	ci$get_module_info( md_env = &loc_env);
+
+        status =
+        om$make_chanselect( channame        = "Super_rfmgr.to_context",
+                            p_chanselect    = &contextChan );
+        if( !(status&1) ) goto wrapup;
+
+	status =
+	ex$get_objid_from_NOD( NODname         = "IGENOD",
+                               objname         = "Ref Mgr",
+                               pobjid          = &Super_id,
+                               modid           = loc_env.md_id.objid,
+                               mod_osnum       = loc_env.md_id.osnum);
+        if( !(status&1) || Super_id == NULL_OBJID )
+ 	{
+	  UI_status( "NO reference file manager!" );
+	  goto wrapup;
+   	}
+	else
+	{
+	  sprintf( tmp_str, "Reference file manager [%d, %d]:\n", 
+		   Super_id, loc_env.md_id.osnum );
+          strcat( error_msg, tmp_str );
+	  tmp_str[0] = '\0';
+     	} 
+
+        /*| Get count of reference file */
+  	prop_mask = 0;
+  	count_nested = 0;
+ 	count = 0;
+  	status =
+  	ci$send(msg      = message Super_rfmgr.GRget_channel_count
+                                   ( &msg, &prop_mask, &count_nested, &count),
+                targetid = Super_id,
+                targetos = loc_env.md_id.osnum );
+        if(!(status&msg&1))
+        {
+	  form_displayed = TRUE;
+	  strcat( error_msg, "  No Super_rfmgr.mgr channel.\n" );
+ 	}
+	else if( count <= 0 )
+	{
+	  form_displayed = TRUE;
+	  strcat( error_msg, "  No obj on Super_rfmgr.mgr channel.\n" );
+	}
+	else
+	{
+
+          /*| Get reference file objects */
+  	  objlist = _MALLOC( (int)count, GRobjid );
+  	  oslist  = _MALLOC( (int) count,  GRspacenum );
+          if( objlist == NULL || oslist == NULL )
+	  {
+	    printf("Memory allocation failed!\n");
+	    goto wrapup;
+	  }
+
+  	  prop_mask = 0; count_nested = 0;
+  	  status =
+  	  ci$send(msg      = message Super_rfmgr.GRget_channel_objects
+                                     ( msg, &prop_mask, &count_nested, &count,
+                                      objlist, oslist, &count),
+          	  targetid = Super_id,
+          	  targetos = loc_env.md_id.osnum );
+	  if( !(status&msg&1) )
+	  {
+	    form_displayed = TRUE;
+	    strcat( error_msg, "  No obj on Super_rfmgr.mgr channel.\n" );
+	  }
+	  else
+	  {
+	    invalid_cnt = 0;
+	    for( i = 0 ; i < count ; i = i + 1 )
+	    {
+	      obj.objid = objlist[i];
+	      obj.osnum = oslist[i];
+	      status = om$get_classid( objid = obj.objid, 
+			      	       osnum = obj.osnum,
+        		      	       p_classid = &classid );
+	      if( !(status&1) )
+              {
+                invalid_cnt = invalid_cnt + 1;
+                continue;
+              }
+
+	      if( !(om$is_ancestry_valid(superclassid = OPP_GRreffile_class_id,
+					 subclassid   = classid)) )
+	        invalid_cnt = invalid_cnt + 1;
+	    }
+	    valid_cnt = count - invalid_cnt;
+	    tmp_str[0] = '\0';
+	    sprintf( tmp_str, "  Channel Super_rfmgr.mgr: valid obj(%d); invalid obj(%d)\n", valid_cnt, invalid_cnt );
+	    strcat( error_msg, tmp_str );
+	    if( invalid_cnt > 0 ) form_displayed = TRUE;
+	  }
+	}
+	  
+
+	/* check channel Super_rfmgr.to_context */
+ 	count_ctx = 0;
+        status =
+        om$get_channel_count( osnum           = loc_env.md_id.osnum,
+                              objid           = Super_id,
+                              p_chanselect    = &contextChan,
+                              count           = (OMuint *)&count_ctx );
+        if(!(status&msg&1))
+        {
+	  form_displayed = TRUE;
+	  strcat( error_msg, "  No Super_rfmgr.to_context channel.\n" );
+ 	}
+	else if( count_ctx <= 0 )
+	{
+	  form_displayed = TRUE;
+	  strcat( error_msg, "  No obj on Super_rfmgr.to_context channel.\n" );
+	}
+	else
+	{
+          contextObj = _MALLOC( (int) count_ctx, OM_S_OBJECT_LINKAGE );
+          if( contextObj == NULL )
+	  {
+	    printf("Memory allocation failed!\n");
+	    goto wrapup;
+	  }
+
+          status =
+          om$get_channel_objects( osnum        = loc_env.md_id.osnum,
+                                  objid        = Super_id,
+                                  p_chanselect = &contextChan,
+                                  size         = count_ctx,
+                                  list         = contextObj,
+                                  count        = (OMuint *)&count_ctx );
+	  if( !(status&msg&1) )
+	  {
+	    form_displayed = TRUE;
+	    strcat( error_msg, "  No obj on Super_rfmgr.to_context channel.\n" );
+	  }
+	  else
+	  {
+	    invalid_cnt = 0;
+	    for( i = 0 ; i < count_ctx ; i = i + 1 )
+	    {
+	      obj.objid = contextObj[i].S_objid;
+	      obj.osnum = contextObj[i].osnum;
+	      status = om$get_classid( objid = obj.objid, 
+                              	       osnum = obj.osnum,
+                              	       p_classid = &classid );
+ 	      if( !(status&1) ) 
+	      {
+	        invalid_cnt = invalid_cnt + 1;
+		continue;
+	      }
+
+	      if( !(om$is_ancestry_valid(superclassid = OPP_GRcontext_class_id,
+					 subclassid   = classid)) &&
+		  !(om$is_ancestry_valid(superclassid = OPP_VDcontext_class_id,
+					 subclassid   = classid)) )
+	        invalid_cnt = invalid_cnt + 1;
+	    }
+	    valid_cnt = count_ctx - invalid_cnt;
+	    tmp_str[0] = '\0';
+	    sprintf( tmp_str, "  Channel Super_rfmgr.to_context: valid obj(%d); invalid obj(%d)\n", valid_cnt, invalid_cnt );
+	    strcat( error_msg, tmp_str );
+	    if( invalid_cnt > 0 ) form_displayed = TRUE;
+	  }
+	}
+
+	_FREE( contextObj );
+	contextObj = NULL;
+
+
+	/* check channel global_class.mod */
+        status =
+        om$make_chanselect( channame        = "global_class.mod",
+                            p_chanselect    = &contextChan );
+        if( !(status&1) ) goto wrapup;
+
+ 	count_ctx = 0;
+        status =
+        om$get_channel_count( osnum           = loc_env.md_id.osnum,
+                              objid           = Super_id,
+                              p_chanselect    = &contextChan,
+                              count           = (OMuint *)&count_ctx );
+        if(!(status&msg&1))
+        {
+	  form_displayed = TRUE;
+	  strcat( error_msg, "  No global_class.mod channel.\n" );
+ 	}
+	else if( count_ctx <= 0 )
+	{
+	  form_displayed = TRUE;
+	  strcat( error_msg, "  No obj on global_class.mod channel.\n" );
+	}
+	else
+	{
+          contextObj = _MALLOC( (int) count_ctx, OM_S_OBJECT_LINKAGE );
+          if( contextObj == NULL )
+	  {
+	    printf("Memory allocation failed!\n");
+	    goto wrapup;
+	  }
+
+          status =
+          om$get_channel_objects( osnum        = loc_env.md_id.osnum,
+                                  objid        = Super_id,
+                                  p_chanselect = &contextChan,
+                                  size         = count_ctx,
+                                  list         = contextObj,
+                                  count        = (OMuint *)&count_ctx );
+	  if( !(status&msg&1) )
+	  {
+	    form_displayed = TRUE;
+	    strcat( error_msg, "  No obj on global_class.mod channel.\n" );
+	  }
+	  else
+	  {
+	    invalid_cnt = 0;
+	    for( i = 0 ; i < count_ctx ; i = i + 1 )
+	    {
+	      obj.objid = contextObj[i].S_objid;
+	      obj.osnum = contextObj[i].osnum;
+	      status = om$get_classid( objid = obj.objid, 
+                                       osnum = obj.osnum,
+                                       p_classid = &classid );
+	      if( !(status&1) )
+              {
+                invalid_cnt = invalid_cnt + 1;
+                continue;
+              }
+
+	      if( !(om$is_ancestry_valid(superclassid = OPP_GRmodule_class_id,
+					 subclassid   = classid)) )
+	        invalid_cnt = invalid_cnt + 1;
+	    }
+	    valid_cnt = count_ctx - invalid_cnt;
+	    tmp_str[0] = '\0';
+	    sprintf( tmp_str, "  Channel global_class.mod: valid obj(%d); invalid obj(%d)\n", valid_cnt, invalid_cnt );
+	    strcat( error_msg, tmp_str );
+	    if( invalid_cnt > 0 ) form_displayed = TRUE;
+	  }
+	}
+
+	/* Display the form */
+	if( form_displayed )
+	{
+	  strcat( error_msg, "\nYou can select \"yes\" button to delete reference file manager\n or you can use \"om\" command to delete it by yourself!\n");
+	  status = GRconfirm_box( error_msg );
+	  if( status )
+	  {
+	    status =
+      	    ci$send( msg      = message Root.delete(0),
+          	     targetid = Super_id,
+          	     targetos = loc_env.md_id.osnum );
+      	    if( !(status&1) ) 
+	    {
+	      printf("\n\nReference file manager deletion failed. But, may you can attach reference files!\n");
+	      goto wrapup;
+	    }
+	    UI_status( "Reference file manager was deleted!" );
+	  }
+	  else
+	    goto wrapup;
+	}
+	else
+	{
+	  UI_status( "Reference file manager is good!" );
+	  printf( "Reference file manager is good!\n" );
+	  goto wrapup;
+	}
+
+
+wrapup:
+   _FREE( objlist );
+   _FREE( oslist );
+   _FREE( contextObj );
+
+}

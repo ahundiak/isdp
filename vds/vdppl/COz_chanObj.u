@@ -1,0 +1,704 @@
+/***************************************************************************
+ * I/VDS
+ *
+ * File:        vdppl/COz_chanObj.u
+ *
+ * Description: Check Objects and Channels.
+ * 		This command was designed for cleaning up the corrupted file.  
+ *		All the objects and channels in a file will be checked.  If 
+ *		found that wrong or invalid objects connected to a channel,   
+ *		these wrong or invalid objects will be disconnected from the 
+ *		channel and right objects will be found.  Finally, these right 
+ *		objects will be connected to the channel.
+ * Work Flow:   1) Execute the command.
+ * 		2) A dialog form displays, which will list all corrupted objects *		   and their corrupted channel names.  Ask user whether or not 
+ *		   like to re-establish the connections to right objects.
+ * 		3) On the dialog form, user can have following selections:
+ *		   i)  Select "yes".  All the wrong objects on the corrupted 
+ *		       channels will be disconnected.  Right objects will be 
+ *		       searched.  If the right objects are found, they will be 
+ *		       reconnected to the channels.
+ *		   ii) Select "no".  Do nothing.
+ * Definition:
+ *	Corrupted object:  one of the object's channels connects to invalid 
+ *			   objects (no classid) or wrong objects ("OMOSCO" 
+ *			   objects which should only connect to "OMFiledOS" 
+ *			   object.  "OMFiledOS" object have a object ID [2, 0])
+ *
+ *
+ * Dependencies:
+ *
+ * History:
+ *      MM/DD/YY        AUTHOR          DESCRIPTION
+ *      10/30/00        Ming            Creation
+ *
+ ***************************************************************************/
+
+#include <stdio.h>
+#include "cieveryone.h"
+
+#include "OMobjectcomm.h"
+#include "OMrelation.h"
+#include "OMintprims.h"
+#include "ciminimum.h"
+#include "cimacros.h"
+#include "exmacros.h"
+#include "igrdp.h"
+#include "igrtypedef.h"
+#include "godef.h"
+#include "go.h"
+#include "VDmem_ppl.h"
+#include "v_slcdef.h"
+#include "v_pplslc.h"
+
+extern int 	 UI_message(),
+	   	 UI_status(),
+	         GRconfirm_box();
+extern IGRlong	 VDbroGenClassIdList();
+extern IGRint	 VD_disconnectObjectOnChannelByIndex();
+extern IGRint	 VD_disconnectObjectOnChannel();
+extern IGRint	 VD_searchTargetObjectOnChannel();
+extern IGRint	 VD_reconnectobjectsOnChannel();
+extern IGRint	 VD_checkObjectChannelFlagValid();
+
+#define theCommand    "Check Objects and Channels"
+
+
+IGRint main()
+{
+IGRint		 	status, i, j, chnIndex, k, chanFlag, disconnectFlag;
+GRobjid 		objid_max, pre_objid;
+GRspacenum 		osnum;
+struct GRid		obj, bad_obj, *bad_obj_list, *objList;
+GRclassid 		classId, classIdList[256], tmp_clsId;
+OM_S_CHANNUM 		chnNum;
+IGRchar      		chnName[OM_K_MAXCHANNAME_LEN];
+OM_S_CHANSELECT         chnSelect;
+IGRint			chnCount, chnSize, bad_obj_cnt, count;
+OM_S_OBJECT_LINKAGE     *chnObjList;
+IGRchar                 error_msg[2000], tmp_str[2000];
+IGRchar			className[30];
+
+
+  osnum = 2;
+  bad_obj_list = NULL;
+  objList = NULL;
+  bad_obj_cnt = 0;
+  pre_objid = NULL_OBJID;
+  error_msg[0] = '\0';
+  tmp_str[0] = '\0';
+
+  UI_message( theCommand );
+
+  /* 
+  ** Get the maxisium number of objid in a file
+  */
+  objid_max = OM_GA_OSDs[osnum]->CurSpaceMapSize;
+
+  /*
+  ** Initially allocate memory for corrupted object list. All the
+  ** corrupted objects will be stored in this object list.
+  */
+  bad_obj_list = _MALLOC( 1, struct GRid );
+  if( bad_obj_list == NULL )
+  {
+    printf( "Memory allocation failed!\n" );
+    goto wrapup;
+  }
+
+  UI_status( "Processing object ......" );
+
+  /*
+  ** Start to fill up the message string - error_msg.  This message 
+  ** string will Display on dialog form.
+  */
+  strcpy( error_msg, "The following objects are corrupted:\n" );
+
+  /* 
+  ** Cycle through each object in the file.  Checking will start at i = 1 
+  ** since the object [2,0] ("OMFiledOS" object) will not be checked.  The 
+  ** following loop only search the corrupted objects, not do anything on them.
+  */
+  for( i = 1 ; i < objid_max ; i = i + 1 )
+  {
+    obj.objid = i;
+    obj.osnum = osnum;
+    
+    /*
+    ** If the object is a invalid object (without classid), it will be ignored.
+    */
+    status = om$get_classid( objid = obj.objid,
+                             osnum = obj.osnum,
+                             p_classid = &classId );
+    if( !(status&1) ) continue;
+
+    /*
+    ** initialize the class ID list
+    */
+    for( j = 0 ; j < 256 ; j = j + 1 ) classIdList[j] = 0;
+
+    /*
+    ** Retrieve the class IDs of all parent classes of the checking object 
+    ** class
+    */
+    VDbroGenClassIdList( classId, classIdList );
+
+    /*
+    ** Cycle through all the parents classes for the specific object.
+    ** Check if any channel was corrupted.
+    */
+    chanFlag = 1;
+    for( j = 0 ; (classIdList[j] != 0) ; j = j + 1 )
+    { 
+      /*
+      ** Check all the channels for a class.  Channel's classid equals to the
+      ** classid.  Channel's number starts from 0 until the channel selector 
+      ** or channel name can not be obtained.
+      */
+      chnNum.classid = classIdList[j];
+      chnIndex = 0;
+      while( 1 )
+      {
+	/* Get channel */
+  	chnNum.number  = chnIndex;
+	chnName[0] = '\0';
+	tmp_str[0] = '\0';
+
+  	status = om$get_channel_name( channum  = chnNum,
+    				      channame = chnName );
+	if( !(status&1) ) break;
+
+	/* Get List of objects on channel */
+        status = om$make_chanselect( channum 	  = chnNum,
+    				     p_chanselect = &chnSelect );
+	if( !(status&1) ) break;
+
+	/*
+        ** On some deeply corrupted channels, the function 
+	** om$get_channel_objects() can not be used to retrieve all the object
+	** (will crash) and then these objects are checked whether or not are 
+	** invalid objects or "OMOSCO" objects. The following function checks 
+	** if the special flags for the channel matches.  If they don't, the 
+	** channel was corrupted.
+        */
+ 	status = VD_checkObjectChannelFlagValid( obj.osnum,
+						 obj.objid,
+						 &chnSelect );
+        if( !(status&1) ) 
+        {
+ 	  /*
+	  ** Flags don't match. The channel was corupted. Set chanFlag to 
+	  ** zero to indicate the object was corrupted.
+ 	  */
+          chanFlag = 0;
+
+	  /*
+	  ** The following is for setting message string to display the IDs 
+	  ** of corrupted object and channel names.
+	  */
+          if( obj.objid != pre_objid )
+          {
+            sprintf( tmp_str, "Object [%d, %d]:\n", obj.objid, obj.osnum );
+            strcat( error_msg, tmp_str );
+            pre_objid = obj.objid;
+          }
+
+          strcat( error_msg, "  CHN  " );
+          strcat( error_msg, chnName );
+          strcat( error_msg, " \n" );  
+
+	  /*
+	  ** Continue to check next channel.
+	  */
+	  chnIndex = chnIndex + 1;
+	  continue;
+	}
+
+	/*
+	** If the flags matched, check whether any object which connected to
+        ** the channel was invalid (without classid) or "OMOSCO" object.  If it
+        ** is, the channel was corrupted.
+	*/
+	chnCount = 0;
+  	status  = om$get_channel_count( osnum 	     = obj.osnum,
+    					objid 	     = obj.objid,
+    					p_chanselect = &chnSelect,
+    					count 	     = &chnCount );
+        if( !(status&1) ) break;
+	if( chnCount <= 0 ) 
+        {
+	  chnIndex = chnIndex + 1;
+	  continue;
+	}
+
+	chnObjList = NULL;
+	chnObjList = _MALLOC( chnCount, OM_S_OBJECT_LINKAGE );
+	if( chnObjList == NULL )
+	{
+            printf("Memory allocation failed!\n");
+            goto wrapup;
+        }
+	chnSize = chnCount * sizeof( OM_S_OBJECT_LINKAGE );
+
+  	status  = om$get_channel_objects( osnum        = obj.osnum,
+    					  objid        = obj.objid,
+    					  p_chanselect = &chnSelect,
+    					  list         = chnObjList,
+    					  size         = chnSize,
+    					  count        = (OMuint *)&chnCount );
+	if( !(status&1) )
+	{
+	  _FREE( chnObjList );
+	  chnObjList = NULL;
+	  break;
+	}
+
+        if( chnCount <= 0 ) 
+	{
+	  _FREE( chnObjList );
+	  chnObjList = NULL;
+	  chnIndex = chnIndex + 1;
+	  continue;
+	}
+
+	/*
+	** Check each object on the channel.
+	*/
+  	for( k = 0 ; k < chnCount ; k = k + 1 )
+	{
+	  bad_obj.objid = chnObjList[k].S_objid;
+	  bad_obj.osnum = chnObjList[k].osnum;
+
+	  /*
+	  ** Get the class ID.  If no classID, the object is invalid.  If 
+	  ** class ID is Valid, check if the object is a "OMOSCO" object.  
+	  ** If the object is "OMOSCO" object, the channel was corrupted.
+	  */
+	  status = om$get_classid( objid     = bad_obj.objid,
+                             	   osnum     = bad_obj.osnum,
+                             	   p_classid = &classId );
+	  if( status&1 )
+	  {
+	    /*
+	    ** classID is valid.  Get the class name.
+	    */
+	    className[0] = '\0';
+	    status = om$get_classname( osnum     = bad_obj.osnum,
+			      	       classid   = classId,
+			      	       classname = className );
+	  }
+
+          if( !(status&1) || !strcmp( className, "OMOSCO" ) )
+	  {
+	    /*
+	    ** The object is invalid if the classid of the object is invalid,
+            ** or the object belongs to class "OMOSCO".  The "OMOSCO" object
+            ** only connects to "OMFiledOS" object [2, 0] by channel.  Set the
+            ** flag chanFlag to zero to indicate the channel was corrupted.
+	    */
+	    chanFlag = 0;
+	    if( obj.objid != pre_objid )
+            {
+	      sprintf( tmp_str, "Object [%d, %d]:\n", obj.objid, obj.osnum );
+ 	      strcat( error_msg, tmp_str );
+	      pre_objid = obj.objid;
+            }
+
+	    strcat( error_msg, "  CHN  " );
+	    strcat( error_msg, chnName );
+	    strcat( error_msg, " \n" );
+	    break;
+  	  }
+	}
+
+	/*
+	** Continue to check next channel.
+	*/
+	chnIndex = chnIndex + 1;
+	_FREE( chnObjList );
+	chnObjList = NULL;
+      }
+    }
+
+    /* 
+    ** Store all the corrupted objects in bad_obj_list list.
+    */
+    if( chanFlag == 0 )
+    {
+      bad_obj_cnt = bad_obj_cnt + 1;
+      if( bad_obj_cnt > 0 )
+      {
+	bad_obj_list = _REALLOC( bad_obj_list, bad_obj_cnt, struct GRid );
+        if( bad_obj_list == NULL )
+        {
+ 	  printf( "Memory allocation failed!\n" );
+          goto wrapup;
+        }
+      }
+
+      bad_obj_list[bad_obj_cnt-1].objid = obj.objid;
+      bad_obj_list[bad_obj_cnt-1].osnum = obj.osnum;
+    }
+  }
+
+  /* 
+  ** Ask for re-establish connections among the corrupted objects
+  */
+  if( bad_obj_cnt > 0 )
+  {
+    /*
+    ** Display the dialog form.
+    */
+    strcat( error_msg, "\nDo you want to reconnect the objects?\n" );
+    status = GRconfirm_box( error_msg );
+    if( status )
+    {
+      /*
+      ** User selects "yes".  Disconnect and reconnect the corrupted objects.
+      ** Cycle through each corrupted object.
+      */
+      for( i = 0 ; i < bad_obj_cnt ; i = i + 1 )
+      {
+        obj.objid = bad_obj_list[i].objid;
+        obj.osnum = bad_obj_list[i].osnum;
+        status = om$get_classid( objid = obj.objid,
+                                 osnum = obj.osnum,
+                                 p_classid = &classId );
+        if( !(status&1) ) continue;
+
+        for( j = 0 ; j < 256 ; j = j + 1 ) classIdList[j] = 0;
+
+	/*
+	** Retrieve all parent classes of the corrupted object's class.
+        */
+        VDbroGenClassIdList( classId, classIdList );
+
+	/*
+	** Check each class and it's channels
+ 	*/
+        for( j = 0 ; (classIdList[j] != 0) ; j = j + 1 )
+        {
+	  /*
+	  ** Check all the channels for each class.  Obtain each channel
+          ** number.
+	  */
+          chnNum.classid = classIdList[j];
+          chnIndex = 0;
+
+          while( 1 )
+          {
+	    /*
+	    ** Check each channel.
+	    */
+            chnNum.number  = chnIndex;
+	    chnName[0] = '\0';
+
+            status = om$get_channel_name( channum  = chnNum,
+                                          channame = chnName );
+            if( !(status&1) ) break;
+
+            /* Get List of objects on channel */
+            status = om$make_chanselect( channum      = chnNum,
+                                         p_chanselect = &chnSelect );
+            if( !(status&1) ) break;
+
+	    /*
+	    ** The same as above. First,check whether the flags match on the
+	    ** channel.  If they don't match, the channel was corrupted.
+	    */
+	    status = VD_checkObjectChannelFlagValid( obj.osnum,
+                                                     obj.objid,
+                                                     &chnSelect );
+            if( !(status&1) )
+            {
+	      /*
+	      ** the channel was corrupted
+ 	      */
+              chanFlag = 0;
+
+	      /*
+	      ** A channel is builded by two sides - s1 and s2.  Since we
+	      ** already knew the channel was corrupted and connected
+  	      ** to wrong objects on side s2.  In order to re-establish the
+ 	      ** connections, we have to find all the right objects on side
+ 	      ** s2.  The following function is for retrieving all the right
+ 	      ** objects on side s2.  First, find the number of the right
+ 	      ** objects.  Here set the flag disconnectFlag to zero to mean
+ 	      ** we'll not disconnect these objects from the channel here.
+	      */
+	      disconnectFlag = 0;
+	      status = 
+	      VD_searchTargetObjectOnChannel( obj, 
+					      chnNum, 
+					      disconnectFlag,
+					      &count, 
+					      NULL );
+	      if( (status&1) && count > 0 ) 
+	      {
+		/*
+		** Get the number of right objects.  Allocate memory to
+                ** store the these objects.
+		*/
+	        objList = NULL;
+                objList = _MALLOC( count, struct GRid );
+                if( objList == NULL )
+                {
+                  printf("Memory allocation failed!\n");
+                  goto wrapup;
+                }
+
+		/*
+		** Call the function again to retrieve all the right objects 
+		** on the side s2 of the channel.  Here, the flag 
+		** disconnectFlag is set to 1, which means once a right object 
+		** on side s2 is found, disconnect it from the channel 
+		** immediately in order to re-establish the connection later.
+		*/
+		disconnectFlag = 1;
+	        status = 
+	        VD_searchTargetObjectOnChannel( obj, 
+						chnNum, 
+						disconnectFlag,
+						&count, 
+						objList );
+	        if( !(status&1) || count < 0 )
+		{
+		  _FREE( objList );
+                  objList = NULL;
+            	  _FREE( chnObjList );
+            	  chnObjList = NULL;
+		  chnIndex = chnIndex + 1;
+		  continue;
+		}
+
+		/*
+		** Disconnect the wrong(invalid) objects from side s2 of the 
+		** channel
+		*/
+	        status = VD_disconnectObjectOnChannel( obj, chnNum );
+
+		/*
+		** Re-establish the connections  between the corrupted object
+    		** on side s1 and the right objects which were just found on 
+		** side s2.
+		*/
+		status =
+                VD_reconnectobjectsOnChannel( obj,
+					      chnNum,
+					      count,
+					      objList );
+		if( !(status&1) )
+                {
+                  _FREE( objList );
+                  objList = NULL;
+                  _FREE( chnObjList );
+                  chnObjList = NULL;
+                  chnIndex = chnIndex + 1;
+                  continue;
+                }
+
+	        _FREE( objList );
+	        objList = NULL;
+	      }
+	      else
+		/*
+		** If no any right object on side s2 of the channel, just 
+		** simply disconnect the wrong(invalid) objects on side s2 
+		** of the channel.
+		*/
+	        status = VD_disconnectObjectOnChannel( obj, chnNum );
+
+              chnIndex = chnIndex + 1;
+              continue;
+            }
+
+	    /*
+	    ** If flags on channel matched, check if any wrong (invalid) 
+	    ** object is on the side s2 of the channel.
+	    */
+            chnCount = 0;
+            status  = om$get_channel_count( osnum        = obj.osnum,
+                                            objid        = obj.objid,
+                                            p_chanselect = &chnSelect,
+                                            count        = &chnCount );
+            if(!(status&1) ) break;
+	    if( chnCount <= 0 )
+            {
+              chnIndex = chnIndex + 1;
+              continue;
+            }
+
+            chnObjList = NULL;
+            chnObjList = _MALLOC( chnCount, OM_S_OBJECT_LINKAGE );
+            if( chnObjList == NULL )
+            {
+              printf("Memory allocation failed!\n");
+              goto wrapup;
+            }
+            chnSize = chnCount * sizeof( OM_S_OBJECT_LINKAGE );
+
+            status = 
+	    om$get_channel_objects( osnum        = obj.osnum,
+                                    objid        = obj.objid,
+                                    p_chanselect = &chnSelect,
+                                    list         = chnObjList,
+                                    size         = chnSize,
+                                    count        = (OMuint *)&chnCount );
+            if( !(status&1) )
+            {
+              _FREE( chnObjList );
+              chnObjList = NULL;
+              break;
+            }
+
+            if( chnCount <= 0 )
+            {
+              _FREE( chnObjList );
+              chnObjList = NULL;
+              chnIndex = chnIndex + 1;
+              continue;
+            }
+
+	    chanFlag = 1;
+	    /*
+	    ** Check all the objects on side s2 of the channel.
+	    */
+            for( k = 0 ; k < chnCount ; k = k + 1 )
+            {
+              bad_obj.objid = chnObjList[k].S_objid;
+              bad_obj.osnum = chnObjList[k].osnum;
+              status = om$get_classid( objid     = bad_obj.objid,
+                                       osnum     = bad_obj.osnum,
+                                       p_classid = &classId );
+	      
+	      if( status&1 )
+              {
+                className[0] = '\0';
+                status = om$get_classname( osnum     = bad_obj.osnum,
+                                           classid   = classId,
+                                           classname = className );
+              }
+
+	      /*
+	      ** Check if a object is invalid (without classid) or wrong
+     	      ** ("OMOSCO" object).
+	      */
+              if( !(status&1) || !strcmp( className, "OMOSCO" ) )
+              {
+		/*
+		** Set the flag chanFlag to zero to indicate the object is 
+		** invalid or wrong, which means the channel was corrupted.
+		*/
+		chanFlag = 0;
+	        break;
+              }
+            }
+
+	    if( chanFlag == 0 )
+	    {
+	      /*
+	      ** The channel was corrupted. Retrieve all the right objects on 
+	      ** the side s2 of the channel.  First, retrieve the number of 
+	      ** objects, but without disconnecting them from the channel.
+              */
+	      disconnectFlag = 0;
+	      status = 
+	      VD_searchTargetObjectOnChannel( obj, 
+					      chnNum, 
+					      disconnectFlag,
+					      &count, 
+					      NULL );
+	      if( (status&1) && count > 0 ) 
+	      {
+	        objList = NULL;
+                objList = _MALLOC( count, struct GRid );
+                if( objList == NULL )
+                {
+                  printf("Memory allocation failed!\n");
+                  goto wrapup;
+                }
+
+		/*
+		** Call the funtion again to retrieve all the right objects 
+		** on the side s2 of the channel and disconnect them from 
+		** the channel.
+                */
+		disconnectFlag = 1;
+	        status = 
+	        VD_searchTargetObjectOnChannel( obj, 
+						chnNum, 
+						disconnectFlag,
+						&count, 
+						objList );
+	        if( !(status&1) || count < 0 )
+		{
+		  _FREE( objList );
+                  objList = NULL;
+            	  _FREE( chnObjList );
+            	  chnObjList = NULL;
+		  chnIndex = chnIndex + 1;
+		  continue;
+		}
+
+		/*
+		** Disconnect the wrong(invalid) objects from side s2 of
+ 		** the channel
+                */
+                status = VD_disconnectObjectOnChannel( obj, chnNum );
+
+		/*
+		** Re-establish the connections  between the corrupted object 
+		** on side s1 and right objects on s2.Re-establish the 
+		** connections  between the corrupted object on side s1 and 
+		** right objects on s2.
+		*/
+		status =
+                VD_reconnectobjectsOnChannel( obj,
+					      chnNum,
+					      count,
+					      objList );
+		if( !(status&1) )
+                {
+                  _FREE( objList );
+                  objList = NULL;
+                  _FREE( chnObjList );
+                  chnObjList = NULL;
+                  chnIndex = chnIndex + 1;
+                  continue;
+                }
+
+	        _FREE( objList );
+	        objList = NULL;
+ 	      }
+	      else
+		/*
+		** If no any right object on side s2 of the channel was 
+		** found, just disconnect the wrong(invalid) objects on side 
+		** s2 of the channel.
+                */
+                status = VD_disconnectObjectOnChannel( obj, chnNum );
+	    }
+
+            chnIndex = chnIndex + 1;
+            _FREE( chnObjList );
+            chnObjList = NULL;
+          }
+        }
+      }
+    }
+  }
+  else
+  {
+    printf( "All objects are good!\n" );
+  }
+
+  UI_status( "Done" );
+
+
+wrapup:
+  _FREE( bad_obj_list );
+  _FREE( chnObjList );
+  _FREE( chnObjList );
+
+  return 1;
+}

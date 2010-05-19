@@ -1,0 +1,430 @@
+/* $Id: VDstartup.u,v 1.15 2002/06/17 13:09:25 hans Exp $  */
+
+/***************************************************************************
+ * I/VDS
+ *
+ * File:        vdppl/VDstartup.u
+ *
+ * Description: Executes when files are retrieved
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ * $Log: VDstartup.u,v $
+ * Revision 1.15  2002/06/17 13:09:25  hans
+ * PLOAD I/VDS 02.06.03.08 & I/MODEL 03.04.00.12
+ *
+ * Revision 1.14  2001/10/15 00:25:24  anand
+ * Rollback of fix JTS TR MP 5586 (will need to redeliver fix
+ * for Pload).
+ *
+ * Revision 1.11  2001/05/30 22:06:17  ramarao
+ * Implemented CR# 5277.
+ *
+ * Revision 1.10  2001/04/03 12:57:06  ahundiak
+ * VDstartup.u
+ *
+ * Revision 1.9  2001/03/30 17:26:49  ahundiak
+ * ah
+ *
+ * Revision 1.8  2001/03/06 01:04:03  hans
+ * Some cleanups.
+ *
+ * Revision 1.7  2001/03/06 01:01:08  hans
+ * Moved start_journaling() from VDstartup.u to VDCmdStrtupi.I
+ *
+ * Revision 1.6  2001/03/03 16:48:50  hans
+ * Enable/Disable Verbose Journalling
+ *
+ * Revision 1.5  2001/03/03 00:10:13  hans
+ * Enable/Disable Verbose Journalling
+ *
+ * Revision 1.4  2001/03/02 22:20:46  hans
+ * Added VDreadjnl.u
+ *
+ * Revision 1.3  2001/02/11 18:06:37  hans
+ * Disabled EX_get_version();
+ *
+ * Revision 1.2  2001/01/18 20:39:59  hans
+ * SP16 additions/modifications
+ *
+# Revision 1.6  2000/10/31  14:20:40  pinnacle
+# Replaced: vds/vdppl/VDstartup.u for:  by jwfrosch for Service Pack
+#
+# Revision 1.5  2000/10/20  17:40:50  pinnacle
+# Replaced: vds/vdppl/VDstartup.u for:  by jwfrosch for Service Pack
+#
+# Revision 1.3  2000/08/24  18:12:18  pinnacle
+# Replaced: vds/vdppl/VDstartup.u for:  by jwfrosch for Service Pack
+#
+# Revision 1.2  2000/07/25  19:38:50  pinnacle
+# Replaced: vds/vdppl/VDstartup.u for:  by rchennup for Service Pack
+#
+# Revision 1.1  2000/05/04  13:37:12  pinnacle
+# Created: vds/vdppl/VDstartup.u by azuurhou for Service Pack
+#
+# Revision 1.4  1999/04/10  14:54:56  pinnacle
+# ah
+#
+# Revision 1.3  1999/04/09  13:54:32  pinnacle
+# load_order.txt
+#
+ *
+ * History:
+ * MM/DD/YY	AUTHOR  DESCRIPTION
+ * 04/09/99	ah      Added header, implemented load_order.txt
+ * 07/25/00	RR	Added Pocket Menu function in startup1.
+ * 02/10/2001	HF	Added IGGetBsVersion(); BspMath version info
+ * 03/02/2001   HF      Added VDreadjnl.u
+ *                      At session-startup execute "VDS journalling"
+ *                      (when env. variable "ISDP_JOURNAL=1")
+ * 03/30/01     ah      Deleted conditional bs stuff for sp262
+ * 04/03/01     ah      Only load .so files during first drawing retrieval
+ *                      See startup2 to disable this change
+ ***************************************************************************/
+#include "VDppl.h"
+#include "exdate.h"
+#include "exvers.h"
+#include "v_pplslc.h"
+
+extern int  EX_filename1();
+extern char EX_version[];
+extern char EX_date[];
+extern EX_get_version ();
+extern IGGetBsVersion();
+extern int  toggle_enable_print();
+
+extern int VDcomment;
+
+IGRchar PRODUCT[16];
+
+#define TRACEx
+
+extern VDprd_dload_files();
+extern EX_getpath(), EX_is_batch(), SMAddToPocketMenu();
+extern ems_dload();
+extern IGRchar *getenv();
+extern system();
+
+/* ------------------------------------
+ * Returns true if the given product is running
+ * quick hack for now
+ */
+IGRstar isProductLoaded(prodName)
+  IGRchar *prodName;
+{
+  IGRchar path[256];
+  IGRint  i;
+  IGRchar *p;
+
+  i = 0;
+  while(1)
+  {
+    *path = 0;
+
+    ex$get_path( index = i,
+		 path  = path,
+		 len   = sizeof(path),
+		 type  = EX_CONFIG_PATH );
+
+    if (*path == 0) return 0;
+
+    // printf("Path '%s'\n",path);
+
+    *(path + strlen(path) - 1) = 0;
+
+    p = strrchr(path,'/');
+    if (p)
+    {
+      if (!strcmp(prodName,p+1)) return 1;
+    }
+    i = i + 1;
+  }
+}
+
+/* ------------------------------------------------
+ * Dloads one product based on first -S
+ * Uses load_order.txt to determine what to load
+ */
+IGRstar dloadProduct(prodName)
+IGRchar *prodName;
+{
+  IGRchar dloadPath[256];
+  IGRchar dloadFile[256];
+  IGRchar buf[128];
+  IGRchar ext[8];
+  IGRchar *p;
+  IGRchar string[120], save_version[120], save_date[120];
+
+  FILE *file;
+
+  // Arg check
+  if (*prodName == 0) goto wrapup;
+  *dloadPath = 0;
+
+  // Product specific loading
+  ex$get_path( index = 0,
+               path  = dloadPath,
+               len   = sizeof(dloadPath),
+               type  = EX_CONFIG_PATH );
+
+  if (*dloadPath == 0) goto wrapup;
+
+  strcat(dloadPath,"config/dload/corrections/");
+  strcat(dloadPath,prodName);
+
+  // File extension
+  strcpy(ext,".so");
+
+  // And the full path
+  sprintf(dloadFile,"%s/load_order.txt",dloadPath);
+
+#ifdef TRACE
+  printf("DLOAD %s\n",dloadFile);
+#endif
+
+
+  file = fopen(dloadFile,"rt");
+  if (file == NULL) goto wrapup;
+
+  // Cycle through
+  while(fgets(buf,sizeof(buf),file))
+  {
+    for(p = buf; *p > ' '; p = p + 1); *p = 0;
+    if ((*(buf+0) == 'D') && (*(buf+1) == '_'))
+    {
+      sprintf  (dloadFile,"%s/%s%s",dloadPath,buf+2,ext);
+      ems_dload(dloadFile);
+
+#ifdef TRACE
+  printf("DLOAD %s\n",dloadFile);
+#endif
+      sprintf  (dloadFile,"DLoaded %s %s",prodName,buf+2);
+      UI_status(dloadFile);
+
+    }
+  }
+
+  // Done
+  fclose(file);
+
+wrapup:
+  return 1;
+}
+
+#if 0
+/* ------------------------------------------------
+ * Dloads one product based on first -S
+ * Uses load_order.txt to determine what to load
+ */
+IGRstar dloadProduct(prodName)
+IGRchar *prodName;
+{
+  IGRchar dloadPath[256];
+  IGRchar dloadFile[256];
+  IGRchar buf[128];
+  IGRchar ext[8];
+  IGRchar *p;
+  IGRchar string[120], save_version[120], save_date[120];
+
+  FILE *file;
+
+  // Arg check
+  if (*prodName == 0) goto wrapup;
+  *dloadPath = 0;
+
+  // Product specific loading
+  ex$get_path( index = 0,
+               path  = dloadPath,
+               len   = sizeof(dloadPath),
+               type  = EX_CONFIG_PATH );
+
+  if (*dloadPath == 0) goto wrapup;
+
+  strcat(dloadPath,"config/dload/corrections/");
+  strcat(dloadPath,prodName);
+
+#ifdef TRACE
+  printf("DLOAD %s\n",dloadPath);
+#endif
+
+  // File extension
+  strcpy(ext,".so");
+
+#if 0
+  // Just cant getenv yo work!
+  p = getenv("SYSTEM");
+  if (p) printf("SYSTEM %s\n",p);
+//if ((p != NULL) && (!strcmp(p,"CLIX"))) strcpy(ext,".o");
+#endif
+
+  // Try this
+  *buf = 0;
+  system("/bin/uname > /usr/tmp/isdp.uname");
+  file = fopen("/usr/tmp/isdp.uname","rt");
+  if (file)
+  {
+    fgets(buf,sizeof(buf),file);
+    fclose(file);
+    system("/bin/rm /usr/tmp/isdp.uname 2> /dev/null");
+  }
+  if (strstr(buf,"CLIX")) strcpy(ext,".o");
+
+////////////////////////////////////////////////////////////////////////////
+  /*
+   * Need to save EX_version and EX_date, because they contain the version/date
+   * of the currently active PRODUCT, and execution of EX_get_version() will
+   * overwrite them with the version/date of the Model executable...
+   */
+  strcpy(save_version, EX_version);
+  strcpy(save_date, EX_date);
+
+  // Get version/date of the Model executable...
+  EX_get_version ();
+////////////////////////////////////////////////////////////////////////////
+
+  // Open correct load_order file for NEW MODEL executable ...
+  // HF: 06/17/2002 Obsolete now PLOAD VDS 02.06.03.08 & I/MODEL 03.04.00.12
+//   if (strcmp(EX_version, "I/MODEL 03.04.00.11") == NULL && strcmp(prodName, "vds") == NULL )
+//   {
+//     sprintf(dloadFile,"%s/load_order_NewBS.txt",dloadPath);
+//   }
+//   else
+//   {
+//     sprintf(dloadFile,"%s/load_order.txt",dloadPath);
+//   }
+  sprintf(dloadFile,"%s/load_order.txt",dloadPath);
+
+#ifdef TRACE
+  printf("SP15 DLOAD %s, prodName = %s, EX_version = <%s>\n",dloadFile, prodName, EX_version);
+#endif
+
+  // Restore the version/date of the currently active PRODUCT...
+  strcpy(EX_version, save_version);
+  strcpy(EX_date, save_date);
+
+  file = fopen(dloadFile,"rt");
+  if (file == NULL) goto wrapup;
+
+  // Cycle through
+  while(fgets(buf,sizeof(buf),file))
+  {
+    for(p = buf; *p > ' '; p = p + 1); *p = 0;
+    if ((*(buf+0) == 'D') && (*(buf+1) == '_'))
+    {
+      sprintf  (dloadFile,"%s/%s%s",dloadPath,buf+2,ext);
+      ems_dload(dloadFile);
+
+#ifdef TRACE
+  printf("SP15 DLOAD %s\n",dloadFile);
+#endif
+      sprintf  (dloadFile,"DLoaded %s %s",prodName,buf+2);
+      UI_status(dloadFile);
+
+    }
+  }
+
+  // Done
+  fclose(file);
+
+//  VDprd_dload_files(dloadPath);
+
+wrapup:
+  return 1;
+}
+#endif
+
+/* ------------------------------------
+ * At the begging of a file startup
+ */
+IGRstar startup1()
+{
+#ifdef TRACE
+  printf("Startup1 %s\n",PRODUCT);
+#endif
+
+  if( ! ( ex$is_batch() ))      SMAddToPocketMenu();
+
+  /*
+   * Check if the undo option is on.
+   * If it is on, turn it off. - Rama Rao. CR# 5277
+   */
+  vd$ppl_exec( file_name = "COz_undodel.u" );
+
+  return 1;
+}
+
+/* ------------------------------------
+ * All local dloads have been dloaded
+ *
+ * Loft and extr never get's here because their startup
+ * objects don't get called for dgnfile startups.  Don't know
+ * why yet.
+ *
+ * Need to deal with them as part of vds and struct startup
+ *
+ * 03 Apr 2001 Check the execute counter and only load
+ * the first time a drawing is retrieved.
+ */
+
+extern VDstartupGetExecuteCnt();
+
+IGRstar startup2()
+{
+  IGRstat sts;
+  IGRchar bs_version[120], string[120], save_version[120], save_date[120];
+
+  IGRint cnt;
+  
+
+  // Ignore unless first drawing retrieval
+  cnt = VDstartupGetExecuteCnt();
+
+#ifdef TRACE
+  printf("Startup2 %d %s\n",cnt,PRODUCT);
+#endif
+
+  if (cnt != 1) goto wrapup;
+  
+  // dload myself
+  dloadProduct(PRODUCT);
+
+  // For struct, check on loft
+  if (!strcmp(PRODUCT,"struct"))
+  {
+    sts = isProductLoaded("loft");
+    if (sts & 1)
+    {
+      dloadProduct("loft");
+    }
+  }
+
+  // For vds, check on extr and aim
+  if (!strcmp(PRODUCT,"vds"))
+  {
+    sts = isProductLoaded("ex4rvw");
+    if (!(sts & 1)) sts = isProductLoaded("extr");
+    if (sts & 1)
+    {
+      dloadProduct("extr");
+    }
+    dloadProduct("aim");
+  }
+
+  IGGetBsVersion(bs_version);
+
+  UI_status (bs_version);
+
+  // Done
+ wrapup:
+  return 1;
+}
+
+/* --------------------------------------
+ * Just say hi if executed directly
+ */
+main()
+{
+  printf("Main ISDP Startup scripts\n");
+  return 1;
+}

@@ -1,0 +1,153 @@
+/* $Id: COz_tag.u,v 1.1.1.1 2001/01/04 21:09:02 cvs Exp $ */
+
+/***************************************************************************
+ * I/VDS
+ *
+ * File:  vdppl/COz_tag.u
+ *
+ * Description: Prints tag information
+ *	
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ *	$Log: COz_tag.u,v $
+ *	Revision 1.1.1.1  2001/01/04 21:09:02  cvs
+ *	Initial import to CVS
+ *	
+# Revision 1.1  2000/03/17  18:04:10  pinnacle
+# ah
+#
+ *
+ * History:
+ * MM/DD/YY AUTHOR DESCRIPTION
+ * 03/17/00 ah     Creation
+ ***************************************************************************/
+
+#include "VDppl.h"
+#include "VDobj.h"
+#include "VDtag.h"
+
+#include "coparamac.h"
+
+extern ASstart_var_fence();
+extern ASend_fence();
+
+#define thePrompt  "Select Object"
+#define theCommand "Show Object Tag"
+#define theFilter  "VDSroot"
+
+/* -------------------------------------
+ * Process the selected object
+ */
+int process(objOE)
+TGRobj_env *objOE;
+{
+  TVDtagInfo info;
+  
+  vdtag$GetInfo(objOE = objOE, info = &info);
+
+  printf("Tag %d,%d Obj %d,%d %s\n",
+	 info.tag.num,info.tag.ver,
+	 info.id.osnum,
+	 info.id.objid,
+	 info.path);
+
+  return 1;
+  
+}
+
+/* --------------------------------------
+ * The main routine
+ */
+int main()
+{
+  int sts,msg;
+  int response;
+  
+  TGRobj_env  objOE;
+  TGRobj_env *locOEs;
+  IGRint      locNum;
+  IGRint      i;
+    
+  while(1) {
+
+    objOE.obj_id.objid = NULL_OBJID;
+    
+    response = 0;
+
+    UI_message(theCommand);
+
+    sts = ci$locate(prompt  = thePrompt,
+                    classes = theFilter,
+		    owner_action = LC_RIGID_OWNER | 
+                                   LC_RIGID_COMP  |
+                                   LC_FLEX_COMP   | 
+                                   LC_FLEX_OWNER  |
+                                   LC_REF_OBJECTS,
+
+                    stackable    = 1,
+		    response     = &response,
+		    md_env       = &objOE.mod_env,
+		    obj          = &objOE.obj_id.objid,
+		    osnum	 = &objOE.obj_id.osnum);
+
+    if (!(sts & 1)) response = 0;
+
+    switch(response) {
+
+    case EX_OBJID:   // Object Set
+
+      /* Grab Located Objects */
+      as$start_fence(
+      set       = &objOE.obj_id,
+      set_env   = &objOE.mod_env,
+      nb_obj    = &locNum,
+      p_obj_env = &locOEs);
+
+      for(i = 0; i < locNum; i = i + 1) {
+        process(&locOEs[i]);
+      }
+
+      ASend_fence();
+      break;
+      
+    case EX_DATA:    // Single Object
+      process(&objOE);
+      break;
+
+    } // Switch
+  }
+
+wrapup:
+  return 1;
+}
+
+/* ------------------------------------------
+ * Usual command object messages
+ */
+init()
+{
+}
+sleep() 
+{
+}
+wakeup()
+{
+  UI_message(theCommand); 
+}
+delete()
+{
+}
+
+
+
+
+
+
+
+
+
+
+
+

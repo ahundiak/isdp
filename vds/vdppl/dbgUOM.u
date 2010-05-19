@@ -1,0 +1,121 @@
+/* $Id: dbgUOM.u,v 1.1 2001/08/30 17:58:35 hans Exp $  */
+
+/* --------------------------------------------------------------------
+ * I/VDS
+ *
+ * File:	dbgUOM.u
+ *
+ * Description:
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ *	$Log: dbgUOM.u,v $
+ *	Revision 1.1  2001/08/30 17:58:35  hans
+ *	TR# 5508 - Add VDclean_UOM.u & dbgUOM.u
+ *	
+ *
+ * History:
+ *	MM/DD/YYYY	AUTHOR		DESCRIPTION
+ *	08/29/2001	HF		Creation date
+ *
+ * -------------------------------------------------------------------*/
+
+#include <stdio.h>
+#include "cieveryone.h"
+#include "cimacros.h"
+#include "msdef.h"
+#include "OMindex.h"
+#include "OMmacros.h"
+#include "VDppl.h"
+#include "VDobj.h"
+
+
+extern VDpms_find_objects();
+extern GRdpb_get();
+
+extern int       VDcomment;
+extern GRclassid OPP_UOMsuper_class_id;
+
+/* ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~	*/
+/*				 Beginning of code				*/
+/* ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~	*/
+
+main( argc, argv )
+  int	  argc;
+  char	**argv;
+{
+  char                  str[80];
+  int		        i0, osmax, cnt, sts;
+  OMuword               osn;
+
+  struct GRobj_env      objOE;
+
+  OM_S_OBJID	       *list;
+  GRclassid	        class_id;
+
+  osn = 2;
+
+  gr$get_module_env  ( buffer = &objOE.mod_env);
+
+  for( i0 = 0 ; i0 < OM_Gw_maxOS ; i0=i0+1 )
+  {
+    if( OM_GA_OSDs[ i0 ] )
+    {
+      printf("OS[%d] = %s\n" , i0, OM_GA_OSDs[i0]->name );
+      osmax = i0;
+    }
+  }
+
+  if ( argc > 1 )
+  {
+    osn = (OMuword) atoi ( argv[1] );
+    if ( osn < 2 || osn > osmax )
+    {
+      sprintf ( str, "Error: Invalid OS number[2..%d] = %d <%s>", osmax, osn, argv[1]);
+      printf  ( "%s\n", str);
+      message ( str );
+      return;
+    }
+  }
+  else
+  {
+    osn = objOE.mod_env.md_id.osnum;
+  }
+
+  list     = NULL;
+  class_id = OPP_UOMsuper_class_id;
+  sts      = VDpms_find_objects ( osn, (OMuword)class_id, &cnt, list );
+
+  printf ( "\nVDpms_find_objects() : sts = %d, Number of UOMsuper objects = %d\n", sts, cnt );
+
+  if ( cnt > 0 )
+  {
+    list = ( OM_S_OBJID * ) om$malloc ( size = cnt * sizeof ( OM_S_OBJID ) );
+  }
+  else
+  {
+    return;
+  }
+
+  if ( list )
+  {
+    sts = VDpms_find_objects ( osn, (OMuword)class_id, &cnt, list );
+
+    printf("\n+++++ Debug print of UOMsuper = [%d,%d] +++++\n", osn, list[0]);
+
+    ci$send ( msg = message UOMsuper.debug (),
+              targetid = list[0],
+              targetos = osn);
+
+    printf("\n----- Debug print of UOMsuper = [%d,%d] -----\n", osn, list[0]);
+
+    if (list)
+    {
+      om$dealloc ( ptr = list );
+      list = NULL;
+    }
+  }
+}
+
+/* ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~	*/
