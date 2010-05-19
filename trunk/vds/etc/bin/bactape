@@ -1,0 +1,286 @@
+# $Id: bactape,v 1.1.1.1 2001/01/04 21:07:29 cvs Exp $
+
+# -------------------------------------------------------------------
+# I/VDS
+#
+# File:	vds/etc/bin/bactape 
+#
+# Description:
+#
+# Dependencies:
+#
+# Revision History:
+#	$Log: bactape,v $
+#	Revision 1.1.1.1  2001/01/04 21:07:29  cvs
+#	Initial import to CVS
+#	
+# Revision 1.1  1994/11/14  22:42:32  pinnacle
+# Create vds.240 from vds.232
+#
+# Revision 1.1  1994/11/08  16:07:00  pinnacle
+# create vds.232
+#
+#
+# History:
+#	MM/DD/YY	AUTHOR		DESCRIPTION
+#
+# -------------------------------------------------------------------
+
+# backup: utility to ease the task of backing up your InterPro 32 file
+# system data. 
+#
+# 01-SEP-1986	Brady Merkel - initial System V version
+# 31-JAN-1986	Modified to prompt for data
+# 16-feb-1900   Ba Le Van
+
+# HD is the default nodedata of the host. Change it here and it will be used
+# as the default VAX source or destination
+HD="vax.user.passwd"
+#HO is the default nodedate of the host
+HO="obelix"
+# DVspec is the default VAX file spec, It is generated from today's date.
+DVspec=`date +%d%h%y.backup`
+
+# Dcompress and Ddecompress are the compression utilitys to use for compressing
+# files. If they are blank, then there will be no file compression.
+Dcompress="compress |"
+Ddecompress="compress -d |"
+
+trap 'echo "Backup abort.";exit 1' 1 2 3 14 15
+
+function getetherdata {
+   while :
+   do if [ -z "$2" ]
+      then while [ -z "$nodedata" ]
+	   do read nodedata?" Enter the VAX ethernet node data [$HD]: " vaxspec
+	      : ${nodedata:=$HD}
+	   done
+      else nodedata=$2
+      fi
+      while :
+      do case $nodedata in
+         *.*.*) break 2 ;;
+         *.*) echo " Enter a valid password for $nodedata: \c"
+	    stty -echo; read hostpass; stty echo; echo " "
+	    nodedata=$nodedata.$hostpass ;;
+         *) echo " Enter a valid account name for $nodedata: \c"
+	    read hostacct
+	    if [ ! -z "$hostacct" ]; then nodedata=$nodedata.$hostacct; fi ;;
+         esac
+      done
+   done
+   if [ -z "$3" ]
+   then while [ -z "$vaxspec" ]
+	do read vaxspec?" Enter the VAX file specification [$DVspec]: "
+	   : ${vaxspec:=$DVspec}
+	done
+   else vaxspec=$3
+   fi
+}
+
+function getdiskdata {
+   if [ -z "$2" ]
+   then while [ -z "$diskdir" ]
+	do read diskdir?" Enter the hard disk directory [$PWD]: "
+	   : ${diskdir:=$PWD}
+	done
+   else diskdir="$2"
+   fi
+
+}
+
+function getnode {
+   if [ -z "$2" ]
+   then while [ -z "$nodedata" ]
+	do read nodedata?" Enter the VAX ethernet nodename [$HO]: "
+	   : ${nodedata:=$HO}
+	done
+   else nodedata="$2"
+
+   fi
+  find="find . -print"
+
+
+}
+
+
+function getsince {
+   if [ -z "$since" ]
+   then read since?" Enter number of days since last backup [0]: "
+   fi
+   if [ -z "$since" -o "$since" = "0" ]
+   then find="find . -print"
+   else find="find . -mtime -$since -print"
+   fi
+}
+
+function showhelp {
+   pg -ep "<backup help>" << !help!
+Backup is a shell script that was designed to ease the task of backing
+up System V files on the InterPro 32. It must be executed from the
+k-shell. The following is a brief summary of the commands:
+
+# backup from disk {UNIX dir} to floppy since {days from last backup} [compress]
+# backup from disk {dir} to vax {node} {vax spec} since {days} [compress]
+# backup from vax {nodedata} {vax file spec} to disk {UNIX dir} [compress]
+# backup from floppy to disk {UNIX dir} [compress]
+# backup from vax {nodedata} {vax file spec} to floppy [compress]
+# backup list from disk since {days}
+# backup list from vax {nodedata} {vax file spec}
+# backup list from floppy
+# backup help
+
+The keywords "from", "to", "since", "compress", "floppy", "vax",
+"disk", "help" and "list" are used to specify data at the command
+line. The order of the "from", "to", "compress" and "since" keywords
+does not matter. The Backup utility will prompt for any data that is
+not entered on the command line. There are defaults for all prompts.
+The defaults are enclosed in brackets.
+
+Here are some examples:
+
+To backup files from /usr/john that havn't been backed up for a week 
+to a VAX host, enter the following:
+  # backup from disk /usr/john to vax VAXA.john.doe ip32.backup since 7
+
+To backup all files from /usr/john to a floppy in compressed format,
+enter the following:
+  # backup to floppy since 0 from disk /usr/john compress
+
+To restore files from VAX to the hard disk, enter the following:
+  # backup from vax VAXA.john.doe ip32.backup to disk /usr/john 
+
+To restore compressed files from floppy to /usr/john, enter the following:
+  # backup to disk /usr/john from floppy compress
+
+To copy a backup image from a VAX host to floppy, enter the following:
+  # backup from vax VAXA.john.doe ip32.backup to floppy 
+
+To show which files will be backed up from a UNIX directory that are
+within a month old, try the following:
+  # backup list from disk /usr/john since 30
+
+To show the files that have been backed-up to the vax, try the following:
+  # backup list from vax VAXA.john.doe ip32.backup
+
+To show the files that have been backed-up to floppy, try the following:
+  # backup list from floppy
+!help!
+}
+
+if [ $# -ne 0 ]
+then for arg
+     do case $arg in
+	help) showhelp; exit 1 ;;
+	list) list=1 ;;
+	ver*) verify=1;;
+        from) toflag=""; sinceflag=""; fromflag=1 ;;
+        to) sinceflag=""; fromflag=""; toflag=1 ;;
+        since) toflag=""; fromflag=""; sinceflag=1 ;;
+	compress) compress="$Dcompress"; decompress="$Ddecompress" ;;
+        *) if [ ! -z "$toflag" ]; then to="$to$arg "; fi
+           if [ ! -z "$fromflag" ]; then from="$from$arg "; fi
+           if [ ! -z "$sinceflag" ]; then since="$since$arg "; fi ;;
+        esac
+     done
+fi
+to=${to%" "}
+from=${from%" "}
+since=${since%" "}
+
+while [ -z "$from" ]
+do read from?"From VAX, RTAPE, Remotetape, Floppy or Disk? [Disk]: "
+   : ${from:=Disk}
+done
+
+case $from in
+ V*|v*) getetherdata $from
+        if [ ! -z "$list" ]
+        then command="fmu $nodedata rec $vaxspec - | $decompress cpio -itv"
+        else if [ -z "$to" ]; then read to?"To Floppy or Disk? [Disk]: "; fi
+             : ${to:=Disk}
+	     case $to in
+	      F*|f*) command="fmu $nodedata rec $vaxspec - | to_flop" ;;
+	      D*|d*) getdiskdata $to
+		     command="fmu $nodedata rec $vaxspec - | $decompress (cd $diskdir; cpio -imud)" ;;
+	      *) err=2 ;;
+	     esac
+	fi ;;
+ Rt*|rt*) getnode $from
+        if [ ! -z "$list" ]
+        then command="rtape $nodedata msa0: read | $decompress cpio -itv"
+
+        else if [ -z "$to" ]; then read to?"To Floppy or Disk? [Disk]: "; fi
+             : ${to:=Disk}
+	     case $to in
+	      F*|f*) command="rtape $nodedata msa0: read | to_flop" ;;
+	      D*|d*) getdiskdata $to
+		     command="rtape $nodedata msa0: read | $decompress (cd $diskdir; cpio -imud)" ;;
+	      *) err=2 ;;
+	     esac
+	fi ;;
+ Re*|re*) getnode $from
+         if [ ! -z "$verify" ]
+	then 
+rtc -a -s $nodedata -r /dev/rmt/mt5 -n /dev/rmt/mt5n -t 50 /dev/rmt/rt1.ctl
+scpio -x -C 63488 -z 25 -I /dev/rmt/rt1; rtc -d /dev/rmt/rt1.ctl ;fi
+        if [ ! -z "$list" ]
+	then 
+rtc -a -s $nodedata -r /dev/rmt/mt5 -n /dev/rmt/mt5n -t 50 /dev/rmt/rt1.ctl
+scpio -itv -C 63488 -z 25 -I /dev/rmt/rt1; rtc -d /dev/rmt/rt1.ctl 
+        else if [ -z "$to" ]; then read to?"To Floppy or Disk? [Disk]: "; fi
+             : ${to:=Disk}
+	     case $to in
+	      F*|f*) command="rtape $nodedata msa0: read | to_flop" ;;
+	      D*|d*) getdiskdata $to
+rtc -a -s $nodedata -r /dev/rmt/mt5 -n /dev/rmt/mt5n -t 900 /dev/rmt/rt1.ctl
+(cd $diskdir; $find |scpio -ivmud -C 63488 -z 25 -I/dev/rmt/rt1); rtc -d /dev/rmt/rt1.ctl ;;
+	      *) err=2 ;;
+	     esac
+	fi ;;
+
+ F*|f*) if [ ! -z "$list" ]
+        then command="fr_flop | $decompress cpio -itv"
+        else if [ -z "$to" ]; then read to?"To Disk? [Disk]: "; fi
+             : ${to:=Disk}
+	     case $to in
+	      D*|d*) getdiskdata $to
+		     command="fr_flop | $decompress (cd $diskdir; cpio -imud)" ;;
+	      *) err=3 ;;
+	     esac
+         fi ;;
+ D*|d*) getdiskdata $from
+        if [ ! -z "$list" ]
+        then getsince $since; command="(cd $diskdir; $find)"
+        else if [ -z "$to" ]
+        then read to?"To VAX ,RTAPE ,Remotetape or Floppy? [Floppy]: "; fi
+             : ${to:=Floppy}
+	     case $to in
+	      V*|v*) getetherdata $to
+		     getsince $since
+		     command="(cd $diskdir; $find | cpio -o) | $compress fmu $nodedata send - $vaxspec" ;;
+	      F*|f*) getsince $since
+		     command="(cd $diskdir; $find | cpio -o) | $compress to_flop" ;;
+	      RT*|rt*) getnode $to
+                     command="(cd $diskdir; $find | cpio -o) | $compress rtape $nodedata  msa0: write" ;;
+
+	      Re*|re*) getnode $to
+rtc -a -s $nodedata -r /dev/rmt/mt5 -n /dev/rmt/mt5n -t 200 /dev/rmt/rt1.ctl
+(cd $diskdir; $find |scpio -ov -C 63488 -z 25 -O /dev/rmt/rt1); rtc -d /dev/rmt/rt1.ctl ;;
+	    
+	      *) err=4 ;;
+	     esac
+         fi ;;
+ *) err=1 ;;
+esac
+if [ -z "$err" ]
+then echo "The command is:\n$command"
+     read gonogo?"Do you wish to execute the command? [yes]: "
+     case "$gonogo" in
+      N*|n*) echo "OK, bye." ;;
+      *) eval $command ;;
+     esac
+else echo "Sorry, $0 does not support backup ${to:+to $to }from $from."
+fi
+exit $err
+

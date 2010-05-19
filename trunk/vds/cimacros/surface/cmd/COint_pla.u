@@ -1,0 +1,143 @@
+/* $Id: COint_pla.u,v 1.1.1.1 2001/01/04 21:07:21 cvs Exp $  */
+
+/* --------------------------------------------------------------------
+ * I/VDS
+ *
+ * File:	vds/cimacros/surface/cmd / COint_pla.u
+ *
+ * Description:
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ *	$Log: COint_pla.u,v $
+ *	Revision 1.1.1.1  2001/01/04 21:07:21  cvs
+ *	Initial import to CVS
+ *	
+# Revision 1.1  1998/04/29  16:27:20  pinnacle
+# VDS 2.5.1
+#
+# Revision 1.1  1997/05/08  13:20:44  pinnacle
+# New project VDS 250
+#
+# Revision 1.1  1996/07/19  20:33:52  pinnacle
+# Create VDS 241 project
+#
+# Revision 1.1  1994/11/14  22:42:32  pinnacle
+# Create vds.240 from vds.232
+#
+# Revision 1.1  1994/11/08  16:07:00  pinnacle
+# create vds.232
+#
+ *
+ * History:
+ *	MM/DD/YY	AUTHOR		DESCRIPTION
+ *
+ * -------------------------------------------------------------------*/
+
+/*
+	 VDS 2.0 - PPM macro library - 92/07/09 (alc)
+ */
+   
+/*
+	History :
+			JLL	Design
+	   92/04/13	ALC	Update prompt (TR 91W1673 C)
+ */
+
+
+#include "ciminimum.h"
+#include "cimacros.h"
+
+struct GRid 	TEMP[4];
+struct GRmd_env MOD_ENV;
+GRobj 		MAC1;
+IGRint          num_ent;
+IGRint 		suc;
+IGRchar         txt[81];
+IGRchar		mes_f[80];
+
+extern ASmake_source_from_env();
+
+main()
+{
+while(1)
+{
+
+step1:
+        num_ent = 0;
+
+	while(1)
+        {
+        
+		switch (num_ent) {
+			case 0 : 
+				strcpy(txt,"Identify first plane")  ; 
+				break ;
+			case 1 : 
+				strcpy(txt,"Identify second plane") ; 
+				break ;
+			default : 
+				strcpy(txt,"Identify next plane / Move on") ; 
+				break ;
+			}
+
+   		if(!ci$locate( prompt       = txt,
+        		       classes      = "EMSplane",
+                	       properties   = LC_LC_ONLY | LC_DP_ONLY | LC_RW,
+                	       owner_action = LC_RIGID_COMP  |
+                	                      LC_RIGID_OWNER | LC_FLEX_COMP |
+                	                      LC_FLEX_OWNER  | LC_REF_OBJECTS,
+	        	       obj          = &(TEMP[num_ent].objid),
+                	       osnum        = &(TEMP[num_ent].osnum),
+                	       md_env       = &MOD_ENV    )) break;
+
+		ASmake_source_from_env( &TEMP[num_ent],
+					&MOD_ENV,&TEMP[num_ent]);	
+      
+		num_ent = num_ent + 1;
+		if( num_ent >= 4 ) break;
+        }
+
+	if( num_ent < 2 ){
+	  	status("Two planes requiered at least ");
+		goto step1;
+        }
+ 
+   	MAC1 = NULL_OBJID;   
+
+   	ci$get_module_info(md_env = &MOD_ENV);
+
+   	strcpy(txt,"int_");
+        strcat(txt,itoa(num_ent));
+        strcat(txt,"_pla");
+
+   	ci$send(msg = message nci_macro.init( 	&suc,
+                                        	0,
+				        	txt,
+						num_ent,
+						TEMP,
+						NULL,
+                                        	&MOD_ENV ),
+		targetid = MAC1,
+	        targetos = MOD_ENV.md_id.osnum );
+
+	if( suc == 0 ){
+		write("placement of nci_macro failed\n");
+		status("placement of nci_macro failed");
+      		ci$send(msg = message Root.delete(0),
+	      		targetid = MAC1,
+	      		targetos = MOD_ENV.md_id.osnum );
+	}
+
+}
+
+}
+/*========================================================================*/
+init(){
+strcpy(mes_f,"<Assoc> Create Intersection between Planes");
+}
+
+wakeup(){
+	message(mes_f);
+}

@@ -1,0 +1,328 @@
+/* $Id: string.u,v 1.1.1.1 2001/01/04 21:07:23 cvs Exp $  */
+
+/* --------------------------------------------------------------------
+ * I/VDS
+ *
+ * File:	vds/cimacros/wireframe/macros / string.u
+ *
+ * Description:
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ *	$Log: string.u,v $
+ *	Revision 1.1.1.1  2001/01/04 21:07:23  cvs
+ *	Initial import to CVS
+ *	
+# Revision 1.1  1998/04/29  16:27:20  pinnacle
+# VDS 2.5.1
+#
+# Revision 1.1  1997/05/08  13:20:44  pinnacle
+# New project VDS 250
+#
+# Revision 1.1  1996/07/19  20:33:52  pinnacle
+# Create VDS 241 project
+#
+# Revision 1.1  1994/11/14  22:42:32  pinnacle
+# Create vds.240 from vds.232
+#
+# Revision 1.1  1994/11/08  16:07:00  pinnacle
+# create vds.232
+#
+ *
+ * History:
+ *	MM/DD/YY	AUTHOR		DESCRIPTION
+ *
+ * -------------------------------------------------------------------*/
+
+/*
+	 VDS 2.0 - PPM macro library - 92/07/09 (alc)
+ */
+   
+#include "cieveryone.h"
+#include "cimacros.h"
+#include "ci_mac_def.h"
+#include "macro.h"
+
+
+#define	EPSILON		1.0E-20
+
+char 			*temp_names[3], *feet_names[1];
+
+int			temp_types[3];
+
+short	 		mat_type;
+
+int			i, j, k, k1, k2, kj;
+long			stat, msg; 
+double 	 		matrix[16], thick, arlen;
+double 	 		vec1[3], nvec1[3], vec2[3], nvec2[3], zvec[3];
+double			pcou[3],p11[3],p12[3],q11[3],q12[3], pint[3];
+
+GRobj 			ci_mac_def1, SUR, SURF;
+
+struct GRid		CUV, GCV, GRid_list[1], CI_MACRO_ID;
+struct GRmd_env		MOD_ENV;
+struct IGRbsp_curve     *bspcurve;
+struct GRvg_construct   cst;
+struct IGRdisplay	dis;
+struct GRprops          props;
+struct IGRpolyline      str;
+struct ret_struct	expr;
+
+
+extern IGRboolean 	BSxln();
+extern char 		*malloc();
+extern int 		free(),
+			BStst_plan(),
+			BScrossp(),
+			BSnorvec(),
+			init_cnst_list();
+extern			ASsuper_construct();
+
+/* ========================================================================= */
+/* the main function is the one implementing the definition creation
+/* ========================================================================= */
+
+main ()
+{
+
+  temp_names[0]  = "thick";  
+  temp_names[1]  = "arlen";  
+  temp_names[2]  = "crv0";  
+
+  temp_types[0]  = parameter_generic | double_type;
+  temp_types[1]  = parameter_generic | double_type;
+  temp_types[2]  = line_generic | conic_generic | curve_generic;
+
+  feet_names[0] = "rescur";
+  ci_mac_def1 = NULL_OBJID;
+
+  ac$cimacdef( 	cimacdef          = ci_mac_def1,
+		status 	          = &stat, 	
+		name              = "string",
+              	temp_num          = 3, 		
+		temp_names        = temp_names,
+		temp_types        = temp_types,
+	      	extern_feet_num   = 1, 	
+		extern_feet_names = feet_names );
+}
+
+/* ========================================================================= */
+
+place ()
+{
+  construct_str();
+  if( GRid_list[0].objid == NULL_OBJID ) return(0);
+  ci$send( msg = message  ci_macro.set_all_extern_feet
+	 ( &stat, 1,GRid_list, &MOD_ENV ),
+	   targetid = CI_MACRO_ID.objid,
+	   targetos = CI_MACRO_ID.osnum );
+  return(1);
+}
+
+/* ========================================================================= */
+
+compute ()
+{
+  construct_str();
+  if( GRid_list[0].objid == NULL_OBJID ) return(0);
+  ci$send( msg = message  ci_macro.set_all_extern_feet
+	 ( &stat, 1,GRid_list, &MOD_ENV ),
+	   targetid = CI_MACRO_ID.objid,
+	   targetos = CI_MACRO_ID.osnum );
+  return(1);
+}
+
+/* ========================================================================= */
+
+construct_str()
+{
+
+  GRid_list[0].objid = NULL_OBJID;
+  GRid_list[0].osnum = MOD_ENV.md_id.osnum;
+
+
+   msg = ci$send( msg = message ACcpx.ACfind_exp_temp_struct( &stat,
+						        0,
+						        (char *) &expr,
+						        &MOD_ENV),
+  	    targetid = CI_MACRO_ID.objid,
+	    targetos = CI_MACRO_ID.osnum );
+
+  if( !(stat&msg&1) ){
+	status(" bad expression for thickness" );
+	return;
+  }
+
+   thick = expr.var.root_pm_st.value;
+
+   msg = ci$send( msg = message ACcpx.ACfind_exp_temp_struct( &stat,
+						        0,
+						        (char *) &expr,
+						        &MOD_ENV),
+  	    targetid = CI_MACRO_ID.objid,
+	    targetos = CI_MACRO_ID.osnum );
+
+  if( !(stat&msg&1) ){
+	status(" bad for expression  arrow length" );
+	return;
+  }
+
+
+  arlen = expr.var.root_pm_st.value;
+
+  msg = ci$send( msg = message  ACcpx.ACfind_temp_obj(&stat,"crv0",&CUV),
+           targetid = CI_MACRO_ID.objid,
+           targetos = CI_MACRO_ID.osnum );
+  
+  if(!(stat&msg&1)) exit;
+
+  msg = ci$send( msg      = message NDmacro.ACreturn_foot(	&stat ,
+						    	"",
+							&GCV, 
+							&mat_type, 
+							matrix     ),
+	   targetid = CUV.objid,
+	   targetos = CUV.osnum );
+
+ if(!(stat&msg&1)) return;
+
+  ci$send( msg = message GRvg.GRgenabsg( &msg,
+			                 &mat_type, 
+				         matrix, 
+					 &bspcurve ),
+           targetid = GCV.objid,
+ 	   targetos = GCV.osnum );
+
+
+   if( ( fabs(thick) < EPSILON ) && ( fabs(arlen) < EPSILON ) )
+   {
+        status(" no object created ");
+	return;
+   }
+
+/* compute the normal of the planar linestring */
+
+   for (j=0;j<3;j=j+1)
+     vec1[j] = bspcurve->poles[j+3] - bspcurve->poles[j];
+
+   BStst_plan(bspcurve->num_poles,bspcurve->poles,NULL,
+                   &bspcurve->planar,zvec,&stat);
+
+   if(stat != 0)
+   {
+   	nvec1[0] = -1.0*vec1[1];
+  	 nvec1[1] = vec1[0];
+   	nvec1[2] = 0.0;
+
+   	if( (fabs(nvec1[0]) < EPSILON ) && ( fabs(nvec1[1]) < EPSILON) ) 
+
+								nvec1[0] = 1.0;
+   	BScrossp(&msg,vec1,nvec1,zvec);
+   	BSnorvec(&msg,zvec);
+
+   }
+   
+
+/* for all vertice compute the offset linestring */
+
+   k1 = 6;
+   k2 = (2*bspcurve->num_poles + 3) * 3;
+   str.num_points = 2*bspcurve->num_poles + 3;
+   str.points = (IGRdouble *) malloc(8 * k2);
+   k2 = k2 - 9;
+
+   for ( k=0;k<3*(bspcurve->num_poles -1);k=k+3)
+   {
+   
+	for (j=0;j<3;j=j+1)
+        {
+	    kj = k + j;
+            vec1[j] = bspcurve->poles[kj+3] - bspcurve->poles[kj];
+            vec2[j] = bspcurve->poles[kj+6] - bspcurve->poles[kj+3];
+	}
+        BScrossp(&msg,vec1,zvec,nvec1);
+        BSnorvec(&msg,nvec1);
+        BScrossp(&msg,vec2,zvec,nvec2);
+        BSnorvec(&msg,nvec2);
+	for (j=0;j<3;j=j+1)
+        {
+	    kj = k + j;
+	    pcou[j]=  bspcurve->poles[kj+3];
+            p11[j] =  bspcurve->poles[kj] + thick * nvec1[j];
+            p12[j] =  pcou[j] + thick * nvec1[j];
+            q11[j] =  pcou[j] + thick * nvec2[j];
+            q12[j] =  bspcurve->poles[kj+6] + thick * nvec2[j];
+	}
+        BSxln(&msg,p11,p12,q11,q12,pint);
+ 	for (j=0;j<3;j=j+1)
+        {
+	     str.points[k1] = pint[j];
+             str.points[k2+j] = 2.0*pcou[j] - pint[j]; 
+	     k1 = k1 + 1;
+        }
+        k2 = k2 - 3;
+   }
+
+/* compute and store the arrow end points */
+
+
+   k2 = 3*bspcurve->num_poles -3;
+
+   for (j=0;j<3;j=j+1)
+   {
+         vec1[j] = bspcurve->poles[j+3] - bspcurve->poles[j];
+         vec2[j] = bspcurve->poles[j+k2] - bspcurve->poles[j+k2-3];
+   }
+   BSnorvec(&msg,vec1);
+   BSnorvec(&msg,vec2);
+   BScrossp(&msg,vec1,zvec,nvec1);
+   BScrossp(&msg,vec2,zvec,nvec2);
+
+   k1 = 3*bspcurve->num_poles;
+   k2 = (2*bspcurve->num_poles + 1) * 3;
+   for (j=0;j<3;j=j+1)
+   {
+        str.points[j]      = bspcurve->poles[j];
+        str.points[j+3]    = str.points[j] + arlen*vec1[j] + thick * nvec1[j];
+	str.points[k1+j+3] = bspcurve->poles[k1-3+j];
+        str.points[k1+j]   = str.points[k1+j+3] - 
+			     arlen * vec2[j] + thick * nvec2[j];
+	str.points[k1+j+6] = str.points[k1+j+3] - 
+                             arlen * vec2[j] - thick * nvec2[j];
+        str.points[k2+j+3] = str.points[j];
+	str.points[k2+j]   = str.points[j] + 
+                             arlen*vec1[j] - thick * nvec1[j];         
+   }
+	
+
+  init_cnst_list();
+  get_symb();
+
+  dis.color		= cnst_list.color;
+  dis.weight		= cnst_list.weight;
+  dis.style		= cnst_list.style;
+
+  cst.msg		= &msg;
+  cst.properties	= GRIS_LOCATABLE | GRIS_NEW | GRIS_DISPLAYABLE;
+  cst.display		= &dis;
+  cst.env_info		= &MOD_ENV;
+  cst.newflag		= 0;
+  cst.level		= cnst_list.level;
+  cst.geometry		= (char *)&str;
+  cst.class_attr	= 0;
+  cst.name		= 0;
+
+
+  stat = ci$send( msg       = message GR3dlinestr.GRaltconstruct(&cst),
+           targetid  = GRid_list[0].objid,
+ 	   targetos  = GRid_list[0].osnum,
+           construct = 1 );
+
+  free(str.points);
+
+  if(!(stat&1)) GRid_list[0].objid = NULL_OBJID;
+}
+
+

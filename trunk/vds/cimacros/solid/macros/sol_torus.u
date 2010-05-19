@@ -1,0 +1,318 @@
+/* $Id: sol_torus.u,v 1.1.1.1 2001/01/04 21:07:21 cvs Exp $  */
+
+/* --------------------------------------------------------------------
+ * I/VDS
+ *
+ * File:	vds/cimacros/solid/macros / sol_torus.u
+ *
+ * Description:
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ *	$Log: sol_torus.u,v $
+ *	Revision 1.1.1.1  2001/01/04 21:07:21  cvs
+ *	Initial import to CVS
+ *	
+# Revision 1.1  1998/04/29  16:27:20  pinnacle
+# VDS 2.5.1
+#
+# Revision 1.1  1997/05/08  13:20:44  pinnacle
+# New project VDS 250
+#
+# Revision 1.1  1996/07/19  20:33:52  pinnacle
+# Create VDS 241 project
+#
+# Revision 1.2  1996/01/02  05:00:08  pinnacle
+# Replaced: cimacros/solid/macros/sol_torus.u for:  by rgade for vds.240
+#
+# Revision 1.1  1994/11/14  22:42:32  pinnacle
+# Create vds.240 from vds.232
+#
+# Revision 1.1  1994/11/08  16:07:00  pinnacle
+# create vds.232
+#
+ *
+ * History:
+ *	MM/DD/YY	AUTHOR		DESCRIPTION
+ *
+ * -------------------------------------------------------------------*/
+
+/*
+	 VDS 2.0 - PPM macro library - 92/07/09 (alc)
+	 92/07/27	Get rid of internal data (not used)
+ */
+   
+#include "cieveryone.h"
+#include "cimacros.h"
+#include "ci_mac_def.h"
+#include "go.h"
+#include "grdpbdef.h"
+#include "grdpbmacros.h"
+#include "cimath.h"
+#include "macro.h"
+#include "EMSmsgdef.h"
+#include "msdef.h"
+#include "dp.h"
+
+#define		EPSILON		1.0E-10
+		 
+
+
+struct GRid		CI_MACRO_ID;
+
+IGRlong			EMSrtmsg, stat, msg;
+
+struct EMSradius
+{
+    IGRlong     select;         /* 0 if radius value is to be used;
+                                   otherwise, radius point is */
+    union
+    {
+        IGRdouble        pnt[3];    /* radius point */
+        IGRdouble       value;  /* radius value */
+    } input;
+} radius;
+
+
+struct GRid 	 	SURF, SOL;
+
+IGRdouble		p2p1[3], d2p2p1, p3p1[3], d2p3p1, p4p1[3], d2p4p1;
+IGRdouble		dotvec, ptpj[3], p4p3[3], d2p4p3;  
+
+IGRint			i, j;
+GRobj 			ci_mac_def1;
+struct GRvg_construct	cst;
+struct GRmd_env		MOD_ENV;
+struct IGRdisplay	dis;
+struct ret_struct	temp_rts[4];
+char 			*temp_names[4], *feet_names[1], txt[40];
+int			temp_types[4];
+
+extern int GRdpb_get();
+extern int init_cnst_list(), ASsuper_construct();
+
+/* ========================================================================= */
+/* the main function is the one implementing the definition creation
+/* ========================================================================= */
+
+main ()
+{
+  temp_names[0]  = "pnt1";  
+  temp_names[1]  = "pnt2";  
+  temp_names[2]  = "pnt3";
+  temp_names[3]  = "pnt4";
+
+  temp_types[0]  = point_generic;
+  temp_types[1]  = point_generic;
+  temp_types[2]  = point_generic;
+  temp_types[3]  = point_generic | parameter_generic | double_type;
+
+
+  feet_names[0] = "ressur";
+  ci_mac_def1 = NULL_OBJID;
+
+  ac$cimacdef( 	cimacdef          = ci_mac_def1,
+		status 	          = &stat, 	
+		name              = "sol_torus",
+              	temp_num          = 4, 		
+		temp_names        = temp_names,
+		temp_types	  = temp_types,
+	      	extern_feet_num   = 1, 	
+		extern_feet_names = feet_names );
+}
+
+/* ========================================================================= */
+
+compute ()
+{
+
+  construct_pjs();
+
+  if( SOL.objid == NULL_OBJID ) return(0);
+
+  ci$send( msg = message  ci_macro.set_all_extern_feet
+	 ( &stat, 1,&SOL, &MOD_ENV ),
+	   targetid = CI_MACRO_ID.objid,
+	   targetos = CI_MACRO_ID.osnum);
+
+  return(1);
+}
+
+/* ========================================================================= */
+
+place ()
+{
+
+  construct_pjs();
+
+  if( SOL.objid == NULL_OBJID ) return(0);
+
+  ci$send( msg = message  ci_macro.set_all_extern_feet
+	 ( &stat, 1,&SOL, &MOD_ENV ),
+	   targetid = CI_MACRO_ID.objid,
+	   targetos = CI_MACRO_ID.osnum);
+  return(1);
+}
+
+/* ========================================================================= */
+
+construct_pjs()
+{
+struct GRsymbology      symb;
+IGRlong                 size, nret;
+
+
+  SOL.objid = NULL_OBJID;
+  SOL.osnum = MOD_ENV.md_id.osnum;
+
+/*-----------------------------------------------------------------------*/
+/*----		retrieve all the templates			     ----*/
+/*-----------------------------------------------------------------------*/
+
+  for(i=0;i<4;i=i+1){
+   	msg = ci$send( msg     = message  ACcpx.ACfind_exp_temp_struct
+			(&stat, i, (char *)&(temp_rts[i]),&MOD_ENV ),
+	    	targetid = CI_MACRO_ID.objid,
+	    	targetos = CI_MACRO_ID.osnum );
+
+	if( !(stat&msg&1) ){
+         	strcpy(txt," bad object template ");
+		strcat(txt,itoa((i+1)));
+		status(txt);
+		return;
+	}
+  }
+
+   d2p2p1 = 0.0;
+   d2p3p1 = 0.0;
+   for(j=0; j<3; j=j+1)
+   {
+     p2p1[j] = temp_rts[1].var.point_st.pt[j] - temp_rts[0].var.point_st.pt[j];
+     d2p2p1  = d2p2p1 + p2p1[j]*p2p1[j];
+     p3p1[j] = temp_rts[2].var.point_st.pt[j] - temp_rts[0].var.point_st.pt[j];
+     d2p3p1  = d2p3p1 + p3p1[j]*p3p1[j];
+   }
+
+   if(temp_rts[3].type != double_type){
+
+	   d2p4p3  = 0.0;
+	   for(j=0; j<3; j=j+1)
+	   {
+	     radius.input.pnt[j] = temp_rts[3].var.point_st.pt[j];
+	     p4p3[j] = temp_rts[3].var.point_st.pt[j] -
+		       temp_rts[2].var.point_st.pt[j];
+	     d2p4p3  = d2p4p3 + p4p3[j]*p4p3[j];
+	   }
+	   d2p4p3 = sqrt(d2p4p3);
+	   radius.select=1;
+   }
+   else{
+  	  radius.select=0;
+	  radius.input.value = temp_rts[3].var.root_pm_st.value;
+	  d2p4p3 = radius.input.value;
+   }
+
+
+/* test if the construction is valid */ 
+
+   if( d2p4p3 < EPSILON )
+   {
+	status(" Minor radius to small");
+	return(0);
+   }
+
+   if( (d2p2p1 < EPSILON) || (d2p3p1 < EPSILON) )
+   {
+	status(" coencident point ");
+	return(0);
+   }
+
+   dotvec = 0.0;
+   for(j=0; j<3; j=j+1) dotvec = dotvec + p2p1[j]*p3p1[j];
+   d2p3p1 = 0.0;   
+   for(j=0; j<3; j=j+1)
+   {
+	 ptpj[j] =  p2p1[j]*dotvec / d2p2p1 - p3p1[j];
+	 d2p3p1  = d2p3p1 + ptpj[j]*ptpj[j];
+   }
+   d2p3p1 = sqrt(d2p3p1);
+
+   if( d2p3p1 < d2p4p3 )
+   {
+	status(" Minor radius > Major radius ");
+	return(0);
+   }
+
+  init_cnst_list();
+  get_symb();
+
+  dis.color		= cnst_list.color;
+  dis.weight 		= cnst_list.weight;
+  dis.style 		= cnst_list.style;
+
+  cst.msg		= &msg;
+  cst.properties	= GRIS_LOCATABLE | GRIS_NEW | GRIS_DISPLAYABLE;
+  cst.display		= &dis;
+  cst.env_info		= &MOD_ENV;
+  cst.newflag		= FALSE;
+  cst.geometry		= NULL;
+  cst.class_attr	= 0;
+  cst.name		= 0;
+
+
+   SURF.objid = NULL_OBJID;
+   SURF.osnum = MOD_ENV.md_id.osnum;
+
+   stat = ci$send( msg      = message EMStorus.EMtorus_by_axis_center_rad(
+						&cst,
+						temp_rts[0].var.point_st.pt,
+						temp_rts[1].var.point_st.pt,
+						temp_rts[2].var.point_st.pt,
+						&radius ),
+	    targetid = SURF.objid,
+	    targetos = SURF.osnum );
+ 
+  if( !(stat&1) ){
+	#ifdef DEBUG
+		write("error in EMStorus.EMtorus_by_axis_center_rad \n");
+	#endif
+	 return; 
+  }
+   ci$send( msg      = message EMSsfsolid.EMcap_thyself(
+					&EMSrtmsg,&cst,&SURF.objid),
+	    targetid = SOL.objid,
+	    targetos = SOL.osnum );
+  if( !( ( EMSrtmsg & MSSUCC ) | ( EMSrtmsg & EMS_S_Success  ) ) ) {
+	#ifdef DEBUG
+		write("error in EMSsfsolid.EMcap_thyself \n");
+	#endif
+
+     SOL.objid = NULL_OBJID;
+     ci$send(msg      = message GRgraphics.GRdelete(&msg,&MOD_ENV), 
+             targetid = SURF.objid,
+	     targetos = SURF.osnum );
+     return;
+  }
+
+/* Put the active symbology TR#179528676 -Ravi.  */
+
+  size = sizeof( struct GRsymbology );
+  gr$get_active_display( msg    = &msg ,
+                         sizbuf = &size ,
+                         buffer = &symb.display_attr ,
+                         nret   = &nret  );
+
+  gr$get_active_level(  msg    = &msg,
+                        sizbuf = &size,
+                        buffer = &symb.level,
+                        nret   = &nret );
+
+  stat = ci$send( msg = message GRvg.GRputsymb( &msg, &symb),
+                  targetid = SOL.objid,
+                  targetos = SOL.osnum );
+  if ( !(stat & msg & 1) ) write("\tGRvg.GRputsymb failed\n");
+
+}
+
+

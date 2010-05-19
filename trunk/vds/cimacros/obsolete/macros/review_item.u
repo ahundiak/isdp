@@ -1,0 +1,179 @@
+/* $Id: review_item.u,v 1.1.1.1 2001/01/04 21:07:20 cvs Exp $  */
+
+/* --------------------------------------------------------------------
+ * I/VDS
+ *
+ * File:	vds/cimacros/obsolete/macros / review_item.u
+ *
+ * Description:
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ *	$Log: review_item.u,v $
+ *	Revision 1.1.1.1  2001/01/04 21:07:20  cvs
+ *	Initial import to CVS
+ *	
+# Revision 1.1  1998/04/29  16:27:20  pinnacle
+# VDS 2.5.1
+#
+# Revision 1.1  1997/05/08  13:20:44  pinnacle
+# New project VDS 250
+#
+# Revision 1.1  1996/07/19  20:33:52  pinnacle
+# Create VDS 241 project
+#
+# Revision 1.1  1994/11/14  22:42:32  pinnacle
+# Create vds.240 from vds.232
+#
+# Revision 1.1  1994/11/08  16:07:00  pinnacle
+# create vds.232
+#
+ *
+ * History:
+ *	MM/DD/YY	AUTHOR		DESCRIPTION
+ *
+ * -------------------------------------------------------------------*/
+
+/*
+ * Command Object : Review Item
+ *
+ * Author :	JLA
+ *
+ * Description : This command shows the defined item number(s) and the
+ *		 object to with it is attached.
+ *
+ * History :
+ *	JLA	../../..	Creation Date  
+ *	ADZ	19/08/92	Correction individual display 
+ *				used data parameter to get item number.
+ */
+#include "cieveryone.h"
+#include "ciminimum.h"
+#include "cievent.h"
+#include "cilocate.h"
+#include "cisend.h"
+#include "expmacros.h"
+#include "graph.h"
+#include "nddef.h"
+#include "ndmacros.h"
+#include "asbox.h"
+#include "dpmacros.h"
+
+extern	OM_p_OSD *OM_GA_OSDs;
+extern	int sscanf();
+extern	GRclassid	OPP_VDitbln_class_id,
+			OPP_ACncpx_class_id;
+extern	DPerase_hilite(),
+	UI_status();
+
+main()
+{
+int	rc,sts;
+long	loc_msg;
+int	i_obj,max_obj,index;
+int	item, nb, response;
+int	verify_item,found;
+struct	GRid	part;
+struct	GRevent event;
+struct	GRmd_env md_env;
+enum	GRdpmode dpmode;
+GRclassid obj_class;
+int	mask, cur_osnum;
+char	*exp_value;
+ 
+  UI_status("");
+  message("Review Elements With Item Number");
+
+  ci$get_module_info( md_env = &md_env);
+  cur_osnum = md_env.md_id.osnum;
+  max_obj = OM_GA_OSDs[cur_osnum]->CurSpaceMapSize;
+  dpmode = GRhd;
+
+  mask = GRm_RJT_MOVEON | GRm_BACK_UP | GRm_STRING | GRm_DATA;
+
+  while(1){
+
+    rc = ci$getevent(prompt   = " Keyin item number / Move on for all ",
+		     response = &response,
+		     data     = exp_value,
+		     mask     = mask,
+		     event    = &event);
+
+    if( response == RESET ){
+      verify_item = 0;
+    }
+    else if( response == STRING ){
+      verify_item = 1;
+      sts = sscanf( exp_value, "%d", &item );
+      if(sts != 1) continue;
+    }
+    else return;
+
+    dp$erase_hilite( msg = &loc_msg );
+    found = 0;
+ 
+    for( i_obj=0; i_obj<max_obj; i_obj=i_obj+1 ){
+
+      sts = om$get_classid(objid = i_obj,
+                           osnum = cur_osnum,
+                           p_classid = &obj_class);
+      if(!(sts&1)) continue;
+
+      sts = om$is_ancestry_valid(subclassid = obj_class,
+                                 superclassid = OPP_VDitbln_class_id);
+      if((sts != OM_S_SUCCESS)) continue;
+
+      if(verify_item){
+        sts = ci$send(msg = message VDitbln.VDget_item_number(&nb),
+		      targetid = i_obj,
+		      targetos = cur_osnum);
+        if(nb != item) continue;
+      }
+
+      sts =
+      ci$send(msg = message GRgraphics.GRdisplay(&loc_msg,
+					     	 &md_env.md_env.matrix_type,
+						 md_env.md_env.matrix,
+						 &dpmode,
+						 &md_env.md_id),
+	      targetid = i_obj,
+	      targetos = cur_osnum );
+
+      for(index=0;index<OM_K_MAXINT;index = index+1){
+
+	sts = om$get_objid_at_index(objid = i_obj,
+                                    osnum = cur_osnum,
+                                    index = index,
+                                    p_chanselect = &ND_father,
+                                    objidaddr = &part.objid,
+                                    osnumaddr = &part.osnum);
+	if(!(sts&1)) break;
+
+        sts = om$get_classid(objid = part.objid,
+                             osnum = part.osnum,
+                             p_classid = &obj_class);
+        if(!(sts&1)) continue;
+
+        sts = om$is_ancestry_valid(subclassid = obj_class,
+                                superclassid = OPP_ACncpx_class_id);
+        if((sts != OM_S_SUCCESS)) continue;
+
+        sts =
+	ci$send(msg = message GRgraphics.GRdisplay(&loc_msg,
+					     	   &md_env.md_env.matrix_type,
+						   md_env.md_env.matrix,
+						   &dpmode,
+						   &md_env.md_id),
+		targetid = part.objid,
+		targetos = part.osnum );
+	found = 1;
+      }
+    }
+
+    if(!found){
+      if(verify_item) UI_status("No element with this item number");
+      else            UI_status("No element with item number");
+    }
+  }
+}

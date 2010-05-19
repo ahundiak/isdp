@@ -1,0 +1,836 @@
+/* $Id: VDSmass.u,v 1.1.1.1 2001/01/04 21:07:22 cvs Exp $  */
+
+/* --------------------------------------------------------------------
+ * I/VDS
+ *
+ * File:	vds/cimacros/wireframe/macros / VDSmass.u
+ *
+ * Description:
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ *	$Log: VDSmass.u,v $
+ *	Revision 1.1.1.1  2001/01/04 21:07:22  cvs
+ *	Initial import to CVS
+ *	
+# Revision 1.1  1998/04/29  16:27:20  pinnacle
+# VDS 2.5.1
+#
+# Revision 1.1  1997/05/08  13:20:44  pinnacle
+# New project VDS 250
+#
+# Revision 1.1  1996/07/19  20:33:52  pinnacle
+# Create VDS 241 project
+#
+# Revision 1.1  1994/11/14  22:42:32  pinnacle
+# Create vds.240 from vds.232
+#
+# Revision 1.1  1994/11/08  16:07:00  pinnacle
+# create vds.232
+#
+ *
+ * History:
+ *	MM/DD/YY	AUTHOR		DESCRIPTION
+ *
+ * -------------------------------------------------------------------*/
+
+/*
+	 VDS 2.0 - PPM macro library - 92/07/09 (alc)
+	 92/08/05	Get rid of ac$create_def_temp() call (not needed)
+			Put ACwith_instances because this macro should be
+			placed by a CO 
+
+	Note: this macro is placed by the command object COm_mass_p.u
+ */
+
+/*	--------------------------------------------------------------- */
+/*	VDS parametric equipment system					*/
+/*	--------------------------------------------------------------- */
+
+
+/*	VDSmass.u	PPL macro whose template are a set of objects and 
+			corresponding densities. This macro uses the EMS
+			mass properties messages to create a single
+			set of mass propertt descriptors		*/
+
+/*	--------------------------------------------------------------- */
+/*	Robert Aish	20.5.91 ISDC	Initial Design & implementation */
+/*	--------------------------------------------------------------- */
+
+#include "cieveryone.h"
+#include "cimacros.h"
+#include "ci_mac_def.h"
+#include "EMSmsgdef.h"
+#include "macro.h"
+#include "nddef.h"
+#include "DIdef.h"
+#include "acmacros.h"
+
+#include "AS_status.h"
+#include "bs.h"
+#include "bsparameters.h"
+
+#define  MAX_TEMP_CHA   11
+#define  MAX_TEMP_SET   20
+#define  MAX_TEMP	41  /* ( = (  2 * MAX_TEMP_SET ) +1 ) 		      */
+#define  MAX_CHA	451 /* ( = (( 2 * MAX_TEMP_SET ) +1 )* MAX_TEMP_CHA ) */
+#define  MAX_FEET	10
+
+#define  VERBOSE	1
+
+/* #define ACkeep_template 1024 */
+
+IGRlong			EMS_ret;
+IGRboolean      	want_status, world;
+IGRchar 		*temp_names[MAX_TEMP], *feet_names[MAX_FEET]; 
+IGRint			temp_types[MAX_TEMP];
+IGRchar			str[80], tmp[80];
+IGRdouble		range[6], t_range[6], sld_range;
+IGRint			stat, msg, i, j, k,m, num_surfaces;
+GRobj 			ci_mac_def1, COMP, SURF;
+IGRshort		matrix_type;
+IGRmatrix		matrix;
+
+IGRdouble               org[3], out_in[20], pnt[6], local_pnt[100],
+			scaling_factor,accuracy,
+			density, t_vol, t_mass, w_x, w_y, w_z, w_I[6], t_area,
+			old_cht, chk_cht, tmp_cht;
+
+IGRint			chan_index,
+			i_check, no_of_feet, no_of_elements;
+
+OM_S_CHANSELECT		notify_chan[MAX_TEMP_SET], to_object[MAX_TEMP_SET];
+
+struct GRid		CUV, GCV[MAX_TEMP_SET], CI_MACRO_ID, 
+			GRid_list[MAX_FEET], 
+			MPROP[MAX_TEMP_SET], mac, def_temp;
+
+struct GRmd_env		MOD_ENV;
+struct GRvg_construct   cst;
+struct IGRdisplay	dis;
+
+struct IGRpolyline      geom;
+struct ret_struct	ret_read, ret_str[MAX_TEMP];
+
+char		        temp_buff[MAX_TEMP_CHA], temp_buff_names[MAX_CHA];
+
+extern int 		init_cnst_list(),
+			sprintf(),
+			printf(),
+			ACcreate_def_temp(),
+			BSxtractpar(),
+			BSchangepar();
+
+extern			ASsuper_construct();
+
+/* ========================================================================= */
+/* the main function is the one implementing the definition creation
+/* ========================================================================= */
+
+main ()
+{
+
+  temp_names[0]  = "accuracy";
+  temp_types[0]  = double_type;
+
+  k = 1;
+  for ( i = 1; i < MAX_TEMP; i = i + 2 )
+
+  
+  {
+	
+   m = i * MAX_TEMP_CHA;
+   sprintf(&temp_buff_names[m],"density%d",k);
+
+# ifdef DEBUG
+   printf("%s \n",&temp_buff_names[m]);
+# endif
+
+   temp_names[i] = &temp_buff_names[m];
+   temp_types[i] = double_type;
+
+   m = (i+1) * MAX_TEMP_CHA;
+   sprintf(&temp_buff_names[m],"object%d",k);
+
+# ifdef DEBUG
+   printf("%s \n",&temp_buff_names[m]);
+# endif
+
+   temp_names[i+1] = &temp_buff_names[m];
+   temp_types[i+1] = other_generic;
+
+   k = k + 1;
+  }
+
+  feet_names[0]  = "Centroid";
+  feet_names[1]  = "Volume";
+  feet_names[2]  = "Mass";
+  feet_names[3]  = "Ixx";
+  feet_names[4]  = "Iyy";
+  feet_names[5]  = "Izz";
+  feet_names[6]  = "Ixy";
+  feet_names[7]  = "Iyz";
+  feet_names[8]  = "Izx";
+  feet_names[9]  = "area";
+
+  ci_mac_def1 = NULL_OBJID;
+
+  ac$cimacdef( 	cimacdef   =  ci_mac_def1,
+		prop 	   = ACvariable_template | ACwith_instances,
+		status 	   = &stat,
+	 	name 	   = "VDSmass",
+              	temp_num   = MAX_TEMP,
+ 		temp_names = temp_names,
+		temp_types = temp_types,
+	      	extern_feet_num   = MAX_FEET, 	
+		extern_feet_names = feet_names );
+# ifdef DEBUG
+  printf("created VDSmass macro definition \n");
+# endif
+  return 1 ;
+}
+
+/* ========================================================================= */
+
+
+place ()
+{
+   no_of_feet=0;
+   i_check = -1;
+
+    if(construct_comp() == 0) return 0;
+    for(i = no_of_feet;i<MAX_FEET;i=i+1) GRid_list[i].objid = NULL_OBJID;
+
+    ci$send( msg = message  ci_macro.set_all_extern_feet
+		(&stat,no_of_feet, GRid_list, &MOD_ENV ),
+	   targetid = CI_MACRO_ID.objid,
+	   targetos = CI_MACRO_ID.osnum );
+ if (stat!=OM_S_SUCCESS) 
+  {
+   printf("VDSmass: failure in set_all_extern feet\n");
+   return(0);
+  }
+
+ return(1);
+}
+
+
+/* ========================================================================= */
+
+compute ()
+{
+    no_of_feet = 0;
+    i_check = -1;
+
+    if(construct_comp() == 0) return 0;
+
+    for(i= no_of_feet ;i<MAX_FEET;i=i+1) GRid_list[i].objid = NULL_OBJID;
+
+
+    ci$send( msg = message  ci_macro.set_all_extern_feet
+		(&stat,no_of_feet, GRid_list, &MOD_ENV ),
+	   targetid = CI_MACRO_ID.objid,
+	   targetos = CI_MACRO_ID.osnum );
+ if (stat!=OM_S_SUCCESS) 
+  {
+   printf("VDSmass: failure in set_all_extern feet\n");
+   return(0);
+  }
+  return(1);
+}
+
+/* ========================================================================= */
+
+construct_comp()
+{
+	IGRboolean mprop_flag ;
+	int kk ;
+
+mprop_flag = FALSE ;
+i_check = -1 ;
+
+for (i=0 ; i < MAX_FEET ; i=i+1) {
+    	GRid_list[i].objid = NULL_OBJID;
+    	GRid_list[i].osnum = MOD_ENV.md_id.osnum;
+     	}
+
+/* Get the number of templates */
+
+  stat= ci$send(msg = message NDnode.NDget_objects(ND_ROOT, NULL, 0, NULL, 
+   			0, OM_K_MAXINT, &no_of_elements),
+			targetid = CI_MACRO_ID.objid,
+           	        targetos = CI_MACRO_ID.osnum );
+  as$status(sts=stat, action = RET_STATUS);
+
+  no_of_elements = ( no_of_elements -1 ) / 2 ;
+
+  if(no_of_elements > MAX_TEMP_SET) no_of_elements = MAX_TEMP_SET;
+
+# ifdef DEBUG
+  printf("Number of elements: %d\n", no_of_elements);
+# endif
+
+  stat = ci$send(msg = message ACcpx.ACfind_temp_struct(&msg,"accuracy",
+							&ret_read, &MOD_ENV),
+                       verbose = VERBOSE,
+           	       targetid = CI_MACRO_ID.objid,
+           	       targetos = CI_MACRO_ID.osnum );
+  if (!(stat & msg & 1)) {
+	stat = 0 ; as$status(sts=stat, action = RET_STATUS) ;
+	}
+
+  accuracy = ret_read.var.root_pm_st.value;
+
+# ifdef DEBUG
+  printf("accuracy: %f\n", accuracy);
+# endif
+
+  if ( accuracy > 0.0001 )
+
+  {
+    /* if accuracy is defined, then use this as a switch to do complete
+       calculation, but first factor down the CHT to speed up the 
+       volume calculations						*/
+
+    if( accuracy < 0.1 ) accuracy = 0.1;
+    if( accuracy > 1.0 ) accuracy = 1.0;
+
+    stat= BSxtractpar(&EMS_ret,BSTOLCHRDHT,&old_cht);
+
+    as$status(sts=stat);
+
+ 
+# ifdef DEBUG
+    printf("old_cht: %f\n",old_cht);
+# endif
+
+    tmp_cht =  old_cht / accuracy;
+
+# ifdef DEBUG
+    printf("tmp_cht: %f\n",tmp_cht);
+# endif
+
+    stat= BSchangepar(&EMS_ret,BSTOLCHRDHT,tmp_cht);
+
+    as$status(sts=stat);
+    stat= BSxtractpar(&EMS_ret,BSTOLCHRDHT,&chk_cht);
+
+    as$status(sts=stat);
+
+ 
+# ifdef DEBUG
+    printf("chk_cht: %f\n",chk_cht);
+  	
+    status("");
+
+    sprintf(str,"Setting cht to: %f\n",chk_cht);
+
+    status(str);
+# endif
+  
+  }	/* end of setting cht -----------------------------------------	*/
+
+  /*------------------------------------------------------------------------*/
+ 
+  i_check =0;
+
+  for( k=0 ; k < no_of_elements ; k=k+1)
+
+  {
+
+  /*------------------------------------------------------------------------*/
+  /*-----  density ---------------------------------------------------------*/
+  /*------------------------------------------------------------------------*/
+ 
+    sprintf(temp_buff,"density%d",k+1);
+
+# ifdef DEBUG
+	printf("looking for %s\n",temp_buff);
+# endif
+
+    stat = ci$send(msg = message ACcpx.ACfind_temp_struct(&msg, temp_buff,
+							  &ret_read, &MOD_ENV),
+                       verbose = VERBOSE,
+           	       targetid = CI_MACRO_ID.objid,
+           	       targetos = CI_MACRO_ID.osnum );
+    if (!(stat & msg & 1)) {
+	stat = 0 ; as$status(sts=stat, action = RET_STATUS) ;
+	}
+
+    density = ret_read.var.root_pm_st.value;
+
+    #ifdef DEBUG
+    printf("set: %d  found density: %f \n",k,density);
+    #endif
+
+    if(density <= 0 ) {
+	stat = 0 ; as$status(sts=stat, action = RET_STATUS) ;
+	}
+
+
+  /*------------------------------------------------------------------------*/
+  /*-----  retrieve object, find the number of face, and the range	----*/
+  /*------------------------------------------------------------------------*/
+
+
+    sprintf(temp_buff,"object%d",k+1);
+
+# ifdef DEBUG
+	printf("looking for %s\n",temp_buff);
+# endif
+
+    stat = ci$send(msg = message ACcpx.ACfind_temp_obj(&msg, temp_buff,
+							 &CUV),
+                         verbose = VERBOSE,
+            	         targetid = CI_MACRO_ID.objid,
+           	         targetos = CI_MACRO_ID.osnum );
+    if (!(stat & msg & 1)) {
+	stat = 0 ; as$status(sts=stat, action = RET_STATUS) ;
+	}
+
+    stat = ci$send( msg      = message NDmacro.ACreturn_foot(	
+						&msg,
+						".",
+						&GCV[k], 
+						&matrix_type, 
+					        matrix ),
+	   targetid = CUV.objid,
+	   targetos = CUV.osnum );
+    if (!(stat & msg & 1)) {
+	stat = 0 ; as$status(sts=stat, action = RET_STATUS) ;
+	}
+
+    stat = ci$send(msg      = message GRowner.GRget_number_components
+						(&msg, &num_surfaces),
+             targetid = GCV[k].objid,
+	     targetos = GCV[k].osnum );
+    if (!(stat & msg & 1)) {
+	stat = 0 ; as$status(sts=stat, action = RET_STATUS) ;
+	}
+
+     world = FALSE;
+     stat = ci$send( msg = message GRgraphics.GRgetrang( 
+						  &msg,
+						  &matrix_type, 
+						  matrix, 
+						  &world,
+						  range ),
+	  	 	targetid = GCV[k].objid,
+	  	 	targetos = GCV[k].osnum);
+    if (!(stat & msg & 1)) {
+	stat = 0 ; as$status(sts=stat, action = RET_STATUS) ;
+	}
+	     
+     sld_range = 0.0;
+
+     for(i=0;i<3;i=i+1)
+     {
+	 org[i] = 0.0;
+	 pnt[0] = range[i+3] - range[i];
+	 sld_range = sld_range + pnt[0]*pnt[0];
+     }
+
+//     sld_range = sqrt(sld_range);
+     sld_range = 0.2 * sld_range;
+#ifdef DEBUG
+	write("enter EMSsurface.EMmassprop  num_surfaces =",num_surfaces," \n");
+	write("range =",sld_range," \n");
+     	for(i=0;i<6;i=i+1) write("range[",i,"]=",range[i],"\n");
+	
+#endif
+
+
+/*-------------------------------------------------------------------------*/
+/*---		construct the area properties object   		        ---*/
+/*-------------------------------------------------------------------------*/
+
+
+  	init_cnst_list();
+  	get_symb();
+
+  	dis.color		= cnst_list.color;
+  	dis.weight		= 5;
+
+
+  	dis.style		= cnst_list.style;
+  	cst.msg			= &msg;
+  	cst.properties		= GRIS_LOCATABLE | GRIS_NEW | GRIS_DISPLAYABLE;
+  	cst.display		= &dis;
+  	cst.env_info		= &MOD_ENV;
+  	cst.newflag		= 0;
+  	cst.level		= cnst_list.level;
+  	cst.geometry		= (char *)NULL;
+  	cst.class_attr		= 0;
+  	cst.name		= 0;
+
+
+
+   if ( accuracy > 0.0001 )
+
+   {
+ 
+     /* go for full calculations --------------------------------------	*/
+
+     MPROP[k].objid = NULL_OBJID;
+     MPROP[k].osnum = MOD_ENV.md_id.osnum;
+     mprop_flag = TRUE ;
+
+     stat = ci$send(msg       = message EMSmassprop.GRconstruct(&cst),
+	            construct = 1,
+                    targetid  = MPROP[k].objid,
+	            targetos  = MPROP[k].osnum );
+     as$status(sts = stat, action = RET_STATUS) ;
+
+     stat = om$make_chanselect ( channame     = "GRnotify.notification",
+				 p_chanselect = &notify_chan[k] );
+     as$status(sts = stat, action = RET_STATUS) ;
+
+     stat = om$make_chanselect ( channame     = "EMSmassprop.to_object",
+			         p_chanselect = &to_object[k]);
+     as$status(sts = stat, action = RET_STATUS) ;
+
+     chan_index = GRDGNLIMITS_MAX_I;
+     stat = ci$send(msg      = message Root.connect( to_object[k],
+						     chan_index,
+						     GCV[k].objid,
+						     GCV[k].osnum,
+						     notify_chan[k],
+						     0),
+             	    targetid = MPROP[k].objid,
+	            targetos = MPROP[k].osnum );
+     as$status(sts = stat, action = RET_STATUS) ;
+
+     stat = ci$send(msg      = message EMSmassprop.EMinitialize(&EMS_ret),
+             	    targetid = MPROP[k].objid,
+	            targetos = MPROP[k].osnum ) ;
+     if (!(stat & EMS_ret & 1)) {
+	stat = 0 ; as$status(sts = stat, action = RET_STATUS) ;
+	}
+
+     stat = ci$send(msg      = message EMSmassprop.EMset_density
+						( &EMS_ret, density ),
+             	    targetid = MPROP[k].objid,
+	            targetos = MPROP[k].osnum );
+     if (!(stat & EMS_ret & 1)) {
+	stat = 0 ; as$status(sts = stat, action = RET_STATUS) ;
+	}
+
+     stat = ci$send(msg      = message EMSmassprop.EMset_type( &EMS_ret,
+							       0 ),
+             	    targetid = MPROP[k].objid,
+	            targetos = MPROP[k].osnum );
+     if (!(stat & EMS_ret & 1)) {
+	stat = 0 ; as$status(sts = stat, action = RET_STATUS) ;
+	}
+  
+/*-------------------------------------------------------------------------*/
+/*---	evalute the mass properties					---*/
+/*-------------------------------------------------------------------------*/
+
+     for ( i = 0; i < 20; i = i + 1 ) 
+
+     {
+        out_in[i] = 0.0; 	/* must zeroise results, otherwise	*/
+				/* these become cummulative		*/
+     }
+
+     scaling_factor = 1.0;
+     stat = ci$send(msg = message EMSsurface.EMmassprop(
+				 &EMS_ret,
+				 num_surfaces,
+				 sld_range,
+				 &MOD_ENV,
+				 scaling_factor,
+			         org,
+				 &density,
+                                 out_in),
+           targetid = GCV[k].objid,
+	   targetos = GCV[k].osnum ) ; 
+     as$status(sts = stat, action = RET_STATUS) ;
+     if( EMS_ret != EMS_S_Success ) return OM_E_ABORT ;
+
+     status("");
+
+#ifdef DEBUG
+
+  	strcpy( str,"Vol = " );
+  	strcat( str,ftoa(out_in[0]) );
+  	strcat( str,"; Mass = ");
+  	strcat( str,ftoa(out_in[1]) );
+
+  	status(str);
+
+	write("\f\f\f");
+	write(" volume =", out_in[0],"\n");
+	write(" density =", density,"\n");
+	write(" masslume =", out_in[1],"\n");
+	write("Centroid          [ ",out_in[2],out_in[3],out_in[4],"]",'\n');
+	write("Surface area      = ",out_in[11],'\n');
+#endif
+	t_vol  = t_vol  +   out_in[0];
+	t_mass = t_mass +   out_in[1];
+	w_x    = w_x    + ( out_in[2]  * out_in[1] );	
+	w_y    = w_y    + ( out_in[3]  * out_in[1] );	
+	w_z    = w_z    + ( out_in[4]  * out_in[1] );	
+	w_I[0] = w_z    + ( out_in[5]  * out_in[1] );	
+	w_I[1] = w_z    + ( out_in[6]  * out_in[1] );	
+	w_I[2] = w_z    + ( out_in[7]  * out_in[1] );	
+	w_I[3] = w_z    + ( out_in[8]  * out_in[1] );	
+	w_I[4] = w_z    + ( out_in[9]  * out_in[1] );	
+	w_I[5] = w_z    + ( out_in[10] * out_in[1] );	
+	t_area = t_area +   out_in[11];
+
+# ifdef DEBUG
+	printf(" t_vol  = %f\n", t_vol);
+	printf(" t_mass = %f\n", t_mass);
+	printf(" Centroid [ %f : %f : %f\n",w_x,w_y,w_z);
+	printf(" t_area = %f\n", t_area);
+#endif
+
+	local_pnt[(k*6)]   = out_in[2];
+	local_pnt[(k*6)+1] = out_in[3];
+	local_pnt[(k*6)+2] = out_in[4];
+
+   }
+
+   else
+
+   {
+	/* if proper calculation is not required, just define	*/
+	/* approximate centroid as the mid  range point		*/
+   
+# ifdef DEBUG
+     for(i=0;i<6;i=i+1) write("range[",i,"]=",range[i],"\n");
+#endif 
+    if ( i_check == 0 )
+
+     {
+        for ( i = 0; i <3; i = i + 1 )
+	{
+           if ( range[i] < range[i+3] )
+	   {
+		t_range[i]   = range[i];
+		t_range[i+3] = range[i+3];
+	   }
+	   else
+	   {
+		t_range[i]   = range[i+3];
+		t_range[i+3] = range[i];
+	   }
+        }
+     }
+     else
+     {	
+        for ( i = 0; i <3; i = i + 1 )
+	{
+           if ( range[i] < range[i+3] )
+	   {
+		if ( range[i]   < t_range[i]   ) t_range[i]   = range[i];
+		if ( range[i+3] > t_range[i+3] ) t_range[i+3] = range[i+3];
+	   }
+	   else
+	   {
+		if ( range[i+3] < t_range[i]   ) t_range[i]   = range[i+3];
+		if ( range[i]   > t_range[i+3] ) t_range[i+3] = range[i];
+	   }		
+        }
+      }
+
+# ifdef DEBUG
+     for(i=0;i<6;i=i+1) write("t_range[",i,"]=",t_range[i],"\n");
+#endif
+
+    }
+    i_check = i_check + 1;
+
+   }
+
+/*-------------------------------------------------------------------------*/
+/*---		construct the center of gravity				---*/
+/*-------------------------------------------------------------------------*/
+
+update:	
+
+   if( i_check <= 0 ) {
+	printf (" VDSmass: failure \n");
+ 	return OM_E_ABORT ;
+   	}
+
+   if (mprop_flag) {
+	for (kk=0 ; kk < no_of_elements ; kk = kk+1) {
+		stat = ci$send(msg = message GRvg.GRdelete(&msg, &MOD_ENV),
+			targetid = MPROP[kk].objid,
+			targetos = MPROP[kk].osnum) ; as$status(sts = stat) ;
+		}
+	}
+
+   if ( accuracy > 0.0001) {
+
+	/* go for full calculation and set of feet ---------------------- */
+
+	pnt[0] = w_x/t_mass;
+	pnt[3] = pnt[0];
+	pnt[1] = w_y/t_mass;
+	pnt[4] = pnt[1];
+	pnt[2] = w_z/t_mass;
+	pnt[5] = pnt[2];
+
+
+#ifdef DEBUG
+	printf("point: %f %f %f %f %f %f \n",
+		     pnt[0],pnt[1],pnt[2],
+		     pnt[3],pnt[4],pnt[5]);
+#endif
+  	geom.num_points = 1;
+	geom.points = pnt;
+
+  	dis.color	= 4;
+	dis.weight      = 3; 
+  	cst.geometry	= (char *) &geom;
+
+  	stat = ci$send( msg       = message GR3dpoint.GRaltconstruct(&cst),
+        	        targetid  = GRid_list[no_of_feet].objid,
+ 	                targetos  = GRid_list[no_of_feet].osnum );
+	if( !(stat&1) ) {
+		GRid_list[0].objid = NULL_OBJID;
+		stat = 0 ; as$status(sts = stat, action = RET_STATUS) ;
+		}
+	no_of_feet = no_of_feet + 1;
+
+/*-------------------------------------------------------------------------*/
+/*---		create the expression for volume			---*/
+/*-------------------------------------------------------------------------*/
+
+  	sprintf( tmp, "%g", t_vol );
+
+  	stat = ci$send(  msg      = message Gexp.create
+		 				( NULL,tmp , &msg ),
+                   targetid = GRid_list[no_of_feet].objid,
+		   targetos = GRid_list[no_of_feet].osnum);
+	if( !(stat & msg & 1) ) {
+		stat = 0 ; as$status(sts = stat, action = RET_STATUS) ;
+		}
+
+	no_of_feet = no_of_feet + 1;
+
+/*-------------------------------------------------------------------------*/
+/*---		create the expression for mass				---*/
+/*-------------------------------------------------------------------------*/
+        tmp[0] = '\0';
+  	sprintf( tmp, "%g", t_mass );
+
+  	stat = ci$send(  msg      = message Gexp.create
+		 				( NULL,tmp , &msg ),
+                   targetid = GRid_list[no_of_feet].objid,
+		   targetos = GRid_list[no_of_feet].osnum);
+	if( !(stat & msg & 1) ) {
+		stat = 0 ; as$status(sts = stat, action = RET_STATUS) ;
+		}
+
+	no_of_feet = no_of_feet + 1;
+
+/*-------------------------------------------------------------------------*/
+/*---	Create the expression Ixx, Iyy, Izz, Ixy, Iyz, Izx, area	---*/
+/*-------------------------------------------------------------------------*/
+
+	for(i=0; i<6; i=i+1) {
+        	tmp[0] = '\0';
+  		sprintf( tmp, "%g", (w_I[i]/t_mass) );
+
+  		stat = ci$send(  msg      = message Gexp.create
+		 				( NULL,tmp , &msg ),
+                   		targetid = GRid_list[no_of_feet].objid,
+		   		targetos = GRid_list[no_of_feet].osnum);
+		if( !(stat & msg & 1) ) {
+			stat = 0 ; as$status(sts = stat, action = RET_STATUS);
+			}
+
+		no_of_feet = no_of_feet + 1;
+		}
+
+
+/*-------------------------------------------------------------------------*/
+/*---		create the expression for area				---*/
+/*-------------------------------------------------------------------------*/
+        tmp[0] = '\0';
+  	sprintf( tmp, "%g", t_area );
+
+  	stat = ci$send(  msg      = message Gexp.create
+		 				( NULL,tmp , &msg ),
+                   targetid = GRid_list[no_of_feet].objid,
+		   targetos = GRid_list[no_of_feet].osnum);
+	if( !(stat & msg & 1) ) {
+		stat = 0 ; as$status(sts = stat, action = RET_STATUS);
+		}
+
+	no_of_feet = no_of_feet + 1;
+
+/*-------------------------------------------------------------------------*/
+
+
+ 
+#ifdef DEBUG
+	printf("total no_of_feet: %d \n",no_of_feet);
+# endif    
+  	stat= BSchangepar(&EMS_ret,BSTOLCHRDHT,old_cht);
+
+  	as$status(sts=stat);
+
+#ifdef DEBUG
+	printf("reset old_cht: %f \n",old_cht);
+# endif
+  	stat= BSxtractpar(&EMS_ret,BSTOLCHRDHT,&chk_cht);
+
+  	as$status(sts=stat);
+
+ 
+# ifdef DEBUG
+  	printf("chk_cht: %f\n",chk_cht);
+
+	status("");
+  	sprintf(str,"Setting cht to: %f\n",chk_cht);
+  	status(str);
+# endif
+
+  }
+   
+
+  else {
+	/* just draw approx centroid as middle of total range	*/
+
+        for ( i = 0; i <3; i = i + 1 )
+
+	{
+          pnt[i] = (t_range[i+3] + t_range[i] ) *.5;
+        }
+	#ifdef DEBUG
+	printf("point: %f %f %f %f %f %f \n",
+		     pnt[0],pnt[1],pnt[2],
+		     pnt[3],pnt[4],pnt[5]);
+	#endif
+  	geom.num_points = 1;
+	geom.points = pnt;
+
+  	dis.color	= 4;
+	dis.weight      = 3; 
+  	cst.geometry	= (char *) &geom;
+
+  	stat = ci$send( msg       = message GR3dpoint.GRaltconstruct(&cst),
+        	        targetid  = GRid_list[no_of_feet].objid,
+ 	                targetos  = GRid_list[no_of_feet].osnum );
+	as$status(sts = stat) ;
+	no_of_feet = no_of_feet + 1;
+
+	if( !(stat&1) ) {
+		GRid_list[0].objid = NULL_OBJID;
+		return OM_E_ABORT ;
+		}
+
+
+  	}
+
+  return OM_S_SUCCESS ;
+}
+
+

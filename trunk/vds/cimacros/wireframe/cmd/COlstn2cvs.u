@@ -1,0 +1,205 @@
+/* $Id: COlstn2cvs.u,v 1.1.1.1 2001/01/04 21:07:22 cvs Exp $  */
+
+/* --------------------------------------------------------------------
+ * I/VDS
+ *
+ * File:	vds/cimacros/wireframe/cmd / COlstn2cvs.u
+ *
+ * Description:
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ *	$Log: COlstn2cvs.u,v $
+ *	Revision 1.1.1.1  2001/01/04 21:07:22  cvs
+ *	Initial import to CVS
+ *	
+# Revision 1.1  1998/04/29  16:27:20  pinnacle
+# VDS 2.5.1
+#
+# Revision 1.1  1997/05/08  13:20:44  pinnacle
+# New project VDS 250
+#
+# Revision 1.1  1996/07/19  20:33:52  pinnacle
+# Create VDS 241 project
+#
+# Revision 1.1  1994/11/14  22:42:32  pinnacle
+# Create vds.240 from vds.232
+#
+# Revision 1.1  1994/11/08  16:07:00  pinnacle
+# create vds.232
+#
+ *
+ * History:
+ *	MM/DD/YY	AUTHOR		DESCRIPTION
+ *
+ * -------------------------------------------------------------------*/
+
+/*
+	 VDS 2.0 - PPM macro library - 30 Sep 93 - Raju
+ */
+   
+#include "ciminimum.h"
+#include "OMminimum.h"
+#include "cimacros.h"
+#include "cieveryone.h"
+
+#include "expmacros.h"
+
+#define EXP_DOUBLE	0
+
+
+struct GRid 	object;
+struct GRid 	TEMP[4];
+GRobj 		MAC1;
+IGRint 		ii;
+struct GRmd_env	MOD_ENV;
+IGRchar		txt[40], mes_f[80];
+IGRdouble	point[6], proj_pt[3];
+struct GRparms parms;
+int		suc;
+long		sts, msg;
+
+extern ASmake_source_from_env();
+extern int
+                EXP_create_double(),
+                EXP_create();
+
+extern long	NDduplicate_root();
+extern		printf();
+
+main() {
+ strcpy(mes_f,"<Assoc> Place Line Segment Tangent to 2 Curves");
+ message(mes_f);
+
+while(1)
+  {
+
+step0:
+   message(mes_f);
+
+   for( ii=0; ii<2; ii=ii+1)
+   {
+
+step1:
+     strcpy(txt,"Identify curve ");
+     strcat(txt,itoa(ii + 1));
+
+     if(!ci$locate( prompt = txt,
+		    acc_prompt	 = "Accept with nearest point to the curve/Reject",
+		    classes = "GRcurve",
+                    properties = LC_LC_ONLY | LC_DP_ONLY | LC_RW,
+                    owner_action = LC_RIGID_COMP
+                                    | LC_RIGID_OWNER | LC_FLEX_COMP
+                                    | LC_FLEX_OWNER | LC_REF_OBJECTS,
+	            obj = &(TEMP[ii].objid),
+                    osnum = &(TEMP[ii].osnum),
+		    md_env = &MOD_ENV,
+		    accept_point = &(point[ii*3]) ) ) goto step1;
+
+     ASmake_source_from_env( &TEMP[ii],&MOD_ENV,&TEMP[ii] );
+
+   }
+   ci$get_module_info(md_env = &MOD_ENV);
+
+#ifdef DEBUG
+   printf("TEMP[0] : %d %d, TEMP[1] : %d %d\n", TEMP[0].objid, TEMP[0].osnum,
+						TEMP[1].objid, TEMP[1].osnum);
+#endif
+
+/*
+   if ( TEMP[0].objid == TEMP[1].objid &&
+	TEMP[0].osnum == TEMP[1].osnum )
+   {
+      status ( "Cannot select the same curve" );
+      goto step0;
+   }
+*/
+
+   for ( ii=0; ii<2; ii=ii+1)
+   {
+       sts = ci$send(msg = message NDnode.ASreturn_go( &object,
+                                        NULL, NULL ),
+                        targetid = TEMP[ii].objid,
+                        targetos = TEMP[ii].osnum);
+#ifdef DEBUG
+       printf("object[%d] : %d %d", ii, object.objid, object.osnum );
+#endif
+	if ( !(sts&1) )
+        { status ( "Error ASretun_go " );
+	  goto step0;
+	}
+
+       sts = ci$send (msg = message GRgraphics.GRptproject(
+                                         &msg,
+                                         &MOD_ENV.md_env.matrix_type,
+                                         MOD_ENV.md_env.matrix,
+                                         &point[ii*3],
+                                         proj_pt,
+                                         &parms ),
+                                targetid = object.objid,
+                                targetos = object.osnum );
+	if ( !(sts&1) )
+        { status ( "Error projecting point onto curve" );
+	  goto step0;
+	}
+
+	TEMP[2+ii].objid = NULL_OBJID;
+	TEMP[2+ii].osnum = MOD_ENV.md_id.osnum;
+	sts = exp$create( exp_name      = NULL,
+                          exp_value     = (double) parms.u,
+                          p_exp_id      = &TEMP[2+ii].objid,
+                          osnum         = TEMP[2+ii].osnum,
+                          type_rq       = EXP_DOUBLE ) ;
+
+	if ( !(sts&1) )
+	{ status( "Error creating expression for the paramater" );
+	  goto step0;
+	}
+   }
+
+   sts = NDduplicate_root( 4, TEMP );
+#ifdef DEBUG
+   printf("TEMP[0] : %d %d, TEMP[1] : %d %d\n", TEMP[0].objid, TEMP[0].osnum,
+						TEMP[1].objid, TEMP[1].osnum);
+   printf("TEMP[2] : %d %d, TEMP[3] : %d %d\n", TEMP[2].objid, TEMP[2].osnum,
+						TEMP[3].objid, TEMP[3].osnum);
+#endif
+
+   if ( !(sts&1) )
+   {  status("Error checking for duplicate roots" );
+      goto step0;
+   }
+
+   ci$get_module_info(md_env = &MOD_ENV);
+
+   MAC1 = NULL_OBJID;
+
+   sts = ci$send(msg      = message nci_macro.init( 	&suc,
+						0, 
+						"lstn2cvs", 
+						4, 
+						TEMP, 
+						NULL,
+						&MOD_ENV   ),
+	   targetid = MAC1,
+	   targetos = MOD_ENV.md_id.osnum );
+
+   if( suc == 0 )
+   {
+		write("placement of nci_macro \"lstn2cvs\" failed\n");
+		status("placement of nci_macro \"lstn2cvs\" failed");
+      		ci$send(msg = message Root.delete(0),
+	      		targetid = MAC1,
+	      		targetos = MOD_ENV.md_id.osnum );
+   }
+ }
+}
+
+
+wakeup(){
+	message(mes_f);
+}
+
+
+

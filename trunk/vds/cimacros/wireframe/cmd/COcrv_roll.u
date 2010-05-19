@@ -1,0 +1,133 @@
+/* $Id: COcrv_roll.u,v 1.2 2001/01/19 21:32:47 hans Exp $  */
+/***************************************************************************
+ * I/VDS
+ *
+ * File:	vds/cimacros/wireframe/cmd / COcrv_roll.u
+ *
+ * Description: a variation on COcrv_merge except only arcs and lines are good
+ * 		and a collector will be an output also describing the enitities.
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ *	$Log: COcrv_roll.u,v $
+ *	Revision 1.2  2001/01/19 21:32:47  hans
+ *	SP16 modifications
+ *	
+# Revision 1.1  2000/05/10  18:28:54  pinnacle
+# Created: vds/cimacros/wireframe/cmd/COcrv_roll.u by jvhanson for Service Pack
+#
+ *
+ * History:
+ *	MM/DD/YY	AUTHOR		DESCRIPTION
+ *	01/31/00	jvhanson	initial creation
+ *
+ ****************************************************************************/
+
+/*
+	 VDS 2.0 - PPM macro library - 92/07/09 (alc)
+	 92/07/22 Get rid of internal data (not used)
+ */
+   
+#include "ciminimum.h"
+#include "cimacros.h"
+#include "cieveryone.h"
+
+#define		MAX_TEMP 33
+
+struct GRid 	TEMP[MAX_TEMP];
+GRobj 		MAC1;
+double		pnt[3];
+IGRshort        num_ent;
+IGRint 		suc;
+IGRchar         txt[40];
+struct GRmd_env	MOD_ENV;
+IGRchar		mes_f[80];
+struct OM_sd_classlist  classlist;
+OMuword classid[3];
+
+extern ASmake_source_from_env();
+
+main()
+{
+ strcpy(mes_f,"<Assoc> Merge Curves with Roll info");
+ message(mes_f);
+
+        om$get_classid( classname = "GR3dlineseg",
+                        p_classid = &classid[0]);
+        om$get_classid( classname = "GR3dcirarc",
+                        p_classid = &classid[1]);
+
+        classlist.w_count = 2;
+        classlist.w_flags = OM_CLST_subclass;
+        classlist.p_classes = classid;
+
+while(1)
+  {
+   num_ent = 0;
+   message(mes_f);
+
+step0:
+
+   while(1)
+   {
+     strcpy(txt,"Identify arc/line ");
+     strcat(txt,itoa(num_ent + 1));
+     if( num_ent ) strcat(txt," / Move-on");  
+
+     if(!ci$locate( prompt       = txt,
+		    //classes      = "GRcurve",
+                    properties   = LC_LC_ONLY | LC_DP_ONLY | LC_RW,
+                    owner_action = LC_RIGID_COMP
+                                    | LC_RIGID_OWNER | LC_FLEX_COMP
+                                    | LC_FLEX_OWNER  | LC_REF_OBJECTS,
+	            obj          = &(TEMP[num_ent].objid),
+                    osnum        = &(TEMP[num_ent].osnum),
+		    md_env       = &MOD_ENV,
+		    accept_point = pnt,
+		    acc_prompt   = "Accept with next arc/line",
+		    eligible_classes = &classlist ) ) break;
+
+     ASmake_source_from_env( &TEMP[num_ent],&MOD_ENV,&TEMP[num_ent] );	
+
+     num_ent = num_ent + 1;
+     if( num_ent > MAX_TEMP )
+     {
+	status("macro crv_merge : number of located objects exceeds 33");
+        goto step0;
+     }
+     ci$put(point=pnt);
+   }
+
+   if( num_ent == 0 ) exit;
+
+   ci$get_module_info(md_env = &MOD_ENV);
+
+   MAC1 = NULL_OBJID;
+
+   ci$send(msg      = message nci_macro.init( 	&suc,
+						0, 
+						"crv_roll", 
+						num_ent, 
+						TEMP, 
+						NULL,
+						&MOD_ENV   ),
+	   targetid = MAC1,
+	   targetos = MOD_ENV.md_id.osnum );
+
+   if( suc == 0 ){
+		write("placement of nci_macro \"crv_roll\" failed\n");
+		status("placement of nci_macro \"crv_roll\" failed");
+      		ci$send(msg = message Root.delete(0),
+	      		targetid = MAC1,
+	      		targetos = MOD_ENV.md_id.osnum );
+   }
+ }
+
+}
+
+
+wakeup(){
+	message(mes_f);
+}
+

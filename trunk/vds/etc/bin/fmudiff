@@ -1,0 +1,223 @@
+# $Id: fmudiff,v 1.1.1.1 2001/01/04 21:07:29 cvs Exp $
+
+# -------------------------------------------------------------------
+# I/VDS
+#
+# File:	vds/etc/bin/fmudiff 
+#
+# Description:
+#
+# Dependencies:
+#
+# Revision History:
+#	$Log: fmudiff,v $
+#	Revision 1.1.1.1  2001/01/04 21:07:29  cvs
+#	Initial import to CVS
+#	
+# Revision 1.3  1994/12/02  21:44:10  pinnacle
+# Replaced: etc/bin/fmudiff r#
+#
+# Revision 1.2  1994/12/02  21:28:24  pinnacle
+# Replaced: etc/bin/fmudiff r#
+#
+# Revision 1.1  1994/11/14  22:42:32  pinnacle
+# Create vds.240 from vds.232
+#
+# Revision 1.1  1994/11/08  16:07:00  pinnacle
+# create vds.232
+#
+#
+# History:
+#	MM/DD/YY	AUTHOR		DESCRIPTION
+#
+# -------------------------------------------------------------------
+
+# Shell script (ADZ)
+#
+# Vds Version release test
+#
+# The goal is to test files (modified) with the files of the release.
+#
+# Principle way:
+#
+#	- Get remote machine	( default = "rcs22" )
+#	- Get login 		( default = "vds.vds" )
+#	- get directory
+#
+#	- Get local directory
+#
+#	- display difference	( default = "n" )
+#
+# use :
+#	1: $ fmudiff
+#	2: $ fmudiff <remote directory> <local directory>
+#
+# ---------------------------------------------------------------------------
+# remote system variables
+# ---------------------------------------------------------------------------
+R_MACH="rcs22"
+RR_MACH="$R_MACH"
+R_LOGIN="vds.vds"
+RR_LOGIN="$R_LOGIN"
+R_VDS="/usr/prod/wsa/vds22"
+R_DIR="$1"
+RR_DIR="$1"
+
+# ---------------------------------------------------------------------------
+# local system variables
+# ---------------------------------------------------------------------------
+L_DIR="$2"
+LL_DIR="$2"
+L_TMP="$HOME/.tmp"
+L_VDS="$HOME"
+LL_VDS="$L_VDS"
+
+RC=1
+while [ $RC = 1 ] ; do
+  read R_MACH?"Give remote machine [$R_MACH] : "
+  if [ "$R_MACH" = "" ] ; then
+    R_MACH="$RR_MACH"
+  fi  
+
+  read R_LOGIN?"Give remote login/passwd  [$R_LOGIN] : "
+  if [ "$R_LOGIN" = "" ] ; then
+    R_LOGIN="$RR_LOGIN"
+  fi  
+
+  fmu -v $R_MACH.$R_LOGIN quit
+  RC=$?
+  if [ $RC = 1 ] ; then
+    R_MACH="$RR_MACH"
+    R_LOGIN="$RR_LOGIN"
+  fi
+done
+
+# ---------------------------------------------------------------------------
+# test if the remote directory exist
+# ---------------------------------------------------------------------------
+if [ "$R_DIR" = "" ] ; then
+  read R_DIR?"Give remote directory [$R_DIR] : "
+fi
+RC=1
+while [ $RC = 1 ] ; do
+  fmu -v $R_MACH.$R_LOGIN comm cd $R_DIR
+  RC=$?
+  if [ $RC = 1 ] ; then 
+    read R_DIR?"Give remote directory [$R_DIR] : "
+  fi
+  if [ "$R_DIR" = "" ] ; then
+    R_DIR="$RR_DIR"
+  fi
+done
+
+if [ "$LL_DIR" = "" ] ; then
+  RR_DIR="$LL_DIR"
+fi
+
+# ---------------------------------------------------------------------------
+# test if local directory exist
+#  ---------------------------------------------------------------------------
+read L_VDS?"Give local product directory [$L_VDS] : "
+if [ "$L_VDS" = "" ] ; then
+  L_VDS="$LL_VDS"
+fi  
+
+RC=1
+while [ $RC = 1 ] ; do
+  if [ "$L_VDS" = "" ] ; then
+    read L_VDS?"Give local product directory [$L_VDS] : "
+  else
+    if [ -d $L_VDS ] ; then
+      RC=0
+    else
+      read L_VDS?"Give local product directory [$L_VDS] : "
+    fi
+  fi
+done
+
+if [ "$L_DIR" = "" ] ; then
+  \ls -CF $L_VDS
+  read L_DIR?"Give local directory [$LL_DIR] : "
+  if [ "$L_DIR" = "" ] ; then
+    L_DIR="$LL_DIR"
+  fi
+fi
+
+RC=1
+while [ $RC = 1 ] ; do
+  if [ "$L_DIR" = "" ] ; then
+    read L_DIR?"Give local directory [$L_DIR] : "
+  else
+    if [ -d $L_VDS/$L_DIR ] ; then
+      RC=0
+    else
+      \ls -CF $L_VDS
+      read L_DIR?"Give local directory [$L_DIR] : "
+    fi
+  fi
+done
+
+# ---------------------------------------------------------------------------
+# Goto working test directory
+# ---------------------------------------------------------------------------
+if [ ! -d $L_TMP ] ; then
+  mkdir $L_TMP
+fi
+\cd $L_TMP
+rm -rf *
+
+# ---------------------------------------------------------------------------
+# Get remove files
+# ---------------------------------------------------------------------------
+echo "Get remote files"
+fmu $R_MACH.$R_LOGIN rec $R_DIR/* .
+
+# ---------------------------------------------------------------------------
+# Remove files
+# ---------------------------------------------------------------------------
+\rm -rf *.o mkfile version.info
+\ls -CF
+
+# ---------------------------------------------------------------------------
+# display difference (y/n)
+# ---------------------------------------------------------------------------
+layout="n"
+read layout?"Display difference (y/n) [$layout] : "
+if [ "$layout" != "y" ] ; then
+  layout="n"
+else
+  layout="y"
+fi  
+
+# ---------------------------------------------------------------------------
+# Test difference
+# ---------------------------------------------------------------------------
+for file in *
+do
+  if [ "$layout" = "y" ] ; then
+    echo "---- diff ---------------------------- $file"
+  fi
+  if [ ! -f $L_VDS/$L_DIR/$file ] ; then
+    echo " Not found (local) : $L_VDS/$L_DIR/$file "
+    continue
+  fi
+  var=`diff $file $L_VDS/$L_DIR/$file | wc -l`
+  if [ $var != 0 ] ; then
+    echo "\tIntegration : $file"
+    if [ "$layout" = "y" ] ; then
+      diff $file $L_VDS/$L_DIR/$file 
+    fi
+  fi
+  if [ "$layout" = "y" ] ; then
+    echo "---- done ---------------------------- $file"
+  fi
+done
+
+# ---------------------------------------------------------------------------
+# Remove the temporary files
+# ---------------------------------------------------------------------------
+i_rm="y"
+read i_rm?"Remove temporary directory [$i_rm] : "
+if [ "$i_rm" = "" -o "$i_rm" = "y" -o "$i_rm" = "Y" ] ; then
+  \rm -rf $L_TMP/*
+fi  
