@@ -1,0 +1,1507 @@
+/* $Id: postplot.u,v 1.1 2002/05/31 16:30:40 tlstalli Exp $
+* postplot
+*
+* File:	/pma/postplot/postplot.u
+*
+* Description:
+*
+* Dependencies:
+*
+* Revision History:
+*	$Log: postplot.u,v $
+*	Revision 1.1  2002/05/31 16:30:40  tlstalli
+*	Backup of PMA process from EXTR
+*	
+*	Revision 1.2  2001/02/15 16:45:09  build
+*	Replaced v_dbgmacros.h file with vedbgmacros.h file.
+*	
+*	Revision 1.1  2001/01/26 17:14:52  build
+*	*** empty log message ***
+*	
+*	
+# Revision 1.1  1999/11/15  15:20:54  pinnacle
+# initial revision
+#
+*
+* History:
+*	MM/DD/YY	AUTHOR		DESCRIPTION
+*
+***************************************************************************/
+
+#define vdsDEBUG
+#define vdserrDEBUG
+
+#include "stdio.h"
+#include "string.h"
+#include "stdlib.h"
+
+#include "ciminimum.h"
+#include "cieveryone.h"
+#include "cimacros.h"
+#include "exdef.h"
+#include "exfi.h"
+#include "exmacros.h"
+#include "refdef.h"
+#include "refmacros.h"
+#include "vedbgmacros.h"
+
+/* Includes for the delete_local_file function */
+#include "MEMerrordef.h"
+#include "NFMerrordef.h"
+#include "MEMstruct.h" 
+
+#include "ACrg_collect.h"
+#include "exproto.h"
+#include "exdef.h"
+#include "exmacros.h"
+
+#include "DItypedef.h"
+#include "DIdef.h"
+#include "DIglob.h"
+#include "DIprims.h"
+
+/* Plot include files */
+#include "EXRforms.h" 
+#include "EXRdefs.h"
+#include "EXR4struct.h"
+#include "EXRstructs.h"
+#include "EXRmsg.h"
+
+#include "plotmacros.h"
+#include "pidef.h"
+#include "plotcmd.h" 
+#include "plotmsg.h"
+#include "pltmessage.h"
+
+#include "grmacros.h"
+#include "igetypedef.h"
+#include "igrtypedef.h"
+#include "igr.h"
+#include "gr.h"
+#include "msdef.h"
+#include "msmacros.h"
+#include "grdpbdef.h"
+#include "grdpbmacros.h"
+#include "grgsmacros.h"
+
+#include "PDMStoolspro.h"
+#include "PDUerror.h"
+#include "PDUdesignpro.h"
+#include "PDMmacros.h
+
+/* defines for Postman */
+#define CLIX_CONNECT    -1
+#define CLIX_DISCONNECT -2
+#define SIZE 4096
+#define SM_SIZE 128
+#define SUCCESS	0
+#define FAILURE 1
+
+#define PME     0
+#define SIR     1
+
+#define SIR_GLOBAL_DIR          ":IGENOD:SIRGlobal"
+#define SIR_REQ_DATA            ":SRReqData"
+/* #define SIR_MODCX_ID            "Model Context Id" */
+#define SIR_CNTX_ID              "Context Id"
+
+/* Posting command codes */
+#define VDP_IS_CTX_CHECKED_OUT 30
+#define VDP_IS_CTX_IN_VAULT 31
+#define VDP_REG_PLOT_FILES 32
+
+
+/* External function for the PME process */
+extern  int     POSTMAN_REQUEST_ON_CLIX();
+
+/* Externals for the delete_local_file function ONLY */
+extern  	MEMbuild_array();
+extern		MEMclose();
+extern		MEMwrite();
+extern		MEMprint_buffer();
+
+/* AIM/VDS functions */
+extern  int	IsPmeEnabled();
+extern	int	VDgetVdCollId();
+extern  int	WhichAim();
+extern 	int	VDgetDiagCtlPar();
+extern 		VDPGetAimName();
+
+/* GRNUC functions */
+extern          GRget_properties();
+extern  int     GRget_window_range();
+extern  int 	GRdpb_get();
+extern	int	COplot_get_window_range();
+extern	int	COplot_get_fence_range();
+extern	int	COget_fence_range();
+extern	int	COcreate_plotfile();
+extern   	GRgsget_fence();
+extern          GRgsmgr_fun();
+
+/*PDM/PDU funtions */
+extern	void	PDUsetup_buffer();
+extern	int	PDUget_buffer_col();
+extern	int	PDUformat_buffer();
+extern 	int	PDUadd_buffer_string();
+extern		PDUfill_in_string();
+extern		PDUdebug_on();
+extern		PDUdebug_off();
+extern	char	*PDUtranslate_message();
+extern  int	PDMi_find_cofilename();
+extern	int	PDMGetPartInfoGivenFileName();
+
+
+extern  int	SQLquery();
+
+/* externals for the others functions */
+extern	void	*malloc();
+extern	void	*realloc();
+extern	void	free();
+extern		printf();
+extern  FILE	*fopen();
+extern		fprintf();
+extern  int	atoi();
+extern	int	itoa();
+extern  int 	strncmp();
+extern  int	stat();
+extern  int	system();
+extern	char	*strcpy();
+extern 	int 	change_mode;
+
+/* the posting commands */
+extern	int	VDP_send_post_cmd();
+extern	int	VDP_send_verify_cmd();
+extern	int	VDP_send_ctx_verify_cmd();
+extern	int	VDP_copy_cmd();
+extern	int	VDP_remove_cmd();
+extern	int	VDP_connect_status();
+
+extern	int	PDM_debug_on ;
+extern  double  difftime ();
+extern  long    *time (); 
+extern strftime (); 
+extern char *getlogin ();
+extern gethostname ();
+extern struct tm *localtime ();
+
+struct	EX_s_FileInfo 
+{
+
+char		filename[SM_SIZE];
+char		server[SM_SIZE];
+char		catalog[SM_SIZE];
+char		partno[SM_SIZE];
+char		revision[SM_SIZE];
+char		ctxid[SM_SIZE];
+int		filetype;
+long		start_time;
+
+};
+typedef struct  EX_s_FileInfo   EX_FileInfo;
+
+
+/*
+* Global variables in files.
+*/
+
+EX_FileInfo		E_FileInfo;
+char			*errPDM ;
+FILE			*ptr;
+FILE			*plotptr;
+
+
+/**************************************************************************/
+
+/*****************************************************
+* Verify the connection to AIM.
+*
+*****************************************************/
+
+verify_connect_postman( retCode )
+int	*retCode;
+{
+int		i, status ;
+
+int		conn_status;
+int		stat;
+
+*retCode	= OM_S_SUCCESS  ;
+status		= OM_S_SUCCESS ;
+
+conn_status	= 0;
+stat		= 0;
+
+fprintf(ptr,"verify_connect_postman: \n");
+
+if( IsPmeEnabled() == FALSE )
+{
+	UI_status("AIM server connection required");
+	fprintf(ptr,"\tAIM server connection required.\n");
+      	status = OM_E_ERROR;
+        goto quit;
+}
+
+fprintf(ptr,"\tAIM server connection is established.\n");
+
+quit:
+  return status ;
+}
+
+/*****************************************************
+* Find out what AIM are we using.
+*
+*****************************************************/
+
+determine_AIM( retCode )
+int	*retCode;
+{
+int			status ;
+
+*retCode	= OM_S_SUCCESS  ;
+status		= OM_S_SUCCESS ;
+
+fprintf(ptr,"\ndetermine_AIM: \n");
+
+if( WhichAim() == PME)
+{
+	UI_status("This process does not support PME.");
+	fprintf(ptr,"\tThis process does not support PME.\n");
+      	status = OM_E_ERROR;
+        goto quit;
+}
+
+if( WhichAim() == SIR)
+{
+	UI_status("AIM server is SIR");
+	fprintf(ptr,"\tAIM server is SIR\n");
+      	status = OM_S_SUCCESS;
+        goto quit;
+}
+
+
+quit:
+
+  return status ;
+}
+
+/*****************************************************
+* get the context id from the file collector.
+*
+*****************************************************/
+
+get_ctx_id( retCode )
+int	*retCode;
+{
+int			status ;
+OMuword         	curOs;
+IGRchar         	DirName[DI_PATH_MAX];
+IGRchar         	CollName[DI_PATH_MAX];
+struct GRid     	CollId;
+struct ACrg_coll	coll;
+IGRlong         	*msg;
+
+*retCode	= OM_S_SUCCESS  ;
+status		= OM_S_SUCCESS ;
+
+
+fprintf(ptr,"\nget_ctx_id: \n");
+
+ex$get_cur_mod( osnum = &curOs );
+
+/* get directory path name */
+status = di$give_pathname(	osnum           = curOs,
+                                pathname        = DirName );
+
+sprintf( CollName,"%s%s%s", DirName, SIR_GLOBAL_DIR, SIR_REQ_DATA );
+
+CollId.objid = NULL_OBJID;
+
+status = VDgetVdCollId ( &msg, CollName, TRUE, FALSE, &CollId );
+
+if (CollId.objid == NULL_OBJID )
+{
+	UI_status("AIM Required Data not set...");
+	fprintf(ptr,"\tSIR Required Data not set. \n");
+      	status = OM_E_ERROR;
+   	return status;
+}
+
+strcpy( coll.name, SIR_CNTX_ID  );
+
+ci$send ( msg = message ACrg_collect.ACget_named_attribute(
+		 msg,
+		 &coll ),
+		 targetid = CollId.objid,
+		 targetos = CollId.osnum);
+
+strcpy( E_FileInfo.ctxid, coll.desc.value.att_txt );
+fprintf(ptr,"\tContext ID: %s \n", E_FileInfo.ctxid);
+UI_status("AIM Data is Set.");
+
+quit:
+
+  return status ;
+}
+
+/*******************************************************
+*
+* Check AIM to see if the context from the Default Data
+* information has a version that is checked out.  If so,
+* display an error message to the user and terminate the
+* execution of the ppl.
+*
+* i.e. the context must be checked in on the AIM server
+*      before the extraction process will continue.
+*
+*******************************************************/
+
+is_ctx_checked_out_in_AIM( retCode )
+int	*retCode ;
+{
+int     status ;
+int	chkcode;
+
+fprintf(ptr,"\nis_ctx_checked_out_in_AIM: \n");
+
+status = 0;
+chkcode = VDP_IS_CTX_CHECKED_OUT;
+
+/*
+ * Send Cmd to AIM through Postman to:
+ *      1. see if the context is checked in on the AIM server. 
+ */
+
+UI_status("Verifying context is checked in on AIM server....................");
+fprintf(ptr,"\tVerifying context is checked in on AIM server....................\n");
+
+status = VDP_send_ctx_verify_cmd(E_FileInfo.ctxid , chkcode);
+
+__DBGpr_int("status is  =  ", status);
+
+if (status != 0) 
+{
+__DBGpr_int("status is bad.  status =  ", status);
+
+	if(status == 40)
+       	{
+         	UI_status("The context is not checked in.");
+         	fprintf(ptr,"\tThe context that is associated with the current model file MDC in AIM is not checked in on the AIM server.  Please check the context in before processing an automated extraction.  (i.e The context is the System, SubSystem, Zone, or Zone System that is associated with this MDC.\n");
+       	 	status = OM_E_ERROR;
+        	goto quit;
+       	}
+	else
+       	{
+		__DBGpr_int("status is bad.  status =  ", status);
+         	UI_status("Error in verifying context checked in, in AIM.\n");
+         	fprintf(ptr,"\tError in verifying that the context is checked in on the AIM server.  AIM returned a default error.  Please Contact your AIM administrator.\n");
+       	 	status = OM_E_ERROR;
+        	goto quit;
+       	}
+}
+else
+{
+	UI_status("The context is checked in.");
+        fprintf(ptr,"\tThe context is checked in on the AIM server.\n");
+	status = OM_S_SUCCESS;
+}
+  
+
+
+quit:
+
+  return status ;
+}
+
+/*******************************************************
+*
+* Check AIM to see if the context from the Default Data
+* information is in a vault.  If not, 
+* display an error message to the user and terminate the
+* execution of the ppl.
+*
+* i.e. the context must be in a vault in AIM before the
+*      extraction process will continue.
+*
+*******************************************************/
+
+is_ctx_in_vault_in_AIM( retCode )
+int	*retCode ;
+{
+int     status ;
+int	chkcode;
+
+chkcode = VDP_IS_CTX_IN_VAULT;
+
+fprintf(ptr,"\nis_ctx_in_vault_in_AIM: \n");
+
+/*
+ * Send Cmd to AIM through Postman to:
+ *      1. post the files into AIM. 
+ */
+
+UI_status("Verifying context is in a vault.....................");
+fprintf(ptr,"\tVerifying context is in a vault on the AIM server....................\n");
+
+status = VDP_send_ctx_verify_cmd(E_FileInfo.ctxid, chkcode);
+
+__DBGpr_int("status is  =  ", status);
+
+if (status != 0) 
+{
+__DBGpr_int("status is bad.  status =  ", status);
+
+	if(status == 41)
+       	{
+         	UI_status("The context is not in an AIM vault");
+         	fprintf(ptr,"\tThe context that is associated with the current model file MDC is not in an AIM vault.  Please transfer the context to an AIM vault before processing an automated extraction.  (i.e The context is the System, SubSystem, Zone, or Zone System that is associated with this MDC.\n");
+       	 	status = OM_E_ERROR;
+        	goto quit;
+       	}
+	else
+       	{
+         	UI_status("Error in verifying context in AIM vault.\n");
+         	fprintf(ptr,"\tError in verifying that the context is in an AIM. vault.   AIM returned a default error.  Please Contact your AIM administrator.\n");
+       	 	status = OM_E_ERROR;
+        	goto quit;
+       	}
+}
+else
+{
+	UI_status("The context is in a vault.");
+        fprintf(ptr,"\tThe context is in a vault on the AIM server.\n");
+	status = OM_S_SUCCESS;
+}
+
+quit:
+
+  return status ;
+
+}
+
+/*******************************************************
+*
+* Get the filename, catalog, part number, and revision information 
+* about the file. 
+*
+*******************************************************/
+
+get_file_info( retCode )
+int	*retCode ;
+{
+int           	i, status, ch ;
+IGRchar	dgnFile[256];
+char		*temp,*tmpfile, temp1[128]; 
+char            cur_filedescr[OM_K_MAXOSNAME_LEN];
+
+
+*retCode      	= OM_S_SUCCESS  ;
+status        	= OM_S_SUCCESS ;
+temp		= NULL;
+tmpfile         = NULL;
+ch              = '/';
+
+
+fprintf(ptr,"\nget_file_info: \n");
+
+/* Get current filename */
+ex$filename( name=cur_filedescr, len=OM_K_MAXOSNAME_LEN );
+fprintf(ptr, "\tlocal file: %s\n", cur_filedescr);
+
+temp = strrchr(cur_filedescr, ch);
+sprintf(temp1,"%s", temp);
+tmpfile = strtok(temp1, "/");
+sprintf(cur_filedescr,"%s", tmpfile);
+
+
+sprintf(E_FileInfo.filename, "%s", cur_filedescr);
+
+
+/* get the pdm catalog, part number and revision */
+status = PDMGetPartInfoGivenFileName(	E_FileInfo.filename, 
+					E_FileInfo.catalog, 
+					E_FileInfo.partno, 
+					E_FileInfo.revision);
+ 
+fprintf(ptr,"\tPDM filename: %s \n", E_FileInfo.filename);
+fprintf(ptr,"\tPDM catalog: %s \n", E_FileInfo.catalog);
+fprintf(ptr,"\tPDM partno: %s \n", E_FileInfo.partno);
+fprintf(ptr,"\tPDM revision: %s \n", E_FileInfo.revision);
+/*
+if( ! E_FileInfo.filename) || ( ! E_FileInfo.catalog) || ( ! E_FileInfo.partno ) || ( ! E_FileInfo.revision)
+{
+      	status = OM_E_ERROR;
+        goto quit;
+}
+*/
+
+UI_status("Got the PDM File Info.");
+
+quit:
+
+  return status ;
+}
+
+/*******************************************************
+*
+* Get the AIM server name that we are connected to.
+*
+*******************************************************/
+
+get_server_name( retCode )
+int	*retCode ;
+{
+int           	i, status, ch ;
+char		servername[30];
+
+*retCode      	= OM_S_SUCCESS  ;
+status        	= OM_S_SUCCESS ;
+
+fprintf(ptr, "\nget_server_name:\n");
+
+/*
+sprintf(E_FileInfo.server, "%s", "tweetie2");
+*/
+
+VDPGetAimName(servername);
+fprintf(ptr,"\tAIM Server: %s\n", servername);
+sprintf(E_FileInfo.server, "%s", servername);
+
+fprintf(ptr,"\tAIM Server: %s\n", E_FileInfo.server);
+
+UI_status("Got the AIM Server File Info.");
+
+quit:
+
+  return status ;
+}
+
+
+/*******************************************************
+*
+* Get the reference file informaton.
+*
+*******************************************************/
+int  get_ref_info1( mod_env, refcount, reftab )
+struct GRmd_env         *mod_env;
+IGRlong                 *refcount;
+struct EXR_reffile      **reftab;
+{
+long            sts, status;
+int		sts1;	
+OM_S_OBJID      Super_id;
+IGRshort        count_nested;
+GRobjid         *objlist;
+GRspacenum      *oslist;
+int             on_off;
+IGRint          i,j;
+IGRint          msg;
+IGRlong         count;
+IGRulong        prop_mask, props;
+unsigned short  properties;
+IGRchar         buffer[512];
+struct GRobj_info       refinfo;
+struct EXR_reffile      *curref, *ref;
+struct GRid     ref_object;
+IGRushort       EXRproperties;
+
+  objlist = (GRobjid *)(NULL);
+  oslist  = (GRspacenum *)(NULL);
+  *refcount = 0;
+  count = 0;
+
+  status = ex$get_objid_from_NOD(
+                        NODname         = "IGENOD",
+                        objname         = "Ref Mgr",
+                        pobjid          = &Super_id,
+                        modid           = mod_env->md_id.objid,
+                        mod_osnum       = mod_env->md_id.osnum);
+  if(!(status&1)) goto quit ;
+
+  prop_mask = 0;
+  count_nested = 0;
+  status = ci$send(msg     = message Super_rfmgr.GRget_channel_count
+                                   (&sts, &prop_mask, &count_nested, &count),
+          targetid = Super_id,
+          targetos = mod_env->md_id.osnum );
+
+  if(!(status&1)) goto quit ;
+
+  __DBGpr_int("channel count =", count);
+
+  i = (int)count;
+  objlist = om$calloc( num = i, structure = GRobjid );
+  oslist  = om$calloc( num = i, structure = GRspacenum );
+
+  prop_mask = 0; count_nested = 0;
+  status =
+  ci$send(msg      = message Super_rfmgr.GRget_channel_objects
+                                     (&sts, &prop_mask, &count_nested, &count,
+                                      objlist, oslist, &count),
+          targetid = Super_id,
+          targetos = mod_env->md_id.osnum );
+  if(!(status&1)) goto quit ;
+
+  i = (int) count;
+  *reftab = om$calloc( num = i, structure = struct EXR_reffile );
+
+  __DBGpr_int(" Channel objects retrieved ", count);
+
+  curref = *reftab;
+  *refcount = count;
+  j = 0;
+  for( i=0; i<count ; i = i + 1 ) 
+  {
+    status =
+    ci$send(msg      = message GRreffile.GRgetobjinfo( &sts, &refinfo ),
+            targetid = objlist[i],
+            targetos = oslist[i] );
+    if(!(status&1)) continue;
+
+    status =
+    ci$send(msg      = message GRreffile.GRgetenvironment
+                                          ( &sts, mod_env, &(curref->md_env) ),
+            targetid = objlist[i],
+            targetos = oslist[i] );
+    if(!(status&sts&1)) continue;
+
+    curref->osnum = curref->md_env.md_id.osnum;
+
+    j = strlen (refinfo.type);
+    for ( i=j; i>0; i = i - 1 )
+    {
+    	if( refinfo.type[i] == ',' )
+        {
+            refinfo.type[i] = '\0';
+            break;
+        }
+    }
+
+    strcpy( curref->ref_name, refinfo.type );
+    curref->ctx_id.objid = objlist[i];
+    curref->ctx_id.osnum = oslist[i];
+
+    __DBGpr_str(" refinfo.type ", refinfo.type );
+    __DBGpr_obj(" Cur Refernce ", curref->md_env.md_id );
+
+    on_off = 0 ;
+
+    status =
+    ci$send(msg = message GRreffile.GRgetrfprops
+                                          ( &sts, &props ),
+            targetid = objlist[i],
+            targetos = oslist[i] );
+
+
+    ref_object.objid = objlist[i];
+    ref_object.osnum = oslist[i];
+    sts1 = OM_S_SUCCESS ;
+    sts1 = gr$get_properties( object_id = &ref_object,
+                       properties_mask = &EXRproperties);
+
+    curref->properties = props;
+
+
+    if ( EXRproperties & GRIS_DISPLAYABLE )
+         on_off = 1;
+
+    __DBGpr_int("on_off ", on_off);
+
+    curref->display = on_off;
+
+    j = j + 1;
+    curref = curref + 1;
+
+  } 
+
+  if (j <= 0)
+   {
+      *refcount = 0;
+      goto quit;
+   }
+
+  if( j < count )
+   {
+      i = j;
+      *refcount = j;
+      i = i * sizeof(struct EXR_reffile);
+      *reftab = (struct EXR_reffile *)om$realloc( ptr  = (char *)*reftab,
+                                                  size = i );
+   }
+   __DBGpr_int("refcount ", *refcount);
+
+  if( objlist ) om$dealloc( ptr = objlist );
+  if( oslist )  om$dealloc( ptr = oslist );
+
+  return status ;
+
+UI_status("Got the Ref. File Info.");
+
+quit:
+  if( objlist ) om$dealloc( ptr = objlist );
+  if( oslist )  om$dealloc( ptr = oslist );
+  if( *reftab ) om$dealloc( ptr = *reftab );
+  *refcount = 0;
+  return status ;
+}
+
+/*********************************************************
+* get_reference_info:
+* extract the dummy file with the local files attached. 
+*********************************************************/
+
+get_reference_info(  retCode )
+int	* retCode ;
+{
+int           	i, status;
+
+int seconds, minutes;
+long finish_time;
+double diff_time;
+
+IGRint                refcount;
+struct EXR_reffile    *reftab;
+char                  ref_name[50];
+char                  *tmpfile, *temp, temp1[128];
+char                  desgfile[128], catalog[128], part[128], rev[10];
+int                   ch, pdm_stat, check;
+char                  *errPDM, cidate[40], ciuser[40];
+char                  query[512], *output_buffer;
+int                   itemno, rows, ris_err_code;
+char                  sql_str[512];
+MEMptr                bufr;
+char                  **data;
+int                   y;
+char		      *plotfile;
+struct GRmd_env       mod_env;
+
+tmpfile               = NULL;
+temp                  = NULL;
+ch                    = '/';
+pdm_stat              = OM_S_SUCCESS;
+check                 = 0;
+bufr                  = NULL;
+plotfile	      = NULL;
+
+status        	= OM_S_SUCCESS ;
+
+
+fprintf(ptr, "\nget_reference_info:\n");
+
+
+
+  time (&finish_time);
+
+  diff_time = difftime (finish_time, E_FileInfo.start_time);
+  seconds = (int) diff_time;
+
+  plotfile = strtok(E_FileInfo.filename, ".");
+
+  strcpy(plotfile, E_FileInfo.filename);
+
+  fprintf (plotptr,"\n\n------------------------------------------------------------------------\n");
+  fprintf (plotptr,"------------------------------------------------------------------------\n");
+  fprintf (plotptr, "\n\n%s", "               Output Filename\n\n");
+  fprintf (plotptr, "Plot Filename :   %s.plt\n", plotfile);
+
+  fprintf (plotptr, "\n\n\n%s", "               Reference Filenames\n\n");
+
+  refcount = 0;
+  reftab = NULL;
+  ci$get_module_info (md_env = &mod_env);
+
+  get_ref_info1 (&mod_env, &refcount, &reftab);
+
+  if(refcount <= 0)
+  {
+    fprintf (plotptr, "No reference file attached to  :   %s\n\n", plotfile);
+    fprintf (ptr, "\tNo reference file attached to  :   %s\n\n", plotfile);
+  }
+  else
+
+  {
+     for (i = 0; i < refcount; i = i + 1)
+     {
+             strncpy(ref_name,  reftab[i].ref_name, 39);
+             fprintf (plotptr, "VDS Reference File  : %s\n", ref_name);
+
+             pdm_stat = PDMGetPartInfoGivenFileName(ref_name, catalog, part, rev);
+
+                fprintf (plotptr, "Catalog             : %s\n", catalog);
+		 fprintf (plotptr, "Part No             : %s\n", part);
+                fprintf (plotptr, "Revision            : %s\n", rev);
+
+                pdm_stat = PDMquery_partno(catalog, part, rev, &itemno);
+                y=0;
+                sprintf(sql_str, "%s f_%s %s %d %s %d","SELECT n_cidate, n_ciuser FROM ", catalog,"WHERE n_itemnum = ", itemno,"AND n_fileversion > ", y);
+                pdm_stat = SQLquery(sql_str, &bufr, 512);
+   		__DBGpr_int("pdm_stat ", pdm_stat);
+    		__DBGpr_str(" sql_str ", sql_str );
+                if (pdm_stat != SQL_S_SUCCESS)
+                        MEMclose(&bufr);
+                else
+                        pdm_stat = MEMbuild_array(bufr);
+                if (pdm_stat != MEM_S_SUCCESS)
+                        MEMclose(&bufr);
+                else
+                {
+                	data = (char **) bufr->data_ptr;
+                        strcpy(cidate, data[0]);
+                        strcpy(ciuser, data[1]);
+                        if (strcmp (cidate, "") == 0)
+                        	printf(plotptr, "Error in retrieving Checked in Date\n");
+                        else
+                                fprintf(plotptr, "Checked in Date     : %s\n", cidate);
+
+                        if (strcmp (ciuser, "") == 0)
+                                fprintf(plotptr, "Error in retrieving Checked in User\n");
+                        else
+                                fprintf(plotptr, "Checked in User     : %s\n", ciuser);
+                        fprintf(plotptr, "\n");
+                 }
+        	 catalog[0] = '\0';
+        	 part[0] = '\0';
+        	 rev[0] = '\0';
+        	 cidate[0] = '\0';
+        	 ciuser[0] = '\0';
+         } 
+  }
+
+
+status = close_log_file( retCode ); 
+
+quit:
+  return status ;
+}
+
+
+/*********************************************************
+* create_log_file:
+*********************************************************/
+
+create_log_file(  retCode )
+int	* retCode ;
+{
+int	status;
+char	*plotfile;
+char	log[40];
+
+plotfile	= NULL;
+status		= OM_S_SUCCESS ;
+
+
+/**** Get the local filename - remove the ext on the filename */
+plotfile = strtok(E_FileInfo.filename, ".");
+fprintf(ptr,"\tPlot Filename: %s \n", plotfile);
+
+/* open the plot text file to print out reference information */
+sprintf(log, "%s.txt",plotfile);
+plotptr = fopen(log, "w+");
+if(plotptr == NULL)
+  UI_status("Can not open the plot reference text file for writing...");
+
+quit:
+  return status ;
+}
+
+
+/*********************************************************
+* close_log_file:
+*********************************************************/
+
+close_log_file(  retCode )
+int     * retCode ;
+{
+int	status;
+
+status		= OM_S_SUCCESS ;
+
+
+fclose(plotptr);
+
+quit:
+  return status ;
+}
+
+
+/*********************************************************
+* print_log_file_heading:
+*********************************************************/
+
+print_log_file_heading(  retCode )
+int	* retCode ;
+{
+int	status;
+
+/*
+struct tm
+  {                           
+    int tm_sec;
+    int tm_min;
+    int tm_hour;
+    int tm_mday;
+    int tm_mon;
+    int tm_year;
+    int tm_wday;
+    int tm_yday;
+    int tm_isdst;
+  };
+*/
+
+
+struct tm *tm_ptr;
+long  tp;
+char  fmt_time[64], *user_name, node_name[32];
+
+fmt_time[0] = '\0';
+node_name[0] = '\0';
+tm_ptr = NULL;
+user_name = NULL;
+status		= OM_S_SUCCESS ;
+
+time (&tp);
+E_FileInfo.start_time = tp;
+tm_ptr = localtime (&tp);
+strftime (fmt_time, 64, "Date: %m/%d/%y %H:%M", tm_ptr);
+gethostname (node_name, 32);
+user_name = getlogin ();
+
+time (&tp);
+E_FileInfo.start_time = tp;
+
+fprintf(ptr, "\nprint_log_file_heading:\n\n");
+
+fprintf (ptr, "%s\n", "\tPlot File Extraction\n");
+
+/* create log file */
+status = create_log_file( retCode );
+
+/*
+__CheckRC( retCode, status, "create_log_file", quit );
+*/
+
+fprintf (plotptr, "%s\n", "Plot File Extraction\n\n");
+fprintf (plotptr, "%s\n\n", fmt_time);
+fprintf (ptr, "\t%s\n", fmt_time);
+if (user_name)
+{
+   fprintf (plotptr, "Username: %s\n\n", user_name);
+   fprintf (ptr, "\tUsername: %s\n", user_name);
+}
+else
+{
+   fprintf (plotptr, "Username: %s\n\n", "NO USERNAME");
+   fprintf (ptr, "\tUsername: %s\n", "NO USERNAME");
+}
+fprintf (plotptr, "Nodename: %s\n\n", node_name);
+fprintf (ptr, "\tNodename: %s\n", node_name);
+
+/*
+status = get_reference_info( retCode ); 
+status = close_log_file( retCode );
+*/
+
+quit:
+  return status;
+
+
+}
+
+
+/*********************************************************
+* extract_files:
+* extract the dummy file with the local files attached. 
+*********************************************************/
+
+extract_files(  retCode )
+int	* retCode ;
+{
+
+int			sts, status, msg; 
+IGRdouble 		range[12];       
+struct GRmd_env 	module_info;
+struct GRid 		window, fence;
+struct IGRcv_prism 	*cvprism; 
+char 			result[64], color_table[128], seedfile[128];
+char 			*plotfile;
+int i;
+struct GRid temp;
+
+*retCode	= OM_S_SUCCESS  ;
+status		= OM_S_SUCCESS ;
+plotfile	= NULL;
+seedfile[0]	= NULL;
+color_table[0]	= NULL;
+cvprism		= NULL;
+
+fprintf(ptr, "\nextract_files:\n");
+
+
+  /* print the log file heading before generating plot file */
+  status = print_log_file_heading( retCode );
+
+  UI_status("Processing Plot File ...");
+  fprintf(ptr,"\n\t\tProcessing Plot Drawning Extraction.\n");
+
+  /**** Get the local filename - remove the ext on the filename */
+  plotfile = strtok(E_FileInfo.filename, ".");	
+  strcat(plotfile,".plt");
+  fprintf(ptr,"\t\t\tPlot Filename: %s \n", plotfile);
+
+   gr$gsget_fence (msg = &msg,fence_id = &temp);
+
+   __DBGpr_int("msg for gsget_fence  =  ", msg);
+
+   if ((msg == MSSUCC) ||(msg == OM_S_SUCCESS) )
+   {
+ 	UI_status("Retreived Fence Successfully ...");
+	fprintf(ptr,"\t\t\tRetrieve Fence Successfully.\n");	
+
+	ci$get_module_info(md_env = &module_info);
+
+  	sts = plot$get_fence_range (	msg 	= &msg, 
+					module 	= &module_info, 
+					fence 	= &fence, 
+					window 	= &window, 
+					world 	= range, 
+					view 	= &range[6],
+					cvprism = &cvprism); 
+	
+   	__DBGpr_int("sts for get_fence_range  =  ", sts);
+
+	if( ! ( sts & msg & 1 ) )
+	{
+  		UI_status("No Active Fence ...");
+		fprintf(ptr,"\t\t\tNo Active Fence.\n");
+       		status = OM_E_ERROR;
+        	goto quit;
+	}
+	else
+	{
+
+  	fprintf(ptr,"\t\t\tCalling create_plotfile:\n");
+  	sts = plot$create_plotfile(	msg 		= &msg,
+                       			filetype 	= PI_IGDS_FILE,
+                       			module 		= &module_info,
+                       			dbtype 		= "3d",
+                       			range 		= range,
+                       			window 		= &window,
+                       			cvprism 	= cvprism,
+                       			plotfile 	= plotfile,
+                       			seedfile 	= seedfile,
+                       			color_table 	= color_table,
+                       			flood_index 	= -1,
+                       			filter_function = NULL,
+                       			filter_data 	= NULL,
+		       			status 		= result);
+		status = result;
+		free(cvprism);
+   		__DBGpr_int("sts  =  ", sts);
+		if ( sts == 1)
+		{
+  			UI_status("Plot File Created ...");
+			fprintf(ptr,"\t\t\tPlot File Created.\n");
+		}
+		else
+		{
+  			UI_status("Plot File Creation Failed ...");
+			fprintf(ptr,"\t\t\tPlot File Creation Failed.\n");
+       			status = OM_E_ERROR;
+        		goto quit;
+		}
+
+	}
+
+  }
+  else
+  {
+   	if ( msg == PI_F_NOWINDOW )
+   	{
+ 		UI_status("No Window ...");
+  		UI_status("No Active Fence ...");
+		fprintf(ptr,"\t\t\tFENCE ERROR: No Window \n");	
+		fprintf(ptr,"\tNo Active Fence.\n");
+       		status = OM_E_ERROR;
+        	goto quit;
+   	}
+
+   	if( msg == PI_F_BADWINDOW )
+   	{
+ 		UI_status("Bad Window ...");
+  		UI_status("No Active Fence ...");
+		fprintf(ptr,"\t\t\tFENCE ERROR: Bad Window \n");	
+		fprintf(ptr,"\tNo Active Fence.\n");
+       		status = OM_E_ERROR;
+        	goto quit;
+   	}
+
+  	UI_status("No Active Fence ...");
+	fprintf(ptr,"\tNo Active Fence.\n");
+       	status = OM_E_ERROR;
+        goto quit;
+  }
+
+/*
+
+	ci$put(cmd_key = "GRCrPlRq");   //"GRCrPlRq" "Create Plot File"
+
+        formData.label = 1;
+        formData.type = EXFI_STATE;
+        formData.index = 1;
+        formData.max_index = 0;
+        formData.select_flag = EXFI_EDIT_NOSELECT;
+        formData.sts = 0;
+        formData.value.state = 1;
+        ci$put (form = "CreatePlot",
+                gadget = &formData);
+
+*/
+/* get the reference file informaton for the plot file */
+status = get_reference_info( retCode );
+
+quit:
+  return status;
+
+}
+
+/*******************************************************
+*
+* ftp the extracted files to the exported work location.
+*
+*******************************************************/
+
+ftp_files_to_aim_wl( retCode )
+int     *retCode ;
+{
+int           	status;
+FILE		*ftpptr;
+char		txt[256];
+char		*temp;
+
+*retCode      	= OM_S_SUCCESS  ;
+status        	= OM_S_SUCCESS ;             
+ftpptr		= NULL ;
+temp		= NULL ;
+  
+fprintf(ptr,"\nftp_files_to_aim_wl:\n");
+
+ftpptr = fopen("AIMftp.sh", "w+");
+if(ftpptr == NULL)
+{
+	UI_status("Can not open ftp shell file for writing...");
+	fprintf(ptr,"\tCan not open ftp shell file for writing.\n"); 
+      	status = OM_E_ERROR;
+        goto quit;
+}
+
+
+
+/* remove the ext on the filename */
+temp = strtok(E_FileInfo.filename, ".");
+
+  fprintf( ftpptr, "if ( \techo user anonymous blank\n");
+  fprintf(ftpptr, "\techo bin\n");
+  fprintf(ftpptr, "\techo send %s.plt\n",temp);
+  fprintf(ftpptr, "\techo ascii\n");
+  fprintf(ftpptr, "\techo send %s.txt\n",temp);
+  fprintf(ftpptr, "\techo quit\n");
+  fprintf(ftpptr, " ) | ftp -ni %s ; then\n", E_FileInfo.server);
+  fprintf(ftpptr, "\techo ftp to AIM work location was SUCCESSFUL.\n");
+  fprintf(ftpptr, "else\n");
+  fprintf(ftpptr, "\techo Ftp to AIM work location FAILED.\n");
+  fprintf(ftpptr, "fi\n");
+  fclose(ftpptr);
+  status =  system ("chmod 777 AIMftp.sh");
+  status =  system ("AIMftp.sh");
+  if( status != 0 )
+  {
+	UI_status("Can not execute ftp shell file for Posting Plot Files...");
+	fprintf(ptr,"\tCan not execute ftp shell file for Posting Plot Files.\n"); 
+      	status = OM_E_ERROR;
+        goto quit;
+  }
+  else
+  {
+	status = OM_S_SUCCESS;
+  }
+
+
+fprintf(ptr,"\tExiting ftp_files_to_aim_wl.\n"); 
+
+quit:
+
+  return status ;
+
+}   
+
+
+
+/*******************************************************
+*
+* send a command to AIM through postman. 
+* post the extracted files to AIM.
+*
+*******************************************************/
+
+post_files( retCode )
+int	*retCode ;
+{
+int     i;
+int     status;
+int     code;
+
+
+*retCode      	= OM_S_SUCCESS  ;
+status        	= OM_S_SUCCESS ;
+
+code		= 0; 		
+
+/*
+ * Send Cmd to AIM through Postman to:
+ *      1. post the files into AIM. 
+ */
+
+UI_status("Sending post command to AIM....................");
+fprintf(ptr,"Sending post command to AIM....................\n");
+
+/* set the AIM command code */
+/* VDP_REG_PLOT_FILES is the command code for VDP_REG_PLOT_FILES */
+code = VDP_REG_PLOT_FILES;
+
+status = VDP_send_post_cmd(	E_FileInfo.filename,
+				E_FileInfo.server, 
+				E_FileInfo.catalog, 
+				E_FileInfo.partno, 
+				E_FileInfo.revision, 
+				code, 
+				E_FileInfo.ctxid); 
+
+if (status != 0) 
+{
+__DBGpr_int("status is bad.  status =  ", status);
+
+	if(status == 1)
+       	{
+         	UI_status("There was an AIM connection problem.");
+         	fprintf(ptr,"There wan an AIM socket connection problem.\n");
+       	 	status = OM_E_ERROR;
+       	}
+
+	if(status == 30)
+       	{
+         	UI_status("The AIM work location could not be found.");
+         	fprintf(ptr,"The AIM work location could not be found.  Verify that the work location exist.  If it does, contact your administrator.\n");
+       	 	status = OM_E_ERROR;
+       	}
+
+       if(status == 31)
+       {
+         	UI_status("Error in retrieving the server host name in AIM.");
+         	fprintf(ptr,"Error in retrieving the server host name in AIM.  Contact Administrator.\n");
+         	status = OM_E_ERROR;
+       }
+
+       if(status == 32)
+       {
+         	UI_status("An Error has occured in AIM.");
+         	fprintf(ptr,"An Error has occured in AIM.  Contact the Administrator.\n");
+         	status = OM_E_ERROR;
+       }
+
+       if(status == 33)
+       {
+         	UI_status("The extracted files are not in the work locations.");
+         	fprintf(ptr,"The extracted files are not in the work locations.\n");
+         	status = OM_E_ERROR;
+       }
+       if(status == 34)
+       {
+         	UI_status("The AIM vault could not be found.");
+         	fprintf(ptr,"The AIM vault could not be found.  Verify that the vault exist.  If it does, contact your AIM administrator.\n");
+       	 	status = OM_E_ERROR;
+       }
+       if(status == 35)
+       {
+         	UI_status("The AIM vault location could not be found.");
+         	fprintf(ptr,"The AIM vault location could not be found.  Verify that the vault location exist.  If it does, contact your AIM administrator.\n");
+       	 	status = OM_E_ERROR;
+       }
+       if(status == 36)
+       {
+         	UI_status("An ERROR Occurred In AIM .");
+         	fprintf(ptr,"The unregisted AIM object could not be located in the work location.  Contact your AIM administrator.\n");
+       	 	status = OM_E_ERROR;
+       }
+
+       if(status == 37)
+       {
+         	UI_status("The AIM work location is not set in the config file.");
+         	fprintf(ptr,"The AIM work location is not set in the config file.  Locate the config parameter in the AIM config.cfg file and set it to the work location name.  If it id set then conatact your AIM administrator.\n");
+       	 	status = OM_E_ERROR;
+       }
+       else
+       {
+         	UI_status("Error in sending post command to AIM.\n");
+         	fprintf(ptr,"Error in sending post command to AIM. Contact your AIM administrator.\n");
+       	 	status = OM_E_ERROR;
+       }
+}
+else 
+{
+	status = OM_S_SUCCESS;
+       	UI_status("Posting to AIM  was Successful.....................\n");
+       	fprintf(ptr,"Posting to AIM  was Successful.....................\n");
+}              
+
+quit:
+
+  return status ;
+
+}
+/********************************************************
+* Remove the .dri file from the work location directory.  
+* The transfer process does not remove the file because
+* there is an sysmbolic link between the .dri and DesignReview.
+* Instead it makes a local copy of the file in to the vault
+* location and leaves a local copy in the exported dir.
+**********************************************************/
+
+remove_dri_file( retCode )
+int     *retCode ;
+{
+int		i;
+int		status;
+int		ch;
+int		check;
+char          	temp[256];
+
+*retCode      	= OM_S_SUCCESS  ;
+status        	= OM_S_SUCCESS ;
+
+/*
+status = VDP_remove_cmd(E_FileInfo.exportDir, E_FileInfo.filename);
+*/
+
+status = OM_S_SUCCESS;
+
+quit:
+
+  return status ;
+
+}
+
+
+
+
+
+/*****************************************************************
+* This is the program                                       *
+*****************************************************************/
+main()
+{
+int	status ;
+int	retCode ;
+int	savDebugFlag ;
+char    file[15];
+char 	log[30];
+IGRchar	prdPath[256];
+IGRchar	CtxId[256];
+
+status 	= OM_S_SUCCESS;
+retCode = OM_S_SUCCESS;
+ptr	= NULL;
+
+        /* open the log file to print out posting information */
+	sprintf(log, "%s","AIMpost.log");
+        ptr = fopen(log, "w+");
+        if(ptr == NULL)
+          UI_status("Can not open log file for writing...");
+
+
+        UI_status("Processing..........................");
+	
+	/*
+	 * Make sure that we are connected to the server through postman
+	 * before processing the extraction. 
+	 */
+	status = verify_connect_postman( &retCode );
+	__CheckRC( retCode, status, "verify_connect_postman", leave );
+
+	/*
+	 * Determine which aim server we are connected to.
+	 * It must be SIR for now.
+	 */
+	status = determine_AIM( &retCode );
+	__CheckRC( retCode, status, "determin_AIM", quit );
+
+
+	/*
+	 * Verify that the Default Aim Data is set on the file.
+	 * If it is set, then get the context id from the collector.
+	 */
+	status = get_ctx_id( &retCode );
+	__CheckRC( retCode, status, "get_ctx_id", leave );
+	
+	/*
+	 * Verify that the context is checked in on the AIM server.
+	 */
+	status = is_ctx_checked_out_in_AIM( &retCode );
+	__CheckRC( retCode, status, "is_ctx_checked_out_in_AIM", leave );
+
+	/*
+	 * Verify that the context is in a vault on the AIM server.
+	 */
+	status = is_ctx_in_vault_in_AIM( &retCode );
+	__CheckRC( retCode, status, "is_ctx_in_vault_in_AIM", leave );
+
+	/*
+	 * Get the PDU file information from the file.
+	 */
+	status = get_file_info( &retCode );
+	__CheckRC( retCode, status, "get_file_info", quit );
+
+	/*
+	 * Get the name of the server that postman is connected to.
+	 */
+	status = get_server_name( &retCode );
+	__CheckRC( retCode, status, "get_server_name", quit );
+
+	/*
+	 * Extract the file.
+	 */
+	status = extract_files( &retCode );
+	__CheckRC( retCode, status, "extract_files", leave );
+ 
+	/*
+	 * copy extracted files to the exported work location.
+	 */
+	status = ftp_files_to_aim_wl( &retCode );
+	__CheckRC( retCode, status, "ftp_files_to_aim_wl", leave );
+ 
+	/*
+	 * Send command to AIM to register, reference, and 
+	 * transfer the extracted object to a vault within AIM.
+	 */
+	status = post_files( &retCode );
+	__CheckRC( retCode, status, "post_files", leave );
+
+
+
+quit:
+
+	if(status != OM_S_SUCCESS)
+        {
+          fprintf(ptr, "Process Terminated.....\n");
+          UI_status( "Process Terminated.....");
+        }
+        else
+        {
+	  fprintf( "Process Complete.......\n" );
+	  UI_status( "Process Complete......." );
+        }
+
+leave:
+
+        fclose(ptr);
+        ptr = NULL;
+
+}

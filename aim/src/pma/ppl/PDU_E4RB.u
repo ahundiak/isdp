@@ -1,0 +1,945 @@
+/* $Id: PDU_E4RB.u,v 1.1 2002/05/31 16:32:03 tlstalli Exp $  */
+/* $Id: PDU_E4RB.u,v 1.1 2002/05/31 16:32:03 tlstalli Exp $  */
+
+/***************************************************************************
+ * I/VDS
+ *
+ * File:	ppl/src/PDM_E4RB.u
+ *
+ * Description:
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ *	$Log: PDU_E4RB.u,v $
+ *	Revision 1.1  2002/05/31 16:32:03  tlstalli
+ *	Backup of PMA process from EXTR
+ *	
+ *	Revision 1.2  2001/02/15 16:45:09  build
+ *	Replaced v_dbgmacros.h file with vedbgmacros.h file.
+ *	
+ *	Revision 1.1.1.1  2001/01/04 21:13:23  cvs
+ *	Initial import to CVS
+ *	
+# Revision 1.1  1998/04/30  10:43:50  pinnacle
+# EXTR 2.5.1
+#
+# Revision 1.1  1997/11/04  18:53:50  pinnacle
+# e4r 2.5
+#
+# Revision 1.1  1997/10/17  15:16:44  pinnacle
+# Extract For Review 2.5
+#
+# Revision 1.1  1997/04/15  21:55:34  pinnacle
+# New Extract for Review 02.04.02.00
+#
+# Revision 1.1  1996/05/29  13:43:36  pinnacle
+# getting files from PDU and invoking Extract for Review.
+#
+ *
+ * History:
+ *	MM/DD/YY	AUTHOR		DESCRIPTION
+ *
+ ***************************************************************************/
+
+#define vdsDEBUG
+#define vdserrDEBUG
+
+#include "ciminimum.h"
+#include "cieveryone.h"
+#include "cimacros.h"
+#include "exdef.h"
+#include "exmacros.h"
+#include "refdef.h"
+#include "refmacros.h"
+#include "vedbgmacros.h"
+#include "stdio.h"
+#include "string.h"
+#include <sys/types.h>
+#include <sys/stat.h>
+
+/* Includes for the delete_local_file function */
+#include "MEMerrordef.h"
+#include "NFMerrordef.h"
+#include "MEMstruct.h" 
+#include "PDUintdef.h"
+#include "PDUfile_def.h"
+/*
+#include "PDMproto.h"
+#include "PDUmacrospro.h"	
+#include "PDUpdmrpro.h"
+*/
+#include "PDUppl_hdr.h"
+
+/* Externals for the delete_local_file function ONLY */
+extern 	int 	change_mode;
+extern  	MEMbuild_array();
+extern		MEMclose();
+extern		MEMwrite();
+extern		MEMprint_buffer();
+extern	int	PDUdelete_local_files();
+extern	void	PDUsetup_buffer();
+extern	int	PDUget_buffer_col();
+extern	int	PDMquery_part_type();
+extern	int	PDUformat_buffer();
+extern 	int	PDUadd_buffer_string();
+extern		_pdm_status(); 
+extern	int	EXR_getProdInfo();
+extern	int	EXRgen_filename();
+extern  int     EX_filename1 __((char *result, int len));
+extern  int	PDMi_find_cofilename();
+
+
+/* externals for the others functions */
+extern	int	UI_status();
+extern	char	*malloc();
+extern	char	*realloc();
+extern	void	free();
+extern		printf();
+extern  FILE	*fopen();
+extern		fprintf();
+extern		PDUfill_in_string();
+extern		PDUdebug_on();
+extern		PDUdebug_off();
+extern		_pdm_debug();
+extern	char	*PDUtranslate_message();
+extern  int	atoi();
+extern  int 	strncmp();
+extern  int	stat();
+extern	char	*strcpy();
+
+extern	int	PDM_debug_on ;
+
+extern	GRattach_reffile();
+
+struct	EX_s_PDMInfo {
+
+	char	usrName[DI_PATH_MAX];
+	char	pwdName[DI_PATH_MAX];
+	char	envName[DI_PATH_MAX];
+};
+
+typedef struct	EX_s_PDMInfo	EX_PDMInfo;
+
+
+struct	EX_s_FileInfo {
+
+	char		fileName[DI_PATH_MAX];
+	char		catName[DI_PATH_MAX];
+	char		prtName[DI_PATH_MAX];
+	char		revName[DI_PATH_MAX];
+	int		actFlag ;
+	struct	GRid	refId ;
+
+	int		prcFlag ;
+};
+
+typedef struct  EX_s_FileInfo   EX_FileInfo;
+
+
+/*
+ * Global variables in files.
+ */
+
+EX_PDMInfo		E4R_PDMInfo ;
+EX_FileInfo		*E4R_FileInfo;
+char			*errPDM ;
+int			flcount;
+
+
+/**************************************************************************/
+
+/*************************************************************************
+* read_info:
+* read_info function reads from a command file and stores the data into a
+* structure.                
+*
+*************************************************************************/
+
+read_info( file, retCode )
+char 	*file;
+int	*retCode ;
+{
+  int		status  ;
+  int		actFlag	;
+  struct GRid	refGRid ;
+  FILE		*file_ptr;
+  int		x; 
+  int		y;
+  int		look;
+  int		check;
+  char 		*filename;
+  char		*catalog; 
+  char 		*partno; 
+  char 		*revision;
+  char 		*pdu_login;
+  char 		*pdu_pswd;
+  char		*pdu_env;
+  int 		fpos;
+  char		line[80];
+  char		*count;	
+
+  *retCode	= OM_S_SUCCESS  ;
+  status	= OM_S_SUCCESS  ;
+  file_ptr	= NULL;
+  filename 	= NULL;
+  catalog	= NULL;
+  partno	= NULL; 
+  revision	= NULL;
+  pdu_login	= NULL;
+  pdu_pswd	= NULL;
+  pdu_env	= NULL;
+  fpos		= 0;
+  check		= 0;
+  look		= 0;
+  x 		= 0; 
+  y		= 0;
+  count		= NULL;
+
+
+  /*open the command file for reading */
+  printf("file = %s\n", file);
+  file_ptr = fopen( file, "r");
+  if(file_ptr == NULL)
+  {
+    printf( "Could not open %s\n", file);
+    status = OM_E_ERROR;
+    goto quit ;
+    
+  }
+
+  printf( "Reading from file %s\n", file);
+  
+
+  /* get the FILE:
+   *         PDULOGIN:
+   *         PDUPSWD:
+   *         PDUENV:
+   *  entries from the file and store in structure 
+   */
+  while( check != 1)
+  {
+    printf("inside the while loop\n");
+    fpos = ftell(file_ptr); 
+    *line = '\0' ;
+    if( fgets(line, 80, file_ptr) == NULL)
+    {
+      check = 1;
+      printf("line is NULL, setting check to 1.\n");
+    }
+    if( check != 1)
+    {
+      printf("check is not 1 so get data from file.\n");
+      y = strlen(line);
+//      y= y + 1;
+
+      if(*line)
+      {
+        printf("line = <%s>\n", line);
+        if((look = strncmp( line, "FILENO:", 7 )) == 0)
+	{
+	  strtok(line, " ");
+
+	  count = strtok(NULL, "\n");
+          printf("count = %s\n", count);
+          flcount = atoi(count);
+          printf("flcount = %d\n", flcount);
+          if(flcount > 0)
+          {
+             /* allocate memory for the files structure */
+             E4R_FileInfo = (EX_FileInfo *) malloc(flcount * sizeof( EX_FileInfo));
+          } 
+          else
+          {
+            printf("flcount = 0\n");
+            status = OM_E_ERROR;
+            goto quit;
+          }
+      	}
+
+
+        if((look = strncmp( line, "FILE:", 5 )) == 0)
+        {
+          printf("strncmp works\n");
+          strtok(line, " ");
+/*
+          filename = strtok(NULL, " ");
+          printf("filename = <%s>\n", filename);
+          E4R_FileInfo[x].fileName[0] = '\0';
+          printf("E4R_FileInfo[x].fileName = <%s>\n", E4R_FileInfo[x].fileName);
+          strcpy( E4R_FileInfo[x].fileName,  filename);
+          printf("E4R_FileInfo[x].fileName = <%s>\n", E4R_FileInfo[x].fileName);
+*/
+	  catalog = strtok(NULL, " ");
+  	  strcpy( E4R_FileInfo[x].catName, catalog);
+          printf("catalog = %s\n", E4R_FileInfo[x].catName);
+
+	  partno = strtok(NULL, " ");
+          strcpy( E4R_FileInfo[x].prtName, partno);
+          printf("partno = %s\n", E4R_FileInfo[x].prtName);
+
+	  revision = strtok(NULL, "\n");
+          strcpy( E4R_FileInfo[x].revName, revision);
+          printf("revision = %s\n", E4R_FileInfo[x].revName);
+
+  	  E4R_FileInfo[x].actFlag	= TRUE ;
+          E4R_FileInfo[x].prcFlag	= FALSE ;
+
+          x = x + 1;
+        }
+
+
+        if((look = strncmp( line, "PDULOGIN:", 9 )) == 0)
+        {
+          strtok(line, " ");
+
+          pdu_login = strtok(NULL, "\n");
+  	  strcpy( E4R_PDMInfo.usrName, pdu_login);
+          printf("login = %s\n", E4R_PDMInfo.usrName);
+        }
+        
+        
+        if((look = strncmp( line, "PDUPSWD:", 8 )) == 0)
+        {
+          strtok(line, " ");
+
+          pdu_pswd = strtok(NULL, "\n");
+          if(pdu_pswd !=  NULL)
+          { 
+  	    strcpy( E4R_PDMInfo.pwdName, pdu_pswd);
+            printf("password = %s\n", E4R_PDMInfo.pwdName);
+          }
+          else
+            E4R_PDMInfo.pwdName[0] = '\0';
+        }
+
+        if((look = strncmp( line, "PDUENV:", 7 )) == 0)
+        {
+          strtok(line, " ");
+
+          pdu_env = strtok(NULL, "\n");
+  	  strcpy( E4R_PDMInfo.envName, pdu_env);
+          printf("environment = %s\n", E4R_PDMInfo.envName);
+        }
+
+      } /* end if line*/    
+
+      line[0] = '\0';
+      fseek(file_ptr, fpos+y, SEEK_SET);
+
+    } /* end if check */ 
+
+  } /* end of while loop */
+
+  quit:
+    return status ;
+}
+
+
+/*****************************************************
+* Query for the filename based on the catalog
+* part no. and revison.
+*
+*****************************************************/
+
+get_filename( retCode )
+int	*retCode;
+{
+  int		i, status ;
+
+  *retCode	= OM_S_SUCCESS  ;
+  status	= OM_S_SUCCESS ;
+
+  printf(" get_filename: flcount = <%d> \n", flcount );
+  printf(" get_filename: Get: %s-%s-%s filename.\n", E4R_FileInfo[i].catName, 
+           E4R_FileInfo[i].prtName, E4R_FileInfo[i].revName );
+  for( i=0 ; i<flcount ; i=i+1 )
+  {
+  	status = PDMi_find_cofilename(	E4R_FileInfo[i].catName, 
+        	                        E4R_FileInfo[i].prtName,
+                	                E4R_FileInfo[i].revName, 
+                        	        E4R_FileInfo[i].fileName);
+
+         printf(" get_filename: <%s> \n", E4R_FileInfo[i].fileName );
+  }
+
+
+
+   if(status != PDM_S_SUCCESS)
+   {
+     return(status);
+   }
+
+
+
+quit:
+
+  return status ;
+}
+
+/*******************************************************
+* attach_files:
+* attach the local files to the dummy file. 
+*
+*******************************************************/
+
+attach_files( retCode )
+int	*retCode ;
+{
+  int		i, status ;
+
+  *retCode	= OM_S_SUCCESS  ;
+  status	= OM_S_SUCCESS ;
+
+  for( i=0 ; i<flcount ; i=i+1 )
+  {
+
+    if( ! E4R_FileInfo[i].prcFlag ) continue ;
+
+    printf(" attach_files: %s \n", E4R_FileInfo[i].fileName );
+
+    E4R_FileInfo[i].refId.objid = NULL_OBJID ;
+    E4R_FileInfo[i].refId.osnum	= -1 ;
+
+    status =
+    gr$attach_reffile(	msg		= retCode,
+			filename	= E4R_FileInfo[i].fileName,
+			ref_grid	= &( E4R_FileInfo[i].refId ) );
+
+    printf(" attach_files : [%d,%d], %d \n",
+		E4R_FileInfo[i].refId.osnum,
+		E4R_FileInfo[i].refId.objid, *retCode );
+  }
+
+  if( *retCode & status & 1 ){
+
+	printf(" Save the active file \n");
+        ci$put(response = CLEAR_STACK);
+        ci$put(cmd_key = "EXSvFl");     //"EXSvFl" "Save"
+        ci$put(string = "y");
+  }
+
+quit:
+
+  return status ;
+}
+
+/*********************************************************
+* login_pdu:
+* login into the PDU database
+*   
+*********************************************************/
+
+login_pdu( retCode )
+int	* retCode ;
+{
+  int		i, status ;
+  char		*usrName,
+		*pwdName,
+		*envName ;
+
+  *retCode	= PDM_S_SUCCESS  ;
+  status	= PDM_S_SUCCESS ;
+  envName	= NULL ;
+  usrName	= NULL ;
+  pwdName	= NULL ;
+
+  PDUfill_in_string(	&usrName,	E4R_PDMInfo.usrName	);
+  if(*E4R_PDMInfo.pwdName)
+    PDUfill_in_string(	&pwdName,	E4R_PDMInfo.pwdName	);
+  PDUfill_in_string(	&envName,	E4R_PDMInfo.envName	);
+
+  printf("inside login_pdu \n");
+
+  pdm$login(	status			= retCode,
+		environment_name	= envName,
+		user_name		= usrName,
+		passwd			= pwdName );
+  printf("login_pdu : %d \n", *retCode );
+
+  errPDM = (char *) PDUtranslate_message( *retCode );
+  printf(" pdm$login : %s \n", errPDM );
+
+  if ( *retCode != PDM_S_SUCCESS )
+  {
+	goto quit ;
+  }
+
+  quit:
+    return status; 
+
+}
+
+/**********************************************************
+* fetch_files:
+* copy the needed files to the local directory
+*
+**********************************************************/
+
+fetch_files( retCode )
+int	* retCode ;
+{
+  int		i, status ;
+  char		searchfile[30];
+  struct	stat statbuf;
+
+  *retCode	= PDM_S_SUCCESS  ;
+  status	= PDM_S_SUCCESS ;
+
+  printf( "\n");
+
+  for( i=0 ; i< flcount ; i=i+1 )
+  {
+    E4R_FileInfo[i].prcFlag = FALSE ;
+
+    printf(" fetch_files: Get: %s-%s-%s \n", E4R_FileInfo[i].catName, 
+             E4R_FileInfo[i].prtName, E4R_FileInfo[i].revName );
+
+    /* check to see if the file is copied to local already */
+
+    printf("E4R_FileInfo[%d].fileName = <%s> \n", i, E4R_FileInfo[i].fileName);
+    searchfile[0] = '\0';
+    strcpy( searchfile, E4R_FileInfo[i].fileName);
+
+    printf("searchfile = <%s> \n", searchfile);
+
+    /* 
+       check the directory for the file 
+       if it's not local then copy it to the 
+       local directory
+    */
+    if(stat(searchfile, &statbuf) != 0)
+    {
+      printf("file is not there\n");
+      printf("stat = %d \n", stat);
+      pdm$copy_files(	status		= retCode,
+			catalog_name	= E4R_FileInfo[i].catName,
+			partid		= E4R_FileInfo[i].prtName,
+			revision	= E4R_FileInfo[i].revName,
+			activate_flag	= E4R_FileInfo[i].actFlag );
+      printf(" fetch_files : %d \n", *retCode );
+
+      errPDM = (char *) PDUtranslate_message( *retCode );
+      printf(" pdm$copy_files : %s \n", errPDM );
+
+      if ( *retCode != PDM_S_SUCCESS )
+      {
+	continue ;
+      }
+      E4R_FileInfo[i].prcFlag = TRUE  ;
+    }
+    else
+    {
+      printf("file is there so set the flag\n");
+      E4R_FileInfo[i].prcFlag = TRUE  ;
+    }
+  }
+
+  /*
+   * Close the Database
+   */
+quit:
+
+  return status ;
+}
+
+
+
+
+/*******************************************************
+* create_buffer:
+* This creates a buffer for storing the file information
+* for deleting a file from a local directory.
+*
+*******************************************************/
+int create_buffer(index, file_bufr)
+int	index;
+MEMptr	*file_bufr;
+{
+int	type;
+char	*line;
+int	status;
+MEMptr	buffer;
+int	row;
+char	*parttype;
+char	**data_row;
+int	type_col;
+int	char_index;
+
+type		= 0;
+line		= NULL;
+status 		= PDM_S_SUCCESS;  
+type_col	= 0;
+parttype	= NULL;
+row		= 0;
+char_index	= 0;
+buffer		= NULL;
+
+printf("Inside the create buffer function.\n");
+
+/* create buffer */
+type = PDU_FILE_BUFFER;
+
+printf("before call to format buffer.\n");
+status = PDUformat_buffer(type, file_bufr);
+//_pdm_status("PDUfprmat_buffer", status);
+printf("after call to format buffer. status = <%x>\n", status);
+
+if(status != PDM_S_SUCCESS)
+{
+  printf("error in formatting buffer\n");
+  goto quit;
+}
+
+line = (char*) malloc ((*file_bufr)->row_size);
+
+/* query for part type */
+printf("querying for parttype\n");
+printf("index = <%d>\n", index);
+printf("E4R_FileInfo[index].catName = <%s>\nE4R_FileInfo[index].prtName = <%s>\nE4R_FileInfo[index].revName = <%s>\n", E4R_FileInfo[index].catName,
+E4R_FileInfo[index].prtName, E4R_FileInfo[index].revName);
+/*status = PDMquery_part_type(E4R_FileInfo[index].catName,
+                            E4R_FileInfo[index].prtName,
+                            E4R_FileInfo[index].revName, &buffer);
+*/
+/*if ((buffer) && (status == PDM_S_SUCCESS))
+{
+  printf("buffer and status are successful for query.\n");
+  MEMbuild_array(buffer);
+  status = PDUget_buffer_col(buffer, "p_parttype", &type_col);
+  if (status != PDM_S_SUCCESS)
+    goto quit;
+
+  PDUsetup_buffer(buffer, ROW, &data_row);
+
+  PDUfill_in_string(&parttype,
+                data_row[(buffer->columns * 0) + type_col]);
+  if (buffer)
+  {
+    MEMclose(&buffer);
+    buffer = NULL;
+   }
+}
+else
+{
+  printf("query not successful.\n");
+  goto quit;
+}
+*/
+if (status == PDM_S_SUCCESS)
+{
+  printf("before memset of line.\n");
+  memset (line, NULL, (*file_bufr)->row_size);
+  char_index = 0;
+
+  /* add the n_catalogno and n_itemno columns to the buffer */
+  line[ char_index ] = '\1';    /* entry for n_catalono */
+  char_index = char_index + 1;
+  line[ char_index ] = '\1';    /* entry for n_itemno */
+  char_index = char_index + 1;
+
+  printf("before add the file information to the buffer.\n");
+
+  /* add the file information to the buffer */
+  if (E4R_FileInfo[index].catName && (strlen (E4R_FileInfo[index].catName )))
+    PDUadd_buffer_string(line, &char_index, E4R_FileInfo[index].catName);
+  else
+   {
+     line[char_index ] = '\1';
+     char_index = char_index + 1;
+   }
+
+  if (E4R_FileInfo[index].prtName && (strlen (E4R_FileInfo[index].prtName )))
+    PDUadd_buffer_string(line, &char_index, E4R_FileInfo[index].prtName);
+  else
+   {
+     line[char_index ] = '\1';
+     char_index = char_index + 1;
+   }
+
+  if (E4R_FileInfo[index].revName && (strlen (E4R_FileInfo[index].revName )))
+    PDUadd_buffer_string(line, &char_index, E4R_FileInfo[index].revName);
+  else
+   {
+     line[char_index ] = '\1';
+     char_index = char_index + 1;
+   }
+
+  if (E4R_FileInfo[index].fileName && (strlen (E4R_FileInfo[index].fileName )))
+    PDUadd_buffer_string(line, &char_index, E4R_FileInfo[index].fileName);
+  else
+   {
+     line[char_index ] = '\1';
+     char_index = char_index + 1;
+   }
+
+/* if (parttype && (strlen (parttype )))
+ {
+    printf("parttype has a value");
+    PDUadd_buffer_string(line, &char_index, parttype);
+ }
+  else
+  { */
+    printf("parttype is NULL, char_index = <%d>\n", char_index);
+    line[char_index ] = '\1';
+    char_index = char_index + 1;
+//  }
+
+  printf("after add the file information to the buffer.\n");
+
+  line[char_index ] = '\1';    /* entry for p_action */
+  char_index = char_index + 1;
+
+  
+  printf("before MEMwrite of line to file_bufr.\n");
+  status = MEMwrite (*file_bufr, line);
+
+  if (status != MEM_S_SUCCESS)
+  {
+    memset (line, NULL, (*file_bufr)->row_size);
+    goto quit; 
+  }
+
+}
+
+if (PDMdebug_on)
+  MEMprint_buffer("file buffer", *file_bufr, PDU_DEBUG_FILE);
+
+if (status == MEM_S_SUCCESS)
+  status = PDM_S_SUCCESS;
+
+printf("end of the function.\n");
+
+quit:
+  if(line)
+    free(line);
+  return(status);
+
+} /* end of create_buffer */
+
+/********************************************************
+* 
+*
+********************************************************/
+int delete_local_file( index )
+int	index;
+{
+  int     	status; 
+  MEMptr	buffer;
+
+  status 	= PDM_S_SUCCESS;
+  buffer	= NULL;
+
+  printf("Inside the delete_local_file function.\n");
+  status = create_buffer( index, &buffer);
+  _pdm_status("delete_local_file", status);
+  printf("Status after create buffer = %x\n", status );
+  if(status != PDM_S_SUCCESS)
+    goto quit;
+
+  status = PDUdelete_local_files(buffer,DELETE_LOCAL, REFRESH_PART);
+  _pdm_status("PDUdelete_local_files", status);
+  printf("Status after delete_local_files = %x\n", status );
+  if(status != PDM_S_SUCCESS)
+    goto quit;
+
+quit:
+  return(status);
+}  /* end PDUdelete_file */
+
+
+
+
+/*********************************************************
+* check_local_files:
+* check to see if a copy of the needed file is already 
+* copied to the local directory.  If so, delete the local 
+* file.
+*********************************************************/
+
+check_local_files( retCode )
+int	* retCode ;
+{
+  int		i, status ;
+  char 		searchfile[30];
+  struct 	stat statbuf;
+
+  *retCode	= PDM_S_SUCCESS  ;
+  status	= PDM_S_SUCCESS ;
+
+  printf( "check_local_file\n");
+
+  for( i=0 ; i < flcount ; i=i+1 )
+  {
+
+    printf("Inside the for loop.\n");
+    
+    printf("E4R_FileInfo[i].fileName = <%s> \n", E4R_FileInfo[i].fileName);
+    searchfile[0] = '\0';
+    strcpy( searchfile, E4R_FileInfo[i].fileName); 
+
+    printf("searchfile = <%s> \n", searchfile);
+
+    /* check the directory for the file */
+    if(stat(searchfile, &statbuf) == 0)
+    {
+       printf("file is there\n");
+       status = delete_local_file( i );
+       if(status != PDM_S_SUCCESS)
+       {
+         printf("error in deleting the file from local\n");
+         goto quit;
+       }
+    }
+
+  }
+
+
+quit:
+
+  return status ;
+}
+
+
+/*********************************************************
+* extract_files:
+* extract the dummy file with the local files attached. 
+*********************************************************/
+
+extract_files(  retCode )
+int	* retCode ;
+{
+  int		i, 
+		status ;
+  IGRint	EXRcre_loaded,
+		EXR_mode,
+		all_or_evgen ;
+  IGRchar	dgnFile[256];
+  IGRchar	outFile[256];
+  IGRchar	prdPath[256];
+
+  *retCode	= PDM_S_SUCCESS  ;
+  status	= PDM_S_SUCCESS ;
+
+  printf( "extract_files\n");
+
+  EXRcre_loaded = 1;
+  EXR_mode	= 0 ;
+  all_or_evgen	= 0 ;
+
+  status = EXR_getProdInfo( "Extr4rvw", NULL, prdPath );
+  if (status != OM_S_SUCCESS){
+	printf(" Error finding product ..\n"); 
+	goto quit;
+  }
+
+  ex$filename (name = dgnFile, len = 256);
+  EXRgen_filename( dgnFile, outFile, ".dgn");
+
+  push	EXR_mode, dgnFile, all_or_evgen, prdPath, outFile, NULL ;
+  ci$exec(	file_name	= "EXRcre_dgn",
+		entry		= "EXRcre_dgn" );
+  if( status != CI_S_SUCCESS ){
+	printf(" Error during Extraction Process\n");
+  }
+
+quit:
+  return status;
+
+}
+
+
+/*****************************************************************
+* This is the program                                       *
+*****************************************************************/
+main()
+{
+int	status ;
+int	retCode ;
+int	savDebugFlag ;
+char    file[15];
+flcount	= 0;
+	
+/*	PDUdebug_on(); */
+
+
+        strcpy(file, "/usr/tmp/pma/pma_cmd.txt"); 
+        printf("file = %s\n", file);
+
+	/*
+	 * Read data/files from command file.
+	 */
+	status = read_info( file, &retCode );
+	__CheckRC( retCode, status, "read_info", quit );
+
+        printf("flcount = %d\n", flcount);
+
+        /*
+	 * Logins to the PDU database. 
+	 */
+	status = login_pdu( &retCode );
+	__CheckRC( retCode, status, "login_pdu", quit );
+
+	/*
+	 * Get the filename based on the catalog, part, and revison.
+	 */
+	status =  get_filename( &retCode );
+	__CheckRC( retCode, status, "get_filename", quit );
+
+	/*
+	 * Check local directory for local files that are already
+	 * stored in the directory.  If any, delete local file from pdu.
+	 */
+	status = check_local_files( &retCode );
+	__CheckRC( retCode, status, "check_local_files", quit );
+
+
+        /*
+	 * Fetch the files from Database to local directory.
+	 */
+	status = fetch_files( &retCode );
+	__CheckRC( retCode, status, "fetch_files", quit );
+	
+
+        /* 
+         * Check for local reference files and add to structure
+         */
+
+
+	/*
+	 * Attach the files as reference files.
+	 */
+	status = attach_files( &retCode );
+	__CheckRC( retCode, status, "fetch_files", quit );
+
+	/*
+	 * Extract the attached file.
+	 */
+	status = extract_files( &retCode );
+	__CheckRC( retCode, status, "extract_files", quit );
+ 
+	/*
+	 * Check local directory for local files that are already
+	 * stored in the directory.  If any, delete local file from pdu.
+	 */
+	status = check_local_files( &retCode );
+	__CheckRC( retCode, status, "check_local_files", quit );
+
+
+quit:
+
+	printf(" main: logout \n" );
+	pdm$logout(	status	= &retCode );
+	printf(" main : %d\n", retCode );
+
+	errPDM = (char *) PDUtranslate_message( retCode );
+	printf(" pdm$logout : %s \n", errPDM );
+
+  
+        if(E4R_FileInfo)
+          free(E4R_FileInfo);
+
+/*	PDUdebug_off(); */
+	__DBGpr_com(" Finished " );
+
+}

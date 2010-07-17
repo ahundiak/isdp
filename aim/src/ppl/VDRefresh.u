@@ -1,0 +1,152 @@
+/* $Id: VDRefresh.u,v 1.1.1.1 2001/06/01 20:06:27 tlstalli Exp $ */
+/* --------------------------------------------------------------------
+ * I/AIMSIR
+ *
+ * File:        aim/src/ppl/VDdisable.u
+ *
+ * Description:
+ * 
+ * This PPL disables an AIM Enables item ( FSI ). A FSI can be disabled from
+ * either a diagram or arrangement file. A Disabled AIM item is recorded in 
+ * TrTbl as deleted. This ensures deletion of the FSI if posted to AIM. Thus
+ * it is necessary for a user to post an FSI after disabling to clear up
+ * things in AIM.
+ * CR # 179801370
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ *      MM/DD/YY        AUTHOR          DESCRIPTION
+ *      04/30/99	SSR		TR # MP 81 Added FI_get_form_by_name()
+ *      02/25/99	SSR		CR#179900379 PPL made to work for all
+ *      				file types
+ *      11/25/98	SSR		Creation
+ *
+ * -------------------------------------------------------------------*/
+#include "cieveryone.h"
+#include "cimacros.h"
+#include "ci_easy.h"
+#include "igrtypedef.h"
+#include "exmacros.h"
+#include "ex.h"
+#include "DItypedef.h"
+#include "DIdef.h"
+#include "DIglob.h"
+#include "DIprims.h"
+#include "macro.h"
+#include "VDppl.h"
+#include "VDPdef.h"
+#include "ACdb_info.h"
+#include "VDScheckdef.h"
+#include "vdparmacros.h"
+#include "VDPtrTbl.h"
+
+extern  printf() ;
+extern  UI_status ();
+extern  WhichAim();
+extern  VDPPmeUpdate();
+extern  EX_findmod();
+
+struct GRid		DirId;
+struct GRobj_env	*listObjs;
+
+
+
+/*
+ * Checks for collector in SIRGLOBAl dir for any enabled items.
+*/
+int CheckAimDir()
+{
+  OMuword			curOs;
+  int				status;
+  IGRchar			DirName[DI_PATH_MAX];
+
+  // Get Current Os.
+  ex$get_cur_mod( osnum = &curOs );
+
+  //Get enabled list object
+  status = di$give_pathname ( osnum = curOs, pathname = DirName );
+  strcat ( DirName, SIR_GLOBAL_DIR );
+  strcat ( DirName, SIR_ENABLED_LIST );
+  status = di$translate ( objname = DirName,
+      p_objid = &DirId.objid,
+      p_osnum = &DirId.osnum );
+
+  if ( status != DIR_S_SUCCESS )
+  {
+    UI_status("No Aim Enabled items");
+    return 1;
+  }
+  return 0;
+}
+
+
+main ()
+{
+  int			status, items, nbItems;
+  struct GRid		TrTblId, DefId, newobj, oldobj, CurSp;
+  IGRlong		msg;
+  IGRchar		DirName[DI_PATH_MAX];
+  //OMuword		curOs;
+  
+
+  message ("Refresh Transaction Log");
+ 
+  msg = 1;
+  status = 0;
+
+  // AIM connection is must!
+  if ( WhichAim() != SIR )
+  {
+    UI_status ( "SIR server connection required");
+    return 1;
+  }
+
+  // Get Current Os.
+  //ex$get_cur_mod( osnum = &curOs );
+  ex$get_cur_mod(id = &CurSp.objid,
+                 osnum = &CurSp.osnum );
+
+  //Get default data object
+  status = di$give_pathname ( osnum = CurSp.osnum, pathname = DirName );
+  strcat ( DirName, SIR_GLOBAL_DIR );
+  strcat ( DirName, SIR_REQ_DATA );
+  status = di$translate ( objname = DirName,
+      p_objid = &DefId.objid,
+      p_osnum = &DefId.osnum );
+
+  if ( status != DIR_S_SUCCESS )
+  {
+    UI_status("No AIM default data set");
+    return 1;
+  }
+
+
+  status = CheckAimDir();// Check for any aim enabled items
+  if(status == 1 )
+  {
+    return 1;
+  }
+
+ ci$send ( msg = message VDPenabObj.VDPgetPMenabledList( &msg,
+                                                &nbItems, &listObjs),
+                        targetid = DirId.objid,
+                        targetos = DirId.osnum);
+
+  if(nbItems == 0)
+  {
+    UI_status("No AIM Enabled Items");
+    return 1;
+  }
+
+  for( items = 0; items < nbItems; items = items +1 )
+  {
+    newobj = listObjs[items].obj_id; 
+    oldobj = listObjs[items].obj_id; 
+    status = VDPPmeUpdate( &msg, oldobj, newobj);
+  }
+
+  free(listObjs);
+  return 1;
+
+}
