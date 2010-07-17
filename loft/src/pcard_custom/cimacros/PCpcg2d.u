@@ -1,0 +1,820 @@
+/***************************************************************************
+ * INGR - PPL
+ *
+ * File:        PCpcg2d.u
+ *
+ * Description:	PPL macro for stf openings on profile cards
+ *
+ * Dependencies:
+ *
+ * History:
+ *      MM/DD/YY        AUTHOR          DESCRIPTION
+ *      09/17/01        mjablko         creation date
+ *
+ ***************************************************************************/
+
+#define VD_PPL
+
+// DEBUG INFO
+//***********
+
+//#define DEBUG 
+//#define DEBUG_MORE
+
+// INCLUDES
+//***********
+#include "cieveryone.h"
+#include "cimacros.h"
+#include "ci_mac_def.h"
+#include "cimath.h"
+#include "vd_ve.h"
+#include "v_edgedef.h"
+#include "v_edgemacros.h"
+#include "vdparmacros.h"
+#include "vdsetmacros.h"
+#include "vldbgmacros.h"
+#include "grwireframe.h"
+
+#include "grdpb.h"
+#include "grdpbmacros.h"
+#include "fontmacros.h"
+#include "cotxmacros.h"
+
+
+// Macro constants
+//******************
+#define MAX_FEET	30
+#define MAX_TEMP	8
+#define MAX_CHA_TEMP	20
+
+// Opening types
+//****************
+#define CROSS	  0
+#define SCALLOP   1
+#define CIRCLE    2
+#define OVAL      3
+#define KEYHOLE   4
+#define ELLIPSE   5
+#define RECTANGLE 6
+#define ROUNDRECT 7
+
+/* txt scale factors */
+//#define LABEL	1.5
+//#define DIM	3
+#define ANG_FAC 0.15
+#define DIM_OVL 1.5
+#define DIM_LEN 15
+
+// CI_MACRO variables
+//**********************
+GRobj 	 	ci_mac_def1; 
+int		stat, msg, grCount; 
+int		temp_types[MAX_TEMP];
+char 		*temp_names[MAX_TEMP], *feet_names[MAX_FEET];
+char            txt[15], buff[MAX_FEET*MAX_CHA_TEMP];
+struct GRmd_env	MOD_ENV;
+
+// Macro templates
+//*******************
+struct GRobj_env  ViewCS, MacroCS; 
+double	LabelHeight, SymWidth, FrameHeight;
+char    Label[30], HeightDim[10];
+int     Type;
+
+// Auxilary global variables
+//*****************************
+struct ret_struct	expr; 
+struct GRid		CI_MACRO_ID,  GRid_list[MAX_FEET];
+struct GRvg_construct   cst;
+struct IGRdisplay	dis;
+
+
+// Global variables
+//****************
+double  dbl_temp;
+double	p[1000] ;
+double  bot_offset;
+
+double  Ratio;
+double	dim_txt_ht ;
+double	lbl_txt_ht ;
+double	lbl_pnt[3] ;
+double	txt_cs[16] ;
+
+int	sign ;
+int	flip , sts ;
+int	count ;
+int	BeamType ;
+
+char	dmtxt[10] ;
+
+int     mcsign;
+double	vwcs[16], macs[16];
+double	mcxvec[3], mcyvec[3], mczvec[3], mcorigin[3];
+double	vwxvec[3], vwyvec[3], vwzvec[3], vworigin[3];
+
+double p1[3], p2[3], p3[3], p4[3], p5[3], p6[3];
+double p7[3], p8[3], p9[3], p10[3], p11[3], p12[3];
+double p13[3], p14[3], p15[3], p16[3], p17[3], p18[3];
+double p19[3], p20[3], p21[3], p22[3], p23[3], p24[3];
+
+
+extern	char *strncpy ();
+extern	char *strrchr ();
+extern  sprintf(), printf();
+extern  free(), abs(), tan(), fasb();
+extern 	int	init_cnst_list();
+extern 	GRretrieve_font(), GRplace_text(),
+	GRdpb_get(), 
+	GRang_place_text(), 
+	BSac2ptctvc(),
+	BSellctaxrm(),
+  	GRsymbology_options(), 
+        GRcreate_linestring(), 
+        GRcreate_conic_by_edge();
+extern  EX_get_oid_nodname(), EX_get_modid_given_osnum();
+extern  GRdisplay_object ();
+extern  BSmdstptcv();
+extern  BSactivsplt();
+
+/* ================================ */
+
+//#include "PC_cimac.h"
+#include "SupMacros.h"
+#include "PC2d.h"
+
+
+
+/* ========================================================================= */
+/* the main function is the one implementing the definition creation
+/* ========================================================================= */
+
+main ()
+{
+  int i, j;
+
+
+  temp_names[0]  = "ViewCS";		temp_types[0] = ref_generic;
+  temp_names[1]  = "MacroCS";		temp_types[1] = ref_generic;
+  temp_names[2]  = "Type";		temp_types[2] = double_type;
+  temp_names[3]  = "Label";		temp_types[3] = text_type;
+  temp_names[4]  = "LabelHeight";       temp_types[4] = double_type; 
+  temp_names[5]  = "SymWidth";          temp_types[5] = double_type;
+  temp_names[6]  = "FrameHeight";       temp_types[6] = double_type;
+  temp_names[7]  = "HeightDim";         temp_types[7] = text_type;
+ 
+  for ( i=0; i<MAX_FEET; i=i+1){
+        j = i * MAX_CHA_TEMP;
+        sprintf(&buff[j],"pcpcg_%d", i);
+  	feet_names[i] = &buff[j];
+  }
+  ci_mac_def1 = NULL_OBJID;
+
+  ac$cimacdef( 	cimacdef =  ci_mac_def1,
+		status 	 = &stat, 	    
+                name = "PCpcg2d",
+              	temp_num = MAX_TEMP,        
+                temp_names = temp_names,
+              	temp_types = temp_types,
+	      	extern_feet_num = MAX_FEET, 
+                extern_feet_names = feet_names );
+}
+
+/* ========================================================================= */
+
+compute ()
+{
+
+  construct_comp();
+
+  if( GRid_list[0].objid == NULL_OBJID ) 
+  	return(0);
+
+  ci$send( msg = message  ci_macro.set_all_extern_feet
+		( &stat, MAX_FEET, GRid_list, &MOD_ENV ),
+	   	targetid = CI_MACRO_ID.objid,
+	   	targetos = CI_MACRO_ID.osnum);
+  return(1) ;
+}
+
+/* ========================================================================= */
+
+place ()
+{
+  construct_comp();
+  
+  if( GRid_list[0].objid == NULL_OBJID ) 
+  	return(0);
+
+  ci$send( msg = message  ci_macro.set_all_extern_feet
+		(&stat, MAX_FEET, GRid_list, &MOD_ENV ),
+	   	targetid = CI_MACRO_ID.objid,
+	   	targetos = CI_MACRO_ID.osnum);
+
+  return(1);
+}
+
+
+/* ========================================================================= 
+
+
+ * ========================================================================= */
+
+construct_comp()
+{
+
+  /* Initialize and get input data */
+  initialize();
+ 
+  /* start laying out the points */
+  Construct_graphics( Type );  	
+  	
+  /* null out the next id for some kind of checking later */	
+#ifdef DEBUG
+//  printf("grCount: %d\n", grCount);
+#endif
+  GRid_list[grCount].objid = NULL_OBJID;
+
+}
+
+
+/* ========================================================================= */
+
+int initialize()
+{
+  int i;
+	
+  /* initialize the graphics counter */
+  grCount = 0;
+  GRid_list[0].objid = NULL_OBJID ;
+
+  get_symb();
+
+  dis.weight		= cnst_list.weight;
+  dis.style		= cnst_list.style;
+
+  cst.msg		= &msg;
+  cst.properties	= GRIS_LOCATABLE | GRIS_NEW | GRIS_DISPLAYABLE;
+  cst.display		= &dis;
+  cst.env_info		= &MOD_ENV;
+  cst.newflag		= 0;
+  cst.geometry		= NULL;
+  cst.class_attr	= 0;
+  cst.name		= 0;
+
+  /* Collect input data */
+  getinput();
+
+#ifdef DEBUG
+//  printf("Input retrieved!\n");
+#endif
+
+  /* Set Offset from Bottom of Profile */
+  bot_offset = 2;
+  
+  /* set the dimension text height */
+  dim_txt_ht = LabelHeight;
+  dimension_text_height = dim_txt_ht;
+
+  /* set the label text height */
+  lbl_txt_ht = LabelHeight;
+
+  /* Get coordinate system matrices */
+  compute_cs( ViewCS.obj_id, vwcs, vworigin, vwxvec, vwyvec, vwzvec );
+  compute_cs( MacroCS.obj_id, macs, mcorigin, mcxvec, mcyvec, mczvec );
+
+  /* Get the MacroCS orientation */
+  if( mcxvec[0] < 0 )
+    mcsign = -1;
+  else
+    mcsign = 1;
+  
+  /* flip the coord system for the text coord system */
+  txt_cs[0] = vwcs[0];
+  txt_cs[1] = vwcs[4];
+  txt_cs[2] = vwcs[8];
+  
+  txt_cs[4] = vwcs[1];
+  txt_cs[5] = vwcs[5];
+  txt_cs[6] = vwcs[9];
+  
+  txt_cs[8] = vwcs[2];
+  txt_cs[9] = vwcs[6];
+  txt_cs[10] = vwcs[10];
+  
+  txt_cs[3] = vwcs[12];
+  txt_cs[7] = vwcs[13];
+  txt_cs[11] = vwcs[14];
+  
+  txt_cs[12] = vwcs[3];
+  txt_cs[13] = vwcs[7];
+  txt_cs[14] = vwcs[11];
+  
+  txt_cs[15] = vwcs[15];
+  
+
+#ifdef DEBUG
+//  printf("Initialized!\n");
+#endif
+
+}
+
+
+/* ========================================================================= */
+
+int getinput()
+{
+  
+  /* GET PARAMETER VALUES */
+  getIntParm    ( CI_MACRO_ID, "Type", &Type );
+  getTextParm   ( CI_MACRO_ID, "Label", Label );
+  getDoubleParm ( CI_MACRO_ID, "LabelHeight", &LabelHeight );
+  getDoubleParm ( CI_MACRO_ID, "SymWidth", &SymWidth );
+  getDoubleParm ( CI_MACRO_ID, "FrameHeight", &FrameHeight );
+  getTextParm   ( CI_MACRO_ID, "HeightDim", HeightDim );
+
+  /* GET GRAPHIC OBJECTS */
+
+  /* Get viewCS  */
+  msg = getobj( CI_MACRO_ID, 0, &ViewCS );
+  if( !( msg&1 ) ) return FALSE;
+  
+#ifdef DEBUG
+//  printf( "Coord id[%d, %d]\n", ViewCS.obj_id.objid, ViewCS.obj_id.osnum );
+#endif
+  
+  /* Get MacroCS */
+  msg = getobj( CI_MACRO_ID, 1, &MacroCS );
+  if( !( msg&1 ) ) return FALSE;
+  
+#ifdef DEBUG
+//  printf( "Coord id[%d, %d]\n", MacroCS.obj_id.objid, MacroCS.obj_id.osnum );
+#endif
+  
+}
+
+
+
+/* ========================================================================= */
+
+Construct_graphics ( type )
+  int type;
+
+{ 
+double tmp[3];
+double theight; 
+
+ char text_string[128];
+ int len;
+ struct GRid TEXT;
+ double origin[3];
+ 
+  origin[0] = mcorigin[0];
+  origin[1] = vworigin[1] + FrameHeight * 0.6;
+  origin[2] = mcorigin[2];
+  //printpt( "origin", origin );
+
+  /* p1 - origin */  
+  v_equal( origin, p1 );  
+  //printpt( "p1", p1 );
+  
+  /* p2 top point */
+  v_scale( mcyvec, FrameHeight, tmp );
+  v_add( p1, tmp, p2 );  
+  //printpt( "p2", p2 );
+  
+
+#ifdef DEBUG
+  printf("Hole type: %d\n", type );
+#endif
+
+  switch( type )
+  {
+    case CROSS:
+      make_cross();
+      break;
+    case SCALLOP:
+      make_scallop();
+      break;
+    case CIRCLE:
+      make_circle();
+      break;
+    case OVAL:
+      make_oval();
+      break;
+    case KEYHOLE:
+      make_cross();
+      break;
+    case ELLIPSE:
+      make_ellipse();
+      break;
+    case RECTANGLE:
+      make_rectangle();
+      break;
+    case ROUNDRECT:
+      make_roundrect();
+      break;
+    default:
+      printf("Default hole\n");
+      make_cross();
+      break;
+  }
+  place_hole_label();
+  place_hole_dimension();
+
+}
+
+/* ========================================================================= */
+
+make_cross()
+{
+  double tmp[3], aux[3], varX, varY;
+  
+  /* p2 center point */
+  v_equal( p1, p2 );
+
+  /* p3 bottom point */
+  varY = -(SymWidth / 2);
+  v_scale( mcyvec, varY, tmp );
+  v_add( p2, tmp, p3 );
+  
+  /* p4 left point */
+  varX = -(SymWidth / 2);
+  v_scale( mcxvec, varX, tmp );
+  v_add( p2, tmp, p4 );
+  
+  /* p5 top point */
+  varY =  SymWidth / 2;
+  v_scale( mcyvec, varY, tmp );
+  v_add( p2, tmp, p5 );
+
+  /* p6 right point */
+  varX = SymWidth / 2;
+  v_scale( mcxvec, varX, tmp );
+  v_add( p2, tmp, p6 );
+  
+#ifdef DEBUG
+  printf("Placing circle\n");
+#endif
+  
+  placeLine ( GRid_list, &grCount, p3, p5, 0, 0 );
+  placeLine ( GRid_list, &grCount, p4, p6, 0, 0 );
+ 
+}
+
+/* ========================================================================= */
+
+make_scallop()
+{
+  double tmp[3], aux[3], varX, varY;
+  
+  /* p2 center point */
+  v_equal( p1, p2 );
+
+  /* p3 left point */
+  varX = -(SymWidth/2);
+  v_scale( mcxvec, varX, tmp );
+  v_add( p2, tmp, p3 );
+
+  /* p4 top point */
+  varY = SymWidth/2;
+  v_scale( mcyvec, varY, tmp );
+  v_add( p2, tmp, p4 );
+  
+  /* p5 right point */
+  varX = SymWidth/2;
+  v_scale( mcxvec, varX, tmp );
+  v_add( p2, tmp, p5 );
+  
+#ifdef DEBUG
+  printf("Placing scallop\n");
+#endif
+  
+  create_arc_by_center( GRid_list, &grCount, p2, p3, p4, 1, 0, 0 );
+  create_arc_by_center( GRid_list, &grCount, p2, p4, p5, 1, 0, 0 );
+  placeLine ( GRid_list, &grCount, p3, p5, 0, 0 );
+  
+}
+
+/* ========================================================================= */
+
+make_circle()
+{
+  double tmp[3], aux[3], varX, varY;
+  
+  /* p2 center point */
+  v_equal( p1, p2 );
+
+  /* p3 bottom point */
+  varY = -(SymWidth/2);
+  v_scale( mcyvec, varY, tmp );
+  v_add( p2, tmp, p3 );
+  
+  /* p4 left point */
+  varX = - (SymWidth/2);
+  v_scale( mcxvec, varX, tmp );
+  v_add( p2, tmp, p4 );
+  
+  /* p5 top point */
+  varY =  SymWidth;
+  v_scale( mcyvec, varY, tmp );
+  v_add( p2, tmp, p5 );
+
+  /* p6 right point */
+  varX = SymWidth/2 ;
+  v_scale( mcxvec, varX, tmp );
+  v_add( p2, tmp, p6 );
+  
+#ifdef DEBUG
+  printf("Placing circle\n");
+#endif
+  
+  create_arc_by_center( GRid_list, &grCount, p2, p3, p4, 1, 0, 0 );
+  create_arc_by_center( GRid_list, &grCount, p2, p4, p5, 1, 0, 0 );
+  create_arc_by_center( GRid_list, &grCount, p2, p5, p6, 1, 0, 0 );
+  create_arc_by_center( GRid_list, &grCount, p2, p6, p3, 1, 0, 0 );
+      
+}
+
+/* ========================================================================= */
+
+make_oval()
+{
+  double tmp[3], aux[3], varX, varY;
+  
+  /* p2 center point */
+  v_equal( p1, p2 );
+
+  /* p3 left bottom point */
+  varX = -(0.25) * SymWidth;
+  v_scale( mcxvec, varX, tmp );
+  v_add( p2, tmp, aux );
+  varY = -(0.25) * SymWidth;
+  v_scale( mcyvec, varY, tmp );
+  v_add( aux, tmp, p3 );
+
+  /* p4 left center point */
+  varY = 0.25 * SymWidth;
+  v_scale( mcyvec, varY, tmp );
+  v_add( p3, tmp, p4 );
+  
+  /* p5 left extreme point */
+  varX = -(0.25) * SymWidth;
+  v_scale( mcxvec, varX, tmp );
+  v_add( p4, tmp, p5 );
+  
+  /* p6  left top point */
+  varY = 0.25 * SymWidth;
+  v_scale( mcyvec, varY, tmp );
+  v_add( p4, tmp, p6 );
+
+  /* p7 right top point */
+  varX = 0.5 * SymWidth;
+  v_scale( mcxvec, varX, tmp );
+  v_add( p6, tmp, p7 );
+
+  /* p8  right center point */
+  varY = -(0.25) * SymWidth;
+  v_scale( mcyvec, varY, tmp );
+  v_add( p7, tmp, p8 );
+  
+  /* p9 right extreme point */
+  varX = 0.25 * SymWidth;
+  v_scale( mcxvec, varX, tmp );
+  v_add( p8, tmp, p9 );
+
+  /* p10 right bottom point */
+  varY = -(0.25) * SymWidth;
+  v_scale( mcyvec, varY, tmp );
+  v_add( p8, tmp, p10 );
+  
+#ifdef DEBUG
+  printf("Placing oval\n");
+#endif
+  
+  create_arc_by_center( GRid_list, &grCount, p4, p3, p5, 1, 0, 0 );
+  create_arc_by_center( GRid_list, &grCount, p4, p5, p6, 1, 0, 0 );
+  placeLine ( GRid_list, &grCount, p6, p7, 0, 0 );
+  create_arc_by_center( GRid_list, &grCount, p8, p7, p9, 1, 0, 0 );
+  create_arc_by_center( GRid_list, &grCount, p8, p9, p10, 1, 0, 0 );
+  placeLine ( GRid_list, &grCount, p10, p3, 0, 0 );
+  
+}
+
+/* ========================================================================= */
+
+make_ellipse()
+{
+  double tmp[3], aux[3], varX, varY;
+  
+  /* p2 center point */
+  v_equal( p1, p2 );
+
+  /* p3 bottom point */
+  varY = -(0.25) * SymWidth;
+  v_scale( mcyvec, varY, tmp );
+  v_add( p2, tmp, p3 );
+  
+  /* p4 left point */
+  varX = -(0.5) * SymWidth;
+  v_scale( mcxvec, varX, tmp );
+  v_add( p2, tmp, p4 );
+  
+  /* p5 top point */
+  varY = 0.25 * SymWidth;
+  v_scale( mcyvec, varY, tmp );
+  v_add( p2, tmp, p5 );
+
+  /* p6 right point */
+  varX = 0.5 * SymWidth;
+  v_scale( mcxvec, varX, tmp );
+  v_add( p2, tmp, p6 );
+  
+#ifdef DEBUG
+  printf("Placing ellipse\n");
+#endif
+  
+  create_ellipse_by_center( GRid_list, &grCount, p2, p3, p4, 1, 0, 0 );
+  
+#ifdef DEBUG
+  printf("Placing ellipse label: %s\n", Label );
+#endif
+  
+}
+
+/* ========================================================================= */
+
+make_rectangle()
+{
+  double tmp[3], aux[3], varX, varY;
+  
+  /* p2 center point */
+  v_equal( p1, p2 );
+
+  /* p3 left bottom point */
+  varX = -(0.5) * SymWidth;
+  v_scale( mcxvec, varX, tmp );
+  v_add( p2, tmp, aux );
+  varY = -(0.25) * SymWidth;
+  v_scale( mcyvec, varY, tmp );
+  v_add( aux, tmp, p3 );
+
+  /* p4 left top point */
+  varY = (0.5) * SymWidth;
+  v_scale( mcyvec, varY, tmp );
+  v_add( p3, tmp, p4 );  
+
+  /* p5 right top point */
+  varX = SymWidth;
+  v_scale( mcxvec, varX, tmp );
+  v_add( p4, tmp, p5 );  
+
+  /* p6 right bottom point */
+  varY = -(0.5) * SymWidth;
+  v_scale( mcyvec, varY, tmp );
+  v_add( p5, tmp, p6 );  
+
+#ifdef DEBUG
+  printf("Placing rectangle\n");
+#endif
+  
+  placeLine ( GRid_list, &grCount, p3, p4, 0, 0 );
+  placeLine ( GRid_list, &grCount, p4, p5, 0, 0 );
+  placeLine ( GRid_list, &grCount, p5, p6, 0, 0 );
+  placeLine ( GRid_list, &grCount, p6, p3, 0, 0 );
+  
+}
+
+/* ========================================================================= */
+
+make_roundrect()
+{
+  double tmp[3], aux[3], varX, varY;
+  
+
+  /* p14 left bottom center point */
+  varX = -(0.4) * SymWidth;
+  v_scale( mcxvec, varX, tmp );
+  v_add( p1, tmp, aux );
+  varY = -(0.3) * SymWidth;
+  v_scale( mcyvec, varY, tmp );
+  v_add( aux, tmp, p14 );
+
+  /* p3 left bottom top point */
+  varY = (0.1) * SymWidth;
+  v_scale( mcyvec, varY, tmp );
+  v_add( p14, tmp, p3 );
+  
+  /* p4 left bottom left point */
+  varX = -(0.1) * SymWidth;
+  v_scale( mcxvec, varX, tmp );
+  v_add( p3, tmp, p4 );
+  
+  /* p5 left top left point */
+  varY = (0.4) * SymWidth;
+  v_scale( mcyvec, varY, tmp );
+  v_add( p4, tmp, p5 );
+
+  /* p6 left top center point */
+  varX = (0.1) * SymWidth;
+  v_scale( mcxvec, varX, tmp );
+  v_add( p5, tmp, p6 );
+
+  /* p7 left top top point */
+  varY = (0.1) * SymWidth;
+  v_scale( mcyvec, varY, tmp );
+  v_add( p6, tmp, p7 );
+  
+  /* p8 right top top point */
+  varX = (0.8) * SymWidth;
+  v_scale( mcxvec, varX, tmp );
+  v_add( p7, tmp, p8 );
+
+  /* p9 right top center point */
+  varY = -(0.1) * SymWidth;
+  v_scale( mcyvec, varY, tmp );
+  v_add( p8, tmp, p9 );
+  
+  /* p10 right top right point */
+  varX = (0.1) * SymWidth;
+  v_scale( mcxvec, varX, tmp );
+  v_add( p9, tmp, p10 );
+
+  /* p11 right bottom right point */
+  varY = -(0.4) * SymWidth;
+  v_scale( mcyvec, varY, tmp );
+  v_add( p10, tmp, p11 );
+
+  /* p12 right bottom center point */
+  varX = -(0.1) * SymWidth;
+  v_scale( mcxvec, varX, tmp );
+  v_add( p11, tmp, p12 );
+
+  /* p13 right bottom bottom point */
+  varY = -(0.1) * SymWidth;
+  v_scale( mcyvec, varY, tmp );
+  v_add( p12, tmp, p13 );
+  
+#ifdef DEBUG
+  printf("Placing round rectangle\n");
+#endif
+  
+  create_arc_by_center( GRid_list, &grCount, p3, p14, p4, 1, 0, 0 );
+  placeLine ( GRid_list, &grCount, p4, p5, 0, 0 );
+  create_arc_by_center( GRid_list, &grCount, p6, p5, p7, 1, 0, 0 );
+  placeLine ( GRid_list, &grCount, p7, p8, 0, 0 );
+  create_arc_by_center( GRid_list, &grCount, p9, p8, p10, 1, 0, 0 );
+  placeLine ( GRid_list, &grCount, p10, p11, 0, 0 );
+  create_arc_by_center( GRid_list, &grCount, p12, p11, p13, 1, 0, 0 );
+  placeLine ( GRid_list, &grCount, p13, p14, 0, 0 );
+
+}
+
+/* ========================================================================= */
+
+place_hole_label()
+{
+  /* Place a label */
+  p15[0] = p1[0] + 1.0;
+  p15[1] = vworigin[1] + 2.0;
+  p15[2] = p1[2];
+
+  place_pcg_label( GRid_list, &grCount, p15, Label, dim_txt_ht, txt_cs );
+}
+
+/* ========================================================================= */
+
+place_hole_dimension()
+{
+
+  double tmp[3], aux[3], varX, varY;
+ 
+  varX = -( SymWidth/6 );
+  v_scale( mcxvec, varX, tmp );
+  v_add( p1, tmp, p16 );
+
+  varY = -( FrameHeight/3 );
+  v_scale( mcyvec, varY, tmp );
+  v_add( p16, tmp, p17 );
+  
+  varY = -( FrameHeight/4.5 );
+  v_scale( mcyvec, varY, tmp );
+  v_add( p16, tmp, p18 );
+  
+  varX = -0.5;
+  v_scale( mcxvec, varX, tmp );
+  v_add( p16, tmp, p19 );
+  
+  
+  placeLine ( GRid_list, &grCount, p1, p19, 0, 0 );
+  placeLine ( GRid_list, &grCount, p16, p17, 0, 0 );
+  place_arrow( GRid_list, &grCount, p17, p16, p16, txt_cs, vwzvec, dim_txt_ht );
+  place_vert_label( GRid_list, &grCount, p18, HeightDim, dim_txt_ht, txt_cs );
+}
+
+
+
+
+
+
+

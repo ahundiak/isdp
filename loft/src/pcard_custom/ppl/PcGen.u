@@ -1,0 +1,1089 @@
+/***************************************************************************
+ * I/LOFT
+ *
+ * File:        PcGen.u
+ *
+ * Description:
+ *
+ * This ppl returns ProfileCard placement codes for macros.
+ *
+ * Dependencies:
+ *
+ * History:
+ *      MM/DD/YY        AUTHOR          DESCRIPTION
+ *      08/27/98        mjablko         creation date
+ *      01/26/00        mjablko         changed table format
+ *                                      into scanf readable
+ *
+ ***************************************************************************/
+
+//#define DEBUG
+
+// INCLUDES
+//***********
+#include "stdio.h"
+#include "msdef.h"
+#include "OMtypes.h"
+#include "ciminimum.h"
+#include "OMerrordef.h"
+#include "cierrordef.h"
+#include "OMprimitives.h"
+#include "madef.h"
+#include "DIdef.h"
+#include "OMmacros.h"
+#include "cimacros.h"
+#include "exmacros.h"
+#include "grmacros.h"
+#include "grgsmacros.h"
+#include "growner.h"
+#include "parametric.h"
+#include "ACrg_collect.h"
+#include "AS_status.h"
+#include "nddef.h"
+
+#include "vdparmacros.h"
+#include "vdAPImacros.h"
+#include "vdAPIequips.h"
+#include "vsAPImacros.h"
+#include "vdsmacros.h"
+#include "v_slcdef.h"
+#include "v_pplslc.h"
+
+#include "vldbgmacros.h"
+
+extern char *getenv();
+extern char *strstr();
+extern char *strncpy();
+extern char *strrchr();
+extern free();
+extern VSgetRollMacOnStiff();
+extern OM_S_CHANSELECT  AS_to_comp;
+extern OM_S_CHANSELECT  AS_to_owner;
+extern COm_get_option_grid();
+extern MAidmx();
+extern EX_get_modid_given_osnum();
+
+#include "PC_macros.h"
+#include "PC_ppl.h"
+
+
+// CONSTANTS
+//**************
+
+#define PROD_PATH "config/drawing/ProfCard"
+
+#define  GRAPHICS_PC 0
+#define  TEXT_PC     1
+
+#define  PROF_CARD   1
+#define  BEND_CARD   2
+
+#define  TEE         0
+#define  ANG         1
+#define  IBM         2
+#define  CHN         3
+#define  BLB         4
+#define  FBR         5
+
+#define  MAXLINE 80
+#define  COLUMN_COUNT 2
+#define  FIELDMAX 20
+#define  TABLEMAX 100
+
+#define STOCK 75.0
+#define	STRAIGHT 	38830096
+#define	ROLLED		38830138
+
+//  VARIABLES
+// ************
+
+struct CodeTable
+{
+  char name[FIELDMAX];
+  char code[FIELDMAX];
+  int  index;
+};
+
+struct CodeTable CodeTbl[TABLEMAX];
+
+char StrudelFileName[VD_K_tokMAX_SIZE];
+
+/*====================================================================================*/
+
+/*====================================================================================*/
+
+/*----------------------------------------------------------------------------
+ * Function fills string 'str' with character 'chr'
+ *----------------------------------------------------------------------------*/
+
+char * strset( str, chr )
+char * str;  // string to fill
+char   chr;  // character to fill with
+{
+    char *p ;
+
+    p = str;
+    while( *p != '\0') {
+        *p = chr;
+        p = p+1;
+    }
+    return;
+}
+
+
+/*----------------------------------------------------------------------------
+ * Function gets from string s an n-index word w separated by sep.
+ *----------------------------------------------------------------------------*/
+
+char * word( s, w, n, sep )
+  char *s;   // Input line
+  char *w;   // Output word
+  int   n;   // Word index in input line
+  int   sep; // Separator sign
+{
+    char *p;
+    int   i, l;
+
+    i = 0;
+    while( *s ) { // If line not empty
+        while( *s == sep || *s == '\t' || *s == ' ' ) // Check first character. If sep skip it.
+            s=s+1;
+        if( *s ) { // If still not empty
+            p = s;
+            while( *s != sep && *s != '\0' && *s != '\n' ) { // Look for next sep.
+                s=s+1;
+            }
+            i=i+1; // Increase word index
+            if( i==n ) { // Check with input index
+                l = s - p ;
+                strncpy( w, p, l);
+                *(w + l) = '\0';
+                return w;
+            }
+        }
+    }
+  return NULL;
+}
+
+/*-------------------------------------------------------------------------------------
+ * Function reads coma separated conversion table from external file
+ * and returns number of rows read.
+ *-------------------------------------------------------------------------------------*/
+
+int read_csv2_table( file )
+  FILE *file;
+{
+    int   i, l;
+    char  line[MAXLINE];
+
+    l = 0;
+    while( !feof( file ) ) {                                        // Until EOF
+        fgets( line, MAXLINE, file );                                // Get a line
+        if( line[0] == '#' || line[0] == '\n' || line[0] == ' ')     // Skip comment or empty line
+            continue;
+        else {
+            if( line[0] == ',' )                                       // End of data from Excel sheet
+                goto stop;
+            if( !strcmp( line, "" ) ) continue;                        // Skip empty line
+            word( line, CodeTbl[l].name, 1, ',' );
+            word( line, CodeTbl[l].code, 2, ',' );
+            strcpy( line, "" );
+            l=l+1;
+        }
+    }
+ stop:
+    return(l);
+}
+
+/*-------------------------------------------------------------------------------------
+ * Function reads tabulated conversion table from external file
+ * and returns number of rows read.
+ *-------------------------------------------------------------------------------------*/
+
+int read_table( file )
+  FILE *file;
+{
+    int   i, l;
+    char  line[MAXLINE];
+
+    l = 0;
+    while( !feof( file ) ) {
+        fgets( line, MAXLINE, file );
+
+        // Skip comment line, empty line
+        if( line[0] == '#' || line[0] == '\n' )
+            continue;
+        else {
+            // Skip empty line
+            if( !strcmp( line, "" ) )
+                continue;
+            sscanf( line, "%s %s %d", CodeTbl[l].name, CodeTbl[l].code, &CodeTbl[l].index );
+            strcpy( line, "" );
+            l = l + 1;
+        }
+    }
+ stop:
+    return(l);
+}
+
+/*-------------------------------------------------------------------------------------
+ * Function prints conversion table with n rows.
+ * For testing only - not used in final code
+ *-------------------------------------------------------------------------------------*/
+
+void print_CodeTbl( n )
+int n;
+{
+    int i;
+
+    for( i=0; i<n; i=i+1) {
+        printf("Codes: <%-s> <%-s> <%d>\n", CodeTbl[i].name,
+               CodeTbl[i].code, CodeTbl[i].index );
+    }
+}
+
+/*-------------------------------------------------------------------------------------
+ * Function looks for a name in  conversion table and returns code and index found.
+ *-------------------------------------------------------------------------------------*/
+
+int find_code( SearchPath, Filename, Name, code, type )
+  char *SearchPath;
+  char *Filename;
+  char *Name;
+  char *code;
+  int   type;
+{
+    char filestat[80], path[80];
+    int  n_rows, i;
+    FILE *file;
+    int msg;
+
+    SetProc( FindCode ); Begin
+
+    file = open_vdsfile( SearchPath, PROD_PATH, Filename );
+    if( file == NULL ) {
+        printf("%s:PcGEn : FIND CODE : Could not open file %s\n", 
+        			StrudelFileName, Filename );
+        printf("Exiting...\n");
+        fclose( file );
+        exit;
+    }
+    if( type )
+        n_rows = read_csv2_table( file );
+    else
+        n_rows = read_table( file );
+    fclose( file );
+
+    __DBGpr_int("Rows read", n_rows );
+
+#ifdef DEBUG
+    print_CodeTbl(n_rows);
+#endif
+
+    for( i=0; i<n_rows; i=i+1 ) {
+
+        //        __DBGpr_int("Looking in row", i );
+
+        // If Name found return code and index
+        if(!strcmp( CodeTbl[i].name, Name )) {
+            strcpy( code, CodeTbl[i].code );
+            return( CodeTbl[i].index );
+        }
+    }
+
+    // ...else return first (default) row data
+    printf("\n%s:PcGen : FIND CODE : Name %s not found in file %s\n", 
+    			StrudelFileName, Name, Filename);
+    printf("Returning default code: %s\n\n", CodeTbl[0].code );
+    strcpy( code, CodeTbl[0].code );
+    return( CodeTbl[0].index );
+
+    End
+}
+
+/*=====================================================================================*/
+
+copy_roll_data( Src, src_idx, Tgt, tgt_idx, total )
+IGRdouble  *Src, *Tgt;
+IGRlong    src_idx, tgt_idx, total;
+{
+    IGRint   i;
+
+    for( i = 0; i < total; i = i + 1 ) {
+        Tgt[tgt_idx + i] = Src[src_idx + i];
+
+#ifdef DEBUG
+     printf("Copy Src[%d] = %.3f to Tgt[%d] = %.3f\n",
+            src_idx + i, Src[src_idx + i], 
+            tgt_idx + i, Tgt[tgt_idx + i] );
+#endif
+    }
+    return;
+}
+
+/*=====================================================================================*/
+
+calculate_length( BeamWebThk, RollData, TrueSegmentCount, Length )
+IGRint		  TrueSegmentCount;
+IGRdouble 	  *RollData, BeamWebThk, *Length;
+{
+
+    IGRint i;
+    IGRdouble TotLen, delta;
+
+    SetProc( CalculateLength ); Begin
+
+    /* CALCULATE LENGTH */
+    TotLen = 0.0;
+
+    for( i = 0; i < TrueSegmentCount; i = i + 1 ) {
+        /* If straight segment... */
+        if( RollData[2*i] == 0.0 ) {
+            TotLen = TotLen + RollData[2*i+1];
+
+            __DBGpr_int( "Segment", i );
+            __DBGpr_dbl( "Radius",  RollData[2*i] );
+            __DBGpr_dbl( "Length",  RollData[2*i+1] );
+            __DBGpr_dbl( "Total Length", TotLen );
+        }
+        /* If arc segment... */
+        else {
+            if( RollData[2*i] < 0.0 )
+                TotLen = TotLen - (BeamWebThk/2 - RollData[2*i])/RollData[2*i]*RollData[2*i+1];
+            else
+                TotLen = TotLen + (RollData[2*i]-BeamWebThk/2)/RollData[2*i]*RollData[2*i+1];
+
+            __DBGpr_int( "Segment", i );
+            __DBGpr_dbl( "Radius",  RollData[2*i] );
+            __DBGpr_dbl( "Length",  RollData[2*i+1] );
+            __DBGpr_dbl( "Total Length", TotLen );
+            __DBGpr_dbl( "Corrected arc radius",  (RollData[2*i] - BeamWebThk) );
+        }
+    }
+    *Length = TotLen;
+    return;
+
+    End
+}
+/*=====================================================================================*/
+
+correct_roll_data( Beam, AxisMacro, RollData, Length )
+struct GRobj_env  Beam, AxisMacro;
+IGRdouble 	  *RollData, *Length;
+{
+    IGRlong status, msg, i, segmentCount, TrueSegmentCount;
+    struct GRid LastLine;
+    IGRint temp_num, feet_num, temp_i, feet_i;
+    struct ret_struct  rst;
+    IGRdouble segmentRadius, segmentLength;
+
+    IGRchar AxisMacroName[80];
+    IGRchar LenLbl[10], TopLbl[12], BotLbl[12], txtBuf[80];
+    IGRdouble TmpRollData[66];
+    IGRdouble TotLen, crv_length, delta;
+    IGRlong ret_val;
+
+
+    SetProc( CorrectRollData ); Begin
+
+    segmentCount = 0;
+
+    /* GET FEET OF AXIS MACRO */
+
+    /* Check crv_roll number of feet */
+    status = om$get_channel_count( osnum = AxisMacro.obj_id.osnum, 
+                                   objid = AxisMacro.obj_id.objid,
+                                   p_chanselect = &AS_to_comp, 
+                                   count = (IGRint *) &feet_num );
+
+    __DBGpr_int( "Axis macro feet number", feet_num );
+
+
+    /* GET CRV_ROLL DATA */
+
+    /* For each segment found...   */
+    for( feet_i=0; feet_i<(feet_num-1)/2; feet_i = feet_i+1 ) {
+        /* Get Radius */
+        sprintf( txtBuf, "%s_%d", "rad", feet_i+1 );
+        get_foot_struct( &rst, txtBuf, Beam.mod_env, AxisMacro.obj_id );
+        TmpRollData[2*feet_i] = rst.var.root_pm_st.value;
+
+        __DBGpr_int( "TmpRollData index", 2*feet_i );
+        __DBGpr_dbl( "TmpRollData value", TmpRollData[2*feet_i] );
+
+        /* Get length */
+        sprintf( txtBuf, "%s_%d", "len", feet_i+1 );
+        get_foot_struct( &rst, txtBuf, Beam.mod_env, AxisMacro.obj_id );
+        TmpRollData[2*feet_i+1] = rst.var.root_pm_st.value;
+
+        __DBGpr_int( "TmpRollData index", 2*feet_i+1 );
+        __DBGpr_dbl( "TmpRollData value", TmpRollData[2*feet_i+1] );
+
+        segmentCount = segmentCount + 1;
+    }
+
+    if( !segmentCount ) {
+        printf("Could not find roll data. Quitting function...\n");
+        return(0);
+    }
+
+    __DBGpr_int( "Total segments found", segmentCount );
+
+    /* ADD STOCK */
+
+    /* Add first end stock */
+    if( TmpRollData[0] != 0.0 ) {
+        RollData[0] = -0.0;
+        RollData[1] = STOCK;
+        copy_roll_data( TmpRollData, 0, RollData, 2, segmentCount*2 );
+        TrueSegmentCount = segmentCount + 1;
+    }
+    else if( TmpRollData[2] != 0.0  && TmpRollData[1] < STOCK ) {
+        RollData[0] = -0.0;
+        RollData[1] = STOCK - TmpRollData[1];
+        copy_roll_data( TmpRollData, 0, RollData, 2, segmentCount*2 );
+        TrueSegmentCount = segmentCount + 1;
+    }
+    else {
+        copy_roll_data( TmpRollData, 0, RollData, 0, segmentCount*2 );
+        TrueSegmentCount = segmentCount;
+    }
+
+    /* Add second end stock */
+    if( TmpRollData[segmentCount * 2 - 2] != 0.0 ) {
+        RollData[TrueSegmentCount * 2 ] = -0.0;
+        RollData[TrueSegmentCount * 2 + 1] = STOCK;
+        TrueSegmentCount = TrueSegmentCount + 1;
+    }
+    else if( TmpRollData[segmentCount * 2 - 4] != 0.0  && TmpRollData[segmentCount * 2 - 3] < STOCK ) {
+        RollData[TrueSegmentCount * 2 + 1] = -0.0;
+        RollData[TrueSegmentCount * 2 + 2] = STOCK - TmpRollData[segmentCount * 2 - 2];
+        TrueSegmentCount = TrueSegmentCount + 1;
+    }
+
+    for( i = 0; i < TrueSegmentCount*2; i = i + 1 ) {
+        __DBGpr_int( "RollData index", i );
+        __DBGpr_dbl( "RollData value", RollData[i] );
+    }
+    End
+    return( TrueSegmentCount );
+}
+
+
+/*====================================================================================*/
+
+int check_coaming( Beam, name, length )
+struct GRobj_env   Beam;
+char             * name;
+double           * length;
+{
+    struct GRobj_env AxisMacro;
+    IGRlong   ret_val, status, msg, SegmentCount;
+    IGRdouble BeamLength, BeamWebThk, Roll_data[66];
+    struct ret_struct  rst;
+
+    SetProc( CheckCoaming ); Begin
+
+    get_foot_struct( &rst, VS_K_bmLengthAttr, Beam.mod_env, Beam.obj_id );
+    BeamLength = rst.var.root_pm_st.value;
+
+    get_foot_struct( &rst, VS_K_bmWebThkAttr, Beam.mod_env, Beam.obj_id );
+    BeamWebThk = rst.var.root_pm_st.value;
+
+    /* Check if crv_roll found as beam axis */
+    status = VSgetRollMacOnStiff( &Beam, "crv_roll", &AxisMacro );
+
+    /* If found then ... */
+    if( status == MSSUCC ) {
+
+        /* Fix roll data - add stocks */
+        SegmentCount = correct_roll_data( Beam, AxisMacro, Roll_data, length );
+        /* Check if the data is correct - if not leave...*/
+        if( !SegmentCount )
+            return(0);
+        calculate_length( BeamWebThk, Roll_data, SegmentCount, length );
+        /* Return YES and length */
+
+        __DBGpr_dbl( "Roll profile - length", *length );
+        return(1);
+    }
+    else {
+        /* Return NO */
+        *length = BeamLength;
+        return(0);
+    }
+    End
+}
+
+/*====================================================================================*/
+
+find_macro_operator_by_name( macro, name, oprtr )
+struct GRobj_env macro;
+char * name;
+struct GRid *oprtr;
+{
+
+    struct GRobj_env      macDefn;
+    struct GRobj_env      pmBox;
+    struct GRid           attrBox, foot, as_obj;
+    IGRdouble             matrix[16];
+    IGRlong               msg, sts, foot_exists, index, matrix_type;
+    IGRchar               *macName, foot_name[20], operator_name[20];
+    struct ret_struct     rst;
+    struct ACrg_coll      list[20];
+
+    SetProc( FindMacroOperatorByName ); Begin
+
+    get_macro_name( &macName, &macDefn.obj_id, macro.obj_id );
+
+    __DBGpr_obj( "For macro", macro.obj_id );
+    __DBGpr_obj( "Found definition", macDefn.obj_id );
+    __DBGpr_str( "Of name", macName );
+
+    /* Find macro options box */
+    /* ====================== */
+    sts = COm_get_option_grid( &macDefn.obj_id, &pmBox.obj_id, NULL );
+
+    if( !( sts & 1 ) || IF_NULL_OBJID( pmBox.obj_id.objid ) ) {
+        printf("Parameters box not found.\n");
+        return(1);
+    }
+    else {
+
+        __DBGpr_obj( "Found box", pmBox.obj_id );
+
+        /* Find ~~cmd option box */
+        /* ===================== */
+        MAidmx( &msg, pmBox.mod_env.md_env.matrix ) ;
+        pmBox.mod_env.md_env.matrix_type = MAIDMX;
+        pmBox.mod_env.md_id.osnum = pmBox.obj_id.osnum ;
+        ex$get_modid( mod_osnum = pmBox.mod_env.md_id.osnum,
+                      mod_id = &pmBox.mod_env.md_id.objid ) ;
+        /* Find ~~parent */
+        strcpy( foot_name, "~~parent" );
+        sts = ci$send(  msg = message NDmacro.ACgive_foot( &foot_exists, foot_name, &foot ),
+                        targetid= pmBox.obj_id.objid,
+                        targetos= pmBox.obj_id.osnum ) ;
+
+        __DBGpr_str( "Checking foot", foot_name );
+        __DBGpr_obj( "Foot object", foot );
+
+        sts = ci$send(  msg = message NDmacro.ACgive_structure( &msg, &index,
+                                                                foot_name, &rst,
+                                                                &pmBox.mod_env ),
+                        targetid= pmBox.obj_id.objid,
+                        targetos= pmBox.obj_id.osnum ) ;
+
+        if( !( sts & 1 & msg ) || rst.type != text_type ) {
+            printf("\tFoot %s not found\n", foot_name );
+        }
+        __DBGpr_str( "Foot value", rst.var.text_st.text_string );
+
+        strcpy( operator_name, rst.var.text_st.text_string );
+
+        /* return foot object */
+        sts = ci$send( msg = message ACcpx.ACfind_temp_obj( &msg, operator_name,
+                                                         oprtr ),
+                    targetid = macro.obj_id.objid,
+                    targetos = macro.obj_id.osnum );
+        if (!(sts&1)) {
+            printf ( "Graphic_object template is not found \n");
+            return(1);
+        }
+
+        //__DBGpr_obj( "Macro", macro.obj_id );
+        //__DBGpr_str( "Operator name", operator_name );
+        //__DBGpr_obj( "Operator object", *oprtr );
+    }
+    End
+    return;
+}
+
+
+/* ========================================================================
+ *
+ * This function is called from Profile Card STRUDEL file
+ *
+ * It takes three arguments:
+ *     1. Opening macro object
+ *     2. Opening ID symbol
+ *     3. Conversion file name
+ *
+ * It searches conversion file and for opening ID and returns to STRUDEL
+ * macro_type parameter.
+ *
+ * ======================================================================== */
+
+char * PcGen()
+//*********************
+{
+    char    SearchPath[80], code[5];
+    IGRdouble Length;
+    IGRint  type, doc_type, index, size;
+    IGRchar Filename[VD_K_tokMAX_SIZE];
+    IGRchar Name[VD_K_tokMAX_SIZE];
+    struct GRobj_env obj;
+
+    SetProc( PcGen ); Begin
+
+    doc_type = PROF_CARD;
+
+    vd$ppl_get_size( which_info = INPUT_INFO,
+                     size       = &size             );
+    vd$ppl_getarg_at_index( which_info = INPUT_INFO,
+                            index      = 0,
+                            value      = &obj  );
+
+    vd$ppl_getarg_at_index( which_info = INPUT_INFO,
+                            index      = 1,
+                            value      = &type   );
+
+    vd$ppl_getarg_at_index( which_info = INPUT_INFO,
+                            index      = 2,
+                            value      = Filename   );
+
+    vd$ppl_getarg_at_index( which_info = INPUT_INFO,
+                            index      = 3,
+                            value      = Name   );
+
+    vd$ppl_getarg_at_index( which_info = INPUT_INFO,
+                            index      = 4,
+                            value      = StrudelFileName );
+
+    __DBGpr_obj( "Retrieved object", obj.obj_id );
+    __DBGpr_str( "Retrieved filename", Filename );
+    __DBGpr_str( "Retrieved name to look for", Name );
+    __DBGpr_str( "Retrieved STRUDEL file name", StrudelFileName );
+
+    if( type ) {
+        strcpy( SearchPath, get_env_var("HOME"));
+        index = find_code( SearchPath, Filename, Name, code, type );
+    }
+    else {
+        strcpy( SearchPath, "." );
+        index = find_code( SearchPath, Filename, Name, code, type );
+
+        if( index == FBR )
+            doc_type = check_coaming( obj, "rescrv", &Length );
+        else
+            doc_type = 0;
+    }
+
+    __DBGpr_str( "Found code", code );
+    __DBGpr_int( "Found index", index );
+
+    vd$ppl_set_size(  which_info = OUTPUT_INFO,
+                      size       = 5 );
+
+    vd$ppl_setarg_at_index( which_info = OUTPUT_INFO,
+                            index      = 0,
+                            type       = VD_int,
+                            value      = &index );
+
+    vd$ppl_setarg_at_index( which_info = OUTPUT_INFO,
+                            index      = 1,
+                            type       = VD_int,
+                            value      = &doc_type );
+
+    vd$ppl_setarg_at_index( which_info = OUTPUT_INFO,
+                            index      = 2,
+                            type       = VD_string,
+                            value      = code );
+
+    vd$ppl_setarg_at_index( which_info = OUTPUT_INFO,
+                            index      = 3,
+                            type       = VD_object,
+                            value      = &obj );
+
+    vd$ppl_setarg_at_index( which_info = OUTPUT_INFO,
+                            index      = 4,
+                            type       = VD_double,
+                            value      = &Length );
+    End
+    return;
+}
+
+/* ========================================================================
+ *
+ * This function is called from Profile Card STRUDEL file
+ *
+ * It takes three arguments:
+ *     1. Opening macro object
+ *     2. Opening ID symbol
+ *     3. Conversion file name
+ *
+ * It searches conversion file and for opening ID and returns to STRUDEL
+ * macro_type parameter.
+ *
+ * ======================================================================== */
+
+char * PcStf()
+//*********************
+{
+    char    SearchPath[80], code[5];
+    IGRdouble Length;
+    IGRint  type, doc_type, index, size;
+    IGRchar Filename[VD_K_tokMAX_SIZE];
+    IGRchar Name[VD_K_tokMAX_SIZE];
+    struct GRobj_env obj;
+
+    SetProc( PcStf ); Begin
+
+    doc_type = PROF_CARD;
+
+    vd$ppl_get_size( which_info = INPUT_INFO,
+                     size       = &size             );
+    vd$ppl_getarg_at_index( which_info = INPUT_INFO,
+                            index      = 1,
+                            value      = &obj  );
+
+    vd$ppl_getarg_at_index( which_info = INPUT_INFO,
+                            index      = 2,
+                            value      = &type   );
+
+    vd$ppl_getarg_at_index( which_info = INPUT_INFO,
+                            index      = 3,
+                            value      = Filename   );
+
+    vd$ppl_getarg_at_index( which_info = INPUT_INFO,
+                            index      = 4,
+                            value      = Name   );
+
+    __DBGpr_obj( "Retrieved object", obj.obj_id );
+    __DBGpr_str( "Retrieved filename", Filename );
+    __DBGpr_str( "Retrieved name to look for", Name );
+
+    if( type ) {
+        strcpy( SearchPath, get_env_var("HOME"));
+        index = find_code( SearchPath, Filename, Name, code, type );
+    }
+    else {
+        strcpy( SearchPath, "." );
+        index = find_code( SearchPath, Filename, Name, code, type );
+
+        if( index == FBR )
+            doc_type = check_coaming( obj, "rescrv", &Length );
+        else
+            doc_type = 0;
+    }
+
+    __DBGpr_str( "Found code", code );
+    __DBGpr_int( "Found index", index );
+
+    vd$ppl_set_size(  which_info = OUTPUT_INFO,
+                      size       = 5 );
+
+    vd$ppl_setarg_at_index( which_info = OUTPUT_INFO,
+                            index      = 0,
+                            type       = VD_int,
+                            value      = &index );
+
+    vd$ppl_setarg_at_index( which_info = OUTPUT_INFO,
+                            index      = 1,
+                            type       = VD_int,
+                            value      = &doc_type );
+
+    vd$ppl_setarg_at_index( which_info = OUTPUT_INFO,
+                            index      = 2,
+                            type       = VD_string,
+                            value      = code );
+
+    vd$ppl_setarg_at_index( which_info = OUTPUT_INFO,
+                            index      = 3,
+                            type       = VD_object,
+                            value      = &obj );
+
+    vd$ppl_setarg_at_index( which_info = OUTPUT_INFO,
+                            index      = 4,
+                            type       = VD_double,
+                            value      = &Length );
+    End
+    return;
+}
+
+/* ========================================================================
+ *
+ * This function is called from Profile Card STRUDEL file
+ *
+ * It takes three arguments:
+ *     1. Chock macro object
+ *     2. Stiffener object
+ *     3. Conversion file name
+ *
+ * It checks if the chock is actually placed on a profile or if it uses it 
+ * as a reference only. It checks if the profile is a ~~parent for a chock.
+ *
+ * ======================================================================== */
+
+
+char * PcChk()
+//*********************
+{
+    IGRint    sts, msg, mac_type, index, size, IntermediateCount;
+    IGRchar   Filename[VD_K_tokMAX_SIZE];
+    IGRchar   Name[VD_K_tokMAX_SIZE], hole_type[10];
+    struct GRobj_env ChkObj, StfObj, ParentStfObj;
+    struct GRid      parent_obj, *IntermediateList;
+    double result;
+    
+
+    SetProc( PcChk ); Begin
+
+    IntermediateList = NULL;
+    
+    vd$ppl_get_size( which_info = INPUT_INFO,
+                     size       = &size             );
+    vd$ppl_getarg_at_index( which_info = INPUT_INFO,
+                            index      = 0,
+                            value      = &ChkObj );
+
+    vd$ppl_getarg_at_index( which_info = INPUT_INFO,
+                            index      = 1,
+                            value      = &StfObj   );
+
+    __DBGpr_obj( "Retrieved chock object", ChkObj.obj_id );
+    __DBGpr_obj( "Retrieved stf object", StfObj.obj_id );
+
+    find_macro_operator_by_name( ChkObj, "~~parent", &parent_obj );
+
+    __DBGpr_obj("Found ~~parent stf", parent_obj );
+    __DBGpr_obj("Compare with stf", StfObj.obj_id);
+
+    result = 0.0;
+    if( StfObj.obj_id.objid == parent_obj.objid
+        	&& StfObj.obj_id.osnum == parent_obj.osnum ) {
+        result = 1.0;
+        __DBGpr_com("Chock qualifies for placement : same beam")
+    }
+    else {
+    	__DBGpr_com("Checking profile descendent")
+  	sts = ci$send( msg = message VSfeature.VStrackDescendent(
+    			&StfObj.obj_id, 
+    			&IntermediateCount, 
+    			&IntermediateList ),
+    		targetid = parent_obj.objid,
+    		targetos = parent_obj.osnum );
+        __DBGpr_int("Found", IntermediateCount )
+    	if( IntermediateCount ) {
+    		result = 1.0;
+        	__DBGpr_com("Chock qualifies for placement : beam in list")
+    	}
+    	else
+        	__DBGpr_com("Chock does not qualify for placement")
+    }
+    if( IntermediateList )	free( IntermediateList );
+
+    // Send data block back to STRUDEL
+    //**********************************
+
+    vd$ppl_set_size( which_info = OUTPUT_INFO,
+                     size       = 1 );
+    vd$ppl_setarg_at_index( which_info = OUTPUT_INFO,      // Symbol name
+                            index      = 0,
+                            type       = VD_double,
+                            value      = &result );
+    End
+    return;
+}
+
+/* ========================================================================
+ *
+ * This function is called from Profile Card STRUDEL file
+ *
+ * It takes three arguments:
+ *     1. Opening macro object
+ *     2. Opening ID symbol
+ *     3. Conversion file name
+ *
+ * It searches conversion file and for opening ID and returns to STRUDEL
+ * macro_type parameter.
+ *
+ * ======================================================================== */
+
+
+char * PcOp()
+//*********************
+{
+    IGRchar   SearchPath[80], code[5];
+    IGRint    mac_type, index, size;
+    IGRchar   Filename[VD_K_tokMAX_SIZE];
+    IGRchar   Name[VD_K_tokMAX_SIZE], hole_type[10];
+    struct GRobj_env obj;
+
+    SetProc( PcOp ); Begin
+
+    vd$ppl_get_size( which_info = INPUT_INFO,
+                     size       = &size             );
+    vd$ppl_getarg_at_index( which_info = INPUT_INFO,
+                            index	     = 0,
+                            value      = &obj );
+
+    vd$ppl_getarg_at_index( which_info = INPUT_INFO,
+                            index	     = 1,
+                            value      = hole_type   );
+
+    vd$ppl_getarg_at_index( which_info = INPUT_INFO,
+                            index	     = 2,
+                            value      = Filename   );
+
+    __DBGpr_obj( "Retrieved object", obj.obj_id );
+    __DBGpr_str( "Retrieved filename", Filename );
+    __DBGpr_str( "Retrieved name to look for", Name );
+
+    index = find_code( SearchPath, Filename, hole_type, code, 0 );
+    mac_type = atoi( code );
+
+    __DBGpr_str( "Found code", code );
+    __DBGpr_int( "Found macro type", mac_type );
+    __DBGpr_int( "Found index", index );
+
+    vd$ppl_set_size(  which_info = OUTPUT_INFO,
+                      size       = 1 );
+
+    vd$ppl_setarg_at_index( which_info = OUTPUT_INFO,
+                            index      = 0,
+                            type       = VD_int,
+                            value      = &mac_type );
+    End
+    return;
+}
+
+/* ========================================================================
+ *
+ * This function is called from Profile Card STRUDEL file
+ *
+ * It takes an angle from the STRUDEL file and computes and returns
+ * to STRUDEl a marking angle distance of the top edge of the marking line
+ * on a web view of the profile sketch.
+ *
+ * ======================================================================== */
+
+mark_angle()
+//********************
+{
+    IGRint             size, count, sts, msg, i, distance, ChkType;
+    IGRdouble          angle, bm_height, bm_width, bm_web_thk, bm_flg_thk;
+    IGRchar            str[20];
+    struct GRobj_env   objMacro;
+    struct GRid        objStiffener, param_macro;
+    IGRchar           *pPtr, pBuf[256], pBuf1[256], dmtxt[10] ;
+    struct ACrg_coll  *list ;
+
+
+    SetProc( MarkAngle ); Begin
+
+    // Retrieve data block from STRUDEL
+    //**********************************
+
+    // Get size of input
+    vd$ppl_get_size( which_info = INPUT_INFO,
+                     size       = &size );
+    // Get Chock macro
+    vd$ppl_getarg_at_index( which_info = INPUT_INFO,
+                            index      = 0,
+                            value      = &objMacro );
+
+    __DBGpr_obj( "Retrieved macro", objMacro.obj_id );
+
+    // Get angle value
+    vd$ppl_getarg_at_index( which_info = INPUT_INFO,
+                            index      = 1,
+                            value      = str );
+    // Get Chock type
+    vd$ppl_getarg_at_index( which_info = INPUT_INFO,
+                            index      = 2,
+                            value      = &ChkType );
+
+    __DBGpr_str( "Retrieved angle string", str );
+
+    angle = atof( str );
+
+    __DBGpr_dbl( "Converted to angle", angle );
+
+    if( ChkType == 1 )
+        // Find a stiffener the chock is placed on
+        get_macro_template( "Beam_To_Chock", &objStiffener, objMacro.obj_id );
+    else
+        // Find a stiffener the marking macro is placed on
+        get_macro_template( "Stiffener", &objStiffener, objMacro.obj_id );
+
+
+    __DBGpr_obj( "Retrieved stf", objStiffener );
+
+    /* get dimensions and type from stiffener */
+    list = NULL;
+    sts = vd$get_params( sts	= &msg ,
+                         object	= &objStiffener ,
+                         md_env	= &objMacro.mod_env ,
+                         count	= &count ,
+                         plist	= &list );
+
+    __CheckRC( sts, msg, "vd$get_params", wrapup ) ;
+
+    for( i = 0; i < count; i = i + 1 ) {
+        pPtr = NULL ;
+        pBuf[0] = '\0';
+        pPtr = strrchr( list[i].name, ':' );
+
+        if( pPtr != NULL ) {
+            strcpy( pBuf1, pPtr );
+            strcpy( pBuf, &pBuf1[1] );
+        }
+        else
+            strcpy( pBuf , list[i].name );
+
+        //__DBGpr_int( "Parameter index", i );
+        //__DBGpr_str( "Parameter name", pBuf );
+
+
+        if( strcmp( pBuf , "x_Height" ) == 0 )
+            bm_height = list[i].desc.value.att_exp;
+        if( strcmp( pBuf , "x_Flg_Thickness" ) == 0 )
+            bm_flg_thk = list[i].desc.value.att_exp;
+    }
+
+    __DBGpr_dbl( "BeamHeight", bm_height );
+    __DBGpr_dbl( "FlangeThickness", bm_flg_thk );
+
+ wrapup:
+    if( list ){ free( list ); list = NULL; }
+
+    // Compute the distance
+    distance = (int) (( bm_height - bm_flg_thk ) / tan( angle ) );
+
+    __DBGpr_dbl( "Distance", distance );
+
+    // Send data block back to STRUDEL
+    //**********************************
+    vd$ppl_set_size( which_info = OUTPUT_INFO,
+                     size       = 1 );
+    vd$ppl_setarg_at_index( which_info = OUTPUT_INFO,
+                            index      = 0,
+                            type       = VD_int,
+                            value      = &distance );
+    return;
+}
+
+
+main()
+{
+  return;
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

@@ -1,0 +1,449 @@
+/* $Id: COpltLabel.u,v 1.2 2001/04/22 17:07:12 ramarao Exp $  */
+/* --------------------------------------------------------------------
+ * I/LOFT
+ *
+ * File:        loft/src/pcard/COpltLabel.u
+ *
+ * Description: Command PPL to place plate_label macro on a plate.
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ *      $Log: COpltLabel.u,v $
+ *      Revision 1.2  2001/04/22 17:07:12  ramarao
+ *      Applied Symbology to 'neat_cont' macro.
+ *
+ *      Revision 1.1  2001/04/16 17:00:28  ramarao
+ *      Implemented CR#4086 on Auto Labeling.
+ *
+ *
+ * History:
+ *      MM/DD/YY        AUTHOR          DESCRIPTION
+ *      04/16/01        Rama Rao        File Creation.
+ * -------------------------------------------------------------------*/
+
+#include "VDppl.h"
+#include "VDchn.h"
+#include "VDobj.h"
+#include "VDefp.h"
+#include "VDfrm.h"
+#include "vllblloft.h"
+
+extern 	ASmake_source_from_env(), VD_bulkDisplayByGRids(), VScreateLabels(),
+	VD_bulkDeleteByGRids(), VD_bulkDisplayByGRobj_envs(), dblcpy(),
+	VDsupInitCnst();
+
+extern  FIg_is_valid(), FIg_get_attr();
+
+#define theCommand 	"Auto Label Plate"
+#define thePrompt	"Select a plate"
+
+Form                    form;
+struct CIform_st        form_st;
+IGRint			form_displayed,form_exists, not_done, num_labels,
+			response, form_labels[30], labels_used;
+LabelInfo               *labelInfo;
+struct GRobj_env        pltOE;
+struct GRmd_env         loc_env;
+
+GetPlateAndContour( neat_cont )
+struct GRid		*neat_cont;
+{
+IGRlong			sts, msg;
+IGRint			i, response, feet_size;
+IGRchar			path[200], macName[200];
+TVDvlaID   		macVLA;
+struct GRid		csId, macID;
+struct GRobj_env	TEMPLATES[2], neatOE;
+
+   sts = di$give_pathname(osnum = loc_env.md_id.osnum, pathname = path );
+   if( (sts&1) && path[0] != '\0' )
+   {
+      strcat( path, ":usr:BASEcoordsys" );
+      sts = di$translate( objname = path,
+                          p_objid = &csId.objid,
+                          p_osnum = &csId.osnum   );
+      TEMPLATES[0].obj_id  = csId;
+      TEMPLATES[0].mod_env = loc_env;
+   }
+
+   message( theCommand );
+
+   sts = ci$locate( prompt  = thePrompt,
+		    classes = "VSplate",
+                    owner_action = LC_RIGID_OWNER |
+                                   LC_RIGID_COMP  |
+                                   LC_FLEX_COMP   |
+                                   LC_FLEX_OWNER  |
+                                   LC_REF_OBJECTS,
+                    stackable    = 1,
+                    response     = &response,
+                    md_env       = &pltOE.mod_env,
+                    obj          = &pltOE.obj_id.objid,
+                    osnum        = &pltOE.obj_id.osnum );
+
+   neat_cont->objid = NULL_OBJID;
+   neatOE.obj_id.objid = NULL_OBJID;
+   neatOE.obj_id.osnum = loc_env.md_id.osnum;
+
+   vdvla_id$Construct(vla = &macVLA);
+   vdchn$GetChildrenByClass( objOE     = &pltOE,
+                             className = "nci_macro",
+                             vla       = &macVLA );
+
+   for( i = 0;
+        vdvla_id$GetAt(vla = &macVLA, nth = i, objID = &macID);
+        i = i +1 )
+   {
+      vdobj$Get( objID = &macID, macName = macName );
+      if( !strcmp( macName, "neat_cont" ) )
+      {
+          feet_size = 0;
+          om$get_channel_count( osnum = macID.osnum,
+                                objid = macID.objid ,
+                                p_chanselect = &AC_mto_graf_chns,
+                           count = (OMuint *)&feet_size );
+          if( feet_size > 0 )
+          {
+              *neat_cont = macID;
+              break;
+          }
+          else VD_bulkDeleteByGRids( &loc_env, 1, &macID );
+      }
+   }
+   vdvla_id$Delete(vla = &macVLA);
+
+   if( neat_cont->objid == NULL_OBJID )
+   {
+      TEMPLATES[1] = pltOE;
+      vdefp$PlaceMacro( libName = "VSapps.lib",
+                        macName = "neat_cont",
+                        tplCnt  = 2,
+                        tplOEs  = TEMPLATES,
+                        macOE   = &neatOE   );
+      *neat_cont = neatOE.obj_id;
+   }
+   return 1;
+}
+
+main()
+{
+IGRint			i, feet_size, row, sel;
+IGRchar			labelString[10];
+struct GRid		neat_cont;
+
+   ci$get_module_info( md_env = &loc_env );
+
+   num_labels = 0;
+   labelInfo = NULL;
+
+   labels_used = FALSE;
+   for( i=0; i<30; i=i+1 )  form_labels[i] = 0;
+
+   GetPlateAndContour( &neat_cont );
+
+   feet_size = 0;
+   om$get_channel_count( osnum = neat_cont.osnum,
+                         objid = neat_cont.objid ,
+                         p_chanselect = &AC_mto_graf_chns,
+                         count = (OMuint *)&feet_size );
+   if( feet_size == 0 ) goto wrapup;
+
+   VScreateLabels( pltOE, neat_cont, &loc_env, &num_labels, &labelInfo );
+
+   init_form();
+
+   not_done  = TRUE;
+
+   while (not_done )
+   {
+    /* Suspend the command file and wait for the form */
+    ci$get (  prompt   = "Do Something",
+              response = &response );
+
+    UI_status(""); /* clear the status field*/
+
+    dp$erase_hilite( msg = &msg );
+
+    switch ( form_st.gadget_label )
+    {
+       case FI_ACCEPT:
+       {
+	   labels_used = TRUE;
+	   PlaceLabels();
+           dp$erase_hilite( msg = &msg );
+           not_done = FALSE;
+           FIf_erase ( form );
+           break;
+       }
+       case G_LABEL_FIELD:
+       {
+	   vdfrm$GetActiveRow( form = form, gadget = G_LABEL_FIELD,
+			       row = &row );
+	   VD_bulkDisplayByGRids( &loc_env, GRhd, 1, 
+				  &labelInfo[row].edgeID  );
+	   VD_bulkDisplayByGRids( &loc_env, GRhd, 1, 
+				  &labelInfo[row].labelID );
+	   vdfrm$GetSelect( form = form, gadget = G_LABEL_FIELD,
+			    row = row, col = 1, sel = &sel );
+	   if( sel )
+	   {
+	      VD_bulkDisplayByGRobj_envs( GRhd, 1, &labelInfo[row].plateOE );
+           }
+
+           vdfrm$GetSelect( form = form, gadget = G_LABEL_FIELD,
+                            row = row, col = 0, sel = &sel );
+           if( sel )
+           {
+              vdfrm$GetText( form = form, gadget = G_LABEL_FIELD,
+                             row = row, col = 0, txt = labelString );
+
+	      if( labelString[0] == 'X' ) labelString[0] = '\0';
+	      else			  strcpy( labelString, "X" );
+
+     	      vdfrm$SetText( form = form, gadget = G_LABEL_FIELD,
+                             row = row, col = 0, txt = labelString );
+           }
+           break;
+       }
+     }
+   }
+wrapup:
+   return 1;
+}
+
+DisableAll()
+{
+   IGRint       i, attr ;
+
+   for( i=0; i<30; i=i+1 )
+   {
+       form_labels[i] = 0 ;
+       if( ! ( FIg_is_valid( form, i )) )
+       {
+          FIg_get_attr( form, i, &attr ) ;
+          if( !( attr & FI_NOT_DISPLAYED ) )
+          {
+             FIg_disable( form, i );
+             form_labels[i] = 1 ;
+          }
+       }
+    }
+}
+
+EnableAll()
+{
+   IGRint       i;
+   for( i=0; i<30; i=i+1 )
+   {
+       if( form_labels[i] ) FIg_enable( form, i );
+   }
+}
+
+sleep ()
+/************************************************************
+ * FUNCTION:  sleep()
+ *
+ * DESCRIPTION: This function is called immediately before the
+ *    command file is interrupted.
+ ************************************************************/
+{
+        /* Erase the form if it is displayed */
+        if ( form_displayed == TRUE ) {
+	   DisableAll();
+           form_displayed = FALSE;
+        }
+}
+
+wakeup ()
+/************************************************************
+ * FUNCTION:  wakeup()
+ *
+ * DESCRIPTION: This function is called when the command file
+ *    is started and when it resumes after an interruption.
+ ************************************************************/
+{
+        /* Display the form unless the command file is just starting */
+        if( not_done ) {
+            if( form )
+            {
+                EnableAll();
+                form_displayed = TRUE; /* Set flag for sleep function */
+            }
+        }
+}
+
+int init_form()
+{
+IGRint  	i, sts, retFlag;
+IGRchar		plateName[50];
+Form    	existingForm;
+
+  retFlag = 0;
+  sts = VI_get_form_by_name(FORM_NAME, &existingForm);
+  if (sts == FI_SUCCESS)
+  {
+      UI_status("Place Labels command is active" );
+      return 0;
+  }
+
+  VIf_new(100, FORM_NAME, ci_notification, &form);
+  if (form == NULL)
+  {
+      printf("Can not Initialize the Labels Form\n" );
+      goto wrapup;
+  }
+  form_exists = TRUE;  /* Flag for delete function */
+  VDahFrmLoadPositionFromFile( form );
+  VIf_set_cmd_oid_os( form, MY_ID, OM_Gw_current_OS );
+
+  VIf_display( form );
+  form_displayed = TRUE;  /* Flag for sleep function */
+
+  vdfrm$SetNumRows( form = form, gadget = G_LABEL_FIELD, 
+		    rows = num_labels );
+
+  for( i=0; i<num_labels; i=i+1 )
+  {
+     vdobj$Get( objOE = &labelInfo[i].plateOE, objName = plateName );
+     vdfrm$SetText( form = form, gadget = G_LABEL_FIELD,
+                    row = i, col = 1, txt = plateName );
+
+     vdfrm$SetText( form = form, gadget = G_LABEL_FIELD,
+		    row = i, col = 2, txt = labelInfo[i].labelString );
+  }
+
+  retFlag = 1;
+
+wrapup:
+  return retFlag;
+}
+
+/* ---------------------------------
+ * Gadget handling
+ */
+form_notification()
+{
+  ci$put( response = MOVE_ON );  /* Give control to the main function */
+  return 1;
+}
+
+delete ()
+/************************************************************
+ * FUNCTION: delete()
+ *
+ * DESCRIPTION: This function is called when the command file
+ *    ends or is terminated.
+ ************************************************************/
+{
+   int     i ;
+
+   /* Erase the form if it is displayed */
+   if ( form_displayed == TRUE ) {
+      FIf_erase ( form );
+      form_displayed = FALSE;
+   }
+   /* Delete the form if it exists */
+   if ( form_exists ) {
+      if( form ) {
+         VDahFrmSavePositionInFile(form);
+         if (form) VIf_delete(form);
+         form = NULL;
+      }
+   }
+
+   if( labels_used == FALSE && num_labels )
+   {
+      for( i=0; i<num_labels; i=i+1 )
+      {
+        VD_bulkDisplayByGRids( &loc_env, GRbe, 1, &labelInfo[i].labelID );
+	VD_bulkDeleteByGRids( &loc_env, 1, &labelInfo[i].labelID );
+      }
+   }
+
+   not_done = 0 ;
+   if( labelInfo ) { free( labelInfo ); labelInfo = NULL; }
+   num_labels = 0;
+}
+
+PlaceLabels()
+{
+IGRint			i;
+IGRdouble		pt[3];
+IGRuchar        	weight;
+IGRchar			labelString[80];
+struct GRvg_construct   cst;
+struct IGRpolyline	lstr_geom;
+struct GRid		ptId, TEMP[3], MAC ;
+
+  if( num_labels ==0 ) goto wrapup;
+
+  weight = 3;
+
+  VDsupInitCnst( &cst ) ; 
+
+  *(cst.env_info)   =  loc_env;
+
+  lstr_geom.num_points    = 1;
+  lstr_geom.points        = pt;
+  cst.geometry  = (IGRchar *) &lstr_geom;
+
+  cst.display->weight = 3;
+
+  for( i=0; i<num_labels; i=i+1 )
+  {
+    vdfrm$GetText( form = form, gadget = G_LABEL_FIELD,
+                   row = i, col = 0, txt = labelString );
+
+    if( !strcmp( labelString, "X" ) ) 
+    {
+       VD_bulkDisplayByGRids( &loc_env, GRbe, 1, &labelInfo[i].labelID );
+       VD_bulkDeleteByGRids( &loc_env, 1, &labelInfo[i].labelID );
+       continue;
+    }  
+
+    vdfrm$GetText( form = form, gadget = G_LABEL_FIELD,
+		   row = i, col = 2, txt = labelString );
+
+    ci$send( msg      = message GRtext.GRreplace_text( &msg, &loc_env,
+			  strlen(labelString), labelString ),
+	     targetid = labelInfo[i].labelID.objid,
+             targetos = labelInfo[i].labelID.osnum );
+
+    ptId.objid = NULL_OBJID;
+    ptId.osnum = loc_env.md_id.osnum;
+
+    dblcpy( pt, labelInfo[i].labelPoint, 3 );
+
+    ci$send( msg      = message GR3dpoint.GRaltconstruct( &cst ),
+             targetid = ptId.objid,
+             targetos = ptId.osnum );
+
+    ASmake_source_from_env( &pltOE.obj_id, &loc_env, &TEMP[0] );
+    ASmake_source_from_env( &labelInfo[i].labelID, &loc_env, &TEMP[1] );
+    ASmake_source_from_env( &ptId, &loc_env, &TEMP[2] );
+
+    ci$send( msg      = message NDnode.NDchg_state(
+                                ND_DEL_NO_CH | ND_WAIT_DEL,
+                                ND_DEL_NO_CH | ND_WAIT_DEL ),
+             targetid = TEMP[0].objid,
+             targetos = TEMP[0].osnum );
+
+    ci$send( msg      = message NDnode.NDchg_state(
+                                ND_DEL_NO_CH | ND_WAIT_DEL,
+                                ND_DEL_NO_CH | ND_WAIT_DEL ),
+             targetid = TEMP[1].objid,
+             targetos = TEMP[1].osnum );
+
+    MAC.objid = NULL_OBJID;
+    MAC.osnum = loc_env.md_id.osnum;
+
+    ci$send( msg      = message  nci_macro.init
+                    ( &msg, 0,"plate_label", 3, TEMP, NULL,  &loc_env ),
+             targetid = MAC.objid,
+             targetos = MAC.osnum );
+  }
+
+wrapup:
+  return 1;
+}

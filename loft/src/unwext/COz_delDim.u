@@ -1,0 +1,135 @@
+/* $Id: COz_delDim.u,v 1.1 2001/10/27 16:30:28 ramarao Exp $ */
+/*************************************************************************
+ * I/LOFT
+ *
+ * File:        isdp/loft/src/unwext/COz_delDim.u
+ *
+ * Description: PPL to delete the bevel dimensions on unwrap feature.
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ *      $Log: COz_delDim.u,v $
+ *      Revision 1.1  2001/10/27 16:30:28  ramarao
+ *      Implemented CR# 5673.
+ *
+ *
+ * History:
+ *      MM/DD/YY   AUTHOR               DESCRIPTION
+ *      10/27/01   Rama Rao             File Creation ( CR# 5673 ).
+ *************************************************************************/
+
+#include "VDppl.h"
+#include "VDobj.h"
+#include "VDchn.h"
+#include "coparamac.h"
+
+extern GRclassid	OPP_GRcurve_class_id, OPP_GRtext_class_id;
+
+extern 	VD_is_ancestry_valid(), ASstart_var_fence(), ASend_fence(),
+	VD_bulkDisplayByGRids(), VD_bulkDeleteByGRids();
+
+struct GRmd_env		cur_env;
+
+process( objOE )
+struct GRobj_env	*objOE;
+{
+IGRint			i, geomCnt;
+IGRchar			macName[40];
+struct GRid		bvlID, geomIDs[20];
+struct GRobj_env	drwOE;
+
+   bvlID.objid = NULL_OBJID;
+   vdobj$GetParent( objOE = objOE, idx = 1, parentID = &bvlID );
+   if( bvlID.objid == NULL_OBJID ) goto wrapup;
+
+   vdobj$Get( objID = &bvlID, macName = macName );
+   if( strcmp( macName, "Bevel" ) ) goto wrapup;
+
+   drwOE.obj_id.objid = NULL_OBJID;
+   vdobj$GetFoot( objOE    = objOE,
+                  footName = "geom",
+                  footOE   = &drwOE );
+   if( drwOE.obj_id.objid == NULL_OBJID ) goto wrapup;
+
+   geomCnt = 0;
+   vdchn$GetList( objOE = &drwOE, chnIDx = VDCHN_IDX_TO_COMPONENTS,
+		  maxCnt = 20, cnt = &geomCnt, outIDs = geomIDs );
+   if( geomCnt < 7 ) goto wrapup;
+
+   for( i=0; i<4; i=i+1 )
+      if( !VD_is_ancestry_valid( &geomIDs[i], OPP_GRcurve_class_id ) )
+	  goto wrapup;
+
+   for( i=4; i<7; i=i+1 )
+      if( !VD_is_ancestry_valid( &geomIDs[i], OPP_GRtext_class_id ) )
+          goto wrapup;
+
+   VD_bulkDisplayByGRids( &cur_env, GRbe, 6, &geomIDs[1] );
+
+   VD_bulkDeleteByGRids( &cur_env, 6, &geomIDs[1] );
+
+wrapup:
+   return;
+}
+
+main()
+{
+IGRint			sts, msg, i, locNum, response;
+struct GRobj_env	objOE, *locOEs;
+
+   locOEs = NULL;
+
+   ci$get_module_info( md_env = &cur_env );
+
+   message( "Delete Bevel Dimension" );
+
+   while( 1 )
+   {
+       locNum = 0;
+	
+       if( locOEs ) { free( locOEs ); locOEs = NULL; }
+
+       sts = ci$locate( prompt  = "Locate Bevel Feature(s)",
+                        classes = "VLunwFeat",
+                        owner_action = LC_RIGID_OWNER |
+                                       LC_RIGID_COMP  |
+                                       LC_FLEX_COMP   |
+                                       LC_FLEX_OWNER  ,
+                        stackable    = 1,
+                        response     = &response,
+                        md_env       = &objOE.mod_env,
+                        obj          = &objOE.obj_id.objid,
+                        osnum        = &objOE.obj_id.osnum);
+
+       if (!(sts & 1)) break;
+
+       switch(response) 
+       {
+         case EX_OBJID:   // Object Set
+
+      	    /* Grab Located Objects */
+      	    as$start_fence( set       = &objOE.obj_id,
+			    set_env   = &objOE.mod_env,
+			    nb_obj    = &locNum,
+			    p_obj_env = &locOEs           );
+
+            for( i=0; i<locNum; i=i+1) 
+	    {
+                process( &locOEs[i] );
+            }
+
+            ASend_fence();
+            break;
+
+         case EX_DATA:    // Single Object
+            process( &objOE );
+            break;
+
+       } // Switch
+   }
+
+wrapup:
+   if( locOEs ) { free( locOEs ); locOEs = NULL; }
+   return 1;
+}

@@ -1,0 +1,168 @@
+
+/***************************************************************************
+ * I/LOFT
+ *
+ * File:        src/key_line/COreportKL.u
+ *
+ * Description: generate a STRUDEL driven report on ISDP\Loft Key Lines.
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ *
+ * History:
+ * MM/DD/YY  AUTHOR  DESCRIPTION
+ * 06/05/00  mf      Creation
+ *
+ ***************************************************************************/
+
+#include "VDppl.h"
+#include "VDobj.h"
+#include "vscmd.h"
+#include "coparamac.h"
+#include "growner.h"
+#include "AS_status.h"
+
+extern		ASstart_var_fence();
+extern		ASend_fence();
+extern		VScreateFileForm();
+extern	IGRlong	VLexecKeyLineList();
+extern	IGRlong	VLexecKeyLineMatrix();
+
+#define theCommand "Report Key Lines"
+#define thePrompt  "Select plate_key ci_macro(s)"
+
+IGRchar curPATH[MAXPATHLEN + 1];
+IGRchar	curNAME[FILENAME_MAX+1];
+IGRchar	curRGXP[VS_K_MAX_RGXP];
+
+/* --------------------------------------
+ * The main routine
+ */
+int main()
+{
+	int 			sts, msg, response;
+ 
+	struct	GRobj_env  	oLocate, *oArray;
+	IGRint      		iArray;
+
+	IGRlong			Sts, Msg;
+	VSfileFormInfo		File;
+
+	Msg = OM_S_SUCCESS;
+
+	strcpy ( curPATH, "." );
+	File.curPATH = curPATH;
+	strcpy ( curNAME, "" );
+	File.curNAME = curNAME;
+	strcpy ( curRGXP, "*" );
+	File.curRGXP = curRGXP;
+	File.callBack   = NULL;
+	File.parentForm = NULL;
+	strcpy ( File.openMode, "w" );
+ 
+	while(1) {
+
+		VScreateFileForm ( 0, 100, &File);
+
+		oLocate.obj_id.objid = NULL_OBJID;
+ 
+    		response = 0;
+
+		UI_message(theCommand);
+
+		/* Locate plate_band ci_macro(s) */
+		sts = ci$locate ( prompt  = thePrompt,
+	                    	  classes = "ci_macro",
+       		             	  owner_action = LC_RIGID_OWNER |
+                                         	 LC_RIGID_COMP  |
+                                         	 LC_FLEX_COMP   |
+                                         	 LC_FLEX_OWNER  |
+                                         	 LC_REF_OBJECTS,
+
+                    	  	  stackable    = 1,
+                    	  	  response     = &response,
+                    	  	  md_env       = &oLocate.mod_env,
+                    	  	  obj          = &oLocate.obj_id.objid,
+                    	  	  osnum        = &oLocate.obj_id.osnum );
+
+    		if (!(sts & 1)) response = 0;
+
+
+    		switch(response) {
+
+    		case EX_OBJID:   // Object Set
+
+      			/* Grab Located Objects */
+			as$start_fence( set       = &oLocate.obj_id,
+					set_env   = &oLocate.mod_env,
+					nb_obj    = &iArray,
+					p_obj_env = &oArray);
+
+			Sts = VLexecKeyLineMatrix ( iArray, oArray, &Msg );
+			as$status ( sts    = Sts,
+				    msg    = "VLexecKeyLineMatrix()",
+				    test   = (!(Sts & 0x00000001)),
+				    action = GOTO_VALUE,
+				    value  = wrapup );
+
+if (strlen(File.curNAME) > 0 ) {
+			Sts = VLexecKeyLineList ( iArray, oArray,
+						  &oLocate.mod_env ,
+				    	          File ,"RPsetup", &Msg );
+			as$status ( sts    = Sts,
+				    msg    = "VLexecKeyLineList()",
+				    test   = (!(Sts & 0x00000001)),
+				    action = GOTO_VALUE,
+				    value  = wrapup );
+}
+
+			ASend_fence();
+      			break;
+
+    		case EX_DATA:    // Single Object
+
+			Sts = VLexecKeyLineMatrix ( 1, &oLocate, &Msg );
+			as$status ( sts    = Sts,
+				    msg    = "VLexecKeyLineMatrix()",
+				    test   = (!(Sts & 0x00000001)),
+				    action = GOTO_VALUE,
+				    value  = wrapup );
+
+if (strlen(File.curNAME) > 0 ) {
+			Sts = VLexecKeyLineList ( 1, &oLocate,
+						  &oLocate.mod_env ,
+				    	          File ,"RPsetup", &Msg );
+			as$status ( sts    = Sts,
+				    msg    = "VLexecKeyLineList()",
+				    test   = (!(Sts & 0x00000001)),
+				    action = GOTO_VALUE,
+				    value  = wrapup );
+}
+
+      			break;
+
+		}
+
+	}
+
+wrapup:
+  	return 1;
+}
+
+/* ------------------------------------------
+ * Usual command object messages
+ */
+init()
+{
+}
+sleep()
+{
+}
+wakeup()
+{
+	UI_message(theCommand);
+}
+delete()
+{
+}

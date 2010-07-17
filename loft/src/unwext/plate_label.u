@@ -1,0 +1,179 @@
+/* $Id: plate_label.u,v 1.2 2001/04/24 20:07:58 ramarao Exp $  */
+/* --------------------------------------------------------------------
+ * I/LOFT
+ *
+ * File:        loft/src/pcard/plate_label.u
+ *
+ * Description: plate_label macro implementation.
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ *      $Log: plate_label.u,v $
+ *      Revision 1.2  2001/04/24 20:07:58  ramarao
+ *      Changed the macro definition. TR# 5016.
+ *
+ *      Revision 1.1  2001/04/16 17:00:37  ramarao
+ *      Implemented CR#4086 on Auto Labeling.
+ *
+ *
+ * History:
+ *      MM/DD/YY        AUTHOR          DESCRIPTION
+ *      04/16/01        Rama Rao        File Creation.
+ * -------------------------------------------------------------------*/
+
+#include "VDppl.h"
+#include "VDchn.h"
+#include "VDobj.h"
+#include "vsplatedef.h"
+#include "ci_mac_def.h"
+#include "v_geommacros.h"
+
+#define MACRO_NAME	"plate_label"
+
+#define MAX_TEMP	3
+#define MAX_FEET	1
+#define MAX_FEET_CHAR	10
+
+GRobj           ci_mac_def1;
+struct GRid     CI_MACRO_ID, GRid_list[MAX_FEET];
+
+extern VLgetPtCoord(), MAtrlmx(), MAtypemx(), VD_bulkDeleteByGRobj_envs();
+
+main()
+{
+   IGRlong	sts;
+   IGRint       i, msg, temp_types[MAX_TEMP];
+   IGRchar      *temp_names[MAX_TEMP], *feet_names[MAX_FEET];
+
+   temp_names[0] = "plate" ;    temp_types[0] = macro_generic ;
+   temp_names[1] = "label" ;	temp_types[1] = text_type ;
+   temp_names[2] = "position" ; temp_types[2] = point_generic ;
+
+   feet_names[0] = "label" ;
+
+   ci_mac_def1 = NULL_OBJID;
+
+   ac$cimacdef( cimacdef          = ci_mac_def1,
+                status            = &sts,
+                name              = MACRO_NAME,
+                temp_num          = MAX_TEMP,
+                temp_names        = temp_names,
+                temp_types        = temp_types,
+                extern_feet_num   = MAX_FEET,
+                extern_feet_names = feet_names );
+}
+
+computeText ()
+{
+IGRlong			sts;
+IGRdouble		origin[3], delta[3], matrix[16];
+IGRshort		action, props, matrix_type;
+struct GRobj_env	parentOE, labelOE, pointOE;
+struct IGRlbsys         *lbs;
+
+   lbs = NULL;
+
+   vdobj$GetParent( objID = &CI_MACRO_ID, idx = 1, 
+		    parentID = &parentOE.obj_id  );
+   parentOE.mod_env = MOD_ENV;
+   vdobj$GetFoot( objOE = &parentOE, footName = "", footOE = &labelOE );
+
+   vdobj$GetParent( objID = &CI_MACRO_ID, idx = 2,  
+		    parentID = &parentOE.obj_id );
+   parentOE.mod_env = MOD_ENV;
+   vdobj$GetFoot( objOE = &parentOE, footName = "", footOE = &pointOE );
+
+   sts = ci$send( msg = message GR3dtext.GRgenabsg(
+				&msg,
+                                &labelOE.mod_env.md_env.matrix_type,
+                                labelOE.mod_env.md_env.matrix,
+                                (IGRchar**)&lbs ),
+                  targetid = labelOE.obj_id.objid,
+                  targetos = labelOE.obj_id.osnum);
+   if (lbs == NULL) {
+        printf("Problem getting label location\n");
+        goto wrapup;
+   }
+
+   VLgetPtCoord( &msg, pointOE.obj_id, &pointOE.mod_env, origin );
+
+   delta[0] = origin[0] - lbs->matrix[3] ;
+   delta[1] = origin[1] - lbs->matrix[7] ;
+   delta[2] = origin[2] - lbs->matrix[11] ;
+
+   /* get a transformation matrix */
+
+   MAtrlmx( &msg, delta, matrix );
+   MAtypemx( &msg, matrix, &matrix_type);
+
+   vd_$grCopy( 	msg = &msg, frObj = &labelOE.obj_id,
+		frEnv = &labelOE.mod_env, toEnv = &MOD_ENV,
+	       	mxType = matrix_type, mx = matrix, toObj = &GRid_list[0] );
+
+   props = GRIS_LOCATABLE | GRIS_DISPLAYABLE;
+   action = 0;
+   sts = ci$send ( msg = message GRgraphics.GRchgprops(
+                                     &msg, &action, &props ),
+                   targetid = labelOE.obj_id.objid,
+                   targetos = labelOE.obj_id.osnum );
+
+wrapup:
+   return 1;
+}
+
+place ()
+{
+
+  computeText();
+
+  if( GRid_list[0].objid == NULL_OBJID ) return(0);
+  ci$send( msg = message  ci_macro.set_all_extern_feet
+         ( &msg, 1,GRid_list, &MOD_ENV ),
+           targetid = CI_MACRO_ID.objid,
+           targetos = CI_MACRO_ID.osnum );
+  return(1);
+}
+/* ========================================================================= */
+
+compute ()
+{
+  computeText();
+
+  if( GRid_list[0].objid == NULL_OBJID ) return(0);
+
+  ci$send( msg = message  ci_macro.set_all_extern_feet
+         ( &msg, 1,GRid_list, &MOD_ENV ),
+           targetid = CI_MACRO_ID.objid,
+           targetos = CI_MACRO_ID.osnum );
+  return(1);
+}
+
+/* ========================================================================= */
+/* internal function NDdelete()
+/* ========================================================================= */
+NDdelete(md_env)
+struct GRmd_env *md_env;
+{
+IGRlong                 sts;
+struct GRobj_env        parentOE, labelOE, pointOE;
+
+   vdobj$GetParent( objID = &CI_MACRO_ID, idx = 1,
+                    parentID = &parentOE.obj_id  );
+   parentOE.mod_env = MOD_ENV;
+   vdobj$GetFoot( objOE = &parentOE, footName = "", footOE = &labelOE );
+
+   vdobj$GetParent( objID = &CI_MACRO_ID, idx = 2,
+                    parentID = &parentOE.obj_id );
+   parentOE.mod_env = MOD_ENV;
+   vdobj$GetFoot( objOE = &parentOE, footName = "", footOE = &pointOE );
+
+   VD_bulkDeleteByGRobj_envs( 1, &labelOE );
+   VD_bulkDeleteByGRobj_envs( 1, &pointOE );
+
+wrapup:
+   ci$send( msg      = message ov_ci_mac.NDdelete( md_env ),
+                        targetid = CI_MACRO_ID.objid,
+                        targetos = CI_MACRO_ID.osnum,
+                        mode     = WRT_message );
+}

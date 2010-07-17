@@ -1,0 +1,863 @@
+/***************************************************************************
+ * INGR - PPL
+ *
+ * File:        PCroll2d.u
+ *
+ * Description:	PPL macro for placing roll lines on profile cards
+ *
+ * Dependencies:
+ *
+ * History:
+ *      MM/DD/YY        AUTHOR          DESCRIPTION
+ *      02/17/00        mjablko         creation date
+ *      02/18/00        jhanson         ellipse shape added
+ *
+ ***************************************************************************/
+// DEBUG INFO
+//***********
+
+//#define DEBUG
+
+// INCLUDES
+//***********
+#include <stdio.h>
+#include "OMtypes.h"
+#include "ciminimum.h"
+#include "cimacros.h"
+#include "ci_mac_def.h"
+#include "cimath.h"
+#include "OMerrordef.h"
+#include "cierrordef.h"
+#include "OMprimitives.h"
+#include "DIdef.h"
+#include "cimacros.h"
+#include "grmacros.h"
+#include "grgsmacros.h"
+#include "growner.h"
+#include "grwireframe.h"
+#include "grdpb.h"
+#include "grdpbmacros.h"
+#include "fontmacros.h"
+#include "cotxmacros.h"
+#include "exmacros.h"
+#include "parametric.h"
+#include "ACrg_collect.h"
+#include "AS_status.h"
+#include "nddef.h"
+
+#include "vdAPImacros.h"
+#include "vdAPIequips.h"
+#include "vsAPImacros.h"
+#include "vdsmacros.h"
+#include "v_slcdef.h"
+#include "v_pplslc.h"
+#include "vsmiscpplmac.h"
+
+/* Macro constants */
+/* =============== */
+#define MAX_FEET       200
+#define MAX_TEMP       4
+#define MAX_CHA_TEMP   20
+#define PI 	       3.141592654
+#define HALF_PI	       1.570796
+
+/* txt scale factors */
+/* ================= */
+#define LABEL	2.5
+#define DIM	3.0
+#define DIM_OVL 1.5
+#define DIM_LEN 15.0
+
+#define STOCK 75.0
+
+
+/* CI_MACRO variables */
+/* ================== */
+GRobj 	 	ci_mac_def1;
+IGRint		stat, msg, grCount, temp_types[MAX_TEMP];
+IGRchar         *temp_names[MAX_TEMP], *feet_names[MAX_FEET];
+struct GRid     CI_MACRO_ID, GRid_list[MAX_FEET];
+
+/* Macro templates */
+/* =============== */
+struct GRobj_env  Coord, Beam;
+       double     pcLength, pcHeight;
+
+/* GLOBAL VARIABLES */
+/* ================ */
+IGRdouble               Distance, FrameHeight, Dimension, Offset, BeamLength, BeamWebThk, Lscale;
+IGRchar                 TopLabel[30], BotLabel[30], DimText[10];
+struct GRobj_env        Line;
+struct GRmd_env	        MOD_ENV;
+struct GRvg_construct   cst;
+struct IGRdisplay	dis;
+struct ret_struct	expr;
+IGRdouble               txt_cs[16], midpt[3], dim_txt_ht, lbl_txt_ht;
+
+/* Coordinate System and main axes */
+double	cs[16] ;
+double	xvec[3], yvec[3], zvec[3], origin[3];
+
+/* Point to sketch graphics*/
+double p0[3], p1[3], p2[3], p3[3], p4[3], p5[3], p6[3];
+double p7[3], p8[3], p9[3], p10[3], p11[3], p12[3];
+double p13[3], p14[3], p15[3], p16[3], p17[3], p18[3];
+double p19[3], p20[3], p21[3], p22[3], p23[3], p24[3];
+
+
+/* External functions */
+extern   OM_S_CHANSELECT  AS_to_comp;
+extern   OM_S_CHANSELECT  AS_to_owner;
+
+extern	 GRclassid	  OPP_ACncpx_class_id, OPP_nci_macro_class_id,
+			  OPP_ACconst_class_id, OPP_ACdyn_col_class_id,
+			  OPP_VSimgFeature_class_id;
+
+extern  printf(), malloc(), strcpy(), strstr(), strrchr (), free(), strncpy();
+extern  getenv(), abs(), tan(), fasb(), fabs();
+
+extern 	init_cnst_list();
+extern  BSac2ptctvc(), BSmdstptcv(), BSactivsplt(), BSellctaxrm();
+extern  GRgs_fun(), GRdisplay_object();
+extern 	GRretrieve_font(), GRdpb_get(), GRang_place_text(), GRplace_text(), GRcreate_conic_by_edge();
+extern  GRsymbology_options(), GRcreate_linestring(), GRdpb_get(), GRget_endpoints();
+extern  EX_build_classlist(), EX_get_oid_nodname(), EX_get_modid_given_osnum();
+extern  VSgetRollMacOnStiff();
+
+
+/* ========================================================================= */
+
+#include "PC_attrs.h"
+#include "PC_cimac.h"
+#include "PC_macros.h"
+
+/* ========================================================================= */
+
+/* ========================================================================= */
+/* the main function is the one implementing the definition creation
+/* ========================================================================= */
+
+main ()
+{
+    IGRint i, j;
+    IGRchar buff[MAX_FEET*MAX_CHA_TEMP];
+
+    temp_names[0]  = "Coord_Sys";         temp_types[0] = ref_generic;
+    temp_names[1]  = "Beam";              temp_types[1] = macro_generic;
+    temp_names[2]  = "Length";            temp_types[2] = double_type;
+    temp_names[3]  = "Height";            temp_types[3] = double_type;
+
+    for ( i= 0; i < MAX_FEET; i = i + 1 )  {
+        j = i * MAX_CHA_TEMP;
+        sprintf( &buff[j], "pcroll_%d", i);
+        feet_names[i] = &buff[j];
+    }
+    ci_mac_def1 = NULL_OBJID;
+
+    ac$cimacdef( cimacdef =  ci_mac_def1,
+                 status = &stat,
+                 name = "PCroll2d",
+                 temp_num = MAX_TEMP,
+                 temp_names = temp_names,
+                 temp_types = temp_types,
+                 extern_feet_num = MAX_FEET,
+                 extern_feet_names = feet_names );
+}
+
+/* ========================================================================= */
+
+compute ()
+{
+
+    construct_comp();
+
+    if( GRid_list[0].objid == NULL_OBJID )
+        return(0);
+
+    ci$send( msg = message  ci_macro.set_all_extern_feet( &stat,
+                                                          MAX_FEET,
+                                                          GRid_list,
+                                                          &MOD_ENV ),
+             targetid = CI_MACRO_ID.objid,
+             targetos = CI_MACRO_ID.osnum);
+    return(1) ;
+}
+
+/* ========================================================================= */
+
+place ()
+{
+    construct_comp();
+
+    if( GRid_list[0].objid == NULL_OBJID )
+        return(0);
+
+    ci$send( msg = message  ci_macro.set_all_extern_feet( &stat,
+                                                          MAX_FEET,
+                                                          GRid_list,
+                                                          &MOD_ENV ),
+             targetid = CI_MACRO_ID.objid,
+             targetos = CI_MACRO_ID.osnum);
+  return(1);
+}
+
+
+/* ========================================================================= */
+
+extern int GRdisplay_object ();
+
+construct_comp()
+{
+    /* Initialize */
+    initialize();
+
+#ifdef DEBUG
+    printf("Initialized.\n");
+#endif
+
+    /* Place graphics */
+    construct_graphics();
+
+#ifdef DEBUG
+    printf("grCount: %d\n", grCount);
+#endif
+
+    /* null out the next id for some kind of checking later */
+    GRid_list[grCount].objid = NULL_OBJID;
+}
+
+/* =================================================================== */
+
+initialize()
+{
+    IGRlong status;
+    struct ret_struct	rst;
+    struct GRmd_env mod_env;
+
+    ci$get_module_info( md_env = &mod_env );
+
+    get_symb();
+
+    dis.weight      = cnst_list.weight;
+    dis.style       = cnst_list.style;
+
+    cst.msg         = &msg;
+    cst.properties  = GRIS_LOCATABLE | GRIS_NEW | GRIS_DISPLAYABLE;
+    cst.display     = &dis;
+    cst.env_info    = &mod_env;
+    cst.newflag     = 0;
+    cst.geometry    = NULL;
+    cst.class_attr  = 0;
+    cst.name        = 0;
+
+
+    /* Get graphic inputs */
+    /* ================== */
+    msg = getobj( 0 , &Coord );
+    if( !( msg&1 ) ) return FALSE;
+
+    msg = getobj( 1 , &Beam );
+    if( !( msg&1 ) ) return FALSE;
+
+#ifdef DEBUG
+    printf("PCroll2d: Got Beam %d[%d]\n", Beam.obj_id.objid, Beam.obj_id.osnum );
+#endif
+
+    /* GET PARAMETER VALUES */
+    getparm ( "Length", &expr );
+    pcLength = expr.var.root_pm_st.value;
+
+    getparm ( "Height", &expr );
+    pcHeight = expr.var.root_pm_st.value;
+
+    /* Initialize the graphics counter */
+    grCount = 0;
+
+    /* Set the dimension & text heights */
+    dim_txt_ht = DIM;
+    lbl_txt_ht = LABEL;
+
+    /* Get the location and orientation of the coordinate system */
+    ci$send( msg = message GRgencs.GRgetmatrix(&msg,cs),
+             targetid = Coord.obj_id.objid,
+             targetos = Coord.obj_id.osnum );
+
+    /* Flip the coord system for the text coord system */
+    txt_cs[0] = cs[0];
+    txt_cs[1] = cs[4];
+    txt_cs[2] = cs[8];
+
+    txt_cs[4] = cs[1];
+    txt_cs[5] = cs[5];
+    txt_cs[6] = cs[9];
+
+    txt_cs[8] = cs[2];
+    txt_cs[9] = cs[6];
+    txt_cs[10] = cs[10];
+    txt_cs[3] = cs[12];
+    txt_cs[7] = cs[13];
+    txt_cs[11] = cs[14];
+
+    txt_cs[12] = cs[3];
+    txt_cs[13] = cs[7];
+    txt_cs[14] = cs[11];
+
+    txt_cs[15] = cs[15];
+
+    /* Set origin & main axes */
+    origin[0] = cs[3]; origin[1] = cs[7]; origin[2] = cs[11];
+    xvec[0] = cs[0]; xvec[1] = cs[4]; xvec[2] = cs[8];
+    yvec[0] = cs[1]; yvec[1] = cs[5]; yvec[2] = cs[9];
+    zvec[0] = cs[2]; zvec[1] = cs[6]; zvec[2] = cs[10];
+
+
+    /* Retrieve Beam dimensions */
+    status = ci$send( msg = message VSBeam.VSgetBeamLength( &msg, &Beam.mod_env, &BeamLength ),
+                      targetid = Beam.obj_id.objid,
+                      targetos = Beam.obj_id.osnum );
+
+    status = ci$send( msg = message VSBeam.VSgetSectionParameter( &msg, "x_Web_Thickness",
+                                                                  &Beam.mod_env, &BeamWebThk ),
+                      targetid = Beam.obj_id.objid,
+                      targetos = Beam.obj_id.osnum );
+
+#ifdef DEBUG
+    printf("ci$send: Beam length = %f, WebThk = %f\n", BeamLength, BeamWebThk );
+#endif
+
+    get_foot_struct( &rst, VS_K_bmLengthAttr, Beam.mod_env, Beam.obj_id );
+    BeamLength = rst.var.root_pm_st.value;
+
+    get_foot_struct( &rst, VS_K_bmWebThkAttr, Beam.mod_env, Beam.obj_id );
+    BeamWebThk = rst.var.root_pm_st.value;
+
+#ifdef DEBUG
+    printf("get_foot_struct: Beam length = %f, WebThk = %f\n", BeamLength, BeamWebThk );
+#endif
+
+    if( BeamLength == 0.0 ) {
+        printf("Could not get BeamLength - setting to 10000mm\n");
+        BeamLength = 10000.0;
+    }
+
+    /* Set scale for length */
+    Lscale = pcLength / BeamLength;
+
+#ifdef DEBUG
+    printf("Beam length = %f, WebThk = %f, scale %f\n", BeamLength, BeamWebThk, Lscale );
+#endif
+}
+
+/*=====================================================================================*/
+
+copy_roll_data( Src, src_idx, Tgt, tgt_idx, total )
+IGRdouble  *Src, *Tgt;
+IGRlong    src_idx, tgt_idx, total;
+{
+
+    IGRint   i;
+
+    for( i = 0; i < total; i = i + 1 )   {
+        Tgt[tgt_idx + i] = Src[src_idx + i];
+#ifdef DEBUG
+        printf("Copy Src[%d] = %.3f to Tgt[%d] = %.3f\n",
+               src_idx + i, Src[src_idx + i],
+               tgt_idx + i, Tgt[tgt_idx + i] );
+#endif
+    }
+    return;
+}
+
+
+/*=====================================================================================*/
+
+correct_roll_data( Beam, AxisMacro, RollData, Length, is_stock )
+struct GRobj_env  Beam, AxisMacro;
+IGRdouble 	  *RollData, *Length;
+IGRint  	  *is_stock;
+{
+    IGRlong status, msg, i, segmentCount, TrueSegmentCount;
+    struct GRid LastLine;
+    IGRint temp_num, feet_num, temp_i, feet_i;
+    struct ret_struct	rst;
+    IGRdouble segmentRadius, segmentLength;
+
+    IGRchar AxisMacroName[80];
+    IGRchar LenLbl[10], TopLbl[12], BotLbl[12], txtBuf[80];
+    IGRdouble TmpRollData[66];
+    IGRdouble TotLen, crv_length, delta;
+    IGRlong ret_val;
+
+
+    segmentCount = 0;
+
+    /* GET FEET OF AXIS MACRO */
+
+    /* Check crv_roll number of feet */
+    status = om$get_channel_count( osnum = AxisMacro.obj_id.osnum,
+                                   objid = AxisMacro.obj_id.objid,
+                                   p_chanselect = &AS_to_comp,
+                                   count = (IGRint *) &feet_num );
+
+#ifdef DEBUG
+    printf("Macro has %d feet\n", feet_num );
+#endif
+
+    /* GET CRV_ROLL DATA */
+
+    /* For each segment found...   */
+    for( feet_i=0; feet_i<(feet_num-1)/2; feet_i = feet_i+1 ) {
+        /* Get Radius */
+        sprintf( txtBuf, "%s_%d", "rad", feet_i+1 );
+        get_foot_struct( &rst, txtBuf, Beam.mod_env, AxisMacro.obj_id );
+        TmpRollData[2*feet_i] = rst.var.root_pm_st.value;
+
+#ifdef DEBUG
+        printf("TmpRollData[%d] = %.3f\n", 2*feet_i, TmpRollData[2*feet_i] );
+#endif
+
+        /* Get length */
+        sprintf( txtBuf, "%s_%d", "len", feet_i+1 );
+        get_foot_struct( &rst, txtBuf, Beam.mod_env, AxisMacro.obj_id );
+        TmpRollData[2*feet_i+1] = rst.var.root_pm_st.value;
+
+#ifdef DEBUG
+        printf("TmpRollData[%d] = %.3f\n", 2*feet_i+1, TmpRollData[2*feet_i+1] );
+#endif
+        segmentCount = segmentCount + 1;
+    }
+
+#ifdef DEBUG
+    printf("Found %d initial segments. Checking stock...\n", segmentCount );
+#endif
+
+    /* ADD STOCK */
+
+    /* Add first end stock */
+    if( TmpRollData[0] != 0.0 ) {
+        RollData[0] = -0.0;
+        RollData[1] = STOCK;
+        copy_roll_data( TmpRollData, 0, RollData, 2, segmentCount*2 );
+        TrueSegmentCount = segmentCount + 1;
+        is_stock[0] = TRUE;
+    }
+    else if( TmpRollData[2] != 0.0  && TmpRollData[1] < STOCK ) {
+        RollData[0] = -0.0;
+        RollData[1] = STOCK - TmpRollData[1];
+        copy_roll_data( TmpRollData, 0, RollData, 2, segmentCount*2 );
+        TrueSegmentCount = segmentCount + 1;
+        is_stock[0] = TRUE;
+    }
+    else   {
+        copy_roll_data( TmpRollData, 0, RollData, 0, segmentCount*2 );
+        TrueSegmentCount = segmentCount;
+        is_stock[0] = FALSE;
+   }
+    /* Add second end stock */
+    if( TmpRollData[segmentCount * 2 - 2] != 0.0 ) {
+        RollData[TrueSegmentCount * 2 ] = -0.0;
+        RollData[TrueSegmentCount * 2 + 1] = STOCK;
+        TrueSegmentCount = TrueSegmentCount + 1;
+        is_stock[1] = TRUE;
+    }
+    else if( TmpRollData[segmentCount * 2 - 4] != 0.0
+             && TmpRollData[segmentCount * 2 - 3] < STOCK ) {
+        RollData[TrueSegmentCount * 2 + 1] = -0.0;
+        RollData[TrueSegmentCount * 2 + 2] = STOCK - TmpRollData[segmentCount * 2 - 3];
+        TrueSegmentCount = TrueSegmentCount + 1;
+        is_stock[1] = TRUE;
+    }
+    else
+        is_stock[1] = FALSE;
+
+#ifdef DEBUG
+    printf("Stock added. Segments number corrected to %d\n", TrueSegmentCount );
+    for( i = 0; i < TrueSegmentCount*2; i = i + 1 )
+        printf("RollData[%d] = %.3f\n", i, RollData[i] );
+#endif
+
+    /* CALCULATE LENGTH */
+    for( i = 0; i < TrueSegmentCount; i = i + 1 ) {
+        /* If straight segment... */
+        if( RollData[2*i] == 0.0 )
+        {
+            TotLen = TotLen + RollData[2*i+1];
+
+#ifdef DEBUG
+            printf("\nSegment[%d]: R = %.3f   L = %.3f   Total Length = %.3f\n",
+                   i, RollData[2*i], RollData[2*i+1], TotLen);
+#endif
+        }
+        /* If arc segment... */
+        else {
+            if( RollData[2*i] < 0.0 )
+                TotLen = TotLen - (BeamWebThk/2-RollData[2*i])/RollData[2*i]*RollData[2*i+1];
+            else
+                TotLen = TotLen + (RollData[2*i]-BeamWebThk/2)/RollData[2*i]*RollData[2*i+1];
+
+#ifdef DEBUG
+            printf("Corrected arc radius = %f\n", (RollData[2*i] - BeamWebThk) );
+            printf("\nSegment[%d]: R = %.3f   L = %.3f   Total Length = %.3f\n",
+                   i, RollData[2*i], RollData[2*i+1], TotLen);
+#endif
+        }
+    }
+    *Length = TotLen;
+
+    return( TrueSegmentCount );
+}
+
+
+
+/*=====================================================================================*/
+
+construct_graphics()
+{
+    IGRlong status, msg;
+    struct GRid LastLine;
+    struct GRobj_env AxisMacro;
+    IGRint i, is_stock[2];
+    struct ret_struct	rst;
+
+    IGRchar AxisMacroName[80];
+    IGRchar LenLbl[10], TopLbl[12], BotLbl[12], txtBuf[80];
+    IGRdouble RollData[70], stock_pt[3];
+    IGRdouble TotLen, crv_length, delta, Length;
+    IGRlong ret_val;
+    IGRint TrueSegmentCount;
+
+    char **classnames;
+    OM_S_CLASSLIST  clist;
+
+    /* Initialize */
+    TotLen = 0.0;
+    Line.mod_env = Coord.mod_env;
+    Line.obj_id.objid = NULL_OBJID;
+    Line.obj_id.osnum = Coord.mod_env.md_id.osnum;
+
+    /* Get Axis Macro */
+    VSgetRollMacOnStiff( &Beam, "crv_roll", &AxisMacro );
+
+#ifdef DEBUG
+    printf("Found axis %d[%d] : %s\n", AxisMacro.obj_id.objid, AxisMacro.obj_id.osnum, AxisMacroName );
+#endif
+
+    /* Apply stock if necessary */
+    TrueSegmentCount = correct_roll_data( Beam, AxisMacro, RollData, &Length, is_stock );
+    //printf("TrueSegmentCount = %d\n", TrueSegmentCount );
+
+    /* Set scale for length */
+    Lscale = pcLength / TrueSegmentCount;
+
+    /* ============== */
+    /* PLACE GRAPHICS */
+    /*================*/
+
+    /* Place beam body and left end line */
+    //place_vert_line( GRid_list, &grCount, origin, xvec, yvec, zvec, TotLen * Lscale, pcHeight,
+    //                 0.0, "450", 0.0 );
+
+    /* PLACE SEGMENTS */
+    for( i = 0; i < TrueSegmentCount; i = i + 1 ) {
+        /* If straight segment... */
+        if( RollData[2*i] == 0.0 ){
+            /* Compute total length */
+            TotLen = TotLen + RollData[2*i+1];
+            sprintf(LenLbl, "%.0f", TotLen );
+
+            /* if placing right end line correct placement position */
+            if( i == TrueSegmentCount )
+                Length = pcLength;
+            else
+                Length =  Lscale * (i+1);
+#ifdef DEBUG
+            printf("Segment %d of %d\n", i, TrueSegmentCount );
+            printf("\nVert Line: %d[%d], %.1f, %.1f, <%s>, <%s>, %.1f, <%s>, %.1f\n",
+                   Line.obj_id.objid, Line.obj_id.osnum,
+                   (TotLen * Lscale), pcHeight, TopLbl, BotLbl, 1.0, LenLbl, 5.0 );
+#endif
+
+            /* Place Vert Line macro (PCvline2d) but skip the last line... */
+            if( i < TrueSegmentCount - 1 )
+                place_vert_line( GRid_list, &grCount, origin, xvec, yvec, zvec,
+                                 Length, pcHeight, 1.0, LenLbl, 5.0 );
+
+
+            /* PLACE STOCK INFO HERE */
+            /* ===================== */
+
+            if( (i == 0 && is_stock[0] == TRUE)
+                || (i == TrueSegmentCount-1 && is_stock[1] == TRUE)) {
+                printf("Stock - RollData[%d] = %f\n", 2*i, RollData[2*i] );
+                get_midpoint( &GRid_list[grCount-5], stock_pt );
+                printpt("stock_pt", stock_pt );
+                place_vert_label( GRid_list, &grCount, stock_pt, "STOCK", dim_txt_ht, txt_cs );
+            }
+        }
+        else if( RollData[2*i] == -0.0 ) {
+            /* Compute total length */
+            TotLen = TotLen + RollData[2*i+1];
+            sprintf(LenLbl, "%.0f", TotLen );
+
+            /* if placing right end line correct placement position */
+            if( i == TrueSegmentCount )
+                Length = pcLength;
+            else
+                Length = Lscale * (i+1);
+
+#ifdef DEBUG
+            printf("Segment %d of %d\n", i, TrueSegmentCount );
+            printf("\nVert Line: %d[%d], %.1f, %.1f, <%s>, <%s>, %.1f, <%s>, %.1f\n",
+                   Line.obj_id.objid, Line.obj_id.osnum,
+                   (TotLen * Lscale), pcHeight, TopLbl, BotLbl, 1.0, LenLbl, 5.0 );
+#endif
+
+            /* Place Vert Line macro (PCvline2d) */
+            if( i < TrueSegmentCount - 1 )
+                place_vert_line( GRid_list, &grCount, origin, xvec, yvec, zvec,
+                                 Length, pcHeight, 1.0, LenLbl, 5.0 );
+
+            /* PLACE STOCK INFO HERE */
+            /* ===================== */
+            get_midpoint( &GRid_list[grCount-5], stock_pt );
+            printpt("stock_pt", stock_pt );
+            place_vert_label( GRid_list, &grCount, stock_pt, "STOCK", dim_txt_ht, txt_cs );
+        }
+        /* If arc segment... */
+        else {
+            /* Compute total length & create labels */
+            if( RollData[2*i] < 0.0 ) {
+                TotLen = TotLen - (BeamWebThk/2- RollData[2*i])/RollData[2*i]*RollData[2*i+1];
+                sprintf( BotLbl, "R %.0fmm", (RollData[2*i] - BeamWebThk) * (-1) );
+                strcpy( TopLbl, "ROLL DOWN" );
+            }
+            else {
+                TotLen = TotLen + (RollData[2*i]-BeamWebThk/2)/RollData[2*i]*RollData[2*i+1];
+                sprintf( BotLbl, "R %.0fmm", (RollData[2*i] - BeamWebThk) );
+                strcpy( TopLbl, "ROLL UP" );
+            }
+            sprintf( LenLbl, "%.0f", TotLen );
+
+#ifdef DEBUG
+            printf("Corrected arc radius = %f\n", (RollData[2*i] - BeamWebThk) );
+            printf("\nRoll Line: %d[%d], %.1f, %.1f, <%s>, <%s>, %.1f, <%s>, %.1f\n",
+                   Line.obj_id.objid, Line.obj_id.osnum,
+                   (TotLen * Lscale), pcHeight, TopLbl, BotLbl, 1.0, LenLbl, 5.0 );
+#endif
+
+            /* if placing end line correct placement position */
+            if( i == TrueSegmentCount - 1 )
+                Length = pcLength;
+            else
+                Length = Lscale * (i+1) ;
+
+            /* Place Roll Line macro (PCroll2d) */
+            place_roll_line( GRid_list, &grCount, Length, pcHeight, origin, xvec, yvec, zvec,
+                             TopLbl, BotLbl, 1.0, LenLbl, 5.0 );
+        }
+    }
+    return;
+}
+
+
+/* ==================================================================== */
+
+int get_midpoint( Line, midpt )
+  struct GRid     * Line;
+  double          * midpt;
+
+{
+    struct GRid  line;
+    struct GRmd_env md_env;
+    IGRdouble pt1[3], pt2[3];
+    IGRlong msg;
+
+#ifdef DEBUG
+    printf("Line %d[%d] - ", Line->objid, Line->osnum );
+#endif
+
+    ci$get_module_info ( md_env = &md_env );
+
+    gr$get_endpoints( msg       = &msg,
+                      md_env    = &md_env,
+                      object_id = Line,
+                      point1    = pt1,
+                      point2    = pt2 );
+
+    midpt[0] = (pt1[0] + pt2[0]) / 2;
+    midpt[1] = (pt1[1] + pt2[1]) / 2;
+    midpt[2] = (pt1[2] + pt2[2]) / 2;
+
+#ifdef DEBUG
+    printpt("midpt", midpt );
+#endif
+    return;
+}
+
+/* ====================================================================
+
+   FUNCTION places a vertical line with dimension
+
+   ==================================================================== */
+
+place_vert_line( GRid_list, grCount, Origin, xvec, yvec, zvec,
+                 Distance, Height, Dimension, Text, Offset )
+/**********************************************************************/
+struct GRid *GRid_list;
+IGRint      *grCount;
+IGRdouble   *Origin, *xvec, *yvec, *zvec, Distance, Height, Dimension, Offset;
+IGRchar     *Text;
+{
+
+    IGRdouble       tmp[3];
+
+    /* p1 - origin */
+    v_equal( Origin , p1 );
+
+    /* p2 top point */
+    v_scale( xvec , Distance , tmp );
+    v_add( p1 , tmp , p2 );
+
+    /* p3 top point */
+    v_scale( yvec , Height , tmp );
+    v_add( p2 , tmp , p3 );
+
+    /* Place marking line */
+    placeLine( GRid_list, grCount, p2, p3, 0, 0 );
+
+    Line.obj_id.objid = GRid_list[*grCount-1].objid;
+    Line.obj_id.osnum = GRid_list[*grCount-1].osnum;
+
+    if( Dimension != 0.0 ) {
+
+        /* p7 bottom dimension ref line point*/
+        v_scale( yvec, -(Offset+DIM_OVL), tmp );
+        v_add( p2, tmp, p7 );
+
+        /* p8 bottom dimension arrow point */
+        v_scale( yvec, DIM_OVL , tmp );
+        v_add( p7, tmp, p8 );
+
+        /* p9 bottom dimension line point*/
+        v_scale( xvec, -DIM_LEN , tmp );
+        v_add( p8, tmp, p9 );
+
+        /* p10 bottom dimension point*/
+        v_scale( xvec, DIM_LEN/2 , tmp );
+        v_add( p9, tmp, p10 );
+
+        /* Place bottom dimension */
+        placeLine( GRid_list, grCount, p2, p7, 0, 0 );
+        placeLine( GRid_list, grCount, p9, p8, 0, 0 );
+        place_arrow( GRid_list, grCount, p9, p8, p8, txt_cs, zvec, dim_txt_ht );
+        place_label( GRid_list, grCount, p10, Text, lbl_txt_ht, txt_cs );
+    }
+}
+
+
+
+place_roll_line( GRid_list, grCount, Distance, Height, Origin, xvec, yvec, zvec,
+                 topLbl, botLbl, Dimension, Text, Offset )
+/****************************************************************************************/
+struct GRid *GRid_list;
+IGRint      *grCount;
+IGRdouble    Distance, Height, Dimension, Offset, Origin[3], *xvec, *yvec, *zvec;
+IGRchar     *Text, *topLbl, *botLbl;
+{
+
+    double tmp[3], LineMidPt[3], midpt[3];
+    double theight;
+    char text_string[128];
+    int len;
+    struct GRid TEXT, LineId;
+
+#ifdef DEBUG
+    printf("\nRoll %d, %.1f, %.1f, <%s>, <%s>, %.1f, <%s>, %.1f\n",
+           *grCount, Distance, Height, topLbl, botLbl, Dimension, Text, Offset );
+    printf("Asking line %d[%d] for midpoint\n", Line.obj_id.objid, Line.obj_id.osnum );
+#endif
+
+    /* Get Line midpt */
+    get_midpoint( &Line.obj_id, midpt );
+
+    /* p0 - origin */
+    v_equal( origin , p0 );
+
+    /* p1 - line origin */
+    v_scale( xvec , Distance , tmp );
+    v_add( p0, tmp, p1 );
+
+    /* p2 top point */
+    v_scale( yvec , Height , tmp );
+    v_add( p1 , tmp , p2 );
+
+    /* Place marking line */
+    placeLine( GRid_list, grCount, p1, p2, 0, 0 );
+
+    Line.obj_id.objid = GRid_list[*grCount-1].objid;
+    Line.obj_id.osnum = GRid_list[*grCount-1].osnum;
+
+#ifdef DEBUG
+    printf("Placed RollLine %d[%d]\n", Line.obj_id.objid, Line.obj_id.osnum );
+#endif
+
+    /* p3 mid point */
+    v_scale( yvec , Height/2 , tmp );
+    v_add( p1 , tmp , p3 );
+
+    /* roll info  line */
+    placeLine( GRid_list, grCount, midpt, p3, 0, 0 );
+    LineId = GRid_list[*grCount-1];
+
+#ifdef DEBUG
+    printf("Placed InfoLine: %d[%d]\n", LineId. objid, LineId.osnum );
+#endif
+
+    /* Place arrows */
+    place_arrow( GRid_list, grCount, midpt, p3, p3, txt_cs, zvec, dim_txt_ht );
+    place_arrow( GRid_list, grCount, p3, midpt, midpt, txt_cs, zvec, dim_txt_ht );
+
+    /* Get line mid point */
+    get_midpoint( &LineId, LineMidPt );
+
+    /* Place top label */
+    v_scale( yvec , (DIM/2) , tmp );
+    v_add( LineMidPt, tmp, p4 );
+    place_label(  GRid_list, grCount, p4, topLbl, lbl_txt_ht, txt_cs );
+
+    /* Place bottom label */
+    v_scale( yvec , (-DIM*2) , tmp );
+    v_add( LineMidPt, tmp, p5 );
+    place_label( GRid_list, grCount, p5, botLbl, lbl_txt_ht, txt_cs );
+
+    if( Dimension != 0.0 ) {
+
+        /* p7 bottom dimension ref line point */
+        v_scale( yvec, -(Offset+DIM_OVL), tmp );
+        v_add( p1, tmp, p7 );
+
+        /* p8 bottom dimension arrow point */
+        v_scale( yvec, DIM_OVL , tmp );
+        v_add( p7, tmp, p8 );
+
+        /* p9 bottom dimension line point*/
+        v_scale( xvec, -DIM_LEN , tmp );
+        v_add( p8, tmp, p9 );
+
+        /* p10 bottom dimension point*/
+        v_scale( xvec, DIM_LEN/2 , tmp );
+        v_add( p9, tmp, p10 );
+
+        /* bottom dimension */
+        placeLine( GRid_list, grCount, p1 , p7, 0, 0 );
+        placeLine( GRid_list, grCount, p9 , p8, 0, 0 );
+        place_arrow( GRid_list, grCount, p9, p8, p8, txt_cs, zvec, dim_txt_ht );
+        place_label( GRid_list, grCount, p10, Text, lbl_txt_ht, txt_cs );
+    }
+}
+
+
+
+
+
+

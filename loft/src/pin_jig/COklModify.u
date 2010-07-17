@@ -1,0 +1,638 @@
+/* $Id $  */
+/* --------------------------------------------------------------------
+ * I/LOFT
+ *
+ * File:        src/pin_jig/COklModify.u
+ *
+ * Description: PPL to modify a Key Line Macro.
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ *      $Log $
+ *
+ * History:
+ *      MM/DD/YY        AUTHOR          DESCRIPTION
+ *      06/15/00        Rama Rao        File Creation.
+ * -------------------------------------------------------------------*/
+
+#include "VDppl.h"
+#include "nddef.h"
+#include "ndmacros.h"
+#include "VDobj.h"
+#include "VDchn.h"
+#include "vlkline.h"
+#include "vldbgmacros.h"
+
+#define vdsDEBUG        1
+#define vdserrDEBUG     1
+
+#define COMMAND_NAME            "Modify Key Lines"
+#define FORM_NAME               "VLkLine.frm"
+
+Form                    form;
+struct CIform_st        form_st;
+IGRint                  form_labels[60], form_displayed,form_exists, not_done,
+                        test_wakeup, nb_bndsrf, num_plts;
+IGRchar                 msgStr[128], srf_name[128], frm_name[128], job_no[128],
+                        unit_no[128], job_desc[128];
+struct GRmd_env         loc_env;
+struct GRobj_env        pl_key, surface, org_surface, frame, org_frame,
+			pl_pretend, fr_pretend, bndsrf[20], plt_list[20];
+
+extern  FIg_is_valid(), FIg_get_attr(), FIg_set_state_off(),
+        FIfld_get_list_select();
+
+extern  VSsbGetBndSrfObjs(), VSbulkDisplayByGRobj_envs(), VLsbGetMoldSurface(),
+        ASmake_source_from_env(), EX_get_global(), VSis_ancestry_valid(),
+	EX_get_modid_given_osnum(), NDwait_batch(), NDget_mod_batch(),
+	NDexec_batch(), VDSloadMacroLibrary();
+
+extern  GRclassid       OPP_VSplate_class_id, OPP_EMSgenbs_class_id,
+                        OPP_SMframe_class_id, OPP_ACpretend_class_id ;
+
+IGRstat message_bar( inPrompt )
+IGRchar         *inPrompt;
+{
+   FIg_set_text( form, G_MESSAGE_FIELD, inPrompt );
+   return 1;
+}
+
+DisableAllExceptCancel()
+{
+   IGRint       i, attr ;
+
+   for( i=0; i<60; i=i+1 )
+   {
+       form_labels[i] = 0 ;
+       if( i == FI_CANCEL ) continue;
+       if( ! ( FIg_is_valid( form, i )) )
+       {
+          FIg_get_attr( form, i, &attr ) ;
+          if( !( attr & FI_NOT_DISPLAYED ) )
+          {
+             FIg_disable( form, i );
+             form_labels[i] = 1 ;
+          }
+       }
+    }
+}
+
+EnableAllExceptCancel()
+{
+   IGRint       i;
+   for( i=0; i<60; i=i+1 )
+   {
+       if( i == FI_CANCEL ) continue;
+       if( form_labels[i] ) FIg_enable( form, i );
+   }
+   FIg_disable( form, G_PLATE_LOCATE );
+   FIg_disable( form, G_PLATE_REMOVE );
+   FIg_disable( form, G_SURFACE_NAME );
+}
+
+IGRint  GetName( object, name )
+struct GRid             object;
+IGRchar                 *name;
+{
+   ci$send(  msg = message GRgraphics.GRgetname( &msg, name ),
+                targetid = object.objid,
+                targetos = object.osnum  );
+}
+
+wakeup ()
+/************************************************************
+ * FUNCTION:  wakeup()
+ *
+ * DESCRIPTION: This function is called when the command file
+ *    is started and when it resumes after an interruption.
+ ************************************************************/
+{
+        /* Display the form unless the command file is just starting */
+        __DBGpr_int("I'm now waking up, test_wakeup",test_wakeup);
+        if ( test_wakeup == 1 && not_done ) {
+            if( form )
+            {
+                EnableAllExceptCancel();
+                form_displayed = TRUE; /* Set flag for sleep function */
+            }
+        }
+}
+
+sleep ()
+/************************************************************
+ * FUNCTION:  sleep()
+ *
+ * DESCRIPTION: This function is called immediately before the
+ *    command file is interrupted.
+ ************************************************************/
+{
+        /* Erase the form if it is displayed */
+        if ( form_displayed == TRUE ) {
+                DisableAllExceptCancel();
+                form_displayed = FALSE;
+        }
+}
+
+delete ()
+/************************************************************
+ * FUNCTION: delete()
+ *
+ * DESCRIPTION: This function is called when the command file
+ *    ends or is terminated.
+ ************************************************************/
+{
+        int     i ;
+
+        __DBGpr_int("form_displayed", form_displayed);
+        __DBGpr_int("form_exists", form_exists);
+        /* Erase the form if it is displayed */
+        if ( form_displayed == TRUE ) {
+                FIf_erase ( form );
+                form_displayed = FALSE;
+        }
+        /* Delete the form if it exists */
+        if ( form_exists ) {
+                if( form ) {
+                        VDahFrmSavePositionInFile(form);
+                        if (form) VIf_delete(form);
+                        form = NULL;
+                }
+        }
+        not_done = 0 ;
+}
+
+IGRstat LocateOE( inPrompt, inType, selOE, objName, check)
+IGRchar         *inPrompt;
+IGRchar         *inType;
+TGRobj_env      *selOE;
+IGRchar         *objName;
+IGRint          check;
+{
+  IGRint                i, attr, response, labels[60] ;
+  OM_S_CLASSLIST        eligibleClasses ;
+  OMuword               classids[2] ;
+
+        if( selOE->obj_id.objid != NULL_OBJID ) {
+                VSbulkDisplayByGRobj_envs( GRhd, 1, selOE );
+        }
+
+	DisableAllExceptCancel();
+
+        if( !strcmp( inType, "Plate" ) )
+        {
+            classids[0] = OPP_VSplate_class_id ;
+            classids[1] = OPP_EMSgenbs_class_id ;
+            eligibleClasses.w_count   = 2 ;
+        }
+        else
+        {
+            classids[0] = OPP_SMframe_class_id ;
+            eligibleClasses.w_count   = 1 ;
+        }
+        eligibleClasses.w_flags   = OM_CLST_subclass ;
+        eligibleClasses.p_classes = classids ;
+
+        ci$locate(
+                obj             = &selOE->obj_id.objid,
+                osnum           = &selOE->obj_id.osnum,
+                md_env          = &selOE->mod_env,
+                response        = &response,
+                eligible_classes= &eligibleClasses,
+                prompt          = inPrompt,
+                stackable       = TRUE ,
+                properties      = LC_LC_ONLY | LC_DP_ONLY | LC_RW,
+                owner_action    = LC_RIGID_COMP  | LC_RIGID_OWNER |
+                                  LC_FLEX_COMP   | LC_FLEX_OWNER  |
+                                  LC_REF_OBJECTS );
+
+        EnableAllExceptCancel();
+
+        msgStr[0] = '\0' ;
+        if( selOE->obj_id.objid != NULL_OBJID ) {
+                GetName( selOE->obj_id, objName );
+                __DBGpr_str("Returned name is ",objName);
+        }
+
+wrapup:
+   return TRUE;
+}
+
+int FillDataInForm()
+{
+IGRlong			sts;
+IGRint                  i, nb_attr;
+IGRchar			*p, plt_name[128];
+struct ACrg_coll        attrib[3];
+struct GRobj_env        boxOE;
+
+   sts = vdchn$GetList(  objID   = &pl_key.obj_id,
+                        chnName = VDCHN_NAME_PARENT,
+                        maxCnt  = 22,
+                        cnt     = &num_plts );
+
+   num_plts = num_plts - 2 ;
+   for( i=0; i<num_plts; i=i+1 )
+   {
+     vdobj$GetTemplate( objID      = &pl_key.obj_id,
+                        nth        = i+2,
+                        templateOE = &plt_list[i] );
+
+     GetName( plt_list[i].obj_id, plt_name );
+     p = strstr( plt_name, ":ref:" );
+     if( p ) strcpy( plt_name, p+4 );
+     FIfld_set_text( form, G_PLATE_LIST, i, 0, plt_name, FALSE );
+   }
+
+   nb_attr = 0;
+   vdobj$GetTemplate( objID      = &pl_key.obj_id,
+                      nth        = 1,
+                      templateOE = &boxOE );
+
+   ci$send ( msg =  message ACrg_collect.AClist_attribute( &msg,
+                                3, attrib, &nb_attr ),
+                targetid = boxOE.obj_id.objid,
+                targetos = boxOE.obj_id.osnum );
+   FIg_set_text( form, G_UNIT_NUMBER, attrib[0].desc.value.att_txt );
+   FIg_set_text( form, G_JOB_NUMBER, attrib[1].desc.value.att_txt );
+   FIg_set_text( form, G_JOB_DESC, attrib[2].desc.value.att_txt );
+
+   // Get the parent
+   pl_pretend.obj_id.objid = NULL_OBJID;
+   vdchn$Get( il_objID  = &pl_key.obj_id,
+              ic_IDX    = VDCHN_IDX_PARENT,
+              ir_objIDX = 0,
+              or_objID  = &pl_pretend.obj_id );
+
+   if( VSis_ancestry_valid( &pl_pretend.obj_id, OPP_ACpretend_class_id ) )
+   {
+     ci$send(  msg     = message ACpretend.ACfind_parent(
+                                &org_surface.obj_id,
+                                &org_surface.mod_env.md_env.matrix_type,
+                                org_surface.mod_env.md_env.matrix ),
+                targetid = pl_pretend.obj_id.objid,
+                targetos = pl_pretend.obj_id.osnum );
+     org_surface.mod_env.md_id.osnum = pl_pretend.obj_id.osnum ;
+     ex$get_modid( mod_osnum = org_surface.mod_env.md_id.osnum,
+                   mod_id    = &org_surface.mod_env.md_id.objid );
+   }
+   else org_surface = pl_pretend ;
+   surface = org_surface;
+   GetName( org_surface.obj_id, srf_name );
+   __DBGpr_str( "Surface Name ", srf_name );
+   if( !strlen(srf_name) )  sprintf( srf_name, "Obj_%d_%d",
+              surface.obj_id.objid, surface.obj_id.osnum );
+   // FIg_set_text( form, G_SURFACE_NAME, srf_name );
+
+   fr_pretend.obj_id.objid = NULL_OBJID;
+   vdchn$Get( il_objID  = &pl_key.obj_id,
+              ic_IDX    = VDCHN_IDX_PARENT,
+              ir_objIDX = 0,
+              or_objID  = &fr_pretend.obj_id );
+
+   if( VSis_ancestry_valid( &fr_pretend.obj_id, OPP_ACpretend_class_id ) )
+   {
+     ci$send(  msg     = message ACpretend.ACfind_parent(
+                                &org_frame.obj_id,
+                                &org_frame.mod_env.md_env.matrix_type,
+                                org_frame.mod_env.md_env.matrix ),
+                targetid = fr_pretend.obj_id.objid,
+                targetos = fr_pretend.obj_id.osnum );
+     org_frame.mod_env.md_id.osnum = fr_pretend.obj_id.osnum ;
+     ex$get_modid( mod_osnum = org_frame.mod_env.md_id.osnum,
+                   mod_id    = &org_frame.mod_env.md_id.objid );
+   }
+   else org_frame = fr_pretend ;
+   frame = org_frame;
+   GetName( org_frame.obj_id, frm_name );
+   FIg_set_text( form, G_FRAME_NAME, strrchr( frm_name, ':' )+1 );
+}
+
+int ModifyPlateKey()
+{
+IGRint                  nb_attr, cn_type, attrib_change, b_mod;
+IGRchar                 stat[128];
+struct ACrg_coll        attrib[3];
+struct GRobj_env        boxOE;
+
+   vdobj$GetTemplate( objID      = &pl_key.obj_id,
+                      nth        = 1,
+                      templateOE = &boxOE );
+
+   ci$send ( msg =  message ACrg_collect.AClist_attribute( &msg,
+                                3, attrib, &nb_attr ),
+                targetid = boxOE.obj_id.objid,
+                targetos = boxOE.obj_id.osnum );
+   FIg_get_text( form, G_UNIT_NUMBER, stat  );
+   if( strcmp( attrib[0].desc.value.att_txt, stat ) )
+   {
+        attrib_change = 1;
+        strcpy( attrib[0].desc.value.att_txt, stat );
+   }
+
+   FIg_get_text( form, G_JOB_NUMBER, stat  );
+   if( strcmp( attrib[1].desc.value.att_txt, stat ) )
+   {
+        attrib_change = 1;
+        strcpy( attrib[1].desc.value.att_txt, stat );
+   }
+
+   FIg_get_text( form, G_JOB_DESC, stat  );
+   if( strcmp( attrib[2].desc.value.att_txt, stat ) )
+   {
+        attrib_change = 1;
+        strcpy( attrib[2].desc.value.att_txt, stat );
+   }
+
+   if( attrib_change )
+   {
+        ci$send ( msg =  message ACrg_collect.ACmod_list_attribute( &msg,
+                                                3, attrib ),
+                targetid = boxOE.obj_id.objid,
+                targetos = boxOE.obj_id.osnum );
+   }
+
+   cn_type   = ND_COMP;
+   if( org_surface.obj_id.objid != surface.obj_id.objid )
+   {
+        ASmake_source_from_env( &surface.obj_id, &loc_env,
+                                &surface.obj_id );
+        ci$send ( msg = message NDnode.NDchange_connect(
+                                  1, &pl_pretend.obj_id, &surface.obj_id ),
+                targetid = pl_key.obj_id.objid,
+                targetos = pl_key.obj_id.osnum );
+
+        nd$wait_batch(  type       = GR_GEOM_POSTED,
+                        nb_obj     = 1,
+                        l_object   = &pl_key.obj_id,
+                        l_obj_info = &cn_type );
+
+        nd$mod_batch( request     = ND_INQ,
+                      p_ret_mode  = &b_mod );
+        if( b_mod != ND_DEFER ) nd$exec_batch();
+   }
+
+   if( org_frame.obj_id.objid != frame.obj_id.objid )
+   {
+        ASmake_source_from_env( &frame.obj_id, &loc_env,
+                                &frame.obj_id );
+        ci$send ( msg = message NDnode.NDchange_connect(
+                                  1, &fr_pretend.obj_id, &frame.obj_id ),
+                targetid = pl_key.obj_id.objid,
+                targetos = pl_key.obj_id.osnum );
+
+        nd$wait_batch(  type       = GR_GEOM_POSTED,
+                        nb_obj     = 1,
+                        l_object   = &pl_key.obj_id,
+                        l_obj_info = &cn_type );
+
+        nd$mod_batch( request     = ND_INQ,
+                      p_ret_mode  = &b_mod );
+        if( b_mod != ND_DEFER ) nd$exec_batch();
+   }
+   return 1;
+}
+
+int main()
+{
+IGRlong         msg;
+IGRint          sts, response, i, count, sel, pos, row;
+IGRchar         str[50], stat[128], macName[128];
+enum GRdpmode   DisplayMode;
+struct GRobj_env *list;
+
+  test_wakeup = 1;              /* flag for wakeup function */
+  form_exists = FALSE;          /* flag for delete function */
+  form_displayed = FALSE;       /* flag for sleep  function */
+  not_done  = TRUE;             /* Set this to FALSE when done with form */
+  list      = NULL;
+  count     = 0;
+  nb_bndsrf = 20;
+  DisplayMode = GRhd;
+  surface.obj_id.objid = NULL_OBJID;
+
+  message( COMMAND_NAME );
+
+  VDSloadMacroLibrary( "band_av" );
+
+  while (not_done )
+  {    
+      macName[0] = '\0';
+      if( !ci$locate(
+                obj             = &pl_key.obj_id.objid,
+                osnum           = &pl_key.obj_id.osnum,
+                md_env          = &pl_key.mod_env,
+                response        = &response,
+                classes         = "nci_macro",
+                prompt          = "Locate Plate Key Macro",
+                stackable       = TRUE ,
+                properties      = LC_LC_ONLY | LC_DP_ONLY | LC_RW,
+                owner_action    = LC_RIGID_COMP  | LC_RIGID_OWNER |
+                                  LC_FLEX_COMP   | LC_FLEX_OWNER  |
+                                  LC_REF_OBJECTS ) ) return 1;
+      __DBGpr_obj("Selected Macro ", pl_key.obj_id );
+      vdobj$Get  (objOE = &pl_key, macName = macName );
+      if( !strcmp( macName, "plate_key" ) ) not_done = FALSE;
+  }
+
+
+  init_form();
+  FillDataInForm();
+
+  VSsbGetBndSrfObjs( &msg, &count, &list );
+  __DBGpr_int("Count ", count );
+  if( count < nb_bndsrf ) nb_bndsrf = count;
+  for( i=0; i<nb_bndsrf; i=i+1 )
+        bndsrf[i] = list[i];
+
+  free( list );
+  get_unitname_and_srf();
+
+  not_done = TRUE;
+  while (not_done )
+  {
+    /* Suspend the command file and wait for the form */
+    ci$get (  prompt   = "Fill in the form",
+              response = &response );
+
+    UI_status(""); /* clear the status field*/
+    message_bar("");
+    switch ( form_st.gadget_label )
+    {
+       case FI_CANCEL:
+       {
+           dp$erase_hilite(msg = &msg);
+           not_done = FALSE;
+           FIf_erase ( form );
+           break;
+       }
+
+       case FI_ACCEPT:
+       {
+           dp$erase_hilite(msg = &msg);
+           if( ModifyPlateKey() )
+	   {
+              not_done = FALSE;
+              FIf_erase ( form );
+           }
+           else FIg_set_state_off( form, FI_ACCEPT );
+           break;
+       }
+
+       case G_UNIT_NUMBER:
+       {
+           FIg_get_text( form, G_UNIT_NUMBER, unit_no );
+           break;
+       }
+
+       case G_JOB_NUMBER:
+       {
+           FIg_get_text( form, G_JOB_NUMBER, job_no );
+           break;
+       }
+
+       case G_JOB_DESC:
+       {
+           FIg_get_text( form, G_JOB_DESC, job_desc );
+           break;
+       }
+
+       case G_SURFACE_NAME:
+       {
+           for( i=0; i<nb_bndsrf; i=i+1 )
+           {
+              FIfld_get_list_select( form,  G_SURFACE_NAME, i, 0, &sel );
+              if( sel )
+              {
+                dp$erase_hilite( msg = &msg );
+                surface = bndsrf[i];
+                VSbulkDisplayByGRobj_envs( GRhd, 1, &surface );
+                __DBGpr_obj("Normal is Displated ", surface.obj_id );
+                VLsbGetMoldSurface( &msg, &surface, GRhd, NULL );
+                break;
+              }
+           }
+           break;
+       }
+
+       case G_PLATE_LIST:
+       {
+           VIfld_get_active_row( form, G_PLATE_LIST, &row, &pos);
+           FIfld_get_select( form, G_PLATE_LIST, row, 0, &pos);
+           if( pos )
+           {
+             FIfld_set_select( form, G_PLATE_LIST, row, 0, TRUE );
+             VSbulkDisplayByGRobj_envs( GRhd, 1, &plt_list[row] );
+           }
+           else
+           {
+             FIfld_set_select( form, G_PLATE_LIST, row, 0, FALSE );
+             VSbulkDisplayByGRobj_envs( GRhe, 1, &plt_list[row] );
+           }
+           break;
+       }
+
+       case G_FRAME_LOCATE:
+       {
+           LocateOE( "Identify Key Frame / Move on", "Frame",
+                     &frame, frm_name, FALSE );
+           __DBGpr_obj("Located Frame ", frame.obj_id );
+           FIg_set_text( form, G_FRAME_NAME, strrchr( frm_name, ':' )+1 );
+           FIg_set_state_off( form, G_FRAME_LOCATE );
+           break;
+       }
+    }
+  }
+
+wrapup:
+  return 1;
+}
+
+init()
+{
+  form = NULL;
+}
+
+int init_form()
+{
+IGRint  sts, retFlag;
+Form    existingForm;
+
+  retFlag = 0;
+  sts = VI_get_form_by_name(FORM_NAME, &existingForm);
+  if (sts == FI_SUCCESS)
+  {
+      UI_status("Place Steel Bands command is active" );
+      return 0;
+  }
+
+  VIf_new(100, FORM_NAME, ci_notification, &form);
+  if (form == NULL)
+  {
+      printf("Can not Initialize the Steel Bands Form\n" );
+      goto wrapup;
+  }
+  form_exists = TRUE;  /* Flag for delete function */
+  VDahFrmLoadPositionFromFile( form );
+  VIf_set_cmd_oid_os( form, MY_ID, OM_Gw_current_OS );
+
+  VIf_display( form );
+  form_displayed = TRUE;  /* Flag for sleep function */
+
+  FIg_disable( form, G_PLATE_LOCATE );
+  FIg_disable( form, G_PLATE_REMOVE );
+  FIg_disable( form, G_SURFACE_NAME );
+
+  retFlag = 1;
+
+wrapup:
+  return retFlag;
+}
+
+
+/* ---------------------------------
+ * Gadget handling
+ */
+form_notification()
+{
+  ci$put( response = MOVE_ON );  /* Give control to the main function */
+  return 1;
+}
+
+get_unitname_and_srf()
+{
+        IGRchar                 filename[132], srf_name[132];
+        IGRint                  i, var_size[3];
+        IGRint                  bad_var;
+        struct  EX_var_list     ex_var[4];
+
+        var_size[0] = sizeof(filename);
+        ex_var[0].var = EX_CUR_FILENAME;
+        ex_var[0].var_value = &filename[0];
+        ex_var[0].num_bytes = &var_size[0];
+        var_size[1] = NULL;
+
+        msg = ex$global ( mode = 0, var = ex_var, which_error = &bad_var );
+
+        __DBGpr_str("Design File Name ", filename );
+        if( strlen(filename) > 4 )      strncpy( unit_no, filename, 4 );
+        else                            strcpy ( unit_no, filename    );
+        __DBGpr_str("Unit Number ", unit_no );
+
+        FIg_set_text( form, G_UNIT_NUMBER, unit_no );
+
+        __DBGpr_int("Number Of Bounded Surfaces ", nb_bndsrf );
+        if( nb_bndsrf )
+        {
+           FIfld_set_num_rows( form, G_SURFACE_NAME, nb_bndsrf );
+           for( i=0; i<nb_bndsrf; i=i+1 )
+           {
+              GetName( bndsrf[i].obj_id, srf_name );
+              __DBGpr_str( "Surface Name ", srf_name );
+              FIfld_set_list_text( form, G_SURFACE_NAME, i, 0,
+                                   srf_name, FALSE );
+           }
+        }
+
+        ci$get_module_info( md_env = &loc_env);
+}

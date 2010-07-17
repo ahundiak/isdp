@@ -1,0 +1,605 @@
+/* $Id $  */
+/* --------------------------------------------------------------------
+ * I/LOFT
+ *
+ * File:        src/platejig/VLpppJig.u
+ *
+ * Description: Plate Jigs Implementation.
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ *      $Log $
+ *
+ * History:
+ *      MM/DD/YY        AUTHOR          DESCRIPTION
+ *      08/10/00        MJ, Rama Rao    File Creation.
+ * -------------------------------------------------------------------*/
+
+#include	"VDppl.h"
+#include        "AS_status.h"
+#include        "vsAPImacros.h"
+#include 	"v_pplslc.h"
+
+#define DEBUG
+
+/* Program constants */
+
+/* Name constants */
+#define  ATTR          "Attributes"
+#define  DIR_NAME      "Direction"
+#define  SIDE_NAME     "PlateSide"
+#define  BASE_NAME     "plate:base"
+#define  PJMACRO_NAME  "platejig"
+#define  RADIUS         150.0
+
+#define  PJ_MACRO_LIB  "VLpljig.lib"
+#define  FILL_PL_MACRO "fillet_plane"
+#define  PJ_SLOT_MACRO "pljig_slot"
+#define  V_GAP          6.0
+#define  H_GAP          5.0
+
+
+/* Plate placement constants */
+#define  PLT_NAME  "jig_pl"
+#define  MAT       "STEEL"
+#define  GRADE     "AH-36"
+#define  FAMILY    "steel_plate"
+#define  PART_NUM  "10-mm"
+#define  THK       10.0
+  
+extern	COm_get_option_grid(), GRgs_fun(), GRdisplay_object(), 
+	ASmake_source_from_env(), MAidmx(), EX_get_modid_given_osnum(),
+	VLpppProcessCutouts(), VDSloadMacroLibrary();
+
+/* External functions */
+extern   OM_S_CHANSELECT  AS_to_comp;
+extern   OM_S_CHANSELECT  AS_to_owner;
+extern   OM_S_CHANSELECT ND_children;
+extern   OM_S_CHANSELECT AS_notification;
+
+extern   GRclassid OPP_ACncpx_class_id, OPP_nci_macro_class_id,
+                   OPP_ACconst_class_id, OPP_ACdyn_col_class_id,
+                   OPP_VSimgFeature_class_id;
+
+struct PJjig_obj 
+{
+  struct GRobj_env jig;
+  struct GRobj_env srf;
+  struct GRobj_env plt;
+  struct PJjig_obj *next;
+};
+
+
+/* GLOBAL VARIABLES */
+struct GRobj_env  PJmanager;
+struct PJjig_obj *PJnew;
+struct PJjig_obj *PJjig_base_prim, *PJjig_base_sec, *PJjig_base_edge;
+struct PJjig_obj *PJjig_offs_prim, *PJjig_offs_sec, *PJjig_offs_edge;
+IGRint            PJbase_prim_num,  PJbase_sec_num,  PJbase_edge_num;
+IGRint            PJoffs_prim_num,  PJoffs_sec_num,  PJoffs_edge_num;
+struct GRid       objRadius, objVgap, objHgap;
+
+main() 
+{
+  OM_S_OBJECT_LINKAGE   *child;
+  IGRint                 PJchild_num;
+  struct GRid obj, macro_defn;
+  IGRint      i, sts, msg, side, dir;
+  IGRchar     classname[OM_K_MAXCLASS_LEN+1], *macro_name;
+  IGRdouble Radius, Vgap, Hgap;
+  
+  VDSloadMacroLibrary( PJ_MACRO_LIB );
+
+  /* Initialize */
+  PJbase_prim_num = 0; PJbase_sec_num = 0; PJbase_edge_num = 0;
+  PJoffs_prim_num = 0; PJoffs_sec_num = 0; PJoffs_edge_num = 0;
+
+  PJjig_base_prim = NULL; PJjig_base_sec = NULL; PJjig_base_edge = NULL;
+  PJjig_offs_prim = NULL; PJjig_offs_sec = NULL; PJjig_offs_edge = NULL;
+
+  Radius = RADIUS; objRadius.objid = NULL_OBJID; objRadius.osnum = 2;
+  sts = create_expr( Radius, &objRadius);
+  if( sts ) {
+    printf("Could not create expression - exiting!\n");
+    exit;
+  }
+  
+  Vgap = V_GAP; objVgap.objid = NULL_OBJID; objVgap.osnum = 2;
+  sts = create_expr( Vgap, &objVgap);
+  if( sts ) {
+    printf("Could not create expression - exiting!\n");
+    exit;
+  }
+  
+  Hgap = H_GAP; objHgap.objid = NULL_OBJID; objHgap.osnum = 2;
+  sts = create_expr( Hgap, &objHgap);
+  if( sts ) {
+    printf("Could not create expression - exiting!\n");
+    exit;
+  }
+  
+  /* LOCATE JIG MANAGER */
+  vd$ppl_getarg_at_index( which_info = INPUT_INFO,
+                          index      = 0,
+                          value      = &PJmanager  );
+  printf("Located object %d[%d]\n", PJmanager.obj_id.objid, PJmanager.obj_id.osnum );
+
+  /* Get all children off PJManager */
+  sts = om$get_channel_count(objid        = PJmanager.obj_id.objid,
+                             osnum        = PJmanager.obj_id.osnum,
+                             p_chanselect = &ND_children,
+                             count        = &PJchild_num);
+
+#ifdef DEBUG
+  printf("Manager has %d jigs\n", PJchild_num );
+#endif
+
+  if(!(sts&1)) PJchild_num = 0;
+  
+  if( PJchild_num )
+  {
+    child =(OM_S_OBJECT_LINKAGE *) malloc(PJchild_num * sizeof(OM_S_OBJECT_LINKAGE));
+    if(child == NULL) return OM_W_ABORT;
+    
+    sts = om$get_channel_objects( objid        = PJmanager.obj_id.objid,
+                                  osnum        = PJmanager.obj_id.osnum,
+                                  p_chanselect = &ND_children,
+                                  list         = child,
+                                  size         = PJchild_num,
+                                  count        = &PJchild_num );
+    
+    /* Check all jigs and split them into groups by side and direction */
+
+    for( i=0; i<PJchild_num; i=i+1 )
+    {
+      obj.osnum = child[i].osnum; obj.objid = child[i].S_objid;
+      get_macro_info( classname, &macro_name, &macro_defn, obj );
+
+      if( !strcmp( classname, "nci_macro") && !strcmp( macro_name, PJMACRO_NAME ) ) {
+        printf("Jig[%d] : %s %d[%d]", i, classname, obj.objid, obj.osnum );
+        
+        get_side_dir( obj, &side, &dir );
+        printf("\tDirection = %d\tSide = %d\n", dir, side );
+        
+        if( dir == 0  && side == 0 ) {
+          PJbase_prim_num =  PJbase_prim_num + 1;
+          add_PJ( &PJjig_base_prim, child[i] );
+        }
+        if( dir == 1  && side == 0 ) {
+          PJbase_sec_num =  PJbase_sec_num + 1;
+          add_PJ( &PJjig_base_sec, child[i] );
+        }
+        if( dir == 2  && side == 0 ) {
+          PJbase_edge_num =  PJbase_edge_num + 1;
+          add_PJ( &PJjig_base_edge, child[i] );
+        }
+        if( dir == 0  && side == 1 ) {
+          PJoffs_prim_num =  PJoffs_prim_num + 1;
+          add_PJ( &PJjig_offs_prim, child[i] );
+        }
+        if( dir == 1  && side == 1 ) {
+          PJoffs_sec_num =  PJoffs_sec_num + 1;
+          add_PJ( &PJjig_offs_sec, child[i] );
+        }
+        if( dir == 2  && side == 1 ) {
+          PJoffs_edge_num =  PJoffs_edge_num + 1;
+          add_PJ( &PJjig_offs_edge, child[i] );
+        }
+      }
+    }
+    print_PJ("Base primary :",     PJjig_base_prim );
+    print_PJ("Base secondary :",   PJjig_base_sec );
+    print_PJ("Base edges :",       PJjig_base_edge );
+    print_PJ("Offset primary :",   PJjig_offs_prim );
+    print_PJ("Offset secondary :", PJjig_offs_sec );
+    print_PJ("Offset edges :",     PJjig_offs_edge );
+  
+    process_jigs();
+    
+  }
+
+  free( PJjig_base_prim ); 
+  free( PJjig_base_sec ); 
+  free( PJjig_base_edge );
+  free( PJjig_offs_prim ); 
+  free( PJjig_offs_sec );
+  free( PJjig_offs_edge );
+  
+}
+
+process_jigs()
+/***************/
+{
+  /* Place fillet_plane macros on each jig */
+  place_fillet_plane( PJjig_base_prim ); 
+  place_fillet_plane( PJjig_base_sec ); 
+  place_fillet_plane( PJjig_base_edge );
+  place_fillet_plane( PJjig_offs_prim ); 
+  place_fillet_plane( PJjig_offs_sec );
+  place_fillet_plane( PJjig_offs_edge );
+
+  /* Place plate on each jig */
+  place_plate( PJjig_base_prim ); 
+  place_plate( PJjig_base_sec ); 
+  place_plate( PJjig_base_edge );
+  place_plate( PJjig_offs_prim ); 
+  place_plate( PJjig_offs_sec );
+  place_plate( PJjig_offs_edge );
+
+  place_slot( PJjig_base_prim, PJjig_base_sec );
+  place_slot( PJjig_offs_prim, PJjig_offs_sec );
+
+  VLpppProcessCutouts();
+  
+}
+
+
+add_PJ( PJjig_object, gr_obj )
+/*************************/
+struct PJjig_obj **PJjig_object;
+OM_S_OBJECT_LINKAGE gr_obj;
+{
+      
+        PJnew = (struct PJjig_obj *) malloc( sizeof( struct PJjig_obj ) );
+        if( PJnew == NULL ) {
+          printf("ERROR: malloc failed in add_PJ\n");
+          return(1);
+        }
+        PJnew->next = *PJjig_object;
+        PJnew->jig.obj_id.objid = gr_obj.S_objid;
+        PJnew->jig.obj_id.osnum = gr_obj.osnum;
+        PJnew->jig.mod_env = PJmanager.mod_env;
+        *PJjig_object = PJnew;
+        return(0);
+}
+
+free_PJ( PJjig_object )
+/*************************/
+  struct PJjig_obj *PJjig_object;
+
+{
+  struct PJjig_obj *current, *temp;
+
+  current = PJjig_base_prim;
+  while( current != NULL ) {
+    temp = current->next;
+    free( current );
+    current = temp;
+  }
+}
+
+
+print_PJ( Title, PJjig_object )
+/***********************/
+  IGRchar *Title;
+  struct PJjig_obj * PJjig_object;
+{
+  IGRint i;
+  struct PJjig_obj *current;
+  
+  if( PJjig_object == NULL )
+    return(1);
+  
+  i = 0;
+  current = PJjig_object;
+  printf("%s\n", Title);
+  while( current != NULL ) {
+    printf("Jig[%d]: ", i);
+    printf("%d[",  current->jig.obj_id.objid );
+    printf("%d]\n", current->jig.obj_id.osnum );
+    current = current->next;
+    i = i+1;
+  } 
+}
+
+
+get_side_dir( object, side, dir )
+/********************************/
+struct GRid 	  object;
+IGRint          * side;
+IGRint          * dir;
+{
+  IGRlong sts, msg;
+  struct GRid attrBox;
+  struct ACrg_coll      attr[1];
+  
+  sts = ci$send( msg = message ACcpx.ACfind_temp_obj( &msg, ATTR,
+                                                         &attrBox ),
+                 targetid = object.objid,
+                 targetos = object.osnum );
+  if( !( sts & 1 ) ) { 
+    printf( "ACfind_temp_obj failed (%d[%d])\n", object.objid, 
+                                                 object.osnum );
+    return( 1 );
+  }
+
+  //printf("AttrBox %d[%d]\n", attrBox.objid, attrBox.osnum );
+  
+  /* Get direction */
+  strcpy( attr[0].name, DIR_NAME );
+  sts = ci$send( msg = message ACrg_collect.ACget_named_attribute( &msg, attr ),
+                 targetid = attrBox.objid,
+                 targetos = attrBox.osnum );
+  if( !( sts & 1 ) ) { 
+    printf( "ACget_named_attribute failed (%d[%d])\n", attrBox.objid, attrBox.osnum );
+    return( 1 );
+  }
+  *dir = (int) attr[0].desc.value.att_exp;
+
+  
+  /* Get side */
+  strcpy( attr[0].name, SIDE_NAME );
+  sts = ci$send( msg = message ACrg_collect.ACget_named_attribute( &msg, attr ),
+                 targetid = attrBox.objid,
+                 targetos = attrBox.osnum );
+  if( !( sts & 1 ) ) { 
+    printf( "ACget_named_attribute failed (%d[%d])\n", attrBox.objid, attrBox.osnum );
+    return( 1 );
+  }
+  if( strcmp( attr[0].desc.value.att_txt, BASE_NAME ) )
+    side = 0;
+  else
+    side = 1;
+  
+  return(0);
+}
+
+
+get_macro_info( classname, macro_name, macro_defn, macro_occ )
+/************************************************************/
+char             *classname;
+char            **macro_name;
+struct GRid      *macro_defn;
+struct GRid       macro_occ;
+{
+  IGRlong sts;
+
+  sts = om$get_classname(osnum     = macro_occ.osnum,
+                         objid     = macro_occ.objid,
+                         classname = classname );
+
+  sts = ci$send( msg = message ACcpx.find_macro( macro_defn ),
+                    targetid = macro_occ.objid,
+                    targetos = macro_occ.osnum );
+  if( !( sts & 1 ) ) {
+    printf( "GET MACRO NAME: ACcpx.find_macro failed (%d[%d])\n",
+            macro_occ.objid, macro_occ.osnum );
+    return( 1 );
+  }
+
+  sts = ci$send( msg = message ACcpx_defn.ACgive_name( macro_name ),
+                    targetid = macro_defn->objid,
+                    targetos = macro_defn->osnum );
+  if( !( sts & 1 ) ) {
+    printf( "GET MACRO NAME: ACcpx_defn.ACgive_name failed (%d[%d])\n",
+            macro_defn->objid, macro_defn->osnum );
+    return( 1 );
+  }
+  return(0);
+}
+
+
+place_fillet_plane( PJjig_object )
+/********************************/
+  struct PJjig_obj * PJjig_object;
+{
+  IGRint count;
+  struct PJjig_obj *current;
+  struct GRid      *templates;
+  
+
+  /* Check if not empty */
+  if( PJjig_object == NULL )
+    return(1);
+  
+  /* Initialize */
+  count = 2;
+
+  /* Process macro placement */
+  current = PJjig_object;
+  while( current != NULL ) {
+    templates = (struct GRid *) malloc( count * sizeof( struct GRid ));
+    if( templates == NULL ) {
+      printf("ERROR: malloc failed in place_fillet_plate\n");
+    }
+    else {
+      ASmake_source_from_env( &current->jig.obj_id, &current->jig.mod_env,
+			      &templates[0] );
+      templates[1] = objRadius;
+      place_macro(FILL_PL_MACRO, PJ_MACRO_LIB, templates, count, 
+                  current->jig.mod_env, &current->srf.obj_id );
+      printf("Placed surface %d[%d]\n", current->srf.obj_id.objid, 
+                                      current->srf.obj_id.osnum );
+      current->srf.mod_env = current->jig.mod_env;
+    }
+    free( templates );
+    current = current->next;
+  } 
+}
+
+place_plate( PJjig_object )
+/********************************/
+  struct PJjig_obj * PJjig_object;
+{
+  IGRint msg, sts;
+  struct PJjig_obj *current;
+  
+
+  if( PJjig_object == NULL )
+    return(1);
+  
+  current = PJjig_object;
+  while( current != NULL ) {
+    sts = vs$place_plate( msg               = &msg,
+                          surfaceId         = &current->srf.obj_id,
+                          surfaceEnv        = &current->srf.mod_env,
+                          representation    = AC_3D_REP,
+                          basename          = PLT_NAME,
+                          matType           = MAT,
+                          matGrade          = GRADE,
+                          partFam           = FAMILY,
+                          partNum           = PART_NUM,
+                          thickness         = THK,
+                          plateId           = &current->plt.obj_id );
+    if( !( sts & 1 & msg ) ) printf( "Error in placement of plate\n" ) ;
+    else printf( "Constructed plate : [%d,%d]\n", current->plt.obj_id.osnum,
+                 current->plt.obj_id.objid ) ;
+    current->plt.mod_env = current->jig.mod_env;
+    current = current->next;
+  }
+}
+
+
+place_slot( PJjig1, PJjig2 )
+/********************************/
+  struct PJjig_obj * PJjig1;
+  struct PJjig_obj * PJjig2;
+//  IGRint             dir;
+{
+  
+  IGRint msg, sts, count;
+  struct PJjig_obj *current1, *current2;
+  struct GRid      *templates, slot_macro;
+  
+
+  /* Check if not empty */
+  if( PJjig1 == NULL || PJjig2 == NULL )
+    return(1);
+  
+  /* Initialize */
+  count = 4;
+
+  current1 = PJjig1;
+  while( current1 != NULL ) {
+    current2 = PJjig2;
+    while( current2 != NULL ) {
+      templates = (struct GRid *) malloc( count * sizeof( struct GRid ));
+      if( templates == NULL ) {
+        printf("ERROR: malloc failed in place_fillet_plate\n");
+      }
+      else {
+        templates[0] = current1->plt.obj_id;
+        templates[1] = current2->plt.obj_id;
+        templates[2] = objVgap;
+        templates[3] = objHgap;
+        place_macro( PJ_SLOT_MACRO, PJ_MACRO_LIB, templates, count, 
+                    current1->jig.mod_env, &slot_macro );
+        printf("Placed slot macro %d[%d]\n", slot_macro.objid, 
+               slot_macro.osnum );
+      }
+      free( templates );
+      current2 = current2->next;
+    }
+    current1 = current1->next;
+  }
+}
+
+#include        "vdAPIequips.h"
+
+/* ============================= place_macro ================================== */
+
+place_macro( macro_name, macro_lib, tmpl_list, tmpl_num, mod_env, occ_id )
+IGRchar     *macro_name;
+IGRchar     *macro_lib;
+struct GRid *tmpl_list;
+IGRint       tmpl_num;
+struct GRmd_env mod_env;
+struct GRid *occ_id;
+{
+
+        IGRlong         sts, msg;
+        IGRint          rsp, i, cnt, j;
+struct  VDcollector     *Tpl;
+        IGRchar         nam[VD_COL_NAM_LEN];
+struct  GRobj_env       Surf;
+struct  OM_sd_classlist *ecl;
+
+// printf("Welcome to macro %s[%s] placement!\n", macro_name, macro_lib);
+
+        /* Initialize */
+        Tpl = NULL;
+
+        /* Get macro collector */
+        sts = vd$getMacDefCollector ( msg    = &msg,
+                                      MacLib = macro_lib,
+                                      MacDef = macro_name,
+                                      TplNum = &cnt,
+                                      TplCol = &Tpl );
+        as$status ( sts    = sts,
+                    msg    = "vd$getMacDefCollector()",
+                    test   = (!(sts & 0x00000001 & msg)),
+                    action = GOTO_VALUE,
+                    value  = wrapup );
+        //vd$collectorPrint ( Num = cnt, Col = Tpl, msg = "<> : def" );
+
+        /* Fill out template list */
+        for ( i=0; i<tmpl_num; i=i+1 ) {
+                /* Get macro definition info */
+                sts = vd$collectorGetRow ( msg = &msg,
+                                           idx = i,
+                                           Col = Tpl,
+                                           Nam = nam,
+                                           Cla = &ecl );
+                as$status ( sts    = sts,
+                            msg    = "vd$collectorSetRow()",
+                            test   = (!(sts & 0x00000001 & msg)),
+                            action = GOTO_VALUE,
+                            value  = wrapup );
+                
+                /* Set template in collector */
+                sts = vd$collectorSetRow ( msg = &msg,
+                                             idx = i,
+                                             Col = Tpl,
+                                             Obj = &tmpl_list[i],
+                                             Env = &mod_env );
+                as$status ( sts    = sts,
+                            msg    = "vd$collectorSetRow()",
+                            test   = (!(sts & 0x00000001 & msg)),
+                            action = GOTO_VALUE,
+                            value  = wrapup );
+        }
+        
+        /* Place macro */
+        //vd$collectorPrint ( Num = tmpl_num, Col = Tpl, msg = "<> : occ" );
+        sts = vd$place_macro ( msg      = &msg,
+                               TplNum   = tmpl_num,
+                               TplCol   = Tpl,
+                               MacLib   = macro_lib,
+                               MacDef   = macro_name,
+                               OccId    = occ_id );
+        as$status ( sts    = sts,
+                    msg    = "vd$place_macro()",
+                    test   = (!(sts & 0x00000001 & msg)),
+                    action = GOTO_VALUE,
+                    value  = wrapup );
+
+ wrapup:
+        vd$collectorFree (Col = Tpl);
+        return (sts);
+}
+
+
+
+create_expr( expr, object )
+/*************************/
+IGRdouble    expr;
+struct GRid *object;
+{
+  IGRchar exp_value[10];
+  IGRint  msg, sts;
+  
+  sprintf( exp_value, "%.3f", expr);
+  sts = ci$send(msg = message Gexp.create( NULL, exp_value, &msg),
+                 targetid = object->objid,
+                 targetos = object->osnum);
+  if( !( sts & 1 ) ) { 
+    printf( "Gexp.create failed\n");
+    return( 1 );
+  }
+  else
+    return(0);
+}
+
+
+
