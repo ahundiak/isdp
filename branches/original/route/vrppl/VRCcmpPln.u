@@ -1,0 +1,354 @@
+/* $Id: VRCcmpPln.u,v 1.2 2001/09/14 19:02:20 louis Exp $ */
+ 
+/***************************************************************************
+ * I/ROUTE
+ *
+ * File:        vrppl/VRCcmpPln.u 
+ *
+ * Description:
+ *	This ppl identifies all CCOMPs whose planes are not the parent
+ *	planes of its control segment. Further, it attempts to eliminate
+ *	these duplicate planes and replace them with the corresponding
+ *	planes of the segment.
+ *
+ * Revision History:
+ *      $Log: VRCcmpPln.u,v $
+ *      Revision 1.2  2001/09/14 19:02:20  louis
+ *      Added bad planes test on CCOMPs
+ *
+ *      Revision 1.1  2001/07/31 23:16:06  anand
+ *      JTS TR MP 5159
+ *
+ *
+ * History:
+ *	MM/DD/YY  AUTHOR  DESCRIPTION
+ *	07/31/01  Anand   Creation (motivation TR 5159)
+ *      09/14/01  law     Added tests for bad planes on CCOMPs(tr4724 related)
+ ***************************************************************************/
+
+#include "VDppl.h"
+#include "vdVALmacros.h"
+#include "vrdbgmacros.h"
+
+#define NB_PLANES 3
+
+extern struct GRid	NULL_GRID;
+extern GRclassid	OPP_VRConcComp_class_id;
+extern			VDobjInActiveSpace();
+extern			VR_find_ccomp_cpt();
+extern			UI_status();
+extern			sprintf();
+
+IGRint
+VRResolvePlnConflict(CCompId, CCmpPln, SegPln, InvldCComp, SolnFound, md_env)
+struct GRid	*CCompId, *CCmpPln, *SegPln;
+IGRboolean	*InvldCComp, *SolnFound;
+struct GRmd_env	*md_env;
+{
+    IGRint	i, j, sts, NbKids;
+
+    /* The index of array SegIndxOnCCmp is the index of the plane on the
+     * segment. The value of this array is the index of the plane on the
+     * CCOMP. If value is -1, the segment's plane is not on the CCOMP. */
+    IGRint	SegIndxOnCCmp[NB_PLANES];
+    /* Ditto for the vice versa?! */
+    IGRint	CCmpIndxOnSeg[NB_PLANES];
+
+    __DBGpr_com("Entering fn VRResolvePlnConflict");
+    if( CCompId == NULL || CCmpPln == NULL || SegPln == NULL ||
+	InvldCComp==NULL || SolnFound == NULL )
+    {
+	__DBGpr_com("Invalid args passed to VRResolvePlnConflict");
+	return OM_E_INVARG;
+    }
+
+    *InvldCComp = FALSE; /* Assume that CCOMP is good! */
+    
+    for( i=0 ; i<NB_PLANES ; i=i+1 )
+    {
+	SegIndxOnCCmp[i] = -1;
+	CCmpIndxOnSeg[i] = -1;
+    }
+
+    /* It was observed that the planes at a cpt of a CCOMP are usually
+     * in the following sequence: Common, Vertical, Terminal. So, try
+     * the following for-loop first.
+     */
+    for( i=0 ; i<NB_PLANES ; i=i+1 )
+    {
+	__DBGpr_obj(" CCOMP plane", CCmpPln[i]);
+	__DBGpr_obj(" Segment plane", SegPln[i]);
+	if( CCmpPln[i].objid != SegPln[i].objid ||
+	    CCmpPln[i].osnum != SegPln[i].osnum )
+	{
+	    *InvldCComp = TRUE;
+	}
+	else
+	{
+	    SegIndxOnCCmp[i]=i;
+	    CCmpIndxOnSeg[i]=i;
+	}
+    }
+
+    if( *InvldCComp == FALSE )
+    {
+	*SolnFound = TRUE;
+	__DBGpr_com("Resolved conflict (there wasn't any!)");
+	return OM_S_SUCCESS;
+    }
+
+    /* Now check to see if the planes on the CCOMP are on the segment (albeit
+     * in a different order). */
+    *InvldCComp = FALSE;
+    for( i=0 ; i<NB_PLANES ; i=i+1 )
+    {
+	if( SegIndxOnCCmp[i] != -1 )
+	    continue;
+
+	for( j=0 ; j<NB_PLANES ; j=j+1 )
+	{
+	    if( j == i ) /* This case already taken care of above */
+		continue;
+
+	    if( SegPln[i].objid == CCmpPln[j].objid &&
+		SegPln[i].osnum == CCmpPln[j].osnum )
+	    {
+		SegIndxOnCCmp[i]=j;
+		CCmpIndxOnSeg[j]=i;
+	    }
+	}
+
+	if( SegIndxOnCCmp[i] == -1 )
+	    *InvldCComp = TRUE;
+    }
+
+    if( *InvldCComp == FALSE )
+    {
+	*SolnFound = TRUE;
+	__DBGpr_com("All CCOMP planes also in segment, in different order");
+	return OM_S_SUCCESS;
+    }
+
+    *SolnFound = TRUE;
+    for( i=0 ; i<NB_PLANES ; i=i+1 )
+    {
+	if( SegIndxOnCCmp[i] != -1 )
+	    continue;
+
+	/* Plane on segment is not in CCOMP. */
+
+	/* Find which plane in CCOMP may be removed */
+	for( j=0 ; j<NB_PLANES ; j=j+1 )
+	    if( CCmpIndxOnSeg[j] == -1 )
+		break;
+	if( j==NB_PLANES )
+	{
+	    *SolnFound=FALSE;
+	    printf("Could not get plane %d,%d to be parent of CCOMP %d,%d\n",
+					    SegPln[i].objid, SegPln[i].osnum,
+					    CCompId->objid, CCompId->osnum );
+	    continue;
+	}
+
+
+	sts = ci$send( msg = message NDnode.NDchange_connect( 1,
+							      &CCmpPln[j],
+							      &SegPln[i] ),
+		  targetid = CCompId->objid,
+		  targetos = CCompId->osnum );
+	if( !(sts&1) )
+	{
+	    *SolnFound=FALSE;
+	    printf("FAILED to replace duplicate plane %d,%d on CCOMP %d,%d with plane %d,%d\n",
+					    CCmpPln[i].objid, CCmpPln[i].osnum,
+					    CCompId->objid, CCompId->osnum,
+					    SegPln[i].objid, SegPln[i].osnum );
+	    continue;
+	}
+	else
+	{
+	    CCmpIndxOnSeg[j]=i;
+	    __DBGpr_obj(" Put segment plane on CCOMP", SegPln[i]);
+	}
+
+	/* Now that the planes have been swapped, check to see
+	 * if the old plane (that used to be) on CCOMP has any
+	 * left-over children. If not, simply delete it. */
+	sts = ci$send( msg = message NDnode.NDget_objects( ND_CHILDREN,
+							   NULL, 0,
+							   NULL, 0,
+							   OM_K_MAXINT,
+							   &NbKids ),
+		  targetid = CCmpPln[j].objid,
+		  targetos = CCmpPln[j].osnum );
+
+	if( NbKids == 0 )
+	    sts = ci$send( msg = message NDnode.NDdelete( md_env ),
+		      targetid = CCmpPln[j].objid,
+		      targetos = CCmpPln[j].osnum );
+	else
+	    vd$VAL_addObject( PostText = "Check plane for deletion",
+			      GRid = CCmpPln[j] );
+
+    }
+    __DBGpr_com("Leaving fn VRResolvePlnConflict");
+}
+
+main()
+{
+    IGRboolean	bInvalidCComp, bResolved;
+    IGRint	count, i, j, k, nObjects, NbCpts, CmpIndex;
+    IGRlong	sts, msg;
+    IGRchar	szMsg[80];
+    struct GRid		*loc_obj, CCmpPlns[3], SegId, SegPln[3];
+    struct GRmd_env	md_env;
+    IGRshort        ccompcpt;
+    IGRdouble       gap;
+    IGRint          badpln, nbadplanes;
+    GRclassid		class_array;
+
+    __DBGpr_com( " >> Entered the PPL " );
+    ci$get_module_info( md_env = &md_env );
+
+    class_array = OPP_VRConcComp_class_id;
+
+/* Get all constrained components in file. */
+    loc_obj = NULL;
+    sts = VDobjInActiveSpace(&msg, &count, &loc_obj, class_array);
+
+    __DBGpr_int( " Nb. of Objects found ", count );
+
+/* Open log file for the Validate process.  */
+    vd$VAL_openLog();
+
+    nObjects = 0;
+    /* For each CCOMP ... */
+    for( i=0; i<count; i=i+1 )
+    {
+	__DBGpr_obj("\nCCOMP's Object Id", loc_obj[i]);
+
+	/* ... get its number of connect points */
+	sts = ci$send( msg = message VRGeneric.VRGetNumberOfCpts( &msg,
+								  &NbCpts,
+								  &md_env ),
+		  targetid = loc_obj[i].objid,
+		  targetos = loc_obj[i].osnum );
+
+	/* Set this variable to true if CCOMP turns out to have duplicate
+	 * planes. Then use this to give info to user */
+	bInvalidCComp=FALSE;
+
+	/* For each cpt of each CCOMP ... */
+	for( j=0 ; j<NbCpts ; j=j+1 )
+	{
+	    /* ... get the planes at that cpt, ... */
+	    sts = ci$send( msg = message VRGeneric.VRGetPlanesOnCpt( &msg, j,
+								     CCmpPlns,
+								     &md_env ),
+		      targetid = loc_obj[i].objid,
+		      targetos = loc_obj[i].osnum );
+
+	    /* ... get the control segment which hooks to the CCOMP at that
+	     * cpt, and ... */
+	    sts = ci$send( msg = message VRGeneric.VRGetSupOnCpt( &msg, j,
+								  &SegId,
+								  &md_env),
+		      targetid = loc_obj[i].objid,
+		      targetos = loc_obj[i].osnum );
+	    __DBGpr_obj("Segment at j-th cpt of CCOMP", SegId);
+	    if( !(msg&1) || !(sts&1) || SegId.objid==NULL_OBJID )
+		continue;
+
+	    /* ... get those planes of the segment relevant to our CCOMP. */
+	    sts = ci$send( msg = message VRGeneric.VRGetIndex( &msg, &SegId,
+							       &CmpIndex ),
+		      targetid = loc_obj[i].objid,
+		      targetos = loc_obj[i].osnum );
+	    __DBGpr_int("End of Seg at which CCOMP is",CmpIndex);
+
+	    if( CmpIndex )
+	    {
+		/* End plane of segment == plane @ j-th cpt of i-th CCOMP */
+		sts =
+		ci$send( msg = message VRCnrlSeg.VRget_planes( &msg,
+							       &SegPln[0],
+							       &SegPln[1],
+							       NULL,
+							       &SegPln[2] ),
+		    targetid = SegId.objid,
+		    targetos = SegId.osnum );
+	    }
+	    else
+	    {
+		/* Start plane of segment == plane @ j-th cpt of i-th CCOMP */
+		sts =
+		ci$send( msg = message VRCnrlSeg.VRget_planes( &msg,
+							       &SegPln[0],
+							       &SegPln[1],
+							       &SegPln[2],
+							       NULL ),
+		    targetid = SegId.objid,
+		    targetos = SegId.osnum );
+	    }
+            /**** Added for tr4724 for badplanes on CCOMPs ****/
+            sts = VR_find_ccomp_cpt(SegId, loc_obj[i],
+                        &ccompcpt,&gap,&badpln,&md_env);
+            if(badpln)
+            {
+		sprintf( szMsg,
+		  "May have bad planes @ cpt%d replace CCOMP", ccompcpt );
+		vd$VAL_addObject( PostText = szMsg, GRid = loc_obj[i] );
+            }
+            else
+            {
+	        sts = VRResolvePlnConflict( &loc_obj[i], CCmpPlns, SegPln,
+					&bInvalidCComp, &bResolved, &md_env );
+	        if( bInvalidCComp )
+      	        {
+	       	   if( bResolved )
+		       sprintf( szMsg,
+			     "Fixed CCOMP with duplicate planes @ cpt%d", j );
+	   	   else
+		       sprintf( szMsg,"Unable to fix CCOMP invalid @ cpt%d", j);
+
+		   vd$VAL_addObject( PostText = szMsg, GRid = loc_obj[i] );
+		   nObjects = nObjects+1;
+                }
+	    }
+	}
+
+    } /* End of the for i=0 to count-1 loop */
+
+    if( nObjects==0 && count!=0 )
+    {
+	vd$VAL_addInfo( Text = "No CCOMPs having duplicate planes were found");
+    }
+    else
+    {
+	sprintf(szMsg, "%d cpts among %d CCOMPs had duplicate planes",
+							      nObjects, count);
+	UI_status(szMsg);
+    }
+
+    vd$VAL_closeLog();
+
+    if( count )
+    {
+	free( loc_obj );
+	loc_obj = NULL;
+    }
+
+    __DBGpr_com( " << Exiting the PPL " );
+}
+
+delete()
+{
+}
+
+wakeup()
+{
+}
+
+sleep()
+{
+}

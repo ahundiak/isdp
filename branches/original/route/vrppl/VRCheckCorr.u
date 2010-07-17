@@ -1,0 +1,131 @@
+/* $Id: VRCheckCorr.u,v 1.1 2001/02/23 23:37:56 anand Exp $ */
+ 
+/***************************************************************************
+ * I/ROUTE
+ *
+ * File:        vrppl/VRCheckCorr.u
+ *
+ * Description:
+ * 	This ppl has been written to check the Route Design file for
+ * 	corrections that should have been fitting-to-fitting but aren't.
+ *	
+ * Dependencies:
+ *
+ * Revision History:
+ *      $Log: VRCheckCorr.u,v $
+ *      Revision 1.1  2001/02/23 23:37:56  anand
+ *      Motivation: JTS TR MP 4724.
+ *
+ *
+ * History:
+ * 	MM/DD/YY  AUTHOR  DESCRIPTION
+ * 	02/23/01  Anand   Creation
+ *
+ ***************************************************************************/
+
+#include "VDppl.h"
+#include "VDobj.h"
+#include "AS_status.h"
+#include "vdVALmacros.h"
+#include "vrdbgmacros.h"
+#include "VRcordef.h"
+
+extern GRclassid OPP_VRPCorentity_class_id;
+extern GRclassid OPP_VRHCorentity_class_id;
+extern GRclassid OPP_VRRCorentity_class_id;
+
+extern OM_S_CHANSELECT  AS_to_comp;
+
+extern 		VCobjInActiveSpace();
+
+main()
+{
+  IGRint 	nClassCount;
+  IGRint 	count;
+  IGRint 	j;
+  IGRint	nObjects;
+  IGRint	CorrState, NbCorCmp;
+  IGRlong 	sts, msg;
+  struct GRid 	*loc_obj;
+  OM_S_CLASSLIST        locate_eligible_thing;
+  GRclassid 		class_array[3];
+  
+  __DBGpr_com( " >> Entered the PPL " );
+
+  class_array[0] = OPP_VRPCorentity_class_id;
+  class_array[1] = OPP_VRRCorentity_class_id;
+  class_array[2] = OPP_VRHCorentity_class_id;
+  nClassCount = 3;
+  locate_eligible_thing.w_count = nClassCount;
+  locate_eligible_thing.p_classes = class_array;
+
+  /* This function gets all the objects of classes specified in the
+  array. */
+  loc_obj = NULL;
+  sts = VCobjInActiveSpace( &msg, &count, &loc_obj, class_array, nClassCount );
+  __DBGpr_int( " Nb. of Objects found ", count );
+
+  /*
+   * OPEN the Log file for the Validate process.
+   */
+  vd$VAL_openLog();
+
+  nObjects = 0;
+  for( j=0; j<count; j=j+1 )
+  {
+      __DBGpr_obj( " Object Id ", loc_obj[j] );
+
+      sts = ci$send( msg = message VRCorrection.VRget_state( &CorrState ),
+		targetid = loc_obj[j].objid,
+		targetos = loc_obj[j].osnum );
+      as$status( sts = sts );
+
+      if( ! (CorrState&VR_FIT_TO_FIT) )
+      {
+	    sts = om$get_channel_count( objid        = loc_obj[j].objid,
+					osnum	     = loc_obj[j].osnum,
+					p_chanselect = &AS_to_comp,
+					count        = &NbCorCmp );
+	    as$status( sts    = sts,
+		       action = RET_STATUS );
+
+     /* 
+      * If a Route Correction is not fitting-to-fitting, it should
+      * have correction components. If it does not, it is an error.
+      */
+	    if( ! NbCorCmp )
+	    {
+		vd$VAL_addObject( PostText = "Review fitting-to-fitting constraints for this correction",
+				  GRid     = loc_obj[j]	);
+		nObjects = nObjects+1 ;
+	    }
+      }
+  } /* End of the for loop to count */
+
+  if( ! nObjects )
+  {
+      vd$VAL_addInfo( Text = "No invalid objects found");
+  }
+
+  vd$VAL_closeLog();
+
+  if( count )
+  {
+     free( loc_obj );
+     loc_obj = NULL;
+  }
+
+  __DBGpr_com( " << Exiting the PPL " );
+}
+
+delete()
+{
+}
+
+wakeup()
+{
+}
+
+sleep()
+{
+}

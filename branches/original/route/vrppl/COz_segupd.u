@@ -1,0 +1,97 @@
+/* $Id: COz_segupd.u,v 1.1 2001/08/03 17:19:06 louis Exp $  */
+
+/***************************************************************************
+ * I/ROUTE
+ *
+ * File: vrppl/COz_segupd.u
+ *
+ * Description: Allows the selection of a single segment to recompute
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ *	$Log: COz_segupd.u,v $
+ *	Revision 1.1  2001/08/03 17:19:06  louis
+ *	tr4724-shifting duct syndrome
+ *	
+ *
+ * History:
+ *	MM/DD/YY	AUTHOR		DESCRIPTION
+ *
+ *	08/03/01	L.Waddell	TR4724-Shifting duct syndrome
+ *
+ ***************************************************************************/
+#include "VDppl.h"
+#include "vrdbgmacros.h"
+
+extern MAidmx();
+extern VRskxform(); 
+
+IGRlong loccompnd(a,state,md_env,list)
+    struct GRid a, *list;
+    IGRint *state;
+    struct GRmd_env	*md_env;
+
+{
+    IGRlong     sts,msg;
+    IGRint i,retmsg,cn_type;
+    IGRmatrix   Matrix;
+
+    cn_type = 2;
+
+    MAidmx( &msg, Matrix );
+for(i=0;i<4;i = i + 1)
+{
+    VRskxform( &msg, Matrix, &list[i], md_env );
+
+    ci$send(msg = message NDnode.NDcompute_node( &msg, cn_type, 4, list,
+                  md_env),
+                 targetid = a.objid,
+                 targetos = a.osnum);
+}
+    return 1;
+}
+main()
+{
+    IGRlong	sts,msg;
+    struct GRid	a, list[4];
+    GRclassid	class_array;
+    IGRmatrix	Matrix;
+    IGRint i,count,state[4];
+    IGRint retmsg,cn_type;
+    struct GRid  context, new_objid;
+
+    struct GRmd_env	md_env;
+    OM_S_CLASSLIST	locate_eligible_thing;
+    extern GRclassid	OPP_VRCnrlSeg_class_id;
+
+
+    ci$get_module_info( md_env = &md_env );
+
+    class_array = OPP_VRCnrlSeg_class_id;
+    locate_eligible_thing.w_count = 1;
+    locate_eligible_thing.p_classes = &class_array;
+
+    ci$locate ( prompt          = "Select Control Segment",
+		eligible_classes= &locate_eligible_thing,
+		obj             = &a.objid,
+		osnum           = &a.osnum,
+		md_env          = &md_env ) ;
+
+    __DBGpr_obj(" object",a);
+
+    ci$send(msg = message NDnode.NDget_objects(ND_ROOT,list,4,NULL,0,
+                          OM_K_MAXINT, &count),
+                  targetid = a.objid,
+                  targetos = a.osnum);
+    for(i=0; i<4;i= i + 1)
+    {
+       __DBGpr_obj("Parent pl",list[i]);
+       ci$send(msg = message VRplane.VRget_plane_state(&state[i]), 
+                 targetid = list[i].objid,
+                 targetos = list[i].osnum);
+    }
+    cn_type = 2;
+    sts = loccompnd(a,state,&md_env,list);
+
+}

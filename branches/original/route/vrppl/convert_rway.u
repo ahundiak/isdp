@@ -1,0 +1,256 @@
+/* $Id: convert_rway.u,v 1.2 2001/02/20 01:16:25 build Exp $  */
+ 
+/***************************************************************************
+ * I/ROUTE
+ *
+ * File:        vrppl/convert_rway.u 
+ *
+ * Description:
+ * 	This ppl has been written to convert the design files created with
+ *	I/CABLE 02.04.02.20 to the PLOADED version I/ROUTE 02.05
+ *
+ *	In this Cable object instance data needs to be updated. B'cas in the
+ *	recent version we've added some instance variables, so we've to 
+ *	recreate the old object with the new definition.
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ *      $Log: convert_rway.u,v $
+ *      Revision 1.2  2001/02/20 01:16:25  build
+ *      Replaced v_dbgmacros.h with product specific dbgmacros.h
+ *
+ *      Revision 1.1.1.1  2001/01/04 21:13:03  cvs
+ *      Initial import to CVS
+ *
+# Revision 1.1  1999/05/28  14:47:20  pinnacle
+# Added to delete the Old Tier attributes and to remove additional addtibutes
+# from the Missing Parameters Collector
+#
+ *
+ * History:
+ * 	MM/DD/YY  AUTHOR  DESCRIPTION
+ * 	05/28/99  Alwin   Creation
+ *
+ ***************************************************************************/
+
+#include "VDppl.h"
+#include "VDobj.h"
+#include "VDchn.h"
+
+#include "godef.h"
+#include "nddef.h"
+#include "ndmacros.h"
+#include "AS_status.h"
+#include "VRattr_def.h"
+#include "vc_define.h"
+#include "vc_structs.h"
+#include "VCstructs.h"
+#include "VCdefine.h"
+#include "VCDBpar.h"
+#include "vrdbgmacros.h"
+#include "VRRwDimen.h"
+#include "parametric.h"
+
+extern struct GRid NULL_GRID;
+extern GRclassid OPP_VRCptIn_class_id;
+
+extern GRclassid OPP_VRRComp_class_id;
+extern GRclassid OPP_VRRCComp_class_id;
+
+extern 		GRdpb_get();
+extern 		NDexec_batch();
+extern 		NDwait_batch();
+extern		VC_CreateCab();
+
+/* The following functions implementation can be found in the file 
+$ROUTE/vccable/VCfunc.I file */
+extern 		VCobjInActiveSpace();
+
+main()
+{
+  IGRint	NbOfOffsets;
+  IGRint 	count, NbParents;
+  IGRint 	cn_type, i, j;
+  IGRint	M_response;
+  IGRdouble	dOffsetVector[6];
+  IGRlong 	sts, msg, ret;
+  struct GRid 	*loc_obj, TerminalId[2], located_object; 
+  struct GRid	CableParents[VC_X_MAX_CONNECT_DB], NewCabId, temp;
+  struct GRmd_env 	md_env;
+  struct GRsymbology	CableSymb;
+  OM_S_CLASSLIST        locate_eligible_thing;
+
+  IGRshort	nPos0, nPos1;
+  struct VCpos	*cab0, *cab1, *trm0, *trm1;
+  IGRchar	**szSignal0, **szSignal1;
+
+  struct VCGenInfo	GenInfo;
+  GRclassid 		class_array[2], Classes[2];
+
+  TGRid  childID;
+  TGRid *childIDs;
+  IGRint childCNT;
+  
+  IGRint nb_change;
+  
+  IGRint		NbCpts, proc_mode, active_cpt, shape_code, k, Index;
+  IGRlong		status, retmsg;
+  struct ret_struct 	AttrSt, SysParamId;
+  struct VRRwCptDetails	RwCptData[10];
+
+  __DBGpr_com( " >> Entered the PPL " );
+  szSignal0 = NULL; 
+  szSignal1 = NULL ;
+
+  ci$get_module_info( md_env = &md_env );
+
+  /***
+  class_array[0] = OPP_VCElCable_class_id;
+  class_array[1] = OPP_VCFoCable_class_id;
+  ***/
+
+  class_array[0] = OPP_VRRComp_class_id;
+  class_array[1] = OPP_VRRCComp_class_id;
+
+  locate_eligible_thing.w_count = 2;
+  locate_eligible_thing.p_classes = class_array;
+
+  while( 1 )
+  {
+      count=0; 
+      nPos0=0; 
+      nPos1=0; 
+      loc_obj = NULL;
+
+      ci$locate(  prompt          = "Select Cable to Convert/Move-on for all",
+		  acc_prompt      = "Accept with next element/Reject" ,
+		  eligible_classes= &locate_eligible_thing,
+		  owner_action    =  LC_RIGID_OWNER | LC_RIGID_COMP |
+					LC_FLEX_OWNER | LC_FLEX_COMP,
+		  obj             = &located_object.objid,
+		  osnum           = &located_object.osnum,
+		  response        = &M_response,
+		  md_env          = &md_env ) ;
+
+      switch (M_response) 
+      {
+	 case EX_DATA  :
+	 case EX_OBJID :      /* fence event      */
+
+	     count = 1;
+	     loc_obj = (struct GRid *) malloc( count * sizeof( struct GRid ) );
+	     loc_obj->objid = located_object.objid;
+	     loc_obj->osnum = located_object.osnum;
+	     break;
+
+	 case EX_RJT_MOVEON :
+
+	    /* Get all the Raceway Components objects in  the active design 
+	    file*/
+     	    Classes[0] = OPP_VRRComp_class_id;
+	    Classes[1] = OPP_VRRCComp_class_id;
+
+	    /* This function gets all the objects of classes specified in the
+	    array. */
+	    sts = VCobjInActiveSpace(      &msg, &count,
+				    	   &loc_obj, Classes, 2 );
+
+	    __DBGpr_int( " Nb. of Raceway Objects found ", count );
+	    break;
+
+	 default :
+	    printf("\n Not a Cable Object \n" );
+	    exit;
+	    break;
+      }
+
+      if( count == 0 )
+      {
+	 printf("\n  NO Raceway objects in the design file !!! \n" );
+	 exit;
+      }
+
+      __DBGpr_com( " ################################ " );
+      __DBGpr_int( " ####### Raceway Object Count ############ ", count );
+      __DBGpr_com( " ################################ " );
+
+      for( j=0; j<count; j=j+1 )
+      {
+	  __DBGpr_com( " #################################### " );
+	  __DBGpr_int( " ########## Raceway Comp. No. ############### ", j );
+	  __DBGpr_com( " #################################### " );
+
+	  __DBGpr_obj( " Object Ids ", loc_obj[j] );
+
+             status=ci$send(msg = message VRGeneric.VRGetNumberOfCpts
+                                 ( &retmsg, &NbCpts, &md_env ),
+                  targetid = loc_obj[j].objid,
+                  targetos = loc_obj[j].osnum );
+             as$status ( action = RET_STATUS );
+	     __DBGpr_int( " Nb. of Connect Poitns ", NbCpts );
+
+	     status =
+	     ci$send (msg = message ACncpx.ACgive_structure
+		     ( (IGRint *) &retmsg, &Index, VR_N_SHAPE_IN,
+		     &AttrSt, &md_env ),
+			 targetid = loc_obj[j].objid,
+			 targetos = loc_obj[j].osnum );
+	     as$status();
+
+	     shape_code = (IGRint) AttrSt.var.root_pm_st.value;
+	     __DBGpr_int( " Shape Code ", shape_code );
+
+	     active_cpt = 2;
+	     proc_mode = 0;
+	     VRRw_dimen_fields(  NULL, NULL, &loc_obj[j], &md_env,
+				 NbCpts, &active_cpt, proc_mode, shape_code,
+				 RwCptData, NULL );
+
+	     status = ci$send( msg = message VRGeneric.VRGetParams( &retmsg,
+					&SysParamId, NULL, NULL ),
+			 targetid = loc_obj[j].objid,
+			 targetos = loc_obj[j].osnum );
+	     as$status();
+
+	     for( i=0; i<NbCpts; i=i+1 )
+	     {
+		 __DBGpr_int( " Values for connect point index" , i+1);
+		 __DBGpr_int( " Width 1 ", RwCptData[i].width );
+		 __DBGpr_int( " Depth 1 ", RwCptData[i].depth );
+
+		 __DBGpr_int( " nb_tier ", RwCptData[i].nb_tier);
+		 for( k=0 ; k<RwCptData[i].nb_tier; k = k+1 )
+		 __DBGpr_dbl( " tier_spacing ", RwCptData[i].tier_sp[k] ) ;
+
+	     }
+
+	     __DBGpr_int( " Nb. of Connect Poitns ", NbCpts );
+	     proc_mode = 2;
+	     status = 
+	     VRRw_dimen_fields(  NULL, NULL, NULL, &md_env,
+				 NbCpts, NULL, proc_mode, shape_code,
+				 RwCptData, &SysParamId );
+
+	     __DBGpr_com( " Calling the VRDelOldTierAttr ... " );
+	     status = VRDelOldTierAttrs( loc_obj[j], &md_env ); 
+
+	     cn_type = ND_COMP;
+	     nd$wait_batch(
+			   type       = GR_GEOM_POSTED,
+			   l_object   = &loc_obj[j],
+			   l_obj_info = &cn_type,
+			   nb_obj     = 1 );
+      } /* End of the for loop to count */
+
+      nd$exec_batch();
+
+      if( count )
+      {
+	 free( loc_obj );
+	 loc_obj = NULL;
+      }
+  } /* End of while loop */
+
+  __DBGpr_com( " << Exiting the PPL " );
+}

@@ -1,0 +1,60 @@
+#include "ciminimum.h"
+#include "cieveryone.h"
+#include "cilocate.h"
+#include "cimacros.h"
+#include "AS_status.h"
+
+extern printf ();
+
+
+
+main()
+{
+	IGRint			status;
+	IGRlong			msg;
+	struct GRid		CompId,ModelId;
+	IGRchar			szMacroName[50];
+	IGRchar			szPathName[200];
+	struct GRmd_env		loc_env;
+	OM_S_CHANSELECT 	chansel;
+
+	status =
+	ci$locate(	obj          = &CompId.objid,
+			osnum        = &CompId.osnum,
+			owner_action = LC_RIGID_COMP | LC_RIGID_OWNER |
+					LC_FLEX_COMP  | LC_REF_OBJECTS,
+			classes      = "VRGeneric",
+			md_env       = &loc_env,
+			prompt       = "Identify Component");
+
+	/* Get header */
+	chansel.type = OM_e_name;
+	chansel.u_sel.name = "GRcmpowner.to_components";
+
+	status = om$get_objid_at_index (
+			objid		= CompId.objid,
+			osnum		= CompId.osnum,
+			p_chanselect 	= &chansel,
+			index 		= 0,
+			objidaddr    	= &ModelId.objid,
+			osnumaddr    	= &ModelId.osnum);
+	as$status ( action = RET_STATUS );
+/*	printf ("Header : <%d,%d>\n", ModelId.objid, ModelId.osnum ) ; */
+
+	/* Get macro model */
+	status =
+	ci$send( msg = message ACheader.ACfind_model( &msg, &CompId ),
+			targetid = ModelId.objid,
+			targetos = ModelId.osnum );
+	as$status( );
+
+/*	printf ("Model : <%d,%d>\n", CompId.objid, CompId.osnum ) ; */
+
+	status =
+	ci$send(	msg	 = message ACmodel.NDs_compute_node
+					( &msg, 0, &loc_env ),
+			targetid = CompId.objid,
+			targetos = CompId.osnum );
+	as$status( );
+
+}

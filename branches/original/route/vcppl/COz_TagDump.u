@@ -1,0 +1,357 @@
+/* $Id: COz_TagDump.u,v 1.2 2001/02/20 01:10:55 build Exp $  */
+
+/***************************************************************************
+ * I/ROUTE
+ *
+ * File:        vcppl/COz_TagDump.u
+ *
+ * Description:
+ *	Retrieve tag manager object and dump its content.
+ *	Then get a list of all objects taggable and dump content into ttx
+ *	or log file only depending on user argument.
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ *      $Log: COz_TagDump.u,v $
+ *      Revision 1.2  2001/02/20 01:10:55  build
+ *      Replaced v_dbgmacros.h with product specific dbgmacros.h
+ *
+ *      Revision 1.1.1.1  2001/01/04 21:12:35  cvs
+ *      Initial import to CVS
+ *
+# Revision 1.2  1999/09/28  09:59:10  pinnacle
+# Replaced: vcppl/COz_TagDump.u for:  by svngidug for route
+#
+# Revision 1.1  1998/04/30  10:52:34  pinnacle
+# ROUTE 2.5.1
+#
+# Revision 1.2  1998/02/19  06:02:58  pinnacle
+# Replaced: vcppl/COz_TagDump.u for:  by apazhani for route
+#
+# Revision 1.1  1997/11/30  15:40:42  pinnacle
+# Created: vcppl/COz_TagDump.u by r250_int for route
+#
+# Revision 1.1  1997/11/14  21:38:24  pinnacle
+# Created: vcppl/COz_TagDump.u by onayragu for cabling
+#
+ *
+ * History:
+ *      MM/DD/YY        AUTHOR          DESCRIPTION
+ *      11/10/97        Onay	         creation date
+ *      02/18/98	Alwin		 Modified to fetch the Tags correctly.
+ *					 Identified this problem while fixing
+ *					 the TR179800232.
+ *      09/28/99	Satish		 Changed default Name & Location for the
+ *					 Tag File. CR179900873
+ *
+ ***************************************************************************/
+
+#include "ciminimum.h"
+#include "cieveryone.h"
+#include "cisymb.h"
+#include "cisend.h"
+#include "DItypedef.h"
+#include "DIdef.h"
+#include "DIglob.h"
+#include "DIprims.h"
+#include "msdef.h"
+#include "msmacros.h"
+#include "VCTagDef.h"
+#include "vc_define.h"
+#include "vc_structs.h"
+
+#include "stdio.h"
+#include "string.h"
+#include "exdef.h"          /* Included for the macro */
+#include "exmacros.h"       /* ---       ex$filename */
+#include "vrdbgmacros.h"    /* ---       For DBG macros */
+
+/*
+#define	TAGLOGFILE	"/usr/tmp/taglst.txt"
+
+Not reqd anymore as the file is now written to the current working dir. Satish
+*/
+
+
+extern int free ();
+extern int DIuntranslate ();
+
+extern int VC_TAGobj ();
+extern int VC_TAGList ();
+
+extern GRclassid OPP_VCCable_class_id;
+extern int EX_filename1();
+
+/**********************************************************************
+*
+* This function returns the location of '.' in a given string, relative
+* to the last character of the string. Return value is -1 if there is no '.'
+*
+* Note : Had to write this funtion as a NULL return from strrchr seems to be
+* crashing the product. Satish for CR179900873
+*
+**********************************************************************/
+
+int WhereIsTheDot(string)
+char*           string;
+{
+    int location ;
+    int counter;
+
+    __DBGpr_com( " Entered WhereIsTheDot");
+    location = -1 ;  /* Assume there is no dot in the input string */
+
+    for(counter=strlen(string);counter>0;counter = counter-1)
+    {
+            if (string[counter] == '.')
+            {
+                    location = counter;
+                    break;
+            }
+    }
+    __DBGpr_int( " Location of the dot is",location);
+
+    return (strlen(string) - location);
+}
+
+GetCategory (Num, szCat)
+IGRint		Num;
+IGRchar		*szCat;
+{
+
+   szCat[0] = '\0';
+
+   switch (Num)
+   {
+     case VCTAG_CAT_GENERAL :
+     strcpy (szCat, VCTAG_CAT_GENERAL_STR);
+     break;
+
+     case VCTAG_CAT_ELTERM :
+     strcpy (szCat, VCTAG_CAT_ELTERM_STR);
+     break;
+
+     case VCTAG_CAT_FOTERM :
+     strcpy (szCat, VCTAG_CAT_FOTERM_STR);
+     break;
+
+     case VCTAG_CAT_ELCABLE :
+     strcpy (szCat, VCTAG_CAT_ELCABLE_STR);
+     break;
+
+     case VCTAG_CAT_FOCABLE :
+     strcpy (szCat, VCTAG_CAT_FOCABLE_STR);
+     break;
+
+     case VCTAG_CAT_GUIDE :
+     strcpy (szCat, VCTAG_CAT_GUIDE_STR);
+     break;
+
+   } /* end switch */
+
+} /* end function GetCategory */
+ 
+/******************************************************************************
+*  
+* Currently this PPL is written to list only the Tag Numbers of the Cable
+* object. B'cas for the other objects like Guide/Terminal don't have the Tag
+* Management and hence not required. If in future things change, then we can
+* always extend it, without any problem. Alwin
+*
+******************************************************************************/
+
+main(argc, argv)
+int argc;
+char **argv;
+{
+    IGRint			Status, NbTag, ii, Count, Ttx;
+    IGRlong			lRet;
+    struct GRid		TagId;
+    struct VCtagmgr		*TagList;
+    IGRchar			szTmp [1024], szCat [100];
+    IGRchar			szPath [255], szTag [255];
+    IGRchar			szGeneral [30], szElTerm [30], szFoTerm [30];
+    IGRchar			szElCable [30], szFoCable [30], szGuide [30];
+    GRclassid               ClassId;
+    struct VCTagInfo	*List;
+
+    FILE		*fp;
+    IGRint		location;
+    IGRchar		tag_file[OM_K_MAXOSNAME_LEN];
+
+    __DBGpr_com( " Entered the COz_TagDump ppl ... " );
+
+    fp		= 0;
+    TagList		= 0;
+    List		= 0;
+    Count		= 0;
+    NbTag		= 0;
+
+    /********************************************************/
+    /* Only output to screen if one argument is passed	*/
+    /********************************************************/
+    if (argc > 1)
+      Ttx		= TRUE;
+
+    strcpy (szGeneral, VCTAG_CAT_GENERAL_STR);
+    strcpy (szElTerm, VCTAG_CAT_ELTERM_STR);
+    strcpy (szFoTerm, VCTAG_CAT_FOTERM_STR);
+    strcpy (szElCable, VCTAG_CAT_ELCABLE_STR);
+    strcpy (szFoCable, VCTAG_CAT_FOCABLE_STR);
+    strcpy (szGuide, VCTAG_CAT_GUIDE_STR);
+
+    Status = VC_TAGobj (&lRet, &TagId );
+
+    __DBGpr_obj( " Tag Manager Id ", TagId );
+
+    if( TagId.objid == NULL_OBJID )
+    {
+       printf( "\nTag Manager is not constructed, yet !!!\n " );
+       goto wrapup;
+    }
+
+    /* Code added by Satish - CR179900873 */
+
+    Status = ex$filename( name = tag_file, len = OM_K_MAXOSNAME_LEN );
+    if (Status == 0) goto wrapup;
+
+    __DBGpr_str(" Design File name", tag_file );
+    __DBGpr_com( "Calling the function WhereIsTheDot");
+
+    location = WhereIsTheDot(tag_file);
+    
+    /*****************************************************************
+    * When the design file name contains either an extension which
+    * is maximum two characters in length or a '.' as the last  
+    * character, '_cbl.txt' replaces the extension (ie from '.' onwards)  
+    * 
+    * If there is no extension or the length of the extension is more
+    * than two, '_cbl.txt' is simply added to the design file name 
+    *
+    * - Satish as per requirements by Jeff for CR179900873
+    ******************************************************************/
+    switch (location)
+    {
+        case 0 :
+        case 1 :
+        case 2 :
+        case 3 :
+                 /* Replace the extension with _cbl.txt */
+                location = strlen(tag_file) - location;
+                tag_file[location]='\0';
+                strcat(tag_file,"_cbl.txt");
+                break;
+         default : /*Just append _cbl.txt */
+                strcat(tag_file,"_cbl.txt");
+                break;
+    };
+
+    __DBGpr_str(" Output filename", tag_file );
+
+    /* Above Code added by Satish - CR179900873 */
+
+    fp = fopen (tag_file, "w");
+    if (fp == NULL)
+      printf ("\n Cannot open %s\n", tag_file );
+
+    Status = ci$send ( msg = message VCTagMgr.VCTagDump ( &NbTag, &TagList),
+			    targetos = TagId.osnum,
+			    targetid = TagId.objid );
+
+    sprintf (szTmp, "Tag Manager (%d,%d) Contains %d Tags :", 
+		    TagId.osnum, TagId.objid, NbTag );
+    if (Ttx)
+      printf ("\n\n%s\n", szTmp);
+    if (fp)
+      fprintf (fp, "\n\n%s\n", szTmp);
+
+
+    for (ii=0; ii<NbTag; ii=ii+1)
+    {
+      szCat[0]   = '\0';
+      szTmp[0]   = '\0';
+
+      GetCategory (TagList [ii].nTagCat, szCat);
+      sprintf (szTmp, "Category <%s> Name <%s>", szCat, TagList [ii].Tag);
+
+      if (Ttx)
+	printf ("%s\n", szTmp );
+      fprintf (fp, "%s\n", szTmp );
+    }
+
+    /************************************************************************/
+    /* Get a list of all cable objects taggable				*/
+    /************************************************************************/
+    VC_TAGList (TagId.osnum, &Count, &List);
+
+    szTmp[0]        = '\0';
+    sprintf (szTmp, "\n TAGGABLE Cable Objects :" );
+
+    if (Ttx)
+      printf ("%s\n", szTmp);
+    fprintf (fp, "%s\n", szTmp);
+    for ( ii=0; ii<Count; ii=ii+1 )
+    {
+      szTmp[0]              = '\0';
+      szCat[0]              = '\0';
+      szPath[0]             = '\0';
+
+      om$get_classid (	osnum		= List [ii].Id.osnum,
+			    objid		= List [ii].Id.objid,
+			    p_classid	= &ClassId );
+
+      if( om$is_ancestry_valid (      subclassid      = ClassId,
+				      superclassid    = OPP_VCCable_class_id )
+				      == OM_S_SUCCESS )
+      {
+	  GetCategory (List [ii].Cat, szCat);
+	  di$untranslate (	osnum	= List [ii].Id.osnum,
+			    objid	= List [ii].Id.objid,
+			    objname	= szPath );
+
+	  if (strlen (szPath) == 0)
+	    strcpy (szPath, "NO NAME");
+
+	  if (strlen (List [ii].szTag) == 0)
+	    strcpy (szTag, "NO TAG");
+	  else
+	    strcpy (szTag, List [ii].szTag );
+
+	  sprintf (szTmp, "%s (%d,%d) '%s' '%s'",
+			szCat, List [ii].Id.osnum, List [ii].Id.objid,
+			szPath, List [ii].szTag );
+	  if (Ttx)
+	    printf ("%s\n", szTmp);
+	  fprintf (fp, "%s\n", szTmp);
+      }
+    } /* end for */
+
+
+    wrapup :
+
+    if (fp)
+      {
+      sprintf (szTmp, "File %s created", tag_file );
+      status (szTmp);
+      fclose (fp);
+      }
+
+    if (TagList)
+      {
+      free (TagList);
+      TagList	= 0;
+      }
+
+    if (List)
+      {
+      free (List);
+      List	= 0;
+      }
+
+    __DBGpr_com( " Leaving the COz_TagDump ppl ... " );
+
+} /* end main */
+
+
+/**********************************************************/
