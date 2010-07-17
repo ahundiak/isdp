@@ -1,0 +1,90 @@
+/* $Id: COz_cpPl.u,v 1.1 2001/07/05 21:47:13 ramarao Exp $ */
+/*************************************************************************
+ * I/STRUCT
+ *
+ * File:        pplcmd/COz_cpPl.u
+ *
+ * Description: Copies all the plates to active file.
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ *      $Log: COz_cpPl.u,v $
+ *      Revision 1.1  2001/07/05 21:47:13  ramarao
+ *      Created COz_cpPl.u ppl.
+ *
+ *
+ * History:
+ *      MM/DD/YY   AUTHOR               DESCRIPTION
+ *      07/05/01   Rama Rao             File Creation
+ *************************************************************************/
+
+#include "VDppl.h"
+#include "VDobj.h"
+#include "vdrefmacros.h"
+
+extern 	VDpms_findall_ancestryobjects(), VD_is_ancestry_valid(), ACos_to_path();
+
+extern GRclassid	OPP_VSplate_class_id;
+
+main()
+{
+IGRlong                 msg;
+IGRint                  i, j, loc_cnt, nb_class, NbRefOs;
+IGRchar			path_name[50];
+GRclassid               classid[1];
+GRobjid                 dummy, *loc_list;
+GRspacenum		osnum, *RefOsList;
+struct GRmd_env		loc_env, *RefEnvList;
+
+   nb_class   = 1;
+   loc_cnt    = 0;
+   loc_list   = NULL;
+   RefOsList  = NULL;
+   RefEnvList = NULL;
+
+   ci$get_module_info( md_env = &loc_env);
+
+   vd$get_ref_os_list( msg           =  &msg,
+                       main_os       =  NULL,
+                       num_ref_os    =  &NbRefOs,
+                       ref_os_list   =  &RefOsList,
+                       ref_env_list  =  &RefEnvList );
+
+   classid[0] = OPP_VSplate_class_id;
+
+   for( i = 0; i < NbRefOs; i=i+1 )
+   {
+      osnum = RefOsList[i] ;
+
+      ACos_to_path( osnum, path_name );
+      if( path_name[0] != '\0' ) continue;
+
+      loc_cnt = 0;
+      VDpms_findall_ancestryobjects( osnum, nb_class, classid, 
+				     &loc_cnt, NULL );
+      if( !loc_cnt )  continue;
+
+      if( loc_list ) { free( loc_list ); loc_list = NULL; }
+      loc_list  = ( GRobjid * ) malloc( sizeof(GRobjid)*loc_cnt );
+      VDpms_findall_ancestryobjects( osnum, nb_class, classid,
+                                     &loc_cnt, loc_list );
+
+      for( j=0; j<loc_cnt; j=j+1 )
+      {
+        ci$send( msg = message GRgraphics.GRcopy(
+                                        &msg, &RefEnvList[i], &loc_env,
+                                        &dummy ),
+                       targetid = loc_list[j],
+                       targetos = osnum   );
+     }
+   }
+
+
+wrapup:
+   if( loc_list   ) { free( loc_list   ); loc_list = NULL;   }
+   if( RefOsList  ) { free( RefOsList  ); RefOsList = NULL;  }
+   if( RefEnvList ) { free( RefEnvList ); RefEnvList = NULL; }
+
+   return 1;
+}

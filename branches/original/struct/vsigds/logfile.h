@@ -1,0 +1,1 @@
+FILE	*log_file;

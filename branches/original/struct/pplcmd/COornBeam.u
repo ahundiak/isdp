@@ -1,0 +1,113 @@
+#include "VDppl.h"
+#include "VDobj.h"
+#include "VDchn.h"
+#include "vsplatedef.h"
+#include "VDefp.h"
+#include "VSefp.h"
+#include "coparamac.h"
+
+#define thePrompt "Select an Oriented Beam for Remove operator"
+
+extern ASstart_var_fence();
+extern ASend_fence();
+extern  IGRint VSornBmRmOp();
+
+/* --------------------------------------
+ * The main routine
+ */
+int main()
+{
+  int sts,msg;
+  int response,locNum;
+  char         className[50]; 
+  TGRobj_env objOE;
+  TGRobj_env *locOEs;
+  int      i,j,ret_type;
+  long     status;
+
+  ret_type = FALSE;
+  response = 0;
+  locNum   = 0;
+   
+
+  while(1) {
+
+    objOE.obj_id.objid = NULL_OBJID;
+    
+    response = 0;
+
+    UI_message(thePrompt);
+
+    dp$erase_hilite( msg = &msg );
+
+    sts = ci$locate(prompt  = "Select Beam",
+                    classes = "VSornBeam",
+		    owner_action = LC_RIGID_OWNER | 
+                                   LC_RIGID_COMP  |
+                                   LC_FLEX_COMP   | 
+                                   LC_FLEX_OWNER  |
+                                   LC_REF_OBJECTS,
+
+                    stackable    = 1,
+		    response     = &response,
+		    md_env       = &objOE.mod_env,
+		    obj          = &objOE.obj_id.objid,
+		    osnum	 = &objOE.obj_id.osnum);
+
+    if (!(sts & 1)) goto wrapup;
+
+    switch(response) {
+
+    case EX_DATA:    // Single Object
+        status =
+        om$get_classname( objid = objOE.obj_id.objid,
+                          osnum = objOE.obj_id.osnum,
+                          classname = className );
+	if(!(status&1)) goto wrapup;
+
+	if(!strcmp(className,"VSornBeam"))
+	{
+	    ret_type = VSornBmRmOp(&objOE.obj_id);
+	    if(!(ret_type&1)) UI_status("Failed to remove the operator"); 
+	}
+	else {
+		UI_status("Select an Oriented beam ");
+		goto wrapup;
+	}
+      	break;
+
+    case EX_OBJID:   // Object Set
+
+      /* Grab Located Objects */
+      as$start_fence(set       = &objOE.obj_id,
+		     set_env   = &objOE.mod_env,
+		     nb_obj    = &locNum,
+		     p_obj_env = &locOEs);
+      
+      for(i = 0; i < locNum; i = i + 1) {
+        status =
+        om$get_classname( objid = locOEs[i].obj_id.objid,
+                          osnum = locOEs[i].obj_id.osnum,
+                          classname = className );
+	if(!(status&1)) goto wrapup;
+	if(!strcmp(className,"VSornBeam"))
+	{
+	    ret_type = VSornBmRmOp(&locOEs[i].obj_id);
+	    if(!(ret_type&1)) UI_status("Failed to remove the operator"); 
+	}
+	else continue;
+      }
+	break;
+      
+      default :
+	UI_status("Select an Oriented beam \n");
+	break;
+	
+    } // Switch
+  }
+  
+ wrapup:
+    if(locOEs) free(locOEs); 
+    locOEs = NULL;
+  return 1;
+}

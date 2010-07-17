@@ -1,0 +1,392 @@
+/* $Id: VStrmigrFea.u,v 1.1.1.1 2001/01/04 21:10:02 cvs Exp $  */
+/* --------------------------------------------------------------------
+ * I/STRUCT
+ *
+ * File:    /pplcmd/VStrmigrFea.u
+ * 
+ * Description:
+ *      A ppl command file which is applied to locate feature object 
+ *		and process the trans migration process.
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ *      $Log: VStrmigrFea.u,v $
+ *      Revision 1.1.1.1  2001/01/04 21:10:02  cvs
+ *      Initial import to CVS
+ *
+# Revision 1.2  2000/03/01  20:44:34  pinnacle
+# Replaced: pplcmd/VStrmigrFea.u for:  by impd252 for struct
+#
+# Revision 1.1  2000/02/05  13:56:54  pinnacle
+# Created: pplcmd/VStrmigrFea.u by impd252 for struct
+#
+ *
+ * History:
+ *	02/05/00	adz		Creation Date.
+ *	03/01/00	jvh		fixed where it processed all the structural types 
+ *					like the one selected in it's parents. beams only 
+ *					process beams up the tree and same with plates.
+ */
+
+#include <FI.h>
+#include "CIforms.h"
+#include "OMminimum.h"
+#include "OMmacros.h"
+#include "cieveryone.h"
+#include "cievent.h"
+#include "cilocate.h"
+#include "cisend.h"
+#include "madef.h"
+#include "exmacros.h"
+#include "parametric.h"
+#include "growner.h"
+#include "grdpbdef.h"
+#include "grdpbmacros.h"
+#include "msdef.h"
+#include "msmacros.h"
+#include "EMSssprops.h"
+#include "DIdef.h"
+#include "DItypedef.h"
+#include "DIglob.h"
+#include "DIprims.h"
+#include "DImacros.h"
+#include "dpmacros.h"
+#include "vsplatedef.h"
+#include "vsgeommacros.h"
+#include "vsmiscpplmac.h"
+#include "VSmsg.h"
+
+/*#define DEBUG 1*/
+extern char     *malloc() ;
+
+#ifdef DEBUG
+#define ERROR_MSG( sts, msg, message )\
+		printf( "%s failed !!!\n", (message) ) ;
+		om$report_error( sts = (sts) ) ;\
+		om$report_error( sts = (msg) ) ;\
+
+#define ERROR_DIR( sts, message )\
+		printf( "%s failed !!!\n", (message) ) ;
+		di$report_error( sts = (sts) ) ;\
+#else
+#define ERROR_MSG( sts, msg, message )
+#define ERROR_DIR( sts, message )
+#endif
+
+#define VS_K_TRANSMIGRATE        1 
+
+extern	printf(),
+		sprintf(),
+		free(),
+		MSmessage(),
+		ASstart_fence(),
+		ASend_fence(),
+		VSbulkDisplayByGRids(),
+		VScutOutEdition(),
+		EX_findmod(),
+		UI_message(),
+		UI_status(),
+		UI_error(),
+		GRdpb_get(),
+		DIreport_error(),
+		MAidmx(),
+		DPerase_hilite();
+
+extern long	VS_gI_InvalidOperator ;
+/*
+ * Global data.
+ */
+OM_S_CHANSELECT         cmp_chan; //to owner channel 
+struct GRid		cur_mod,
+			elmToDsp ;
+int			displayElement , globcount;
+
+/*----------------------------------------------------------------------------*/
+init() {
+
+	UI_message( "Migrate Cutouts on Plates and Stiffeners" ) ;
+
+	elmToDsp.objid = NULL_OBJID ;
+
+	displayElement = FALSE ;
+
+} /* init */
+/*----------------------------------------------------------------------------*/
+wakeup() {
+
+} /* wakeup */
+/*----------------------------------------------------------------------------*/
+sleep() {
+
+} /* sleep */
+/*----------------------------------------------------------------------------*/
+delete() {
+
+	ASend_fence() ;
+
+} /* delete */
+/*----------------------------------------------------------------------------*/
+void display_element(opt) int opt; {
+
+	long		msg ;
+	short		matrix_type,
+			world ;
+	double		matrix[16] ;
+	enum GRdpmode	dpmode ;
+	GRrange 	range ;
+
+	dp$erase_hilite( msg = &msg ) ;
+	matrix_type = MAIDMX ;
+	MAidmx( &msg, matrix ) ;
+
+
+	/*
+	 * Hightlight element.
+	 */
+	//dpmode = GRhd ;
+	dpmode = opt ;
+	ci$send( msg	= message GRgraphics.GRdisplay( &msg,
+							&matrix_type,
+							matrix,
+							&dpmode,
+							&cur_mod ),
+		 targetid = elmToDsp.objid,
+		 targetos = elmToDsp.osnum ) ;
+
+} /* display_element */
+/*----------------------------------------------------------------------------*/
+main() {
+	long			sts, msg, fence_response ;
+	int			i, response, featCount, size,
+				nret, have_error ;
+	double			response_data[200] ;
+	struct GRobj_env	featObj;
+	struct GRid		*featId,
+				obj_located;
+	struct GRmd_env 	featEnv ;
+	char 			*macNames[1],
+				*badOperatorInMacDef,
+				buf[100] ;
+	int			nbFoundMacs,
+				nbSuccessOps ;
+	double			pnt[3] ;
+	char			stats[60] ;
+
+	/*
+	 * Get current module environement.
+	 */
+	ex$get_cur_mod( id	= &cur_mod.objid,
+			osnum	= &cur_mod.osnum ) ;
+
+	/*
+	 * Locate plates & stiffeners.
+	 */
+	while( TRUE ) {
+	
+		UI_message( "Migrate Cutouts on Plates and Stiffeners" ) ;
+		globcount = 0;
+		response       = 0 ;
+		have_error     = FALSE ;
+		elmToDsp.objid = NULL_OBJID ;
+
+		while( response != EX_DATA	&&
+		       response != EX_OBJID	) {
+		       
+	     		ci$locate(
+				prompt		= "Identify structural element",
+				classes		= "VSfeature",
+				properties	= LC_LC_ONLY | LC_DP_ONLY | LC_RW,
+				owner_action	= LC_RIGID_OWNER | LC_FLEX_COMP | LC_FLEX_OWNER,
+				response	= &response,
+				obj		= &obj_located.objid,
+				osnum		= &obj_located.osnum,
+				md_env		= &featEnv ) ;
+		
+		}
+
+		#ifdef DEBUG
+		printf( "Element found : [%d,%d]\n", obj_located.osnum, obj_located.objid ) ;
+		#endif
+
+		ASstart_fence( obj_located,
+			       featEnv.md_id.osnum,
+			       &featCount,
+			       &featId,
+			       &fence_response,
+			       (char *) response_data ) ;
+
+		#ifdef DEBUG
+		printf( "Count of plates : %d\n", featCount ) ;
+		#endif
+
+		/*
+		 * Copy Data into structure. 
+		 */
+
+		macNames[0] = "*";
+		elmToDsp.objid = NULL_OBJID ;
+	
+		/* set the channel to look up for other structural items */
+        	msg  = om$make_chanselect (
+			channame = "NDfather.father",
+			p_chanselect = &cmp_chan);
+			
+		for( i=0; i<featCount; i=i+1 ) {
+			sprintf( stats, "Processing %d of %d, %d cutouts migrated",
+				i+1, featCount, globcount );
+				
+			//UI_status( stats ) ;
+			UI_message( stats ) ;
+
+			badOperatorInMacDef = NULL ;
+			featObj.obj_id = featId[i] ;
+			featObj.mod_env = featEnv ;
+			elmToDsp = featId[i] ;
+			display_element (GRhd);
+			processItem( &featObj );				
+			display_element (GRhe);
+		}
+
+		ASend_fence() ;
+	}
+}
+/*----------------------------------------------------------------------------*/
+
+
+int processItem( pinObj )
+struct GRid *pinObj;
+{
+
+	long			sts, msg ;
+	int			i, featCount, size,
+				nret, have_error ;
+	double			response_data[200] ;
+	struct GRobj_env	featObj;
+	struct GRid		TmpGrid , inObj;
+	struct GRmd_env 	featEnv ;
+	char 			*macNames[1], name[124] , basename[124] ,
+				*badOperatorInMacDef,
+				buf[100] ;
+	int			nbFoundMacs,
+				nbSuccessOps ;
+	double			pnt[3] ;
+	GRobj			owner_dpr[100];	
+	OM_S_OBJECT_LINKAGE     *OBlst;	
+	
+	inObj.objid = pinObj->objid;
+	inObj.osnum = pinObj->osnum;
+
+	badOperatorInMacDef = NULL ;
+	macNames[0] = "*";
+	
+	#ifdef DEBUG
+        printf("about to VScutOutEdition on id[%d, %d]\n", inObj.objid, inObj.osnum );
+	#endif
+		
+	sts = VScutOutEdition( &msg,
+				VS_K_TRANSMIGRATE,
+				1, &inObj,
+				1, macNames , &nbFoundMacs , &nbSuccessOps ,
+				&badOperatorInMacDef ) ;
+				
+	globcount = globcount + nbSuccessOps;
+		
+	#ifdef DEBUG
+	printf("count = %d\n", globcount );
+	printf("return from VScutOutEdition sts = %d, msg = %d\n", sts, msg );
+	#endif
+		
+	_FREE( badOperatorInMacDef ) ;
+
+
+        /* get the count of the objects on the channel so we can allocate memory */
+	
+	#ifdef DEBUG
+        printf("about to get channel count from id[%d, %d]\n", inObj.objid, inObj.osnum );
+	#endif
+	
+        msg = om$get_channel_count (
+		osnum           = (int)inObj.osnum,
+		objid           = inObj.objid,
+		p_chanselect    = &cmp_chan,
+		count           = &size);
+
+        #ifdef DEBUG
+        printf("count=%d, channel_count msg=%d\n", size , msg );
+        #endif
+
+        if(size<0 || !(1&msg )) return TRUE; //if macro fails or no elements on channel
+
+        /* allocate the memory for the list of ids of graphic group */
+
+	#ifdef DEBUG
+	printf("about to allocate %d grids->", size );
+	#endif
+	
+        OBlst = (OM_S_OBJECT_LINKAGE *) malloc(size*sizeof(OM_S_OBJECT_LINKAGE ));
+        
+        #ifdef DEBUG
+        printf("past malloc of %d GRids\n",size);
+        #endif
+        
+	featCount = 0;
+
+        msg = om$get_channel_objects(
+		count           = &featCount,
+		osnum           = (int)inObj.osnum,
+		objid           = inObj.objid,
+		p_chanselect    = &cmp_chan,
+		list            = OBlst,
+		size            = size);
+
+	msg = om$get_classname( 
+       		objid = inObj.objid,
+		osnum = inObj.osnum,
+               	classname = basename  );
+
+
+
+	for ( i=0;i<featCount;i=i+1){
+	
+		#ifdef DEBUG
+		printf("processing father %d of %d\n", i, featCount ) ;
+		#endif
+	
+               	TmpGrid.objid = OBlst[i].S_objid;
+               	TmpGrid.osnum = OBlst[i].osnum;
+               	
+		msg = om$get_classname( 
+        		objid = TmpGrid.objid,
+			osnum = TmpGrid.osnum,
+                	classname = name  );
+
+		/*
+		   there is a check for beam or plate so that we don't 
+		   process any supporting plate when we select a beam .
+		*/
+		
+		if( om$is_ancestry_valid( subclassname = name,
+					  superclassname = "VSbeam" ) == 1 &&			  
+		    om$is_ancestry_valid( subclassname = basename,
+					  superclassname = "VSbeam" ) == 1 ){               		processItem( &TmpGrid );
+               		processItem( &TmpGrid );
+               	}
+		
+		if( om$is_ancestry_valid( subclassname = name,
+					  superclassname = "VSplate" ) == 1 &&			  
+		    om$is_ancestry_valid( subclassname = basename,
+					  superclassname = "VSplate" ) == 1 ){               		processItem( &TmpGrid );
+               		processItem( &TmpGrid );
+               	}
+               	
+               		
+	}
+
+	/* free up the object list if not null */
+        if( OBlst != 0) {free( OBlst); OBlst = 0;}
+ 	
+	return TRUE;
+
+	
+}

@@ -1,0 +1,395 @@
+/* $Id: COz_booFlip.u,v 1.5 2001/11/09 16:21:36 jayadev Exp $  */
+
+/*************************************************************************
+ * I/STRUCT
+ *
+ * File:        struct/pplapp/COz_booFlip.u
+ *
+ * Description: detect the boolean plates whose base/offset surfs are flipped 
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ *      $Log: COz_booFlip.u,v $
+ *      Revision 1.5  2001/11/09 16:21:36  jayadev
+ *      *** empty log message ***
+ *
+ *      Revision 1.4  2001/11/09 15:18:32  jayadev
+ *      *** empty log message ***
+ *
+ *      Revision 1.3  2001/11/08 23:38:56  ylong
+ *      *** empty log message ***
+ *
+ *
+ * History:
+ *      MM/DD/YY   AUTHOR       DESCRIPTION
+ *      11/07/01   Jayadev      TR#5729 
+ *************************************************************************/
+
+#include "VDppl.h"
+#include "VDobj.h"
+#include "VDmem_ppl.h"
+#include "vs.h"
+#include "vsplatedef.h"
+#include "vdVALmacros.h" 
+#include "vsgeommacros.h"
+#include "vsmiscmacros.h"
+#include "vsdbgmacros.h"
+#include "vsipthmacros.h"
+#include "bssfeval.h"
+#include "bsdistptpt.h"
+#include "bsmdistptsf.h"
+#include "bserr.h"
+
+extern   VDpms_findall_ancestryobjects();
+extern   GRclassid OPP_VSbooPlate_class_id;
+extern   GRclassid OPP_EMSgensolid_class_id;
+extern   VDdumpSurface();
+extern   sleep();
+
+main()
+{
+  IGRlong		sts, msg, rc;
+  IGRint		i, j, k, count, badCount;
+  IGRint                bfCount, suppCount, parent_cnt;
+  GRclassid		classids[1], clid;
+  OM_S_OBJID		*list;
+  IGRboolean            rep3d;
+  VSsuppList            mySupport;
+  struct GRid           *objects, *badPlates, *parent_list ;
+  struct GRmd_env	loc_env;
+  IGRchar 		buffer[1024];
+  struct GRobj_env      plateOE, gensolOE;
+  struct GRobj_env      suppSrf, plateSrf;
+  IGRdouble             distSupp, u, v;
+  IGRpoint              suppPoint, platePoint;
+  IGRpoint              ptonSf;
+  VSipathANDid          *bfList ; 
+  struct IGRbsp_surface *plateSrfGeom, *suppSrfGeom;
+ 
+  message("List VSbooPlates with improper base/offset surfaces");
+  
+  count         = 0;
+  badCount      = 0;
+  suppCount     = 0;
+  bfCount       = 0;
+  parent_cnt    = 0;
+  list          = NULL;
+  objects       = NULL;
+  badPlates     = NULL;
+  bfList        = NULL;
+  parent_list   = NULL;
+  
+  /* added the output to .process.log for display in VSvalidate form */
+  vd$VAL_openLog( msg = msg );
+  if( !(msg&1) ){ printf("validate log file could not be opened\n"); }
+  
+  ci$get_module_info( md_env = &loc_env);
+  classids[0] = OPP_VSbooPlate_class_id ;
+  
+  VDpms_findall_ancestryobjects( loc_env.md_id.osnum, 1, classids, 
+				 &count, NULL );
+  
+  sprintf(buffer,"%d VSbooPlate Objects found in the file ", count );
+  UI_status(buffer);
+  sleep(1);
+  
+  if(count == 0) goto wrapup;
+  
+  list = ( OM_S_OBJID * ) malloc( sizeof( OM_S_OBJID ) * count ) ;
+  objects = ( struct GRid * ) malloc( sizeof( struct GRid ) * count ) ;
+  badPlates = ( struct GRid * ) malloc( sizeof( struct GRid ) * count ) ;
+  
+  VDpms_findall_ancestryobjects( loc_env.md_id.osnum, 1, classids,
+                                 &count, list );
+  for( i=0; i<count; i=i+1 )
+  {
+    objects[i].objid = list[i];
+    objects[i].osnum = loc_env.md_id.osnum;
+  }
+  
+  for( i=0; i<count; i=i+1 )
+  {
+    __DBGpr_int("start loop for ",i); 
+    _FREE(plateSrfGeom); 
+    _FREE(suppSrfGeom); 
+    gensolOE.obj_id.objid = NULL_OBJID;
+    
+    plateOE.obj_id        = objects[i]; 
+    plateOE.mod_env       = loc_env; 
+    
+    msg = 0;
+    rep3d = FALSE;
+
+    __DBGpr_obj(" ***** Analysing object *****",plateOE.obj_id);
+    
+    __DBGpr_int("badCount ", badCount);
+    for(k=0; k<badCount; k = k+1)
+      __DBGpr_obj("badPlates ", badPlates[k]);
+
+    // check if the plate parent is already there in the list
+    for(j=0; j<badCount; j=j+1)
+    {
+      parent_cnt = 0;
+      _FREE(parent_list);
+      
+      // see if i'm the child of an already existing element in list
+      __DBGpr_obj("Target ", badPlates[j]);
+      __DBGpr_obj("Descendent ", objects[i]);
+      sts = ci$send( msg = message VSfeature.VStrackDescendent(
+	                           &objects[i], &parent_cnt, &parent_list ),
+		     targetid = badPlates[j].objid,
+		     targetos = badPlates[j].osnum  );
+      __DBGpr_int("parent_cnt ", parent_cnt);
+      if( parent_cnt )
+      {
+	__DBGpr_com("Intermediate stages ");
+	for(k=0; k<parent_cnt; k = k+1)
+	  __DBGpr_obj(" ", parent_list[k]);
+
+	__DBGpr_obj(" My parent in list ", badPlates[j]);
+	goto next_element;
+      }
+    }
+
+    
+    __DBGpr_obj("I'm not part of the list of badPlates ", objects[i]);
+    vdobj$GetFoot(objOE    = &plateOE, 
+		  footName = VS_K_plGrCmpName, 
+		  footOE   = &gensolOE);
+    if(gensolOE.obj_id.objid == NULL_OBJID)
+    {
+      __DBGpr_obj("FAILED to get my component ", plateOE.obj_id);
+      continue; 
+    }
+    __DBGpr_obj("GENSOLID ", gensolOE.obj_id);
+ 
+    // just to make sure that we have a valid object 
+    if( !( om$get_classid(  objid           = gensolOE.obj_id.objid,
+                            osnum           = gensolOE.obj_id.osnum,
+                            p_classid       = &clid ) & 1 ) ) {
+      __DBGpr_obj("Failed to get the classid for ", gensolOE.obj_id);
+      continue; 
+    } 
+
+    if(vs$is_ancestry_valid( object   = &gensolOE.obj_id,
+                              classid = OPP_EMSgensolid_class_id  ))
+    {
+      __DBGpr_obj("object is an EMSgensolid ", gensolOE.obj_id);
+      rep3d = TRUE;
+    }
+    else
+    {
+      rep3d = FALSE;
+      __DBGpr_obj("object is NOT an EMSgensolid ", gensolOE.obj_id);
+    }
+    /*
+     * Even if i'm consumed, sometimes i remain in 3D rep depending
+     * on what my immediate child is; If my immediate child is hole
+     * plate, i'll have 2D rep and a 3D rep if my child is a booplate
+     */ 
+    sts = ci$send(msg = message NDmacro.ACtest_consumed(&msg),
+                  targetid = plateOE.obj_id.objid,
+                  targetos = plateOE.obj_id.osnum);
+    
+    if((sts&msg&1) && (rep3d == FALSE)) 
+    {
+      plateSrf = gensolOE;
+      __DBGpr_obj("Plate is consumed ", plateOE.obj_id);
+      __DBGpr_obj("Plate base surface", plateSrf.obj_id);
+    }
+    else
+    {
+      /*
+      ** Get component structure of the solid
+      */
+    /*
+     *
+      sts = vs$getIPATHsandIDs(
+	msg                = &msg,
+	owner              = &gensolOE.obj_id,
+	ownerIndex         = 0,
+	count              = &bfCount,
+	p_list             = &bfList ) ;
+      if(!(sts&msg&1) || (bfCount == 0))
+      {
+        __DBGpr_obj("FAILED in vs$getIPATHsandIDs for ", gensolOE.obj_id);
+        continue; 
+      }
+      
+      plateSrf.obj_id  = bfList[2].id;  
+      plateSrf.mod_env = loc_env;  
+     *
+     */
+     vdobj$GetFoot(objOE=&plateOE,footName=VS_K_plBotSfPath,footOE= &plateSrf);
+     if (plateSrf.obj_id.objid == NULL_OBJID)
+     {
+       printf("\n FAILED to get base surface for [%d,%d] \n",
+                  plateOE.obj_id.objid, plateOE.obj_id.osnum);
+       continue;
+     } 
+  
+      __DBGpr_obj("Plate is not consumed ", plateOE.obj_id);
+      __DBGpr_obj("Plate base surface", plateSrf.obj_id);
+    } 
+    
+    // get the geometry of the plate surface
+    vs$get_geometry(msg      = &msg ,
+		    grobjId  = &plateSrf.obj_id,
+		    grobjEnv = &plateSrf.mod_env,
+		    geometry = &plateSrfGeom ) ;
+    if(plateSrfGeom == NULL) 
+    {
+      __DBGpr_obj("FAILED to get surface plate surface geometry for ", plateSrf.obj_id);
+      continue; 
+    }
+    BSsfeval( plateSrfGeom, 0.5, 0.5, 0, platePoint, &rc ) ;
+    if( rc != BSSUCC)
+    {
+      printf("\n FAILED to get the point at [0.5,0.5] of plate surface \n");
+      continue;
+    }
+    __DBGpr_vec("Point on plate surface", platePoint);
+    
+    // check for distance from the support surface
+    __DBGpr_com(" check for distance from the support surface ");
+    
+    suppCount = 0;
+    sts = ci$send(msg   = message VSpart.VSgetSupports(
+                                  &msg, &loc_env, &suppCount, mySupport ),
+		  targetid = objects[i].objid,
+		  targetos = objects[i].osnum ) ;
+    __DBGpr_obj("Plate ", plateOE.obj_id);
+    __DBGpr_int("suppCount ", suppCount);
+
+    if( suppCount == 0 )
+    {
+      __DBGpr_obj("FAILED to get support surface for ", plateOE.obj_id);
+      continue; 
+    }
+    if( mySupport[0].obj_id.objid == NULL_OBJID )  
+    {
+      __DBGpr_obj("FAILED to get support surface for ", plateOE.obj_id);
+      continue; 
+    }
+    
+    suppSrf  = mySupport[0];
+    __DBGpr_obj(" plate support surface ", suppSrf.obj_id);
+    
+    vs$get_geometry(msg      = &msg ,
+		    grobjId  = &suppSrf.obj_id,
+		    grobjEnv = &suppSrf.mod_env,
+		    geometry = &suppSrfGeom ) ;
+    if(suppSrfGeom == NULL) 
+    {
+      __DBGpr_obj("FAILED to get support surface geometry for ", suppSrf.obj_id);
+      continue; 
+    }
+  /*
+   * 
+    BSsfeval( suppSrfGeom, 0.5, 0.5, 0, suppPoint, &rc ) ;
+    if( rc != BSSUCC)
+    {
+      printf("\n FAILED to get the point at [0.5,0.5] of support surface \n");
+      continue;
+    }
+    __DBGpr_vec("Point on support surface", suppPoint);
+    
+    distSupp = 0.0;
+    distSupp = BSdistptpt(&rc, suppPoint, platePoint);
+    if(rc != BSSUCC)
+    {
+      printf("\n FAILED to get the distance b/w points \n");
+      continue;
+    }
+    __DBGpr_dbl(" distSupp ", distSupp);
+   *
+   */
+   distSupp = 0.0;
+   BSmdistptsf(&rc, suppSrfGeom, platePoint, &u, &v, suppPoint, &distSupp);    
+   if(rc != BSSUCC)
+   {
+     printf("\n FAILED in BSmdistptsf \n");
+     continue;
+   }
+   if(distSupp < 0.1)
+   {
+     __DBGpr_com("The plate has correct base surface ");
+     continue;
+   }
+    else
+   {
+     printf("\n distSupp = %f index %d\n",distSupp, i);
+     printf("\nThe plate has wrong base surface [%d,%d]\n",
+               objects[i].objid, objects[i].osnum);
+     sprintf(buffer,"supp%d",i);
+     printf("\n Point[%f,%f,%f] at index %d \n", 
+                platePoint[0], platePoint[1], platePoint[2], i);
+                                     
+     VDdumpSurface(&suppSrf, NULL, buffer);
+     __DBGpr_com("The plate has wrong base surface ");
+   }
+
+   // see if object[i]'m the parent of an already existing element in list
+   for(j=0; j<badCount; j=j+1)
+   {
+     __DBGpr_obj("Target ", objects[i]);
+     __DBGpr_obj("Descendent ", badPlates[j]);
+     sts = ci$send( msg = message VSfeature.VStrackDescendent(
+                           &badPlates[j], &parent_cnt, &parent_list ),
+	     targetid = objects[i].objid,
+	     targetos = objects[i].osnum  );
+     __DBGpr_int("parent_cnt ", parent_cnt);
+     if( parent_cnt )
+     {
+	__DBGpr_com("Intermediate stages ");
+	for(k=0; k<parent_cnt; k = k+1)
+	  __DBGpr_obj(" ", parent_list[k]);
+	__DBGpr_obj(" My child in list ", badPlates[j]);
+	badPlates[j] = objects[i];
+	__DBGpr_com(" List of bad plates updated ");
+	for(k=0; k<badCount; k = k+1)
+	  __DBGpr_obj("badPlates ", badPlates[k]);
+	goto next_element;
+     }
+   }
+    
+    badPlates[badCount] = objects[i];
+    badCount = badCount + 1;
+  next_element:
+    __DBGpr_int("end loop for ",i); 
+  }
+  for(k=0; k<badCount; k=k+1)
+  {
+    if( k == 0 ) 
+      vd$VAL_addInfo(Text ="Boolean plates with flipped base/offset surfs" );
+    
+    vd$VAL_addObject(
+      GRid     = badPlates[k],
+      PreText  = "\t",
+      PostText = " bad VSbooPlate " );
+
+  }
+  
+  if( badCount == 0 ){
+    vd$VAL_addInfo( Text = "No bad booplates found" );
+  }
+  else
+  {
+    sprintf(buffer,"%d bad boolean plates\n",badCount);
+    UI_status(buffer);
+    sleep(1);
+  }
+  sprintf(buffer,"DONE");
+  UI_status(buffer);
+  
+ wrapup:
+  _FREE ( list ); 
+  _FREE ( objects ); 
+  _FREE ( badPlates ); 
+  _FREE ( bfList ); 
+  _FREE(parent_list);
+  vd$VAL_closeLog();
+  return 1;
+}
+

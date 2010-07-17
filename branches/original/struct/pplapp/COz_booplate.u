@@ -1,0 +1,238 @@
+/* $Id $  */
+
+/*************************************************************************
+ * I/STRUCT
+ *
+ * File:        struct/pplapp/COz_booplate.u
+ *
+ * Description: check the boolean plates with lost graphics 
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ *      $Log $
+ *
+ * History:
+ *      MM/DD/YY   AUTHOR       DESCRIPTION
+ *      05/01/00   Jayadev      File Creation, support for VSvalidate output
+ *      10/01/01   Jayadev      Additional support for TR#5490 
+ *************************************************************************/
+
+#include "VDppl.h"
+#include "VDobj.h"
+#include "vsplatedef.h"
+#include "vdVALmacros.h" 
+#include "ndmacros.h"
+#include "v_measmacros.h"
+#include "v_geommacros.h"
+#include "vsdbgmacros.h"
+
+extern   NDwait_batch();
+extern   VDpms_findall_ancestryobjects();
+extern   GRclassid OPP_VSbooPlate_class_id;
+extern   sleep();
+extern   IGRdouble fabs();
+extern   IGRlong VDdumpSurface();
+
+main()
+{
+  IGRlong		sts, msg;
+  IGRint		i, j, count, cnType;
+  IGRint		bad_cnt, cmp_count, is_planar;
+  GRclassid		classids[1];
+  OM_S_OBJID		*list;
+  struct GRid           *objects ;
+  struct GRmd_env	loc_env;
+  IGRchar 		buffer[1024];
+  struct GRobj_env      plateOE, gensolOE, srfOE;
+  struct GRobj_env      base_srfOE, offset_srfOE;
+  IGRdouble             baseArea, offsetArea;
+  IGRdouble             areaDiff, avgArea;
+  IGRboolean            graphicFlag, cutFlag;
+  GRname                opFilename;
+
+  message("Compute booplates missing graphics/improper base->offset areas");
+  
+  count     = 0;
+  bad_cnt   = 0;
+  list      = NULL;
+  objects   = NULL;
+  is_planar = TRUE;
+  
+  /* added the output to .process.log for display in VSvalidate form */
+  vd$VAL_openLog( msg = msg );
+  if( !(msg&1) ){ printf("validate log file could not be opened\n"); }
+  
+  ci$get_module_info( md_env = &loc_env);
+  classids[0] = OPP_VSbooPlate_class_id ;
+  
+  VDpms_findall_ancestryobjects( loc_env.md_id.osnum, 1, classids, 
+				 &count, NULL );
+  
+  sprintf(buffer,"%d VSbooPlate Objects found", count );
+  UI_status(buffer);
+  sleep(1);
+  
+  if(count == 0) goto wrapup;
+  
+  list = ( OM_S_OBJID * ) malloc( sizeof( OM_S_OBJID ) * count ) ;
+  objects = ( struct GRid * ) malloc( sizeof( struct GRid ) * count ) ;
+  
+  VDpms_findall_ancestryobjects( loc_env.md_id.osnum, 1, classids,
+                                 &count, list );
+  for( i=0; i<count; i=i+1 )
+  {
+    objects[i].objid = list[i];
+    objects[i].osnum = loc_env.md_id.osnum;
+  }
+  
+  cnType = ND_COMP;
+  for( i=0; i<count; i=i+1 )
+  {
+    graphicFlag           = FALSE;
+    cutFlag               = FALSE;
+    gensolOE.obj_id.objid = NULL_OBJID;
+    plateOE.obj_id        = objects[i]; 
+    plateOE.mod_env       = loc_env; 
+    baseArea              = 0.0;
+    offsetArea            = 0.0;
+    is_planar             = TRUE;
+    
+    msg = 0;
+    
+    // look for missing graphic component
+    vdobj$GetFoot(objOE    = &plateOE, 
+		  footName = VS_K_plGrCmpName, 
+		  footOE   = &gensolOE);
+    
+    if(gensolOE.obj_id.objid == NULL_OBJID) graphicFlag = TRUE;
+    
+    sts = ci$send(msg = message NDmacro.ACtest_consumed(&msg),
+                  targetid = plateOE.obj_id.objid,
+                  targetos = plateOE.obj_id.osnum);
+    
+    if((sts & msg &1) && (graphicFlag == FALSE)) continue;
+    if((sts & msg &1) && (graphicFlag == TRUE)) goto area_postProcess; 
+    
+    // look for dis-similar base & offset surfaces w.r.t their area
+    
+    offset_srfOE.obj_id.objid = NULL_OBJID;
+    vdobj$GetFoot(objOE = &plateOE, footName = VS_K_plTopSfPath, footOE = &offset_srfOE);
+    if(offset_srfOE.obj_id.objid == NULL_OBJID)
+    {
+      printf("\n Failed to get %s for [%d,%d] \n",VS_K_plTopSfPath, 
+	     plateOE.obj_id.objid,plateOE.obj_id.osnum);
+      if(!graphicFlag) continue;
+    }
+    else
+    {
+      sts = vd_$get_area_props ( msg      = &msg,
+				 surfId   = &offset_srfOE.obj_id,
+				 surfEnv  = &offset_srfOE.mod_env,
+				 area     = &offsetArea );
+      if(!(sts&msg&1))
+      {
+	printf("\n Failed to get surface area for [%d,%d] \n", 
+	       offset_srfOE.obj_id.objid,offset_srfOE.obj_id.osnum);
+	if(!graphicFlag) continue;
+      }
+      is_planar = vd_$is_surface_planar( msg = &msg,
+					 surfId   = &offset_srfOE.obj_id,
+					 surfEnv  = &offset_srfOE.mod_env );
+      if((!is_planar) && (graphicFlag == FALSE)) continue; 
+      if((!is_planar) && (graphicFlag == TRUE)) goto area_postProcess; 
+    }
+    
+    base_srfOE.obj_id.objid = NULL_OBJID;
+    vdobj$GetFoot(objOE = &plateOE, footName = VS_K_plBotSfPath, footOE = &base_srfOE);
+    if(base_srfOE.obj_id.objid == NULL_OBJID)
+    {
+      printf("\n Failed to get %s for [%d,%d] \n",VS_K_plBotSfPath, 
+	     plateOE.obj_id.objid,plateOE.obj_id.osnum);
+      if(!graphicFlag) continue;
+    }
+    else
+    {
+      sts = vd_$get_area_props ( msg      = &msg, 
+				 surfId   = &base_srfOE.obj_id,
+				 surfEnv  = &base_srfOE.mod_env,
+				 area     = &baseArea );
+      if(!(sts&msg&1))  
+      {
+	printf("\n Failed to get surface area for [%d,%d] \n",
+	       base_srfOE.obj_id.objid,base_srfOE.obj_id.osnum);
+	if(!graphicFlag) continue;
+      }
+    }
+    
+    areaDiff = baseArea - offsetArea;
+    avgArea  = (baseArea + offsetArea)/2.0;
+    
+    // area difference should not be greater than 1 percent of average area 
+    if(fabs(areaDiff) > (0.01*avgArea)) cutFlag = TRUE; 
+    
+  area_postProcess:
+    
+    if(graphicFlag || cutFlag)
+    {
+      __DBGpr_obj(" ***** Analysing object *****",plateOE.obj_id);
+      __DBGpr_dbl("baseArea ",baseArea);
+      __DBGpr_dbl("offsetArea ",offsetArea);
+      __DBGpr_dbl("areaDiff ",areaDiff);
+      __DBGpr_dbl("avgArea ",avgArea);
+      __DBGpr_int(" missing graphic flag ", graphicFlag);
+      __DBGpr_int(" bad cut flag ", cutFlag);
+      
+      if( bad_cnt == 0 ) 
+	vd$VAL_addInfo( Text = "Boolean plates [ without graphics / Improper holes ]" );
+      
+      if(graphicFlag)
+      {
+	vd$VAL_addObject(
+	  GRid     = objects[i],
+	  PreText  = "\t",
+	  PostText = "missing graphics" );
+      }
+      else
+      {
+	vd$VAL_addObject(
+	  GRid     = objects[i],
+	  PreText  = "\t",
+	  PostText = "improper base/offset areas" );
+	
+	
+        nd$wait_batch( type       = GR_GEOM_POSTED,
+        	       l_object   = &objects[i],
+		       l_obj_info = &cnType,
+		       nb_obj     = 1);
+	
+        sprintf(opFilename,"%d_%d_baseSurf.txt",plateOE.obj_id.objid,
+		plateOE.obj_id.osnum);
+        VDdumpSurface(&base_srfOE,NULL,opFilename);
+        sprintf(opFilename,"%d_%d_offsetSurf.txt",plateOE.obj_id.objid,
+		plateOE.obj_id.osnum);
+        VDdumpSurface(&offset_srfOE,NULL,opFilename);
+      }
+      bad_cnt = bad_cnt + 1;
+      
+    }
+  }
+  if( bad_cnt == 0 ){
+    vd$VAL_addInfo( Text = "No bad booplates found" );
+  }
+  else
+  {
+    sprintf(buffer,"%d bad boolean plates\n",bad_cnt);
+    UI_status(buffer);
+    sleep(1);
+  }
+  sprintf(buffer,"DONE");
+  UI_status(buffer);
+  
+ wrapup:
+  if( list ) { free ( list ) ; list = NULL; }
+  if( objects ) { free ( objects ) ; objects = NULL; }
+  vd$VAL_closeLog();
+  return 1;
+}
+

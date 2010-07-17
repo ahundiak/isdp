@@ -1,0 +1,1212 @@
+/* $Id: VSverBevel.u,v 1.3 2002/06/14 15:20:55 ahundiak Exp $  */
+
+/***************************************************************************
+ * I/VDS
+ *
+ * File:        $VDS/vdat/pcmk2/bev.u
+ *
+ * Description: Verify bevel
+ *
+ * Revision History:
+ *      $Log: VSverBevel.u,v $
+ *      Revision 1.3  2002/06/14 15:20:55  ahundiak
+ *      ah
+ *
+ *      Revision 1.2  2002/06/12 18:26:50  ahundiak
+ *      ah
+ *
+ *      Revision 1.1  2002/02/28 22:10:17  ahundiak
+ *      ah
+ *
+ *
+ * History:
+ * MM/DD/YY  AUTHOR  DESCRIPTION
+ * 01/02/02  ah      Creation
+ ***************************************************************************/
+
+#include "VDppl.h"
+#include "VDvla.h"
+#include "VDchn.h"
+#include "VDobj.h"
+#include "VDfrmc.h"
+
+struct CIform_st form_st;
+
+Form form;
+
+#define thePrompt "Verify Bevels"
+#define FORM_NAME "VSverBevel.fm"
+
+#define FORM_B_SCAN 1222
+#define FORM_B_NAV  13
+#define FORM_B_EVT  14
+#define FORM_B_SAVE 16
+
+#define FORM_B_DEL_ONE 12
+
+#define FORM_B_DEL_ALL 17
+
+#define FORM_G_LIST 15
+#define FORM_G_LIST_COL_OBJID 0
+#define FORM_G_LIST_COL_MACRO 1
+#define FORM_G_LIST_COL_PROB  2
+
+extern VDobjGetMacroName();
+extern VDobjResetOE();
+extern GRdisplay_object();
+
+TGRid eventID;
+
+typedef struct Tmacro
+{
+  TGRid   id;
+  IGRchar name[20];
+  IGRchar problem[40];
+  TGRid  *kidIDs;
+  IGRint  kidCnt;
+} Tmacro;
+
+typedef struct
+{
+  Tmacro *macros;
+  IGRint  cnt;
+  IGRint  max;
+} Tmacros;
+
+Tmacros macros;
+
+/* --------------------------------------
+ * The main routine
+ */
+int main()
+{
+  int 		sts,msg;
+  int 		response;
+  IGRchar	buf[1024];
+  
+  TGRobj_env 	objOE;
+  
+  sts = init_form();
+  if (!(sts & 1)) goto wrapup;
+  
+  while(1) {
+
+    form_st.gadget_label = 0;
+
+    UI_message(thePrompt);
+
+    sts = ci$locate(prompt  = "Manupilate Form",
+		    classes = "nci_macro",
+		    owner_action = LC_RIGID_OWNER | 
+                                   LC_RIGID_COMP  |
+                                   LC_FLEX_COMP   | 
+                                   LC_FLEX_OWNER  |
+                                   LC_REF_OBJECTS,
+
+		    response     = &response,
+		    md_env       = &objOE.mod_env,
+		    obj          = &objOE.obj_id.objid,
+		    osnum	 = &objOE.obj_id.osnum);
+    
+    switch(response) {
+      
+    }
+  }
+wrapup:
+  return 1;
+}
+
+/* -----------------------------------------
+ * Delete the selected row
+ */
+int delete_one()
+{
+  IGRint row;
+  IGRint rows;
+  IGRint rowx;
+  IGRint delCnt;
+  
+  TGRid objID;
+  TGRobj_env objOE;
+  
+  IGRchar buf[40];
+  
+  // Row to process
+  VDfrmGetActiveRow(form,FORM_G_LIST,&row,NULL);
+  if (row < 0) goto wrapup;
+
+  // Make sure is does not get evented
+  objID.osnum = 2;
+  objID.objid = NULL_OBJID;
+  setEventID(&objID);
+  
+  // Parse out the object
+  VDfrmGetfText(form,FORM_G_LIST,row,FORM_G_LIST_COL_OBJID,buf);
+  objID.objid = atoi(buf);
+  if (objID.objid == 0) goto wrapup;
+
+  // Reset display
+  GRdisplay_object(&objID,NULL,GRheo);
+
+  //	bevelOE.obj_id = eventID;
+  // VDobjResetOE(&bevelOE);
+  objOE.obj_id = objID;
+  VDobjResetOE(&objOE);
+  vdobj$Delete(objOE = &objOE);
+  delCnt = 1;
+  rowx = row;
+  
+  UI_status("Object deleted");
+
+  // For neat_plates, remove related bevels as well
+  VDfrmGetfText(form,FORM_G_LIST,row,FORM_G_LIST_COL_MACRO,buf);
+  if (!strcmp(buf,"neat_plate")) {
+    VDfrmGetNumRows(form,FORM_G_LIST,&rows,NULL,NULL);
+    for(row = row + 1; row < rows; row = row + 1) {
+      VDfrmGetfText(form,FORM_G_LIST,row,FORM_G_LIST_COL_MACRO,buf);
+      if (*buf != '-') row = rows;
+      else {
+
+	// The bevel
+	VDfrmGetfText(form,FORM_G_LIST,row,FORM_G_LIST_COL_OBJID,buf);
+	objID.objid = atoi(buf);
+
+	// Reset display
+	GRdisplay_object(&objID,NULL,GRheo);
+
+	objOE.obj_id = objID;
+	VDobjResetOE(&objOE);
+	vdobj$Delete(objOE = &objOE);
+	delCnt = delCnt + 1;
+      }
+    }
+  }
+  
+  // Remove the row
+  VDfrmDeleteRows(form,FORM_G_LIST,rowx,delCnt);
+  
+ wrapup:
+  return 1;
+}
+
+/* -----------------------------------------
+ * Form stuff
+ */
+form_notification()
+{
+  int retFlag;
+  int gadget;
+  int sts;
+  
+  TGRobj_env bevelOE;
+  
+  // Init
+  retFlag = 1;
+  gadget = form_st.gadget_label;
+  
+  // A few always get's handled
+  switch (gadget) {
+
+    case FI_CANCEL:
+      ci$put(response = TERMINATE);
+      break;
+
+    case FI_EXECUTE:
+      break;
+
+    case FORM_B_SCAN:
+      scan(2);
+      break;
+
+    case FORM_G_LIST:
+      list();
+      break;
+
+    case FORM_B_SAVE:
+      save();
+      break;
+
+    case FORM_B_NAV:
+      if (eventID.objid != NULL_OBJID) {
+	ci$put(cmd = "navigate");
+	ci$put(obj = eventID.objid, osnum = &eventID.osnum);
+      }
+      break;
+
+    case FORM_B_EVT:
+      if (eventID.objid != NULL_OBJID) {
+	ci$put(obj = eventID.objid, osnum = &eventID.osnum);
+      }
+      break;
+
+    case FORM_B_DEL_ONE:
+      delete_one();
+#if 0
+      if (eventID.objid != NULL_OBJID) {
+	GRdisplay_object(&eventID,NULL,GRheo);
+	bevelOE.obj_id = eventID;
+	VDobjResetOE(&bevelOE);
+	vdobj$Delete(objOE = &bevelOE);
+	eventID.objid = NULL_OBJID;
+	UI_status("Object deleted");
+      }
+#endif
+      break;
+       
+      
+  }
+
+wrapup:
+  return retFlag;
+
+}
+
+/* --------------------------------------------------------
+ * Get the form started
+ */
+int init_form()
+{
+  int retFlag;
+  int sts;
+  Form existingForm;
+  
+  // Reset
+  retFlag = 0;
+  
+  // Create it
+  sts = VDfrmGetFormByName(FORM_NAME,&existingForm);
+  if (sts & 1) {
+    UI_status("Command Already Running");
+    return 0;
+  }
+  VDfrmCreateForm(101,FORM_NAME,ci_notification,
+		  MY_ID,OM_Gw_current_OS,&form,1);
+
+  if (form == NULL) {
+    printf("Could not init form\n");
+    goto wrapup;
+  }
+
+  // Display
+  VDfrmDisplayForm(form,1,NULL);
+
+  // Initial scan
+  setEventID(&eventID);
+  scan(2);
+  
+  // Done
+  retFlag = 1;
+
+wrapup:
+  
+  return retFlag;
+}
+
+/* ------------------------------------------
+ * Usual command object messages
+ */
+init()
+{
+  form = NULL;
+  eventID.objid = NULL_OBJID;
+  memset(&macros,0,sizeof(Tmacros));
+  
+}
+sleep() 
+{
+}
+wakeup()
+{
+  UI_message(thePrompt);
+  VDfrmDisplayForm(form,1,NULL);
+  
+}
+delete()
+{
+  int i;
+  
+  if (macros.macros) {
+    for(i = 0; i < macros.cnt; i = i + 1) {
+      if (macros.macros[i].kidIDs) free(macros.macros[i].kidIDs);
+    }
+    free(macros.macros);
+  }
+  
+  VDfrmDeleteForm(form,1);
+  form = NULL;
+}
+
+/* -----------------------------------------------
+ * Save the results
+ */
+int save()
+{
+  IGRint rows,row;
+  FILE *file;
+  IGRchar buf[80];
+  
+  // Open
+  file = fopen("problems.txt","wt");
+  if (file == NULL) {
+    UI_status("Could not open problems.txt file");
+    goto wrapup;
+  }
+  
+  // Cycle
+  VDfrmGetNumRows(form,FORM_G_LIST,&rows,NULL,NULL);
+  for(row = 0; row < rows; row = row + 1) {
+
+    VDfrmGetfText(form,FORM_G_LIST,row,FORM_G_LIST_COL_OBJID,buf);
+    fprintf(file,"%-10s ",buf);
+
+    VDfrmGetfText(form,FORM_G_LIST,row,FORM_G_LIST_COL_MACRO,buf);
+    fprintf(file,"%-12s ",buf);
+
+    VDfrmGetfText(form,FORM_G_LIST,row,FORM_G_LIST_COL_PROB,buf);
+    fprintf(file,"%-20s\n",buf);
+  }
+  
+  // Done
+  fclose(file);
+  UI_status("problems.txt file written");
+  
+ wrapup:
+  return 1;
+}
+
+/* -----------------------------------------------
+ * Set the global event object id
+ */
+int setEventID(bevelID)
+  TGRid *bevelID;
+{
+  if (eventID.objid != NULL_OBJID) {
+    GRdisplay_object(&eventID,NULL,GRheo);
+  }
+  eventID = *bevelID;
+  if (eventID.objid != NULL_OBJID) {
+    GRdisplay_object(&eventID,NULL,GRhdo);
+    VIg_enable(form,FORM_B_NAV);
+    VIg_enable(form,FORM_B_EVT);
+  }
+  else {
+    VIg_disable(form,FORM_B_NAV);
+    VIg_disable(form,FORM_B_EVT);
+  }
+  
+}
+
+/* -----------------------------------------------
+ * List was selected
+ */
+int list()
+{
+  TGRid bevelID;
+  IGRchar buf[128];
+  IGRint  sel;
+  IGRint  row;
+  
+  // Get the bevel
+  VDfrmGetActiveRow(form,FORM_G_LIST,&row,NULL);
+  if (row < 0) goto wrapup;
+  
+  VDfrmGetfText(form,FORM_G_LIST,row,FORM_G_LIST_COL_OBJID,buf);
+  bevelID.objid = atoi(buf);
+  if ( bevelID.objid == 0) goto wrapup;
+  bevelID.osnum = 2;
+
+  // Was it selected
+  VDfrmGetSelect(form,FORM_G_LIST,row,FORM_G_LIST_COL_OBJID,&sel);
+  if (sel) {
+    setEventID(&bevelID);
+    VDfrmGetfText(form,FORM_G_LIST,row,FORM_G_LIST_COL_PROB,buf);
+    VDfrmSetgText(form,10,buf);
+   }
+  else {
+    bevelID.objid = NULL_OBJID;
+    setEventID(&bevelID);
+    VDfrmSetgText(form,10,"");
+   }
+  
+ wrapup:
+  return 1;
+}
+
+extern realloc();
+
+/* -----------------------------------------------
+ * Sorting is a pain because cannot pass a function
+ * pointer for a ppl function
+ *
+ * Need to hardcode a simple bubble sorter
+ */
+int compare_macros(macro1,macro2)
+  Tmacro *macro1;
+  Tmacro *macro2;
+{
+  int cmp;
+  
+  cmp = strcmp(macro1->name,macro2->name);
+  if (cmp) {
+    if (!strcmp(macro1->name,"neat_plate")) return -1;
+    if (!strcmp(macro2->name,"neat_plate")) return  1;
+    return cmp;
+  }
+  
+  cmp = strcmp(macro1->problem,macro2->problem);
+  if (cmp) return cmp;
+
+  if (macro1->id.objid < macro2->id.objid) return -1;
+  if (macro1->id.objid > macro2->id.objid) return  1;
+
+  return 0;
+}
+
+int sort_macros()
+{
+  IGRint i,j;
+  IGRint cnt;
+  
+  Tmacro *macro1,*macro2;
+  Tmacro  macroTmp;
+  
+  // Get the count
+  cnt = macros.cnt;
+  if (cnt == 0) goto wrapup;
+  cnt = cnt - 1;
+  
+  for(i = 0; i < cnt; i = i + 1) {
+    for(j = 0; j < cnt; j = j + 1) {
+      macro1 = &macros.macros[j];
+      macro2 = &macros.macros[j+1];
+      if (compare_macros(macro1,macro2) > 0) {
+	macroTmp = *macro1;
+	*macro1  = *macro2;
+	*macro2  =  macroTmp;
+      }
+    }
+  }
+  
+ wrapup:
+  return 1;
+}
+  
+/* -----------------------------------------------
+ * Fill the list of macros
+ */
+int fill_macro_list()
+{
+  IGRint  i,j,row;
+  Tmacro *macro;
+  IGRchar buf[32];
+
+  TGRid  *kidID;
+  IGRchar name[20];
+  
+  // Reset
+  VDfrmSetNumRows(form,FORM_G_LIST,0);
+
+  // Sort
+  sort_macros();
+  
+  // Cycle
+  row = 0;
+  for(i = 0; i < macros.cnt; i = i + 1) {
+    
+    macro = &macros.macros[i];
+    
+    // Id
+    sprintf(buf,"%d",macro->id.objid);
+    VDfrmSetfText(form,FORM_G_LIST,row,FORM_G_LIST_COL_OBJID,buf);
+
+    // Macro name
+    VDfrmSetfText(form,FORM_G_LIST,row,FORM_G_LIST_COL_MACRO,macro->name);
+
+    // Problem
+    VDfrmSetfText(form,FORM_G_LIST,row,FORM_G_LIST_COL_PROB,macro->problem);
+
+    // Row
+    row = row + 1;
+
+    // Have any kids
+    for(j = 0; j < macro->kidCnt; j = j + 1) {
+
+      kidID = &macro->kidIDs[j];
+
+      // ID
+      sprintf(buf,"%d",kidID->objid);
+      VDfrmSetfText(form,FORM_G_LIST,row,FORM_G_LIST_COL_OBJID,buf);
+
+      // Macro name
+      VDobjGetMacroName(NULL,kidID,name);
+      sprintf(buf,"- %s",name);
+      VDfrmSetfText(form,FORM_G_LIST,row,FORM_G_LIST_COL_MACRO,buf);
+
+      // Problem
+      VDfrmSetfText(form,FORM_G_LIST,row,FORM_G_LIST_COL_PROB,"child");
+
+      // Row
+      row = row + 1;
+
+
+    }
+  }
+  
+ wrapup:
+  return 1;
+}
+
+/* -----------------------------------------------
+ * Add the macro to the form list
+ */
+int scan_macro_add(macroOE,macName,problem)
+  TGRobj_env   *macroOE;
+  IGRchar      *macName;
+  IGRchar      *problem;
+{
+  IGRint  row;
+  IGRchar buf[32];
+  
+  Tmacro *macro;
+  
+  TVDvlaID preVLA;
+  TVDvlaID kidVLA;
+  IGRint   cnt,i,j,k;
+  TGRid    preID;
+  
+  // Init
+  vdvla_id$Construct(vla = &preVLA);
+  
+  // Row to add to
+  VDfrmGetNumRows(form,FORM_G_LIST,&row,NULL,NULL);
+  
+  // Id
+  sprintf(buf,"%d",macroOE->obj_id.objid);
+  VDfrmSetfText(form,FORM_G_LIST,row,FORM_G_LIST_COL_OBJID,buf);
+
+  // Macro name
+  VDfrmSetfText(form,FORM_G_LIST,row,FORM_G_LIST_COL_MACRO,macName);
+
+  // Problem
+  VDfrmSetfText(form,FORM_G_LIST,row,FORM_G_LIST_COL_PROB,problem);
+
+  // Add to list
+  if (macros.cnt >= macros.max) {
+    macros.max = macros.max + 10;
+    macros.macros = (Tmacro*)realloc(macros.macros,(macros.max * sizeof(Tmacro)));
+  }
+  macro = &macros.macros[macros.cnt];
+  macro->kidCnt = 0;
+  macro->kidIDs = NULL;
+  macro->id = macroOE->obj_id;
+  strcpy(macro->name,macName);
+  strcpy(macro->problem,problem);
+  macros.cnt = macros.cnt + 1;
+
+  // For neat_plates want kids
+  if (strcmp(macName,"neat_plate")) goto wrapup;
+
+  // Get the kids
+  vdchn$GetChildrenByClass(objOE     = macroOE,
+			   className = "ACpretend",		   
+			   vla       = &preVLA);
+
+  // Cycle once to count actual macro kids
+  cnt = 0;
+  for(i = 0; vdvla_id$GetAt(vla = &preVLA, nth = i, objID = &preID); i = i + 1)
+  {
+    vdvla_id$Construct(vla = &kidVLA);
+
+    vdchn$GetChildrenByClass(objOE     = &preID,
+			     className = "nci_macro",		   
+			     vla       = &kidVLA);
+
+    cnt = cnt + vdvla_id$GetCnt(vla = &kidVLA); 
+
+    vdvla_id$Delete(vla = &kidVLA);
+  }  
+  if (cnt == 0) goto wrapup;
+  
+  macro->kidIDs = (TGRid*)malloc(cnt * sizeof(TGRid));
+  macro->kidCnt = cnt;
+  
+  // Cycle again to transfer
+  k = 0;
+  for(i = 0; vdvla_id$GetAt(vla = &preVLA, nth = i, objID = &preID); i = i + 1)
+  {
+    vdvla_id$Construct(vla = &kidVLA);
+
+    vdchn$GetChildrenByClass(objOE     = &preID,
+			     className = "nci_macro",		   
+			     vla       = &kidVLA);
+
+    for(j = 0; 
+	vdvla_id$GetAt(vla = &kidVLA, nth = j, objID = &macro->kidIDs[k]); 
+	j = j + 1) {
+      k = k + 1;
+    }
+
+    vdvla_id$Delete(vla = &kidVLA);
+  }  
+  if (cnt != k) printf("Mismatched child count %d %d %d\n",macro->id.objid,cnt,k);
+  
+  
+ wrapup:
+  vdvla_id$Delete(vla = &preVLA);
+
+  return 1;
+}
+
+/* -----------------------------------------------
+ * Check if it's root by simplying seeinf if no parentsd
+ */
+int scan_is_root(macroOE,macName)
+  TGRobj_env    *macroOE;
+  IGRchar       *macName;
+{
+  IGRstat retFlag;
+  
+  TGRobj_env parentOE;
+  
+  // Init
+  retFlag = 0;
+
+  // First parent
+  VDobjGetTemplate(macroOE,NULL,0,&parentOE);
+  if (parentOE.obj_id.objid != NULL_OBJID) {
+    retFlag = 1;
+    goto wrapup;
+  }
+  
+  // It's a root
+  scan_macro_add(macroOE,macName,"root");
+    
+ wrapup:
+  return retFlag;
+}
+
+/* -----------------------------------------------
+ * Look through the neat plates and see
+ * if the bevel has been picked up yet
+ */
+int scan_is_problem_child(bevelID)
+  TGRid *bevelID;
+{
+  IGRint retFlag;
+  
+  IGRint i,j;
+  Tmacro *macro;
+  TGRid  *childID;
+  
+  // Init
+  retFlag = 0;
+  
+  // Cycle through
+  for(i = 0; i < macros.cnt; i = i + 1) {
+    macro = &macros.macros[i];
+    for(j = 0; j < macro->kidCnt; j = j + 1) {
+      childID = &macro->kidIDs[j];
+      if ((childID->objid == bevelID->objid) &&
+	  (childID->osnum == bevelID->osnum)) {
+	retFlag = 1;
+	goto wrapup;
+      }
+    }
+  }
+
+ wrapup:
+  return retFlag;
+}
+
+extern VDobjIsConsumed();
+
+/* -----------------------------------------------
+ * Check that the nth parent is of a given type
+ */
+int check_parent(macroOE,nth,className)
+  TGRobj_env *macroOE;
+  IGRint nth;
+  IGRchar *className;
+{
+  IGRint  retFlag;
+  IGRstat sts;
+  
+  TGRobj_env parentOE;
+  
+  // Init
+  retFlag = 0;
+  
+  // Get the parent
+  VDobjGetTemplate(macroOE,NULL,nth,&parentOE);
+  if (parentOE.obj_id.objid == NULL_OBJID) {
+    goto wrapup;
+  }
+  
+  // Check ancestry
+  sts = vdobj$IsAncestryValid(objOE = &parentOE,superClassName = className);
+  if (!(sts & 1)) goto wrapup;
+
+  // See if consumed
+  sts = VDobjIsConsumed(&parentOE,NULL);
+  if (sts & 1) {
+    retFlag = 3;
+    goto wrapup;
+  }
+  
+  // Got it
+  retFlag = 1;
+  
+ wrapup:
+  return retFlag;
+}
+
+/* -----------------------------------------------
+ * Check that the foot is of a given type
+ */
+int check_foot(macroOE,footName,className)
+  TGRobj_env *macroOE;
+  IGRchar    *footName;
+  IGRchar    *className;
+{
+  IGRint  retFlag;
+  IGRstat sts;
+  
+  TGRobj_env footOE;
+  
+  // Init
+  retFlag = 0;
+  
+  // Get the foot
+  VDobjGetFoot(macroOE,NULL,footName,&footOE);
+  if (footOE.obj_id.objid == NULL_OBJID) {
+    goto wrapup;
+  }
+  
+  // Check ancestry
+  sts = vdobj$IsAncestryValid(objOE = &footOE,superClassName = className);
+  if (!(sts & 1)) goto wrapup;
+  
+  // Got it
+  retFlag = 1;
+  
+ wrapup:
+  return retFlag;
+}
+
+/* -----------------------------------------------
+ * Scan an EJ bevel
+ */
+int scan_EJ_Bevel(bevelOE,macName)
+  TGRobj_env *bevelOE;
+  IGRchar    *macName;
+{
+  IGRstat retFlag;
+  IGRstat sts;
+  
+  // Init
+  retFlag = 0;
+  
+  // Have one
+  if (strcmp(macName,"EJ_Bevel")) goto wrapup;
+  retFlag = 1;
+  
+  // Check for root
+  if (!scan_is_root(bevelOE,macName)) goto wrapup;
+
+  // See if it's already flagged as a problem child
+  if (scan_is_problem_child(&bevelOE->obj_id)) goto wrapup;
+  
+  // Do further checks
+  if (!check_parent(bevelOE,0,"ACrg_collect")) {
+    scan_macro_add(bevelOE,macName,"Missing ACrg_collect");
+    goto wrapup;
+  }
+  sts = check_parent(bevelOE,1,"VSplate");
+  if (sts == 0) {
+    scan_macro_add(bevelOE,macName,"Missing plate");
+    goto wrapup;
+  }
+  if (sts == 3) {
+    scan_macro_add(bevelOE,macName,"Consumed plate");
+    goto wrapup;
+  }
+  if (!check_parent(bevelOE,2,"GRcurve")) {
+    scan_macro_add(bevelOE,macName,"Missing parent curve");
+    goto wrapup;
+  }
+  if (!check_foot(bevelOE,"attributes","ACrg_collect")) {
+    scan_macro_add(bevelOE,macName,"Missing foot attributes");
+    goto wrapup;
+  }
+  if (!check_foot(bevelOE,"curve","GRcurve")) {
+    scan_macro_add(bevelOE,macName,"Missing foot curve");
+    goto wrapup;
+  }
+  if (!check_foot(bevelOE,"label","GR3dtext")) {
+    scan_macro_add(bevelOE,macName,"Missing foot label");
+    goto wrapup;
+  }  
+ wrapup:
+  return retFlag;
+}
+/* -----------------------------------------------
+ * Scan an VA bevel
+ */
+int scan_VA_Bevel(bevelOE,macName)
+  TGRobj_env *bevelOE;
+  IGRchar    *macName;
+{
+  IGRstat retFlag;
+  IGRstat sts;
+  
+  // Init
+  retFlag = 0;
+  
+  // Have one
+  if (strcmp(macName,"VA_Bevel")) goto wrapup;
+  retFlag = 1;
+
+  scan_macro_add(bevelOE,macName,"VARIABLE");
+   
+  // Check for root
+  if (!scan_is_root(bevelOE,macName)) goto wrapup;
+  
+  // See if it's already flagged as a problem child
+  if (scan_is_problem_child(&bevelOE->obj_id)) goto wrapup;
+
+  // Do further checks
+  if (!check_parent(bevelOE,0,"ACrg_collect")) {
+    scan_macro_add(bevelOE,macName,"Missing ACrg_collect");
+    goto wrapup;
+  }
+  sts = check_parent(bevelOE,1,"VSplate");
+  if (sts == 0) {
+    scan_macro_add(bevelOE,macName,"Missing plate");
+    goto wrapup;
+  }
+  if (sts == 3) {
+    scan_macro_add(bevelOE,macName,"Consumed plate");
+    goto wrapup;
+  }
+  if (!check_parent(bevelOE,2,"GRcurve")) {
+    scan_macro_add(bevelOE,macName,"Missing curve");
+    goto wrapup;
+  }
+  if (!check_foot(bevelOE,"attributes","ACrg_collect")) {
+    scan_macro_add(bevelOE,macName,"Missing foot attributes");
+    goto wrapup;
+  }
+  if (!check_foot(bevelOE,"base_curve","GRcurve")) {
+    scan_macro_add(bevelOE,macName,"Missing foot base curve");
+    goto wrapup;
+  }
+  if (!check_foot(bevelOE,"offset_curve","GRcurve")) {
+    scan_macro_add(bevelOE,macName,"Missing foot offset curve");
+    goto wrapup;
+  }
+  if (!check_foot(bevelOE,"label","GR3dtext")) {
+    scan_macro_add(bevelOE,macName,"Missing foot label");
+    goto wrapup;
+  }
+   
+ wrapup:
+  return retFlag;
+}
+
+/* -----------------------------------------------
+ * Regular bevel
+ */
+int scan_Bevel(bevelOE,macName)
+  TGRobj_env  *bevelOE;
+  IGRchar     *macName;
+{
+  IGRstat retFlag;
+  IGRstat sts;
+  
+  // Init
+  retFlag = 0;
+  
+  // Have one
+  if (strcmp(macName,"Bevel")) goto wrapup;
+  retFlag = 1;
+  
+  // Check for root
+  if (!scan_is_root(bevelOE,macName)) goto wrapup;
+  
+  // See if it's already flagged as a problem child
+  if (scan_is_problem_child(&bevelOE->obj_id)) goto wrapup;
+
+  // Do further checks
+  if (!check_parent(bevelOE,0,"ACrg_collect")) {
+    scan_macro_add(bevelOE,macName,"Missing ACrg_collect");
+    goto wrapup;
+  }
+  sts = check_parent(bevelOE,1,"VSplate");
+  if (sts == 0) {
+    scan_macro_add(bevelOE,macName,"Missing 1st plate");
+    goto wrapup;
+  }
+  if (sts == 3) {
+    scan_macro_add(bevelOE,macName,"Consumed 1st plate");
+    goto wrapup;
+  }
+  sts = check_parent(bevelOE,2,"VSplate");
+  if (sts == 0) {
+    scan_macro_add(bevelOE,macName,"Missing 2nd plate");
+    goto wrapup;
+  }
+  if (sts == 3) {
+    scan_macro_add(bevelOE,macName,"Consumed 2nd plate");
+    goto wrapup;
+  }
+  if (!check_parent(bevelOE,3,"GRcurve")) {
+    scan_macro_add(bevelOE,macName,"Missing 1st parent curve");
+    goto wrapup;
+  }
+  if (!check_parent(bevelOE,4,"GRcurve")) {
+    scan_macro_add(bevelOE,macName,"Missing 2nd parent curve");
+    goto wrapup;
+  }
+  if (!check_foot(bevelOE,"attributes","ACrg_collect")) {
+    scan_macro_add(bevelOE,macName,"Missing foot attributes");
+    goto wrapup;
+  }
+  if (!check_foot(bevelOE,"curve","GRcurve")) {
+    scan_macro_add(bevelOE,macName,"Missing foot curve");
+    goto wrapup;
+  }
+  if (!check_foot(bevelOE,"label1","GR3dtext")) {
+    scan_macro_add(bevelOE,macName,"Missing foot label 1");
+    goto wrapup;
+  }
+  if (!check_foot(bevelOE,"label2","GR3dtext")) {
+    scan_macro_add(bevelOE,macName,"Missing foot label 2");
+    goto wrapup;
+  }
+      
+ wrapup:
+  return retFlag;
+}
+/* -----------------------------------------------
+ * Stock to plate bevel
+ */
+int scan_Fab_Stock(macroOE,macName)
+  TGRobj_env *macroOE;
+  IGRchar    *macName;
+{
+  IGRstat retFlag;
+  IGRstat sts;
+  
+  // Init
+  retFlag = 0;
+  
+  // Have one
+  if (strcmp(macName,"Fab_Stock")) goto wrapup;
+  retFlag = 1;
+  
+  // Check for root
+  if (!scan_is_root(macroOE,macName)) goto wrapup;
+  
+  // Do further checks
+  sts = check_parent(macroOE,0,"VSbeam");
+  if (sts == 0) {
+    scan_macro_add(macroOE,macName,"Missing beam");
+    goto wrapup;
+  }
+  if (sts == 3) {
+    scan_macro_add(macroOE,macName,"Consumed beam");
+    goto wrapup;
+  }
+  if (!check_foot(macroOE,"attributes","ACrg_collect")) {
+    scan_macro_add(macroOE,macName,"Missing foot attributes");
+    goto wrapup;
+  }
+  if (!check_foot(macroOE,"curve","GRcurve")) {
+    scan_macro_add(macroOE,macName,"Missing foot curve");
+    goto wrapup;
+  }
+  if (!check_foot(macroOE,"label","GR3dtext")) {
+    scan_macro_add(macroOE,macName,"Missing foot label");
+    goto wrapup;
+  }  
+ wrapup:
+  return retFlag;
+}
+/* -----------------------------------------------
+ * Plate stock macro, not a bevel at all but oh well
+ */
+int scan_PPstock(macroOE,macName)
+  TGRobj_env *macroOE;
+  IGRchar    *macName;
+{
+  IGRstat retFlag;
+  IGRstat sts;
+  
+  // Init
+  retFlag = 0;
+  
+  // Have one
+  if (strcmp(macName,"PPstock") && strcmp(macName,"PPstock_A")) goto wrapup;
+  retFlag = 1;
+  
+  // Check for root
+  if (!scan_is_root(macroOE,macName)) goto wrapup;
+  
+  // Do further checks
+  sts = check_parent(macroOE,0,"VSbeam");
+  if (sts == 0) {
+    scan_macro_add(macroOE,macName,"Missing beam");
+    goto wrapup;
+  }
+  if (sts == 3) {
+    scan_macro_add(macroOE,macName,"Consumed beam");
+    goto wrapup;
+  }
+  
+ wrapup:
+  return retFlag;
+}
+/* -----------------------------------------------
+ * Check the famous neat_plate
+ */
+int scan_neat_plate(macroOE,macName)
+  TGRobj_env *macroOE;
+  IGRchar    *macName;
+{
+  IGRstat retFlag;
+  IGRstat sts;
+
+  TVDvlaID preVLA;
+  
+  // Init
+  retFlag = 0;
+  vdvla_id$Construct(vla = &preVLA);
+   
+  // Have one
+  if (strcmp(macName,"neat_plate")) goto wrapup;
+  retFlag = 1;
+  
+  // Check for root
+  if (!scan_is_root(macroOE,macName)) goto wrapup;
+  
+  // Do further checks
+  sts = check_parent(macroOE,0,"VSplate");
+  if (sts == 0) {
+    scan_macro_add(macroOE,macName,"Missing plate");
+    goto wrapup;
+  }
+  if (sts == 3) {
+    scan_macro_add(macroOE,macName,"Consumed plate");
+    goto wrapup;
+  }
+
+  // Report if no children
+  vdchn$GetChildrenByClass(objOE     = macroOE,
+			   className = "ACpretend",		   
+			   vla       = &preVLA);
+  if (preVLA.cnt < 1) {
+    scan_macro_add(macroOE,macName,"No children");
+    goto wrapup;
+  }
+  
+ wrapup:
+  vdvla_id$Delete(vla = &preVLA);
+  return retFlag;
+}
+
+/* -----------------------------------------------
+ * Second scan to pick up more bevel/stock problems
+ */
+int scan2(macroID)
+  TGRid  *macroID;
+{
+  IGRchar macName[32];
+  TGRobj_env macroOE;
+  
+  // Need the name
+  VDobjGetMacroName(NULL,macroID,macName);
+  if (*macName == 0) goto wrapup;
+
+  // Turn into OE
+  macroOE.obj_id = *macroID;
+  VDobjResetOE(&macroOE);
+  
+  // Various macros
+  if (scan_EJ_Bevel (&macroOE,macName)) goto wrapup;
+  if (scan_VA_Bevel (&macroOE,macName)) goto wrapup;
+  if (scan_Bevel    (&macroOE,macName)) goto wrapup;
+  if (scan_Fab_Stock(&macroOE,macName)) goto wrapup;
+  if (scan_PPstock  (&macroOE,macName)) goto wrapup;
+  
+ wrapup:
+  return 1;
+}
+
+/* -----------------------------------------------
+ * First scan picks up neat_plate and all child
+ * related problems
+ */
+int scan1(macroID)
+  TGRid  *macroID;
+{
+  IGRchar macName[32];
+  TGRobj_env macroOE;
+  
+  // Need the name
+  VDobjGetMacroName(NULL,macroID,macName);
+  if (*macName == 0) goto wrapup;
+
+  // Turn into OE
+  macroOE.obj_id = *macroID;
+  VDobjResetOE(&macroOE);
+  
+  // Neat plate processing
+  if (scan_neat_plate(&macroOE,macName)) goto wrapup;
+  
+ wrapup:
+  return 1;
+}
+
+/* -----------------------------------------------
+ * Scan the os for root bevels and fill in the form
+ */
+int scan(osnum)
+  int osnum;
+{
+  TGRid  macroID;
+  IGRint max;
+  IGRint i;
+  
+  IGRint  cnt;
+  IGRchar buf[128];
+
+  // Init
+  UI_status("Scanning...");
+  VDfrmSetNumRows(form,FORM_G_LIST,0);
+
+  // Cycle through
+  macroID.osnum = osnum;
+  max = OM_GA_OSDs[osnum]->CurSpaceMapSize;
+  for(i = 0; i < max; i = i + 1) {
+    macroID.objid = i;
+    scan1(&macroID);
+  }
+  for(i = 0; i < max; i = i + 1) {
+    macroID.objid = i;
+    scan2(&macroID);
+  }
+
+  // Display results
+  fill_macro_list();
+
+  // Results
+  VDfrmGetNumRows(form,FORM_G_LIST,&cnt,NULL,NULL);
+  if (cnt == 0) sprintf(buf,"Done scanning, NO problems found.");
+  else          sprintf(buf,"Done scanning, %d problems found.",cnt);
+  UI_status(buf);
+  
+  
+ wrapup:
+  return 1;
+  
+}

@@ -1,0 +1,95 @@
+#	I/STRUCT
+#	Building procedure
+#	30 Apr 1998 ah Moved scripts to etc/bin
+#
+if [ $# -ne 0 ] ; then
+	if [ $# -eq 1 ] && [ $1 = "-D" ] ; then
+		MKMKOPT="COPT=-DvsDEBUG OMCPPOPT=-DvsDEBUG OPPOPT=-DvsDEBUG"
+	else
+		MKMKOPT="$*"
+	fi
+fi
+
+RC=0
+ERROR=""
+
+if [ $? -eq 0 ] ; then
+	echo "Removing the .S files in <${STRUCT}/spec> ..."
+  	rm -f ${STRUCT}/spec/*
+	echo "Linking .S files into <${STRUCT}/spec> ..."
+  	cd ${STRUCT}; find vs* -name VS\*.S -exec ln {} ${STRUCT}/spec/. \;
+  	echo
+
+	echo "--------------------------------------------------------------"
+	echo "\tMake in <config/english/messages/src> ..."
+	echo "--------------------------------------------------------------"
+	cd ${STRUCT}/config/english/messages/src; grmake -k
+
+	if . ${STRUCT}/etc/bin/vschkvars ; then : ; else exit 3 ; fi
+
+	cd ${STRUCT}
+	for dir in `find config ppl* vs* -type d -print`
+	do
+    	   if [ -f ${STRUCT}/$dir/makefile ]; then
+        	echo "--------------------------------------------------------------"
+        	echo "\tMake in <$dir>"
+        	echo "--------------------------------------------------------------"
+        	cd ${STRUCT}/$dir
+        	grmake -k
+    	   fi
+    	   if [ -f ${STRUCT}/$dir/grmake ]; then
+        	echo "--------------------------------------------------------------"
+        	echo "\tMake in <$dir>"
+        	echo "--------------------------------------------------------------"
+        	cd ${STRUCT}/$dir
+        	${STRUCT}/$dir/grmake -k
+    	   fi
+
+	   ERROR=""
+	   TMP=/usr/tmp/VSslic${RANDOM}
+           cd ${STRUCT}/$dir
+	   if /bin/ls *.sl > /dev/null 2>&1 || /bin/ls *.t > /dev/null 2>&1 ;then
+	   	echo "--------------------------------------------------------------"
+		echo "\tMake slic in <$dir>"
+        	echo "--------------------------------------------------------------"
+		if ${STRUCT}/etc/bin/vsslic sl | /bin/tee ${TMP} ; then
+		    if /bin/grep "Cannot find file" ${TMP} /dev/null ; then
+			ERROR=${ERROR}" \t--> Makemake failed in ${dir}\n"
+
+		    elif /bin/grep "Couldn't open" ${TMP} > /dev/null ; then
+			ERROR=${ERROR}" \t--> Make failed in ${dir}\n"
+
+		    elif /bin/grep "cannot execute" ${TMP} > /dev/null ; then
+			ERROR=${ERROR}" \t--> Make failed in ${dir}\n"
+
+		    elif /bin/grep "Cannot load" ${TMP} > /dev/null ; then
+			ERROR=${ERROR}" \t--> Make failed in ${dir}\n"
+
+		    elif /bin/grep "*** Error code" ${TMP} > /dev/null ; then
+			ERROR=${ERROR}" \t--> Make failed in ${dir}\n"
+
+		    elif /bin/grep "Don't know how to make" ${TMP} > /dev/null ; then
+			ERROR=${ERROR}" \t--> Make problem in ${dir}\n"
+		    else
+			ln ${STRUCT}/$dir/*.S ${STRUCT}/spec > /dev/null 2>&1
+		    fi
+		else
+		    ERROR=${ERROR}" \t--> Make failed in ${i}\n"
+		fi
+
+		/bin/rm /usr/tmp/VSslic* > /dev/null 2>&1 ;
+
+		if [ "blob${ERROR}" != "blob" ] ; then
+		    /bin/echo "\n${ERROR}"
+		    /usr/bin/tput bel
+		    RC=1
+		fi
+	   fi
+
+	done
+else
+	RC=3
+fi
+		
+exit $RC
+

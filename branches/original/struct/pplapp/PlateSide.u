@@ -1,0 +1,171 @@
+/* $Id: PlateSide.u,v 1.1.1.1 2001/01/04 21:10:01 cvs Exp $  */
+/* --------------------------------------------------------------------
+ * I/STRUCT
+ *
+ * File:        struct/pplapp/PlateSide.u
+ *
+ * Description: to get plate side with most stiffeners
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ *      $Log: PlateSide.u,v $
+ *      Revision 1.1.1.1  2001/01/04 21:10:01  cvs
+ *      Initial import to CVS
+ *
+# Revision 1.1  2000/03/07  16:24:48  pinnacle
+# by ylong for TR179901164
+#
+ *
+ * History:
+ *      MM/DD/YY        AUTHOR          DESCRIPTION
+ *	03/02/00	ylong		Creation
+ * -------------------------------------------------------------------*/
+
+/*
+#define  DEBUG	1
+#define  vsDEBUG	1
+*/
+#include "VDppl.h"
+#include "VDobj.h"
+#include "VDsa.h"
+#include "vsgeommacros.h"
+#include "vsstfnrdef.h"
+#include "vsdbgmacros.h"
+#include "v_slcdef.h"
+#include "v_pplslc.h"
+
+#define  ci_wire_include
+#include "ci_surface.h"
+
+extern	IGRlong	VSgetChildrenGoThruPretends() ;
+extern	OPP_VSbeam_class_id ;
+
+
+IGRstat GetSideWithMostStiffs( plateOE, plateSide )
+TGRobj_env	*plateOE ;	// in, 
+IGRint		*plateSide ;	// out, VS_K_stOnBotOfPlate or 
+				// VS_K_stOnTopOfPlate, defined in vsstfnrdef.h
+{
+	IGRstat		retFlag ;
+	IGRlong		sts, mssg ;
+	IGRint		i ;
+	IGRint		side ;
+	IGRint		count ;
+	IGRint		maxCnt;
+	IGRint		topCnt, botCnt; // # of beams on top & bottom of plate
+	TGRid		*list ;
+
+SetProc( PlateSide_GetSideWithMostStiffs ); Begin
+
+	list	= NULL ;
+	count	= 0 ;
+	topCnt	= 0 ;
+	botCnt	= 0 ;
+	maxCnt	= 0 ;
+	*plateSide = VS_K_stOnTopOfPlate ;
+	side	   = VS_K_stOnTopOfPlate ;
+
+	// Get all children attached to the plate
+	sts = VSgetChildrenGoThruPretends (	&mssg, 
+						&plateOE->obj_id, 
+						&count, 
+						&list ) ;
+	if( !(sts&mssg&1) || count == 0 ) {
+		__DBGpr_com("VSgetChildrenGoThruPretends failed or count = 0");
+		goto wrapup ;
+	}
+
+	__DBGpr_int("count", count);
+
+	// Count the number of stiffs on both sides of the plate
+	for( i = 0; i < count; i = i+1 ) {
+	    __DBGpr_obj("list", list[i] ) ;
+	    if( vdobj$IsAncestryValid(	objID  = &list[i], 
+					superClassID = OPP_VSbeam_class_id ) )
+	    {
+		sts = ci$send ( msg = message VSstfBeam.VSgetPlateSide 
+							( &mssg, &side ),
+				targetid = list[i].objid,
+				targetos = list[i].osnum ) ;
+		if( !(sts&mssg&1) ) {
+			__DBGpr_com("VSstfBeam.VSgetPlateSide failed");
+			goto wrapup ;
+		}
+		if( side == VS_K_stOnTopOfPlate ) topCnt = topCnt + 1 ;
+		if( side == VS_K_stOnBotOfPlate ) botCnt = botCnt + 1 ;
+	    }
+	}
+
+	if( topCnt < botCnt ) *plateSide = VS_K_stOnBotOfPlate ;
+	else *plateSide = VS_K_stOnTopOfPlate ;
+
+	__DBGpr_int( "topCnt", topCnt );
+	__DBGpr_int( "botCnt", botCnt );
+	__DBGpr_int( "plateSide", *plateSide );
+
+	retFlag = 1 ;
+wrapup:
+End
+	return retFlag ;
+}
+
+
+main() 
+{
+	IGRstat		sts ;
+	TGRobj_env	plateOE, planeOE ;
+	IGRint		plateSide ;
+	IGRint		size ;
+
+SetProc(PlateSide_main); Begin
+
+	size = 0 ;
+	plateOE.obj_id.objid = NULL_OBJID ;
+
+	vd$ppl_get_size(	which_info	= INPUT_INFO,
+				size		= &size ) ;
+	if ( size == 0 ) {
+		__DBGpr_com("size of buff = 0");
+		goto wrapup ;
+	}
+
+	__DBGpr_int("size", size);
+
+	vd$ppl_getarg_at_index(	which_info	= INPUT_INFO,
+				index		= 0 ,
+				value		= &plateOE ) ;
+	if ( plateOE.obj_id.objid == NULL_OBJID ) {
+		__DBGpr_com("Failed to get plateOE");
+		goto wrapup ;
+	}
+
+	__DBGpr_obj("plateOE", plateOE.obj_id);
+
+	sts = GetSideWithMostStiffs( &plateOE, &plateSide ) ;
+
+#ifdef DEBUG
+	sts = vdobj$GetFoot(    objOE    = &plateOE,
+				footName = "plate:base",
+				footOE   = &planeOE) ;
+	md$show_normals( GRid_in = planeOE.obj_id ) ;
+#endif
+	if (!sts) {
+		__DBGpr_com("GetSideWithMostStiffs failed");
+		goto wrapup ;
+	}
+
+	vd$ppl_set_size(	which_info	= OUTPUT_INFO,
+				size		= 1 ) ;
+
+	vd$ppl_setarg_at_index(	which_info	= OUTPUT_INFO,
+				index		= 0,
+				type		= VD_int,
+				value		= &plateSide ) ;
+
+	__DBGpr_int( "plateSide", plateSide);
+			
+wrapup:
+End
+	return 1 ;
+}

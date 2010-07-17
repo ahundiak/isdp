@@ -1,0 +1,106 @@
+/***************************************************************************
+ * I/FEM
+ *
+ * File:        plates.u
+ *
+ * Description:
+ *       This file contains an example ppl proogram that uses the API
+ *	 vsf$convert_plates_with_all_stfs.
+ *
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ *
+ * History:
+ *      MM/DD/YY        AUTHOR          DESCRIPTION
+ *
+ ***************************************************************************/
+
+#include "ciminimum.h"
+#include "cimacros.h"
+#include "igrdp.h"
+#include "godef.h"
+#include "go.h"
+#include "growner.h"
+#include "SFapimacros.h"
+
+#define MAX_PLATES 20
+
+extern IGRint  init_cnst_list();
+extern printf();
+
+main()
+{
+IGRint		 	i, nb_plates;
+IGRlong			sts, msg;
+struct IGRdisplay	dis_att;
+struct GRvg_construct   cst;
+struct GRmd_env 	md_env;
+struct GRobj_env 	plates[MAX_PLATES];
+IGRchar			txt[40];
+struct GRid		NMid[MAX_PLATES];
+
+        nb_plates = 0;
+        message("Convert STRUCT plates with stiffeners");
+        while(1)
+        {
+	  strcpy(txt,"Identify Plate ");
+	  strcat(txt,itoa(nb_plates + 1));
+	  if( nb_plates > 0 ) strcat(txt,"/Move on");
+
+          if(!ci$locate(  prompt       = txt,
+			  classes      = "VSplate",
+                          properties   = LC_LC_ONLY | LC_DP_ONLY | LC_RW,
+                          owner_action =   LC_RIGID_COMP
+                                         | LC_RIGID_OWNER | LC_FLEX_COMP
+                                         | LC_FLEX_OWNER  | LC_REF_OBJECTS,
+ 	                  obj          = &plates[nb_plates].obj_id.objid,
+                          osnum        = &plates[nb_plates].obj_id.osnum,
+		          md_env       = &plates[nb_plates].mod_env  ) ) break;
+
+		nb_plates = nb_plates +1;
+		/* Check the maximum limit */
+		if( nb_plates == MAX_PLATES ) break;
+	}
+
+	if ( !nb_plates ) goto quit;
+
+	/* Get the Module Environment */
+        ci$get_module_info(md_env = &md_env);
+
+	/* Get the symbology and level */
+        init_cnst_list();
+        get_symb();
+
+	/* Fill the construction list */
+        cst.level             	  = cnst_list.level;
+        dis_att.color             = cnst_list.color;
+        dis_att.weight            = cnst_list.weight;
+        dis_att.style             = cnst_list.style;
+
+        cst.msg         = &msg ;
+        cst.env_info    = &md_env;
+        cst.newflag     = FALSE;
+        cst.display     = &dis_att ;
+        cst.geometry    = NULL ;
+        cst.properties  = GRIS_DISPLAYABLE | GRIS_LOCATABLE ;
+        cst.class_attr  = NULL ;
+	cst.name        = NULL ;
+
+	/* Call the macro */
+	sts = vsf$convert_plates_with_all_stfs
+				( msg            = &msg, 
+				  nb_plates      = nb_plates, 
+				  plates 	 = plates, 
+				  cst		 = &cst,
+				  nmobj_list     = NMid );
+	if ( sts & msg & 1 )
+	  printf("Converted STRUCT plates successfully\n");
+	else
+	  printf("ERROR : vsf$convert_plates failed\n");	
+
+quit :
+	return ;
+
+}

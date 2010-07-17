@@ -1,0 +1,114 @@
+/* $Id: COdelEdges.u,v 1.1 2001/01/17 15:06:36 ramarao Exp $
+/* --------------------------------------------------------------------
+ * I/STRUCT
+ *
+ * File:        struct/pplcmd/COdelEdges.u
+ *
+ * Description: delete all VSedge3Datt objects
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ *      $Log: COdelEdges.u,v $
+ *      Revision 1.1  2001/01/17 15:06:36  ramarao
+ *      *** empty log message ***
+ *
+# Revision 1.1  2000/06/21  23:22:32  pinnacle
+# ylong
+#
+ *
+ * History:
+ *      MM/DD/YY        AUTHOR          DESCRIPTION
+ *----------------------------------------------------------------------*/
+
+#include "VDppl.h"
+#include "VDobj.h"
+#include "VSmsg.h"
+#include "VDmem_ppl.h"
+#include "ciminimum.h"
+#include "cievent.h"
+#include "grmacros.h"
+
+extern	int	GRconfirm_box();
+extern	EX_findmod();
+extern	VDpms_findall_ancestryobjects();
+extern	GRdelete_object();
+
+init() { message( "Delete All Edges" ) ; }
+
+IGRlong VSdelAllEdges( msg )
+IGRlong *msg ;
+{
+IGRlong         ret ;
+IGRlong         sts ;
+IGRint          i, index, nb_obj ;
+GRspacenum      cur_osnum;
+GRclassid       classid ;
+GRobjid         *obj_list ;
+TGRid           edgeID ;
+
+        *msg = 1 ;
+	ret = 0 ;
+	nb_obj = 0 ;
+	obj_list = NULL  ;
+
+        //printf(">> Enter VSdelALlEdges <<\n");
+
+        ex$get_cur_mod ( osnum = &cur_osnum ) ;
+
+        sts = om$get_classid (  classname = "VSedge3Datt" ,
+                                p_classid = &classid);
+        if( !(sts&1) ) {
+                printf("om$get_classid failed\n");
+                goto wrapup ;
+        }
+
+        sts = VDpms_findall_ancestryobjects (
+                                        cur_osnum,
+                                        1,
+                                        &classid,
+                                        &nb_obj,
+                                        NULL);
+        if( !(sts&1) || !nb_obj ) goto wrapup ;
+
+        obj_list = _CALLOC( nb_obj, GRobjid ) ;
+        if( obj_list == NULL  ) {
+                printf("_CALLOC failed for obj_list\n") ;
+                goto wrapup ;
+        }
+
+        sts = VDpms_findall_ancestryobjects(
+                                        cur_osnum,
+                                        1,
+                                        &classid,
+                                        &nb_obj,
+                                        obj_list);
+        if( !(sts&1) || !nb_obj ) goto wrapup ;
+
+        edgeID.osnum = cur_osnum ;
+        edgeID.objid = NULL_OBJID ;
+        for(i = 0; i < nb_obj; i = i+1 ) {
+		//printf("edge id %d\n", obj_list[i]);
+                edgeID.objid = obj_list[i] ;
+		gr$delete_object(msg		= msg, 
+				object_id	= &edgeID, 
+				display_flag	= 1);
+        }
+
+
+        ret = 1 ;
+wrapup:
+        _FREE( obj_list ) ;
+        //printf(">> Exit VSdelAllEdges <<\n");
+        return ret ;
+}
+
+main()
+{
+	long	msg ;
+	int	fontsize ;
+
+	if ( GRconfirm_box("Delete All Edges ?") ) {
+		VSdelAllEdges( &msg ) ;
+	}
+}
