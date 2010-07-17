@@ -1,0 +1,352 @@
+
+/* $Id: VCEqTerm.u,v 1.2 2001/02/20 01:11:02 build Exp $  */
+
+/* I/CABLE
+ *
+ * File:  vcppl/VCEqTerm.u
+ *
+ * Description:
+ *
+ *  This ppl has to be assigned to each equipment macro created with
+ *  terminals embedded.
+ *  To assign it :
+ *     edit the macro definition ( Modify Macro Definition )
+ *     add under "Placement Options" : "~~post_placement"
+ *     set the equivalent value to the name of this ppl.
+ *
+ *  Hence the "post_placement" function will be activated each time
+ *  an occurrence of this macro will be placed.
+ *
+ *  This will generate extermal terminals from the embedded
+ *      VCTembed object each time an equipment instance is placed.
+ *
+ * History:
+ *  MM/DD/YY  AUTHOR    DESCRIPTION
+ *  11/11/97  Alwin     Modified the post_placement function.
+ *
+ */
+
+#include "ciminimum.h"
+#include "cisymb.h"
+#include "cieveryone.h"
+#include "cimacros.h"
+#include "dp.h"
+#include "msdef.h"
+#include "OMprimitives.h"
+#include "ACattrib.h"
+#include "ACrg_collect.h"
+
+#include "macro.h"
+
+#include "AS_status.h"
+
+#include "vc_define.h"
+#include "VCdefine.h"
+#include "VCstructs.h"
+#include "vrdbgmacros.h"
+
+/*
+#define MY_DEBUG
+*/
+
+extern int printf(), ACread(), free();
+extern int VC_CreateColl();
+extern int VC_CreateTerm();
+
+
+/*    where are these filled???   */
+/* The following variables are set in the file "COm_place3.I" in
+$GRNUC/src/assoc/nmacro_co". That's where the place_macro method is implemented
+and in that it checks whether is there any placement_options specified. So that
+to execute the post_placement function and execute it. During this process
+in that method these variables will be set to the respective values.
+added by alwin for TR179701970 */
+
+struct GRid        MACRO_ID;
+struct GRmd_env    MOD_ENV;
+
+int post_placement()
+{
+  IGRlong       retmsg;
+  IGRint        status,Size,i,j,k,l,Index, Product;
+  IGRshort      nSYS, nUSR;
+  IGRint        NumFeet;
+  GRclassid     ClassId;
+  GRclassid     TermClassId;
+  IGRdouble     dAngle;
+  IGRshort      nMatType;
+  IGRdouble     dMatrix[16];
+  IGRchar       ClassName[100];
+
+  struct ACrg_coll         SysAttrib[200];
+  struct ACrg_coll         UsrAttrib[200];
+  struct GRid              TempList[5];
+  struct VCET_ins          EmbInstance;
+  struct VCGenInfo         TermIns;
+  struct GRsymbology       Symb;
+
+  struct GRid      GraphicsId;  /* Macro occurrence Id */
+  struct GRid      FootId;      /* Macro's foot Id */
+  struct GRid      DefId;       /* macro definition Id */
+  struct GRid      RefId;       /* pretend parent Id   */
+  struct GRid      TermId;      /* reated Term Id      */
+  struct myfeet   *FeetDesc;
+
+  extern OM_S_CHANSELECT   AC_mto_graf_chns;
+
+  extern GRclassid   OPP_VCEmbed_class_id;
+  extern GRclassid   OPP_VDequipment_class_id;
+  extern GRclassid   OPP_VCElTerm_class_id;
+  extern GRclassid   OPP_VCFoTerm_class_id;
+
+  /* -- Initialize templates -- */
+  __DBGpr_com( " post_placement " );
+
+  for ( i=0; i<5; i=i+1 )
+  {
+    TempList[i].objid = NULL_OBJID;
+    TempList[i].osnum = MOD_ENV.md_id.osnum;
+  }
+
+  /* ------------------- KLUDGE : If it is an equipment, get its macro foot */
+
+  /* This kludge should be replaced by getting all objects on the
+     owner-component graph ( deep scann ) */
+
+  __DBGpr_obj( " MACRO ID", MACRO_ID);
+
+  om$get_classid(  objid  = MACRO_ID.objid,
+                   osnum  = MACRO_ID.osnum,
+                p_classid = &ClassId);
+
+  if ( ClassId == OPP_VDequipment_class_id )
+  { /*| for equipments, go deeper in the owner graph to find the graphics */
+
+    status =
+    om$get_channel_count( osnum   = MACRO_ID.osnum,
+                          objid   = MACRO_ID.objid ,
+                     p_chanselect = &AC_mto_graf_chns,
+                          count   = &Size );
+
+    /* verify that there is only one foot */
+    if (Size != 1) {printf ("Not Implemented\n"); exit;}
+
+    /* Get the graphics macro id */
+    ACread(MACRO_ID, &AC_mto_graf_chns, &GraphicsId, Size);
+  }
+  else
+  {
+    GraphicsId.objid = MACRO_ID.objid;
+    GraphicsId.osnum = MACRO_ID.osnum;
+  }
+
+#ifdef  MY_DEBUG
+  om$get_classname( objid   = GraphicsId.objid,
+                    osnum   = GraphicsId.osnum,
+                  classname = ClassName);
+  printf ("POST PLACEMENT for Object<%d,%d> = <%s>\n",
+           GraphicsId.objid,GraphicsId.osnum, ClassName );
+#endif
+
+  /* -------------------end of kludge */
+
+  /* We have to go through the macro definition in the case the graphics
+     is an ACheader (no feet connected to it */
+
+  /* -- Get definition of the graphic macro -- */
+
+  status =
+  ci$send ( msg = message ACcpx.find_macro ( &DefId ),
+       targetid = GraphicsId.objid,
+       targetos = GraphicsId.osnum );
+
+  __DBGpr_obj( " DefId", DefId );
+
+#ifdef  MY_DEBUG
+  printf ("Def <%d,%d>\n", DefId.objid,DefId.osnum );
+#endif
+
+/* -- Get feet names from definition -- */
+
+  status =
+  ci$send ( msg = message ACcpx_defn.ACgive_feet_desc(&NumFeet, &FeetDesc),
+       targetid = DefId.objid,
+       targetos = DefId.osnum );
+
+#ifdef  MY_DEBUG
+  for (i=0; i<NumFeet; i=i+1)
+  {
+    printf ("Foot[%d]\t Name <%s>\n Type <%d>\n Pos :<%d>\n Prop <%d>\n",
+      i, FeetDesc[i].name, FeetDesc[i].chan,
+         FeetDesc[i].pos, FeetDesc[i].prop );
+  }
+#endif
+
+  /* -- Loop on macro's feet -- */
+  for ( i=0; i<NumFeet; i=i+1 )
+  {
+    /* -- Get the foot id -- */
+
+    status =
+    ci$send ( msg = message NDmacro.ACreturn_foot
+                                       (&retmsg, FeetDesc[i].name,
+                                        &FootId,&nMatType, dMatrix),
+         targetid = GraphicsId.objid,
+         targetos = GraphicsId.osnum );
+
+#ifdef  MY_DEBUG
+    om$get_classname( objid   = FootId.objid,
+                      osnum   = FootId.osnum,
+                    classname = ClassName);
+    printf ("Object<%d,%d> = <%s>\n", FootId.objid,FootId.osnum, ClassName );
+
+    printf("MATRIX\n");
+    for(k=0; k<16; k=k+4 )
+    {
+      for( l=0; l<4; l=l+1 )
+      {
+        printf("dMatrix[%d] = %f ", k+l, dMatrix[k+l] );
+      }
+      printf("\n");
+    }
+    printf("MATRIX\n");
+
+#endif
+
+  /* -- Get foot class -- */
+
+  om$get_classid(  objid  = FootId.objid,
+                   osnum  = FootId.osnum,
+                p_classid = &ClassId);
+
+  /* -- For each foot which is a VCEmbed : -- */
+
+  if ( ClassId == OPP_VCEmbed_class_id )
+  {
+    TermId.objid = NULL_OBJID;
+
+    /* -- Generate attributes collections -- */
+
+    /* Get instance from VCEmbed */
+
+    __DBGpr_com( " Get the Instance and the Attributes from VCEmbed " );
+    status =
+    ci$send (msg = message VCEmbed.VCETGetIns (&retmsg, &EmbInstance),
+        targetid = FootId.objid,
+        targetos = FootId.osnum );
+
+    __DBGpr_str( " CompCode of Terminal ", EmbInstance.szCode );
+    __DBGpr_str( " TagNumber of Terminal ", EmbInstance.szTag );
+
+    /* get attributes */
+    status =
+    ci$send (msg = message VCEmbed.VCEGiveAtt
+                              (&retmsg, &nSYS, SysAttrib, &nUSR, UsrAttrib),
+        targetid = FootId.objid,
+        targetos = FootId.osnum );
+
+    /* create collections */
+
+    status =
+    VC_CreateColl (&retmsg, nSYS, SysAttrib, &TempList[0]);
+
+    status =
+    VC_CreateColl (&retmsg, nUSR, UsrAttrib, &TempList[1]);
+
+    __DBGpr_obj( "1 Collector Id", TempList[0] );
+    __DBGpr_obj( "2 Collector Id", TempList[1] );
+
+    status = 
+    ci$send ( msg = message GRvg.GRgetsymb (&retmsg, &Symb ),
+         targetid = FootId.objid,
+         targetos = FootId.osnum );
+
+    /* -- Place a term -- */
+
+    TermIns.nStat    = VC_STATUS_INIT;
+    TermIns.nType    = EmbInstance.Type | VC_GEN_VIRTUAL;
+    TermIns.nNbAttr  = 2;
+    TermIns.nNbTopo  = 0;
+    TermIns.nProduct = EmbInstance.Product;;
+    TermIns.bNoMtoFlg = FALSE;
+
+    status =
+    ci$send (msg = message ACncpx.ACget_NV_rep(&TermIns.cRep),
+        targetid = MACRO_ID.objid,
+        targetos = MACRO_ID.osnum );
+    as$status ();
+
+    if (TermIns.cRep == 0) TermIns.cRep = 4;
+
+    TermIns.Attr.Term.nCpt = 0;
+
+    /*    offsets from cs.......    */
+
+    TermIns.Attr.Term.nOff = 0;
+
+    /* get the right object to connect to */
+
+    status =
+    ci$send (msg = message ASnode.ACgive_path
+                              ( (IGRint *) &retmsg, &GraphicsId, ClassName  ),
+        targetid = MACRO_ID.objid,
+        targetos = MACRO_ID.osnum );
+
+    strcat (ClassName, ":");
+    strcat (ClassName, FeetDesc[i].name);
+#ifdef  MY_DEBUG
+  printf (" Foot path = <%s>\n", ClassName );
+#endif
+
+    status =
+    ci$send ( msg = message ASnode.ACconnect_pretend
+                               ( (IGRint *) &retmsg, ClassName, &RefId  ),
+         targetid = MACRO_ID.objid,
+         targetos = MACRO_ID.osnum );
+
+#ifdef  MY_DEBUG
+  printf ("RefId = <%d,%d>\n", RefId.objid,RefId.osnum );
+#endif
+
+    TempList[2] = RefId;
+
+    __DBGpr_obj( "3 Parent Id", TempList[2] );
+
+    if (EmbInstance.Product == VC_PROD_ELEC)
+      TermClassId = OPP_VCElTerm_class_id;
+    else
+      TermClassId = OPP_VCFoTerm_class_id;
+
+    status =
+    VC_CreateTerm (&retmsg, 3, TempList, &TermIns, Symb.level,
+                    &Symb.display_attr, &MOD_ENV, &TermId);
+
+    if ( ! (status&1) || (retmsg != MSSUCC) )
+    {
+      printf ("Terminal placement failed \n");
+      goto VCNoTerminal;
+    }
+
+    status =
+    ci$send( msg = message NDnode.NDdisplay(0,GRbd,&MOD_ENV),
+                       targetid = TermId.objid,
+                       targetos = TermId.osnum);
+
+    continue;
+
+VCNoTerminal :
+
+    if ( TermId.objid != NULL_OBJID )
+    {
+      printf ("DELETE TERMINAL\n");
+    }
+  }/* end generate nozzle */
+
+}/* end loop on feet */
+
+wrapup :
+
+  __DBGpr_com( " Exiting the post_placement " );
+  return OM_S_SUCCESS;
+
+}/* end post_placement */

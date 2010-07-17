@@ -1,0 +1,556 @@
+#******************************************************************************
+#	STRUDEL FILE FOR AVONDALE PROFILE CARDS
+#
+#	Maciej Jablkowski - INTERGRAPH Corp., September 18th, 1998
+#
+# Strudel file contains rules for extracting 3D model stiffeners 
+# to the 2D profile card not-to-scale manufacturing sketches
+#
+# Before running the place profile card command , make sure that you have
+# the correct Macro libraries : 
+#				avsections	- profile library 
+#				PCsymbs_av.lib	- 2d lib for border and symbols
+#
+#	This file uses external PPL program "PChelp.e" which helps to 
+#	determine a name of a 2D symbol macro to place on the profile
+#	card from striffener type being processed and aplied macros.
+#
+# History:	09-18-1998 - Creation
+#		12-10-1998 - Enhancements 
+#		04-19-1999 - SIM symbols introduced with non-standard dimensions.
+#		01-20-2000 - Major changes to file structure. Files split and
+#			     included by macro type.
+#		03-09-2001 - Fixes by MJ.
+#
+#		08-02-2001 - Major review and update. MJ.
+#
+#		09-18-2001 - Include the following changes:
+#				Global attributes set in Initialize and pc-Start 
+#				sections.
+#				Checks if there is double ET placed at each end.
+#				
+#
+#******************************************************************************
+
+#********************************
+#	Set log file if needed
+#********************************
+#set logfile "./pc.log";
+
+include "Pc.def";		# file containing common constants 
+
+silent;
+#verbose;
+
+set view-cone-angle	60;
+
+#*********************************************************
+#
+#	Profile Card initialization
+#
+#*********************************************************
+
+vl-pc-Initialize : {
+
+	any-view : {	
+
+	   	#********************
+	   	# SET INITIAL VALUES
+	   	#********************
+		$noVar := vl-pc-SetExtremeDim();
+	   	$noVar := vl-pc-SetMacBothET( "fb_snipe" );
+	   	$noVar := vl-pc-SetMacOpenET( "generic_cutter" );
+	   	$noVar := vl-pc-SetMacOpenET( "iget140" );
+           	$noVar := vl-pc-SetMacOpenET( "iget052a");
+	   	$noVar := vl-pc-SetMacOpenET( "iget152");
+           	$noVar := vl-pc-SetMacOpenET( "iget015" );
+           
+	   	#************************
+	   	# GET GLOBAL ATTRIBUTES
+	   	#************************
+           	$stif 		:= vl-pc-GetStiff();
+           	$fam_name	:= attribute( "family_name", $stif );
+		$prof_type 	:= exec-ppl-func($ppl, $ppl, $type, $ProfCodeFile, 
+  					$fam_name, "graphicPc:vl-pc-Initialize");
+
+	   	#************************
+	   	# SET GLOBAL ATTRIBUTES
+	   	#************************
+	   	$noVar		:= vl-SetAttributeVal( "FamilyName", $fam_name );
+	   	$noVar		:= vl-SetAttributeVal( "ProfileType", $prof_type[0] );
+	   	$noVar		:= vl-SetAttributeVal( "Coaming", $prof_type[1] );
+	   	
+	   	$noVar		:= vl-SetAttributeVal( "ProfileHeight", 
+	   					attribute("x_Height", $stif) );
+
+	   	$noVar		:= vl-SetAttributeVal( "FlgThickness", 
+	   					attribute("x_Flg_Thickness", $stif) );
+	   
+	   	$noVar		:= vl-SetAttributeVal( "FirstETPos", 
+	   					vl-pc-FirstEtPosition());
+	   					
+	   	#*******************
+	   	# GET PROFILE TYPE
+	   	#*******************
+	   	$fam_name 	:= vl-GetAttributeVal( "FamilyName" );
+	   	$prof_type 	:= vl-GetAttributeVal( "ProfileType" );
+
+	   	#**********************
+	   	# GET PROFILE GEOMETRY
+	   	#**********************
+           	$geom 	:= vl-pc-IsCurvedBeam();
+
+	   	#**************************************
+	   	# SET PROFILE SIDE ON THE PROFILE CARD
+	   	#**************************************
+	   	$noVar 	:= vl-SetAttributeVal( $WebSide, $WEBL );
+           	select when $geom > $STRAIGHT & ($prof_type != $FBR | $prof_type != $BTEE )  :
+                	$noVar := vl-pc-SetWebRight();
+	   		$noVar := vl-SetAttributeVal( $WebSide, $WEBR );
+	   	end ;
+
+        }
+}
+
+#*********************************************************
+#
+#	Profile Card border selection
+#
+#*********************************************************
+
+vl-pc-Border : {
+
+	any-view : {
+
+	   #**********************************************
+	   # CHECK PCMK QTTY AND IF PC HAS BEEN GENERATED
+	   #*********************************************
+           $stif 	:= vl-pc-GetStiff();
+	   $test 	:= exec-ppl-func( "PartQty", "pcmk_quantity", $stif );
+	   $pcmk	:= $test[0];
+	   $qtty	:= $test[1];
+	   $pc_exists	:= $test[2];
+	   $is_consumed	:= $test[3];
+
+	   #**********************************************
+	   # TERMINATE COMMAND IF PC HAS BEEN GENERATED
+	   #*********************************************
+	   select when $pc_exists != 0 | $is_consumed :
+		$noVar := vl-pc-Terminate();
+	   end;
+
+	   #**********************************************
+	   # CHECK IF STF SHOULD HAVE IBL PLACED
+	   #*********************************************
+	   $geom	:= vl-pc-IsCurvedBeam();
+	   $border 	:= vl-pc-SetBorder($Border);
+	   $fam_name 	:= attribute( "family_name", $stif );
+	   
+	   $prof_type 	:= exec-ppl-func($ppl, $ppl, $type, $ProfCodeFile, 
+	   				$fam_name, "graphicPc:vl-pc-Border");
+
+	   #****************************************************
+	   # IF SO, SET 2 SHEET BORDER TO PLACE OFFSET TABLE
+	   #****************************************************
+	   select when $geom > $STRAIGHT & $prof_type[0] != $FLAT :
+			$border := vl-pc-SetBorder($BorderIbl);
+	   end;
+	}
+}
+
+#*********************************************************
+#
+#	Start of profile card processing
+#
+#*********************************************************
+
+vl-pc-Start : {
+
+	any-view : {
+	
+	   #****************************************************
+	   # SET INITIAL GAP VALUE FOR STACKED DIMESIONS
+	   #****************************************************
+	   $noVar := vl-SetAttributeVal( "gap", -15 );
+		
+	   #****************************************************
+	   # SET DIMENSION DIVIDER FOR SELECTED UNITS
+	   #****************************************************
+	   select  when $unit = "imp" : 
+			$div := 25.4;
+		otherwise : 
+			$div := 1;
+	   end;
+
+	   #*******************************************
+	   # GET STOCK VALUE AND SET GLOBAL ATTRIBUTES
+    	   #*******************************************
+	   $stif 	:= vl-pc-GetStiff();
+	   $noVar	:= vl-SetAttributeVal( "ProfileLength", 
+	                			vl-pc-CvrtDouble( 
+	                				vl-GetAttributeVal( "stiffLength" )));
+	   $prof_len 	:= vl-GetAttributeVal( "ProfileLength" );
+	   $start_pt 	:= vl-pc-GetStartPoint();
+	   $stocks   	:= exec-ppl-func( "PcStock", "GetStock",
+					$stif, $prof_len, $start_pt );
+ 	   $noVar	:= vl-SetAttributeVal( "StartStock", $stocks[0] );
+	   $noVar	:= vl-SetAttributeVal( "EndStock", $stocks[1] );
+   
+	   #****************************************************
+	   # CHECK FOR DOUBLE ETs PLACED AT EACH END
+	   #****************************************************
+	   $start_point := vl-pc-GetStartPoint();
+	   $macro_list 	:= vl-pc-GetMacroList();
+	   $macro_num	:= size-of-array( $macro_list );
+	   $Length 	:= vl-pc-CvrtDouble( vl-GetAttributeVal( "stiffLength" ));
+
+	   select when $macro_num > 1 :
+	   	
+	   	$MacS0		:= $macro_list[0];
+	   	$InfoS0		:= exec-ppl-func( "PcET", "GetETInfo", 
+	   					$MacS0, $start_point, $Length );
+	   	
+	   	$MacS1		:= $macro_list[1];
+	   	$InfoS1		:= exec-ppl-func( "PcET", "GetETInfo", 
+	   					$MacS1, $start_point, $Length);
+	   	$MacE0		:= $macro_list[$macro_num - 1];
+	   	$InfoE0		:= exec-ppl-func( "PcET", "GetETInfo", 
+	   					$MacE0, $start_point, $Length );
+	   	
+	   	$MacE1		:= $macro_list[$macro_num - 2];
+	   	$InfoE1		:= exec-ppl-func( "PcET", "GetETInfo", 
+	   					$MacE1, $start_point, $Length );
+	   		   	
+	  	select when ($InfoS0[0] * $InfoS0[1] * $InfoS1[0] * $InfoS1[1] = 1) :
+	  		$noVar := vl-SetAttributeVal( "StartETDouble", 1 );
+	   	otherwise :
+	   		$noVar := vl-SetAttributeVal( "StartETDouble", 0 );
+	   	end;
+
+	  	select when ($InfoE0[0] * $InfoE1[0] = 1 
+	  			and $InfoE0[1] + $InfoE1[1] = 0) :
+	  		$noVar := vl-SetAttributeVal( "EndETDouble", 1 );
+	   	otherwise :
+	   		$noVar := vl-SetAttributeVal( "EndETDouble", 0 );
+	   	end;
+	   otherwise:
+	  	$noVar := vl-SetAttributeVal( "StartETDouble", 0);
+	   	$noVar := vl-SetAttributeVal( "EndETDouble", 0 );
+	   end;
+	}
+}
+
+#******************************************************************
+#
+#	NO End Treatment case on left side -  main views placement
+#
+#******************************************************************
+
+vl-pc-StartStiffener : {
+
+	#**************************************
+	# 	WEB VIEW
+	#**************************************
+	side : {
+
+		$macro 		:= $noETmacroWeb;
+
+		#**************************************
+		# GET STIFFENER DATA & STOCK
+		#**************************************
+		$profile_length := vl-GetAttributeVal( "ProfileLength" );
+        	$prof_type      := vl-GetAttributeVal( "FamilyName" );
+		$prof_height    := vl-GetAttributeVal( "ProfileHeight" );
+		$prof_code 	:= vl-GetAttributeVal( "ProfileType" );
+		$stock     	:= vl-GetAttributeVal( "StartStock" );
+	
+		$ETcs := vl-pc-ViewCs();
+		$side := 1;	# Left side - revert macro
+
+		#**************************************
+		# SET ET SYMBOL
+		#**************************************
+		select 	when $prof_code[0] = $TEE :
+				$label := "TE1";
+	 		when $prof_code[0] = $ANGLE :
+	 			$label := "AE1";
+	 		when $prof_code[0] = $ITEE :
+				$label := "TE1";
+	 		when $prof_code[0] = $CHAN :
+	 			$label := "CE1";
+	 		when $prof_code[0] = $BULB :
+				$label := "BE1";
+	 		when $prof_code[0] = $FLAT :
+	 			$label := "E1";
+	 		when $prof_code[0] = $PIPE :
+				$label := "SQ CT";
+	 		when $prof_code[0] = $BTEE :
+	 			$label := "E1";
+		end;
+
+		vl-PlaceMacro( $macro, $hprof, $hprof, "", $label, $prof_code[0],
+		 		$prof_height, $stock, $side, $ETcs )
+			[color = 13];
+
+	}
+
+	#**************************************
+	# 	FLANGE VIEW
+	#**************************************
+	bottom, top : {
+
+		$macro 	:= $noETmacroFlg; 
+
+		#**************************************
+		# GET STIFFENER DATA & STOCK
+		#**************************************
+		$profile_length := vl-GetAttributeVal( "ProfileLength" );
+        	$prof_type      := vl-GetAttributeVal( "FamilyName" );
+		$prof_height    := vl-GetAttributeVal( "ProfileHeight" );
+		$prof_code 	:= vl-GetAttributeVal( "ProfileType" );
+		$stock     	:= vl-GetAttributeVal( "StartStock" );
+
+		#**************************************
+		# PROCESS IF PROFILE IS NOT A FLAT BAR
+		#**************************************
+		select when $prof_code != $FLAT & $prof_code != $BTEE : # if not flat bar
+			$ETcs := vl-pc-ViewCs();
+			$side := 1;	# Left side - revert macro
+	
+			vl-PlaceMacro( $noETmacroFlg, $wprof, $hprof, "", "", $prof_code[0],
+					 $prof_height, $stock, $side, $ETcs )
+				[color = 13];
+		end;
+	}
+
+}
+
+#******************************************************************
+#
+#	NO End Treatment case on right side -  main views placement
+#
+#******************************************************************
+
+vl-pc-EndStiffener : {
+
+	#**************************************
+	# 	WEB VIEW
+	#**************************************
+	side : {
+
+		$macro 		:= $noETmacroWeb;
+
+		#**************************************
+		# GET STIFFENER DATA & STOCK
+		#**************************************
+		$profile_length := vl-GetAttributeVal( "ProfileLength" );
+        	$prof_type      := vl-GetAttributeVal( "FamilyName" );
+		$prof_height    := vl-GetAttributeVal( "ProfileHeight" );
+		$prof_code 	:= vl-GetAttributeVal( "ProfileType" );
+		$stock     	:= vl-GetAttributeVal( "EndStock" );
+	
+		$ETcs := vl-pc-ViewEndCs();
+		$side := 0;	# Right side - do not revert macro
+
+		#**************************************
+		# SET ET SYMBOL
+		#**************************************
+		select 	when $prof_code[0] = $TEE :
+				$label := "TE1";
+	 		when $prof_code[0] = $ANGLE :
+	 			$label := "AE1";
+	 		when $prof_code[0] = $ITEE :
+				$label := "TE1";
+	 		when $prof_code[0] = $CHAN :
+	 			$label := "CE1";
+	 		when $prof_code[0] = $BULB :
+				$label := "BE1";
+	 		when $prof_code[0] = $FLAT :
+	 			$label := "E1";
+	 		when $prof_code[0] = $PIPE :
+				$label := "SQ CT";
+	 		when $prof_code[0] = $BTEE :
+	 			$label := "E1";
+		end;
+
+		vl-PlaceMacro( $noETmacroWeb, $hprof, $hprof, "", $label, $prof_code[0],
+			 	$prof_height, $stock, $side, $ETcs )[color = 13];
+	}
+
+	#**************************************
+	# 	FLANGE VIEW
+	#**************************************
+	bottom, top : {
+	
+		$macro 	:= $noETmacroFlg; 
+
+		#**************************************
+		# GET STIFFENER DATA & STOCK
+		#**************************************
+		$profile_length := vl-GetAttributeVal( "ProfileLength" );
+        	$prof_type      := vl-GetAttributeVal( "FamilyName" );
+		$prof_height    := vl-GetAttributeVal( "ProfileHeight" );
+		$prof_code 	:= vl-GetAttributeVal( "ProfileType" );
+		$stock     	:= vl-GetAttributeVal( "EndStock" );
+	
+		#**************************************
+		# PROCESS IF PROFILE IS NOT A FLAT BAR
+		#**************************************
+		select when $prof_code != $FLAT & $prof_code != $BTEE : # if not flat bar
+			$ETcs := vl-pc-ViewEndCs();
+			$side := 0;	# Right side - do not revert macro
+	
+			vl-PlaceMacro( $noETmacroFlg, $wprof, $hprof, "", "", $prof_code[0],
+					 $prof_height, $stock, $side, $ETcs )
+				[color = 13];
+		end;
+	}
+}
+
+#******************************************************************
+#
+#	Marking lines
+#
+#******************************************************************
+
+vl-pc-StiffenerMark : {
+
+	any-view : {
+		
+		#**********************************************
+		# CHECK VIEW NAME AND PROCESS ONLY IF WEB VIEW
+		#**********************************************
+		$view_name := vl-pc-GetViewName();
+
+		select when $view_name = "side" :
+
+			#****************************
+			# Get stock values
+			#****************************
+			$prof_len 	:= vl-GetAttributeVal( "ProfileLength" );
+			$start_stock    := vl-GetAttributeVal( "StartStock" );
+
+			#**********************************************************
+			# Get view & macro coord sys and angle of the marking line
+			#**********************************************************
+			$csO 		:= vl-pc-ViewCs();
+			$csA 		:= vl-pc-ViewMcCs();
+			$angle 		:= vl-pc-McAngle();
+
+			#***************************************************
+			# Get the position of the macro 
+			# and compare the X position with the end treatment
+			#***************************************************
+			$macPos 	:= vl-pc-McPosition();
+			$prev_mac_pos	:= vl-GetAttributeVal( "ChkPos" );
+
+			select when $macPos != $prev_mac_pos :
+				$prev_mac_pos 	:= vl-SetAttributeVal( "ChkPos", $macPos );
+				$FirstEtPos     := vl-GetAttributeVal("FirstEtPos");
+				$macPosX	:= vl-pc-CvrtDouble( get-word( $macPos[0], 0 ));
+
+				select when $macPosX > $FirstEtPos : 
+	
+					#***********************
+					# Compute lean distance
+					#***********************
+					$chk_type := 2;		# it is a stfMark macro
+					$distance := exec-ppl-func($ppl, "mark_angle", 
+									$angle, $chk_type );
+
+					#***************************************
+					# Put a X dimension on the profile card
+					#***************************************
+	        	        	$xbase          := vl-pc-GetXBase( 0 );
+					$positionX 	:= $macPosX-$FirstEtPos+$xbase+$start_stock;
+					$positionDelta	:= $positionX + $distance;
+					$numcharX 	:= string-length($positionX); 
+					$positionX 	:= format-number( 
+								catenate-strings($numcharX,
+									".0") , $positonX );
+					$numcharX 	:= string-length($positionDelta); 
+					$positionDelta 	:= format-number( 
+								catenate-strings($numcharX,
+									".0") , $positonDelta );
+
+					$ThkDir		:= vl-pc-GetPlateThkDir();
+
+					#******************************
+					# Set stacked dimension offset
+					#******************************
+					$gap 		:= vl-GetAttributeVal( "gap" );
+
+					select 	when $gap = -15 : 
+							$gap := vl-SetAttributeVal( "gap", -5 );
+						when $gap = -10 :
+							$gap := vl-SetAttributeVal( "gap", -15 );
+						when $gap = -5 :
+							$gap := vl-SetAttributeVal( "gap", -10 );
+					end;
+
+					#************************
+					# Place 2d macro 
+					#************************
+					vl-PlaceMacro("PCmark2d", $csO, $csA, $hprof, $angle, 
+							$positionX, -$gap, $positionDelta, 5, $ThkDir)
+							[color = 13];
+				end;
+			end;
+		end;
+	}
+}
+
+#******************************************************************
+#
+#	IBL - Inverse Bending Lines
+#
+#******************************************************************
+
+vl-pc-BendLines : {
+
+	#**************************************
+	# 	WEB VIEW
+	#**************************************
+        side : {
+
+		$stif   := vl-pc-GetStiff();
+
+		#*******************************
+		# Check if the Stf is curved
+		#*******************************
+		$geom	:= vl-pc-IsCurvedBeam( $stif );
+
+		#*********************
+		# If so, place report 
+		#*********************
+		select when $geom > $STRAIGHT :
+        	        $inv_cs := vl-pc-GetBorderFoot("ibl_cs");
+                	$pt_rng := vl-pc-GetBorderFoot("ibl_range");
+	                vl-pc-PlaceBendLines( "web_____r", $stif,
+        	                           $inv_cs, $pt_rng ) [ color = 13 ];
+		end;
+        }
+}
+
+silent;
+
+#call PC stiffener setup
+include "graphicPc.stf";
+
+#call PC stiffener opening setup
+include "graphicPc.op";
+
+#call PC end treatment setup
+include "graphicPc.et";
+
+#call PC cut through setup
+include "graphicPc.ct";
+
+#call PC chock setup
+include "graphicPc.chk";
+
+#call PC generic cutter setup
+include "graphicPc.gct";
+
+
+

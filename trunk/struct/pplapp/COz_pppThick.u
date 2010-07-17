@@ -1,0 +1,182 @@
+/* $Id: COz_pppThick.u,v 1.3 2001/03/06 14:33:00 ahundiak Exp $  */
+/* --------------------------------------------------------------------
+ * I/STRUCT
+ *
+ * File:        struct/pplapp/COz_pppThick.u
+ *
+ * Description: PPL to recompute all the "Invalid" post placement plates 
+ *              with thickness values different from RDB values
+ * Dependencies:
+ *
+ * Revision History:
+ *      $Log: COz_pppThick.u,v $
+ *      Revision 1.3  2001/03/06 14:33:00  ahundiak
+ *      ah
+ *
+ *
+ * History:
+ *      MM/DD/YY        AUTHOR          DESCRIPTION
+ *      02/14/01        Jayadev         File Creation.
+ *      03/06/01        ah              Update status during the ppp check since it is
+ *                                      very slow and can appeared to be locked up
+ * -------------------------------------------------------------------*/
+
+#include "VDppl.h"
+#include "nddef.h"
+#include "ndmacros.h"
+#include "VDobj.h"
+#include "vsplatedef.h"
+#include "vsplate.h"
+#include "vsattr.h"
+#include "vsRDBmacros.h"
+#include "vsoptdef.h"
+#include "vsdbgmacros.h"
+
+#define vdsDEBUG	1
+#define vdserrDEBUG	1
+
+extern GRclassid	OPP_VSsrcPlate_class_id;
+
+extern int VDpms_findall_ancestryobjects(), VSis_ancestry_valid();
+extern int  VSisLoggedIntoRDB();
+extern 	NDwait_batch(),NDget_mod_batch(), NDexec_batch();
+extern IGRlong VSgetOperName();
+extern void sleep();
+
+main()
+{
+  IGRlong		sts1, msg;
+  IGRint		i, count,
+                        cn_type, b_mod, badCount,pppCount;
+  GRclassid		classid;
+  OM_S_OBJID		*list;
+  struct GRid		plate,*pppList;
+  IGRchar		mesg[1024],errStr[128];
+  IGRchar               footName[DI_PATH_MAX], *thkname;
+  struct GRid           par_surf;
+  VSpartAttr            PltAttr ;
+  VSplateAttr           PltInfo ;
+  IGRdouble             plt_thickness, rdb_thickness;
+  
+  count = 0;
+  list  = NULL;
+  thkname  = NULL;
+  pppList  = NULL;
+  badCount = 0;
+  pppCount = 0;
+  cn_type   = ND_COMP;
+  plt_thickness   = rdb_thickness = 0.0;
+  
+  message( "Recompute Invalid post placement plates" );
+  
+  if(!VSisLoggedIntoRDB())
+  {
+    UI_status("You need to log in to PDM");
+    sleep(1);
+    goto wrapup;
+  } 
+  ci$get_module_info( md_env = &MOD_ENV);
+  classid = OPP_VSsrcPlate_class_id ;
+
+  UI_status("Finding plates...");
+  
+  VDpms_findall_ancestryobjects( MOD_ENV.md_id.osnum, 1, &classid,
+				 &count, NULL );
+  
+  list = ( OM_S_OBJID * )malloc( count*sizeof(OM_S_OBJID) );
+  if( list == NULL ) goto wrapup;
+  pppList = ( struct GRid * )malloc( count*sizeof(struct GRid) );
+  if( pppList == NULL ) goto wrapup;
+  
+  
+  VDpms_findall_ancestryobjects( MOD_ENV.md_id.osnum, 1, &classid,
+				 &count, list );
+  __DBGpr_int("Number Source Plates in Current OS ", count );
+  
+  // grep the list of pppPlates 
+  for( i=0; i<count; i=i+1 )
+  {
+    
+    plate.objid = list[i];
+    plate.osnum = MOD_ENV.md_id.osnum;
+    
+    vdobj$GetParent(  objID    = &plate,
+                      idx        = 0,
+                      parentID   = &par_surf );
+    if( ( VSgetOperName( &par_surf, "~~post_placement",
+                         footName) &1 ) )
+    {
+      pppList[pppCount] = plate;
+      pppCount = pppCount + 1;
+    }
+    
+  }
+
+  // check if the thickness of each pppPlate is confirming to the RDB value
+  for( i=0; i<pppCount; i=i+1 )
+  {
+    if ((i % 10) == 0) {
+      sprintf(mesg,"Checking ppp plate %d of %d",i+1,pppCount);
+      UI_status(mesg);
+    }
+
+    // get the plate properties and the corresponding RDB thickness
+    PltAttr.Iwant    = VS_m_Thickness | VS_m_MatType | 
+      VS_m_MatGrade | VS_m_PartFam;
+    
+    PltAttr.specific = (void *) &PltInfo ;
+    sts1 = ci$send(  msg    = message GRvg.GRgetattr( &msg,
+						      (char *) &PltAttr),
+		     targetid = pppList[i].objid,
+		     targetos = pppList[i].osnum );
+    if(!(sts1&msg&1)) continue;
+    
+    plt_thickness = PltInfo.thickness;
+    
+    vs$find_thickness_in_RDB(   msg          = &msg,
+                                errStr       = errStr,
+                                material     = PltAttr.info.material,
+                                family       = PltAttr.info.family,
+                                value        = plt_thickness,
+                                p_thkname    = &thkname,
+                                p_thickness  = &rdb_thickness );
+    
+    if( !(msg&1) ) continue;
+    if(fabs(plt_thickness-rdb_thickness) < 0.1) continue;
+    
+    PltAttr.Iwant    = VS_m_Thickness ; 
+    PltInfo.thickness = rdb_thickness;
+    sts1 = ci$send(  msg    = message GRvg.GRputattr( &msg,
+						      (char *) &PltAttr),
+		     targetid = pppList[i].objid,
+		     targetos = pppList[i].osnum );
+    if(!(sts1&msg&1)) continue;
+    badCount = badCount + 1;
+    
+    sts1 = nd$wait_batch( type	= GR_GEOM_POSTED,
+			  nb_obj	= 1,
+			  l_object	= &pppList[i],
+			  l_obj_info = &cn_type );
+    
+  } 
+  
+  sprintf(mesg,"Number of Plates to Recompute = %d\n", badCount );
+  UI_status(mesg);
+  sleep(1);
+  
+  if( badCount )
+  {
+    nd$mod_batch(request     = ND_INQ,
+		 p_ret_mode  = &b_mod );
+    if( b_mod != ND_DEFER ) nd$exec_batch();
+  }
+  
+ wrapup:
+  UI_status("Done");
+  if( list ) free( list );
+  if( pppList ) free( pppList );
+  return 1;
+}
+
+
+

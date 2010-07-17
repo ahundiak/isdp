@@ -1,0 +1,364 @@
+/* $Id: COmodMark.u,v 1.1.1.1 2001/01/04 21:11:28 cvs Exp $  */
+
+/***************************************************************************
+ * I/LOFT
+ *
+ * File:        src/mrkLine/COmodMark.u
+ *
+ * Description: Modify Marking Line
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ *      $Log: COmodMark.u,v $
+ *      Revision 1.1.1.1  2001/01/04 21:11:28  cvs
+ *      Initial import to CVS
+ *
+# Revision 1.1  1999/05/25  16:25:08  pinnacle
+# ah
+#
+ *
+ * History:
+ * MM/DD/YY  AUTHOR  DESCRIPTION
+ * 05/25/99  ah      Creation
+ *
+ ***************************************************************************/
+
+#include "VDppl.h"
+#include "VDobj.h"
+#include "VDchn.h"
+#include "vsplatedef.h"
+
+extern EX_findmod();
+
+#define thePrompt "Modify Marking Line"
+
+#include "nddef.h"
+#include "ndmacros.h"
+
+extern	NDmod_batch();
+extern	NDexec_batch();
+extern	NDget_mod_batch();
+extern	NDwait_batch();
+
+/* ---------------------------------------------
+ * Copied from COz_CompObj
+ * Force a recompute
+ */
+int compute(objOE)
+TGRobj_env *objOE;
+{
+  extern IGRboolean	ASbroadcast_in_progress ;
+  IGRboolean		saveBroad;
+
+  IGRint cnType;
+  IGRint wtBatch;
+  
+  cnType = ND_COMP;
+
+  nd$wait_batch(type       = GR_GEOM_POSTED,
+		l_object   = &objOE->obj_id,
+		l_obj_info = &cnType,
+		nb_obj     = 1 );
+
+  nd$mod_batch(request    = ND_INQ,
+	       p_ret_mode = &wtBatch);
+
+  saveBroad = ASbroadcast_in_progress ;
+  ASbroadcast_in_progress = FALSE ;
+
+  if( wtBatch != ND_DEFER ) { /* else nothing to do */
+    nd$exec_batch(mode = ND_DISP_ROOT|ND_DISP_BODY);
+  }
+  
+  ASbroadcast_in_progress = saveBroad ;
+
+  return 1;
+}
+
+/* -----------------------------------------------
+ * Hilite object
+ */
+IGRstar display(objOE)
+TGRobj_env *objOE;
+{
+  IGRstat msg;
+  enum GRdpmode mode;
+
+  mode = GRhd;
+  
+  ci$send(msg = message 
+	  GRgraphics.GRdisplay( &msg,
+				&objOE->mod_env.md_env.matrix_type,
+				 objOE->mod_env.md_env.matrix,
+				&mode, 
+				&objOE->mod_env.md_id),
+	  targetid = objOE->obj_id.objid,
+	  targetos = objOE->obj_id.osnum);
+
+  return 1;
+}
+
+
+/* ------------------------------------------------
+ * Review/modify the marking line
+ */
+int process(markOE)
+TGRobj_env *markOE;
+{
+  IGRstat    msg;
+  
+  IGRchar    buf[256];
+
+  TGRid      colID,colIDx;
+  TGRid      curID;
+  
+  IGRint     numAtt;
+  TACrg_coll lstAtts[2];
+
+  IGRint     material;
+  IGRdouble  atr1,atr2;
+  IGRint     atrFlag;
+  
+  IGRchar    objName[80];
+  
+  IGRint     response;
+  
+  TGRid parent1ID;
+  TGRid parent2ID;
+  
+  TGRobj_env parent1OE;
+  TGRobj_env parent2OE;
+  
+  // Arg check
+  if (markOE->obj_id.objid == NULL_OBJID) goto wrapup;
+
+  // Path info
+  vdobj$Print(objOE = markOE, str = buf);
+  UI_status(buf);
+
+  // Get the output collector info
+  vdchn$Get2(objID  = &markOE->obj_id,
+	     chnIDx = VDCHN_IDX_TO_COMPONENTS,
+	     nth    = 1,
+	     outID  = &colIDx );
+
+  ci$send(msg = message 
+	  ACrg_collect.ACshow_data(&msg),
+	  targetid = colIDx.objid,
+	  targetos = colIDx.osnum);
+
+  // Get the collector info
+  vdchn$Get2(objID  = &markOE->obj_id,
+	     chnIDx = VDCHN_IDX_PARENT,
+	     nth    = 0,
+	     outID  = &colID );
+
+  if (colID.objid == NULL_OBJID) {
+    UI_status("No parent collector!");
+    goto wrapup;
+  }
+  
+  vdobj$Print(objID = &colID, str = buf);
+  UI_status(buf);
+
+  ci$send(msg = message 
+	  ACrg_collect.ACshow_data(&msg),
+	  targetid = colID.objid,
+	  targetos = colID.osnum);
+
+  numAtt = 0;
+  ci$send(msg = message 
+	  ACrg_collect.AClist_attribute(&msg,
+					2,
+					lstAtts,
+					&numAtt),
+	  targetid = colID.objid,
+	  targetos = colID.osnum);
+
+  if (numAtt != 2) {
+    UI_status("Number of attributes not 2");
+    goto wrapup;
+  }
+  
+  // Setup material side
+  atr1 = lstAtts[0].desc.value.att_exp;
+  atr2 = lstAtts[1].desc.value.att_exp;
+
+  material = 0;
+  if (atr1 > .5) material = material | 0x01;
+  if (atr2 > .5) material = material | 0x02;
+
+  // Summarize
+  vdobj$Get(objOE = markOE, objName = objName);
+  sprintf(buf,"%s, Marked %.0f, Marking %.0f, Spades %d",
+	  objName,atr1,atr2,material);
+
+  UI_status(buf);
+
+  // Hilite first parent
+  vdobj$GetParent(objOE = markOE, idx = 1, parentID = &parent1ID);
+  if (parent1ID.objid == NULL_OBJID) {
+    UI_status("Can't find marked parent\n");
+    goto wrapup;
+  }
+  VDahGetObjectEnv(&parent1ID,&parent1OE);
+  if (parent1OE.obj_id.objid == NULL_OBJID) {
+    UI_status("Can't find marked parent\n");
+    goto wrapup;
+  }
+  display(&parent1OE);
+  
+  // Hilite second parent
+  vdobj$GetParent(objOE = markOE, idx = 2, parentID = &parent2ID);
+  if (parent2ID.objid == NULL_OBJID) {
+    UI_status("Can't find marking parent\n");
+    goto wrapup;
+  }
+  VDahGetObjectEnv(&parent2ID,&parent2OE);
+  if (parent2OE.obj_id.objid == NULL_OBJID) {
+    UI_status("Can't find marking parent\n");
+    goto wrapup;
+  }
+  display(&parent2OE);
+  
+  // If not in current os then review only
+  ex$get_cur_mod(osnum = &curID.osnum);
+  if (markOE->obj_id.osnum != curID.osnum) goto wrapup;
+  
+  // See if user wants to change
+  atrFlag = 0;
+  
+  ci$get(prompt = "Accept to flip marked, move on to keep",
+	 response = &response);
+  
+  if (response == EX_DATA) {
+    atrFlag = 1;
+    if (atr1 < .5) atr1 = 1.0;
+    else           atr1 = 0.0;
+  }
+
+  ci$get(prompt = "Accept to flip marking, move on to keep",
+	 response = &response);
+  
+  if (response == EX_DATA) {
+    atrFlag = 1;
+    if (atr2 < .5) atr2 = 1.0;
+    else           atr2 = 0.0;
+  }
+  
+  if (atrFlag == 0) goto wrapup;
+  
+  // Chenge the collector
+  lstAtts[0].desc.value.att_exp = atr1;
+  lstAtts[1].desc.value.att_exp = atr2;
+
+  ci$send(msg = message 
+	  ACrg_collect.
+	  ACmod_list_attribute(&msg,
+					    2,
+					    lstAtts),
+	  targetid = colID.objid,
+	  targetos = colID.osnum);
+
+  compute(markOE);
+  
+  // And the status
+  material = 0;
+  if (atr1 > .5) material = material | 0x01;
+  if (atr2 > .5) material = material | 0x02;
+  sprintf(buf,"%s, Marked %.0f, Marking %.0f, Spades %d",
+	  objName,atr1,atr2,material);
+
+  UI_status(buf);
+  
+wrapup:
+  return 1;
+}
+
+/* --------------------------------------
+ * The main routine
+ */
+int main()
+{
+  int sts,msg;
+  int response;
+  
+  TGRobj_env objOE;
+
+  IGRchar *p;
+  IGRchar home[32];
+  
+  response = 0;
+    
+  while(1) {
+
+    objOE.obj_id.objid = NULL_OBJID;
+    
+    response = 0;
+
+    UI_message(thePrompt);
+
+    dp$erase_hilite( msg = &msg );
+
+    sts = ci$locate(prompt  = "Select Marking Line",
+                    classes = "VLmrkLine",
+		    owner_action = LC_RIGID_OWNER | 
+                                   LC_RIGID_COMP  |
+                                   LC_FLEX_COMP   | 
+                                   LC_FLEX_OWNER  |
+                                   LC_REF_OBJECTS,
+
+                    stackable    = 1,
+		    response     = &response,
+		    md_env       = &objOE.mod_env,
+		    obj          = &objOE.obj_id.objid,
+		    osnum	 = &objOE.obj_id.osnum);
+
+    if (!(sts & 1)) response = 0;
+
+    switch(response) {
+
+    case EX_OBJID:   // Object Set
+      break;
+      
+    case EX_DATA:    // Single Object
+      // printf("==========================================\n");
+      process(&objOE);
+      break;
+
+    } // Switch
+  }
+
+wrapup:
+  return 1;
+}
+
+/* ------------------------------------------
+ * Usual command object messages
+ */
+init()
+{
+}
+sleep() 
+{
+}
+wakeup()
+{
+  UI_message(thePrompt); 
+}
+delete()
+{
+}
+
+
+
+
+
+
+
+
+
+
+
+

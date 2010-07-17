@@ -1,0 +1,94 @@
+
+#include <stdio.h>
+#include "cieveryone.h"
+#include "cimacros.h"
+#include "AS_status.h"
+#include "asmacros.h"
+#include "macro.h"
+
+#include "growner.h"
+#include "vlpcmacros.h"
+
+extern	ASmake_source(), ASmake_source_from_env();
+extern	long	VLplPcView();
+
+main ()
+{
+long			sts, msg;
+int			suc;
+struct	GRobj_env	Stiff;
+struct	GRobj_env	Cs;
+struct	GRobj_env	Pt;
+char			ViewName[1024];
+struct	GRmd_env	MOD_ENV;
+struct	GRid		templ[3];
+struct	GRid		pcView;
+int			i;
+
+	message(" Place Profile Card View");
+	ci$get_module_info( md_env	= &MOD_ENV );
+
+step0 :
+
+	// locate Stiffner
+	Stiff.obj_id.objid 	= NULL_OBJID;
+	sts = ci$locate(	properties   = 	LC_LC_ONLY | LC_DP_ONLY | LC_RW,
+				owner_action = 	LC_RIGID_OWNER | LC_FLEX_COMP |
+						LC_FLEX_OWNER  | LC_REF_OBJECTS,
+				classes	     =  "VSbeam",
+				prompt	     =  "Identify Stiffener",
+				obj          = 	&Stiff.obj_id.objid,
+				osnum        = 	&Stiff.obj_id.osnum,
+				md_env       = 	&Stiff.mod_env );
+	if( ! (sts&1))	goto step0;
+
+step1 :
+	// locate CS
+	Cs.obj_id.objid 	= NULL_OBJID;
+	sts = ci$locate(	properties   = 	LC_LC_ONLY | LC_DP_ONLY | LC_RW,
+				owner_action = 	LC_RIGID_OWNER | LC_FLEX_COMP |
+						LC_FLEX_OWNER  | LC_REF_OBJECTS,
+				classes	     =  "GRgencs",
+				prompt	     =  "Identify Coordinate System",
+				obj          = 	&Cs.obj_id.objid,
+				osnum        = 	&Cs.obj_id.osnum,
+				md_env       = 	&Cs.mod_env );
+	if( ! (sts&1))	goto step0;
+
+step2 :
+	// range point
+	Pt.obj_id.objid 	= NULL_OBJID;
+	sts = ci$locate(	properties   = 	LC_LC_ONLY | LC_DP_ONLY | LC_RW,
+				owner_action = 	LC_RIGID_OWNER | LC_FLEX_COMP |
+						LC_FLEX_OWNER  | LC_REF_OBJECTS,
+				classes	     =  "GR3dpoint",
+				prompt	     =  "Identify range point",
+				obj          = 	&Pt.obj_id.objid,
+				osnum        = 	&Pt.obj_id.osnum,
+				md_env       = 	&Pt.mod_env );
+	if( ! (sts&1))	goto step1;
+
+step3 :
+  	// view-name
+	ViewName[0] = '\0';
+	ci$get( string	= ViewName,
+		rc	= sts,
+		prompt	= "Enter View Name");
+	if( ! (sts&1))	goto step2;
+
+
+	sts = vl$plpcview(	supportId	= &Stiff,
+				csId		= &Cs,
+				viewId		= NULL,
+				viewType	= ViewName,
+				rngPtId		= &Pt,
+				env		= &MOD_ENV,
+				pcViewId	= &pcView );
+	printf(" pcView Id : %d/%d\n", pcView.objid, pcView.osnum );
+
+	goto step1;
+
+return	1;
+}
+
+

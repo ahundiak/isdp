@@ -1,0 +1,419 @@
+/* $Id: VSppstock.u,v 1.2 2002/05/03 13:42:35 ahundiak Exp $  */
+
+/***************************************************************************
+ * I/STRUCT
+ *
+ * File:	pplcmd/VSppstock.u
+ *
+ * Description: Grab stock information for beams
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ *	$Log: VSppstock.u,v $
+ *	Revision 1.2  2002/05/03 13:42:35  ahundiak
+ *	ah
+ *	
+ *	Revision 1.1  2002/05/01 19:45:33  ahundiak
+ *	ah
+ *	
+ *	Revision 1.1.1.1  2001/01/04 21:10:02  cvs
+ *	Initial import to CVS
+ *	
+ *
+ * History:
+ * MM/DD/YY  AUTHOR  DESCRIPTION
+ * 04/29/02  ah      Creation
+ ***************************************************************************/
+
+#include "VDppl.h"
+#include "VDobj.h"
+#include "VDobj2.h"
+#include "VDvla.h"
+#include "VDchn.h"
+#include "VDgeom.h"
+
+TGRid       OBJECT_ID;
+TGRmd_env   OBJECT_ENV;
+IGRchar     OBJECT_DATA[128];
+Tret_struct OBJECT_RS;
+
+extern VDclassid OPP_VSbeam_class_id;
+extern VDclassid OPP_VSplate_class_id;
+extern VDclassid OPP_GR3dpoint_class_id;
+
+extern VSefpEvalBeamCS();
+extern VSfindEndTreatmentsInfo();
+
+/* --------------------------------------------------
+ * Decode coords from an et string
+ */
+IGRint getEtPt(et,ptFlag,pt)
+IGRchar   *et;
+IGRint    *ptFlag;
+IGRdouble *pt;
+{
+  IGRint retFlag;
+  IGRchar *p;
+
+  // Init
+  retFlag = 0;
+  *ptFlag = 0;
+
+  // Parse out
+  p = strrchr(et,':');
+  if (p == NULL) goto wrapup;
+  p = p + 1;
+  pt[0] = atof(p);
+
+  p = strchr(p,',');
+  if (p == NULL) goto wrapup;
+  p = p + 1;
+  pt[1] = atof(p);
+
+  p = strchr(p,',');
+  if (p == NULL) goto wrapup;
+  p = p + 1;
+  pt[2] = atof(p);
+
+  *ptFlag = 1;
+  retFlag = 1;
+
+wrapup:
+  return retFlag;
+}
+IGRint copyPt(pt1,pt2)
+IGRdouble *pt1;
+IGRdouble *pt2;
+{
+  pt2[0] = pt1[0];
+  pt2[1] = pt1[1];
+  pt2[2] = pt1[2];
+  return 1;
+}
+
+/* --------------------------------------------------
+ * Get consistent endpoints of a beam
+ *
+ * Trying to decide which end is which is painful.
+ * For stock, really only need something consistent between
+ * like parts.  
+ *
+ * The normal production way would be to use end treatments
+ * but even that seems fishy.  There was some code in VSefp
+ * designed to get a "production" base end but I don't really know
+ * how far along it was developed and tested
+ *
+ * The EvalBeamCS is based on the beam axis and while it has a bunch of
+ * direction stiff in it I'm not really sure how useful it really is
+ *
+ * Just going to get the axis and use it's geom directly. 
+ * This actually seems to return the cut back distance.  That's good. 
+ */
+IGRint getBeamEnds(beamOE,pt1,pt2)
+TGRobj_env *beamOE;
+IGRdouble  *pt1;
+IGRdouble  *pt2;
+{
+  IGRstat   retFlag;
+  IGRstat   msg;
+
+  TGRobj_env axisOE;
+  TGRbsp_curve *crv;
+
+  IGRchar et1[128];
+  IGRchar et2[128];
+
+  IGRint pt1Flag;
+  IGRint pt2Flag;
+
+  IGRdouble pt1x[3];
+  IGRdouble pt2x[3];
+  IGRdouble dis1,dis2;
+
+  // Init
+  crv = NULL;
+  retFlag = 0;
+
+  /* ---------------------------------------------------
+   * Start with the end treatments
+   * Almost all beams will have two et's so this will
+   * take care of most cases
+   */
+  VSfindEndTreatmentsInfo(&msg,&beamOE->obj_id,&beamOE->mod_env,et1,et2,3);
+  getEtPt(et1,&pt1Flag,pt1);
+  getEtPt(et2,&pt2Flag,pt2);
+  if (pt1Flag && pt2Flag) {
+    retFlag = 1;
+    goto wrapup;
+  }
+
+  // Get the axis
+  axisOE.obj_id.objid = NULL_OBJID;
+  ci$send(msg = message VSbeam.
+		VSgetSupportAxis(&msg,&beamOE->mod_env,&axisOE),
+		targetid = beamOE->obj_id.objid,
+		targetos = beamOE->obj_id.osnum);
+  if (axisOE.obj_id.objid == NULL_OBJID) goto wrapup;
+
+  // Get geometry
+  vdgeom$Get2(objOE = &axisOE,  
+	      crv   = &crv);
+  if (crv == NULL) goto wrapup;
+
+  // Use them if have no points at all
+  if (!pt1Flag && !pt2Flag) {
+    VDgeomGetCrvEndPts(crv,pt1,pt2);
+    retFlag = 1;
+    goto wrapup;
+  }
+  VDgeomGetCrvEndPts(crv,pt1x,pt2x);
+  if (pt1Flag) {
+    VDgeomGetDisPtPt(pt1,pt1x,&dis1);
+    VDgeomGetDisPtPt(pt1,pt2x,&dis2);
+    if (dis1 > dis2) copyPt(pt1x,pt2);
+    else             copyPt(pt2x,pt2);
+  }
+  if (pt2Flag) {
+    VDgeomGetDisPtPt(pt2,pt1x,&dis1);
+    VDgeomGetDisPtPt(pt2,pt2x,&dis2);
+    if (dis1 > dis2) copyPt(pt1x,pt1);
+    else             copyPt(pt2x,pt2);
+  }
+  retFlag = 1;
+      
+wrapup:
+  // printf("Beam end 1 %.2f,%.2f,%.2f\n",pt1[0],pt1[1],pt1[2]);
+  // printf("Beam end 2 %.2f,%.2f,%.2f\n",pt2[0],pt2[1],pt2[2]);
+
+  if (crv) free(crv);
+  return retFlag;
+}
+
+typedef struct {
+  TGRobj_env beamOE;
+  IGRint     endFlag;
+  IGRdouble  end1[3];
+  IGRdouble  end2[3];
+  IGRchar    e1,e2;
+} Tinfo;
+
+/* ----------------------------------------------
+ * Given a stock macro, extract the 3D point
+ */
+IGRint getStockPoint(stockID,pt)
+TGRid *stockID;
+IGRdouble *pt;
+{
+  IGRint retFlag;
+  IGRstat sts,msg;
+
+  TGRobj_env endOE;
+  TGRobj_env stockOE;
+  TGRobj_env pointOE;
+
+  TGRpolyline polyline;
+  IGRint action;
+
+  // Reset
+  retFlag = 0;
+  pt[0] = pt[1] = pt[2] = 0.0;
+
+  // The foot is really a selector?
+  stockOE.obj_id = *stockID;
+  VDobjResetOE(&stockOE);
+  // vdobj$Print(objOE = &stockOE);
+
+  VDobjGetFoot(&stockOE,NULL,"endpoint",&endOE);
+  if (endOE.obj_id.objid == NULL_OBJID) goto wrapup;
+  // vdobj$Print(objOE = &endOE);
+ 
+  VDobjGetFoot(&endOE,NULL,"output0",&pointOE);
+  if (pointOE.obj_id.objid == NULL_OBJID) goto wrapup;
+ 
+  // vdobj$Print(objOE = &pointOE);
+
+  // Just to be safe
+  sts = vdobj$IsAncestryValid(objOE = &pointOE,
+                              superClassID = OPP_GR3dpoint_class_id);
+  if (!(sts & 1)) goto wrapup;
+
+  // Get it
+  polyline.points = pt;
+  polyline.num_points = 1;
+  action = 1;
+  ci$send(msg = message GRlinear.
+          GRgetpolyline(&msg,
+                        &pointOE.mod_env.md_env.matrix_type,
+                         pointOE.mod_env.md_env.matrix,
+                        &action,
+                        &polyline),
+          targetid = pointOE.obj_id.objid,
+          targetos = pointOE.obj_id.osnum);
+
+  // printf("Point %.2f,%.2f,%.2f\n",pt[0],pt[1],pt[2]);
+
+  // Done
+  retFlag = 1;
+
+wrapup:
+  return retFlag;
+}
+
+/* ----------------------------------------------
+ * Process one possible stock macro
+ */
+IGRint processMacro(info,macroID)
+Tinfo  *info;
+TGRid  *macroID;
+{
+  IGRchar   macroName[32];
+  IGRdouble pt[3];
+  IGRdouble dis1,dis2;
+
+  // Filter by name
+  VDobjGetMacroName(NULL,macroID,macroName);
+  if (strncmp(macroName,"PPstock",7)) goto wrapup;
+
+  // Need beam end points
+  if (info->endFlag == 0) {
+    getBeamEnds(&info->beamOE,info->end1,info->end2);
+    info->endFlag = 1;
+  }
+
+  // Macro end
+  getStockPoint(macroID,pt);
+  VDgeomGetDisPtPt(pt,info->end1,&dis1);
+  VDgeomGetDisPtPt(pt,info->end2,&dis2);
+
+  // Ignore "bogus" macros
+  if ((dis1 > 1000.0) && (dis2 > 1000.0)) goto wrapup;
+
+  // Pick the nearest
+  if (dis1 < dis2) info->e1 = '1';
+  else             info->e2 = '1';
+
+wrapup:
+  return 1;
+}
+
+
+/* ----------------------------------------------
+ * Public interface for getting stock info for beams
+ */
+IGRint GetStockInfo()
+{
+  IGRstat sts,msg;
+
+  TGRid  macroID;
+  IGRint i;
+
+  TVDvlaID *vla;
+
+  Tinfo info;
+
+  /* Prepare return argument */
+  OBJECT_RS.type = text_type;
+  strcpy(OBJECT_RS.var.text_st.text_string,"");
+
+  /* Init the vla stuff */
+  vla = malloc(sizeof(TVDvlaID));
+  if (vla == NULL) goto wrapup;
+  vdvla_id$Construct(vla = vla);
+
+  /* Validate to make sure */
+  memset(&info,0,sizeof(Tinfo));
+  info.beamOE.obj_id  = OBJECT_ID;
+  info.beamOE.mod_env = OBJECT_ENV;
+  sts = vdobj$IsAncestryValid(objOE = &info.beamOE,
+                              superClassID = OPP_VSbeam_class_id);
+  if (!(sts & 1)) goto wrapup;
+
+  info.e1 = '0';
+  info.e2 = '0';
+
+  /* Grab any macros */
+  vdchn$GetChildrenByClass(objOE = &info.beamOE,
+                           className = "ACconst",
+                           vla = vla);
+
+  /* Cycle through */
+  for(i = 0; 
+      vdvla_id$GetAt(vla = vla, nth = i, objID = &macroID); 
+      i = i + 1) {
+    processMacro(&info,&macroID);
+  }
+  sprintf(OBJECT_RS.var.text_st.text_string,"%c %c",info.e1,info.e2);
+
+wrapup:
+  /* Clean up vla */
+  if (vla) {
+    vdvla_id$Delete(vla = vla);
+    free(vla);
+  }
+     
+  return 1;
+}
+
+/* ----------------------------------------------
+ * Public interface for getting bevel info for plates
+ * 0 Means no bevels or stock
+ * 1 means have bevels or stock
+ */
+IGRint GetBevelInfo()
+{
+  IGRstat sts,msg;
+
+  TGRid  macroID;
+  IGRint i;
+
+  TVDvlaID *vla;
+
+  TGRobj_env plateOE;
+  IGRchar macName[32];
+  IGRchar *data;
+
+  /* Prepare return argument */
+  OBJECT_RS.type = text_type;
+  data = OBJECT_RS.var.text_st.text_string;
+  strcpy(data,"0");
+
+  /* Init the vla stuff */
+  vla = malloc(sizeof(TVDvlaID));
+  if (vla == NULL) goto wrapup;
+  vdvla_id$Construct(vla = vla);
+
+  /* Validate to make sure */
+  plateOE.obj_id  = OBJECT_ID;
+  plateOE.mod_env = OBJECT_ENV;
+  sts = vdobj$IsAncestryValid(objOE = &plateOE,
+                              superClassID = OPP_VSplate_class_id);
+  if (!(sts & 1)) goto wrapup;
+
+  /* Grab any macros */
+  vdchn$GetChildrenByClass(objOE = &plateOE,
+                           className = "nci_macro",
+                           vla = vla);
+
+  /* Cycle through */
+  for(i = 0; 
+      vdvla_id$GetAt(vla = vla, nth = i, objID = &macroID); 
+      i = i + 1) {
+    VDobjGetMacName(NULL,&macroID,macName);
+    if (!strcmp(macName,"Bevel"))     *data = '1';
+    if (!strcmp(macName,"EJ_Bevel"))  *data = '1';
+    if (!strcmp(macName,"VA_Bevel"))  *data = '1';
+    if (!strcmp(macName,"Fab_Stock")) *data = '1';
+     if (*data == '1') goto wrapup;
+  }
+
+wrapup:
+  /* Clean up vla */
+  if (vla) {
+    vdvla_id$Delete(vla = vla);
+    free(vla);
+  }
+     
+  return 1;
+}
+

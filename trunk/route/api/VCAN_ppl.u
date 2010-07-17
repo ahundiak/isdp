@@ -1,0 +1,707 @@
+
+/* $Id: VCAN_ppl.u,v 1.1 2001/01/26 17:51:48 anand Exp $  */
+
+/*************************************************************************
+ * I/CABLE
+ *
+ * File:        api/VCAN_ppl.u
+ *
+ * Description:
+ *      Calculation/report interface for cabling analysis
+ *             (PPL version)
+ *
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ *        $Log: VCAN_ppl.u,v $
+ *        Revision 1.1  2001/01/26 17:51:48  anand
+ *        *** empty log message ***
+ *
+ *        Revision 1.1.1.1  2001/01/04 21:12:00  cvs
+ *        Initial import to CVS
+ *
+# Revision 1.1  1998/04/30  10:52:34  pinnacle
+# ROUTE 2.5.1
+#
+# Revision 1.1  1997/10/31  08:18:28  pinnacle
+# Created by aharihar for route (from cabling)
+#
+# Revision 1.3  1997/07/14  21:36:20  pinnacle
+# Replaced: api/VCAN_ppl.u for:  by hverstee for cabling
+#
+# Revision 1.2  1997/03/21  14:23:58  pinnacle
+# Replaced: api/VCAN_ppl.u for:  by hverstee for cabling
+#
+# Revision 1.1  1997/03/20  21:21:44  pinnacle
+# Created: api/VCAN_ppl.u by hverstee for cabling
+#
+ *
+ * History:
+ *        07/10/96        hv        Initial
+ *
+ *************************************************************************/
+
+#include <stdio.h>
+#include <string.h>
+#include <ctype.h>
+
+/*       SOLARIS ppl compile especially dislikes math.h
+         declare math functions individually if needed
+
+#include <math.h>
+--------------------------------------------------------*/
+
+#include "ciminimum.h"
+#include "cieveryone.h"
+#include "cilocate.h"
+#include "cisend.h"
+#include "cimacros.h"
+#include "asmacros.h"
+
+#include "macro.h"
+#include "AS_status.h"
+
+#include "vc_public.h"
+
+extern int    fclose();
+
+extern int printf();
+extern int fprintf();
+extern int sprintf();
+
+
+
+/*************************************************************************/
+
+prt()              /*     function prt, print buffers     */
+{
+  IGRint          iindex;
+  IGRlong         status;
+
+  iindex     = 0;
+
+  /*    place notice in result field for form display     */
+
+  strcpy (VCANGLB_result, "Print buffers on screen");
+
+  printf (" File Name   %s\n",VCANGLB_filenam);
+  printf (" Signal Name %s\n",VCANGLB_signam);
+  printf (" selectstate %d\n",VCANGLB_select);
+  printf (" recordnum   %d\n",VCANGLB_ntrace);
+
+  while (iindex < VCANGLB_ntrace)
+  {
+     /*    print trace as an example       */
+     printf ("REC %d, trans,index, GRid %d %d %d %d",
+             iindex, VCANGLB_trac[iindex].nTrans, VCANGLB_trac[iindex].nIndex,
+             VCANGLB_trac[iindex].GRid.objid, VCANGLB_trac[iindex].GRid.osnum);
+
+     if (VCANGLB_trac[iindex].OutId.nType == VC_TERM_TYPE)
+       printf (" --TERM         %s - %s\n",
+                         VCANGLB_trac[iindex].OutId.Conn.Term.szModId,
+                         VCANGLB_trac[iindex].OutId.Conn.Term.szPosId);
+     else
+     if (VCANGLB_trac[iindex].OutId.nType == VC_CABLE_TYPE)
+       printf (" --CABLE end %d lead %s\n",
+                         VCANGLB_trac[iindex].OutId.Conn.Cable.nCpt,
+                         VCANGLB_trac[iindex].OutId.Conn.Cable.szLeadId);
+     else
+       printf (" --TYPE %d\n",VCANGLB_trac[iindex].OutId.nType);
+
+     iindex = iindex + 1;
+  }
+
+  return (0);
+}
+
+cbl()              /*     function cbl, summate cable length    */
+{
+  IGRint          iindex;
+  IGRint          FootIndex;
+  IGRint          intmsg;
+  IGRlong         status;
+  IGRdouble       dCabLen;
+
+  struct ret_struct   p_rs;
+
+  dCabLen    = 0.0;
+  iindex     = 0;
+  FootIndex  = -1;
+
+  while (iindex < VCANGLB_ntrace)
+  {
+    if (VCANGLB_trac[iindex].OutId.nType == VC_CABLE_TYPE)
+    {
+      status =
+      ci$send ( msg = message ACncpx.ACgive_structure
+                    (&intmsg, &FootIndex, VC_N_CAB_LENGTH_DB,
+                     &p_rs, &(VCANGLB_mdenv)),
+           targetid = VCANGLB_trac[iindex].GRid.objid,
+           targetos = VCANGLB_trac[iindex].GRid.osnum);
+      as$status();
+
+      dCabLen = dCabLen + p_rs.var.root_pm_st.value;
+
+      iindex = iindex + 1;   /*  bypass second end of cable  */
+    }
+
+    iindex = iindex + 1;
+  }
+
+  /*    print on screen    */
+
+  printf (" Total Cable length %12.3f\n",dCabLen);
+
+  /*    also place in result field for form display     */
+
+  sprintf (VCANGLB_result, "Cable is %12.3f inches",dCabLen);
+
+  return (0);
+}
+
+
+ndl()              /*     function ndl, list terminal nodes    */
+{
+  IGRint          status;
+  IGRlong         retmsg;
+  IGRint          iindex;
+  FILE           *fptr;
+
+  IGRchar         szTag[VC_MAX_ID];
+  IGRchar         szEqp[VC_MAX_ID];
+
+  /*     set notice in resultfield for form display   */
+
+  if (VCANGLB_filenam[0] == '\0')
+  {
+    strcpy (VCANGLB_result, "Print nodelist on screen");
+    fptr = stdout;
+  }
+  else
+  {
+    strcpy (VCANGLB_result, "Print nodelist in file");
+
+    fptr = fopen (VCANGLB_filenam, "a");   /*   open with append   */
+
+    fprintf (fptr,"      NODELIST    \n\n");
+  }
+
+  while (iindex < VCANGLB_ntrace)
+  {
+    if (VCANGLB_trac[iindex].OutId.nType == VC_TERM_TYPE)
+    {
+      szTag[0] = '\0';
+      szEqp[0] = '\0';
+
+      /*     get the tag numbers      */
+
+      status =
+      ci$send (msg = message VCRoot.VCGetTagNo (szTag),
+          targetid = VCANGLB_trac[iindex].GRid.objid,
+          targetos = VCANGLB_trac[iindex].GRid.osnum);
+
+      status =
+      ci$send (msg = message VCMac.VCGetEquipTag
+                            (&retmsg, szEqp, &(VCANGLB_mdenv)),
+          targetid = VCANGLB_trac[iindex].GRid.objid,
+          targetos = VCANGLB_trac[iindex].GRid.osnum);
+
+      fprintf (fptr, "%14s-%14s-%7s-%7s\n", szEqp, szTag,
+                  VCANGLB_trac[iindex].OutId.Conn.Term.szModId,
+                  VCANGLB_trac[iindex].OutId.Conn.Term.szPosId);
+
+    }
+
+    iindex = iindex + 1;
+  }
+
+  if (VCANGLB_filenam[0] != '\0')
+    fclose (fptr);
+
+  return (0);
+}
+
+
+
+f2l()           /*    fromtos list for a path.......   */
+
+{
+  IGRint          status;
+  IGRlong         retmsg;
+  IGRint          iindex;
+  IGRint          thisType;
+  IGRint          prevType;
+  FILE           *f_local;
+
+  IGRchar         szTag[VC_MAX_ID];
+  IGRchar         szEqp[VC_MAX_ID];
+
+  IGRchar         szLead[VC_MAX_ID];
+  IGRchar         szCTag[VC_MAX_ID];
+
+  IGRchar         szBEG[20];
+  IGRchar         szEND[20];
+
+  /*   fromtolist for element (non trace) is equivalent to
+       connections report                                             */
+
+  iindex      = 0;
+  prevType    = 0;
+
+  szBEG[0] = szEND[0] = '\0';
+  szLead[0] = '\0';
+
+  if (VCANGLB_select != VC_DEFAN_PATH)
+  {
+    strcpy (VCANGLB_result, "Should select signal path");
+    goto quit;
+  }
+
+  if (VCANGLB_filenam[0] != '\0')
+  {
+    f_local = fopen (VCANGLB_filenam, "a");
+
+    fprintf (f_local,
+        "        Fromtos report for trace - signal %s\n\n", VCANGLB_signam);
+    fprintf (f_local,
+        "  Fiberid           From                          To\n\n");
+
+    strcpy (VCANGLB_result, "See file");
+  }
+  else
+  {
+    printf (" Fromtos report for signal %s\n",VCANGLB_signam);
+    f_local = stdout;
+    strcpy (VCANGLB_result, "See window");
+  }
+
+  while (iindex < VCANGLB_ntrace)
+  {
+
+    if (VCANGLB_trac[iindex].OutId.nType == VC_CABLE_TYPE)
+    { /*  found a cable       */
+      if (prevType == VC_UNKNOWN)
+      {  /*   dangling begin    */
+        strcpy (szBEG, "DANGLING--");
+      }
+
+      if (prevType == VC_CABLE_TYPE)
+      {  /*   other cable, PASSTHROUGH     */
+        /*    print previous line with pthru end    */
+        strcpy (szEND, "PASSTHROUGH TO--");
+
+        fprintf (f_local, "%10s %10s %22s %22s\n",
+                        szCTag, szLead, szBEG, szEND);
+
+        strcpy (szBEG, "PASSTHROUGH FROM--");
+      }
+
+      status =
+      ci$send (msg = message VCRoot.VCGetTagNo (szCTag),
+          targetid = VCANGLB_trac[iindex].GRid.objid,
+          targetos = VCANGLB_trac[iindex].GRid.osnum);
+
+      strcpy (szLead, VCANGLB_trac[iindex].OutId.Conn.Cable.szLeadId);
+
+      prevType = VC_CABLE_TYPE;
+
+      iindex = iindex + 2;    /*  bypass second end    */
+    }
+    else
+    { /*  found a terminal */
+
+      szTag[0] = '\0';
+      szEqp[0] = '\0';
+
+      status =
+      ci$send (msg = message VCRoot.VCGetTagNo (szCTag),
+          targetid = VCANGLB_trac[iindex].GRid.objid,
+          targetos = VCANGLB_trac[iindex].GRid.osnum);
+
+      status =
+      ci$send (msg = message VCMac.VCGetEquipTag
+                           (&retmsg, szEqp, &(VCANGLB_mdenv)),
+          targetid = VCANGLB_trac[iindex].GRid.objid,
+          targetos = VCANGLB_trac[iindex].GRid.osnum);
+
+      if ((prevType == VC_TERM_TYPE) ||
+          (prevType == VC_UNKNOWN))
+      {  /*  begin terminal  */
+
+        if (szEqp[0] != '\0')
+        {
+          strcpy (szBEG,  szEqp);
+          strcat (szBEG, "-");
+          strcat (szBEG, szTag);
+        }
+        else
+          strcpy (szBEG, szTag);
+
+        strcat (szBEG, "-");
+        strcat (szBEG, VCANGLB_trac[iindex].OutId.Conn.Term.szModId);
+        strcat (szBEG, "-");
+        strcat (szBEG, VCANGLB_trac[iindex].OutId.Conn.Term.szPosId);
+      }
+
+      if (prevType == VC_CABLE_TYPE)
+      {  /*  end terminal  */
+
+        if (szEqp[0] != '\0')
+        {
+          strcpy (szEND, szEqp);
+          strcat (szEND, "-");
+          strcat (szEND, szTag);
+        }
+        else
+          strcpy (szEND, szTag);
+
+        strcat (szEND, "-");
+        strcat (szEND, VCANGLB_trac[iindex].OutId.Conn.Term.szModId);
+        strcat (szEND, "-");
+        strcat (szEND, VCANGLB_trac[iindex].OutId.Conn.Term.szPosId);
+
+        fprintf (f_local, "%10s %10s %22s %22s\n",
+                       szCTag, szLead, szBEG, szEND);
+        szLead[0] = '\0';
+
+        strcpy (szBEG, szEND);
+
+        szEND[0] = '\0';
+      }
+
+      prevType = VC_TERM_TYPE;
+      iindex = iindex + 1;
+    }
+  }
+
+  if (szLead[0] != '\0')
+  {
+    strcpy (szEND,"DANGLING--");
+
+    fprintf (f_local, "%10s %10s %22s %22s\n", szCTag, szLead, szBEG, szEND);
+  }
+      
+  if (VCANGLB_filenam[0] != '\0')
+  {
+    fprintf (f_local,
+      "-----------------------------------------------------------------\n");
+
+    fclose (f_local);
+  }
+
+  quit:
+  return (0);
+}
+
+
+
+/**************************************************************************/
+
+res()                  /*    total resistance    */
+{
+  int             FootIndex;
+  IGRint          intmsg;
+  IGRlong         retmsg;
+  IGRint          iindex;
+  IGRlong         status;
+  IGRint          parType;
+  IGRboolean      bFirst;
+  IGRdouble       dCabLen;
+  IGRdouble       dResis;
+
+  struct ret_struct   p_rs;
+
+  FootIndex  = -1;
+  dCabLen    = 0.0;
+  dResis     = 0.0;
+  iindex     = 0;
+  bFirst     = TRUE;
+
+  if (VCANGLB_select != VC_DEFAN_PATH)
+  {
+    strcpy (VCANGLB_result, "Should select signal path");
+    goto quit;
+  }
+
+  while (iindex < VCANGLB_ntrace)
+  {
+    if (VCANGLB_trac[iindex].OutId.nType == VC_TERM_TYPE)
+    { /*   for a term get attenuation from DB     */
+
+/*    Get attenuation for this node     NOT IN DB YET
+      Terminal nodes do not yet have attenuation   
+
+      status =
+      ci$send ( msg = message VCDB.VCGetAttr
+                                (&retmsg, &VCANGLB_trac[iindex].OutId,
+                                 VC_N_ATTENUATION_DB, &p_rs),
+           targetid = VCANGLB_trac[iindex].GRid.objid,
+           targetos = VCANGLB_trac[iindex].GRid.osnum);
+      as$status();
+
+*/
+
+      p_rs.var.root_pm_st.value = 0.0;
+
+      dResis = dResis + p_rs.var.root_pm_st.value;
+
+      bFirst = TRUE;
+      iindex = iindex + 1;
+      continue;
+    }
+
+    if (!bFirst)
+    {
+      iindex = iindex + 1;
+      continue;
+    }
+
+    /*    cable length of this segment    */
+
+    status =
+    ci$send ( msg = message ACncpx.ACgive_structure
+                   (&intmsg, &FootIndex, VC_N_CAB_LENGTH_DB,
+                       &p_rs, &VCANGLB_mdenv),
+         targetid = VCANGLB_trac[iindex].GRid.objid,
+         targetos = VCANGLB_trac[iindex].GRid.osnum);
+    as$status();
+
+    dCabLen = p_rs.var.root_pm_st.value;
+
+    status =
+    ci$send ( msg = message VCDB.VCGetAttr
+                                (&retmsg, &VCANGLB_trac[iindex].OutId,
+                                 VC_N_ATTENUATION_DB, &p_rs),
+         targetid = VCANGLB_trac[iindex].GRid.objid,
+         targetos = VCANGLB_trac[iindex].GRid.osnum);
+
+    dResis = dResis + (dCabLen * p_rs.var.root_pm_st.value) / 1000.0;
+
+    bFirst = FALSE;
+    iindex = iindex + 1;
+  }
+
+  sprintf (VCANGLB_result, "Total Resistance %12.3f",dResis);
+
+  quit:
+  return 0;
+}
+
+
+
+cur()                         /*   calculate current ....   */
+{
+  int             FootIndex;
+  IGRint          intmsg;
+  IGRlong         retmsg;
+  IGRint          iindex;
+  IGRlong         status;
+  IGRint          parType;
+  IGRboolean      bFirst;
+  IGRdouble       dCabLen;
+  IGRdouble       dResis;
+  IGRdouble       dCurrent;
+
+  struct ret_struct   p_rs;
+
+  FootIndex  = -1;
+  dCabLen    = 0.0;
+  dResis     = 0.0;
+  dCurrent   = 0.0;
+  iindex     = 0;
+  bFirst     = TRUE;
+
+  if (VCANGLB_select != VC_DEFAN_PATH)
+  {
+    strcpy (VCANGLB_result, "Should select signal path");
+    goto quit;
+  }
+
+  while (iindex < VCANGLB_ntrace)
+  {
+    if (VCANGLB_trac[iindex].OutId.nType == VC_TERM_TYPE)
+    { /*   for a term get attenuation from DB     */
+
+/*    Get attenuation for this node     NOT IN DB YET
+      Terminal nodes do not yet have attenuation
+
+      status =
+      ci$send ( msg = message VCDB.VCGetAttr
+                                (&retmsg, &VCANGLB_trac[iindex].OutId,
+                                 VC_N_ATTENUATION_DB, &p_rs),
+           targetid = VCANGLB_trac[iindex].GRid.objid,
+           targetos = VCANGLB_trac[iindex].GRid.osnum);
+      as$status();
+
+*/
+
+      p_rs.var.root_pm_st.value = 0.0;
+
+      dResis = dResis + p_rs.var.root_pm_st.value;
+
+      bFirst = TRUE;
+      iindex = iindex + 1;
+      continue;
+    }
+
+    if (!bFirst)
+    {
+      iindex = iindex + 1;
+      continue;
+    }
+
+    /*    cable length of this segment    */
+
+    status =
+    ci$send ( msg = message ACncpx.ACgive_structure
+                   (&intmsg, &FootIndex, VC_N_CAB_LENGTH_DB,
+                       &p_rs, &VCANGLB_mdenv),
+         targetid = VCANGLB_trac[iindex].GRid.objid,
+         targetos = VCANGLB_trac[iindex].GRid.osnum);
+    as$status();
+
+    dCabLen = p_rs.var.root_pm_st.value;
+
+    status =
+    ci$send ( msg = message VCDB.VCGetAttr
+                                (&retmsg, &VCANGLB_trac[iindex].OutId,
+                                 VC_N_ATTENUATION_DB, &p_rs),
+         targetid = VCANGLB_trac[iindex].GRid.objid,
+         targetos = VCANGLB_trac[iindex].GRid.osnum);
+
+    dResis = dResis + (dCabLen * p_rs.var.root_pm_st.value) / 1000.0;
+
+    bFirst = FALSE;
+    iindex = iindex + 1;
+  }
+
+  /*     get the voltage from the starting node    */
+
+  status =
+  ci$send ( msg = message VCDB.VCGetAttr
+                                (&retmsg, &VCANGLB_trac[0].OutId,
+                                 VC_N_PEAK_VOLT_DB, &p_rs),
+       targetid = VCANGLB_trac[0].GRid.objid,
+       targetos = VCANGLB_trac[0].GRid.osnum);
+  as$status();
+
+  dCurrent = p_rs.var.root_pm_st.value / dResis;
+
+  sprintf (VCANGLB_result, "Total Current %12.3f",dCurrent);
+
+  quit:
+  return 0;
+}
+
+sgl()                         /*   calculate signal loss   */
+
+
+{
+  int             FootIndex;
+  IGRint          intmsg;
+  IGRlong         retmsg;
+  IGRint          iindex;
+  IGRlong         status;
+  IGRint          parType;
+  IGRboolean      bFirst;
+  IGRdouble       dCabLen;
+  IGRdouble       dResis;
+  IGRdouble       dCurrent;
+  IGRdouble       dSigloss;
+
+  struct ret_struct   p_rs;
+
+  FootIndex  = -1;
+  dCabLen    = 0.0;
+  dResis     = 0.0;
+  dCurrent   = 0.0;
+  dSigloss   = 0.0;
+  iindex     = 0;
+  bFirst     = TRUE;
+
+  if (VCANGLB_select != VC_DEFAN_PATH)
+  {
+    strcpy (VCANGLB_result, "Should select signal path");
+    goto quit;
+  }
+
+  while (iindex < VCANGLB_ntrace)
+  {
+    if (VCANGLB_trac[iindex].OutId.nType == VC_TERM_TYPE)
+    { /*   for a term get attenuation from DB     */
+
+/*    Get attenuation for this node     NOT IN DB YET
+      Terminal nodes do not yet have attenuation
+
+      status =
+      ci$send ( msg = message VCDB.VCGetAttr
+                                (&retmsg, &VCANGLB_trac[iindex].OutId,
+                                 VC_N_ATTENUATION_DB, &p_rs),
+           targetid = VCANGLB_trac[iindex].GRid.objid,
+           targetos = VCANGLB_trac[iindex].GRid.osnum);
+      as$status();
+
+*/
+
+      p_rs.var.root_pm_st.value = 0.0;
+
+      dResis = dResis + p_rs.var.root_pm_st.value;
+
+      bFirst = TRUE;
+      iindex = iindex + 1;
+      continue;
+    }
+
+    if (!bFirst)
+    {
+      iindex = iindex + 1;
+      continue;
+    }
+
+    /*    cable length of this segment    */
+
+    status =
+    ci$send ( msg = message ACncpx.ACgive_structure
+                   (&intmsg, &FootIndex, VC_N_CAB_LENGTH_DB,
+                       &p_rs, &VCANGLB_mdenv),
+         targetid = VCANGLB_trac[iindex].GRid.objid,
+         targetos = VCANGLB_trac[iindex].GRid.osnum);
+    as$status();
+
+    dCabLen = p_rs.var.root_pm_st.value;
+
+    dCabLen = p_rs.var.root_pm_st.value;
+
+    status =
+    ci$send ( msg = message VCDB.VCGetAttr
+                                (&retmsg, &VCANGLB_trac[iindex].OutId,
+                                 VC_N_ATTENUATION_DB, &p_rs),
+         targetid = VCANGLB_trac[iindex].GRid.objid,
+         targetos = VCANGLB_trac[iindex].GRid.osnum);
+
+    dResis = dResis + (dCabLen * p_rs.var.root_pm_st.value) / 1000.0;
+
+    bFirst = FALSE;
+    iindex = iindex + 1;
+  }
+
+  /*     get the voltage from the starting node    */
+
+  status =
+  ci$send ( msg = message VCDB.VCGetAttr
+                                (&retmsg, &VCANGLB_trac[0].OutId,
+                                 VC_N_PEAK_VOLT_DB, &p_rs),
+       targetid = VCANGLB_trac[0].GRid.objid,
+       targetos = VCANGLB_trac[0].GRid.osnum);
+  as$status();
+
+  dCurrent = p_rs.var.root_pm_st.value / dResis;
+
+  dSigloss = dCurrent / dResis;
+  sprintf (VCANGLB_result, "Total Signal loss %12.3f",dSigloss);
+
+  quit:
+  return 0;
+}
+

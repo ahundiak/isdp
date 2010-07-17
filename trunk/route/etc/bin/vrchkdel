@@ -1,0 +1,601 @@
+#
+#
+#
+#		I/ROUTE ksh file checking the consistence between
+#		the files to be integrated listed in a developer's
+#		README file and the files delivered.
+#
+#    Check	| Mod	| Add	| Rem	|	( Ren	| Ren&Mod
+#    against	|	|	|	|	(	|
+#---------------+-------+-------+-------+	( -------+---------
+#    Delivery	|  E	|  E	|  NE	|	(  E/NE	|  E/NE
+#---------------+-------+-------+-------+	( -------+---------
+#    new .m file|	|  E	|  NE	|	(  E/NE	|  E/NE 
+#---------------+-------+-------+-------+	( -------+---------
+#    Plateform	|  E/D	|  NE	|  E	|	( NE/E/ND|  NE/E/D
+#---------------+-------+-------+-------+	( -------+---------
+#
+#	E :	existence
+#	NE:	none existance
+#	D :	differences
+#	ND:	no differences
+#
+#		Usage : chkdel	developer_name
+
+
+ProductPath=$ROUTE
+DeliveryPath=.
+
+TOOLPATH=$ROUTE/etc/bin
+
+#-------------------------------------------------------------------------------
+# FilesExist Path FileList :  this function initializes the two global variables
+#			      VerifiedFiles NotVerifiedFiles depending on 
+#			      whether the file exists in the specified directory
+#			      (Path) or not.
+#-------------------------------------------------------------------------------
+function FilesExist
+{
+	integer	RC
+	RC=0
+
+	NotVerifiedFiles=""
+	VerifiedFiles=""
+
+	TmpPath=$1
+	shift
+
+
+	for file in $*
+	do
+		if [ -f $TmpPath/$file ] 
+		then 
+			VerifiedFiles=$VerifiedFiles" $file"
+		else 
+			NotVerifiedFiles=$NotVerifiedFiles" $file"
+			RC=1
+		fi
+	done
+
+	return ${RC}
+
+} # end FilesExist
+#-------------------------------------------------------------------------------
+# DiffExist FileList :  this function initializes the two global variables
+#			VerifiedFiles NotVerifiedFiles depending on whether
+#			the specified files have been modified between the
+#			product and the delivery.
+#-------------------------------------------------------------------------------
+function DiffExist
+{
+	integer	RC
+	RC=0
+
+	NotVerifiedFiles=""
+	VerifiedFiles=""
+
+	for file in $*
+	do
+		diff $ProductPath/$file $DeliveryPath/$file >/dev/null 2>&1
+		RETCODE=$?
+		if [ $RETCODE -eq 1  ]
+		then 
+			VerifiedFiles=$VerifiedFiles" $file"
+		else 
+			NotVerifiedFiles=$NotVerifiedFiles" $file"
+			RC=1
+		fi
+	done
+
+	return ${RC}
+
+} # end DiffExist
+#-------------------------------------------------------------------------------
+# CheckDotM Test FileList 	: this function initializes the two global
+#				  variables VerifiedFiles NotVerifiedFiles
+#				  depending on whether the specified file
+#				  names are in the compilation list (.m file)
+#				  or not.
+#				  The argument Test indicates whether the
+#				  condition is for the file to be (IN) or
+#				  not to be (OUT) the .m file.
+#-------------------------------------------------------------------------------
+function CheckDotM
+{
+	integer	RC
+	RC=0
+
+	NotVerifiedFiles=""
+	VerifiedFiles=""
+
+	Test=$1
+	shift
+
+	for file in $*
+	do
+
+		DotMPath=`/bin/dirname ${file}`
+		DotMFile=${DotMPath}/`/bin/basename ${DotMPath}`.m
+		FileName=`/bin/basename ${file}`
+#		echo " looking for ${FileName} in ${DeliveryPath}/${DotMFile}"
+
+		# analyse file's suffix to know what should be found in
+		# the .m file.
+
+		FileSuffix=`echo $FileName | awk 'BEGIN{ FS="."} {print $2}' `
+
+#		echo " file suffixe = $FileSuffix "
+		case ${FileSuffix} in
+			sl)	FileName=${FileName%.*}.S;;
+			t)	FileName="";;
+			h)	FileName="";;
+			m)	FileName="";;
+			*);;
+
+		esac
+
+
+		if [ "BLOB$FileName" = "BLOB" ]
+		then
+			# File does not have to be in a .m file 
+			echo "$file does not need to be in the .m file"
+			VerifiedFiles=$VerifiedFiles" $file"
+			RC=1
+		else
+			grep ${FileName} ${DeliveryPath}/${DotMFile} >/dev/null 2>&1
+			RETCODE=$?
+
+			if [ $RETCODE -eq 1  ]
+			then 
+				# New file not listed in the new .m file
+				if [ $Test = IN ]
+				then
+					NotVerifiedFiles=$NotVerifiedFiles" $file"
+				else
+					VerifiedFiles=$VerifiedFiles" $file"
+					RC=1
+				fi
+
+			elif [ $RETCODE -eq 2  ]
+			then
+			    # No .m file delivered => verify if needed
+			    if [ -f ${ProductPath}/${DotMFile} ]
+			    then
+				NotVerifiedFiles=$NotVerifiedFiles" $file"
+			    else
+				VerifiedFiles="${VerifiedFiles} ${file}"
+				RC=1
+			    fi
+			else
+			    if [ $Test = OUT ]
+			    then
+				NotVerifiedFiles=$NotVerifiedFiles" $file"
+			    else
+				VerifiedFiles=$VerifiedFiles" $file"
+				RC=1
+			    fi
+			fi	#end test on grep's return code
+		fi	#end file has to be in the .m file
+	done
+
+	return ${RC}
+
+} # end CheckDotM
+#-------------------------------------------------------------------------------
+
+#
+# Initialize variables
+#
+
+if [ $# -ne 1 ]
+then
+	echo " Usage :  vrchkdel developper_name"
+	exit 1
+fi
+
+DevelopperName=$1	# developper to whom the failed mail must
+			# be sent.
+PerformDel=1		# flag indicating that the delivery can be
+			# performed.
+
+# remove previous mail if exist
+echo " `date`" > /usr/tmp/${DevelopperName}
+
+cd ~${DevelopperName}/route
+
+if ! test -f README
+then
+	echo "README file has not been delivered"
+	echo "README file has not been delivered" >> /usr/tmp/${DevelopperName}
+	echo "INTEGRATION CANNOT BE PERFORMED : "
+	elm -s Delivery ${DevelopperName} </usr/tmp/${DevelopperName}
+	exit
+fi
+
+echo "================================================================="
+
+	#---------------------------------------------------
+	#		CHECK MODIFIED FILES
+	#---------------------------------------------------
+
+	#
+	# get list of requested file modification
+	#
+	ModFiles=`awk -f $TOOLPATH/vrmod.awk $DeliveryPath/README`
+
+#	echo " \tDelivered files for modification :\n$ModFiles\n"
+
+	#
+	# check for existence in the product
+	#
+	FilesExist $ProductPath $ModFiles
+		UnknownFiles="$NotVerifiedFiles"
+		ModFiles=$VerifiedFiles
+
+		if [ "${UnknownFiles}" != "" ]
+		then
+			echo "
+			The following files were specified as modified
+			but do not exist in the product:
+			$UnknownFiles\n" >> /usr/tmp/${DevelopperName}
+			PerformDel=0
+		else
+			echo " \tAll files exist ... "
+		fi
+
+	#
+	# check for effective delivery
+	#
+	FilesExist $DeliveryPath $ModFiles
+		MissingFiles="$NotVerifiedFiles"
+		ModFiles=$VerifiedFiles
+
+		if [ "$MissingFiles" != "" ]
+		then
+			echo " 
+			The following files were specified as modified
+			but were not delivered:
+			$MissingFiles\n" >> /usr/tmp/${DevelopperName}
+			PerformDel=0
+		else
+			echo " \tAll files are delivered ..."
+		fi
+
+	#
+	# check for effective differences of delivered files
+	#
+	DiffExist $ModFiles
+		NoNeedFiles="$NotVerifiedFiles"
+		ModFiles=$VerifiedFiles
+
+		if [ "$NoNeedFiles" != "" ]
+		then
+
+			echo " 
+			The following files have not been modified.
+			Did you send the right one ?
+			$NoNeedFiles\n" >> /usr/tmp/${DevelopperName}
+			PerformDel=0
+		fi
+
+echo "-----------------------------------"
+	echo
+	echo " \tWill be modified :"
+#	for fname in $ModFiles
+#	do
+#		echo " $fname"
+#	done
+	echo
+
+
+echo "================================================================="
+
+	#---------------------------------------------------
+	#		CHECK ADDED FILES
+	#---------------------------------------------------
+
+	#
+	# get list of requested file addition
+	#
+	AddFiles=`awk -f $TOOLPATH/vradd.awk ${DeliveryPath}/README`
+
+	echo " \tDelivered files for addition :\n$AddFiles\n"
+
+	#
+	# check for inexistence in the product
+	#
+	FilesExist ${ProductPath} $AddFiles
+		AddFiles=${NotVerifiedFiles}
+		CannotAddFiles=${VerifiedFiles}
+
+		if [ "$CannotAddFiles" != "" ]
+		then
+			echo " 
+			The following files were specified as added
+			but already exist in the product:
+			$CannotAddFiles\n" >> /usr/tmp/${DevelopperName}
+			PerformDel=0
+		else
+			echo " \tAll files are new ..."
+		fi
+
+
+	#
+	# check for effective delivery
+	#
+	FilesExist ${DeliveryPath} ${AddFiles}
+		MissingFiles="${NotVerifiedFiles}"
+		AddFiles=${VerifiedFiles}
+
+		if [ "$MissingFiles" != "" ]
+		then
+			echo " 
+			The following files were specified as added
+			but were not delivered:
+			$MissingFiles\n" >> /usr/tmp/${DevelopperName}
+			PerformDel=0
+		else
+			echo " \tAll files are delivered ..."
+		fi
+	#
+	# check for .m file updated
+	#
+	CheckDotM IN  ${AddFiles}
+		DotMUpdate=${NotVerifiedFiles}
+		AddFiles=${VerifiedFiles}
+
+		if [ "$DotMUpdate" != "" ]
+		then
+			echo " 
+			The following files were not
+			added in the .m file:
+			$DotMUpdate\n" >> /usr/tmp/${DevelopperName}
+			PerformDel=0
+		else
+			echo " \tAll .m are modified ..."
+		fi
+
+echo "-----------------------------------"
+	echo
+	echo " \tWill be added :"
+#	for fname in $AddFiles
+#	do
+#		echo " $fname"
+#	done
+	echo
+
+
+echo "================================================================="
+
+	#---------------------------------------------------
+	#		CHECK REMOVED FILES
+	#---------------------------------------------------
+
+	#
+	# get list of requested file removal
+	#
+	RemFiles=`awk -f $TOOLPATH/vrrem.awk ${DeliveryPath}/README`
+
+	echo " \tDelivered files for removal :\n$RemFiles\n"
+
+	#
+	# check for existence in the product
+	#
+	FilesExist ${ProductPath} ${RemFiles}
+		CannotRemFiles=$NotVerifiedFiles
+		RemFiles=$VerifiedFiles
+
+		if [ "$CannotRemFiles" != "" ]
+		then
+			echo " 
+			The following files were specified as removed
+			but were do not exist in the product:
+			$CannotRemFiles\n" >> /usr/tmp/${DevelopperName}
+			PerformDel=0
+		else
+			echo " \tAll files can get removed ..."
+		fi
+
+	#
+	# check for inexistence in the delivery
+	#
+	FilesExist ${DeliveryPath} ${RemFiles}
+		WrongDelFiles=$VerifiedFiles
+		RemFiles=$NotVerifiedFiles
+
+		if [ "$WrongDelFiles" != "" ]
+		then
+			echo " 
+			The following files were specified as removed
+			but were also delivered:
+			$WrongDelFiles\n" >> /usr/tmp/${DevelopperName}
+			PerformDel=0
+		fi
+	#
+	# check for .m file updated
+	#
+	CheckDotM OUT ${RemFiles}
+		DotMUpdate="${NotVerifiedFiles}"
+		RemFiles=${VerifiedFiles}
+
+		if [ "$DotMUpdate" != "" ]
+		then
+			echo " 
+			The following files were not
+			removed from the .m file:
+			$DotMUpdate\n" >> /usr/tmp/${DevelopperName}
+			PerformDel=0
+		else
+			echo " \tAll .m are modified ..."
+		fi
+
+echo "-----------------------------------"
+	echo
+	echo " \tWill be removed :"
+	for fname in $RemFiles
+	do
+		echo " $fname"
+	done
+	echo
+
+
+
+echo "================================================================="
+
+
+if [ PerformDel -eq 0 ]
+then 
+	echo "INTEGRATION CANNOT BE PERFORMED : "
+	echo " explanations in /usr/tmp/${DevelopperName}"
+	cat /usr/tmp/${DevelopperName}
+	MailAnswer="y"
+	echo "Do you want to mail the error report to ${DevelopperName}[y]:"
+	read MailAnswer
+	if [ "$MailAnswer" = "y" ]
+	then
+		elm -s Delivery ${DevelopperName} </usr/tmp/${DevelopperName}
+		echo "Mail Sent"
+	fi
+	exit
+fi
+
+		#
+		# PERFORM INTEGRATION
+		#
+
+	echo "INTEGRATION CAN BE PERFORMED"
+
+	#
+	# Get release number from product.def file
+	#
+
+	RelNumber=`awk 'BEGIN{ FS="="}/IDversion/ {print $2}' ${ProductPath}/etc/version/product.def`
+
+	echo "Enter release number [r${RelNumber}]: "
+	read DirBackUp
+
+	if [ "$DirBackUp" = "" ]
+	then
+		DirBackUp="$HOME/r${RelNumber}"
+	else
+		DirBackUp="$HOME/$DirBackUp"
+	fi
+
+	if test -d ${DirBackUp}
+	then
+		echo " Backup directory ${DirBackUp} already exists !"
+		echo " Continue ? [n]"
+		read Cont
+		echo $Cont
+		if [ "$Cont" != "y" -a "$Cont" != "Y" ]
+		then 
+			exit
+		fi
+	else
+		echo " Creating directory ${DirBackUp} for backup"
+		mkdir ${DirBackUp}
+	fi
+
+	#
+	# Fill Update explanation file 
+	#
+	touch ${DirBackUp}/Update
+	if ! test -d ${DirBackUp}/OldSrc
+	then
+		mkdir ${DirBackUp}/OldSrc
+	fi
+	if ! test -d ${DirBackUp}/NewSrc
+	then
+		mkdir ${DirBackUp}/NewSrc
+	fi
+
+	echo " RELEASE : ${RelNumber} " >> ${DirBackUp}/Update
+	echo " DATE    : `date` "       >> ${DirBackUp}/Update
+	cat ${DeliveryPath}/README	>> ${DirBackUp}/Update
+
+	#
+	# Back up old files before integration
+	#
+
+		#
+		# Create directories
+		#
+
+	DelDirs=`awk '/DIRECTORY/ {print $3}' ${DeliveryPath}/README`
+
+	for dir in ${DelDirs}
+	do
+		mkdir -p ${DirBackUp}/OldSrc/${dir} > /dev/null 2>&1
+		mkdir -p ${DirBackUp}/NewSrc/${dir} > /dev/null 2>&1
+	done
+
+		#
+		# Save old files
+		#
+
+	for file in ${ModFiles} ${RemFiles}
+	do
+		if test -f ${DirBackUp}/OldSrc/${file}
+		then
+			echo "Warning : File ${file} has already been integrated "
+		else
+			cp ${ProductPath}/${file} ${DirBackUp}/OldSrc/${file}
+		fi
+	done
+
+
+	#
+	# Save new files
+	#
+
+	for file in ${ModFiles} ${AddFiles}
+	do
+		if test -f ${DirBackUp}/NewSrc/${file}
+		then
+			echo "Warning : File ${file} has already been integrated "
+			echo " Take this file as the new file anyway [n]?"
+			read Cont
+			echo $Cont
+			if [ "$Cont" = "y" -o "$Cont" = "Y" ]
+			then 
+				cp ${DeliveryPath}/${file} ${DirBackUp}/NewSrc/${file}
+			fi
+		else
+			cp ${DeliveryPath}/${file} ${DirBackUp}/NewSrc/${file}
+		fi
+	done
+
+	#
+	# Integration
+	#
+
+	echo " Ready to integrate modified and added files"
+	echo " Continue ? [n]";	read Cont
+	echo $Cont
+	if [ "$Cont" = "y" -o "$Cont" = "Y" ]
+	then 
+
+		for file in ${ModFiles} ${AddFiles}
+		do
+			echo "Integrating ${file}"
+			cp ${DeliveryPath}/${file} ${ProductPath}/${file} 
+		done
+	fi
+
+	if [ "${RemFiles}" != "" ]
+	then
+		echo " Ready to remove files"
+		echo " Continue ? [n]";	read Cont
+		echo $Cont
+		if [ "$Cont" = "y" -o "$Cont" = "Y" ]
+		then 
+			for file in ${RemFiles}
+			do
+				echo "Removing ${file}"
+				rm ${ProductPath}/${file}
+			done
+		fi
+	fi
+
+
+

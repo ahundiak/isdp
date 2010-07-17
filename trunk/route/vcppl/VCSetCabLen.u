@@ -1,0 +1,152 @@
+/* $Id: VCSetCabLen.u,v 1.1 2002/01/07 19:49:08 anand Exp $  */
+
+/***************************************************************************
+ * I/ROUTE
+ *
+ * File:	vcppl/VCSetCabLen.u
+ *
+ * Description:
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ *	$Log: VCSetCabLen.u,v $
+ *	Revision 1.1  2002/01/07 19:49:08  anand
+ *	JTS CR MP 5867
+ *	
+ *
+ * History:
+ *	MM/DD/YY	AUTHOR		DESCRIPTION
+ *
+ *	01/07/02	Anand		creation (Motivation CR 5867).
+ *
+ ***************************************************************************/
+
+#include "VDppl.h"
+#include "VDmem_ppl.h"
+#include "vc_define.h"
+#include "vc_param.h"
+#include "vc_structs.h"
+#include "VCstructs.h"
+#include "vrdbgmacros.h"
+
+extern VCobjInActiveSpace();
+
+main()
+{
+    GRobjid	*CabObjIds;
+    GRspacenum	*CabOsNums;
+    struct GRid	*CabObjs;
+    struct GRmd_env	md_env;
+
+    IGRshort	ShrtPtr;
+    IGRint	i;
+    IGRint	response;
+    IGRint	status;
+    IGRint	NumObjs;
+    IGRlong	msg;
+    IGRdouble	dEstim, dTail;
+
+    GRclassid	class_array[3];
+    extern GRclassid	OPP_VCCable_class_id;
+    extern GRclassid	OPP_VCElCable_class_id;
+    extern GRclassid	OPP_VCFoCable_class_id;
+    OM_S_CLASSLIST	locate_eligible_thing;
+
+    struct VCEXpan	ExRec;
+
+    class_array[0] = OPP_VCElCable_class_id;
+    class_array[1] = OPP_VCFoCable_class_id;
+
+    locate_eligible_thing.w_count	= 2;
+    locate_eligible_thing.w_flags	= OM_CLST_subclass;
+    locate_eligible_thing.p_classes	= class_array;
+
+    UI_message("Set Estimated/Tail lengths on Cables");
+
+    status = VCobjInActiveSpace( &msg, &NumObjs, &CabObjs, class_array, 3 );
+    __DBGpr_int(" Num cables in file", NumObjs );
+    CabObjIds = _CALLOC( NumObjs, GRobjid );
+//    __CheckPtr( CabObjIds, "alloc of CabObjIds failed", wrapup );
+    CabOsNums = _CALLOC( NumObjs, GRspacenum );
+//    __CheckPtr( CabOsNums, "alloc of CabOsNums failed", wrapup );
+
+    ci$locate( prompt	= "Select cable(s)/Move on for all in file",
+	       obj	= CabObjIds,
+	       osnum	= CabOsNums,
+	       response	= &response,
+	       eligible_classes	= &locate_eligible_thing,
+	       owner_action	= LC_RIGID_COMP | LC_RIGID_OWNER |
+				  LC_FLEX_COMP  | LC_NO_REF_OBJECTS,
+	       md_env	= &md_env,
+	       count	= &NumObjs );
+    __DBGpr_int(" Num Objects grabbed by user", NumObjs );
+    __DBGpr_int(" User's response",response);
+
+    if( response != EX_RJT_MOVEON )
+    {
+	ci$get_module_info( md_env = &md_env );
+
+	CabObjs = _REALLOC( CabObjs, NumObjs, struct GRid );
+//	__CheckPtr( CabObjs, "alloc of CabObjs failed", wrapup );
+
+	for( i=0 ; i<NumObjs ; i=i+1 )
+	{
+	    CabObjs[i].objid = CabObjIds[i];
+	    CabObjs[i].osnum = CabOsNums[i];
+	}
+    }
+    _FREE( CabObjIds );
+    _FREE( CabOsNums );
+
+    do
+    {
+	ci$get( value	= dEstim,
+		prompt	= "Enter estimated length (-1 to ignore)",
+		rc	= status );
+    }
+    while( !(status&1) );
+    __DBGpr_dbl(" Estimated length entered", dEstim );
+
+    do
+    {
+	ci$get( value	= dTail,
+		prompt	= "Enter tail length (-1 to ignore)",
+		rc	= status );
+    }
+    while( !(status&1) );
+    __DBGpr_dbl(" Tail length entered", dTail );
+
+    for( i=0 ; i<NumObjs ; i=i+1 )
+    {
+	__DBGpr_obj(" Processing cable", CabObjs[i] );
+	ExRec.type = VCEX_DBL;
+
+	if( dEstim >= 0 )
+	{
+	    ExRec.AT.EXd = dEstim;
+	    status = ci$send( msg = message VCRoot.VCPutExpand( &msg,
+								VC_EXIN_ESTIM,
+								&ShrtPtr,
+								&ExRec ),
+			      targetid = CabObjs[i].objid,
+			      targetos = CabObjs[i].osnum );
+	}
+
+	if( dTail >= 0 )
+	{
+	    ExRec.AT.EXd = dTail;
+	    status = ci$send( msg = message VCRoot.VCPutExpand( &msg,
+								VC_EXIN_TAIL,
+								&ShrtPtr,
+								&ExRec ),
+			      targetid = CabObjs[i].objid,
+			      targetos = CabObjs[i].osnum );
+	}
+    }
+    _FREE( CabObjs );
+//    exit;
+
+//wrapup:
+//    printf("Memory allocation problems! :(\n");
+}

@@ -1,0 +1,119 @@
+/*----------------------------------------------------------------------------*/
+/*			FILE : COz_InvStrEl.u				      */
+/*----------------------------------------------------------------------------*/
+/*
+	This ppl deletes all structural elements which are not valid. Structural
+	element is considered as no valid if it doesn't have any parents and
+	childrens.
+*/
+#include "OMminimum.h"
+#include "cieveryone.h"
+#include "cisend.h"
+#include "cilocate.h"
+#include "nddef.h"
+
+extern void	printf() ;
+
+extern OMuword	OPP_VSfeature_class_id ;
+
+/*----------------------------------------------------------------------------*/
+int isStructuralElement( element )
+
+struct GRid	*element ; {
+
+	long		sts ;
+	OMuword 	classid ;
+
+	sts = om$is_objid_valid( osnum = element->osnum,
+				 objid = element->objid ) ;
+	if( !( sts & 1 ) ) return FALSE ;
+
+	sts = om$get_classid( osnum	= element->osnum,
+			      objid	= element->objid,
+			      p_classid = &classid ) ;
+	if( !( sts & 1 ) ) return FALSE ;
+
+	sts = om$is_ancestry_valid( subclassid	 = classid,
+				    superclassid = OPP_VSfeature_class_id ) ;
+	if( sts == OM_S_SUCCESS ) return TRUE ;
+	else return FALSE ;
+
+} /* isStructuralElement */
+/*----------------------------------------------------------------------------*/
+int shouldBeDeleted( element )
+
+struct GRid	*element ; {
+
+	long	sts ;
+	int	nbRoot,
+		nbChild,
+		deleteIt ;
+
+	deleteIt = FALSE ;
+
+	nbRoot	= 0 ;
+	nbChild = 0 ;
+
+	sts = ci$send( msg	= message NDnode.NDget_objects( ND_ROOT,
+								NULL,
+								0,
+								NULL,
+								0,
+								OM_K_MAXINT,
+								&nbRoot ),
+		       targetid = element->objid,
+		       targetos = element->osnum ) ;
+
+	sts = ci$send( msg	= message NDnode.NDget_objects( ND_CHILDREN,
+								NULL,
+								0,
+								NULL,
+								0,
+								OM_K_MAXINT,
+								&nbChild ),
+		       targetid = element->objid,
+		       targetos = element->osnum ) ;
+
+
+	if( nbRoot == 0 && nbChild == 0 ) deleteIt = TRUE ;
+
+	wrapup :
+		return deleteIt ;
+
+} /* shouldBeDeleted */
+/*----------------------------------------------------------------------------*/
+wakeup() { message( "Delete No Valid Structural Elements" ) ; }
+/*----------------------------------------------------------------------------*/
+main() {
+	long		sts,
+			msg ;
+	struct GRid	elmId ;
+	struct GRmd_env curEnv ;
+	int		i,
+			max ;
+
+	ci$get_module_info( md_env = &curEnv ) ;
+
+	max = OM_GA_OSDs[curEnv.md_id.osnum]->CurSpaceMapSize ;
+
+	for( i=0; i<max; i=i+1 ) {
+
+		elmId.osnum = curEnv.md_id.osnum ;
+		elmId.objid = i ;
+
+		if( !isStructuralElement( &elmId ) ) continue ;
+
+		if( !shouldBeDeleted( &elmId ) ) continue ;
+
+		printf( "Delete : [%d,%d]\n", elmId.osnum, elmId.objid ) ;
+
+		sts = ci$send( msg	= message ASnode.GRdelete( &msg,
+								   &curEnv ),
+			       targetid = elmId.objid,
+			       targetos = elmId.osnum ) ;
+
+		if( !( sts & 1 & msg ) ) printf( "ERROR when deleting it\n" ) ;
+	}
+
+} /* main */
+

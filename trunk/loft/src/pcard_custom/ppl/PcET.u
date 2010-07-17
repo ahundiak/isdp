@@ -1,0 +1,1723 @@
+/***************************************************************************
+ * INGR - PPL
+ *
+ * File:        PcET.u
+ *
+ * Description:	PPL to convert Profile card codes. The program is launched
+ *              from STRUDEL setup and receives a End Treatment 3D macro name
+ *              Then checks the convesrion table (Filename argument),
+ *              retrieves necessary macro parameters, and returns them to
+ *              STRUDEL.
+ *
+ * Dependencies:
+ *
+ * History:
+ *      MM/DD/YY        AUTHOR          DESCRIPTION
+ *      08/27/98        mjablko         creation date
+ *      01/20/00        mjablko         modifications to use PPL ET macro
+ *                                      file uses different conversion table
+ *
+ ***************************************************************************/
+// DEBUG INFO
+//***********
+
+//#define DEBUG
+
+// INCLUDES
+//*********
+#include "stdio.h"
+#include "OMtypes.h"
+#include "ciminimum.h"
+#include "OMerrordef.h"
+#include "OMmacros.h"
+#include "cierrordef.h"
+#include "OMprimitives.h"
+#include "madef.h"
+#include "DIdef.h"
+#include "cimacros.h"
+#include "grmacros.h"
+#include "exmacros.h"
+#include "grgsmacros.h"
+#include "growner.h"
+#include "parametric.h"
+#include "ACrg_collect.h"
+#include "AS_status.h"
+
+#include "vdAPImacros.h"
+#include "vdAPIequips.h"
+#include "vsAPImacros.h"
+#include "vdsmacros.h"
+#include "v_slcdef.h"
+#include "v_pplslc.h"
+//#include "VDobj.h"
+
+#include "vlpcdef.h"
+#include "vldbgmacros.h"
+
+
+//    Constants
+//*******************
+
+#define  PROD_PATH "config/drawing/ProfCard"
+
+#define  MAXLINE 160             // max length of line in conversion table
+#define  COLUMN_COUNT 16         // number of columns in conversion table
+#define  FIELDMAX 10             // length of field in CodeTbl
+#define  TABLEMAX 200            // max length of CodeTbl table
+#define  CODEMAX 8
+#define  NAMEMAX 25
+#define  DIMSIZE  180            // size of dim_names table
+#define  TABLE   "%TABLE"
+#define  ENDTABLE "%END_TABLE"
+#define  CODES   "%CODES"
+#define  ENDCODES "%END_CODES"
+
+#define  MACRO1 "et_output1"
+#define  MACRO2 "et_output2"
+#define  ID_MAC "et_type"
+
+#define  WEB 1
+#define  FLG 2
+
+#define MARGIN 10               // Margin for range chek for stock point.
+
+//    External functions
+//**********************
+
+extern printf(), strchr(), strcpy(), strncpy(), strstr(), strlen();
+extern malloc(), free(), getenv(), strtod();
+extern double fabs();
+extern IGRdouble VLgetFootValue(), BSdistptpt();
+extern EX_get_modid_given_osnum();
+extern COm_get_option_grid(), MAidmx();
+extern VSgetChildrenGoThruPretends();
+extern VSmatchRE(), VLgetPtCoord(), VLgetOperName(), VDobjGetFoot();
+
+
+//#include "PcTools.h"
+#include "PC_ppl.h"
+#include "PC_macros.h"
+#include "mystrings.h"
+#include "PC2d.h"
+
+//     Data variables
+// ******************
+
+struct CodeTable             // Main data structure for conversion
+{
+    char      name[NAMEMAX];       // Original macro name field
+    char      dim[DIMSIZE];         // Names of dimensions to retrieve
+    int       view;                 // What view macro returns under ~~operator0
+    int       type;
+};
+
+struct Code
+{
+    char code[CODEMAX];
+    char name[NAMEMAX];
+};
+
+struct TmplTable
+{
+    char profile1[NAMEMAX];
+    char profile2[NAMEMAX];
+    char code[FIELDMAX];
+};
+
+struct   TmplTable Templates[TABLEMAX];
+struct   CodeTable CodeTbl[TABLEMAX];
+struct   Code      Codes[TABLEMAX];
+IGRint CodeTblCount, CodesCount, TmplCodesCount;
+
+//	File variables
+// *******************
+FILE   *file;
+
+// GLOBAL VARIABLES
+//******************
+
+double     dim[COLUMN_COUNT];              //array of dimensions to return.
+int        Web_type, Flg_type,
+           ViewType, ETtype;          // macro type 1-right angle, 2-sniped
+double     angle0, angle2;                 // flg and web angles
+double     xbase, xweb, topweb, xflg0,
+           xflg1, m1, m2, m3, m4, cope, Aux;
+char       symbol_name[40];
+
+struct GRmd_env mod_env;
+
+
+/*-------------------------------------------------------------------------------------
+ * Function reads conversion table codes and returns number of rows read.
+ *-------------------------------------------------------------------------------------*/
+
+read_template_codes( file, templ_code, type )
+/********************************************/
+FILE    * file;
+IGRchar * templ_code;
+IGRint    type;
+{
+    int index;
+    char line[MAXLINE], block_begin[20], block_end[20];
+
+    SetProc( GetTemplateCodes ); Begin
+
+    sprintf( block_begin, "%%%s", templ_code );
+    sprintf( block_end, "%%END_%s", templ_code );
+
+    __DBGpr_int("Template Codes : type", type );
+    __DBGpr_str("Template Codes : begin", block_begin );
+    __DBGpr_str("Template Codes : end", block_end );
+
+    index = 0;
+
+    do {
+        fgets( line, MAXLINE, file );
+        //__DBGpr_str("Template Codes : line read", line );
+        if feof( file ) {
+            __DBGpr_com("TemplateCodes : EOF" );
+            return( index );
+        }
+    }
+    while( !strstr( line, block_begin ));
+
+    // Until End of section
+    while( !strstr( fgets( line, MAXLINE, file ), block_end ) ) {
+        if( !strcmp( line, TABLE )) {
+            //__DBGpr_com("TemplateCodes : Found TABLE");
+            return( index );
+        }
+
+        // Skip comment or empty line
+        if( line[0] == '#' || line[0] == '\n' )
+            continue;
+
+        // Skip empty line
+        if( !strcmp( line, "" ) )
+            continue;
+
+        if( type == TEMPLATE1 ) {
+            sscanf( line, "%s %s", Templates[index].profile1,
+                                   Templates[index].code );
+            //__DBGpr_str("TemplateCodes : Read profile", Templates[index].profile1 );
+            //__DBGpr_str("TemplateCodes : Read code", Templates[index].code );
+        }
+        else {
+            sscanf( line, "%s %s %s", Templates[index].profile1,
+                                      Templates[index].profile2,
+                                      Templates[index].code );
+            //__DBGpr_str("TemplateCodes : Read profile1", Templates[index].profile1 );
+            //__DBGpr_str("TemplateCodes : Read profile2", Templates[index].profile2 );
+            //__DBGpr_str("TemplateCodes : Read code", Templates[index].code );
+        }
+        strcpy( line, "" );
+        index = index + 1;
+    }
+    End
+    return( index );
+}
+
+
+/*-------------------------------------------------------------------------------------
+ * Function reads conversion table codes and returns number of rows read.
+ *-------------------------------------------------------------------------------------*/
+
+read_codes( file )
+/**************************/
+FILE *file;
+{
+    int index;
+    char line[MAXLINE];
+
+    index = 0;
+    do {
+        fgets( line, MAXLINE, file );
+        if feof( file ) return( index );
+    }
+    while( !strstr( line, CODES ));
+
+    // Until End of section
+    while( !strstr( fgets( line, MAXLINE, file ), ENDCODES ) ) {
+        if( !strcmp( line, TABLE ))
+            return( index );
+
+        // Skip comment or empty line
+        if( line[0] == '#' || line[0] == '\n' )
+            continue;
+
+        // Skip empty line
+        if( !strcmp( line, "" ) )
+            continue;
+
+        sscanf( line, "%s %s", Codes[index].code, Codes[index].name );
+        strcpy( line, "" );
+        index = index + 1;
+    }
+    return( index );
+}
+
+/*-------------------------------------------------------------------------------------
+ * Function reads conversion table from external file and returns number of rows read.
+ *-------------------------------------------------------------------------------------*/
+
+read_table( file )
+/********************/
+  FILE *file;
+{
+    int   index;
+    char  line[MAXLINE];
+
+    do
+        fgets( line, MAXLINE, file );
+    while( !strstr( line, TABLE ) );
+
+    index = 0;
+    while ( !strstr( fgets( line, MAXLINE, file ), ENDTABLE ))
+    {
+        // Skip comment or empty line
+        if( line[0] == '#' || line[0] == '\n' || line[0] == ' ')
+            continue;
+
+        // Skip empty line
+        if( !strcmp( line, "" ) ) continue;
+
+        sscanf( line, "%s %d %d %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s",
+                CodeTbl[index].name,
+                &CodeTbl[index].view,
+                &CodeTbl[index].type,
+                &CodeTbl[index].dim[0],
+                &CodeTbl[index].dim[10],
+                &CodeTbl[index].dim[20],
+                &CodeTbl[index].dim[30],
+                &CodeTbl[index].dim[40],
+                &CodeTbl[index].dim[50],
+                &CodeTbl[index].dim[60],
+                &CodeTbl[index].dim[70],
+                &CodeTbl[index].dim[80],
+                &CodeTbl[index].dim[90],
+                &CodeTbl[index].dim[100],
+                &CodeTbl[index].dim[110],
+                &CodeTbl[index].dim[120],
+                &CodeTbl[index].dim[130],
+                &CodeTbl[index].dim[140] );
+        strcpy( line, "" );
+        index = index + 1;
+    }
+    return( index );
+}
+
+/*-------------------------------------------------------------------------------------
+ * Function prints conversion table with n rows. For testing only - not used in final code
+ *-------------------------------------------------------------------------------------*/
+
+void print_CodeTbl( number )
+/**********************/
+int number;
+{
+  int i;
+
+  for( i = 0; i < number; i = i + 1 )
+  {
+    printf("Codes: <%-s> <%d> <%d> <%-s> <%-s> <%-s> <%-s> <%-s> <%-s> <%-s> <%-s> <%-s> <%-s> <%-s> <%-s> <%-s> <%-s> <%-s>\n",
+           CodeTbl[i].name,
+           CodeTbl[i].view,
+           CodeTbl[i].type,
+           &CodeTbl[i].dim[0],
+           &CodeTbl[i].dim[10],
+           &CodeTbl[i].dim[20],
+           &CodeTbl[i].dim[30],
+           &CodeTbl[i].dim[40],
+           &CodeTbl[i].dim[50],
+           &CodeTbl[i].dim[60],
+           &CodeTbl[i].dim[70],
+           &CodeTbl[i].dim[80],
+           &CodeTbl[i].dim[90],
+           &CodeTbl[i].dim[100],
+           &CodeTbl[i].dim[110],
+           &CodeTbl[i].dim[120],
+           &CodeTbl[i].dim[130],
+           &CodeTbl[i].dim[140] );
+  };
+}
+
+
+
+/*-------------------------------------------------------------------------------------
+ * Function retrieves a ci_macro name and an expression name from string full_name
+ *-------------------------------------------------------------------------------------*/
+
+split_expr_name( full_name, mac_name, expr_name, separator )
+/**********************************************************/
+char *full_name;
+char *mac_name;
+char *expr_name;
+char  separator;
+{
+    char *ptr;
+    int    len;
+
+
+    // Reset string variables
+    //***********************
+    strset( mac_name, '\0' );
+    strset( expr_name, '\0' );
+
+    // Copy string before a separator
+    //*******************************
+    ptr = (char *) strchr( full_name, separator );
+
+    if ( ptr == NULL )
+        return( 1 );
+
+    strncpy( mac_name, full_name, ptr - full_name );
+
+    // Copy the rest - skip separator
+    //*******************************
+    ptr = ptr + 1;
+    strcpy( expr_name, ptr );
+
+    return( 0 );
+}
+
+/*-------------------------------------------------------------------------------------
+ * Function
+ *-------------------------------------------------------------------------------------*/
+
+double translate_code( str_code )
+/*******************************/
+  char * str_code;
+{
+    double  code;
+
+    SetProc( TranslateCode ); Begin
+    __DBGpr_str("Translate Code: received", str_code );
+
+    // Check if the code is a number
+    //******************************
+    code = atof( str_code );
+
+    __DBGpr_dbl("Translate Code: translated", code );
+
+    // If it returns 0 (not valid or just 0) check if it is a zero
+    //************************************************************
+    if( code == 0.0 ) {
+
+        //__DBGpr_com("Translate Code: GOT ZERO");
+
+        // If it is zero return original code
+        //************************************
+        if( !strcmp( str_code, "0") || !strcmp( str_code, "-0") )
+            return( code );
+        else
+            // Return 0.01 - will be interpreted outside
+            //******************************************
+            if( str_code[0] == '-' )
+            	return( -0.01);
+            else
+            	return( 0.01 );
+    }
+    // Return original code
+    //*********************
+    else
+        return( code );
+    End
+}
+
+/*-------------------------------------------------------------------------------------
+ * Function
+ *-------------------------------------------------------------------------------------*/
+
+get_code_string( str, code )
+/**************************/
+char *str;
+char *code;
+{
+
+    int i;
+    char tmp[40], *p;
+
+    //SetProc( GetCodeString ); Begin
+    //__DBGpr_str("get_code_string: received", code );
+
+    if( code ==NULL || code == "" )
+        return(1);
+
+    strcpy( tmp, code );
+
+    if( tmp[0] == '-' )
+        p = &tmp[1];
+    else
+        p = &tmp[0];
+
+    // Find a name in code table
+    //***************************
+    for( i = 0; i < CodesCount; i = i + 1 )
+    {
+        if( !strcmp( Codes[i].code, p )) // If found..
+        {
+            strcpy( str, Codes[i].name );
+            return( 0 );
+        }
+    }
+    //__DBGpr_str("get_code_string: String not found", p );
+    return( 1 );
+    //End
+}
+
+
+/*-------------------------------------------------------------------------------------
+ * Function 
+ *-------------------------------------------------------------------------------------*/
+
+find_template( type, str1, str2, code )
+/*************************************/
+int    type;
+char * str1, * str2;
+char * code;
+{
+
+    int i;
+    int res1, res2;
+
+    SetProc( FindTemplate ); Begin
+    __DBGpr_int("find_template:Got type", type);
+    __DBGpr_str("find_template:Got str1", str1);
+    __DBGpr_str("find_template:Got str2", str2);
+    __DBGpr_int("find_template:TmplCodesCount", TmplCodesCount);
+   
+    if( type == TEMPLATE1 ) {
+        // Find a name in code table
+        //***************************
+        for( i = 0; i < TmplCodesCount; i = i + 1 )
+        {
+            __DBGpr_int("find_template:Looking at row", i);
+            __DBGpr_str("find_template:str1", str1);
+            __DBGpr_str("find_template:profile", Templates[i].profile1);
+
+            if( !strcmp( Templates[i].profile1, str1 )) { // If found..
+                strcpy( code, Templates[i].code );
+                return( 0 );
+            }
+        }
+        strcpy( code, Templates[0].code );
+        printf( "FindTemplate: String %s not found. Returning default %s.\n", str1, code );
+        return( 1 );
+    }
+    else {
+        // Find a name in code table
+        //***************************
+        for( i = 0; i < TmplCodesCount; i = i + 1 ) {
+            //printf("Looking at row %d : comparing <%s>:%d with <%s>:%d\n", i, 
+            //				Templates[i].profile1, strlen(Templates[i].profile1),
+            //				str1, strlen(str1) );
+            //printf("And <%s>:%d with <%s>:%d\n", Templates[i].profile2, strlen(Templates[i].profile2),
+            //				str2, strlen(str2) );
+            //res1 = strcmp( Templates[i].profile1, str1);
+            //res2 = strcmp( Templates[i].profile2, str2);
+            
+            //printf("Strings1 are %d \n", res1 );
+            //printf("Strings2 are %d \n", res2 );
+            
+            if( strcmp( Templates[i].profile1, str1) == 32 &&
+                strcmp( Templates[i].profile2, str2 ) == 32 )  { // If found..
+                	strcpy( code, Templates[i].code );
+                	return( 0 );
+            }
+        }
+        strcpy( code, Templates[0].code );
+        printf( "FindTemplate: Strings %s - %s not found. Returning default %s.\n", str1, str2, code );
+        return( 1 );
+    }
+    End
+}
+
+
+/*-------------------------------------------------------------------------------------
+ * Function retrieves dimensions from macro
+ *-------------------------------------------------------------------------------------*/
+
+get_dimensions( obj, index )
+/*************************/
+struct GRobj_env    *obj;
+IGRshort             index;
+{
+    struct GRid param_macro;
+    IGRchar 	code_name[NAMEMAX], expr_name[NAMEMAX], mac_name[NAMEMAX], 
+                txt[20], cope_name[20];
+    IGRshort 	i, templ_number, sts, StfIndex;
+    IGRdouble 	code_value, factor;
+    struct ret_struct attr;
+
+    SetProc( GetDimensions ); Begin
+    // Get basic dimensions: angle0 and angle2
+    //******************************************
+
+    __DBGpr_obj("get_dimensions:Sending ET", obj->obj_id );
+
+    get_macro_foot( MACRO1, &param_macro, obj->obj_id );
+
+    __DBGpr_obj("get_dimensions:Param macro", param_macro );
+
+    angle0 = VLgetFootValue( &param_macro, "angle0" );
+    angle2 = VLgetFootValue( &param_macro, "angle2" );
+
+    __DBGpr_dbl("get_dimensions:Angle0", angle0 );
+    __DBGpr_dbl("get_dimensions:Angle2", angle2 );
+
+    /* Check for the end treatments that use templates (code 8,9) */
+    code_value = translate_code( &CodeTbl[index].dim[0] );
+
+    // Browse the conversion table for necessary dimensions
+    // and perform relevant action
+    //*****************************************************
+    for( i = 0; i < COLUMN_COUNT-1; i = i + 1 )
+    {
+
+        __DBGpr_str("get_dimensions:Initial code", &CodeTbl[index].dim[FIELDMAX*i] );
+
+        code_value = translate_code( &CodeTbl[index].dim[FIELDMAX*i] );
+
+        __DBGpr_dbl("get_dimensions:Translated code", code_value );
+
+        if( code_value == 0.01 || code_value == -0.01) {
+        
+            //printf("Sending %s[%d]\n", &CodeTbl[index].dim[FIELDMAX*i], i );
+            get_code_string( code_name, &CodeTbl[index].dim[FIELDMAX*i] );
+            split_expr_name( code_name, mac_name, expr_name, ':' );
+
+#ifdef DEBUG
+            //printf("Split to %s AND  %s\n", mac_name, expr_name );
+#endif
+            if( !strcmp( mac_name, "root" ) ) { // from template of macro
+
+                //__DBGpr_int("get_dimensions:dim index", i );
+                //__DBGpr_str("get_dimensions:expr name", expr_name );
+                //__DBGpr_str("get_dimensions:mac name", mac_name );
+
+                get_temp_struct( &attr, expr_name, obj->mod_env, obj->obj_id );
+                if( code_value == 0.01 )
+                	dim[i] = attr.var.root_pm_st.value;
+                else
+                	dim[i] = attr.var.root_pm_st.value * -1;
+                printf("Returned: %f\n", dim[i] );
+            }
+            else { // from ci foot macro
+                //__DBGpr_int("get_dimensions:dim index", i );
+                //__DBGpr_str("get_dimensions:expr name", expr_name );
+                //__DBGpr_str("get_dimensions:mac name", mac_name );
+
+                /* First try et_output1 */
+                sts = get_macro_foot( mac_name, &param_macro, obj->obj_id);
+                /* if not found try et_output1~1 */
+                if( sts ) {
+                    sprintf( txt, "%s~%d", mac_name, StfIndex+1 );
+                    sts = get_macro_foot( txt, &param_macro, obj->obj_id);
+                    /* if still not found try et_output1b1 */
+                    if( sts ) {
+                        sprintf( txt, "%sb%d", mac_name, StfIndex+1 );
+                        sts = get_macro_foot( txt, &param_macro, obj->obj_id);
+                        if( sts ) {
+                            printf("PcET : GetDimensions : Macro %s not found\n", mac_name );
+                        }
+                    }
+                }
+                if( code_value == 0.01 )
+                	factor = 1;
+                else
+                	factor = -1;
+                if( i > 0 )
+                  dim[i] = floor( VLgetFootValue( &param_macro, expr_name ) + 0.5 ) * factor;
+                else
+                  dim[i] = VLgetFootValue( &param_macro, expr_name ) * factor;
+
+                //printf("Returned: %f\n", dim[i] );
+                // Set all 1.51198984e-9 to 0
+                // if( dim[i] < 0.01 ) dim[i] = (double) (0.0;
+            }
+        }
+        else
+            dim[i] = code_value;
+    }
+    if( ETtype == 2 || ETtype == 3) {
+        get_macro_foot( MACRO2, &param_macro, obj->obj_id );
+
+        //__DBGpr_obj("get_dimensions:Got param_macro", param_macro );
+        //__DBGpr_obj("get_dimensions:Got from object", obj->obj_id );
+
+        strcpy( cope_name, "cope_depth" );
+        Aux = VLgetFootValue( &param_macro, cope_name );
+
+        //__DBGpr_dbl("get_dimensions:Cope_depth", Aux);
+    }
+    End
+    return;
+}
+
+get_attr_str( str, attr_name, env, object )
+/*****************************************/
+char              * attr_name;
+struct GRmd_env     env;
+struct GRid         object;
+char              * str;
+{
+    IGRlong           stat, msg, index;
+    struct ret_struct attr;
+    char 	      temp_str[40];	
+
+    index = -1;
+    stat = ci$send ( msg = message NDmacro.ACgive_structure( &msg,
+                                                             &index,
+                                                             attr_name,
+                                                             &attr,
+                                                             &env),
+                     targetid = object.objid,
+                     targetos = object.osnum );
+    as$status( sts = stat );
+    if( !( stat & 1 ) ) {
+        printf( "GET_ATTR: %s failed (%d[%d])\n", attr_name, object.objid, object.osnum );
+        return(1);
+    }
+    strcpy( temp_str, attr.var.text_st.text_string );
+    rm_blanks( temp_str, str );
+    return(0);
+}
+
+get_macro_beams( macro, type, profile1, profile2 )
+/************************************************/
+struct GRobj_env   macro;
+int                type;
+char             * profile1, * profile2;
+{
+
+    struct GRobj_env stf1, stf2;
+    IGRlong          msg, stat;
+
+    SetProc( GetMacroBeams ); Begin
+    stat = ci$send( msg = message ACcpx.ACfind_exp_temp_obj( &msg,
+                                                             0,
+                                                             &stf1.obj_id ),
+                    targetid = macro.obj_id.objid,
+                    targetos = macro.obj_id.osnum );
+    as$status( sts = stat );
+    if( !( stat & 1 ) ) {
+        printf("GET_SRC failed (%d[%d])\n", macro.obj_id.objid,
+                                            macro.obj_id.osnum);
+        return( 1 );
+    }
+    msg = get_attr_str( profile1, VS_K_prPrtNumAttr, stf1.mod_env, stf1.obj_id );
+    if( msg ) {
+        printf("GET_ATTR failed (%d[%d])\n", stf1.obj_id.objid,
+                                            stf1.obj_id.osnum);
+        return( 1 );
+    }
+    __DBGpr_str("get_macro_beams:Got profile1", profile1 );
+
+    if( type == TEMPLATE2 ) {
+        stat = ci$send( msg = message ACcpx.ACfind_exp_temp_obj( &msg,
+                                                                 1,
+                                                                 &stf2.obj_id ),
+                        targetid = macro.obj_id.objid,
+                        targetos = macro.obj_id.osnum );
+        as$status( sts = stat );
+        if( !( stat & 1 ) ) {
+            printf("GET_SRC failed (%d[%d])\n", macro.obj_id.objid,
+                                                macro.obj_id.osnum);
+            return( 1 );
+        }
+        msg = get_attr_str( profile2, VS_K_prPrtNumAttr, stf2.mod_env, stf2.obj_id );
+        if( msg ) {
+            printf("GET_ATTR failed (%d[%d])\n", stf2.obj_id.objid,
+                                            stf2.obj_id.osnum);
+            return( 1 );
+        }
+ 
+        __DBGpr_str("get_macro_beams:Got profile2", profile2 );
+    }
+    else
+        profile2 = NULL;
+
+    End
+    return( 0 );
+}
+
+
+/*-------------------------------------------------------------------------------------
+ * Function retrieves a corresponding template code from the conversion table 
+ *-------------------------------------------------------------------------------------*/
+
+get_templates( obj, file, id, type )
+/************************************/
+struct GRobj_env   obj;
+FILE             * file;
+char             * id;
+int                type;
+{
+    char code[40], profile1[30], profile2[30];
+    int msg;
+
+    TmplCodesCount = read_template_codes( file, id, type );
+    msg = get_macro_beams( obj, type, profile1, profile2 );
+    //printf("Profiles: %s, %s\n", profile1, profile2 );
+    if(msg) {
+    	printf("Failed to retrieve beams from macro [%d, %d]\n", obj.obj_id.objid, obj.obj_id.osnum );
+    	return(1);
+    }
+    find_template( type, profile1, profile2, code );
+    strcpy( symbol_name, code );
+}
+
+/*-------------------------------------------------------------------------------------
+ * Function retrieves a corresponding code from the conversion table
+ *
+ *
+ * THIS IS THE CENTRAL FUNCTION OF THE PROGRAM
+ *
+ *
+ *-------------------------------------------------------------------------------------*/
+
+return_code( Obj, SearchPath, Filename, Name, id )
+/********************************************/
+struct GRobj_env *Obj;
+char             *SearchPath;
+char             *Filename;
+char             *Name;
+char             *id;
+{
+    char filestat[80], path[80];
+    IGRshort  i, type;
+    FILE *file;
+    int  msg;
+
+
+    SetProc( ReturnCode ); Begin
+    __DBGpr_str("return_code:Looking for name", Name );
+    __DBGpr_str("return_code:Looking in file", Filename );
+    __DBGpr_str("return_code:Looking in path", SearchPath );
+
+    // Find and open a conversion table file
+    //***************************************
+    file = open_vdsfile( SearchPath, PROD_PATH, Filename );
+
+    if( file == NULL ) {
+        printf("ReturnCode: File open failed: %s.\n", Filename );
+        fclose( file );
+        return(1);
+    }
+
+    // Read conversion table
+    //**********************
+    CodesCount = read_codes ( file );
+    CodeTblCount = read_table( file );
+    //print_CodeTbl( CodeTblCount );
+
+    __DBGpr_int("return_code:Rows read", CodeTblCount );
+    __DBGpr_int("return_code:Codes read", CodesCount );
+
+    // Look for macro name
+    //*********************
+    for( i = 0; i < CodeTblCount; i = i + 1 )
+    {
+        //__DBGpr_int("return_code:Index", i );
+        //__DBGpr_str("return_code:comparing", CodeTbl[i].name );
+        //__DBGpr_str("return_code:with", Name );
+
+        if( !strcmp( CodeTbl[i].name, Name )) // If found...
+        {
+            ViewType = CodeTbl[i].view;
+            ETtype   = CodeTbl[i].type;
+            
+            // Debug info
+            //*******************
+	/*
+	printf("Codes: <%-s> <%d> <%d> <%-s> <%-s> <%-s> <%-s> <%-s> <%-s> <%-s> <%-s> <%-s> <%-s> <%-s> <%-s> <%-s> <%-s> <%-s>\n",
+           CodeTbl[i].name,
+           CodeTbl[i].view,
+           CodeTbl[i].type,
+           &CodeTbl[i].dim[0],
+           &CodeTbl[i].dim[10],
+           &CodeTbl[i].dim[20],
+           &CodeTbl[i].dim[30],
+           &CodeTbl[i].dim[40],
+           &CodeTbl[i].dim[50],
+           &CodeTbl[i].dim[60],
+           &CodeTbl[i].dim[70],
+           &CodeTbl[i].dim[80],
+           &CodeTbl[i].dim[90],
+           &CodeTbl[i].dim[100],
+           &CodeTbl[i].dim[110],
+           &CodeTbl[i].dim[120],
+           &CodeTbl[i].dim[130],
+           &CodeTbl[i].dim[140] );
+         */
+            if( ETtype == 8 || ETtype == 9 )    // If it should be a template...
+                msg = get_templates( *Obj, file, id, ETtype );    // ...retrieve template data...
+                if(msg) {
+                	printf("Failed to find template for [%d, %d]\n", 
+                			Obj->obj_id.objid, Obj->obj_id.osnum );
+	    		fclose( file );
+                	return(1);
+		}
+	    fclose( file );
+            get_dimensions( Obj, i );             // ..retrieve necessary dimensions
+            if( ETtype != 8 && ETtype != 9 ) 
+            	strcpy( symbol_name, CodeTbl[i].name );
+
+            for( i = 0; i < COLUMN_COUNT; i = i + 1 ) {
+                //__DBGpr_int("return_code:Index", i );
+                //__DBGpr_dbl("return_code:Dim", dim[i] );
+            }
+            return( 0 );
+        }
+    }
+
+    printf( "ReturnCode: String %s not found in file %s\n", Name, Filename );
+    ViewType = CodeTbl[0].view;
+    ETtype   = CodeTbl[0].type;
+    get_dimensions( Obj, 0 );             // ..retrieve necessary dimensions
+    strcpy( symbol_name, Name );
+    End
+    return( 1 );
+}
+
+
+/* ============================================================================ */
+
+get_stf_index( macro, stf, index )
+struct GRobj_env  macro, stf;
+int              *index;
+{
+    struct stemp      *temp_desc;
+    struct myfeet     *feet_desc;
+    struct ret_struct  rst;
+    struct GRid        temp;
+    char              *macro_name;
+    int                temp_num, feet_num, i;
+
+    get_macro_params( &macro_name, &temp_desc, &feet_desc, &temp_num, &feet_num, macro.obj_id );
+    for( i=0; i<temp_num; i=i+1)
+    {
+        get_template_idx( &temp, macro.obj_id, i );
+        if( temp.objid == stf.obj_id.objid )
+        {
+            index = i;
+            return( 0 );
+        }
+    }
+    return(1);
+}
+
+/* ============================================================================ */
+
+get_et_stock( EtObj, StfObj, stock )
+struct GRobj_env  EtObj, StfObj;
+double           *stock;
+{
+    struct GRid stiff, stock_macro, macro, *macro_list;
+    int macro_num, status, size, index, msg;
+    char classname[40], *macro_name;
+
+
+    macro_list = NULL;
+
+    /* Find all dependent objects */
+    status = VSgetChildrenGoThruPretends( &msg, &StfObj.obj_id, &macro_num, &macro_list );
+
+#ifdef DEBUG
+    printf("Looking for stock on stf %d[%d] at ET %d[%d]\n", StfObj.obj_id.objid,
+           StfObj.obj_id.osnum, EtObj.obj_id.objid, EtObj.obj_id.osnum );
+    printf("Located %d dependent objects\n", macro_num );
+#endif
+
+    /* Look for ACconst of name PPstock */
+    for(index=0; index<macro_num; index=index+1) {
+
+        status = om$get_classname(osnum = macro_list[index].osnum,
+                                  objid = macro_list[index].objid,
+                                  classname = classname );
+#ifdef DEBUG
+        printf("Object %d of class %s\n", index, classname );
+#endif
+
+        if( !strcmp( classname, "ACconst") ) {
+            macro.osnum = macro_list[index].osnum;
+            macro.objid = macro_list[index].objid;
+            get_macro_name( &macro_name, &stock_macro, macro );
+#ifdef DEBUG
+            printf("\tMacro : %s\n", macro_name );
+#endif
+            if( !strcmp( macro_name, "PPstock") ) {
+#ifdef DEBUG
+                printf("\t\tFound macro PPstock\n");
+#endif
+                if( is_et_stock_position( macro, EtObj ) ) {
+                    get_stock_value( macro, stock );
+#ifdef DEBUG
+                    printf("Got stock value %f\n", *stock );
+#endif
+                }
+            }
+        }
+    }
+    free( macro_list );
+    free( macro_name );
+}
+
+/* ============================================================================ */
+
+get_stf_stock( StfObj, stock )
+struct GRobj_env  StfObj;
+double           *stock;
+{
+    struct GRid stiff, stock_macro, macro, *macro_list;
+    int macro_num, status, size, index, msg;
+    char classname[40], *macro_name;
+    double stock_tmp;
+
+
+    macro_list = NULL;
+    stock_tmp = 0.0;
+
+    /* Find all dependent objects */
+    status = VSgetChildrenGoThruPretends( &msg, &StfObj.obj_id, &macro_num, &macro_list );
+
+#ifdef DEBUG
+    printf("Located %d dependent objects\n", macro_num );
+#endif
+
+    /* Look for ACconst of name PPstock */
+    for(index=0; index<macro_num; index=index+1)
+    {
+        status = om$get_classname(osnum = macro_list[index].osnum,
+                                  objid = macro_list[index].objid,
+                                  classname = classname );
+        //        printf("Object %d of class %s\n", index, classname );
+        if( !strcmp( classname, "ACconst") )
+        {
+            macro.osnum = macro_list[index].osnum;
+            macro.objid = macro_list[index].objid;
+            get_macro_name( &macro_name, &stock_macro, macro );
+#ifdef DEBUG
+            printf("\tMacro : %s\n", macro_name );
+#endif
+            if( !strcmp( macro_name, "PPstock") )
+            {
+#ifdef DEBUG
+                printf("\t\tFound macro PPstock\n");
+#endif
+                get_stock_value( macro, &stock_tmp );
+                *stock = *stock + stock_tmp;
+#ifdef DEBUG
+                printf("Got stock value %f - Total = %f\n", stock_tmp, *stock );
+#endif
+            }
+        }
+    }
+    free( macro_list );
+    free( macro_name );
+}
+
+/* ============================================================================ */
+
+get_macro_range( macro, foot_name, range )
+struct GRid    macro;
+char        * foot_name;
+double      * range;
+{
+    IGRlong	  stat, msg;
+    struct GRid   as_obj;
+    short	  matrix_type ;
+    IGRboolean    world;
+    IGRmatrix	  matrix;
+
+    SetProc( GetMacroRange ); Begin
+
+    /* return graphic foot */
+    vd_$return_foot( msg = &msg, name = foot_name, objId = &macro,
+                     footId = &as_obj );
+    if (!(msg&1)) {
+        printf ( "GetMacroRange: graphic_object template is not found \n");
+        return(1);
+    }
+    
+    __DBGpr_obj("Graphic foot", as_obj);
+    
+    /*--- and get its range ---*/
+    world = TRUE;
+    stat = ci$send( msg = message GRgraphics.GRgetrang( &msg, &matrix_type,
+                                                        matrix, &world, range),
+                    targetid = as_obj.objid,
+                    targetos = as_obj.osnum );
+    if (!(stat&1)) {
+        printf ( "GetMacroRange: cannot getrange of obj: %d[%d] \n",
+                  as_obj.objid, as_obj.osnum);
+        return(1);
+    }
+    __DBGpr_vec("Found Range", &range[0]);
+    __DBGpr_vec("Found Range", &range[3]);
+        
+    return( 0 );
+    
+    End
+}
+
+/* ============================================================================ */
+
+find_macro_operator_name( macro, operator_name )
+struct GRobj_env macro;
+char * operator_name;
+{
+
+    struct GRobj_env      macDefn, parentObj;
+    struct GRobj_env      pmBox;
+    struct GRid           attrBox, foot;
+    IGRlong               msg, sts, index, attrCount, foot_exists;
+    IGRchar               *macName, parentName[40], classname[40], foot_name[20];
+    struct ret_struct     rst;
+    struct ACrg_coll      list[20];
+
+
+    SetProc( FindMacroOperatorName ); Begin
+
+    get_macro_name( &macName, &macDefn.obj_id, macro.obj_id );
+    __DBGpr_obj("Macro object", macro.obj_id );
+    __DBGpr_obj("Macro definition", macDefn.obj_id );
+    __DBGpr_str("Macro name", macName );
+
+    /* Find macro options box */
+    /* ====================== */
+    sts = COm_get_option_grid( &macDefn.obj_id, &pmBox.obj_id, NULL );
+
+    if( !( sts & 1 ) || IF_NULL_OBJID( pmBox.obj_id.objid ) ) {
+        printf("FindMacroOperatorName: parameters box not found.\n");
+        strcpy( operator_name, "\0" );
+        return(1);
+    }
+    else {
+        __DBGpr_obj("Found box", pmBox.obj_id );
+
+        /* Find ~~cmd option */
+        /* ================= */
+        MAidmx( &msg, pmBox.mod_env.md_env.matrix ) ;
+        pmBox.mod_env.md_env.matrix_type = MAIDMX;
+        pmBox.mod_env.md_id.osnum = pmBox.obj_id.osnum ;
+        ex$get_modid( mod_osnum = pmBox.mod_env.md_id.osnum,
+                      mod_id = &pmBox.mod_env.md_id.objid ) ;
+
+        /* Check ~~operator */
+        strcpy( foot_name, "~~operator" );
+        sts = ci$send(  msg = message NDmacro.ACgive_foot( &foot_exists, foot_name, &foot ),
+                        targetid= pmBox.obj_id.objid,
+                        targetos= pmBox.obj_id.osnum ) ;
+
+        //printf("Check foot %s returned %d - %d[%d]\n", foot_name, foot_exists, foot.objid, foot.osnum );
+
+        if( !foot_exists )
+        {
+            /* Check ~~operator0 */
+            strcpy( foot_name, "~~operator0" );
+            sts = ci$send(  msg = message NDmacro.ACgive_foot( &foot_exists, foot_name, &foot ),
+                            targetid= pmBox.obj_id.objid,
+                            targetos= pmBox.obj_id.osnum ) ;
+            //printf("Check foot %s returned %d - %d[%d]\n", foot_name, foot_exists, foot.objid, foot.osnum );
+        }
+
+        if( !foot_exists )
+        {
+            /* Check ~~operator0~0 */
+            strcpy( foot_name, "~~operator0~0" );
+            sts = ci$send(  msg = message NDmacro.ACgive_foot( &foot_exists, foot_name, &foot ),
+                            targetid= pmBox.obj_id.objid,
+                            targetos= pmBox.obj_id.osnum ) ;
+            //printf("Check foot %s returned %d - %d[%d]\n", foot_name, foot_exists, foot.objid, foot.osnum );
+        }
+
+        if( !foot_exists )
+        {
+            /* Check ~~operator0~1 */
+            strcpy( foot_name, "~~operator0~1" );
+            sts = ci$send(  msg = message NDmacro.ACgive_foot( &foot_exists, foot_name, &foot ),
+                            targetid= pmBox.obj_id.objid,
+                            targetos= pmBox.obj_id.osnum ) ;
+            //printf("Check foot %s returned %d - %d[%d]\n", foot_name, foot_exists, foot.objid, foot.osnum );
+        }
+
+        __DBGpr_str("FindMacroOperatorName: Found foot", foot_name );
+
+        sts = ci$send(  msg = message NDmacro.ACgive_structure( &msg, &index,
+                                                                foot_name, &rst, &pmBox.mod_env ),
+                        targetid= pmBox.obj_id.objid,
+                        targetos= pmBox.obj_id.osnum ) ;
+
+        if( !( sts & 1 & msg ) || rst.type != text_type ) {
+            printf("Get Stock: %s not found\n", foot_name );
+        }
+        __DBGpr_str("FindMacroOperatorName: Found value", rst.var.text_st.text_string );
+
+        strcpy( operator_name, rst.var.text_st.text_string );
+    }
+    End
+}
+
+
+/* ============================================================================ */
+
+int is_et_stock_position( stock_macro, et_macro )
+struct GRid       stock_macro;
+struct GRobj_env  et_macro;
+{
+    struct GRid   et_graphics, stock_point, stock_graphics;
+    IGRdouble     stock_range[6], et_range[6];
+    IGRint i;
+    IGRchar et_foot_name[20];
+
+
+    /* Find graphic object of stock macro */
+    get_macro_range( stock_macro, "endpoint", stock_range );
+
+    for( i=0; i<6; i=i+1 )
+        printf("\tpt[%d] = %f\n", i, stock_range[i] );
+
+    /* Find graphic object of et macro */
+    find_macro_operator_name( et_macro, et_foot_name );
+    get_macro_range( et_macro.obj_id, et_foot_name, et_range );
+
+
+
+
+
+    /* Check if point is within et range */
+    if(    stock_range[0] >= (et_range[0]-MARGIN) && stock_range[0] <= (et_range[3]+MARGIN)
+        && stock_range[1] >= (et_range[1]-MARGIN) && stock_range[1] <= (et_range[4]+MARGIN)
+        && stock_range[2] >= (et_range[2]-MARGIN) && stock_range[2] <= (et_range[5]+MARGIN) ) {
+
+        return(1);
+    }
+    else {
+        return(0);
+    }
+}
+
+/* ============================================================================ */
+
+get_mod_env( obj )
+struct GRobj_env *obj;
+{
+
+        obj->mod_env.md_id.osnum = obj->obj_id.osnum ;
+        ex$get_modid( mod_osnum = obj->mod_env.md_id.osnum,
+                      mod_id    = &obj->mod_env.md_id.objid ) ;
+}
+
+/* ============================================================================ */
+
+get_stock_value( macro, value )
+struct GRid  macro;
+double      *value;
+{
+    struct GRobj_env        MacObj, foot;
+    struct ret_struct       attr;
+
+    SetProc( GetStockValue ); Begin
+    __DBGpr_obj("Looking for stock in", macro );
+
+    MacObj.obj_id = macro;
+    get_mod_env( &MacObj );
+    get_foot_struct( &attr, "stock", MacObj.mod_env, MacObj.obj_id );
+    *value = attr.var.root_pm_st.value;
+
+    __DBGpr_dbl("Stock value", *value );
+
+    End
+    return;
+}
+
+/* ============================================================================ */
+
+StfStock()
+{
+    IGRshort            i, j, msg;
+    IGRint              size, StfIndex;
+    IGRdouble           value, stock;
+    IGRchar             Filename[40], Name[40], expr_name[40], id[40];
+    struct GRobj_env    exp_obj, ETobj, StfObj;
+
+
+    stock = 0.0;
+
+    // Retrieve data block from STRUDEL
+    //**********************************
+
+    vd$ppl_get_size( which_info = INPUT_INFO,
+                     size       = &size );
+    vd$ppl_getarg_at_index( which_info = INPUT_INFO,
+                            index      = 0,
+                            value      = &StfObj   );
+
+    get_stf_stock( StfObj, &stock );
+
+    // Send data block back to STRUDEL
+    //**********************************
+    vd$ppl_set_size( which_info = OUTPUT_INFO,
+                     size       = 1 );
+    vd$ppl_setarg_at_index( which_info = OUTPUT_INFO,
+                            index      = 0,
+                            type       = VD_double,
+                            value      = &stock );
+
+    return;
+}
+
+
+/* ============================================================================ */
+
+EtStock()
+{
+    IGRshort            i, j, msg;
+    IGRint              size, StfIndex;
+    IGRdouble           value, stock;
+    IGRchar             Filename[40], Name[40], expr_name[40], id[40];
+    struct GRobj_env    exp_obj, ETobj, StfObj;
+
+
+    SetProc( EtStock ); Begin
+    stock = 0.0;
+
+    // Retrieve data block from STRUDEL
+    //**********************************
+
+    vd$ppl_get_size( which_info = INPUT_INFO,
+                     size       = &size );
+    vd$ppl_getarg_at_index( which_info = INPUT_INFO, // ET objid
+                            index      = 0,
+                            value      = &ETobj );
+    vd$ppl_getarg_at_index( which_info = INPUT_INFO,
+                            index      = 1,
+                            value      = &StfObj   );
+
+    __DBGpr_obj("Got ET", ETobj.obj_id );
+    __DBGpr_obj("Got Stf",StfObj.obj_id );
+
+    get_et_stock( ETobj, StfObj, &stock );
+
+    __DBGpr_dbl("Found stock", stock );
+
+    // Send data block back to STRUDEL
+    //**********************************
+
+    vd$ppl_set_size( which_info = OUTPUT_INFO,
+                     size       = 1 );
+    vd$ppl_setarg_at_index( which_info = OUTPUT_INFO,      // Symbol name
+                            index      = 0,
+                            type       = VD_double,
+                            value      = &stock );
+    End
+    return;
+}
+
+/* ============================================================================ */
+
+int get_point_range( pointObj, range )
+struct GRid   pointObj;
+double      * range;
+{
+    IGRlong	  stat, msg;
+    struct GRid   as_obj;
+    short	  matrix_type ;
+    IGRboolean    world;
+    IGRmatrix	  matrix;
+
+    world = TRUE;
+    stat = ci$send( msg = message GRgraphics.GRgetrang( &msg, &matrix_type,
+                                                        matrix, &world, range),
+                    targetid = pointObj.objid,
+                    targetos = pointObj.osnum );
+    if (!(stat&1)) {
+        printf ( "GetPointRange: cannot getrange of obj: %d[%d] \n",
+                  as_obj.objid, as_obj.osnum);
+        return(1);
+    }
+    return( 0 );
+}
+
+/* ============================================================================ */
+
+int is_et_start_position( startPt, ETmacro, stiffLen )
+struct GRobj_env  startPt;
+struct GRobj_env  ETmacro;
+IGRdouble	  stiffLen;
+{
+    struct GRid csId;
+    IGRdouble   origin[3], et_point[6], csMat[16], dist;
+    IGRlong 	i, is_et, msg, sts, rc;
+    IGRchar 	et_foot_name[20];
+
+
+    // Find point coordinates
+    VLgetPtCoord( &msg,  startPt.obj_id, &startPt.mod_env, origin );
+    __DBGpr_vec( "Profile Card Start Point", origin );
+
+     // Find orogin of ET macro
+     vd_$return_foot( msg = &msg, name = "cs", objId = &ETmacro.obj_id,
+                         footId = &csId );
+     __DBGpr_obj( "Coordinate System for this ET", csId );
+     
+     sts = ci$send(  msg      = message GRgencs.GRgetmatrix( &msg, csMat ),
+			targetid = csId.objid,
+			targetos = csId.osnum );
+     et_point[0] = csMat[3]; et_point[1] = csMat[7]; et_point[2] = csMat[11];
+     __DBGpr_vec( "ET Position Point", et_point );
+	    
+    dist = BSdistptpt( &rc, origin, et_point);
+    __DBGpr_dbl( "Distance between start point and macro mid point", dist );
+    __DBGpr_dbl( "Stf length", stiffLen );
+
+    if( dist < ( stiffLen / 2.0 ) ) {
+	__DBGpr_com( "Start ET position");
+ 	return(1);
+     }
+     else {
+        __DBGpr_com( "End ET position");
+        return(0);
+     }
+}
+
+/* ============================================================================ */
+
+GetETInfo()
+{
+    IGRint             	size, count, sts, msg, i, index, ETtype, StartPos, 
+    			foot_exists;
+    IGRdouble		distance, stiffLen;
+    IGRchar            	str[20], *macName, foot_name[20], macroType[20];
+    struct GRobj_env  	objMacro, objSth, objPoint, macDefn;
+    struct GRid        	param_macro, foot;
+    IGRchar            *pPtr, pBuf[256], pBuf1[256], dmtxt[10] ;
+    struct ACrg_coll   *list ;
+    struct GRobj_env    pmBox;   
+    struct ret_struct   rst;
+    IGRchar		cmdType[40];
+    
+    
+    SetProc( ETinfo ); Begin
+
+    // Retrieve data block from STRUDEL
+    //**********************************
+
+    // Get size of input
+    vd$ppl_get_size( which_info = INPUT_INFO,
+                     size       = &size );
+    // Get ???
+    vd$ppl_getarg_at_index( which_info = INPUT_INFO,
+                            index      = 0,
+                            value      = &objSth );
+
+    __DBGpr_obj( "Retrieved something", objSth.obj_id );
+
+    // Get ET macro
+    vd$ppl_getarg_at_index( which_info = INPUT_INFO,
+                            index      = 1,
+                            value      = &objMacro );
+
+    __DBGpr_obj( "Retrieved ET macro", objMacro.obj_id );
+
+    // Get StartPoint object
+    vd$ppl_getarg_at_index( which_info = INPUT_INFO,
+                            index      = 2,
+                            value      = &objPoint );
+
+    __DBGpr_obj( "Retrieved point", objPoint.obj_id );
+
+    // Get stfLength
+    vd$ppl_getarg_at_index( which_info = INPUT_INFO,
+                            index      = 3,
+                            value      = &stiffLen);
+
+    __DBGpr_dbl( "Retrieved length", stiffLen );
+
+
+    ETtype = 0;
+    cmdType[0] = '\0';
+    sts = VLgetOperName( NULL, &objMacro.obj_id, VLPC_DEF_ATT_CMD, cmdType );
+    if( sts&1 )
+	if( ! strcmp( VLPC_END_TREAT_CMD, cmdType ) )  ETtype = 1;
+  	
+    sts = is_et_start_position( objPoint, objMacro, stiffLen );
+    __DBGpr_int("is_et_start_position", sts );
+    if( sts ) 
+    	StartPos = 1;
+    else
+    	StartPos = 0;
+
+    	
+    // Send data block back to STRUDEL
+    //**********************************
+    vd$ppl_set_size( which_info = OUTPUT_INFO,
+                     size       = 2 );
+    vd$ppl_setarg_at_index( which_info = OUTPUT_INFO,
+                            index      = 0,
+                            type       = VD_int,
+                            value      = &ETtype );
+    vd$ppl_setarg_at_index( which_info = OUTPUT_INFO,
+                            index      = 1,
+                            type       = VD_int,
+                            value      = &StartPos );
+    return;
+    
+    
+    End
+}
+
+/* ============================================================================ */
+
+CheckET()
+{
+    IGRlong	        sts, msg;
+    IGRint		i, size, EtOK, feet_num, et_out1OK, et_out2OK, et_idOK;
+    struct GRobj_env  	objET, footOE;
+    struct myfeet	*myfeet;
+    
+    
+    SetProc( CheckET ); Begin
+    
+    EtOK = 0; et_out1OK = 1; et_out2OK = 1; et_idOK = 1;
+    
+    // Retrieve data block from STRUDEL
+    //**********************************
+
+    // Get size of input
+    vd$ppl_get_size( which_info = INPUT_INFO,
+                     size       = &size );
+    // Get ???
+    vd$ppl_getarg_at_index( which_info = INPUT_INFO,
+                            index      = 0,
+                            value      = &objET );
+
+    __DBGpr_obj( "Retrieved ET macro", objET.obj_id );
+   
+    VDobjGetFoot( &objET, NULL, "et_type", &footOE );
+    if( footOE.obj_id.objid == NULL_OBJID ) {
+    	et_idOK = 0;
+    	printf("ET %d[%d] does not have et_type foot", 
+    			objET.obj_id.objid,objET.obj_id.osnum );
+    }
+
+    VDobjGetFoot( &objET, NULL, "et_output1", &footOE );
+    if( footOE.obj_id.objid == NULL_OBJID ) {
+    	et_out1OK = 0;
+    	printf("ET %d[%d] does not have et_output1 foot", 
+    			objET.obj_id.objid,objET.obj_id.osnum );
+    }
+
+    VDobjGetFoot( &objET, NULL, "et_output2", &footOE );
+    if( footOE.obj_id.objid == NULL_OBJID ) {
+    	et_out2OK = 0;
+    	printf("ET %d[%d] does not have et_output1 foot", 
+    			objET.obj_id.objid,objET.obj_id.osnum );
+    }
+
+    if( et_idOK && et_out1OK && et_out2OK ) 
+    	EtOK = 1;
+    	
+    vd$ppl_set_size( which_info = OUTPUT_INFO,
+                     size	    = 1 );
+    vd$ppl_setarg_at_index( which_info = OUTPUT_INFO,      // Symbol name
+                            index      = 0,
+                            type       = VD_int,
+                            value      = &EtOK );
+ 
+}
+
+
+/*-------------------------------------------------------------------------------------
+ * Function MAIN
+ *-------------------------------------------------------------------------------------*/
+
+PcET()
+{
+    IGRshort            i, j, msg;
+    IGRint              size, StfIndex;
+    IGRdouble           value, stock;
+    IGRchar             Filename[40], Name[40], expr_name[40], id[40];
+    struct GRobj_env    exp_obj, ETobj, StfObj;
+
+
+    SetProc( PcET ); Begin
+
+    for( i=0; i<TABLEMAX; i=i+1 )
+        for( j=0; j<DIMSIZE; j=j+1 )
+            CodeTbl[i].dim[j] = '\0';
+    value = 0.0;
+
+    // Retrieve data block from STRUDEL
+    //**********************************
+
+    vd$ppl_get_size( which_info = INPUT_INFO,
+                     size       = &size );
+    vd$ppl_getarg_at_index( which_info = INPUT_INFO, // ET objid
+                            index      = 0,
+                            value      = &ETobj );
+    vd$ppl_getarg_at_index( which_info = INPUT_INFO,
+                            index      = 1,
+                            value      = Filename   );
+    vd$ppl_getarg_at_index( which_info = INPUT_INFO,
+                            index      = 2,
+                            value      = Name   );
+    vd$ppl_getarg_at_index( which_info = INPUT_INFO,
+                            index      = 3,
+                            value      = &StfObj   );
+
+    vd$ppl_getarg_at_index( which_info = INPUT_INFO,
+                            index      = 4,
+                            value      = id   );
+
+    __DBGpr_str("Retrieved filename", Filename );
+    __DBGpr_str("Retrieved name", Name );
+    __DBGpr_obj("Retrieved Stf", StfObj.obj_id );
+
+    // Perform PPL - look for corresponding code and all necessary dimensions
+    //************************************************************************
+
+    msg = get_stf_index( ETobj, StfObj, &StfIndex );
+
+    if( return_code( &ETobj, ".", Filename, Name, id ) )
+        printf("ET symbol %s in file %s not fund. Returning default symbol\n", Name, Filename);
+    else {
+        __DBGpr_str("Returning symbol", symbol_name );
+        __DBGpr_int("Returning type", ETtype );
+    }
+
+    // Send data block back to STRUDEL
+    //**********************************
+
+    vd$ppl_set_size( which_info = OUTPUT_INFO,
+                     size	    = 22 );
+    vd$ppl_setarg_at_index( which_info = OUTPUT_INFO,      // Symbol name
+                            index	   = 0,
+                            type       = VD_string,
+                            value      = symbol_name );
+    vd$ppl_setarg_at_index( which_info = OUTPUT_INFO,      // angle0 value
+                            index	   = 1,
+                            type       = VD_double,
+                            value      = &angle0 );
+    vd$ppl_setarg_at_index( which_info = OUTPUT_INFO,      // angle2 value
+                            index	   = 2,
+                            type       = VD_double,
+                            value      = &angle2 );
+    vd$ppl_setarg_at_index( which_info = OUTPUT_INFO,      // dim1
+                            index	   = 3,
+                            type       = VD_double,
+                            value      = &dim[0] );
+    vd$ppl_setarg_at_index( which_info = OUTPUT_INFO,      // dim2
+                            index	   = 4,
+                            type       = VD_double,
+                            value      = &dim[1] );
+    vd$ppl_setarg_at_index( which_info = OUTPUT_INFO,      // dim3
+                            index	   = 5,
+                            type       = VD_double,
+                            value      = &dim[2] );
+    vd$ppl_setarg_at_index( which_info = OUTPUT_INFO,      // dim4
+                            index	   = 6,
+                            type       = VD_double,
+                            value      = &dim[3] );
+    vd$ppl_setarg_at_index( which_info = OUTPUT_INFO,      // dim5
+                            index	   = 7,
+                            type       = VD_double,
+                            value      = &dim[4] );
+    vd$ppl_setarg_at_index( which_info = OUTPUT_INFO,      // dim6
+                            index	   = 8,
+                            type       = VD_double,
+                            value      = &dim[5] );
+    vd$ppl_setarg_at_index( which_info = OUTPUT_INFO,      // dim7
+                            index	   = 9,
+                            type       = VD_double,
+                            value      = &dim[6] );
+    vd$ppl_setarg_at_index( which_info = OUTPUT_INFO,      // dim8
+                            index	   = 10,
+                            type       = VD_double,
+                            value      = &dim[7] );
+    vd$ppl_setarg_at_index( which_info = OUTPUT_INFO,      // dim9
+                            index	   = 11,
+                            type       = VD_double,
+                            value      = &dim[8] );
+    vd$ppl_setarg_at_index( which_info = OUTPUT_INFO,      // dim1
+                            index	   = 12,
+                            type       = VD_double,
+                            value      = &dim[9] );
+    vd$ppl_setarg_at_index( which_info = OUTPUT_INFO,      // dim2
+                            index	   = 13,
+                            type       = VD_double,
+                            value      = &dim[10] );
+    vd$ppl_setarg_at_index( which_info = OUTPUT_INFO,      // dim3
+                            index	   = 14,
+                            type       = VD_double,
+                            value      = &dim[11] );
+    vd$ppl_setarg_at_index( which_info = OUTPUT_INFO,      // dim4
+                            index	   = 15,
+                            type       = VD_double,
+                            value      = &dim[12] );
+    vd$ppl_setarg_at_index( which_info = OUTPUT_INFO,      // dim5
+                            index	   = 16,
+                            type       = VD_double,
+                            value      = &dim[13] );
+    vd$ppl_setarg_at_index( which_info = OUTPUT_INFO,      // dim6
+                            index      = 17,
+                            type       = VD_double,
+                            value      = &dim[14] );
+    vd$ppl_setarg_at_index( which_info = OUTPUT_INFO,      // dim6
+                            index      = 18,
+                            type       = VD_double,
+                            value      = &dim[15] );
+
+    vd$ppl_setarg_at_index( which_info = OUTPUT_INFO,      // View Type
+                            index      = 19,
+                            type       = VD_int,
+                            value      = &ViewType );
+    vd$ppl_setarg_at_index( which_info = OUTPUT_INFO,      // ET Type
+                            index      = 20,
+                            type       = VD_int,
+                            value      = &ETtype );
+
+    vd$ppl_setarg_at_index( which_info = OUTPUT_INFO,      // ET Type
+                            index      = 21,
+                            type       = VD_double,
+                            value      = &Aux );
+    End
+    return;
+}
+
+
+
+int main()
+{
+  
+
+    struct GRobj_env EtObj, StfObj;
+    struct GRmd_env  mod_env;
+    double           stock;
+
+
+    printf("\n\nSTOCK\n");
+    ci$get_module_info( md_env = &mod_env );
+
+    ci$locate( prompt       = "Locate ET",
+               obj          = &EtObj.obj_id.objid,
+               osnum        = &EtObj.obj_id.osnum);
+    EtObj.mod_env = mod_env;
+
+    printf("Located ET %d[%d]\n", EtObj.obj_id.objid, EtObj.obj_id.osnum );
+
+    ci$locate( prompt       = "Locate Stf",
+               obj          = &StfObj.obj_id.objid,
+               osnum        = &StfObj.obj_id.osnum);
+    StfObj.mod_env = mod_env;
+
+    printf("Located Stf %d[%d]\n", StfObj.obj_id.objid, StfObj.obj_id.osnum );
+
+    get_et_stock( EtObj, StfObj, &stock );
+
+    //  stock = 0.0;
+    //  get_stf_stock( StfObj, &stock );
+}
+
+
+

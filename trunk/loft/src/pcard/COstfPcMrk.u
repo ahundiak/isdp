@@ -1,0 +1,142 @@
+/* $Id: COstfPcMrk.u,v 1.1 2001/01/28 18:38:34 ramarao Exp $  */
+/* --------------------------------------------------------------------
+ * I/LOFT
+ *
+ * File:        loft/src/pcard/COstfPcMrk.u
+ *
+ * Description: 
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ *      $Log: COstfPcMrk.u,v $
+ *      Revision 1.1  2001/01/28 18:38:34  ramarao
+ *      Implemented CR# MP 4301 on Stiffner Automarking process.
+ *
+ *
+ * History:
+ *      MM/DD/YY        AUTHOR          DESCRIPTION
+ *      01/24/00        Rama Rao        File Creation.
+ * -------------------------------------------------------------------*/
+
+#include "VDppl.h"
+#include "AS_status.h"
+
+//#define DEBUG 1
+
+#define  MACRO_NAME  	"stfPcMark"
+
+#define EXP_TEXT   	4
+
+extern ASmake_source_from_env();
+
+main ()
+{
+IGRlong			sts, msg;
+IGRint			suc;
+IGRchar			loc_mes[50], status_txt[50];
+struct GRid		mrk_macro, TEMP[3];
+struct GRmd_env		loc_env, MOD_ENV;
+
+    sts = ci$get_module_info(md_env = &loc_env) ;
+    as$status(sts = sts) ;
+
+    strcpy(loc_mes, "<Assoc> Create Stiffener Marking for Profile Cards") ;
+
+    message(loc_mes) ;
+
+    if (! ci$locate(prompt       = "Locate Stiffener",
+                    properties   =  LC_LC_ONLY | LC_DP_ONLY | LC_RW,
+                    owner_action =  LC_RIGID_COMP  |
+                                    LC_RIGID_OWNER | LC_FLEX_COMP |
+                                    LC_FLEX_OWNER  | LC_REF_OBJECTS,
+                    obj          =  &TEMP[0].objid,
+                    osnum        =  &TEMP[0].osnum,
+                    classes      = "VSbeam",
+                    md_env       =  &MOD_ENV)) {
+       /* Mouse REJECT button */
+       return 1 ;
+    }
+
+    #if DEBUG
+   	printf("Located Stiffener = %d, %d\n", TEMP[0].objid, TEMP[0].osnum );
+    #endif
+
+    ASmake_source_from_env(&TEMP[0], &loc_env, &TEMP[0]) ;
+
+    if (! ci$locate(prompt       = "Locate Plate",
+                    properties   =  LC_LC_ONLY | LC_DP_ONLY | LC_RW,
+                    owner_action =  LC_RIGID_COMP  |
+                                    LC_RIGID_OWNER | LC_FLEX_COMP |
+                                    LC_FLEX_OWNER  | LC_REF_OBJECTS,
+                    obj          =  &TEMP[1].objid,
+                    osnum        =  &TEMP[1].osnum,
+                    classes      = "VSplate",
+                    md_env       =  &MOD_ENV)) {
+       /* Mouse REJECT button */
+       return 1 ;
+    }
+
+    #if DEBUG
+        printf("Located Plate = %d, %d\n", TEMP[1].objid, TEMP[1].osnum );
+    #endif
+
+    ASmake_source_from_env(&TEMP[1], &loc_env, &TEMP[1]) ;
+
+    if (! ci$locate(prompt       = "Locate Marking Curve / Move-on to compute",
+                    properties   =  LC_LC_ONLY | LC_DP_ONLY | LC_RW,
+                    owner_action =  LC_RIGID_COMP  |
+                                    LC_RIGID_OWNER | LC_FLEX_COMP |
+                                    LC_FLEX_OWNER  | LC_REF_OBJECTS,
+                    obj          =  &TEMP[2].objid,
+                    osnum        =  &TEMP[2].osnum,
+                    classes      = "GRcurve",
+                    md_env       =  &MOD_ENV)) 
+    {
+	/* Mouse REJECT button */
+	exp$create( exp_syntax = "dummy",
+		    osnum      = loc_env.md_id.osnum,
+	   	    p_exp_id   = &TEMP[2].objid,
+		    p_osnum    = &TEMP[2].osnum,
+		    type_rq    = EXP_TEXT );
+    }
+    else ASmake_source_from_env(&TEMP[2], &loc_env, &TEMP[2]) ;
+
+    #if DEBUG
+        printf("Located Marking = %d, %d\n", TEMP[2].objid, TEMP[2].osnum );
+    #endif
+
+    mrk_macro.objid = NULL_OBJID ;
+    mrk_macro.osnum = loc_env.md_id.osnum;
+
+    sts = ci$send(msg = message nci_macro.init(&suc,
+                                     0,
+                                     MACRO_NAME,
+                                     3,
+                                     TEMP,
+                                     NULL,
+                                     &loc_env ),
+                		targetid = mrk_macro.objid,
+                		targetos = mrk_macro.osnum ) ; 
+     as$status(sts = sts) ;
+     if (!(sts & suc & 1)) 
+     {
+       	sprintf(status_txt, "Placement of nci_macro \"%s\" failed", MACRO_NAME) ;
+       	status(status_txt) ;
+       	sts = ci$send(  msg = message Root.delete(0),
+                       	targetid = mrk_macro.objid,
+                        targetos = mrk_macro.osnum ) ; 
+	as$status(sts = sts) ;
+     }
+     else 
+     {
+       	#ifdef DEBUG
+       	  sprintf(status_txt, "Placement of nci_macro \"%s\" successful", MACRO_NAME) ;
+      	  status(status_txt) ;
+       	#endif
+     }
+
+quit:
+     return 1;
+
+} /* main() */

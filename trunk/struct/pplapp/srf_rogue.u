@@ -1,0 +1,163 @@
+/* $Id: srf_rogue.u,v 1.1 2001/01/17 14:58:57 ramarao Exp $  */
+/* --------------------------------------------------------------------
+ * I/LOFT
+ *
+ * File:        src/unwext/srf_rogue.u
+ *
+ * Description: Macro for creating surfaces for rogue plates.
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ *      $Log: srf_rogue.u,v $
+ *      Revision 1.1  2001/01/17 14:58:57  ramarao
+ *      *** empty log message ***
+ *
+# Revision 1.1  2000/05/02  23:33:16  pinnacle
+# Created: struct/pplapp/srf_rogue.u by rchennup for Service Pack
+#
+ *
+ * History:
+ *      MM/DD/YY        AUTHOR          DESCRIPTION
+ *      05/01/00        Rama Rao        File Creation.
+ * -------------------------------------------------------------------*/
+
+#include "VDppl.h"
+#include "vsgeommacros.h"
+#include "ci_mac_def.h"
+
+#define MAX_TEMP                2
+#define MAX_FEET                1
+#define MAX_CHA_TEMP		9
+
+GRobj		ci_mac_def1;
+struct GRid	GRIDS[MAX_FEET], CI_MACRO_ID;
+
+/* ========================================================================= */
+/* the main function is the one implementing the definition creation
+/* ========================================================================= */
+
+main ()
+{ 
+   IGRint	msg, temp_types[MAX_TEMP];
+   IGRchar	*temp_names[MAX_TEMP], *feet_names[MAX_FEET];
+
+   temp_names[0] = "Plate";   temp_types[0] = macro_generic;
+   temp_names[1] = "Surface"; temp_types[1] = surface_generic;
+
+   feet_names[0] = "Surf";
+
+   ci_mac_def1 = NULL_OBJID;
+
+   ac$cimacdef( cimacdef          = ci_mac_def1,
+		status            = &msg,
+		name              = "srf_rogue",
+		temp_num	  = MAX_TEMP,
+		temp_names	  = temp_names,
+		temp_types	  = temp_types,
+		extern_feet_num   = MAX_FEET,
+		extern_feet_names = feet_names );
+
+}
+
+place ()
+{
+IGRlong		msg;
+
+  construct_surf();
+
+  if( GRIDS[0].objid == NULL_OBJID ) return(0);
+
+  ci$send( msg = message  ci_macro.set_all_extern_feet
+                (&msg, MAX_FEET, GRIDS, &MOD_ENV ),
+                targetid = CI_MACRO_ID.objid,
+                targetos = CI_MACRO_ID.osnum);
+  return(1);
+}
+
+
+compute ()
+{
+IGRlong         msg;
+
+  construct_surf();
+
+  if( GRIDS[0].objid == NULL_OBJID ) return(0);
+
+  ci$send( msg = message  ci_macro.set_all_extern_feet
+                (&msg, MAX_FEET, GRIDS, &MOD_ENV ),
+                targetid = CI_MACRO_ID.objid,
+                targetos = CI_MACRO_ID.osnum);
+
+  return(1);
+
+}
+
+construct_surf()
+{
+IGRint			i, retFlag;
+IGRlong			sts, msg;
+struct GRid		surfID;
+struct GRobj_env	surf;
+struct GRsymbology	symb;
+
+  retFlag = FALSE;
+
+  for( i=0; i<MAX_FEET; i=i+1 )  GRIDS[i].objid = NULL_OBJID;  
+
+  sts = ci$send( msg = message  ACcpx.ACfind_exp_temp_obj(
+				  &msg, 1, &surfID ),
+                targetid = CI_MACRO_ID.objid,
+                targetos = CI_MACRO_ID.osnum );
+  if( !(sts&msg&1) ) {
+	    printf("Can not get the Surface input\n");
+            goto wrapup ;
+  }
+
+  sts = ci$send( msg = message  NDmacro.ACreturn_foot(
+				&msg, "", &surf.obj_id, 
+				surf.mod_env.md_env.matrix_type,
+                                &surf.mod_env.md_env.matrix ),
+                targetid = surfID.objid,
+                targetos = surfID.osnum );
+  if( !(sts&msg&1) ) {
+            printf("Can not get the Surface Graphics\n");
+            goto wrapup ;
+  }
+
+  sts = ci$send( msg = message GRvg.GRgetsymb( &msg, &symb),
+                targetid = surf.obj_id.objid,
+                targetos = surf.obj_id.osnum );
+  if( !(sts&msg&1) ) {
+            printf("Can not get the symbology from the input Surface\n");
+            goto wrapup ;
+  }
+
+  GRIDS[0].objid = NULL_OBJID;
+  GRIDS[0].osnum = MOD_ENV.md_id.osnum;
+  sts = ci$send( msg = message GRgraphics.GRcopy (
+				&msg, &MOD_ENV, &MOD_ENV, &GRIDS[0].objid ),
+		targetid = surf.obj_id.objid,
+                targetos = surf.obj_id.osnum );
+  if( !(sts&msg&1) ) {
+            printf("Can not copy the Surface Graphics\n");
+            goto wrapup ;
+  }
+
+  vs$make_natural_boundary( msg		= &msg,
+			    surfaceEnv	= &MOD_ENV,
+			    surfaceId	= &GRIDS[0] );
+
+  sts = ci$send( msg = message GRvg.GRputsymb( &msg, &symb),
+                targetid = CI_MACRO_ID.objid,
+		targetos = CI_MACRO_ID.osnum );
+  if( !(sts&msg&1) ) {
+            printf("Can not set the symbology for macro\n");
+            goto wrapup ;
+  }
+
+  retFlag = TRUE;
+
+wrapup:
+  return retFlag ;
+}

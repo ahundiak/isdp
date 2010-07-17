@@ -1,0 +1,323 @@
+#!/bin/ksh
+# $Id: vr_make,v 1.3 2002/04/30 18:25:46 anand Exp $
+
+#-----------------------------------------------------
+# I/ROUTE
+#
+# File: $HOME/bin/vr_make
+#
+# Description:
+#	Main build routine for the I/ROUTE product.
+#
+# Dependencies:
+#
+# Log History:
+#	$Log: vr_make,v $
+#	Revision 1.3  2002/04/30 18:25:46  anand
+#	#!Shebang line has to be the first line in a script#!
+#	
+#	Revision 1.2  2002/02/20 18:36:01  anand
+#	Got I/Route to be in sync with other products - Route was the only
+#	one with etc/release; everybody else used etc/version. Changed script
+#	to accommodate this.
+#	
+#	Revision 1.1.1.1  2001/01/04 21:12:07  cvs
+#	Initial import to CVS
+#	
+# Revision 1.8  1996/03/23  19:06:50  pinnacle
+# Replaced: etc/bin/vr_make for:  by r240_int for route240
+#
+# Revision 1.7  1996/03/09  17:23:26  pinnacle
+# Replaced: etc/bin/vr_make for:  by r240_int for route240
+#
+# Revision 1.6  1996/01/23  16:35:06  pinnacle
+# Replaced: etc/bin/vr_make for:  by azuurhou for route240
+#
+# Revision 1.5  1996/01/23  16:31:36  pinnacle
+# Replaced: etc/bin/vr_make for:  by azuurhou for route240
+#
+# Revision 1.3  1995/12/08  21:25:58  pinnacle
+# Replaced: etc/bin/vr_make for:  by r240_int for route240
+#
+# Revision 1.2  1995/12/03  21:04:42  pinnacle
+# Replaced: etc/bin/vr_make for:  by r240_int for route240
+#
+#
+# History:
+#       MM/DD/YY        AUTHOR          DESCRIPTION
+#       08/15/94	TRD		This routine is used to integrate the
+#					I/ROUTE and I/SCHEMA products.  Many of
+#					the routines perform Pinnacle commands.
+#	12/02/95	tlb		Integrate into etc/bin
+#	12/02/95	tlb		update, remove I/SCHEMA,
+#	12/05/95	tlb		integrate new build scripts
+#	01/22/96	adz		Add auto-compile option.
+#       04/09/99        ah              Changed make to grmake
+#-------------------------------------------------------------------
+
+#global variables for make
+export resp_all=$1
+TMP=/tmp/VR${RANDOM}
+ERROR=
+LOGFILE=$HOME/logs/r`date +%h%m.%H:%M`
+
+#----------------------------------------------------------------------------
+function cleanup {
+	/bin/rm /tmp/VS* > /dev/null 2>&1 ;
+	return 0
+}
+#----------------------------------------------------------------------------
+function FileExec {
+	if [ ! -f "$*" ] ; then echo "Missing File  : $*" ; exit 2; fi
+	if [ ! -x "$*" ] ; then echo "Non Executable: $*" ; exit 3; fi 
+	$*
+  	if [ $? -ne 0  ] ; then echo "Process Error : $*" ; exit 4 ; fi
+} # FileExec
+#----------------------------------------------------------------------------
+function FileExist {
+	if [ ! -f "$*" ] ; then echo "Missing: $*" ; exit 2; fi
+} # FileExist
+#----------------------------------------------------------------------------
+function checkResult {
+
+	list="${ROUTE}/config/route.cmp"
+
+	for file in $list
+	do
+	  if [ ! -s $file ] ; then echo "Invalid Result: $file" ; exit 2; fi
+	done
+
+} # checkResult
+#----------------------------------------------------------------------------
+function checkFiles {
+
+	list="${ROUTE}/config/english/menus/gen_pantbl"
+	list="$list ${ROUTE}/config/english/menus/gen_getcmdpath"
+	list="$list ${ROUTE}/etc/sources"
+	list="$list ${ROUTE}/etc/bin/vrchkvars"
+	list="$list ${ROUTE}/etc/bin/vr_clean"
+	list="$list ${ROUTE}/etc/bin/vr_compile"
+	list="$list ${ROUTE}/etc/bin/vr_list"
+	list="$list ${ROUTE}/etc/bin/vr_menubuild"
+	list="$list ${ROUTE}/etc/bin/vr_mkSpec"
+	list="$list ${ROUTE}/etc/bin/vr_mkdload"
+	list="$list ${ROUTE}/etc/bin/vr_msgbuild"
+	list="$list ${ROUTE}/etc/bin/vr_release"
+	list="$list ${ROUTE}/etc/bin/vr_rmMake"
+	list="$list ${ROUTE}/etc/bin/vr_updproddef"
+	list="$list ${ROUTE}/etc/bin/vr_release"
+
+	for file in $list
+	do
+		if [ ! -f $file ] ; then echo "Missing: $file" ; exit 2; fi
+		if [ ! -x $file ] ; then chmod a+x $file ; fi
+		if [ ! -x $file ] ; then echo "Change Mode: $file" ; exit 4 ; fi
+	done
+
+	list="${ROUTE}/config/route.cmd"
+
+	for file in $list
+	do
+          if [ ! -f $file ] ; then echo "Missing: $file" ; exit 2 ; fi
+	  if [ ! -w $file ] ; then chmod a+w $file ; fi
+	  if [ ! -w $file ] ; then echo "Write Protected: $file" ; exit 2; fi
+	done
+
+} # checkFiles
+#----------------------------------------------------------------------------
+#----------------------------------------------------------------------------
+trap "cleanup ; tput smso ; echo '- INTERRUPT -' ; tput rmso ; exit 2" 2 3
+
+#----------------------------------------------------------------------------
+# Set the automatic motor.
+if [ "${resp_all}" != "y" ]; then
+   export resp_all="n"
+fi
+
+#----------------------------------------------------------------------------
+# Checking the environment.
+if [ -z "${GRNUC}" -o -z "${ROUTE}" ] ; then
+	. startup.route
+fi 
+
+# check/set environemnt
+checkFiles
+FileExec "${ROUTE}/etc/bin/vrchkvars"
+
+#------------------------------------------------------------------------------
+# Update product.def
+if [ "${resp_all}" != "y" ]; then
+  echo "Change version number of I/ROUTE ?       [n] : \c"
+  read resp
+  if [ -z "${resp}" ]; then resp="n" ; fi
+else
+  resp="n"
+fi
+
+if [ $resp = "y" ] ; then
+	FileExist "${ROUTE}/etc/version/product.def"
+	chmod a+w ${ROUTE}/etc/version/product.def
+	FileExec "${ROUTE}/etc/bin/vr_updproddef"
+fi
+
+#------------------------------------------------------------------------------
+# unprotect product files
+if [ "${resp_all}" != "y" ]; then
+  echo "Unprotect I/ROUTE source files?          [y] : \c"
+  read resp
+  if [ -z "${resp}" ]; then resp="y" ; fi
+else
+  resp="y" 
+fi
+
+if [ $resp = "y" ] ; then
+    cd ${ROUTE}
+    echo "\tUndo product protection"
+    #find . -exec chmod ugo+wx {} \;
+    find . -print | xargs chmod a+wx
+fi
+
+#------------------------------------------------------------------------------
+# Clean all executables.
+if [ "${resp_all}" != "y" ]; then
+  echo "Clean all I/ROUTE executables ?          [n] : \c"
+  read resp
+  if [ -z "${resp}" ]; then resp="n" ; fi
+else
+  resp="n"
+fi
+
+if [ $resp = "y" ] ; then
+  cd ${ROUTE}
+  FileExec "${ROUTE}/etc/bin/vr_clean"
+fi
+
+#------------------------------------------------------------------------------
+# Remove the makefiles.
+if [ "${resp_all}" != "y" ]; then
+  echo "Remove all makefiles of I/ROUTE ?        [n] : \c"
+  read resp
+  if [ -z "${resp}" ]; then resp="n" ; fi
+else
+  resp="n"
+fi
+
+if [ $resp = "y" ] ; then
+  cd ${ROUTE}
+  FileExec "${ROUTE}/etc/bin/vr_rmMake"
+fi
+
+#------------------------------------------------------------------------------
+# Check message files to see if need to be rebuilt
+echo "\n\tChecking message files"
+vr_msgbuild
+
+#------------------------------------------------------------------------------
+# Check menu files to see if need to be rebuilt
+echo "\n\tChecking menus"
+vr_menubuild
+
+#------------------------------------------------------------------------------
+# Touch files for state tables...
+touch="n"
+if [ "${resp_all}" != "y" ] ; then
+  echo "Touch *.sl and *.t files of I/ROUTE ?    [n] : \c"
+  read suite
+  if [ -z "$resp" ] ; then resp="n" ; fi
+  if [ $suite = "y" ] ; then
+    cd ${ROUTE}
+    find . -name *.sl -exec touch {} \;
+    find . -name *.t  -exec touch {} \;
+  fi
+else
+  resp="n"
+  touch="n"
+fi
+
+#------------------------------------------------------------------------------
+# Request to re-evaluate the state table
+if [ "${resp_all}" != "y" ] ; then
+  echo "Check route.cmd of I/ROUTE ?             [y] : \c"
+  read resp
+  if [ -z "$resp" ] ; then resp="y" ; fi
+else
+  resp="y"
+fi
+
+if [ $resp = "y" ] ; then
+  find ${ROUTE}/v[cr]* -name *.sl -exec slic -Cis {} -p ${ROUTE}/spec -p ${VDS}/spec \; -print
+  find ${ROUTE}/v[cr]* -name *.t  -exec slic -Cis {} -p ${ROUTE}/spec -p ${VDS}/spec \; -print
+fi
+
+#------------------------------------------------------------------------------
+# Check for states in state table.
+if [ "${resp_all}" != "y" ] ; then
+  echo "Slic *.sl files of I/ROUTE ?             [y] : \c"
+  read resp
+  if [ -z "$resp" ] ; then resp="y" ; fi
+else
+  resp="y"
+fi
+  
+if [ $resp = "y" ] ; then
+  FileExec "${ROUTE}/etc/bin/vr_mkSpec"
+fi
+
+#------------------------------------------------------------------------------
+# Linking the Specification files.
+echo "\n\tLinking spec files\n"
+cd ${ROUTE}
+find v[cr]* -name \*.S -exec ln {} ${ROUTE}/spec/. \ > /dev/null 2>&1
+
+
+#------------------------------------------------------------------------------
+# Build I/ROUTE.
+if [ "${resp_all}" != "y" ] ; then
+  echo "Compile I/ROUTE  ?                       [y] : \c"
+  read resp
+  if [ -z "$resp" ] ; then resp="y" ; fi
+else
+  resp="y"
+fi
+  
+if [ $resp = "y" ] ; then
+  FileExec "${ROUTE}/etc/bin/vr_compile"
+fi
+
+#------------------------------------------------------------------------------
+# Make Dloadable of I/ROUTE.
+if [ "${resp_all}" != "y" ] ; then
+  echo "Linking I/ROUTE  ?                       [y] : \c"
+  read resp
+  if [ -z "$resp" ] ; then resp="y" ; fi
+else
+  resp="y"
+fi
+  
+if [ $resp = "y" ] ; then
+  FileExec "${ROUTE}/etc/bin/vr_mkdload"
+fi
+
+#------------------------------------------------------------------------------
+# Make New Version of I/ROUTE.
+if [ "${resp_all}" != "y" ] ; then
+  echo "Version I/ROUTE  ?                       [n] : \c"
+  read resp
+  if [ -z "$resp" ] ; then resp="n" ; fi
+else
+  resp="n"
+fi
+  
+if [ $resp = "y" ] ; then
+  FileExec "${ROUTE}/etc/bin/vr_release"
+fi
+
+#------------------------------------------------------------------------------
+# Update I/ROUTE commands table. KDD 3-98.
+#------------------------------------------------------------------------------
+cd ${ROUTE}/config
+grmake
+cd -
+
+
+echo "\n\tFinished I/ROUTE"

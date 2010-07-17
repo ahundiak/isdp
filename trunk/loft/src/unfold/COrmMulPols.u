@@ -1,0 +1,144 @@
+#include "cieveryone.h"
+#include "OMminimum.h"
+#include "OMprimitives.h"
+#include "OMerrordef.h"
+#include "cimacros.h"
+#include "cimath.h"
+#include  <stdio.h>
+#include "EMSstruct.h"
+#include  "bserr.h"
+#include  "msdef.h"
+#include "grdpbdef.h"
+#include "grdpb.h"
+#include "grdpbmacros.h"
+#include "AS_status.h"
+#include "exmacros.h"
+#include "grmacros.h"
+#include "growner.h"
+#include "asmacros.h"
+#include "graph.h"
+#include "ndmacros.h"
+#include "vlstructure.h"
+#include "vsplatedef.h"
+#include "vsgeommacros.h"
+#include "vsmiscmacros.h"
+#include "EMSssprops.h"
+
+
+extern 			BSsfevaln();
+extern 			BSsfarrevmc();
+extern 			GRdpb_get();
+extern 			ASmake_source_from_env();
+extern 			init_cnst_list();
+extern 			free();
+extern IGRchar 		*malloc();
+extern 			GRdelete_object();
+extern 			GRdisplay_object();
+extern void 		BSchkfxsf2();
+extern IGRlong  	VLgetGeometry();
+extern IGRboolean	BSfreesf();
+extern 		GRdisplay_object()  ;
+
+struct GRmd_env		cur_env;
+struct GRvg_construct	cst;
+struct IGRdisplay	dis;
+struct GRsymbology      symbology;	
+       IGRlong		rtcd;
+
+
+main()
+{
+
+ 	IGRint 		i;
+ 	IGRchar		txt[80];
+ 	IGRlong		sts, msg;
+struct  GRobj_env	sfObj;
+struct  GRid 		NewObj;
+struct  IGRbsp_surface	*oldSf, *newSf;
+
+
+oldSf = NULL;
+newSf = NULL;
+
+while(1) {
+
+ ci$locate(	owner_action = LC_RIGID_COMP |
+                               LC_RIGID_OWNER | LC_FLEX_COMP |
+                               LC_FLEX_OWNER  | LC_REF_OBJECTS,
+		classes = "EMSsubbs",
+		obj	= &sfObj.obj_id.objid,
+		osnum   = &sfObj.obj_id.osnum,
+		md_env	= &sfObj.mod_env,
+		prompt	= "Identify Surface");
+	status("");
+
+	sts = VLgetGeometry(  &sfObj, (IGRboolean) FALSE, NULL_OBJID, 
+ 			       (IGRchar ** )&oldSf, &msg );
+	if( sts != MSSUCC ){ write("error in VLgetGeometry\n");goto wrapup;}
+	
+	BSchkfxsf2 (oldSf, &newSf, &msg);
+	if( msg == BSSUCC ){
+		//printf(" BSchkfxsf2 succes \n");
+		cst.geometry = (IGRchar *) newSf;
+		NewObj.objid = NULL_OBJID;
+		NewObj.osnum = cur_env.md_id.osnum;
+
+  		sts = ci$send( msg = message EMSgenbs.GRconstruct(&cst), 
+           		       targetid = NewObj.objid,
+                               targetos = NewObj.osnum );
+		if( !( sts & 1 ) ){
+			printf("error in EMSgenbs.GRconstruct\n");
+			goto wrapup;
+		}
+   		gr$display_object( object_id = &NewObj,
+				   md_env    = &cur_env,
+		                   mode	     = GRbd) ;
+
+      		if( oldSf ){ om$dealloc( ptr = oldSf ); oldSf = NULL;}
+      		if( newSf ){ BSfreesf(&msg,newSf); newSf = NULL; }
+
+	}
+	else{
+		status(" Multiple Poles removal Failded \n");
+		goto wrapup;
+	}
+
+}/* end while */
+
+wrapup:
+
+      if( oldSf ){ om$dealloc( ptr = oldSf ); oldSf = NULL;}
+      if( newSf ){ BSfreesf(&msg,newSf); newSf = NULL; }
+}
+/*=======================================================================*/
+wakeup(){
+ message("Remove multiple poles");
+ init_cnst_list();
+ get_symb();
+ ci$get_module_info(md_env= &cur_env);
+
+ dis.color		= cnst_list.color;
+ dis.weight		= cnst_list.weight;
+ dis.style		= cnst_list.style;
+
+ cst.msg		= &rtcd;
+ cst.properties		= GRIS_LOCATABLE | GRIS_NEW | GRIS_DISPLAYABLE;
+ cst.display		= &dis;
+ cst.env_info		= &cur_env;
+ cst.newflag		= 0;
+ cst.level		= cnst_list.level;
+ cst.geometry		= NULL;
+ cst.class_attr		= 0;
+ cst.name		= 0;
+ cst.geometry 		= 0;
+
+ symbology.display_attr.color		= dis.color;
+ symbology.display_attr.weight		= dis.weight;
+ symbology.display_attr.style		= 1;
+ symbology.level			= cst.level;
+
+
+}
+/*=======================================================================*/
+
+

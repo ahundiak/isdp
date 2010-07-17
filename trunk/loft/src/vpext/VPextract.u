@@ -1,0 +1,614 @@
+#include "VDppl.h"
+
+#include "VDatMaster.h"
+
+#include "VDsa.h"
+#include "VDobj.h"
+
+#include "VPpdf.h"
+
+/* ---------------------------------------------------------------
+ * Some building tree specific files
+ */
+#include "VDatClass.h"
+
+/* ---------------------------------------------------------------
+ * For some of the extracted data
+ */
+#include "time.h"
+extern EX_filename1();
+extern PDMGetPartInfoGivenFileName();
+
+/* ---------------------------------------------------------------
+ * These two variables will be set with the object being processed
+ */
+TGRid     OBJECT_ID;
+TGRmd_env OBJECT_ENV;
+
+TGRid      SET_ID;
+
+TGRid      NODE_ID;
+TGRobj_env PIECE_OE;
+
+TGRid      STAGE_ID;
+IGRchar    STAGE_NAME[128];
+
+/* ---------------------------------------------------------------
+ * Object data is the argument portion of the smart attribute
+ * That is 'xxx' in the example above
+ */
+IGRchar   OBJECT_DATA[128];
+IGRchar   FILE_NAME  [128];
+IGRchar   FILE_WHAT   [16];
+IGRchar   FILE_STAT   [16];
+IGRchar   FILE_HULL   [16];
+
+/* --------------------------------------
+ * Utility structure for organizing stuff
+ */
+typedef struct {
+  TGRid   id;
+  IGRchar type [128];
+  IGRchar name [128];
+  IGRchar pcmk [128];
+  IGRchar path [128];
+  IGRchar desc [128];
+  IGRchar stage[128];
+  IGRint  qty;
+} TVPextNodeData;
+
+/* ---------------------------------------------------------------
+ * Main routine is not required but putting in some print statements
+ * will allow you to document what the ppl is for.
+ */ 
+main()
+{
+  printf("Extract Production Data\n");
+}
+
+/* -----------------------------------------------------------------
+ * Build a spades file name based on set
+ */
+genFileName()
+{
+  IGRint  retFlag;
+  
+  IGRchar  hull[16];
+  IGRchar  app [16];
+  IGRchar  unit[16];
+  IGRchar  what[16];
+  
+  IGRchar stamp[32];
+  
+  time_t current_time;
+  struct tm *tm;
+
+  // Reset
+  strcpy(FILE_NAME,"ProdData");
+  retFlag = 0;
+  
+  // Get the unit for set
+  if (SET_ID.objid == NULL_OBJID) goto wrapup;
+  vdsa$GetStruct(objID = &SET_ID, name = "node_name", txt = unit);
+  
+  // Hull and app
+  strcpy(hull,"lp17");
+  if (!strcmp(FILE_HULL,"INGR13")) strcpy(hull,"ingr");
+  strcpy(app, "a");
+  
+  // Date time stamp
+  time(&current_time);
+  tm = localtime(&current_time);
+  sprintf(stamp,
+	  "%4d%02d%02d.%02d%02d%02d",
+	  tm->tm_year+1900,tm->tm_mon+1,tm->tm_mday,
+	  tm->tm_hour,     tm->tm_min,  tm->tm_sec);
+  
+  // Translate FILE_TYPE into standard name
+  strcpy(what,"NONE");
+  if (!strcmp(FILE_WHAT,"Tree"))   strcpy(what,"tree");
+  if (!strcmp(FILE_WHAT,"Pieces")) strcpy(what,"part");
+  if (!strcmp(FILE_WHAT,"Plates")) strcpy(what,"plat");
+  if (!strcmp(FILE_WHAT,"Beams"))  strcpy(what,"beam");
+  if (!strcmp(FILE_WHAT,"All"))    strcpy(what,"allx");
+
+  // Put it all together
+  sprintf(FILE_NAME,"%s.%s.%s.%s.%s",hull,app,unit,what,stamp);
+  
+  // Done
+  retFlag = 1;
+  
+wrapup:
+  return retFlag;
+}
+
+/* -----------------------------------------------------------------
+ * Extracts Ship Information
+ */
+extractShip()
+{
+  if (!strcmp(FILE_HULL,"INGR13")) {
+    VPpdfWriteAttrText(PDF_ATR_SHIP_NAME,    "USS INTERGRAPH");
+    VPpdfWriteAttrText(PDF_ATR_SHIP_OWNER,   "US NAVY");
+    VPpdfWriteAttrText(PDF_ATR_SHIP_HULL,    "INGR");
+    VPpdfWriteAttrText(PDF_ATR_SHIP_HULL_APP,"AB");
+  }
+  else {    
+    VPpdfWriteAttrText(PDF_ATR_SHIP_NAME,    "SAN ANTONIO");
+    VPpdfWriteAttrText(PDF_ATR_SHIP_OWNER,   "US NAVY");
+    VPpdfWriteAttrText(PDF_ATR_SHIP_HULL,    "LP17");
+    VPpdfWriteAttrText(PDF_ATR_SHIP_HULL_APP,"ABC");
+  }
+  
+  VPpdfWriteAttrText(PDF_ATR_SHIP_DIMENSIONS,         "PRINCIPAL DIMENSIONS");
+  VPpdfWriteAttrText(PDF_ATR_SHIP_GLOBAL_COORD_SYSTEM,"XF ZU YP");
+  VPpdfWriteAttrReal(PDF_ATR_SHIP_FWD_PERPENDICULAR,  0.0);
+
+  // Done
+  return 1;
+}
+
+extern VDsaVerifyLogin();
+
+/* -----------------------------------------------------------------
+ * Extracts the setup information
+ */
+extractSetup()
+{
+  IGRint sts;
+  
+  time_t current_time;
+  struct tm *tm;
+
+  IGRchar buf[256],*p;
+  IGRchar cat[128],part[128],rev[128];
+  
+  // Cheat with internal units for now
+  VPpdfWriteAttrText(PDF_ATR_SETUP_INTERNAL_UNITS,"metric");
+
+  // Date time stamp
+  time(&current_time);
+  tm = localtime(&current_time);
+  sprintf(buf,
+	  "%4d-%02d-%02d %02d:%02d:%02d",
+	  tm->tm_year+1900,tm->tm_mon+1,tm->tm_mday,
+	  tm->tm_hour,     tm->tm_min,  tm->tm_sec);
+  
+  //VPpdfWriteAttrText(PDF_ATR_SETUP_DATE,buf);
+
+  // Current file name
+  ex$filename(name = buf, len = sizeof(buf));
+  p = strrchr(buf,'/');
+  if (p) strcpy(buf,p+1);
+  strcpy(part,buf);
+  
+  VPpdfWriteAttrText(PDF_ATR_SETUP_FILE_NAME,FILE_NAME);
+
+  // Toss in pdm information, use some defaults in case not checked in
+  *cat  = 0;
+  strcpy(rev,"0");
+  p = strrchr(part,'.');
+  if (p) *p = 0;
+  
+  // Can cause a hang if not logged in
+  sts = VDsaVerifyLogin();
+  UI_status("");
+  
+  if (sts & 1) {    
+    PDMGetPartInfoGivenFileName(buf,cat,part,rev);
+  }
+  
+  VPpdfWriteAttrText(PDF_ATR_SETUP_PDM_CAT, cat);
+  VPpdfWriteAttrText(PDF_ATR_SETUP_PDM_PART,part);
+  VPpdfWriteAttrText(PDF_ATR_SETUP_PDM_REV, rev);
+
+  strcpy(buf,FILE_STAT);
+  *(buf+1) = 0;
+  
+  VPpdfWriteAttrText(PDF_ATR_SETUP_PDM_STATUS,buf);
+  
+  // Done
+  return 1;
+}
+
+/* -----------------------------------------------------------------
+ * Extract Common Piece Attributes
+ * Called by either extractPlate or extractPiece
+ * Returns a description for XML
+ */
+scan(scan1) 
+IGRchar *scan1;
+{
+  
+  IGRchar *p;
+  
+  if (strlen(scan1) > 32) {
+    printf("Long string '%s'\n",scan1);
+  }
+  
+  for(p = scan1; (*p != 0) && (*p >= ' ') && (*p <= 'z'); p = p + 1);
+  if (*p == 0) return 1;
+  
+  printf("### Bad scan '%s'\n",scan1);
+  return 0;
+  
+}
+
+extractPiece(category,desc)
+IGRchar *category;
+IGRchar *desc;
+{
+  IGRchar buf[128];
+  
+  TVPextNodeData node;
+  
+  // Need to find parent path first
+  memset(&node,0,sizeof(node));
+  if (NODE_ID.objid == NULL_OBJID) goto doPieceAttrs;
+  
+  VDatGetParentNode(&NODE_ID,&node.id);
+
+  vdsa$GetStruct(objID=&node.id, name="node_type", txt=node.type);
+  vdsa$GetStruct(objID=&node.id, name="node_name", txt=node.name);
+
+  processNodeData(&node); // Builds parent stage
+  
+  // Now get some node info
+  node.id = NODE_ID;
+  vdsa$GetStruct(objID=&node.id, name="node_name", txt=node.name);
+  vdsa$GetStruct(objID=&node.id, name="pcmk",      txt=node.pcmk);
+
+#if 0
+  scan(node.stage);
+  scan(node.name);
+  scan(node.pcmk);
+
+  if (!strcmp(node.stage,"PSU 008")) {
+    printf("'%s',%2d,'%s','%s'\n",node.stage,strlen(node.name),node.name,node.pcmk);
+  }
+#endif
+
+  // And dump
+  VPpdfWriteAttrText(PDF_ATR_TREE_NODE_PARENT, node.stage);
+  VPpdfWriteAttrText(PDF_ATR_TREE_NODE_NAME,   node.name);
+  VPpdfWriteAttrText(PDF_ATR_TREE_NODE_PCMK,   node.pcmk);
+
+doPieceAttrs:
+  vdsa$GetStruct(objOE = &PIECE_OE, name = "family_name", txt = buf);
+  VPpdfWriteAttrText(PDF_ATR_PIECE_FAMILY,buf);
+
+  vdsa$GetStruct(objOE = &PIECE_OE, name = "part_num", txt = buf);
+  VPpdfWriteAttrText(PDF_ATR_PIECE_PART_NUM,buf);
+
+  vdsa$GetStruct(objOE = &PIECE_OE, name = "material", txt = buf);
+  VPpdfWriteAttrText(PDF_ATR_PIECE_MAT_TYPE,buf);
+
+  vdsa$GetStruct(objOE = &PIECE_OE, name = "grade", txt = buf);
+  VPpdfWriteAttrText(PDF_ATR_PIECE_MAT_GRADE,buf);
+  
+  if (*node.pcmk) sprintf(desc,"%s %s",category,node.pcmk);
+  else            sprintf(desc,"%s %s",category,node.name);
+
+wrapup:
+
+  return 1;
+}
+
+/* -----------------------------------------------------------------
+ * Extracts a Plate
+ */
+extractPlate()
+{ 
+  IGRdouble thickness;
+  IGRdouble expand;
+  IGRchar   expand_text[128];
+  
+  IGRchar   desc[128];
+
+  // Common Attributes
+  extractPiece("PLATE",desc);
+
+  // Plate specific
+  vdsa$GetStruct(objOE = &PIECE_OE, name = "plate_thk", dbl = &thickness);
+  VPpdfWriteAttrReal(PDF_ATR_PLATE_THICKNESS,thickness);
+
+  // Need to pull expansion from fab data
+  vdsa$GetStruct(objOE = &PIECE_OE, 
+		 name  = "SA_AST:FabData:0:u_exp_major", 
+		 txt   = expand_text);
+
+  expand = atof(expand_text);
+  if (expand < .1) expand = 1.0;
+  VPpdfWriteAttrReal(PDF_ATR_PLATE_EXPAND_MAJOR,expand);
+
+  vdsa$GetStruct(objOE = &PIECE_OE, 
+		 name  = "SA_AST:FabData:0:u_exp_minor", 
+		 txt   = expand_text);
+
+  expand = atof(expand_text);
+  if (expand < .1) expand = 1.0;
+  VPpdfWriteAttrReal(PDF_ATR_PLATE_EXPAND_MINOR,expand);
+  
+  // Done with attributes
+  
+wrapup:
+  return 1;
+}
+
+/* -----------------------------------------------------------------
+ * Extracts a Beam
+ */
+extractBeam()
+{
+  IGRchar desc[128];
+  
+  // Common Attributes
+  extractPiece("BEAM",desc);
+  
+  // Beam specific
+
+  // Done with attributes
+    
+wrapup:
+  return 1;
+}
+
+/* ---------------------------------------
+ * need to do some special processing for
+ * extracting the data to spades
+ */
+processNodeData(node)
+TVPextNodeData *node;
+{
+  IGRstat sts;
+
+  IGRchar *p;
+  IGRchar  buf[128];
+  IGRint   len;
+
+  TGRobj_env pieceOE;
+
+  // Drop the prefix for node path
+  p = strchr(node->path,' ');
+  if (p) strcpy(node->path,p+1);
+
+  // Split type and name for sa stuff
+  if ((!strncmp(node->type,"SA",2)) && (strlen(node->type) == 3)) {
+    strcpy(node->name,node->type+2);
+    *(node->type+2) = 0;
+  }
+
+  // Format psu a bit special
+  if (!strcmp(node->type,"PSU")) {
+    len = strlen(node->name);
+    if (len < 3) {
+      strcpy(buf,"000");
+      strcpy(buf + (3 - len),node->name);
+      strcpy(node->name,buf);
+    }
+  }
+
+  // Build the stage
+  if (*node->type == 0) {
+    strcpy(node->stage,"UNIT MD01");
+  }
+  else {
+    if (*node->name == 0) strcpy(node->stage,node->type);
+    else sprintf(node->stage,"%s %s",node->type,node->name);
+  }
+
+  // For pieces, got a bit further
+  if (strcmp(node->type,"PM")) return 1;
+
+  // Want either plate or beam
+  VDatGetLeafObject(&node->id,&pieceOE);
+  if (pieceOE.obj_id.objid == NULL_OBJID) return 1;
+
+  sts = vdobj$IsAncestryValid(objOE = &pieceOE, superClassName = "VSplate");
+  if (sts & 1) strcpy(node->type,"PLATE");
+
+  sts = vdobj$IsAncestryValid(objOE = &pieceOE, superClassName = "VSbeam");
+  if (sts & 1) strcpy(node->type,"BEAM");
+
+  sprintf(node->stage,"%s %s",node->type,node->pcmk);
+
+  // Done
+  return 1;
+}
+
+/* -----------------------------------------------------------------
+ * Extracts an assembly tree node
+ */
+extractTreeNode()
+{
+  IGRint type;
+  
+  TVPextNodeData node;
+  TVPextNodeData parent;
+
+  IGRchar buf[256];
+  IGRint  seq;
+  
+  // Make things easier
+  memset(&node,0,sizeof(node));
+  node.id = NODE_ID;
+
+  // A qty of 0 implies already extracted
+  // Return value of 0 flags calling routine that node
+  // was not actually written
+  getNodeQty(&node.id,&node.qty);
+  if (node.qty == 0) return 0;
+  
+  // Common for both nodes and leafs
+  vdsa$GetStruct(objID=&node.id, name="node_type", txt=node.type);
+  vdsa$GetStruct(objID=&node.id, name="node_name", txt=node.name);
+  vdsa$GetStruct(objID=&node.id, name="node_path", txt=node.path);
+//vdsa$GetStruct(objID=&node.id, name="u_notes",   txt=node.desc);
+  vdsa$GetStruct(objID=&node.id, name="pcmk",      txt=node.pcmk);
+  
+  processNodeData(&node);
+
+  // Need the parent info
+  memset(&parent,0,sizeof(parent));
+  VDatGetParentNode(&node.id,&parent.id);
+
+  vdsa$GetStruct(objID=&parent.id, name="node_type", txt=parent.type);
+  vdsa$GetStruct(objID=&parent.id, name="node_name", txt=parent.name);
+
+  processNodeData(&parent);
+
+  // Pump out common attributes
+  VPpdfWriteObjBeg  (PDF_OBJ_TREE_NODE);
+  VPpdfWriteAttrText(PDF_ATR_TREE_NODE_TYPE,  node.type);
+  VPpdfWriteAttrText(PDF_ATR_TREE_NODE_NAME,  node.name);
+  VPpdfWriteAttrText(PDF_ATR_TREE_NODE_STAGE, node.stage);
+  VPpdfWriteAttrText(PDF_ATR_TREE_NODE_PARENT,parent.stage);
+  VPpdfWriteAttrText(PDF_ATR_TREE_NODE_PATH,  node.path);
+//VPpdfWriteAttrText(PDF_ATR_TREE_NODE_DESC,  node.desc);
+  VPpdfWriteAttrInt (PDF_ATR_TREE_NODE_QTY,   node.qty);
+
+  // Handle nodes and leafs differently
+  VDatGetBaseType(&node.id,&type);
+
+  switch(type) {
+    
+  case VDAT_CLASSI_TREE:
+  case VDAT_CLASSI_NODE:
+
+    vdsa$GetStruct(objID = &node.id, name = "u_desc", txt = buf);
+    VPpdfWriteAttrText(PDF_ATR_TREE_NODE_DESC,buf);
+
+    vdsa$GetStruct(objID = &node.id, name = "u_notes", txt = buf);
+    VPpdfWriteAttrText(PDF_ATR_TREE_NODE_NOTES,buf);
+
+    vdsa$GetStruct(objID = &node.id, name = "u_platen", txt = buf);
+    VPpdfWriteAttrText(PDF_ATR_TREE_NODE_PLATEN,buf);
+
+    /* Sequence is actually text
+     * This conversion should have worked
+     */
+    // vdsa$GetStruct(objID = &node.id, name = "u_sequence", jnt = &seq);
+    vdsa$GetStruct(objID = &node.id, name = "u_sequence", txt = buf);
+    seq = atoi(buf);
+    VPpdfWriteAttrInt(PDF_ATR_TREE_NODE_SEQUENCE,seq);
+
+    break;
+    
+  case VDAT_CLASSI_LEAF:
+
+    vdsa$GetStruct(objID = &node.id, name = "pcmk", txt = buf);
+    VPpdfWriteAttrText(PDF_ATR_TREE_NODE_PCMK,buf);
+
+    vdsa$GetStruct(objID = &node.id, name = "u_notes", txt = buf);
+    VPpdfWriteAttrText(PDF_ATR_TREE_NODE_NOTES,buf);
+
+    vdsa$GetStruct(objID = &node.id, name = "u_destination", txt = buf);
+    VPpdfWriteAttrText(PDF_ATR_TREE_NODE_DESTINATION,buf);
+
+    break;
+    
+  }
+  
+  return 1;
+}
+
+/* --------------------------------------------
+ * Expose the stage name routine for multiple
+ * qty checking
+ */
+getNodeStage()
+{
+  TVPextNodeData node;
+
+  // printf("Getting Stage ... ");
+  
+  // Init
+  strcpy(STAGE_NAME,"");
+
+  // Make things easier
+  memset(&node,0,sizeof(node));
+  node.id = STAGE_ID;
+
+  // Common for both nodes and leafs
+  vdsa$GetStruct(objID=&node.id, name="node_type", txt=node.type);
+  vdsa$GetStruct(objID=&node.id, name="node_name", txt=node.name);
+  vdsa$GetStruct(objID=&node.id, name="pcmk",      txt=node.pcmk);
+  
+  processNodeData(&node);
+
+  strcpy(STAGE_NAME,node.stage);
+
+  // printf(" %s Got it\n",node.stage);
+
+  return 1;
+}
+
+/* --------------------------------------------
+ * Generates a string for testing for dups
+ */
+getDupStr(dupID, dupStr)
+TGRid   *dupID;
+IGRchar *dupStr;
+{
+  IGRchar dupType[32];
+  IGRchar dupName[32];
+
+  vdsa$GetStruct(objID = dupID, name = "node_type", txt = dupType);
+  vdsa$GetStruct(objID = dupID, name = "pcmk",      txt = dupName);
+  if (*dupName == 0) {
+    vdsa$GetStruct(objID = dupID, name = "node_name",txt = dupName);
+  }
+  sprintf(dupStr,"%s %s",dupType,dupName);
+  return 1;
+}
+
+/* --------------------------------------------
+ * Gets the node_qty for a given node
+ */
+getNodeQty(qtyID, qty)
+TGRid  *qtyID;
+IGRint *qty;
+{
+  IGRstat flag;
+  IGRint  i;
+
+  TGRid qtyParentID;
+  TGRid wrkID;
+
+  IGRchar qtyStr[128];
+  IGRchar wrkStr[128];
+
+  // Usual case
+  *qty = 1;
+
+  // With respect to the parent
+  VDatGetParentNode(qtyID,&qtyParentID);
+  if (qtyParentID.objid == NULL_OBJID) return 1;
+
+  // Compare against siblings
+  flag = 0;
+  getDupStr(qtyID,qtyStr);
+
+  for(i = 0; 
+      vdat$GetObj(objID = &qtyParentID, nth = i, childID = &wrkID); 
+      i = i + 1) {
+
+    // Get myself?
+    if (qtyID->objid == wrkID.objid) {
+      flag = 1;
+    }
+    else {
+      getDupStr(&wrkID,wrkStr);
+      if (!strcmp(qtyStr,wrkStr)) {
+
+        if (flag) *qty = *qty + 1;
+        else {
+          *qty = 0;
+          return 1;
+        }
+      }
+    }
+  }
+
+  return 1;
+}

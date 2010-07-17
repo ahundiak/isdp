@@ -1,0 +1,408 @@
+/* $Id: CObaModify.u,v 1.3 2001/11/04 17:52:48 jayadev Exp $  */
+
+/***************************************************************************
+ * I/STRUCT
+ *
+ * File:	pplcmd/CObaModify.u
+ *
+ * Description: Modify Stiffener Axis CO
+ *	
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ *	$Log: CObaModify.u,v $
+ *	Revision 1.3  2001/11/04 17:52:48  jayadev
+ *	*** empty log message ***
+ *	
+ *	Revision 1.2  2001/08/18 18:29:02  jayadev
+ *	*** empty log message ***
+ *	
+ *	Revision 1.1.1.1  2001/01/04 21:10:02  cvs
+ *	Initial import to CVS
+ *	
+# Revision 1.1  1998/04/30  10:08:06  pinnacle
+# STRUCT 2.5.1
+#
+# Revision 1.1  1998/03/22  13:55:50  pinnacle
+# CR179800676
+#
+ *
+ * History:
+ * MM/DD/YY  AUTHOR    DESCRIPTION
+ * 03/22/98  ah        CR179800676 Modify Stiffener Axis
+ *    ""               CR179800677 Set axis orientation
+ * 08/18/01  Jayadev   TR#MP5430   Enabled selection of plate with holes 
+ * 10/27/01  Jayadev   TR#MP4292   Hilite Objects selected on form 
+ ***************************************************************************/
+
+#include "VDppl.h"
+#include "VSbaMod.h"
+
+struct CIform_st form_st;
+
+TVSbaModInfo info;
+
+#define thePrompt "Modify Stiffener Axis"
+
+/* --------------------------------------
+ * The main routine
+ */
+int main()
+{
+  int sts,msg;
+  int response,response1;
+
+  TGRobj_env stiffOE,dummyOE;
+  OM_S_CLASSLIST classList;
+  
+  sts = VDbaCMD_GetClassList(&classList);
+  if (!(sts & 1)) goto wrapup;
+  
+  sts = init_form();
+  if (!(sts & 1)) goto wrapup;
+
+  response = 0;
+  info.selInProgress = 0;
+
+  while(1) {
+
+    stiffOE.obj_id.objid = NULL_OBJID;
+    
+    form_st.gadget_label = 0;
+    response = 0;
+
+    UI_message(thePrompt);
+
+    sts = ci$locate(prompt  = "Select Stiffener",
+                    eligible_classes = &classList,
+		    owner_action = LC_RIGID_OWNER | LC_FLEX_COMP | LC_FLEX_OWNER,
+		    response     = &response,
+		    md_env       = &stiffOE.mod_env,
+		    obj          = &stiffOE.obj_id.objid,
+		    osnum	 = &stiffOE.obj_id.osnum);
+    if (!(sts & 1)) goto the_loop;
+
+    switch(response) {
+
+    case EX_OBJID:   // Object Set
+
+      VSbaCMD_ModPickedStiffenerFence(&info,&stiffOE.obj_id);   
+      goto the_loop;
+      
+    case EX_DATA: {  // Single Object
+
+      VSbaCMD_ModPickedStiffener(&info,&stiffOE.obj_id);      
+      goto the_loop;
+    }
+
+    } // Switch
+
+the_loop:
+    continue;
+  }
+
+wrapup:
+  return 1;
+}
+
+/* ------------------------------------------
+ * Pick a Limit surface
+ */
+IGRint      pickLimitSurface(prompt,objOE)
+IGRchar    *prompt;
+TGRobj_env *objOE;
+{
+  int retFlag;
+  int sts;
+  int response;
+
+  IGRchar buf[128];
+
+  // Init
+  retFlag = 0;
+  info.selInProgress = 1;
+  UI_status("Current selection Hilited");
+  objOE->obj_id.objid = NULL_OBJID;
+
+  VIg_set_text(info.form,10,prompt);
+
+  // Do the locate
+  sts = ci$locate(
+    prompt  = prompt,
+    classes = "EMSsurface",
+    owner_action = LC_RIGID_COMP | LC_RIGID_OWNER | 
+                   LC_FLEX_COMP  | LC_FLEX_OWNER  | LC_REF_OBJECTS,
+
+    response     = &response,
+    md_env       = &objOE->mod_env,
+    obj          = &objOE->obj_id.objid,
+    osnum	 = &objOE->obj_id.osnum
+  );
+  info.selInProgress = 0;
+  VIg_set_text(info.form,10,"");
+  
+  if (response != EX_DATA) {
+    objOE->obj_id.objid == NULL_OBJID;
+    goto wrapup;
+  }
+  
+  if (objOE->obj_id.objid == NULL_OBJID) goto wrapup;
+
+wrapup:
+  if (retFlag == 1) VIg_set_text(info.form,10,"Limit Selected");
+
+  UI_message(thePrompt);
+  UI_status (thePrompt);
+  return 1;
+}
+
+/* ------------------------------------------
+ * Pick a Plate
+ */
+IGRint      pickPlate(prompt,objOE)
+IGRchar    *prompt;
+TGRobj_env *objOE;
+{
+  int retFlag;
+  int sts;
+  int response;
+
+  IGRchar buf[128];
+
+  // Init
+  retFlag = 0;
+  info.selInProgress = 1;
+  UI_status("Current selection Hilited");
+  objOE->obj_id.objid = NULL_OBJID;
+
+  VIg_set_text(info.form,10,prompt);
+
+  // Do the locate 
+  // TR#MP5430 changed classes VSsrcPlate -> VSplate
+  sts = ci$locate(
+    prompt  = prompt,
+    classes = "VSplate",
+    owner_action = LC_RIGID_COMP | LC_RIGID_OWNER | 
+                   LC_FLEX_COMP  | LC_FLEX_OWNER  | LC_REF_OBJECTS,
+
+    response     = &response,
+    md_env       = &objOE->mod_env,
+    obj          = &objOE->obj_id.objid,
+    osnum	 = &objOE->obj_id.osnum
+  );
+  info.selInProgress = 0;
+  VIg_set_text(info.form,10,"");
+  
+  if (response != EX_DATA) {
+    objOE->obj_id.objid == NULL_OBJID;
+    goto wrapup;
+  }
+  if (objOE->obj_id.objid == NULL_OBJID) goto wrapup;
+  retFlag = 1;
+wrapup:
+  if (retFlag == 1) VIg_set_text(info.form,10,"Plate Selected");
+
+  UI_message(thePrompt);
+  UI_status (thePrompt);
+  return 1;
+}
+
+/* ------------------------------------------
+ * Pick a Support Curve or Surface
+ */
+IGRint      pickSupport(prompt,objOE)
+IGRchar    *prompt;
+TGRobj_env *objOE;
+{
+  int retFlag;
+  int sts;
+  int response;
+
+  IGRchar buf[128];
+
+  // Init
+  retFlag = 0;
+  info.selInProgress = 1;
+  UI_status("Current selection Hilited");
+  objOE->obj_id.objid = NULL_OBJID;
+
+  VIg_set_text(info.form,10,prompt);
+
+  // Do the locate
+  sts = ci$locate(
+    prompt  = prompt,
+    classes = "GRvg",
+    owner_action = LC_RIGID_COMP | LC_RIGID_OWNER | 
+                   LC_FLEX_COMP  | LC_FLEX_OWNER  | LC_REF_OBJECTS,
+
+    response     = &response,
+    md_env       = &objOE->mod_env,
+    obj          = &objOE->obj_id.objid,
+    osnum	 = &objOE->obj_id.osnum
+  );
+  info.selInProgress = 0;
+  VIg_set_text(info.form,10,"");
+  
+  if (response != EX_DATA) {
+    objOE->obj_id.objid == NULL_OBJID;
+    goto wrapup;
+  }
+  if (objOE->obj_id.objid == NULL_OBJID) goto wrapup;
+
+wrapup:
+  if (retFlag == 1) VIg_set_text(info.form,10,"Support Selected");
+
+  UI_message(thePrompt);
+  UI_status (thePrompt);
+  return 1;
+}
+
+/* -----------------------------------------
+ * Form stuff
+ */
+form_notification()
+{
+  IGRlong msg;
+  int retFlag;
+  TGRobj_env objOE;
+
+  // Init
+  retFlag = 1;
+  info.gadget =form_st.gadget_label;
+ 
+  // A few always get's handled
+  switch (info.gadget) {
+
+  case FI_CANCEL: {
+    ci$put(response = TERMINATE);
+    goto wrapup;
+  }
+  } //switch
+
+  // See if already locating something
+  if (info.selInProgress == 1) {
+    VIg_set_text(info.form,10,"Select In Progress...");
+    goto wrapup;
+  }
+
+  // Hilite the objects - TR#MP4292
+  switch (info.gadget) {
+
+  case VSBA_FORM_MOD_B_PLATE: {
+    VSbaCMD_ModHiLiteObject(&info,&info.plateOE);
+    pickPlate("Pick Plate",&objOE);
+    VSbaCMD_ModPickedObject(&info,&objOE);
+    dp$erase_hilite(msg = &msg);
+    goto wrapup;
+  }
+
+  case VSBA_FORM_MOD_B_SUPPORT: {
+
+    VSbaCMD_ModHiLiteObject(&info,&(info.supportOE));
+    pickSupport("Pick Support Curve or Surface",&objOE);
+    VSbaCMD_ModPickedObject(&info,&objOE);
+    dp$erase_hilite(msg = &msg);
+    goto wrapup;
+  }
+
+  case VSBA_FORM_MOD_B_START: {
+
+    VSbaCMD_ModHiLiteObject(&info,&(info.startOE));
+    pickLimitSurface("Pick Start Surface",&objOE);
+    VSbaCMD_ModPickedObject(&info,&objOE);
+    dp$erase_hilite(msg = &msg);
+    goto wrapup;
+  }
+
+  case VSBA_FORM_MOD_B_STOP: {
+
+    VSbaCMD_ModHiLiteObject(&info,&(info.stopOE));
+    pickLimitSurface("Pick Stop Surface",&objOE);
+    VSbaCMD_ModPickedObject(&info,&objOE);
+    dp$erase_hilite(msg = &msg);
+    goto wrapup;
+  }
+
+  } // Switch
+
+  // Hand it off to .I file 
+  retFlag = VSbaCMD_ModNotify(&info);
+
+  // Accept will also terminate if completed sucessfully
+  if ((retFlag == 1) && (info.gadget == FI_ACCEPT)) {
+    ci$put(response = TERMINATE);
+    goto wrapup;
+  }
+
+wrapup:
+  return retFlag;
+
+}
+
+/* --------------------------------------------------------
+ * Get the form started
+ */
+int init_form()
+{
+  int retFlag;
+  int sts;
+  Form existingForm;
+
+  memset(&info,0,sizeof(info));
+  retFlag = 0;
+
+  sts = VI_get_form_by_name("VSbaMod.F",&existingForm);
+  if (sts == FI_SUCCESS) {
+    UI_status("Modify Stiffener Axis Already Running");
+    return 0;
+  }
+
+  VIf_new(100, "VSbaMod.F", ci_notification, &info.form);
+
+  if (info.form == 0) {
+    printf("Could not init Modify Stiffener Axis form\n");
+    goto wrapup;
+  }
+  
+  VDahFrmLoadPositionFromFile(info.form);
+
+  VIf_set_cmd_oid_os(info.form, MY_ID, OM_Gw_current_OS );
+
+  retFlag = 1;
+
+wrapup:
+  return retFlag;
+}
+
+/* ------------------------------------------
+ * Usual command object messages
+ */
+init()
+{
+  info.form = NULL;
+  VSbaCMD_ModInit(&info);
+}
+sleep() 
+{
+  VSbaCMD_ModSleep(&info);
+  //if (info.form) FIf_erase(info.form);
+}
+wakeup()
+{
+  UI_message(thePrompt);
+  VSbaCMD_ModWakeup(&info);
+  if (info.displayForm) {
+    if (info.form) VIf_display(info.form);
+  }
+  
+}
+delete()
+{
+  VSbaCMD_ModDelete(&info);
+  VDahFrmSavePositionInFile(info.form);
+  if (info.form) VIf_delete(info.form);
+  info.form = NULL;
+}
+
+

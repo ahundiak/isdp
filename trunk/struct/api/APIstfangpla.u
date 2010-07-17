@@ -1,0 +1,199 @@
+/***************************************************************************
+ * I/STRUCT
+ *
+ * File:	api/APIstfangpla.u
+ *
+ * Description:
+ *		This file illustrates the use of macro vs$get_stf_angle.
+ *
+ *		This macro calulates the angle between a stiffener and 
+ *		its supporting plate. This file takes stiffener, parametric
+ *		point at which angle has to be evaluated as inputs.
+ *		The parametric point can be specified in two different ways. 
+ *		1. User can directly enter the parameter corrosponding 
+ *		   to the point 
+ *		2. Identify a plane which intersects the curve and determines 
+ *		   the point.
+ *
+ *
+ * Dependencies:
+ *          struct/include/vsAPImacros.h
+ *
+ * History:
+ *	MM/DD/YY	AUTHOR		DESCRIPTION
+ *	11/26/97	i-india		creation date
+ *
+ ***************************************************************************/
+#include "ciminimum.h"
+#include "cimacros.h"
+#include "cieveryone.h" 
+#include "cichannel.h"
+#include "nddef.h"
+#include "ndmacros.h"
+#include "asmacros.h"
+#include "grmacros.h" 
+#include "cievent.h"
+#include "gr.h"
+#include "grio.h"
+#include "griomacros.h"
+#include "msmacros.h"
+#include "vsplacmacros.h"
+#include "vsmodmacros.h"
+#include "vsmiscpplmac.h"
+#include "vsdbgmacros.h"
+#include "vsAPImacros.h"
+
+extern fflush();
+
+extern COgetevent();
+extern	long VSangleBetStfAndPlate();
+
+IGRchar			mes_f[80];
+/*----------------------------------------------------------------------------*/
+init(){
+	strcpy(mes_f,"Angle BetWeen Plate and Stiffener");
+}/* init */
+/*----------------------------------------------------------------------------*/
+wakeup(){
+	message(mes_f);
+}/* wakeup */
+/*----------------------------------------------------------------------------*/
+main() 
+{	
+	long			sts, 
+				msg;
+	struct GRid		stifId,
+				oprId ;
+	struct GRobj_env	stiffener,
+				oprObj ;
+	struct GRmd_env		env ;
+	int			response ;
+	double			angle,
+				param;
+	struct GRevent          event;
+	char                    response_data[EX_RESPONSE_DATA_SIZE];
+
+	angle = 0;
+	msg   = MSFAIL ;
+	param = 0.0;
+
+	if( !ci$locate(
+        	prompt       = "Identify Stiffener",
+	        classes      = "VSstfBeam",
+        	properties   = LC_LC_ONLY | LC_DP_ONLY | LC_RW,
+	        owner_action = LC_RIGID_COMP | LC_RIGID_OWNER | 
+			       LC_FLEX_COMP | LC_FLEX_OWNER,
+	        obj          = &stifId.objid,
+        	osnum        = &stifId.osnum,
+	        md_env       = &env,
+		response     = &response  ) ) exit ;
+
+	stiffener._objid   = stifId.objid ;
+	stiffener._osnum   = stifId.osnum;
+	stiffener.mod_env = env ;
+	__DBGpr_com("stiffener located \n");
+
+ 	co$getevent (
+		  msg           = &msg,
+                  event_mask    = ( GRm_DATA | GRm_RJT_MOVEON | GRm_STRING ),
+                  prompt        = "Point  by parameter y/n[n]?",
+                  response      = &response,
+                  response_data = response_data,
+                  event         = &event );
+		  if( strlen(event.event.keyin) == 0 )
+		  {
+		         event.event.keyin[0] = 'n';
+		  }
+
+
+	 if(response == STRING ){
+		if(   !strcmp("No", event.event.keyin)
+		   || !strcmp("no", event.event.keyin)
+		   || !strcmp("n", event.event.keyin)
+		   || !strcmp("N", event.event.keyin)
+		   ) {
+
+			if(!	ci$locate(
+        			prompt       = "Identify Plane ",
+	        		classes      = "EMSplane",
+        			properties   = LC_LC_ONLY | LC_DP_ONLY | LC_RW,
+	        		owner_action = LC_RIGID_COMP | LC_RIGID_OWNER 
+				| LC_FLEX_COMP | LC_FLEX_OWNER,
+	        		obj          = &oprId.objid,
+        			osnum        = &oprId.osnum,
+	        		md_env       = &env,
+				response     = &response  ) )	exit ;
+
+			oprObj._objid   = oprId.objid;
+			oprObj._osnum   = oprId.osnum;
+			oprObj.mod_env  = env ;
+			/*
+			 * Initialise param to indicate that the point 
+			 * is to be calculated.
+			 */
+			param = -1;
+			/*
+			 * call the macro
+			 */
+			sts = vs$get_stf_angle( msg    = &msg, 
+						stf    = stiffener,
+						param  = &param,
+						surface= oprObj,
+						angle  = &angle ) ;
+			__CheckRC(sts,msg,"VSangleBetStfAndPlate",wrapup);
+			printf("Angle = %lf \n", angle);
+			return 1 ;
+
+
+		} else  if( !strcmp("Yes", event.event.keyin)
+		    	 || !strcmp("y", event.event.keyin)
+		    	 || !strcmp("Y", event.event.keyin)
+		    	 || !strcmp("yes", event.event.keyin)
+		    ) {
+ 			co$getevent (
+		  		msg           = &msg,
+		  		event_mask    = GRm_RJT_MOVEON | GRm_STRING,
+	                  	prompt        = "Enter the parameter",
+        	          	response      = &response,
+                	  	response_data = response_data,
+                  		event         = &event );
+
+			param = atof(event.event.keyin);
+
+			__DBGpr_dbl("param = ",param);
+
+			if( param < 0 || param > 1){
+				/*
+				 * parametric value is not between 0 and 1,
+				 * prompt the user that this is wrong input
+				 * Give him the range of parametric value.
+				 */
+		  		ex$message(msgname = "The  parameter is out of valid range!");
+			} else {
+		
+			__DBGpr_dbl(" param = ",param);
+			__DBGpr_com(" Calling VSangleBetStfAndPlate. ");
+
+			sts = vs$get_stf_angle( msg    = &msg, 
+						stf    = stiffener,
+						param  = &param,
+						surface= oprObj,
+						angle  = &angle ) ;
+			__CheckRC(sts,msg,"VSangleBetStfAndPlate",wrapup);
+			printf(" Angle = %lf ", angle);
+			fflush( (FILE*)stdout );
+			return 1 ;
+			}
+
+		} else { 
+		  ex$message(field = ERROR_FIELD,
+			     msgname = "string entered is neither yes nor no!");
+		}
+	} else {
+		  ex$message(msgname = "string not entered !!!");
+	}
+	wrapup:
+	    return sts;
+
+}
+/*----------------------------------------------------------------------------*/

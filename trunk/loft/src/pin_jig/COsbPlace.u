@@ -1,0 +1,1120 @@
+/* $Id $  */
+/* --------------------------------------------------------------------
+ * I/LOFT
+ *
+ * File:        src/pin_jig/COsbPlace.u
+ *
+ * Description: PPL to place a steel band macro.
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ *      $Log $
+ *
+ * History:
+ *      MM/DD/YY        AUTHOR          DESCRIPTION
+ *      05/23/00        Rama Rao        File Creation.
+ * -------------------------------------------------------------------*/
+
+#include "VDppl.h"
+#include "VDchn.h"
+#include "VDexp.h"
+#include "VDefp.h"
+#include "VDobj.h"
+#include "coparamac.h"
+#include "vlsband.h"
+#include "vldbgmacros.h"
+
+#define vdsDEBUG	1
+#define vdserrDEBUG	1
+
+#define EXP_DOUBLE      0
+#define MAX_FEET        200
+
+#define COMMAND_NAME 		"Place Steel Bands"
+#define FORM_NAME		"VLsbMgr.frm"
+
+Form				form;
+struct CIform_st 		form_st;
+IGRint				row, col, num_rows, nb_bndsrf, form_labels[60],
+				form_displayed,form_exists, not_done, num_srfs,
+				test_wakeup, neat_ft_count;
+IGRchar         		msgStr[128], srf_name[128], job_no[128], 
+				unit_no[128], job_desc[128];
+struct GRmd_env			loc_env;
+struct GRid			neat_cont, neat_feet[200], endpts[50];
+struct GRobj_env		surface, srf_list[20], bndsrf[20];
+struct GRvg_construct   	cnst;
+
+extern 	FIg_is_valid(), FIg_get_attr(), FIg_set_state_off(), 
+	FIfld_set_active_row(), FIfld_set_value(), FIfld_set_text(),
+	FImcf_set_select(), FImcf_get_active_col(), FIfld_pos_cursor(),
+	FIfld_get_list_select(), FIg_get_state(), FIfld_set_line_color();
+
+extern  VSsbGetBndSrfObjs(), VSbulkDisplayByGRobj_envs(), VLsbGetMoldSurface(),
+	ASmake_source_from_env(), EX_get_global(), AClib_dir(), ASend_fence(),
+	ACconstruct_path(), VDSloadMacroLibrary(), ASstart_var_fence(),
+	VSbulkDisplayByGRids(), VLendpts(), VLsame_point(), dblcpy(), VLplPt(),
+	VLinitCnst(), BSdistptpt(), VSbulkDeleteByGRids();
+
+extern  GRclassid 	OPP_VSplate_class_id, OPP_GR3dpoint_class_id ;
+
+IGRstat message_bar( inPrompt )
+IGRchar         *inPrompt;
+{
+   FIg_set_text( form, G_MESSAGE_FIELD, inPrompt );	
+   return 1;
+}
+
+DisableAllExceptCancel()
+{
+   IGRint       i, attr ;
+
+   for( i=0; i<60; i=i+1 )
+   {
+       form_labels[i] = 0 ;
+       if( i == FI_CANCEL ) 	continue;
+       if( ! ( FIg_is_valid( form, i )) )
+       {
+          FIg_get_attr( form, i, &attr ) ;
+          if( !( attr & FI_NOT_DISPLAYED ) )
+          {
+             FIg_disable( form, i );
+             form_labels[i] = 1 ;
+          }
+       }
+    }
+}
+
+EnableAllExceptCancel()
+{
+   IGRint       i;
+   for( i=0; i<60; i=i+1 )
+   {
+       if( i == FI_CANCEL )  	continue;
+       if( form_labels[i] ) FIg_enable( form, i );
+   }
+}
+
+wakeup ()
+/************************************************************
+ * FUNCTION:  wakeup()
+ *
+ * DESCRIPTION: This function is called when the command file
+ *    is started and when it resumes after an interruption.
+ ************************************************************/
+{
+        /* Display the form unless the command file is just starting */
+        __DBGpr_int("I'm now waking up, test_wakeup",test_wakeup);
+        if ( test_wakeup == 1 && not_done ) {
+            if( form )
+            {
+                EnableAllExceptCancel();
+                form_displayed = TRUE; /* Set flag for sleep function */
+            }
+        }
+}
+
+sleep ()
+/************************************************************
+ * FUNCTION:  sleep()
+ *
+ * DESCRIPTION: This function is called immediately before the
+ *    command file is interrupted.
+ ************************************************************/
+{
+        /* Erase the form if it is displayed */
+        if ( form_displayed == TRUE ) {
+                DisableAllExceptCancel();
+                form_displayed = FALSE;
+        }
+}
+
+delete ()
+/************************************************************
+ * FUNCTION: delete()
+ *
+ * DESCRIPTION: This function is called when the command file
+ *    ends or is terminated.
+ ************************************************************/
+{
+        int     i ;
+
+        __DBGpr_int("form_displayed", form_displayed);
+        __DBGpr_int("form_exists", form_exists);
+        /* Erase the form if it is displayed */
+        if ( form_displayed == TRUE ) {
+                FIf_erase ( form );
+                form_displayed = FALSE;
+        }
+        /* Delete the form if it exists */
+        if ( form_exists ) {
+                if( form ) {
+  			VDahFrmSavePositionInFile(form);
+  			if (form) VIf_delete(form);
+  			form = NULL;
+                }
+        }
+	for( i=0; i<num_rows; i=i+1 )
+	  if( endpts[i].objid != NULL_OBJID )
+	  {
+     	      ci$send(msg = message GRvg.GRdelete( &msg, &loc_env ),
+                        targetid = endpts[i].objid,
+                        targetos = endpts[i].osnum );
+	  }
+
+        not_done = 0 ;
+}
+
+IGRint	GetName( object, name )
+struct GRid		object;
+IGRchar			*name;
+{
+   ci$send(  msg = message GRgraphics.GRgetname( &msg, name ),
+		targetid = object.objid,
+		targetos = object.osnum  );
+}
+
+IGRint check_dir()
+{
+IGRint		i, sel, pos, ok;
+IGRchar		stat[128], dir1[28], dir2[128];
+
+   for( i=0; i<num_rows; i=i+1 )
+   {
+      ok = 0;
+      FIfld_get_text( form, G_BAND_MCF, i, 1, 128, stat, &sel, &pos );
+      if( strcmp( stat, "" ) && atoi(stat) )
+      {
+	FIfld_get_text( form, G_BAND_MCF, i, 3, 128, dir1, &sel, &pos );
+	if( strcmp( dir1, "" ) )
+	{
+	   FIfld_get_text( form, G_BAND_MCF, i, 4, 128, dir2, &sel, &pos );
+	   if( strcmp( dir2, "" ) )
+	   {
+	     if( strcmp( dir1, dir2 ) )
+	     {
+		__DBGpr_str("First String ", dir1 );
+		__DBGpr_str("Second String ", dir2 );
+		if(   ( !strncmp( dir1, "FWD", 3 ) && 
+				strncmp( dir2, "AFT", 3  ) ) || 
+		      ( !strncmp( dir1, "AFT", 3 ) && 
+				strncmp( dir2, "FWD", 3  ) ) || 
+		      ( !strncmp( dir1, "IB", 2  ) && 
+				strncmp( dir2, "OB", 2   ) ) || 
+		      ( !strncmp( dir1, "OB", 2  ) && 
+				strncmp( dir2, "IB", 2   ) ) || 
+		      ( !strncmp( dir1, "UP", 2  ) && 
+				strncmp( dir2, "DOWN", 4 ) ) || 
+                      ( !strncmp( dir1, "DOWN", 4) && 
+				strncmp( dir2, "UP", 2   ) ) )
+		{
+		   ok = 1;
+		   sprintf( stat, "%d", i+1 );
+		   FIfld_set_text( form, G_BAND_MCF, i, 0, stat, FALSE );
+		}
+	     }
+	   }
+	}
+      }
+      if( !ok ) FIfld_set_text( form, G_BAND_MCF, i, 0, "**", FALSE );
+   }
+   return 0;
+}
+
+IGRstat LocatePlates( inPrompt, num, list, single_pl )
+IGRchar         *inPrompt;
+IGRint		*num;
+TGRobj_env	**list;
+TGRobj_env	*single_pl;
+{
+IGRint		i, response, sts;
+TGRobj_env	objOE;
+
+   *num = 0;
+   if( *list ) { free( *list ); *list = NULL; }
+   single_pl->obj_id.objid = NULL_OBJID;
+
+   DisableAllExceptCancel();
+
+   if( num_srfs ) 
+      VSbulkDisplayByGRobj_envs( GRhd, num_srfs, srf_list );
+
+   sts = ci$locate(prompt  = inPrompt,
+                   classes = "VSplate",
+                   owner_action = LC_RIGID_OWNER |
+                                  LC_RIGID_COMP  |
+                                  LC_FLEX_COMP   |
+                                  LC_FLEX_OWNER  |
+                                  LC_REF_OBJECTS,
+                   stackable    = 1,
+                   response     = &response,
+                   md_env       = &objOE.mod_env,
+                   obj          = &objOE.obj_id.objid,
+                   osnum        = &objOE.obj_id.osnum);
+
+   dp$erase_hilite( msg = &msg );
+
+   if (!(sts & 1)) response = 0;
+
+   switch(response) {
+
+    case EX_OBJID:   // Object Set
+
+      /* Grab Located Objects */
+      as$start_fence(	set       = &objOE.obj_id,
+			set_env   = &objOE.mod_env,
+		 	nb_obj    = num,
+			p_obj_env = list );
+      ASend_fence();
+      break;
+
+    case EX_DATA:    // Single Object
+      *single_pl = objOE ;
+      break;
+
+   } // Switch
+
+   EnableAllExceptCancel();
+
+   FIg_disable( form, G_ADD );
+   FIg_disable( form, G_DELETE );
+   FIg_disable( form, G_BAND_MCF );
+
+   return 1;
+
+}
+
+IGRstat LocateOE( inPrompt, selOE, objName, check)
+IGRchar         *inPrompt;
+TGRobj_env      *selOE;
+IGRchar         *objName;
+IGRint          check;
+{
+  IGRint  		i, attr, response, labels[60] ;
+  OM_S_CLASSLIST	eligibleClasses ;
+  OMuword		classids[2] ;
+
+        if( selOE->obj_id.objid != NULL_OBJID ) {
+		VSbulkDisplayByGRobj_envs( GRhd, 1, selOE );
+        }
+
+        for( i=0; i<60; i=i+1 )
+        {
+           labels[i] = 0 ;
+           if( ! ( FIg_is_valid( form, i )) )
+           {
+              FIg_get_attr( form, i, &attr ) ;
+              if( !( attr & FI_NOT_DISPLAYED ) )
+              {
+                 FIg_disable( form, i );
+                 labels[i] = 1 ;
+              }
+           }
+        }
+
+        classids[0] = OPP_VSplate_class_id ;
+
+        eligibleClasses.w_count   = 1 ;
+        eligibleClasses.w_flags   = OM_CLST_subclass ;
+        eligibleClasses.p_classes = classids ;
+
+        ci$locate(
+                obj             = &selOE->obj_id.objid,
+                osnum           = &selOE->obj_id.osnum,
+                md_env          = &selOE->mod_env,
+                response        = &response,
+		eligible_classes= &eligibleClasses,
+                prompt          = inPrompt,
+                stackable       = TRUE ,
+                properties      = LC_LC_ONLY | LC_DP_ONLY | LC_RW,
+                owner_action    = LC_RIGID_COMP  | LC_RIGID_OWNER |
+                                  LC_FLEX_COMP   | LC_FLEX_OWNER  |
+                                  LC_REF_OBJECTS );
+
+        msgStr[0] = '\0' ;
+        if( selOE->obj_id.objid != NULL_OBJID ) {
+	 	GetName( selOE->obj_id, objName );
+		__DBGpr_str("Returned name is ",objName);
+        }
+
+wrapup:
+   return TRUE;
+}
+
+IGRint	GetProperIndex( str )
+IGRchar		*str;
+{
+
+   switch( str[0] )
+   {
+	case  'A': return 1;
+	case  'F': return 2;
+	case  'I': return 3;
+	case  'O': return 4;
+	case  'D': return 5;
+	case  'U': return 6;
+   }
+}	
+
+IGRchar*	GetProperDirName( dir )
+IGRint	dir;
+{
+
+   switch( dir )
+   {
+        case  1: return "AFT";
+        case  2: return "FWD";
+        case  3: return "IB";
+        case  4: return "OB";
+        case  5: return "DOWN";
+        case  6: return "UP";
+   }
+}
+
+IGRint FillEdgeInfo()
+{
+IGRlong		sts;
+IGRint		i, dir;
+
+  sts = vdchn$GetList(  objID   = &neat_cont,
+                        chnIDx  = VDCHN_IDX_TO_COMPONENTS,
+                        maxCnt  = MAX_FEET,
+                        cnt     = &neat_ft_count,
+			outIDs	= neat_feet );
+
+  for( i=0; i<(neat_ft_count/2); i=i+1 )
+  {
+     vdexp$Get( objID = &neat_feet[2*i+1], jnt =&dir );
+     FIfld_set_text( form, G_BAND_MCF, i, 3, GetProperDirName(dir), FALSE );
+  }
+  num_rows = neat_ft_count/2;
+
+}
+
+IGRint ComputePoint( ind, str )
+IGRint		ind;
+IGRchar*	str;
+{
+IGRlong			rc;
+IGRint			prev_ind, next_ind, valid_ind, dir, dir1, dir2,edge_dir;
+IGRdouble		dist, min_dist;
+IGRpoint		pt, spt1, ept1, spt2, ept2;
+IGRchar			mess[100];
+IGRuchar        	weight;
+struct IGRpolyline      pt_poly;
+
+  prev_ind = ind - 1;
+  if( prev_ind < 0 )	prev_ind = num_rows-1;
+
+  next_ind = ind + 1;
+  if( next_ind == num_rows ) 	next_ind = 0 ;
+
+  dir = GetProperIndex( str );
+  vdexp$Get( objID = &neat_feet[2*prev_ind+1], jnt =&dir1 );
+  vdexp$Get( objID = &neat_feet[2*next_ind+1], jnt =&dir2 );
+  vdexp$Get( objID = &neat_feet[2*ind+1], jnt =&edge_dir );
+
+  if( edge_dir == dir1 || edge_dir == dir2 )
+  {
+     while( 1 )
+     {
+       if( edge_dir == dir1 )
+       {
+          prev_ind = prev_ind - 1 ;
+          if( prev_ind < 0 )    prev_ind = num_rows-1;
+       }
+
+       if( edge_dir == dir2 )
+       {
+          next_ind = next_ind + 1 ;
+          if( next_ind == num_rows )    next_ind = 0 ;
+       }
+
+       vdexp$Get( objID = &neat_feet[2*prev_ind+1], jnt =&dir1 );
+       vdexp$Get( objID = &neat_feet[2*next_ind+1], jnt =&dir2 );
+       if( edge_dir != dir1 && edge_dir != dir2 ) break;
+     } 
+  }
+
+  if( dir == dir1 )		valid_ind = prev_ind ;
+  else if( dir == dir2 )	valid_ind = next_ind ;
+  else
+  {
+     sprintf( mess, "Select either %s or %s", GetProperDirName(dir1),
+				GetProperDirName(dir2) );
+     message_bar( mess );
+     return 0;
+  }
+
+  VLendpts( &msg, &neat_feet[2*ind], &loc_env, spt1, ept1 );
+  VLendpts( &msg, &neat_feet[2*valid_ind], &loc_env, spt2, ept2 );
+
+  min_dist = 1e30;
+  dist = BSdistptpt( &rc, spt1, spt2 ); 
+  if( dist < min_dist ) 
+  {
+      dblcpy( pt, spt1, 3 );
+      min_dist = dist; 
+  }
+
+  dist = BSdistptpt( &rc, spt1, ept2 );
+  if( dist < min_dist )
+  {
+      dblcpy( pt, spt1, 3 );
+      min_dist = dist;
+  }
+
+  dist = BSdistptpt( &rc, ept1, spt2 );
+  if( dist < min_dist )
+  {
+      dblcpy( pt, ept1, 3 );
+      min_dist = dist;
+  }
+
+  dist = BSdistptpt( &rc, ept1, ept2 );
+  if( dist < min_dist )
+  {
+      dblcpy( pt, ept1, 3 );
+      min_dist = dist;
+  }
+
+  if( endpts[ind].objid != NULL_OBJID )
+  {	
+     VSbulkDisplayByGRids( &loc_env, GRhe, 1, &endpts[ind] );
+     ci$send(msg = message GRvg.GRdelete( &msg, &loc_env ),
+			targetid = endpts[ind].objid,
+                 	targetos = endpts[ind].osnum );
+     endpts[ind].objid =  NULL_OBJID;
+  }
+
+  pt_poly.num_points  = 1;
+  pt_poly.points      = pt;
+  cnst.geometry        = (IGRchar *) &pt_poly;
+  endpts[ind].osnum = cnst.env_info->md_id.osnum;
+  ci$send(  msg      = message GR3dpoint.GRaltconstruct( &cnst ),
+                 targetid = endpts[ind].objid,
+                 targetos = endpts[ind].osnum );
+  cnst.geometry = NULL;
+
+  weight = 8 ;
+  ci$send(  msg      = message GRvg.GRchgweight( &msg, &weight ),
+                 targetid = endpts[ind].objid,
+                 targetos = endpts[ind].osnum );
+
+  VSbulkDisplayByGRids( &loc_env, GRhd, 1, &endpts[ind] );
+  return 1;
+}
+
+IGRint 	PlaceSteelBands()
+{
+IGRlong			sts, msg;
+IGRint          	i, sel, pos, WaterLines, MarkingLines;
+IGRchar         	stat[128], mess[50];
+struct ACrg_coll	attr[NB_SB_ATTR];
+struct GRid		MAC, TEMP[2];
+
+   for( i=0; i<num_rows; i=i+1 )
+   { 
+       FIfld_get_text( form, G_BAND_MCF, i, 0, 128, stat, &sel, &pos );
+       if( strcmp( stat, "**" ) ) break;
+   }
+
+   if( i == num_rows )
+   {
+	message_bar("No Steel Bands to place" );
+	return 0;
+   }
+
+   for( i=0; i<num_rows; i=i+1 )
+   {
+      FIfld_get_text( form, G_BAND_MCF, i, 0, 128, stat, &sel, &pos );
+      if( !strcmp( stat, "**" ) ) continue;
+
+      sprintf( mess, "Placing Steel Band %d", i+1 );
+      FIfld_set_line_color( form, G_BAND_MCF, i, 0, FI_BLUE );
+
+      strcpy( attr[IDX_SB_UNITNO].name, NAM_SB_UNITNO );
+      attr[IDX_SB_UNITNO].desc.type = AC_ATTRIB_TEXT;
+      strcpy( attr[IDX_SB_UNITNO].desc.value.att_txt, unit_no );
+
+      strcpy( attr[IDX_SB_JOBNO].name, NAM_SB_JOBNO );
+      attr[IDX_SB_JOBNO].desc.type = AC_ATTRIB_TEXT;
+      strcpy( attr[IDX_SB_JOBNO].desc.value.att_txt, job_no );
+
+      strcpy( attr[IDX_SB_JOBDESC].name, NAM_SB_JOBDESC );
+      attr[IDX_SB_JOBDESC].desc.type = AC_ATTRIB_TEXT;
+      strcpy( attr[IDX_SB_JOBDESC].desc.value.att_txt, job_desc );
+
+      FIfld_get_text( form, G_BAND_MCF, i, 1, 128, stat, &sel, &pos );
+      strcpy( attr[IDX_SB_BANDNO].name, NAM_SB_BANDNO );
+      attr[IDX_SB_BANDNO].desc.type = AC_ATTRIB_TEXT;
+      strcpy( attr[IDX_SB_BANDNO].desc.value.att_txt, stat );
+
+      FIfld_get_text( form, G_BAND_MCF, i, 2, 128, stat, &sel, &pos );
+      strcpy( attr[IDX_SB_BANDDESC].name, NAM_SB_BANDDESC );
+      attr[IDX_SB_BANDDESC].desc.type = AC_ATTRIB_TEXT;
+      strcpy( attr[IDX_SB_BANDDESC].desc.value.att_txt, stat );
+
+      FIfld_get_text( form, G_BAND_MCF, i, 5, 128, stat, &sel, &pos );
+      strcpy( attr[IDX_SB_STOCK].name, NAM_SB_STOCK );
+      attr[IDX_SB_STOCK].desc.type = AC_ATTRIB_DOUBLE;
+      attr[IDX_SB_STOCK].desc.value.att_exp = atof( stat );
+
+      FIfld_get_text( form, G_BAND_MCF, i, 6, 128, stat, &sel, &pos );
+      strcpy( attr[IDX_SB_ENDSTOCK].name, NAM_SB_ENDSTOCK );
+      attr[IDX_SB_ENDSTOCK].desc.type = AC_ATTRIB_DOUBLE;
+      attr[IDX_SB_ENDSTOCK].desc.value.att_exp = atof( stat );
+
+      FIfld_get_text( form, G_BAND_MCF, i, 3, 128, stat, &sel, &pos );
+      strcpy( attr[IDX_SB_SIDE].name, NAM_SB_SIDE );
+      attr[IDX_SB_SIDE].desc.type = AC_ATTRIB_DOUBLE;
+      attr[IDX_SB_SIDE].desc.value.att_exp = GetProperIndex( stat );
+
+      FIfld_get_text( form, G_BAND_MCF, i, 4, 128, stat, &sel, &pos );
+      strcpy( attr[IDX_SB_START_DIR].name, NAM_SB_START_DIR );
+      attr[IDX_SB_START_DIR].desc.type = AC_ATTRIB_DOUBLE;
+      attr[IDX_SB_START_DIR].desc.value.att_exp = GetProperIndex( stat );
+
+      FIg_get_state( form, G_DATUM_LINES, &WaterLines );
+      strcpy( attr[IDX_SB_WATERLINES].name, NAM_SB_WATERLINES );
+      attr[IDX_SB_WATERLINES].desc.type = AC_ATTRIB_DOUBLE;
+      attr[IDX_SB_WATERLINES].desc.value.att_exp = WaterLines;
+
+      FIg_get_state( form, G_MARKING_LINES, &MarkingLines );
+      strcpy( attr[IDX_SB_MARKINGLINES].name, NAM_SB_MARKINGLINES );
+      attr[IDX_SB_MARKINGLINES].desc.type = AC_ATTRIB_DOUBLE;
+      attr[IDX_SB_MARKINGLINES].desc.value.att_exp = MarkingLines;
+
+      ASmake_source_from_env( &neat_feet[2*i], &loc_env, &TEMP[0] );
+
+      TEMP[1].objid = NULL_OBJID ;
+      TEMP[1].osnum = loc_env.md_id.osnum ;
+
+      ci$send( msg      = message ACrg_collect.ACadd_list_attribute(
+					&msg, NB_SB_ATTR, attr ),
+                targetid = TEMP[1].objid,
+                targetos = TEMP[1].osnum );
+
+      ci$send( msg      = message NDnode.NDchg_state(
+                                                ND_DEL_NO_CH | ND_WAIT_DEL,
+                                                ND_DEL_NO_CH | ND_WAIT_DEL ),
+		targetid = TEMP[1].objid,
+		targetos = TEMP[1].osnum );
+
+      MAC.objid = NULL_OBJID;
+      MAC.osnum = loc_env.md_id.osnum;
+
+      ci$send(msg      = message  nci_macro.init
+                     ( &msg, 0,"steel_band", 2, TEMP, NULL,  &loc_env ),
+               targetid = MAC.objid,
+               targetos = MAC.osnum );
+   }
+
+   message_bar("");
+   return 1;
+
+wrapup:
+   return 0;
+}
+
+int main()
+{
+IGRlong		msg;
+IGRint		sts, response, i, j, count, sel, pos, srf_row, srf_pos, num_pl,
+		feet_size, multi_select;
+IGRchar		str[50], stat[128], path[200], macName[100], *p;
+struct GRid	csId, macID, mksrc_pl[30];
+TVDvlaID	macVLA;
+enum GRdpmode   DisplayMode;
+struct GRobj_env *list;
+
+  test_wakeup = 1;              /* flag for wakeup function */
+  form_exists = FALSE;          /* flag for delete function */
+  form_displayed = FALSE;       /* flag for sleep  function */
+  not_done  = TRUE;             /* Set this to FALSE when done with form */
+  list      = NULL;
+  count     = 0;
+  nb_bndsrf = 20;
+  num_srfs  = 0;
+  p         = NULL;
+  DisplayMode = GRhd;
+  surface.obj_id.objid = NULL_OBJID;
+
+  VLinitCnst( &cnst );
+
+  message( COMMAND_NAME );
+
+  VDSloadMacroLibrary( "band_av" );
+
+  for( i=0; i<50; i=i+1 )	endpts[i].objid = NULL_OBJID;
+
+  sts = init_form();
+  if (!(sts & 1)) goto wrapup;
+
+  num_rows = 0;
+  row      = -1;
+  col      = -1;
+
+  VSsbGetBndSrfObjs( &msg, &count, &list );
+  __DBGpr_int("Count ", count );
+  if( count < nb_bndsrf ) nb_bndsrf = count;
+  for( i=0; i<nb_bndsrf; i=i+1 )
+        bndsrf[i] = list[i];
+
+  free( list ); list = NULL;
+  get_unitname_and_srf();
+
+  sts = di$give_pathname(osnum = loc_env.md_id.osnum, pathname = path );
+  if( (sts&1) && path[0] != '\0' )
+  {
+      strcat( path, ":usr:BASEcoordsys" );
+      sts = di$translate( objname = path,
+                          p_objid = &csId.objid,
+                          p_osnum = &csId.osnum   );
+  }
+  message_bar("Select Plates or Fill-in the information" );
+  while (not_done )
+  {
+    /* Suspend the command file and wait for the form */
+    ci$get (  prompt   = "Fill in the form",
+              response = &response );
+
+    UI_status(""); /* clear the status field*/
+    message_bar("");
+    switch ( form_st.gadget_label )
+    {
+       case FI_CANCEL: 
+       {
+	   dp$erase_hilite( msg = &msg );
+	   not_done = FALSE;
+	   FIf_erase ( form );
+	   break;
+       }
+
+       case FI_ACCEPT: 
+       {
+	   dp$erase_hilite( msg = &msg );
+	   if( PlaceSteelBands() )
+	   {
+	      not_done = FALSE;
+              FIf_erase ( form );
+	   }
+	   else FIg_set_state_off( form, FI_ACCEPT );
+           break;
+       }
+
+       case G_UNIT_NUMBER:
+       {
+	   FIg_get_text( form, G_UNIT_NUMBER, unit_no );
+	   break;
+       }
+
+       case G_JOB_NUMBER:
+       {
+	   FIg_get_text( form, G_JOB_NUMBER, job_no );
+           break;
+       }
+
+       case G_JOB_DESC:
+       {
+	   FIg_get_text( form, G_JOB_DESC, job_desc );
+           break;
+       }
+
+       case G_SURFACE_LOCATE:
+       {
+	   surface.obj_id.objid = NULL_OBJID ;
+	   num_pl = 0 ;
+	   j = 0;
+	   multi_select = 0 ;
+	   LocatePlates( "Identify Plate or Move on", &num_pl, 
+			 &list, &surface );
+	   if( surface.obj_id.objid != NULL_OBJID || num_pl != 0 )
+	   {
+	     if( surface.obj_id.objid == NULL_OBJID )
+	     {
+		surface = list[j];
+		j = j+ 1;
+		multi_select = 1;
+	     }
+
+pl_loop:
+	     for( i=0; i<num_srfs; i=i+1 )
+	     {
+	        if( srf_list[i].obj_id.objid == surface.obj_id.objid &&
+		    srf_list[i].obj_id.osnum == surface.obj_id.osnum )
+	         break;
+	     }
+	     if( i != num_srfs )
+	     {
+	        message_bar("Plate is already selected" );
+	        UI_status("Plate is already selected");
+	     }
+	     else if( num_srfs == 20 )
+	     {
+	        message_bar("Maxinum number of plates locatable: 20" );
+	        UI_status("Maxinum number of plates locatable: 20");
+	     }
+	     else
+	     {
+		GetName( surface.obj_id, srf_name );
+	        p = strstr( srf_name, ":ref:" );
+	        if( p ) strcpy( srf_name, p+4 );
+	        FIfld_set_text( form, G_SURFACE_LIST, num_srfs, 0, 
+			        srf_name, FALSE );
+	        srf_list[num_srfs] = surface ;
+	        num_srfs = num_srfs + 1 ;
+	     }
+	     if( multi_select && j < num_pl ) 
+	     {
+		surface = list[j];
+		j = j + 1;
+		goto pl_loop;
+	     }
+	   }
+	   FIg_set_state_off( form, G_SURFACE_LOCATE );
+	   if( list ) { free ( list ); list = NULL; }
+	   break;
+       }
+
+       case G_SURFACE_DELETE:
+       {
+	 dp$erase_hilite( msg = &msg );
+	 j = 0;
+	 for( i=0; i<num_srfs; i=i+1 )
+	 {
+	   FIfld_get_select( form, G_SURFACE_LIST, i, 0, &srf_pos);
+           if( !srf_pos )	
+	   {
+		srf_list[j].obj_id.objid = srf_list[i].obj_id.objid;
+		j = j + 1 ;
+	   }
+	 }
+
+	 FIfld_delete_rows( form, G_SURFACE_LIST, 0, num_srfs );
+	 num_srfs = j ;
+
+	 for( i=0; i<num_srfs; i=i+1 )
+	 {
+           GetName( srf_list[i].obj_id, srf_name );
+           p = strstr( srf_name, ":ref:" );
+           if( p ) strcpy( srf_name, p+4 );
+           FIfld_set_text( form, G_SURFACE_LIST, i, 0,
+                           srf_name, FALSE );
+	 }
+
+         FIg_set_state_off( form, G_SURFACE_DELETE );
+         break;
+       }
+
+       case G_SHOW_EDGES:
+       {
+	  if( num_srfs )
+          {
+	      neat_cont.objid = NULL_OBJID;
+	      neat_cont.osnum = loc_env.md_id.osnum;
+	      ASmake_source_from_env( &csId, &loc_env, &mksrc_pl[0] );
+
+	      vdvla_id$Construct(vla = &macVLA);
+	      vdchn$GetChildrenByClass(	objOE     = &srf_list[0],
+                           		className = "nci_macro",
+                           		vla       = &macVLA);
+
+	      for( i = 0; 
+		   vdvla_id$GetAt(vla = &macVLA, nth = i, objID = &macID);
+		   i = i +1 )
+	      {
+		  vdobj$Get( objID = &macID, macName = macName );
+  		  if( !strcmp( macName, "neat_cont" ) ) 
+		  {
+		     feet_size = 0;
+                     om$get_channel_count( osnum = macID.osnum,
+                                           objid = macID.objid ,
+                                	   p_chanselect = &AC_mto_graf_chns,
+                                	   count = (OMuint *)&feet_size );
+		     if( feet_size > 0 )
+		     {
+		        neat_cont = macID;
+		        break;
+		     }
+		     else VSbulkDeleteByGRids( &loc_env, 1, &macID );
+		  }
+	      }
+	      vdvla_id$Delete(vla = &macVLA);
+
+	      if( neat_cont.objid == NULL_OBJID )
+	      {
+	          for( i=0; i<num_srfs; i=i+1 )
+		     ASmake_source_from_env( &srf_list[i].obj_id,
+					 &loc_env, &mksrc_pl[i+1] );
+
+   	          ci$send(msg      = message  nci_macro.init
+              		( &msg, 0,"neat_cont", num_srfs+1, 
+			  mksrc_pl, NULL,  &loc_env ),
+               		targetid = neat_cont.objid,
+               		targetos = neat_cont.osnum );
+	      }
+
+	      FIg_disable( form, G_SHOW_EDGES );
+	      FIg_disable( form, G_SURFACE_LIST );
+	      FIg_disable( form, G_SURFACE_LOCATE );
+	      FIg_disable( form, G_SURFACE_DELETE );
+	      FIg_disable( form, G_SURFACE_NAME );
+
+   	      FIg_enable( form, G_ADD );
+   	      FIg_enable( form, G_DELETE );
+   	      FIg_enable( form, G_BAND_MCF );
+
+	      FillEdgeInfo();
+
+	      if( num_rows == 0 )
+       	      {
+		VSbulkDeleteByGRids( &loc_env, 1, &neat_cont );
+           	dp$erase_hilite( msg = &msg );
+           	not_done = FALSE;
+           	FIf_erase ( form );
+		status( "Neat Contour Creation Failed" );
+           	break;
+       	      }
+	      message_bar( "Fill Steel Band Information" );
+          }
+	  else message_bar( "Select Plates to see the edges" );
+	  FIg_set_state_off( form, G_SHOW_EDGES );
+	  break;
+       }
+
+       case G_SURFACE_NAME:
+       {
+	   for( i=0; i<nb_bndsrf; i=i+1 )
+	   {
+	      FIfld_get_list_select( form,  G_SURFACE_NAME, i, 0, &sel );
+	      if( sel ) 
+	      {
+		dp$erase_hilite( msg = &msg );
+		surface = bndsrf[i];
+                for( i=0; i<num_srfs; i=i+1 )
+                {
+             	   if( srf_list[i].obj_id.objid == surface.obj_id.objid &&
+                       srf_list[i].obj_id.osnum == surface.obj_id.osnum )
+                    break;
+                }
+           	if( i != num_srfs )
+           	{
+              	   message_bar("Plate is already selected" );
+                   UI_status("Plate is already selected");
+                }
+                else if( num_srfs == 20 )
+           	{
+              	   message_bar("Maxinum number of plates locatable: 20" );
+                   UI_status("Maxinum number of plates locatable: 20");
+                }
+                else
+                {
+	           GetName( surface.obj_id, srf_name );
+                   p = strstr( srf_name, ":ref:" );
+                   if( p ) strcpy( srf_name, p+4 );
+                   FIfld_set_text( form, G_SURFACE_LIST, num_srfs, 0,
+                              srf_name, FALSE );
+                   VSbulkDisplayByGRobj_envs( GRhd, 1, &surface );
+                   __DBGpr_obj("Normal is Displated ", surface.obj_id );
+                   VLsbGetMoldSurface( &msg, &surface, GRhd, NULL );
+ 
+                   srf_list[num_srfs] = surface ;
+              	   num_srfs = num_srfs + 1 ;
+           	}
+		break;
+	      }
+  	   }
+           break;
+       }
+
+       case G_SURFACE_LIST:
+       {
+	   VIfld_get_active_row( form, G_SURFACE_LIST, &srf_row, &srf_pos);
+	   FIfld_get_select( form, G_SURFACE_LIST, srf_row, 0, &srf_pos);
+	   if( srf_pos )
+           {
+             FIfld_set_select( form, G_SURFACE_LIST, srf_row, 0, TRUE );
+             VSbulkDisplayByGRobj_envs( GRhd, 1, &srf_list[srf_row] );
+           }
+	   else
+	   {
+	     FIfld_set_select( form, G_SURFACE_LIST, srf_row, 0, FALSE );
+	     VSbulkDisplayByGRobj_envs( GRhe, 1, &srf_list[srf_row] );
+	   }
+	   break;
+       }
+
+       case G_BAND_MCF:
+       {
+	   dp$erase_hilite( msg = &msg );
+	   for( i=0; i<num_rows; i=i+1 )
+		FImcf_set_select( form, G_BAND_MCF, i, FALSE );
+	   FIg_erase( form, G_DIRECTION );
+	   FIg_erase( form, G_KEY_IN );
+
+           VIfld_get_active_row( form, G_BAND_MCF, &row, &pos);
+           FImcf_get_active_col( form, G_BAND_MCF, &col, &pos);
+	   __DBGpr_int("Row ", row );
+	   __DBGpr_int("Column ", col );
+
+	   VSbulkDisplayByGRids( &loc_env, GRhd, 1, &neat_feet[2*row] );
+	   if( endpts[row].objid != NULL_OBJID )
+	      VSbulkDisplayByGRids( &loc_env, GRhd, 1, &endpts[row] );
+
+	   FIfld_set_select( form, G_BAND_MCF, row, col, TRUE );
+	   FIfld_get_text( form, G_BAND_MCF, row, col, 128, 
+			   stat, &sel, &pos );
+	   if( col == 0 )
+	   {
+		FImcf_set_select( form, G_BAND_MCF, row, TRUE );
+		if( !(strcmp(stat, "**") ) )
+		  message_bar("Insufficient Information for this band" );
+	   }
+	   else if( col == 3 || col == 4 ) 
+	   {
+	        if( col == 4 )
+		{
+		    FIg_display( form, G_DIRECTION );
+		    FIg_set_text( form, G_DIRECTION, stat );
+		}
+	   }
+	   else 
+	   {
+		FIg_display( form, G_KEY_IN );
+		FIfld_pos_cursor( form, G_KEY_IN, 0, 0, 0, 0, 0 );
+		FIg_set_text( form, G_KEY_IN, stat );
+	   }
+
+	   break;
+       }
+
+       case G_DIRECTION:
+       {
+	   FIg_get_text( form, G_DIRECTION, str );
+	   if( ComputePoint( row, str ) )
+	      FIfld_set_text( form, G_BAND_MCF, row, col, str, FALSE );
+	   FIg_erase( form, G_DIRECTION );
+	   break;
+       }
+       case G_KEY_IN:
+       {
+           FIg_get_text( form, G_KEY_IN, str );
+	   if(  col == 1 && !strlen(str) ) 
+           {
+		FIfld_set_text( form, G_BAND_MCF, row, col, "", FALSE );
+		FIg_erase( form, G_KEY_IN );
+		break;
+	   }
+
+           if( col == 1 && !atoi(str) )
+	   {
+	      message_bar("Enter an integer value");
+	      FIfld_pos_cursor( form, G_KEY_IN, 0, 0, 0, 0, 0 );
+	   }
+	   else
+	   {
+	      FIfld_set_text( form, G_BAND_MCF, row, col, str, FALSE );
+              FIg_erase( form, G_KEY_IN );
+	   }
+	   break;
+       }
+    }
+    check_dir();
+  }
+
+wrapup:
+  return 1;
+}
+
+init()
+{
+int i;
+
+  form = NULL;
+  for( i=0; i<20; i=i+1 ) srf_list[i].obj_id.objid = NULL_OBJID;
+}
+
+int init_form()
+{
+IGRint	sts, retFlag;
+Form 	existingForm;
+
+  retFlag = 0;
+  sts = VI_get_form_by_name(FORM_NAME, &existingForm);
+  if (sts == FI_SUCCESS)
+  {
+      UI_status("Place Steel Bands command is active" );
+      return 0;
+  }
+
+  VIf_new(100, FORM_NAME, ci_notification, &form);
+  if (form == NULL)
+  {
+      printf("Can not Initialize the Steel Bands Form\n" );
+      goto wrapup;
+  }
+  form_exists = TRUE;  /* Flag for delete function */
+  VDahFrmLoadPositionFromFile( form );
+  VIf_set_cmd_oid_os( form, MY_ID, OM_Gw_current_OS );
+
+  VIf_display( form );
+  form_displayed = TRUE;  /* Flag for sleep function */
+
+  retFlag = 1;
+
+wrapup:
+  return retFlag;
+}
+
+
+/* ---------------------------------
+ * Gadget handling
+ */
+form_notification()
+{
+  ci$put( response = MOVE_ON );  /* Give control to the main function */
+  return 1;
+}
+
+get_unitname_and_srf()
+{
+        IGRchar 		filename[132], srf_name[132];
+        IGRint  		i, var_size[3];
+        IGRint  		bad_var;
+        struct  EX_var_list     ex_var[4];
+
+        var_size[0] = sizeof(filename);
+        ex_var[0].var = EX_CUR_FILENAME;
+        ex_var[0].var_value = &filename[0];
+        ex_var[0].num_bytes = &var_size[0];
+        var_size[1] = NULL;
+
+        msg = ex$global ( mode = 0, var = ex_var, which_error = &bad_var );
+
+        __DBGpr_str("Design File Name ", filename );
+  	if( strlen(filename) > 4 )	strncpy( unit_no, filename, 4 );
+	else				strcpy ( unit_no, filename    );
+	__DBGpr_str("Unit Number ", unit_no );
+
+	FIg_disable( form, G_ADD );
+	FIg_disable( form, G_DELETE );
+	FIg_disable( form, G_BAND_MCF );
+	FIg_set_text( form, G_UNIT_NUMBER, unit_no );
+
+        __DBGpr_int("Number Of Bounded Surfaces ", nb_bndsrf );
+	if( nb_bndsrf )
+	{
+	   FIfld_set_num_rows( form, G_SURFACE_NAME, nb_bndsrf );
+	   for( i=0; i<nb_bndsrf; i=i+1 )
+	   {
+	      GetName( bndsrf[i].obj_id, srf_name );   
+	      __DBGpr_str( "Surface Name ", srf_name );
+	      FIfld_set_list_text( form, G_SURFACE_NAME, i, 0,
+				   srf_name, FALSE );
+	   }
+	}
+
+        ci$get_module_info( md_env = &loc_env);
+}

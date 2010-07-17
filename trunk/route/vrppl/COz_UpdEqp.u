@@ -1,0 +1,543 @@
+/* $Id: COz_UpdEqp.u,v 1.2 2001/02/20 01:15:58 build Exp $ */
+/***************************************************************************
+ * I/ROUTE
+ *
+ * File:        vrppl/COz_UpdPidEquip.u
+ *
+ * Description:
+ * 	This ppl has been written to update the PID Equipment with the latest
+ *	Database attributes. Its possible that in design cycle users might
+ * 	change Macro Name or Database Information for a particular Equipment.
+ *	
+ *	So this PPL would Re-Evaluate the Equipment to fetch the new informaiton
+ *	from the DB and retain the associativity with the connected elements.
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ *      $Log: COz_UpdEqp.u,v $
+ *      Revision 1.2  2001/02/20 01:15:58  build
+ *      Replaced v_dbgmacros.h with product specific dbgmacros.h
+ *
+ *      Revision 1.1  2001/01/17 15:31:58  anand
+ *      New PPL created in SP.
+ *
+# Revision 1.2  2000/08/31  20:33:46  pinnacle
+# Replaced: route/vrppl/COz_UpdEqp.u for:  by apazhani for Service Pack
+#
+# Revision 1.1  2000/08/09  16:02:26  pinnacle
+# Created: route/vrppl/COz_UpdEqp.u by apazhani for Service Pack
+#
+ *
+ * History:
+ *
+ * MM/DD/YY  		AUTHOR  	DESCRIPTION
+ * 08/09/2000  		Alwin   	Created for CR179901716
+ * 08/31/2000  		Alwin   	Modified to fetch the eqp_partno, family, revision
+ *					from the Database correctly.
+ ***************************************************************************/
+
+#include <stdio.h>
+#include <string.h>
+#include "VDppl.h"
+#include "VDobj.h"
+#include "VDchn.h"
+
+#include "nddef.h"
+#include "AS_status.h"
+#include "VRattr_def.h"
+#include "vrdbgmacros.h"
+#include "nddef.h"
+#include "ndmacros.h"
+#include "VRutilmacros.h"
+#include "ACattrib.h"
+#include "ACrg_collect.h"
+#include "VDmem_ppl.h"
+#include "vrtools_pto.h"
+#include "vrpdu_pto.h"
+#include "acrepdef.h"
+#include "VRPid.h"
+#include "VRmacros.h"
+#include "dp.h"
+#include "VRDbParamDef.h"
+
+extern struct GRid NULL_GRID;
+extern GRclassid OPP_VREquipment_class_id;
+
+extern 		GRdpb_get();
+extern 		NDexec_batch();
+extern 		NDwait_batch();
+
+/* The following function implementation can be found in the file 
+$ROUTE/vccable/VCfunc.I file */
+extern 		VCobjInActiveSpace();
+extern IGRint   VREQ_set_att();
+
+struct	GRid		located_object; // Current Object in subject
+struct GRmd_env 	md_env;
+
+IGRlong VRPlaceEquipFeet( NewEquipmentId )
+struct GRid	NewEquipmentId;
+{
+  IGRint        	i, NbNozzle, NumFeet;
+  IGRlong		msg, status;
+  enum 	GRdpmode	Mode;
+  struct GRid   	GraphicId, DefId, *NozzleIds;
+  struct myfeet		*FeetDesc;
+  
+  __DBGpr_com( " >> Fn VRPlaceEquipFeet" );
+
+  NumFeet=0;
+  NbNozzle=0;
+  FeetDesc=NULL;
+  NozzleIds=NULL;
+
+  if( NewEquipmentId.objid != NULL_OBJID )
+  {
+      // Get the Graphics Symbol of the Equipment
+      status = ci$send( msg      = message NDnode.ASreturn_go
+				    ( &GraphicId, NULL, NULL),
+	       targetid = NewEquipmentId.objid,
+	       targetos = NewEquipmentId.osnum );
+      if( (!status & 1) || ( GraphicId.objid == NULL_OBJID ) )
+      {
+	printf("\n\t\t Failed to retreive Graphics of New Equipment" );
+	goto wrapup;
+      }
+
+      /*| ----- Get definition of the graphic macro ----- */
+      status = ci$send (    msg      = message ACcpx.find_macro ( &DefId ),
+			    targetid = GraphicId.objid,
+			    targetos = GraphicId.osnum );
+
+      /*| ----- Get feet names from definition ----- */
+      status =
+      ci$send( msg      = message ACcpx_defn. ACgive_feet_desc
+					    ( &NumFeet, &FeetDesc ),
+	     targetid = DefId.objid,
+	     targetos = DefId.osnum );
+
+      if( NumFeet )
+      {
+	NozzleIds = _MALLOC( NumFeet, struct GRid );
+	if( NozzleIds == NULL )
+	{
+	  printf("\n\t\t Memory Allocation failed " );
+	  goto wrapup;
+	}
+
+	for( i=0; i<NumFeet; i=i+1 )
+	{
+		NozzleIds[i].objid = NULL_OBJID;
+		NozzleIds[i].osnum = md_env.md_id.osnum;
+	}
+      }
+
+      status =
+      ci$send ( msg 	   = message VREquipment.VRPlaceNozzleFeet
+					      ( &msg, &NbNozzle, NozzleIds,
+						&md_env ),
+		 targetid = NewEquipmentId.objid,
+		 targetos = NewEquipmentId.osnum );
+      as$status( );
+
+      __DBGpr_int("VRPlaceNozzleFeet: NbNozzle =", NbNozzle);
+
+      for ( i=0; i<NbNozzle; i=i+1 )
+      {
+	      __DBGpr_obj("Nozzle Id           =", NozzleIds[i]);
+
+	      if( NozzleIds[i].objid != NULL_OBJID )
+	      {
+		      status =
+		      ci$send( msg      = message GRgraphics.GRdisplay(
+					   &msg, 
+					   &md_env.md_env.matrix_type,
+					   md_env.md_env.matrix, 
+					   &Mode, 
+					  &md_env.md_id ),
+			    targetid = NozzleIds[i].objid, 
+			    targetos = NozzleIds[i].osnum );
+		    as$status();
+	      }
+      }
+      _FREE( NozzleIds );
+  }
+
+  __DBGpr_com( " << VRPlaceEquipFeet " );
+  return OM_S_SUCCESS;
+
+wrapup:
+   __DBGpr_com( " << VRPlaceEquipFeet " );
+   return OM_E_ABORT;
+}
+
+IGRlong VRReplaceEquipment( NewEquipmentId, OldEquipmentId )
+struct GRid	NewEquipmentId;
+struct GRid	OldEquipmentId;
+{
+    IGRlong		msg, sts;
+  
+    __DBGpr_com( " >> Fn VRReplaceEquipment " );
+    sts = VRPlaceEquipFeet( NewEquipmentId );
+    if( !sts & 1 ) 
+    {
+      printf("\n\t\t Failed while placing the Equipment's feet" );
+      goto wrapup;
+    }
+
+    sts = ci$send( msg = message VREquipment.VRReplace( &msg,
+				NewEquipmentId, &md_env ), 
+	       targetid = OldEquipmentId.objid,
+	       targetos = OldEquipmentId.osnum );
+    //as$status( );
+
+    if ( NewEquipmentId.objid != NULL_OBJID) 
+    {
+	  sts = ci$send ( msg     = message GRgraphics.GRdelete
+					  ( &msg, &md_env ),
+			    targetid = NewEquipmentId.objid,
+			    targetos = NewEquipmentId.osnum);
+	  //as$status();
+
+	  NewEquipmentId.objid = NULL_OBJID;
+    }
+
+    __DBGpr_com( " << VRReplaceEquipment " );
+    return OM_S_SUCCESS;
+
+wrapup:
+    __DBGpr_com( " << VRReplaceEquipment " );
+    return OM_E_ABORT;
+}
+
+IGRlong VRConstructNewEquipFromOld( NewEquipmentId )
+struct GRid		*NewEquipmentId;
+{
+    IGRuchar			cRep;
+    IGRchar			szMacroName[50], szTableName[128];
+    IGRint			NbMissing, nFootIndex;
+    IGRlong			msg, sts;
+
+    IGRdouble			EquipMatrix[16];
+
+    enum GRdpmode		mode;
+    struct VRGenInfo		EquipInstance;
+    struct GRsymbology		Symb;
+    struct ret_struct		strTableName;
+    struct GRid			ParentColl[3];
+    struct VRdbEquipPart   	Part;
+    struct ACrg_coll		Collection[10];
+
+    __DBGpr_com( " >> Fn VRConstructNewEquipFromOld " );
+
+    NbMissing	= 0;
+    ParentColl[0].objid = NULL_OBJID;
+    ParentColl[1].objid = NULL_OBJID;
+    ParentColl[2].objid = NULL_OBJID;
+
+    // Get User & Missing Collectors
+    sts = ci$send( msg = message VRGeneric.VRGetParams( &msg, 
+			&ParentColl[0], &ParentColl[1], &ParentColl[2] ),
+			  targetid = located_object.objid,
+			  targetos = located_object.osnum );
+
+    if( !msg & 1 )
+    {
+       printf("\n\t\t Failed to get Parent Collectors" );
+       goto wrapup;
+    }
+
+    __DBGpr_obj( " System Parameters Collector Id ", ParentColl[0]  );
+    __DBGpr_obj( " UserParam Collector Id ", ParentColl[1]  );
+    __DBGpr_obj( " Missing Collector Id ", ParentColl[2]  );
+
+    // Get the Instance to get Equipment Number
+    sts = ci$send( msg = message VRGeneric.VRGetInstance( &msg, 
+				  &EquipInstance ),
+			  targetid = located_object.objid,
+			  targetos = located_object.osnum );
+
+    __DBGpr_str(" Equipment Number ", EquipInstance.Attr.Equip.EquipNumber );
+
+    // Get the Symbology of the Equipment
+    ci$send(msg = message GRvg.GRgetsymb( &msg, &Symb ),
+			  targetid = located_object.objid,
+			  targetos = located_object.osnum );
+
+    // Get the Representation of the Equipment
+    sts = ci$send( msg = message ACncpx.ACget_NV_rep( &cRep ),
+			  targetid = located_object.objid,
+			  targetos = located_object.osnum );
+
+    if( ! bVR_IS_PID( cRep )  )
+    {
+       printf("\n\t\t  Equipment is not a PID Equipment " ); 
+       goto wrapup;
+    }
+
+    sts = ci$send( msg = message VREquipment.ACgive_structure( (int*) &msg,
+				&nFootIndex, VR_N_TABLE_NAME_DB,
+				&strTableName, &md_env ),
+			  targetid = located_object.objid,
+			  targetos = located_object.osnum );
+    strcpy( szTableName, strTableName.var.text_st.text_string );
+    __DBGpr_str( " Table Name ", szTableName );
+
+    Part.Familly[0] = 0;
+    Part.PartNb[0]  = 0;
+    Part.PartRev[0] = 0;
+
+    szMacroName[0] = '\0';
+    // Get the Equipment Part Information from db
+    sts = VRdbGetEqOccur( &msg, szTableName,
+			     EquipInstance.Attr.Equip.EquipNumber, 
+			     szMacroName, &Part, NULL );
+    __DBGpr_str( " Macro Name ", szMacroName );
+
+    if( szMacroName[0] == '\0' ) 
+    {
+       printf("\n\t\t Failed to retrieve Macro Name \n" );
+       goto wrapup;
+    }
+
+    // Update the System & User Collectors with that of the DB.
+    /***
+    sts = VREQ_set_att ( Part.Familly, Part.PartNb, Part.PartRev,
+		    &ParentColl[0], &ParentColl[1] );
+    ***/
+
+    strcpy( Collection[0].name, VR_N_MACRO_NAME_AN);
+    Collection[0].desc.type = AC_ATTRIB_TEXT;
+    strcpy( Collection[0].desc.value.att_txt, szMacroName);
+
+    // Call again to get Equipment Part information
+    sts = VRdbGetEqOccur( &msg, szTableName,
+                             EquipInstance.Attr.Equip.EquipNumber,
+                             NULL, &Part, NULL );
+
+    __DBGpr_str( " eqp_family ", Part.Familly );
+    __DBGpr_str( " eqp_partno ", Part.PartNb );
+    __DBGpr_str( " eqp_family ", Part.PartRev );
+
+    strcpy( Collection[1].name,"eqp_family" );
+    Collection[1].desc.type = AC_ATTRIB_TEXT;
+    strcpy( Collection[1].desc.value.att_txt, Part.Familly);
+
+    strcpy( Collection[2].name, "eqp_partrev");
+    Collection[2].desc.type = AC_ATTRIB_TEXT;
+    strcpy( Collection[2].desc.value.att_txt, Part.PartRev);
+
+    strcpy( Collection[3].name, "eqp_partno");
+    Collection[3].desc.type = AC_ATTRIB_TEXT;
+    strcpy( Collection[3].desc.value.att_txt, Part.PartNb);
+
+    sts =
+    VR$ModifyCollection(p_msg                = &msg,
+			Operation            = VR_MERGE_COLL,
+			p_ParamsListToModify = Collection,
+			NbParamsToModify     = 4,
+			p_OutputCollectionId = &ParentColl[0] );
+
+    NewEquipmentId->objid = NULL_OBJID;
+    sts = MSSUCC;
+    __DBGpr_com( " Evaluating the Equipment ..." );
+    sts = VREvaluateEquip( 	&msg,
+				EquipInstance.Attr.Equip.EquipNumber,
+				&Symb,
+				cRep,
+				&ParentColl[0],
+				&ParentColl[1],
+				&ParentColl[2],
+				NewEquipmentId,
+				&NbMissing,
+				NULL,
+				&md_env );
+    __DBGpr_int( " No. of Missing Params ", NbMissing );
+    __DBGpr_obj( " New Equipment Id ", *NewEquipmentId );
+
+    if( !(sts & 1) || ( NewEquipmentId->objid == NULL_OBJID ) )
+    {
+      printf("\n\t\t  Error During Evaluation of Equipment" );
+      goto wrapup;
+    }
+
+    if( NbMissing )
+    {
+      printf("\n\t\t  Error During Evaluation of Equipment" );
+      if( NbMissing ) 
+	 printf("\n\t\t Missing Parameters Found : Not Expected\n " );
+
+      if( NewEquipmentId->objid != NULL_OBJID )
+      {
+	  sts = ci$send( msg = message GRgraphics.GRdelete( &msg,
+					&md_env ),
+				targetid = NewEquipmentId->objid,
+				targetos = NewEquipmentId->osnum );
+      }
+      goto wrapup;
+    }
+
+    // Get the Matrix from the Old Equipment and set it to the New Equipment
+    sts = ci$send( msg = message VRGeneric.VRGetMatrix( &msg, 0, NULL,
+					EquipMatrix, &md_env ),
+			  targetid = located_object.objid,
+			  targetos = located_object.osnum );
+
+    mode = GRbe;
+    sts = ci$send( msg = message GRgraphics.GRdisplay( &msg,
+				&md_env.md_env.matrix_type,
+				md_env.md_env.matrix, &mode, &md_env.md_id ),
+			targetid = NewEquipmentId->objid,
+			targetos = NewEquipmentId->osnum );
+
+    VR$OrientComp(	p_retmsg	= &msg,
+			p_CmpId		= NewEquipmentId,
+			Justif		= -1, //CENTER JUSTIFICATION
+			Matrix		= EquipMatrix,
+			p_MdEnv		= &md_env );
+
+    mode = GRbd;
+    sts = ci$send( msg = message GRgraphics.GRdisplay( &msg,
+				&md_env.md_env.matrix_type,
+				md_env.md_env.matrix, &mode, &md_env.md_id ),
+			targetid = NewEquipmentId->objid,
+			targetos = NewEquipmentId->osnum );
+
+    __DBGpr_com( " << VRConstrucNewEquipFromOld " );
+    return OM_S_SUCCESS;
+
+wrapup:
+    __DBGpr_com( " << VRConstrucNewEquipFromOld " );
+    return OM_E_ABORT;
+}
+
+main()
+{
+  IGRuchar		cRep;
+  IGRboolean		bIsFailed;
+  IGRint 		class_count, count, NbParents;
+  IGRint 		cn_type, i, j;
+  IGRint		M_response;
+  IGRint		action, props;
+  IGRlong 		sts, msg, ret;
+  struct GRid		*loc_obj; // List of selected objects
+  struct GRid		NewEquipmentId;
+  OM_S_CLASSLIST    	locate_eligible_thing;
+  GRclassid 		class_array[2];
+  enum GRdpmode		mode;
+
+  __DBGpr_com( " >> Entered the PPL " );
+  ci$get_module_info( md_env = &md_env );
+
+  class_count = 1;
+  class_array[0] = OPP_VREquipment_class_id;
+
+  locate_eligible_thing.w_count = class_count;
+  locate_eligible_thing.p_classes = class_array;
+
+  while( 1 )
+  {
+      count=0; 
+      loc_obj = NULL;
+
+      ci$locate(  prompt  = "Select Component to Correct/Move-on for all",
+		  acc_prompt      = "Accept with next element/Reject" ,
+		  eligible_classes= &locate_eligible_thing,
+		  owner_action    = LC_RIGID_OWNER | LC_RIGID_COMP |
+				    LC_FLEX_OWNER | LC_FLEX_COMP,
+		  obj             = &located_object.objid,
+		  osnum           = &located_object.osnum,
+		  response        = &M_response,
+		  md_env          = &md_env ) ;
+
+      switch (M_response) 
+      {
+	 case EX_DATA  :
+	 case EX_OBJID :      /* fence event      */
+
+	     count = 1;
+	     loc_obj = _MALLOC( count, struct GRid );
+	     loc_obj->objid = located_object.objid;
+	     loc_obj->osnum = located_object.osnum;
+	     break;
+
+	 case EX_RJT_MOVEON :
+
+	    /* This function gets all the objects of classes specified in the
+	    array. */
+	    sts = VCobjInActiveSpace(      &msg, &count,
+				    	   &loc_obj, class_array, class_count );
+
+	    __DBGpr_int( " Nb. of Route Components found ", count );
+	    break;
+
+	 default :
+	    exit;
+	    break;
+      }
+
+      if( count == 0 )
+      {
+	 printf("\n  NO PID Equipment found in the design file !!! \n" );
+	 exit;
+      }
+
+      __DBGpr_com( " ################################ " );
+      __DBGpr_int( " ####### Components Count ############ ", count );
+      __DBGpr_com( " ################################ " );
+
+      for( i=0; i<count; i=i+1 )
+      {
+	    located_object = loc_obj[i];
+
+	    printf("\n #################################### " );
+	    printf("\n ########## Equipment Id: <%d,%d>\n", 
+				located_object.objid, located_object.osnum );
+	    printf("\n ####################################\n" );
+
+	    /***
+	     1. Retreive all the neeeded information from the Existing Equipment
+	     to construct another New Equipment.
+	     2. Replace the Old Equipment with the new Equipment, without 
+	     breaking connections.
+	    ***/
+
+	    /*
+	     * STEP 1
+	     */
+	    sts = VRConstructNewEquipFromOld( &NewEquipmentId );
+	    if( !(sts & 1) )
+	    {
+		bIsFailed = TRUE;
+		printf("\n\t\t Equipment left untouched\n" );
+		goto Re_Display;
+	    }
+
+	    /*
+	     * STEP 2
+	     */
+	    sts = VRReplaceEquipment( NewEquipmentId, located_object );
+	    if( !(sts & 1) )
+	    {
+		bIsFailed = TRUE;
+		printf("\n\t\t Equipment left untouched\n" );
+	    }
+
+Re_Display:
+	    mode = GRbd;
+	    sts = ci$send( msg = message GRgraphics.GRdisplay( &msg,
+				&md_env.md_env.matrix_type,
+				md_env.md_env.matrix, &mode, &md_env.md_id ),
+			targetid = located_object.objid,
+			targetos = located_object.osnum );
+
+	    if( bIsFailed == FALSE )
+	       printf("\n\t\t Successful Replacement of Equipment\n" );
+
+      }
+	
+      if( count ) _FREE( loc_obj );
+  } /* End of while loop */
+  __DBGpr_com( " << Exiting the PPL " );
+}

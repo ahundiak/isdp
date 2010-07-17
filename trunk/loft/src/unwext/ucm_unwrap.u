@@ -1,0 +1,112 @@
+/* $Id: ucm_unwrap.u,v 1.1.1.1 2001/01/04 21:11:56 cvs Exp $  */
+
+/***************************************************************************
+ * I/LOFT
+ *
+ * File:        src/unwext/ucm_unwrap.u
+ *
+ * Description: Toggles expression UCM_UNWRAP expression.
+ *        UCM_UNWRAP = 1 ==>> Unwrap command allows multiple unwraps.
+ *	  UCM_UNWRAP = 0 ==>> Unwrap command won't allow multiple unwraps.
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ *      $Log: ucm_unwrap.u,v $
+ *      Revision 1.1.1.1  2001/01/04 21:11:56  cvs
+ *      Initial import to CVS
+ *
+# Revision 1.1  2000/03/20  22:40:42  pinnacle
+# initial revision
+#
+ *
+ * History:
+ * MM/DD/YY  AUTHOR  	DESCRIPTION
+ * 03/20/00  Rama Rao   Creation
+ *
+ ***************************************************************************/
+
+#include "VDppl.h"
+#include "DIdef.h"
+
+extern EXP_create_double(), VDSget_filename();
+
+//#define DEBUG 1
+
+int main()
+{
+IGRshort     rc;
+IGRlong	     sts;
+IGRdouble    exp_val, toggle_val;
+IGRchar      exp_name[DI_PATH_MAX], file_name[DI_PATH_MAX],
+	     cur_dir[DI_PATH_MAX]; 
+struct GRid  exp_obj;
+struct GRmd_env md_env;
+
+  exp_val = 1.0;
+
+  ci$get_module_info( md_env  = &md_env );
+  exp_obj.osnum = md_env.md_id.osnum;
+
+  VDSget_filename(file_name);
+  sprintf(exp_name, "%s:IGENOD:UCM_UNWRAP", file_name );
+
+  sts = di$pwd(dirname = cur_dir);
+  if( sts != DIR_S_SUCCESS ){
+       sts = MSFAIL;
+       goto wrapup;
+  }
+
+  sts = = di$cd(dirname = file_name);
+  if( sts != DIR_S_SUCCESS ){
+       sts = MSFAIL;
+       goto wrapup;
+  }
+
+  #if DEBUG
+    printf("exp_name = %s\n", exp_name );
+  #endif
+
+  sts = di$translate(  objname = exp_name,
+                       osnum   = exp_obj.osnum,
+                       p_objid = &exp_obj.objid );
+  #if DEBUG
+    printf("translate status = %ld\n", sts );
+  #endif
+  if( sts == DIR_S_SUCCESS)
+  {
+      sts = ci$send ( msg = message expression.NDgive_value ( &exp_val ),
+                          targetid = exp_obj.objid,
+                          targetos = exp_obj.osnum );
+      #if DEBUG
+	  printf("exp_val = %lf\n", exp_val );
+      #endif
+
+      if( exp_val == 1.0 ) toggle_val = 0.0 ;
+      else		   toggle_val = 1.0 ;
+
+      sts = ci$send ( msg = message expression.NDset_value(
+                                "", toggle_val, &md_env, &rc ),
+                          targetid = exp_obj.objid,
+                          targetos = exp_obj.osnum );
+      #if DEBUG
+	  printf("Modified the expression to %g\n", toggle_val );
+      #endif
+  }
+  else
+  {
+      #if DEBUG
+	  printf("Creating a UCM_UNWRAP=1.0 expression\n");
+      #endif
+      sts = EXP_create_double( 	exp_name, 1.0, &exp_obj.objid, 
+			        md_env.md_id.osnum,
+				NULL, 0, NULL );	
+  }
+
+wrapup:
+  di$cd(dirname = cur_dir);
+  #if DEBUG
+     printf("Returning 1\n");
+  #endif
+  return 1;
+}
