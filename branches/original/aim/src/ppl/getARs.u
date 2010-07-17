@@ -1,0 +1,464 @@
+/* $Id: getARs.u,v 1.2 2001/11/14 15:21:43 jdsauby Exp $ */
+/***************************************************************************
+**
+** Program:     getARs.u
+**
+** Version:     02.06.00.01
+**
+** Date:        07-10.99
+**
+** Description: Invoke the GetARs command in VDS.  This command will retrieve
+** 		a list of Wroking ARs from AIM and store them on the AR form.
+**		It will then display the form to the user.  Once an AR is 
+**		selected, it will then be related to the current ISDP mofe 
+**		file. 
+**
+** Author:      T. Stalling
+**               
+************************************************************************,
+*/
+
+#include "VDppl.h"
+#include "VDobj.h"
+#include "msmacros.h"
+#include "msdef.h"
+#include "execmsg.h"
+#include "FI.h"
+#include "cimacros.h"
+#include "ciminimum.h"
+#include "vadbgmacros.h"
+#include "PDUstr.h"
+
+#define PME     0
+#define SIR     1
+#define CLIX_CONNECT    -1
+#define CLIX_DISCONNECT -2
+
+#define DEVELOPMENT	"Development"
+#define VDP_GET_WORKING_ARS 130
+
+
+/****************** Externs ****************/
+extern 	int	CMar_form();
+
+/* AIM/VDS functions */
+extern  int	IsPmeEnabled();
+extern  int	WhichAim();
+extern 	long 	VDPgetCfgItms ();
+extern  int     PDMGetPartInfoGivenFileName();
+extern int SrVDGetCMattrs();
+extern int SrVDGetCMState();
+extern struct hostent *gethostbyname();
+extern  int POSTMAN_REQUEST_ON_CLIX ();
+extern  EnablePME();
+extern  inet_ntoa();
+extern VDPPutAimName();
+extern ConnectAIM();
+extern EX_filename1();
+extern CMAimConnect();
+extern AIMlogin();
+extern struct PDUrefresh        *refresh;
+
+
+/************************************************************
+  Global variables.
+ ************************************************************/
+
+FILE *ptr;
+
+int test_wakeup;  /* The wakeup function uses this flag to
+                     test if the main function has started yet. */
+
+int form_exists,    /* The delete function uses this flag
+                       to test if the form exists */
+    form_displayed, /* The sleep function uses this flag
+                       to test if the form is displayed */
+    not_done;       /* This value is set to 0 when the user
+                       selects the cancel or exit & save buttons */
+
+Form form, my_form, old_form; /* Use this variable for the forms functions. */
+
+struct CIform_st form_st; /* This structure contains information on
+                             which form and gadget was manipulated. */
+struct  hostent {
+       char    *h_name;        /* official name of host */
+        char    **h_aliases;    /* alias list */
+        int     h_addrtype;     /* host address type */
+        int     h_length;       /* length of address */
+        char    **h_addr_list;  /* list of addresses from name server */
+#define h_addr  h_addr_list[0]  /* address, for backward compatiblity */
+};
+
+
+/*
+ * Internet address (a structure for historical reasons)
+ */
+struct in_addr {
+        unsigned long s_addr;
+};
+
+/*****************************************************
+* Verify the connection to AIM.
+*
+*****************************************************/
+
+verify_connect_postman( retCode )
+int	*retCode;
+{
+int		i, status ;
+
+int		conn_status;
+int		stat;
+
+*retCode	= OM_S_SUCCESS  ;
+status		= OM_S_SUCCESS ;
+
+conn_status	= 0;
+stat		= 0;
+
+fprintf(ptr,"verify_connect_postman: \n");
+
+if( IsPmeEnabled() == FALSE )
+{
+	UI_status("AIM server connection required");
+	fprintf(ptr,"\tAIM server connection required.\n");
+	status = AIMlogin();
+        //status = CMAimConnect();
+}
+
+fprintf(ptr,"\tAIM server connection is established.\n");
+
+quit:
+  return status ;
+}
+
+/*****************************************************
+* Find out what AIM are we using.
+*
+*****************************************************/
+
+determine_AIM( retCode )
+int	*retCode;
+{
+int			status ;
+
+*retCode	= OM_S_SUCCESS  ;
+status		= OM_S_SUCCESS ;
+
+fprintf(ptr,"\ndetermine_AIM: \n");
+
+if( WhichAim() == PME)
+{
+	UI_status("This process does not support PME.");
+	fprintf(ptr,"\tThis process does not support PME.\n");
+      	status = OM_E_ERROR;
+        goto quit;
+}
+
+if( WhichAim() == SIR)
+{
+	UI_status("AIM server is SIR");
+	fprintf(ptr,"\tAIM server is SIR\n");
+      	status = OM_S_SUCCESS;
+        goto quit;
+}
+
+
+quit:
+
+  return status ;
+}
+
+get_working_ARs( retCode )
+/************************************************************
+ * FUNCTION: get_working_ARs()
+ *
+ * DESCRIPTION: displays "working" AR's for selection
+ ************************************************************/
+int *retCode;
+{   
+    int     	chkcode;
+    int     	status ;
+    int		ch;
+    char    	filename[100];
+    char    	catalog[100];
+    char    	partno[100];
+    char    	rev[100];
+    char        cur_filedescr[OM_K_MAXOSNAME_LEN];
+    char	*temp;
+    char	*tmpfile;
+    char 	temp1[256];
+    int		aimcode;
+
+    *retCode = OM_S_SUCCESS;
+    status = OM_S_SUCCESS;
+    temp            = NULL;
+    tmpfile         = NULL;
+    ch              = '/';
+    aimcode	    = VDP_GET_WORKING_ARS;
+
+    fprintf(ptr,"\nget_working_ARs: \n");
+
+    /* Invoke the command to 
+     * 1. get the list of ARs from AIM
+     * 2. add the ARs to the AR form
+     * 3. display the form to the user
+     */
+
+    printf("\n get_working_ARs START");
+    /* Get current filename */
+    ex$filename( name=cur_filedescr, len=OM_K_MAXOSNAME_LEN );
+    temp = strrchr(cur_filedescr, ch);
+    sprintf(temp1,"%s", temp);
+    tmpfile = strtok(temp1, "/");
+    sprintf(cur_filedescr,"%s", tmpfile);
+    sprintf(filename, "%s", cur_filedescr);
+ 
+    __DBGpr_str(" filename ", filename );
+    fprintf(ptr,"\nfilename: %s \n", filename);
+
+    /* get the pdm catalog, part number and revision */
+    status = PDMGetPartInfoGivenFileName( filename, catalog, partno, rev);
+
+    __DBGpr_str(" catalog ", catalog );
+    __DBGpr_str(" partno ", partno );
+    __DBGpr_str(" rev ", rev );
+    __DBGpr_int(" aimcode =  ", aimcode);
+    fprintf(ptr,"\ncatalog: %s \n", catalog);
+    fprintf(ptr,"\npartno: %s \n", partno);
+    fprintf(ptr,"\nrev: %s \n", rev);
+    fprintf(ptr,"\naimcode: %d \n", aimcode);
+
+    printf("\n nestx is CMar_form ");
+    status = CMar_form(refresh->act_catalog, refresh->act_partid, refresh->act_revision ); 
+
+    /*status = 0;*/
+    if (status != 0)
+    {
+      __DBGpr_int("status is bad.  status =  ", status);
+
+      if(status == 402)
+      {
+      		UI_status("The context is not in. an AIM vault");
+                fprintf(ptr,"The context that is associated with\n");
+                status = OM_E_ERROR;
+                goto quit;
+      }
+      else
+      {
+                UI_status("Error in verifying context in AIM vault.\n");
+                fprintf(ptr,"Error in verifying that the context is in AIM.\n");
+                status = OM_E_ERROR;
+                goto quit;
+      }
+    }
+
+
+
+quit:
+    
+    printf("\n get_working_ARs END");
+    return status;
+}
+
+/**************************************************************/
+main()
+{
+
+  int response;       
+
+  int status;
+  int retCode;
+  char log[30], State[20];
+  char ARsel[2], CMmng[2], DCCsel[2], St[5];
+  
+  ptr = NULL;
+  /* open the log file to print out posting information */
+  sprintf(log, "%s","CM.log");
+  ptr = fopen(log, "w+");
+  if(ptr == NULL)
+    UI_status("Can not open log file for writing...");
+
+  /*UI_status("Processing..........................");*/
+
+  /*
+   * Make sure that we are connected to the server through postman
+   * before processing the extraction. 
+  status = verify_connect_postman( &retCode );
+  __CheckRC( retCode, status, "verify_connect_postman", quit );
+   */
+
+
+  /*
+   * Determine which aim server we are connected to.
+   * It must be SIR for now.
+  status = determine_AIM( &retCode );
+  __CheckRC( retCode, status, "determin_AIM", quit );
+   */
+
+  /* If the file is in development state proceed, else STOP */
+
+   printf("\n PPL MAIN START");
+
+  /*
+   * Invoke the AR form.
+   */
+
+   status = SrVDGetCMState( refresh->act_catalog, refresh->act_partid,
+                            refresh->act_revision, State);
+   printf("\n NFM STATE %s", State );
+   if(status) goto quit;
+   if(strcmp(State, DEVELOPMENT))
+   {
+     UI_status("Authorised AR query is allowed only in development state");
+     printf("AR query is allowed only in development state");
+     goto quit;
+   }
+
+
+
+  printf("\n getting_working ARs");
+  status = get_working_ARs( &retCode );
+  __CheckRC( retCode, status, "get_working_ARs", quit );
+  
+
+quit:
+	if(status != OM_S_SUCCESS)
+        {
+          fprintf(ptr, "Process Terminated.....\n");
+        }
+        else
+        {
+	  fprintf( "Process Complete.......\n" );
+        }
+
+        fclose(ptr);
+        ptr = NULL;
+        printf("\n PPL MAIN END");
+}
+
+/*
+int form_notification()
+{
+  ci$put ( response = MOVE_ON );
+
+}
+
+int CMAimConnect()
+{
+  int			status, response;
+  int			stat_flag;
+
+  char			*errmsg;
+  char			server_name[25];
+  struct MS_sd_msg 	MS_msg;
+  struct hostent	*h;
+  long			msg;
+  char			srerrmsg[80]; 
+  int			sel, pos, not_done ;
+  int			state;
+
+  SetProc(main ); Begin 
+
+  stat_flag = 0;
+  not_done = 1;
+
+  stat_flag = IsPmeEnabled();
+
+  if( stat_flag == 0 )
+  {
+    old_form = NULL;
+    status = FI_get_form_by_name("AIMlogin", &old_form);
+    if (status == FI_SUCCESS)
+    {
+      UI_status("Connection to Aim Server Already Running");
+      printf("\n found duplicate");
+      return 0;
+    }
+      status = FIf_new ( 101, "AIMlogin", ci_notification, &my_form);
+      status = FIf_set_cmd_oid_os( my_form, MY_ID, OM_Gw_current_OS );
+      status = FIf_display( my_form );
+      FIfld_set_text( my_form, 9, 0, 0, "Enter the server name", FALSE );
+
+      while(not_done){
+        ci$get(prompt = " Process Form",
+               response = &response);
+
+	switch ( form_st.gadget_label )
+	{ 
+	 case FI_CANCEL :
+             ci$put(response = TERMINATE);
+             FIf_erase ( my_form);
+             printf("\n erase");
+             FIf_delete ( my_form );
+             not_done = 0;
+             break;
+
+	 
+	 case FI_ACCEPT: 
+	     FIfld_get_text (my_form, 16, 0, 0, 30, server_name, &sel, &pos);
+	     server_name[24] = '\0'; 
+	     if ((h=gethostbyname(server_name)) == NULL) 
+	     { 
+	       sprintf ( srerrmsg, "%s", "Server not recognised. Could not connect");
+	       if (MS_init ( (&MS_msg), EX_F_Var1, NULL, NULL, 0, -1 ) )
+	       {
+		 MS_fix_type( &MS_msg, "%s" );
+		 sprintf( (MS_msg.variables), (MS_msg.for_type), srerrmsg );
+		 MS_out_msg ( &MS_msg, NULL, 0,
+		     	-1, MS_IMMEDIATE, MS_IMMEDIATE, 0);
+	       }
+               ci$put( response = TERMINATE );
+	       FIf_erase ( my_form); 
+             FIf_delete ( my_form );
+             printf("\n erase");
+	       break;
+	     } 
+	     
+	     status = POSTMAN_REQUEST_ON_CLIX( CLIX_DISCONNECT,
+		 				NULL, 
+						NULL, 
+						NULL, 
+						NULL, 
+						&errmsg);
+	     if ( !status)
+	       EnablePME(0); 
+	     
+	     UI_status("Connecting to AIM server....");
+	     status = POSTMAN_REQUEST_ON_CLIX( CLIX_CONNECT,
+		 	(char *)inet_ntoa(*((struct in_addr *)h->h_addr)),
+		 	NULL,
+			NULL,
+			NULL,
+			&errmsg);
+	     
+	     if ( !status)
+	     {
+	       EnablePME(1);
+	       UI_status(" Connected to AIM server");
+               VDPPutAimName(server_name);
+	     } 
+	     else
+	     {
+	       EnablePME(0);
+	       UI_status( " Failed to Connect to AIM server" );
+	     } 
+	     
+	     FIg_get_state (my_form, 12, &state);
+	     
+	     if(state == 1) ConnectAIM(PME) ;
+	     if(state == 0) ConnectAIM(SIR);
+	     
+             ci$put(response = TERMINATE);
+	     FIf_erase ( my_form );
+             FIf_delete ( my_form );
+             printf("\n erase");
+	     not_done = 0;
+	     break; 
+    }
+    }
+  }
+
+  End
+  return 1;
+} */

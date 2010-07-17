@@ -1,0 +1,269 @@
+/* $Id: aimstartup.u,v 1.1.1.1 2001/06/01 20:06:27 tlstalli Exp $  */
+
+/***************************************************************************
+ * I/AIMSIR
+ *
+ * File:        aim/src/ppl/aimstartup.u
+ *
+ * Description: Executes when files are retrieved
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ * $Log: aimstartup.u,v $
+ * Revision 1.1.1.1  2001/06/01 20:06:27  tlstalli
+ * Creating aim module
+ *
+ *
+ * History:
+ * MM/DD/YY	AUTHOR  DESCRIPTION
+ ***************************************************************************/
+#define   VD_PPL 1
+
+#include "VDppl.h"
+#include "VDtypedef.h"
+#include "VDvla.h"
+#include "VDbro1.h"
+#include "VDah.h"
+#include "VDfrmProto.h"
+#include "VDahFrm.h"
+#include "VDdbgProto.h"
+
+#include "ci_easy.h"
+#include "exdate.h"
+#include "exvers.h"
+
+#include "FI.h"
+
+extern  int ci_notification();
+
+extern  UI_message(); /* Fct to display the message field        */
+extern  UI_prompt();  /* Fct to display the prompt field         */
+extern  UI_status();  /* Fct to display the status field         */
+
+extern int  EX_filename1();
+extern char EX_version[];
+extern char EX_date[];
+extern EX_get_version ();
+extern IGGetBsVersion();
+extern int  toggle_enable_print();
+
+extern int AIMcomment;
+
+IGRchar PRODUCT[16];
+
+#define TRACEx
+
+extern AIMprd_dload_files();
+extern EX_getpath(), EX_is_batch(), SMAddToPocketMenu();
+extern ems_dload();
+extern IGRchar *getenv();
+extern system();
+
+/* ------------------------------------
+ * Returns true if the given product is running
+ * quick hack for now
+ */
+IGRstar isProductLoaded(prodName)
+  IGRchar *prodName;
+{
+  IGRchar path[256];
+  IGRint  i;
+  IGRchar *p;
+
+  i = 0;
+  while(1)
+  {
+    *path = 0;
+
+    ex$get_path( index = i,
+		 path  = path,
+		 len   = sizeof(path),
+		 type  = EX_CONFIG_PATH );
+
+    if (*path == 0) return 0;
+
+    // printf("Path '%s'\n",path);
+
+    *(path + strlen(path) - 1) = 0;
+
+    p = strrchr(path,'/');
+    if (p)
+    {
+      if (!strcmp(prodName,p+1)) return 1;
+    }
+    i = i + 1;
+  }
+}
+
+/* ------------------------------------------------
+ * Dloads one product based on first -S
+ * Uses load_order.txt to determine what to load
+ */
+IGRstar dloadProduct(prodName)
+IGRchar *prodName;
+{
+  IGRchar dloadPath[256];
+  IGRchar dloadFile[256];
+  IGRchar buf[128];
+  IGRchar ext[8];
+  IGRchar *p;
+  IGRchar string[120], save_version[120], save_date[120];
+
+  FILE *file;
+
+  // Arg check
+  if (*prodName == 0) goto wrapup;
+  *dloadPath = 0;
+
+  // Product specific loading
+  ex$get_path( index = 0,
+               path  = dloadPath,
+               len   = sizeof(dloadPath),
+               type  = EX_CONFIG_PATH );
+
+  if (*dloadPath == 0) goto wrapup;
+
+  strcat(dloadPath,"config/dload/corrections/");
+  strcat(dloadPath,prodName);
+
+#ifdef TRACE
+  printf("DLOAD %s\n",dloadPath);
+#endif
+
+  // File extension
+  strcpy(ext,".so");
+
+#if 0
+  // Just cant getenv yo work!
+  p = getenv("SYSTEM");
+  if (p) printf("SYSTEM %s\n",p);
+//if ((p != NULL) && (!strcmp(p,"CLIX"))) strcpy(ext,".o");
+#endif
+
+  // Try this
+  *buf = 0;
+  system("/bin/uname > /usr/tmp/isdp.uname");
+  file = fopen("/usr/tmp/isdp.uname","rt");
+  if (file)
+  {
+    fgets(buf,sizeof(buf),file);
+    fclose(file);
+    system("/bin/rm /usr/tmp/isdp.uname 2> /dev/null");
+  }
+  if (strstr(buf,"CLIX")) strcpy(ext,".o");
+
+////////////////////////////////////////////////////////////////////////////
+  /*
+   * Need to save EX_version and EX_date, because they contain the version/date
+   * of the currently active PRODUCT, and execution of EX_get_version() will
+   * overwrite them with the version/date of the Model executable...
+   */
+  strcpy(save_version, EX_version);
+  strcpy(save_date, EX_date);
+
+  // Get version/date of the Model executable...
+  EX_get_version ();
+////////////////////////////////////////////////////////////////////////////
+
+  // Open correct load_order file for NEW MODEL executable ...
+/*
+  if (strcmp(EX_version, "I/MODEL 03.04.00.11") == NULL && strcmp(prodName, "vds") == NULL )
+  {
+    sprintf(dloadFile,"%s/load_order_NewBS.txt",dloadPath);
+  }
+  else
+  {
+*/
+    sprintf(dloadFile,"%s/load_order.txt",dloadPath);
+//  }
+
+#ifdef TRACE
+  printf("AIM262 DLOAD %s, prodName = %s, EX_version = <%s>\n",dloadFile, prodName, EX_version);
+#endif
+
+  // Restore the version/date of the currently active PRODUCT...
+  strcpy(EX_version, save_version);
+  strcpy(EX_date, save_date);
+
+  file = fopen(dloadFile,"rt");
+  if (file == NULL) goto wrapup;
+
+  // Cycle through
+  while(fgets(buf,sizeof(buf),file))
+  {
+    for(p = buf; *p > ' '; p = p + 1); *p = 0;
+    if ((*(buf+0) == 'D') && (*(buf+1) == '_'))
+    {
+      sprintf  (dloadFile,"%s/%s%s",dloadPath,buf+2,ext);
+      ems_dload(dloadFile);
+
+#ifdef TRACE
+  printf("AIM262 DLOAD %s\n",dloadFile);
+#endif
+      sprintf  (dloadFile,"DLoaded %s %s",prodName,buf+2);
+      UI_status(dloadFile);
+
+    }
+  }
+
+  // Done
+  fclose(file);
+
+//  VDprd_dload_files(dloadPath);
+
+wrapup:
+  return 1;
+}
+
+/* ------------------------------------
+ * At the begging of a file startup
+ */
+IGRstar startup1()
+{
+#ifdef TRACE
+  printf("Startup1 %s\n",PRODUCT);
+#endif
+
+  if( ! ( ex$is_batch() ))      SMAddToPocketMenu();
+
+  return 1;
+}
+
+/* ------------------------------------
+ * All local dloads have been dloaded
+ *
+ * Loft and extr never get's here because their startup
+ * objects don't get called for dgnfile startups.  Don't know
+ * why yet.
+ *
+ * Need to deal with them as part of vds and struct startup
+ */
+IGRstar startup2()
+{
+  IGRstat sts;
+  IGRchar bs_version[120], string[120], save_version[120], save_date[120];
+
+#ifdef TRACE
+  printf("Startup2 %s\n",PRODUCT);
+#endif
+
+  // dload myself
+  dloadProduct(PRODUCT);
+
+  IGGetBsVersion(bs_version);
+
+  UI_status (bs_version);
+
+  // Done
+  return 1;
+}
+
+/* --------------------------------------
+ * Just say hi if executed directly
+ */
+main()
+{
+  printf("Main ISDP Startup scripts\n");
+  return 1;
+}

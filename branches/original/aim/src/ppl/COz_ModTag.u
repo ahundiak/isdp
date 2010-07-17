@@ -1,0 +1,157 @@
+/* $Id: COz_ModTag.u,v 1.1.1.1 2001/06/01 20:06:27 tlstalli Exp $ */
+
+/*************************************************************************
+ * I/AIMSIR
+ *
+ * File:        aim/src/ppl/COz_ModTag.u
+ *
+ * Description:
+ *      This command allows the user to locate a ROUTE component to Modify its
+ *	Tag Number. This also ensures that in that process the object Id of the
+ *	Component won't change. As per Spec. only the single component should
+ *	be allowed.
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ *      $Log: COz_ModTag.u,v $
+ *      Revision 1.1.1.1  2001/06/01 20:06:27  tlstalli
+ *      Creating aim module
+ *
+# Revision 1.2  1999/11/15  11:36:20  pinnacle
+# Replaced: vrppl/COz_ModTag.u for:  by ssranade for route
+#
+# Revision 1.1  1999/10/07  12:23:24  pinnacle
+# Created for the CR179900671, Modifying Tag Number (Component Number)
+#
+ *
+ * History:
+ *
+ *	Author		Date		Description
+ *	Alwin		10/07/99	Creation
+ *	Shailesh	15/Nov/99	JTS TR MP740 added VDPPmeUpdate for  SIR *					Posting
+ *	
+ **************************************************************************/
+
+#include <stdio.h>
+#include "ciminimum.h"
+#include "cisymb.h"
+#include "cieveryone.h"
+#include "cimacros.h"
+#include "cilocate.h"
+#include "AS_status.h"
+#include "igrdp.h"
+#include "dp.h"
+#include "go.h"
+#include "grmacros.h"
+#include "VRdef.h"
+#include "VRdimdef.h"
+#include "VRcompdef.h"
+#include "VRstructs.h"
+#include "VRmacros.h"
+#include "ACattrib.h"
+#include "ACrg_collect.h"
+#include "parametric.h"
+#include  "vrparameters.h"
+#include "vadbgmacros.h"
+#include "nddef.h"
+#include "ndmacros.h"
+
+extern int printf(), VRGetMatrix();
+extern	int UI_message();
+extern	int UI_status();
+extern	int NDwait_batch();
+extern	int NDexec_batch();
+extern int GRsymbology_options(), GRdisplay_object(); 
+extern VDPPmeUpdate();
+
+main()
+{
+	struct GRsymbology symb;
+	IGRdouble	dMatrix[16],dPriOrie,dSecOrie;
+	long 		retmsg;
+	int 		status,i, count, cn_type, msg;
+	short		nPriEnd, nSecEnd;
+	struct GRid	CompId,PriId,SecId;
+	struct GRid	buff[3];
+	struct GRid	*buff1;
+	struct GRmd_env	md_env;
+
+	int	Index;
+	char szTagNumber[256], tempString[256];
+	struct ret_struct AttrSt;
+	struct VRGenInfo CompInstance;
+
+  while (1)
+  {
+	 szTagNumber[0] = '\0';
+
+	 /* Locate elements to modify */
+	 status = 
+	 ci$locate( 	obj              = &CompId.objid,
+			 osnum            = &CompId.osnum,
+			 classes 	 = "VRGeneric",
+			 md_env		 = &md_env,
+			 prompt           = "Identify component");
+	 // if(!(status&1)) exit;
+
+#ifdef vdsDEBUG
+	 printf ("Located Component id = <%d,%d>\n",CompId.objid,CompId.osnum);
+#endif
+
+	 /*C get the component Tag Number. The Tag Number is stored as 
+	 "Component Number" in the instance data */
+	 status =
+	 ci$send ( msg = message VRGeneric.VRGetInstance(  
+				&retmsg, &CompInstance ),
+	     targetid = CompId.objid,
+	     targetos = CompId.osnum );
+	 
+#ifdef vdsDEBUG
+ printf ("\n Tag Number of Component from Instance : <%s>\n", 
+				CompInstance.szNumber );
+#endif
+
+	 sprintf( tempString, "Old Tag Number : %s", CompInstance.szNumber );
+	 UI_status( tempString );
+
+	 ci$get(
+	 prompt  = "Key in the New Tag Number",
+	 string  = szTagNumber );
+
+	 if( strlen( szTagNumber ) < 14 )
+	 {
+	       strcpy( CompInstance.szNumber, szTagNumber );
+
+	       status =
+	       ci$send ( msg = message VRGeneric.VRSetInstance
+			   (  &retmsg, &CompInstance ),
+		   targetid = CompId.objid,
+		   targetos = CompId.osnum );
+	      
+		nd$wait_batch( type       = GR_GEOM_POSTED,
+                                l_object   = &CompId,
+                                l_obj_info = &cn_type,
+                                nb_obj     = 1 );
+
+		nd$exec_batch();
+		/* SSR 12 NOV TR MP740 */
+		VDPPmeUpdate( &msg, CompId, CompId );
+	 }
+	 else if ( !strcmp( CompInstance.szNumber, szTagNumber ) )
+	 {
+		   UI_status( " Keyed in the same Tag Number " );
+	 }
+	 else
+	 {
+		   UI_status( " Tag Number exceeds 14 characters " );
+	 }
+  }
+
+}
+
+wakeup()
+{
+	UI_message(" Modify TagNumber " );
+}
+

@@ -1,0 +1,231 @@
+/* $Id: CleanUID.u,v 1.2 2001/11/14 15:21:40 jdsauby Exp $ */
+/***************************************************************************
+ * I/AIMSIR
+ *
+ * File:	aim/src/ppl/CleanUID.u
+ *
+ * Description: Clean UID Attribute
+ * 	This PPL will remove the value of the sirid attribute from the selected
+ *	object(s).
+ *	This value will only be removed if the filekey, or the part name has
+ *	changed.
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ * $Log: CleanUID.u,v $
+ * Revision 1.2  2001/11/14 15:21:40  jdsauby
+ * Minor changes, jds 11/14/01
+ *
+ * Revision 1.1  2001/10/29 17:25:55  jdsauby
+ * JTS MP CR 5522 - jds
+ *
+ *
+
+ * MM/DD/YY	AUTHOR		DESCRIPTION
+ * 10/24/01	JS	Creation
+ ***************************************************************************/
+#include "VDppl.h"
+#include "VDobj.h"
+#include "VDgeom.h"
+#include "VDefp.h"
+#include "VDefpSrf.h"
+#include "coparamac.h"
+#include "VDpdm.h"
+
+extern ASstart_var_fence();
+extern ASend_fence();
+extern VDobjGetTxtAtr();
+extern VDmodUsrAttrs();
+extern VDosGetCurrentOS();
+
+#define  SIRID_ATTR     "sirid"
+#define  THE_MESSAGE    "Clean UID"
+
+
+/* PPL Global Variables */
+TVDpdmInfo  s_info;
+VDosnum     s_osnum;
+IGRint      s_loop;
+
+
+/* -----------------------------------------
+ * validate the SIRID attribute for changing.
+ * It is valid for change if the part or file_key
+ * portion of the attribute is different from the
+ * active part or file_key.
+ * **/
+int validForUpdate(SirID)
+IGRchar *SirID;
+{
+    IGRstat retFlag;
+    IGRchar *p;
+    IGRchar buf[80];
+    IGRchar part_key[80];
+    IGRchar file_key[80];
+
+    // init
+    retFlag = 0;
+    *part_key = 0;
+    *file_key = 0;
+
+    // arg check
+    if (SirID == NULL)      goto wrapup;
+    if (*SirID == 0)        goto wrapup;
+    if (s_info.filekey < 1) goto wrapup;
+    if (*s_info.part == 0)  goto wrapup;
+
+    // set buf
+    strcpy(buf,SirID);
+    sprintf(file_key,"%d",s_info.filekey);
+
+    // get part or file_key portion
+    p = strchr(buf,'-');
+    if (p) {
+	*p = 0;
+	strcpy(part_key,buf);
+    }
+
+    if (*part_key == 0) goto wrapup;  // invalid sirid
+
+    if ( (!strcmp(part_key,s_info.part)) ||
+	 (!strcmp(part_key,file_key))      )  
+    {
+	printf("## SIRID <%s> cannot be cleared\n",SirID);
+	goto wrapup;
+    }
+
+    // done, ok to change
+    retFlag = 1;
+
+wrapup:
+    return retFlag;
+}
+	
+/* -----------------------------------------
+ * function to loop through objects and set the sirid
+ **/
+int updateSirIdAttr(objOE)
+TGRobj_env *objOE;
+{
+    IGRchar  SirID[80];
+    IGRstat  sts,msg;
+    TGRid    GRColl;
+
+    struct ACrg_coll Coll;
+
+    //printf(">>> updateSirIdAttr\n");
+    // init
+    *SirID = 0;
+
+    // arg check
+    if (objOE->obj_id.objid == NULL_OBJID) goto wrapup;
+
+
+    // get the sirid attribute from the object
+    VDobjGetTxtAtr(objOE,NULL,SIRID_ATTR,SirID);
+    if (*SirID == 0) goto wrapup;
+
+    // check to see if sirid is valid for update
+    if (!validForUpdate(SirID)) goto wrapup;
+
+    // set the sirid attribute to blank for the object
+    GRColl.objid=objOE->obj_id.objid;
+    GRColl.osnum=objOE->obj_id.osnum;
+    strcpy(Coll.name, SIRID_ATTR);
+    Coll.desc.type = AC_ATTRIB_TEXT;
+    strcpy(Coll.desc.value.att_txt, "");
+    sts = VDmodUsrAttrs(&msg, GRColl, NULL, 1, &Coll);
+
+    // done
+    
+
+wrapup:
+    //printf("<<< updateSirIdAttr\n");
+   return 1;
+}
+
+
+main()
+{
+    int 			sts,msg,response;
+    TGRobj_env  		objOE;
+    TGRobj_env 		*locOEs;
+    IGRint      		locNum;
+    IGRint      		i;
+
+
+    // set the globals
+    s_osnum = OM_K_NOT_AN_OS;
+    VDosGetCurrentOS(&s_osnum);
+    if (s_osnum == OM_K_NOT_AN_OS) goto wrapup;
+
+    VDpdmGetPdmInfo(s_osnum, &s_info);
+    if ( s_info.filekey < 1) goto wrapup;
+    if (*s_info.part   == 0) goto wrapup;
+
+    // locate the objec(s)
+    s_loop = 1;
+    while (s_loop) {
+	UI_message(THE_MESSAGE);
+
+	sts = ci$locate(prompt       = "Locate Object(s) / Move On",
+		classes      = "VDSroot",
+		owner_action = LC_RIGID_OWNER |
+		LC_RIGID_COMP  |
+		LC_FLEX_COMP   |
+		LC_FLEX_OWNER  |
+		LC_REF_OBJECTS,
+		stackable    = 1,
+		response     = &response,
+		md_env       = &objOE.mod_env,
+		obj          = &objOE.obj_id.objid,
+		osnum	    = &objOE.obj_id.osnum);
+
+	if (!(sts & 1)) response = 0;
+
+
+	switch(response) {
+
+	  case EX_OBJID:   // Object Set
+
+	      /* Grab Located Objects */
+	      as$start_fence(
+		      set       = &objOE.obj_id,
+		      set_env   = &objOE.mod_env,
+		      nb_obj    = &locNum,
+		      p_obj_env = &locOEs);
+
+	      for(i = 0; i < locNum; i = i + 1) {
+		  updateSirIdAttr(&locOEs[i]);
+	      }
+
+	      ASend_fence();
+	      break;
+
+	  case EX_DATA:    // Single Object
+	      updateSirIdAttr(&objOE);
+	      break;
+
+
+	  default:
+	      s_loop = 0;
+	      break;
+
+
+
+	} // end of switch (response)
+
+    } // end of while (s_loop)
+
+wrapup:
+
+      ci$put(response = TERMINATE);
+      exit;
+
+} // end of main
+
+
+    
+
+
