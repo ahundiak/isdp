@@ -1,0 +1,156 @@
+/***************************************************************************
+* I/AIM
+*
+* File:     src/ppl/procAimAssem.u
+*
+* Description: Invoke the AIMProcAssembly command in VDS.  This command 
+*              will retrieve a list of catalog, part number, and revisions
+*              that are reference files for the active file.  It will 
+*              compare the AIM list with an ISDP list of referenced files
+*              retrieved from the active file to display an acurate list
+*              of reference files that have been processed or not within
+*              AIM.  It will also interface with AIM to process reference 
+*              in AIM. 
+*
+* Revison History:
+*	$Log: procAimAssem.u,v $
+*	Revision 1.2  2002/05/10 21:55:29  tlstalli
+*	made outbuf changes
+*	
+*	Revision 1.1  2002/02/08 20:03:38  tlstalli
+*	TLS - AMDC Enhancements
+*	
+*
+* History:
+	MM/DD/YY	AUTHOR		DESCRIPTION
+*  	01/24/02	TLS		File Creation
+*               
+************************************************************************
+*/
+
+#include "VDppl.h"
+#include "VDobj.h"
+#include "msmacros.h"
+#include "msdef.h"
+#include "execmsg.h"
+#include "cimacros.h"
+#include "ciminimum.h"
+#include "vadbgmacros.h"
+#include "PDUstr.h"
+
+#define DEVELOPMENT	"Development"
+
+/****************** Externs ****************/
+extern 	int	AIMref_files_form();
+extern  int 	SrVDGetCMState();
+extern  struct PDUrefresh        *refresh;
+
+
+/************************************************************
+  Global variables.
+ ************************************************************/
+
+FILE *ptr;
+
+/************************************************************
+* FUNCTION: get_reference_files_from_aim()
+*
+************************************************************/
+get_reference_files_from_aim( retCode )
+int *retCode;
+{   
+    int     	chkcode;
+    int     	status ;
+    
+    *retCode 	= OM_S_SUCCESS;
+    status 	= OM_S_SUCCESS;
+
+    fprintf(ptr,"\nget_reference_files_from_aim: START\n");
+    __DBGpr_com("get_reference_files_from_aim: START");
+    
+    fprintf(ptr,"\tcalling AIMref_files_form()\n");
+    __DBGpr_com("calling AIMref_files_form()");
+
+    status = AIMref_files_form(); 
+
+    if (status != 0)
+    {
+      __DBGpr_int("status is bad.  status =  ", status);
+      fprintf(ptr,"\tstatus is bad: %d\n", status);
+    }
+
+quit:
+    
+    fprintf(ptr, "\nget_reference_files_from_aim: END");
+    __DBGpr_com("get_reference_files_from_aim: END");
+    return status;
+}
+
+/**************************************************************/
+main()
+{
+
+  int response;       
+
+  int status;
+  int retCode;
+  char log[30], State[20];
+  char ARsel[2], CMmng[2], DCCsel[2], St[5];
+  
+  ptr = NULL;
+
+  /* open the log file to print out posting information */
+  sprintf(log, "%s","procaimassem.log");
+  ptr = fopen(log, "w+");
+  if(ptr == NULL)
+  {
+    UI_status("Can not open log file for writing...");
+    __DBGpr_com("Can not open log file for writing...");
+  }
+
+
+   fprintf(ptr, "\nProcess AIM Assembly PPL START");
+   __DBGpr_com("Process AIM Assembly PPL START");
+
+  /*
+   * Get the workflow state for the current file.
+   */
+
+   status = SrVDGetCMState( refresh->act_catalog, refresh->act_partid,
+                            refresh->act_revision, State);
+   fprintf(ptr,"\n NFM WORKFLOW STATE: %s", State );
+   __DBGpr_str("NFM WORKFLOW STATE: ", State);
+
+   if(status) 
+	goto quit;
+
+  /* If the file is in development state proceed, else STOP */
+   if(strcmp(State, DEVELOPMENT))
+   {
+     UI_status("Updating reference file allowed in development state");
+     fprintf(ptr, "Updating reference file information in AIM is only allowed in development state");
+     goto quit;
+   }
+
+  fprintf(ptr, "\nCalling get_reference_files_from_aim.\n");
+  __DBGpr_com("Calling get_reference_files_from_aim.");
+
+  status = get_reference_files_from_aim( &retCode );
+  __CheckRC( retCode, status, "get_reference_files_from_aim", quit );
+  
+
+quit:
+	if(status != OM_S_SUCCESS)
+        {
+          fprintf(ptr, "Process Terminated.....\n");
+        }
+        else
+        {
+	  fprintf( "" );
+        }
+
+        fclose(ptr);
+        ptr = NULL;
+}
+
+

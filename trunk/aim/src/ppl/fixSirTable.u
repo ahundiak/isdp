@@ -1,0 +1,904 @@
+/************************************************************************
+* File:	/src/ppl/chkSirTable.u
+*
+* Description:
+*
+* Dependencies:
+*
+* Revision History:
+*	$Log: fixSirTable.u,v $
+*	Revision 1.2  2002/04/08 18:40:56  tlstalli
+*	Fixed TR 6128
+*	
+*	Revision 1.1  2002/02/08 20:04:42  tlstalli
+*	TLS - Fix for TR 5996
+*	
+*	
+*
+* History:
+*	MM/DD/YY	AUTHOR		DESCRIPTION
+*
+***************************************************************************/
+
+/*
+#define vaimDEBUG
+#define vaimerrDEBUG
+*/
+
+#define CLIX_DISCONNECT -2
+
+#include <string.h>
+#include <stdio.h>
+#include "VDppl.h"
+#include "VDobj.h"
+#include "VDsa.h"
+#include "VDSutil.h"
+
+#include "VDmem_ppl.h"
+#include "vadbgmacros.h"
+#include "VDPdef.h"
+
+#include "OMmacros.h"
+#include "OMprimitives.h"
+#include "PDMlog_macro.h"
+#include "PDUerror.h"
+#include "PDMfile_mac.h"
+
+#include "PDUforms.h"
+#include "PDUstr.h"
+#include "vdbmacros.h"
+#include "PDUcommand.h"
+
+/* globals */
+FILE	*ptr;
+int RetOK;
+
+/* externals */
+extern	SrVDGetCMattrs();
+extern	SrVDBaseRevise();
+extern 	fprintf();
+extern  int     POSTMAN_REQUEST_ON_CLIX();
+extern int AIMlogin();
+extern  int	IsPmeEnabled();
+extern int SirVDUpdCMAttrs();
+extern int SrVDUpdCMattrs();
+extern int EnablePME();
+
+/*********************************************************
+* Function: chkMdcExist
+***********************************************************/
+int chkMdcExist( catalog, part, rev, IsAimMdcExist ) 
+char *catalog;
+char *part;
+char *rev;
+char *IsAimMdcExist; 
+{
+  int   status, code;
+  char  *revmdcobid;
+  int 	index, inlen, dstat, mfail, outlen, i, nbItems;
+  char 	inbuf[100];
+  char	*outbuf, *errmsg;
+  char LpdDesc[50];
+
+  status = 0;
+  code = 0;
+  index = 0;
+  inlen = 0;
+  nbItems = 0;
+  outbuf = NULL;
+  errmsg = NULL;
+  revmdcobid=NULL;
+
+  __DBGpr_com( "chkMdcExist - START");
+
+  code = VDP_GET_MDC_REV;
+  memcpy( &inbuf[index], &code, sizeof(int));
+  inlen = inlen + sizeof(int);
+  index = inlen;
+  __DBGpr_int( "Code ", code );
+
+  strcpy( &inbuf[index], catalog );
+  inlen = inlen + strlen( catalog ) +1;
+  index = inlen; 
+  __DBGpr_str( " Catalog ", catalog );
+       
+  strcpy( &inbuf[index], part );
+  inlen = inlen + strlen( part ) +1;
+  index = inlen; 
+  __DBGpr_str( " Part ", part );
+       
+  strcpy( &inbuf[index], rev );
+  inlen = inlen + strlen( rev ) +1;
+  index = inlen; 
+  __DBGpr_str( "Rev ", rev );
+
+  dstat = 0;
+  mfail = 0;
+  dstat = POSTMAN_REQUEST_ON_CLIX(   	inlen,
+					inbuf,
+					&outlen,
+					&outbuf,
+					&mfail,
+					&errmsg );
+  if( (dstat != 0) || (mfail != 0) )
+  {
+  	if (mfail == 47 )
+	{
+  		__DBGpr_com( "NO MDC EXIST");
+  		strcpy(IsAimMdcExist,"N");
+	}
+        else
+        {
+  		__DBGpr_com( "Error getting MDC");
+		status = OM_E_ERROR;
+		goto wrapup;
+        }
+        if(dstat == 12345 )
+        {
+  		__DBGpr_com( "Error getting MDC");
+		UI_status("AIM connection reset by server.");
+  		UI_status("Error Getting MDC");
+  	 	printf("AIM connection reset by server. Please Disconnect and Re-Connect.\n");
+		status = OM_E_ERROR;
+		goto wrapup;
+        }
+
+  } 
+       
+  if(outlen == 0) 
+  {
+  	__DBGpr_com( "Error getting MDC");
+	status = OM_E_ERROR;
+	goto wrapup;
+  }
+
+  index = 0;
+  /* get the number from buffer */
+  memcpy( &nbItems, &outbuf[index], sizeof(int) );
+  index = index + sizeof(int);
+
+  if(outbuf[0]!= '\0')
+  {
+
+	if( ( strlen(&outbuf[index]) != 0 ) && (&outbuf[index] != NULL) )
+	{
+ 		__DBGpr_str( "MDC Rev ", &outbuf[index]);
+		strcpy(IsAimMdcExist,"Y");
+	}
+ 	/*
+  	__DBGpr_com("Allocating memory");
+        __DBGpr_int("length", strlen(&outbuf[index]));
+        mdcrev = malloc(strlen(&outbuf[index]) * sizeof(char *));
+ 	if(mdcrev) 
+		strcpy(mdcrev, &outbuf[index] );
+
+ 	__DBGpr_str( "OBID from SIR ", mdcrev);
+	*/
+        status = OM_S_SUCCESS;
+  }
+
+  wrapup:
+	return status;
+}
+
+/*********************************************************
+* Function: getMdcAndCtxInfo 
+***********************************************************/
+int getMdcAndCtxInfo( catalog, part, rev, mdc_rev, ctx_rev, ctx_name, ctx_type) 
+char *catalog;
+char *part;
+char *rev;
+char *mdc_rev; 
+char *ctx_rev;
+char *ctx_name;
+char *ctx_type;
+{
+  int   status, code;
+  char  *revmdcobid;
+  int 	index, index1, inlen, dstat, mfail, outlen, i, nbItems;
+  char 	inbuf[100];
+  char	*outbuf, *errmsg;
+  char LpdDesc[50];
+
+  status = 0;
+  code = 0;
+  index = 0;
+  index1 = 0;
+  inlen = 0;
+  nbItems = 0;
+  outbuf = NULL;
+  errmsg = NULL;
+  revmdcobid=NULL;
+
+  __DBGpr_com( "chkMdcExist - START");
+
+  code = VDP_GET_MDC_AND_CTX_INFO;
+  memcpy( &inbuf[index], &code, sizeof(int));
+  inlen = inlen + sizeof(int);
+  index = inlen;
+  __DBGpr_int( "Code ", code );
+
+  strcpy( &inbuf[index], catalog );
+  inlen = inlen + strlen( catalog ) +1;
+  index = inlen; 
+  __DBGpr_str( " Catalog ", catalog );
+       
+  strcpy( &inbuf[index], part );
+  inlen = inlen + strlen( part ) +1;
+  index = inlen; 
+  __DBGpr_str( " Part ", part );
+       
+  strcpy( &inbuf[index], rev );
+  inlen = inlen + strlen( rev ) +1;
+  index = inlen; 
+  __DBGpr_str( "Rev ", rev );
+
+  dstat = 0;
+  mfail = 0;
+  dstat = POSTMAN_REQUEST_ON_CLIX(   	inlen,
+					inbuf,
+					&outlen,
+					&outbuf,
+					&mfail,
+					&errmsg );
+  if( (dstat != 0) || (mfail != 0) )
+  {
+  	if (mfail == 47 )
+	{
+  		__DBGpr_com( "NO MDC EXIST");
+		status = 47;
+		goto wrapup;
+	}
+        else
+        {
+  		__DBGpr_com( "Error getting MDC");
+		status = OM_E_ERROR;
+		goto wrapup;
+        }
+        if(dstat == 12345 )
+        {
+  		__DBGpr_com( "Error getting MDC");
+		status = OM_E_ERROR;
+		goto wrapup;
+        }
+
+  } 
+       
+  if(outlen == 0) 
+  {
+  	__DBGpr_com( "Error getting MDC");
+	status = OM_E_ERROR;
+	goto wrapup;
+  }
+
+  index1 = 0;
+  /* get the number from buffer */
+  memcpy( &nbItems, &outbuf[index1], sizeof(int) );
+  index1 = index1 + sizeof(int);
+
+  if(outbuf[0]!= '\0')
+  {
+
+	if( ( strlen(&outbuf[index1]) != 0 ) && (&outbuf[index1] != NULL) )
+	{
+		strcpy(mdc_rev,&outbuf[index1]);
+	 	index1 = index1 + strlen(mdc_rev) +1;	
+ 		__DBGpr_str( "MDC Rev ", mdc_rev);
+
+		strcpy(ctx_rev,&outbuf[index1]);
+	 	index1 = index1 + strlen(ctx_rev) +1;	
+ 		__DBGpr_str( "CTX Rev ", ctx_rev);
+
+		strcpy(ctx_name,&outbuf[index1]);
+	 	index1 = index1 + strlen(ctx_name) +1;	
+ 		__DBGpr_str( "CTX Name ", ctx_name);
+
+		strcpy(ctx_type,&outbuf[index1]);
+	 	index1 = index1 + strlen(ctx_type) +1;	
+ 		__DBGpr_str( "CTX Type ", ctx_type);
+	}
+
+        status = 0;
+  }
+
+  wrapup:
+	return status;
+}
+
+
+
+/*****************************************************
+* getSirPdmTableList:
+*	- get all the rows from the SIR_PDM_TABLE.
+*****************************************************/
+int getSirPdmTableList( cnt, list )
+int *cnt;
+SirPdmTableInfo **list;
+{
+  int	status, sts;
+  char	searchst[2];
+  int   num, i;
+  char  **buf;
+
+  *cnt = 0;
+  *list = NULL;
+  status = 0;
+  sts = 1;
+  num = 0;
+  i = 0;
+
+  __DBGpr_com( "getSirPdmTableList - START");
+  searchst[0] = '\0';
+  status = vdb$RisSelect(select="pdu_catalog, pdu_part, pdu_revision, mdc_rev, ctx_rev, ctx_name, ctx_type",
+ 			table_name = "SIR_PDM_TABLE", 
+			where = NULL,
+			numselect = 7,
+			p_numrows = &num,
+			p_buffer = &buf);
+  __DBGpr_int( "num: ", num );
+  if(status != 1 || num == 0 )
+  	return 1;	
+
+  __DBGpr_int( "num: ", num );
+  if(num != 0)
+  {
+	/* set the cnt for the structure */
+	memcpy( cnt, &num, sizeof(int));
+  	__DBGpr_int( "cnt", *cnt );
+
+	/* allocate memory for the structure */
+	if( *cnt == 0) 
+		goto wrapup;
+
+  	if( *cnt )
+  	{
+		*list = malloc ( *cnt * sizeof(SirPdmTableInfo) );
+        	if ( *list == NULL )
+        	{
+        		printf("Error in dynamic allocation of memory\n");
+        		return OM_E_NODYNMEM;
+        	}
+  	}
+
+	/* loop through each row returned and store the values in the structure */
+	for ( i=0; i < num; i=i+1)
+  	{
+		(*list)[i].catalog[0] = '\0';
+        	(*list)[i].part[0] = '\0';
+        	(*list)[i].rev[0] = '\0';
+        	(*list)[i].mdc_rev[0] = '\0';
+        	(*list)[i].ctx_rev[0] = '\0';
+        	(*list)[i].ctx_name[0] = '\0';
+        	(*list)[i].ctx_type[0] = '\0';
+
+  		sts = vdb$RisExtractValue ( 	nbrows = num,
+               		          		nbcolumns = 7,
+                        	 		buffer = buf,
+                         			row = i,
+                         			column = 0,
+                         			value = (*list)[i].catalog);
+   		if(sts!=1) return 1;
+         	__DBGpr_str ("Catalog = ", (*list)[i].catalog );
+
+   		sts = vdb$RisExtractValue ( 	nbrows = num,
+                        	 		nbcolumns = 7,
+                         			buffer = buf,
+                         			row = i,
+                         			column = 1,
+                        			value = (*list)[i].part);
+   		if(sts!=1) return 1;
+         	__DBGpr_str ("Part = ", (*list)[i].part );
+
+  		sts = vdb$RisExtractValue ( 	nbrows = num,
+                         			nbcolumns = 7,
+                         			buffer = buf,
+                         			row = i,
+                         			column = 2,
+                         			value = (*list)[i].rev);
+  		if(sts!=1) return 1;
+         	__DBGpr_str ("Revision = ", (*list)[i].rev );
+
+   		sts = vdb$RisExtractValue ( 	nbrows = num,
+                         			nbcolumns = 7,
+                         			buffer = buf,
+                         			row = i,
+                         			column = 3,
+                         			value = (*list)[i].mdc_rev);
+   		if(sts!=1) return 1;
+         	__DBGpr_str ("MDC Rev = ", (*list)[i].mdc_rev );
+
+   		sts = vdb$RisExtractValue ( 	nbrows = num,
+                         			nbcolumns = 7,
+                         			buffer = buf,
+                         			row = i,
+                         			column = 4,
+                         			value = (*list)[i].ctx_rev);
+   		if(sts!=1) return 1;
+         	__DBGpr_str ("Context Rev = ", (*list)[i].ctx_rev );
+
+		sts = vdb$RisExtractValue ( 	nbrows = num,
+                         			nbcolumns = 7,
+                         			buffer = buf,
+                         			row = i,
+                         			column = 5,
+                         			value = (*list)[i].ctx_name);
+
+   		if(sts !=1) return 1;
+         	__DBGpr_str ("Context Name = ", (*list)[i].ctx_name );
+
+		sts = vdb$RisExtractValue ( 	nbrows = num,
+                         			nbcolumns = 7,
+                         			buffer = buf,
+                         			row = i,
+                         			column = 6,
+                         			value = (*list)[i].ctx_type);
+   		if(sts !=1) return 1;
+         	__DBGpr_str ("Context Type = ", (*list)[i].ctx_type );
+	}
+
+   	vdb$RisFreeBuffer( buffer = buf, size = 7 * num);
+  }
+
+  wrapup:
+  	__DBGpr_com( "getSirPdmTableList - END");
+	return status;
+
+}
+
+/*****************************************************
+* checkSirTable:
+*	- Generate a list of files that are invalid in the SIR_PDM_TABLE.
+*	  Files that are invalid will have the following values set to null
+*	  but there is an MDC that exist in AIM for them.
+*		- mdc_rev
+*		- ctx_rev
+*		- ctx_name
+*		- ctx_type
+*****************************************************/
+int checkSirTable()
+{
+  int	i, status ;
+  int	nRowCnt;
+  char 	ARsel[2], CMmng[2], DCCsel[2], Mdc[5], IsSuper[20];
+  SirPdmTableInfo *SirTableRows;
+  char  IsAimMdcExist[5];
+
+  status	= OM_S_SUCCESS ;
+  SirTableRows 	= NULL;
+  nRowCnt	= 0;
+  *ARsel 	= 0;
+  *CMmng 	= 0;
+  *DCCsel 	= 0;
+  *Mdc	 	= 0;
+  *IsSuper	= 0;
+
+
+  __DBGpr_com("checkSirTable - START");	
+
+  /* start the log file writing */
+  fprintf(ptr,"Processing SIR_PDM_TABLE:\n\n");
+
+  __DBGpr_com("calling getSirPdmTableList");	
+  /* get all rows from the SIR_PDM_TABLE */
+  status = getSirPdmTableList(&nRowCnt, &SirTableRows);
+
+  __DBGpr_int("nRowCnt: ", nRowCnt);	
+  if(nRowCnt == 0)
+  {
+  	__DBGpr_com("no rows were found in the SIR_PDM_TABLE.");
+  	fprintf(ptr,"\t No rows were found in the SIR_PDM_TABLE\n");
+	goto wrapup;
+  }
+
+  /* loop though each entry and check to see if it's valid */
+  for(i=0; i < nRowCnt; i=i+1)
+  {
+  	/* 1. get the aim attributes from the database */
+  	__DBGpr_com("SrVDGetCMattrs - Get the CM Attributes from the database.");
+  	status = SrVDGetCMattrs(SirTableRows[i].catalog, SirTableRows[i].part, SirTableRows[i].rev, 
+                          	ARsel, CMmng, DCCsel, Mdc, IsSuper);
+
+	/* check to see if AIM has a mdc for this file */
+	status = chkMdcExist(	SirTableRows[i].catalog, 
+				SirTableRows[i].part, 
+				SirTableRows[i].rev, 
+				IsAimMdcExist);
+
+	/* THIS PPL ONLY FIXES THE ROWS WHERE THE FOLLOWING VALUES ARE NULL */
+	
+	if( 	(SirTableRows[i].mdc_rev == NULL)  &&  
+		(SirTableRows[i].ctx_rev == NULL) &&
+		(SirTableRows[i].ctx_name == NULL) &&
+		(SirTableRows[i].ctx_type == NULL) )
+	{
+		if( (!(strcmp(Mdc, "Y")))  &&  (!(strcmp(IsAimMdcExist,"Y"))) )
+		{
+			/* this is a valid part */
+  			__DBGpr_str("Mdc = ", Mdc );
+  			__DBGpr_str("IsAimMdcExist = ", IsAimMdcExist);
+	
+  			fprintf(ptr,"\tCatalog: \t%s\n", SirTableRows[i].catalog);
+  			__DBGpr_str("Catalog = ", SirTableRows[i].catalog);
+  			fprintf(ptr,"\tPart Number: \t%s\n", SirTableRows[i].part);
+  			__DBGpr_str("Part Number = ", SirTableRows[i].part);
+  			fprintf(ptr,"\tRevision: \t%s\n", SirTableRows[i].rev);
+  			__DBGpr_str("Revision = ", SirTableRows[i].rev);
+	
+  			fprintf(ptr,"\tStatus: \t%s\n", "This is a INVALID part");
+  			__DBGpr_str("Status = ", "This is a INVALID part");
+  			fprintf(ptr,"\tReason: \t%s%s%s\n", "The MDC exist in AIM and the p_incpartrpt value in the ",
+							SirTableRows[i].catalog,
+							" catalog is set to Y but the mdc_rev, ctx_rev, ctx_name, and ctx_type values are null in the SIR_PDM_TABLE.");
+  			__DBGpr_str("Reason = ", "The MDC exist in AIM and the p_incpartrpt is set to Y but the sir_pdm_table values are null");
+			
+			/* NOW FIX THE PART */
+
+			/* First, get the information from AIM */
+		        status = getMdcAndCtxInfo(	SirTableRows[i].catalog,
+							SirTableRows[i].part, 
+							SirTableRows[i].rev, 
+							SirTableRows[i].mdc_rev,
+							SirTableRows[i].ctx_rev,
+							SirTableRows[i].ctx_name,
+							SirTableRows[i].ctx_type);
+			if(status != 0)
+			{
+				fprintf(ptr,"\n");
+				fprintf(ptr,"\tFAILED TO GET INFORMATION FROM AIM FOR THIS PART. CONTACT THE AIM ADMINISTRATOR.\n");
+  				__DBGpr_com("FAILED TO GET INFORMATION FROM AIM FOR THIS PART. CONTACT THE AIM ADMINISTRATOR.");
+				goto next1;
+			}
+				
+	
+			/* if the values are not null, update the SIR_PDM_TABLE */
+
+			if(	(SirTableRows[i].mdc_rev != NULL)  &&  
+				(SirTableRows[i].ctx_rev != NULL) &&
+				(SirTableRows[i].ctx_name != NULL) &&
+				(SirTableRows[i].ctx_type != NULL) )
+			{ 
+				status = SirVDUpdCMAttrs( 	SirTableRows[i].catalog, 
+								SirTableRows[i].part,
+	  	                 				SirTableRows[i].rev, 
+								"mdc_rev", 
+						 		SirTableRows[i].mdc_rev);
+       		 		status = SirVDUpdCMAttrs( 	SirTableRows[i].catalog, 
+								SirTableRows[i].part,
+	  	                 				SirTableRows[i].rev, 
+								"ctx_rev", 
+				 				SirTableRows[i].ctx_rev);
+	 			status = SirVDUpdCMAttrs( 	SirTableRows[i].catalog, 
+								SirTableRows[i].part,
+	  	                 				SirTableRows[i].rev, 
+								"ctx_name", 
+				 				SirTableRows[i].ctx_name);
+	  			status = SirVDUpdCMAttrs( 	SirTableRows[i].catalog, 
+								SirTableRows[i].part,
+	  	                 				SirTableRows[i].rev, 
+								"ctx_type", 
+				 				SirTableRows[i].ctx_type);
+
+
+				fprintf(ptr,"\n");
+				fprintf(ptr,"\tThe NEW SIR_PDM_TABLE values are:\n");
+  				__DBGpr_com("The new SIR_PDM_TABLE values are:");
+				fprintf(ptr,"\t\tMDC Rev: \t%s\n", SirTableRows[i].mdc_rev);
+  				__DBGpr_str("MDC Rev = ", SirTableRows[i].mdc_rev);
+				fprintf(ptr,"\t\tCTX Rev: \t%s\n", SirTableRows[i].ctx_rev);
+  				__DBGpr_str("Ctx Rev = ", SirTableRows[i].ctx_rev);
+				fprintf(ptr,"\t\tCTX Name: \t%s\n", SirTableRows[i].ctx_name);
+  				__DBGpr_str("Ctx Name = ", SirTableRows[i].ctx_name);
+				fprintf(ptr,"\t\tCTX Type: \t%s\n", SirTableRows[i].ctx_type);
+  				__DBGpr_str("Ctx Type = ", SirTableRows[i].ctx_type);
+				fprintf(ptr,"\n");
+			}
+			else
+			{
+				fprintf(ptr,"\n");
+				fprintf(ptr,"\tFAILED TO GET INFORMATION FROM AIM. CONTACT THE AIM ADMINISTRATOR.\n");
+  				__DBGpr_com("FAILED TO GET INFORMATION FROM AIM FOR THIS PART. CONTACT THE AIM ADMINISTRATOR.");
+				goto next1;
+			}
+		}
+
+		if( (!(strcmp(Mdc, "N")))  &&  (!(strcmp(IsAimMdcExist,"Y"))) )
+		{
+			/* this is a invalid part */
+			__DBGpr_str("Mdc = ", Mdc );
+	  		__DBGpr_str("IsAimMdcExist = ", IsAimMdcExist);
+	
+  			fprintf(ptr,"\tCatalog: \t%s\n", SirTableRows[i].catalog);
+  			__DBGpr_str("Catalog = ", SirTableRows[i].catalog);
+  			fprintf(ptr,"\tPart Number: \t%s\n", SirTableRows[i].part);
+  			__DBGpr_str("Part Number = ", SirTableRows[i].part);
+  			fprintf(ptr,"\tRevision: \t%s\n", SirTableRows[i].rev);
+  			__DBGpr_str("Revision = ", SirTableRows[i].rev);
+
+  			fprintf(ptr,"\tStatus: \t%s\n", "This is a INVALID part");
+	  		__DBGpr_str("Status = ", "This is a INVALID part");
+  			fprintf(ptr,"\tReason: \t%s%s%s\n", 
+						"The MDC exist in AIM but the p_incpartrpt value in the ",
+						SirTableRows[i].catalog,
+						" catalog is set to N and the mdc_rev, ctx_rev, ctx_name, and ctx_type values are null in the SIR_PDM_TABLE.");
+  			__DBGpr_str("Reason = ", "The p_incpartrpt value in the catalog is set to N but an MDC does exist ing AIM.");
+		
+			/* FIRST FIX THE CATALOG TABLE */
+
+			status = SrVDUpdCMattrs( 	SirTableRows[i].catalog, 
+							SirTableRows[i].part,
+                                			SirTableRows[i].rev, 
+							"p_incpartrpt", 
+							"Y");
+
+			if( status != 0 )
+			{
+				fprintf(ptr,"\n");
+				fprintf(ptr,"\t%s%s%s\n",
+					"FAILED TO UPDATE THE ",
+					SirTableRows[i].catalog,
+					" CATALOG TABLE TO SET THE p_incpartrpt VALUE. CONTACT THE ISDP ADMINISTRATOR");
+  				__DBGpr_com("FAILED TO UPDATE THE CATALOG TABLE. CONTACT THE ISDP ADMINISTRATOR.");
+			}
+			else
+			{
+				fprintf(ptr,"\n");
+				fprintf(ptr,"\t%s%s%s\n",
+					"SUCCESSFULLY UPDATED THE ",
+					SirTableRows[i].catalog,
+					" CATALOG TABLE TO SET THE p_incpartrpt VALUE.");
+  				__DBGpr_com("UPDATED THE CATALOG TABLE.");
+			}
+
+			/* NOW FIX THE PART */
+
+			/* First, get the information from AIM */
+		        status = getMdcAndCtxInfo(	SirTableRows[i].catalog,
+							SirTableRows[i].part, 
+							SirTableRows[i].rev, 
+							SirTableRows[i].mdc_rev,
+							SirTableRows[i].ctx_rev,
+							SirTableRows[i].ctx_name,
+							SirTableRows[i].ctx_type);
+			if(status != 0)
+			{
+				fprintf(ptr,"\n");
+				fprintf(ptr,"\tFAILED TO GET INFORMATION FROM AIM FOR THIS PART. CONTACT THE AIM ADMINISTRATOR.\n");
+  				__DBGpr_com("FAILED TO GET INFORMATION FROM AIM FOR THIS PART. CONTACT THE AIM ADMINISTRATOR.");
+				goto next1;
+			}
+				
+	
+			/* if the values are not null, update the SIR_PDM_TABLE */
+
+			if(	(SirTableRows[i].mdc_rev != NULL)  &&  
+				(SirTableRows[i].ctx_rev != NULL) &&
+				(SirTableRows[i].ctx_name != NULL) &&
+				(SirTableRows[i].ctx_type != NULL) )
+			{ 
+				status = SirVDUpdCMAttrs( 	SirTableRows[i].catalog, 
+								SirTableRows[i].part,
+	  	                 				SirTableRows[i].rev, 
+								"mdc_rev", 
+						 		SirTableRows[i].mdc_rev);
+				if(status != 0)
+					goto cont;
+
+       		 		status = SirVDUpdCMAttrs( 	SirTableRows[i].catalog, 
+								SirTableRows[i].part,
+	  	                 				SirTableRows[i].rev, 
+								"ctx_rev", 
+				 				SirTableRows[i].ctx_rev);
+				if(status != 0)
+					goto cont;
+
+	 			status = SirVDUpdCMAttrs( 	SirTableRows[i].catalog, 
+								SirTableRows[i].part,
+	  	                 				SirTableRows[i].rev, 
+								"ctx_name", 
+				 				SirTableRows[i].ctx_name);
+				if(status != 0)
+					goto cont;
+
+	  			status = SirVDUpdCMAttrs( 	SirTableRows[i].catalog, 
+								SirTableRows[i].part,
+	  	                 				SirTableRows[i].rev, 
+								"ctx_type", 
+				 				SirTableRows[i].ctx_type);
+cont:
+				if(status != 0)
+				{
+					fprintf(ptr,"\n");
+					fprintf(ptr,"\tFAILED TO UPDATE THE SIR_PDM_TABLE. CONTACT THE ISDP ADMINISTRATOR\n");
+  					__DBGpr_com("FAILED TO UPDATE THE SIR_PDM_TABLE. CONTACT THE ISDP ADMINISTRATOR");
+					goto next1;
+				}
+
+				fprintf(ptr,"\n");
+				fprintf(ptr,"\tThe NEW SIR_PDM_TABLE values are:\n");
+  				__DBGpr_com("The new SIR_PDM_TABLE values are:");
+				fprintf(ptr,"\t\tMDC Rev: \t%s\n", SirTableRows[i].mdc_rev);
+  				__DBGpr_str("MDC Rev = ", SirTableRows[i].mdc_rev);
+				fprintf(ptr,"\t\tCTX Rev: \t%s\n", SirTableRows[i].ctx_rev);
+  				__DBGpr_str("Ctx Rev = ", SirTableRows[i].ctx_rev);
+				fprintf(ptr,"\t\tCTX Name: \t%s\n", SirTableRows[i].ctx_name);
+  				__DBGpr_str("Ctx Name = ", SirTableRows[i].ctx_name);
+				fprintf(ptr,"\t\tCTX Type: \t%s\n", SirTableRows[i].ctx_type);
+  				__DBGpr_str("Ctx Type = ", SirTableRows[i].ctx_type);
+				fprintf(ptr,"\n");
+
+			}
+			else
+			{
+				fprintf(ptr,"\n");
+				fprintf(ptr,"\tFAILED TO GET INFORMATION FROM AIM. CONTACT THE AIM ADMINISTRATOR.\n");
+  				__DBGpr_com("FAILED TO GET INFORMATION FROM AIM FOR THIS PART. CONTACT THE AIM ADMINISTRATOR.");
+				goto next1;
+			}
+			
+		}
+
+		if( (!(strcmp(Mdc, "Y")))  &&  (!(strcmp(IsAimMdcExist,"N"))) )
+		{
+			/* this is a invalid part */
+			__DBGpr_str("Mdc = ", Mdc );
+  			__DBGpr_str("IsAimMdcExist = ", IsAimMdcExist);
+
+	  		fprintf(ptr,"\tCatalog: \t%s\n", SirTableRows[i].catalog);
+  			__DBGpr_str("Catalog = ", SirTableRows[i].catalog);
+  			fprintf(ptr,"\tPart Number: \t%s\n", SirTableRows[i].part);
+  			__DBGpr_str("Part Number = ", SirTableRows[i].part);
+  			fprintf(ptr,"\tRevision: \t%s\n", SirTableRows[i].rev);
+  			__DBGpr_str("Revision = ", SirTableRows[i].rev);
+
+  			fprintf(ptr,"\tStatus: \t%s\n", "This is a INVALID part");
+  			__DBGpr_str("Status = ", "This is a INVALID part");
+  			fprintf(ptr,"\tReason: \t%s%s%s\n", 
+						"The MDC does not exist in AIM but the p_inpartrpt value in the ",
+						SirTableRows[i].catalog,
+						" catalog is set to Y.");
+  			__DBGpr_str("Reason = ", "The MDC does not exist in AIM for this part but the p_inpartrpt value is set to Y.");
+			/* FIRST FIX THE CATALOG TABLE */
+
+			status = SrVDUpdCMattrs( 	SirTableRows[i].catalog, 
+							SirTableRows[i].part,
+                                			SirTableRows[i].rev, 
+							"p_incpartrpt", 
+							"N");
+
+			if( status != 0 )
+			{
+				fprintf(ptr,"\n");
+				fprintf(ptr,"\t%s%s%s\n",
+					"FAILED TO UPDATE THE ",
+					SirTableRows[i].catalog,
+					" CATALOG TABLE TO SET THE p_incpartrpt VALUE. CONTACT THE ISDP ADMINISTRATOR");
+  				__DBGpr_com("FAILED TO UPDATE THE CATALOG TABLE. CONTACT THE ISDP ADMINISTRATOR.");
+			}
+			else
+			{
+				fprintf(ptr,"\n");
+				fprintf(ptr,"\t%s%s%s\n",
+					"SUCCESSFULLY UPDATED THE ",
+					SirTableRows[i].catalog,
+					" CATALOG TABLE TO SET THE p_incpartrpt VALUE.");
+  				__DBGpr_com("UPDATED THE CATALOG TABLE.");
+			}
+			fprintf(ptr,"\n");
+
+		}
+
+		if( (!(strcmp(Mdc, "N")))  &&  (!(strcmp(IsAimMdcExist,"N"))) )
+		{
+			/* this is a invalid part */
+			__DBGpr_str("Mdc = ", Mdc );
+  			__DBGpr_str("IsAimMdcExist = ", IsAimMdcExist);
+
+  			fprintf(ptr,"\tCatalog: \t%s\n", SirTableRows[i].catalog);
+  			__DBGpr_str("Catalog = ", SirTableRows[i].catalog);
+  			fprintf(ptr,"\tPart Number: \t%s\n", SirTableRows[i].part);
+  			__DBGpr_str("Part Number = ", SirTableRows[i].part);
+  			fprintf(ptr,"\tRevision: \t%s\n", SirTableRows[i].rev);
+  			__DBGpr_str("Revision = ", SirTableRows[i].rev);
+
+  			fprintf(ptr,"\tStatus: \t%s\n", "This is a VALID part");
+  			__DBGpr_str("Status = ", "This is a VALID part");
+  			fprintf(ptr,"\tReason: \t%s\n", "All informatin is correct in ISDP and AIM - The DAD has not been set.");
+  			__DBGpr_str("Reason = ", "All informatin is correct in ISDP and AIM - The DAD has not been set.");
+		
+			fprintf(ptr,"\n");
+
+		}
+	}
+next1:
+  	__DBGpr_com("next");
+
+  }
+
+    	
+  wrapup:
+  	return status ;
+}
+
+/*
+ * The main routine
+ */
+int main()
+{
+ int	status;
+ int	retCode;
+ char	log[30];
+ long 	qmsg;
+ int 	resp;
+ int	force_aim_login;
+ char   *errmsg;
+
+  status  = OM_S_SUCCESS;
+  retCode = OM_S_SUCCESS;
+  ptr 	  = NULL;
+
+  /* open the log file */
+  sprintf( log, "%s", "fixSirTable.log");
+  ptr = fopen(log, "w+");
+  if(ptr == NULL)
+  {
+  	UI_status("Can not open log file for writing...");
+	status = OM_E_ERROR;
+	goto wrapup;
+  }
+
+  UI_status("Processing..........................");
+	
+  /* Check for AIM conenction */
+  if(IsPmeEnabled()==FALSE)
+      	force_aim_login = AIMlogin();
+
+  if(IsPmeEnabled() == FALSE)
+  {
+    	UI_status("Not connected to AIM server.");
+    	__DBGpr_com( " Not connected to AIM server.");
+    	RetOK = 0;
+	status = OM_E_ERROR;
+    	goto wrapup;
+  }
+
+  /* generate the invalid list */
+  status = checkSirTable();
+	
+
+  wrapup:
+	if ( status != OM_S_SUCCESS )
+ 	{
+		if(ptr)
+	  	  	fprintf(ptr, "\n\nProcess SIR_PDM_TABLE Terminated\n" );
+          	UI_status( "Process Terminated.....");
+        }
+        else
+        {
+		if(ptr)
+	  	  	fprintf(ptr, "\n\nProcess SIR_PDM_TABLE Complete\n" );
+	  	UI_status( "Process Complete......." );
+        }
+
+	if((IsPmeEnabled() == TRUE) && force_aim_login)
+  	{
+        	UI_status("Disconnecting From AIM server");
+  		__DBGpr_com("Disconnecting from AIM server...");
+    		status = POSTMAN_REQUEST_ON_CLIX( CLIX_DISCONNECT,
+                                                NULL,
+                                                NULL,
+                                                NULL,
+                                                NULL,
+                                                &errmsg);
+    		if ( !status)
+      			EnablePME(0);
+    		UI_status("Disconnected From AIM server");
+		__DBGpr_com("Disconnected from AIM server...");
+  	}
+
+	if(ptr)
+	{
+        	fclose(ptr);
+        	ptr = NULL;	 
+	}
+}
+
