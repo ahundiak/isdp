@@ -1,0 +1,325 @@
+/* $Id: COz_valPC.u,v 1.1 2001/02/28 23:28:51 ramarao Exp $  */
+/* --------------------------------------------------------------------
+ * I/STRUCT
+ *
+ * File:        struct/pplcmd/COz_rtAxis.u
+ *
+ * Description:	PPL to show all the stiffener axis which are moved to
+ *		'root' in "Validate Structure" form.
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ *      $Log: COz_valPC.u,v $
+ *      Revision 1.1  2001/02/28 23:28:51  ramarao
+ *      Profile Card Validation Routines.
+ *
+ *
+ * History:
+ *      MM/DD/YY        AUTHOR          DESCRIPTION
+ *      02/27/01        Rama Rao        File Creation.
+ * -------------------------------------------------------------------*/
+
+#include "VDppl.h"
+#include "VDobj.h"
+#include "vdAPImacros.h"
+#include "vs.h"
+
+extern GRclassid        OPP_VSbeam_class_id, OPP_ACncpx_class_id,
+			OPP_ACconst_class_id;
+
+extern 	VSgetOperName(), VSgetStepInfo(), VSgetChildMacros(),
+	VSexecuteFunctionAlongHistory(), VD_findall_objects_in_range(),
+	VSis_ancestry_valid();
+
+IGRint		mc_cnt;
+struct GRid	*mc;
+
+
+RevProfRevOper( fp, macId, selector, operName, show, ind )
+FILE            *fp;
+struct GRid     *macId;
+IGRchar         *selector;
+IGRchar         *operName;
+IGRboolean      show;
+IGRint          *ind;
+{
+   operName[0] = '\0';
+   VSgetOperName( macId, selector, operName );
+   if( operName[0] == '\0' )
+   {
+       *ind = 0;
+       if( show )
+         fprintf( fp, "<%s> is not defined in macro definition\n", selector );
+   }
+   else
+   {
+       *ind = 1;
+       if( show )
+       fprintf( fp, "<%s> is defined as <%s> in macro definition\n",
+                selector, operName  );
+   }
+}
+
+ValidProfcard( stiffObj, macId, fp )
+struct GRid              *stiffObj;
+struct GRid              macId;
+FILE			 *fp;
+{
+IGRlong         sts, msg;
+IGRint          i, retFlag, row_no, pos, sel, ind1, ind2, ind3, nbSteps;
+IGRchar         operName[50],  selector[40];
+struct GRid     footId, *stepInfo, parentId;
+
+   retFlag  = FALSE;
+   nbSteps  = 0;
+   stepInfo = NULL;
+
+   fprintf( fp, "Validating --- " );
+   vdobj$Print( objID = &macId, file = fp );
+
+   if( !VSis_ancestry_valid( &macId, OPP_ACncpx_class_id ) )
+   {
+        fprintf( fp, "Object is not a macro ( ACncpx class )\n" );
+        goto wrapup;
+   }
+
+   ind1 = ind2 = ind3 = 0;
+   RevProfRevOper( fp, &macId, "~~operand", operName, TRUE, &ind1 );
+   RevProfRevOper( fp, &macId, "~~operand0", operName, TRUE, &ind2 );
+   if( !ind1 && !ind2 )
+   {
+      fprintf( fp, "Either ~~operand or ~~operand0 should be defined\n" );
+      goto wrapup;
+   }
+
+   ind1 = ind2 = ind3 = 0;
+   RevProfRevOper( fp, &macId, "~~operator", operName, TRUE, &ind1 );
+   RevProfRevOper( fp, &macId, "~~operator0", operName, TRUE, &ind2 );
+   RevProfRevOper( fp, &macId, "~~operator0~0", operName, TRUE, &ind3 );
+   if( !ind1 && !ind2 && !ind3 )
+   {
+      fprintf( fp, "Either ~~operator or ~~operator0 or ~~operator0~0 should be defined\n" );
+      goto wrapup;
+   }
+
+   if( stiffObj )
+   {
+      parentId.objid = NULL_OBJID;
+
+      VSexecuteFunctionAlongHistory( stiffObj, VSgetStepInfo, 
+				     &nbSteps, &stepInfo );
+
+      vdobj$GetParent( objID = &macId, idx = 0, parentID = &parentId );
+      if( parentId.objid != NULL_OBJID )
+      {
+        for( i=0; i<nbSteps; i=i+1 )
+        {
+           if( parentId.objid == stepInfo[i].objid &&
+               parentId.osnum == stepInfo[i].osnum     )
+           {
+               fprintf( fp, "First Parent of this macro is one of the stiffeners in the dependency graph\n" );
+               break;
+           }
+        }
+        if( i == nbSteps )
+        {
+          fprintf( fp, "First Parent of this Stiffener -- " );
+          vdobj$Print( objID = &parentId, file = fp );
+          fprintf( fp, "First Parent of this macro is NOT one of the stiffeners in the dependency graph\n" );
+          goto wrapup;
+        }
+      }
+   }
+
+   ind1 = 0;
+   RevProfRevOper( fp, &macId, "~~orientation", operName, TRUE, &ind1 );
+   if( !ind1 )
+   {
+      for( i=0; i<20; i=i+1 )
+      {
+        if( i<10 )      sprintf( selector, "~~marking%d",  i );
+        else            sprintf( selector, "~~marking0%d", i-10 );
+
+        ind1 = 0;
+        RevProfRevOper( fp, &macId, selector, operName, FALSE, &ind1 );
+        if( ind1 == 0 )  continue;
+
+        fprintf( fp, "<%s> is defined as <%s> in macro definition\n",
+                                selector, operName );
+        footId.objid = NULL_OBJID;
+        sts = vd_$return_foot( msg = &msg, name = operName,
+                               objId = &macId, footId = &footId );
+        if( !(sts&1&msg) || footId.objid == NULL_OBJID )
+        {
+           ind1 = 0;
+           fprintf( fp, "<%s> foot is missing\n", operName );
+           continue;
+        }
+        else
+        {
+           ind2 = 0;
+           RevProfRevOper( fp, &macId, "~~cmd", operName, FALSE, &ind2 );
+           if( ind2 )
+           {
+              if( !strcmp( operName, "et" ) )
+              {
+                fprintf( fp, "Input macro is an End Treatment. So, This is NOT valid marking.\n" );
+                ind1 = 0;
+                continue;
+              }
+              fprintf( fp, "<~~cmd> is defined as <%s> in macro definition\n",
+                        operName );
+           }
+           fprintf( fp, "Found Valid Marking -- " );
+           vdobj$Print( objID = &footId, file = fp );
+        }
+      }
+      if( ind1 == 0 )
+      {
+         fprintf( fp, "Either ~~orientation or ~~marking* should be defined\n"
+ );
+      }
+      goto wrapup;
+   }
+   else
+   {
+      footId.objid = NULL_OBJID;
+      sts = vd_$return_foot( msg = &msg, name = operName,
+                             objId = &macId, footId = &footId );
+      if( !(sts&1&msg ) || footId.objid == NULL_OBJID )
+      {
+         fprintf( fp, "<%s> foot is missing\n", operName );
+         goto wrapup;
+      }
+      else
+      {
+         fprintf( fp, "<%s> foot found -- ", operName );
+         vdobj$Print( objID = &footId, file = fp );
+      }
+   }
+
+   ind1 = 0;
+   RevProfRevOper( fp, &macId, "~~cmd", operName, FALSE, &ind1 );
+   if( ind1 )
+   {
+     if( !strcmp( operName, "et" ) )
+        fprintf( fp, "This macro is an End Treatment\n" );
+   }
+   retFlag = TRUE;
+
+wrapup:
+   if( retFlag == FALSE ) fprintf( fp, "Macro is NOT valid for profile card\n\n" );
+   else fprintf( fp, "Macro IS valid for profile card\n\n" );
+   fflush( fp );
+   if( stepInfo ) { free( stepInfo ); stepInfo = NULL; }
+   return;
+}
+
+ReportChildObjects( structObj, fp )
+struct GRid	structObj;
+FILE		*fp;
+{
+IGRlong                 sts, msg;
+IGRint                  i;
+
+   if( mc ) { free( mc ); mc = NULL; }
+   mc_cnt = 0;
+
+   VSexecuteFunctionAlongHistory( &structObj, VSgetChildMacros, &mc_cnt, &mc );
+   msg = -2;
+
+   for( i=0; i<mc_cnt; i=i+1 )
+   {
+      if( !VSis_ancestry_valid( &mc[i], OPP_ACconst_class_id ) ) continue;
+      ValidProfcard( &structObj, mc[i], fp );
+   }
+
+wrapup:
+   return 1;
+}
+
+main()
+{
+IGRlong		      isConsumed;
+IGRint                i, nb_class, loc_cnt, response;
+IGRchar		      file_name[40];
+GRrange		      range;
+GRclassid             classid[1];
+struct GRobj_env      objOE, *loc_list;
+struct GRmd_env       cur_env;
+FILE		      *fp;
+
+   loc_cnt    = 0;
+   nb_class   = 1;
+   loc_list   = NULL;
+   mc         = NULL;
+
+   /* Get all the Beam Axis Objects in the current design file */
+   classid[0] = OPP_VSbeam_class_id;
+
+   ci$get_module_info( md_env = &cur_env );
+
+   message( "Validate Macros for Profile Card" );
+   ci$get( string = file_name,
+           prompt = "Key in File Name or Press Enter" );
+
+   if( ! ci$locate( prompt  = "Locate a Stiffener / Move-on to report all",
+                    classes = "VSbeam",
+                    owner_action = LC_RIGID_OWNER |
+                                   LC_RIGID_COMP  |
+                                   LC_FLEX_COMP   |
+                                   LC_FLEX_OWNER  |
+                                   LC_REF_OBJECTS,
+                    stackable    = 1,
+                    response     = &response,
+                    md_env       = &objOE.mod_env,
+                    obj          = &objOE.obj_id.objid,
+                    osnum        = &objOE.obj_id.osnum) )
+   {
+      loc_cnt = 0;
+
+      range[0] = range[1] = range[2] = -1.0e+6;
+      range[3] = range[4] = range[5] =  1.0e+6;
+
+      VD_findall_objects_in_range( range, nb_class, classid, TRUE, cur_env,
+                                   &loc_cnt, &loc_list );
+      if( !loc_cnt ) goto wrapup;
+   }
+   else
+   {
+	loc_cnt = 1;
+        loc_list = &objOE;
+   }
+
+   if( file_name == NULL || file_name[0] == '\0' ) fp=stdout;
+   else fp = fopen( file_name, "w" );
+   if( fp == NULL ) return;
+
+   for( i=0; i<loc_cnt; i=i+1 )
+   {
+       mc_cnt = 0;
+
+       isConsumed = 0;
+       ci$send( msg = message NDmacro.ACtest_consumed( &isConsumed ),
+                targetid = loc_list[i].obj_id.objid,
+                targetos = loc_list[i].obj_id.osnum );
+       if( isConsumed == 1 ) continue;
+       fprintf( fp, 
+          "=============================================================\n" );
+       fprintf( fp, "Validating Stiffener --- " );
+       vdobj$Print( objID = &loc_list[i].obj_id, file = fp );
+       fprintf( fp, "\n" );
+
+       ReportChildObjects( loc_list[i].obj_id, fp );
+       fprintf( fp, 
+          "=============================================================\n" );
+   }
+
+wrapup:
+   if( fp != stdout && fp != NULL ) fclose( fp );
+   if( loc_cnt != 1 && loc_list != NULL ) 
+	{ free( loc_list   ); loc_list   = NULL; }
+   if( mc ) { free( mc ); mc = NULL; }
+   return 1;
+}

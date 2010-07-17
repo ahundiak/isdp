@@ -1,0 +1,268 @@
+/* $Id: COz_valPen.u,v 1.10 2002/05/06 21:47:46 ramarao Exp $  */
+/* --------------------------------------------------------------------
+ * I/STRUCT
+ *
+ * File:        struct/pplcmd/COz_valPen.u
+ *
+ * Description: PPL to show if the "hull_pene" macro is placed correctly.
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ *      $Log: COz_valPen.u,v $
+ *      Revision 1.10  2002/05/06 21:47:46  ramarao
+ *      Fixed TR# 5484.
+ *
+ *      Revision 1.9  2001/08/14 14:01:53  ramarao
+ *      Fixed TR# 5513.
+ *
+ *      Revision 1.8  2001/07/15 17:43:57  ramarao
+ *      Fixed TR# 5343.
+ *
+ *      Revision 1.7  2001/07/14 19:26:46  ramarao
+ *      Fixed TR# 5340.
+ *
+ *      Revision 1.6  2001/06/19 18:51:55  ramarao
+ *      Fixed TR# 5261.
+ *
+ *      Revision 1.5  2001/06/19 16:59:42  ramarao
+ *      Fixed TR# 5261.
+ *
+ *      Revision 1.4  2001/06/05 20:27:25  ylong
+ *      Added cut type to the message
+ *
+ *      Revision 1.3  2001/05/30 22:53:36  ramarao
+ *      Fixed TR# 5261.
+ *
+ *      Revision 1.2  2001/05/09 15:38:59  ramarao
+ *      Fixed a problem where PPL is listing pcgMacros inside the macro
+ *      library object space.
+ *
+ *      Revision 1.1  2001/05/08 14:49:12  ramarao
+ *      Added COz_valPen.u file.
+ *
+ *
+ * History:
+ *      MM/DD/YY        AUTHOR          DESCRIPTION
+ *      05/08/01        Rama Rao        File Creation.
+ * -------------------------------------------------------------------*/
+
+#include "VDppl.h"
+#include "VDmac.h"
+#include "VDobj.h"
+#include "VDsa.h"
+#include "vdVALmacros.h"
+#include "vsgeommacros.h"
+
+#include "bsdistptpt.h"
+
+extern 	VDpms_findall_ancestryobjects(), VSgetOperName(), VDosValidate(),
+	VD_is_ancestry_valid(), VSgetChildrenGoThruPretends(), ACos_to_path(),
+	VDcheckClassname(), VD_stripString(), VSget_actual_go(), BSfndcent();
+
+extern GRclassid	OPP_nci_macro_class_id;
+
+main()
+{
+IGRlong                 sts, msg, rc;
+IGRint                  i, j, loc_cnt, nb_class, cnt, hullpen_count, state,
+			mac_count;
+IGRdouble		cs_mat[16], hull_csorg[3], pcg_csorg[3];
+IGRchar                 macName[DI_PATH_MAX], approval[40], tmpStr[128], 
+			cutType[80], *ptr, path_name[DI_PATH_MAX], clsName[100];
+GRclassid               classid[1];
+GRobjid                 *loc_list;
+GRspacenum		osnum, cur_osnum;
+struct GRid             obj_chk, *list, pcgMacroID;
+struct GRobj_env	footOE, crvOE;
+struct IGRbsp_curve	*hullGeom;
+
+   nb_class  = 1;
+   loc_cnt   = 0;
+   loc_list  = NULL;
+   hullGeom  = NULL;
+
+   sts = MSSUCC;
+
+   ci$get_module_info( md_os = &cur_osnum );
+
+   classid[0] = OPP_nci_macro_class_id;
+
+   vd$VAL_openLog();
+
+   for( osnum = 0; VDosValidate(osnum); osnum=osnum+1 )
+   {
+      ACos_to_path( osnum, path_name );
+      if( path_name[0] != '\0' ) continue;
+
+      loc_cnt = 0;
+      VDpms_findall_ancestryobjects( osnum, nb_class, classid, 
+				     &loc_cnt, NULL );
+      if( !loc_cnt )  continue;
+
+      if( loc_list ) { free( loc_list ); loc_list = NULL; }
+      loc_list  = ( GRobjid * ) malloc( sizeof(GRobjid)*loc_cnt );
+      VDpms_findall_ancestryobjects( osnum, nb_class, classid,
+                                     &loc_cnt, loc_list );
+
+      for( i=0; i<loc_cnt; i=i+1 )
+      {
+     	obj_chk.objid = loc_list[i];
+     	obj_chk.osnum = osnum;
+
+	vdobj$Get( objID = &obj_chk, macName = macName );
+
+	if( strcmp( macName, "pcgMacro" ) )  continue;
+
+        ci$send( msg = message ACncpx.ACget_STATE( &state ),
+                 targetid = obj_chk.objid,
+                 targetos = obj_chk.osnum );
+        if( state & ncpx_root ) continue;
+
+	footOE.obj_id.objid = NULL_OBJID;
+	vdobj$GetFoot (	objID    = &obj_chk,
+			footName = "CutType",
+			footOE   = &footOE      );
+	tmpStr[0]  = '\0';
+	cutType[0] = '\0';
+	sts = 0;
+	if( footOE.obj_id.objid != NULL_OBJID ) {
+	   sts = ci$send( msg	 = message expression.DIgive_output(cutType),
+			targetid = footOE.obj_id.objid,
+			targetos = footOE.obj_id.osnum);
+	}
+	if( (sts&1) ) {
+		ptr = strchr( cutType, '"');	
+		if( ptr ) {
+			ptr = ptr + 1;
+			VD_stripString( ptr );
+			strcpy( tmpStr, ptr );
+			ptr = strchr( tmpStr, ' ');
+			if( ptr ) *ptr = '\0';
+		}
+		sprintf(cutType, "(%s)", tmpStr);
+	}
+
+	vdsa$GetStruct( objID = &obj_chk, 
+			name  = "Attributes:Approval",
+			txt   = approval    );
+
+        cnt = 0;
+        if( list ) { free( list ); list = NULL; }  
+
+        VSgetChildrenGoThruPretends( &msg, &obj_chk, &cnt, &list );
+
+	hullpen_count = 0;
+	mac_count = 0;
+
+        for( j=0; j<cnt; j=j+1 )
+        {
+	   vdobj$Get( objID = &list[j], macName = macName );
+	   if( ( list[j].osnum == cur_osnum )  &&
+	       strcmp( macName, "pcg_ellipse1" ) &&
+	       strcmp( macName, "pcg_rect" ) &&
+	       strcmp( macName, "pcg_rect1" ) &&
+	       strcmp( macName, "pcg_oval1" ) &&
+	       strcmp( macName, "pcg_circle1" ) ) mac_count = mac_count + 1 ;
+
+	   if( strcmp( macName, "hull_pene" ) )  continue;
+	   hullpen_count = hullpen_count + 1 ;
+
+           if( strcmp( approval, "Approved" ) ) 
+	   {
+	      sprintf(tmpStr, "%s %s", 
+			"hull_pene Macro is not Approved", cutType);
+              vd$VAL_addObject(	GRid     = list[j],
+				PostText = tmpStr );
+	   }
+
+	   vdobj$GetFoot( objID    = &list[j],
+			  footName = "PCGmacro",
+			  footOE   = &footOE      );
+	   if( footOE.obj_id.objid == NULL_OBJID ) continue;
+
+	   vdobj$Get( objOE = &footOE, className  = clsName );
+	   if( !strcmp( clsName, "GRgencs" ) )
+	   {
+	       sts = ci$send( msg = message GRgencs.GRgetmatrix(
+					&msg, cs_mat ),
+			  targetid = footOE.obj_id.objid,
+			  targetos = footOE.obj_id.osnum   );
+	       if( !(sts&1&msg) )  continue;
+
+	       hull_csorg[0] = cs_mat[3]; hull_csorg[1] = cs_mat[7];
+	       hull_csorg[2] = cs_mat[11];
+	   }
+	   else if( !strcmp( clsName, "nci_macro" ) )
+	   {
+               vdobj$GetFoot( objID    = &list[j],
+                              footName = "cutter",
+                              footOE   = &footOE      );
+               if( footOE.obj_id.objid == NULL_OBJID ) continue;
+	       sts = VSget_actual_go( &footOE.obj_id, &footOE.mod_env,
+				      &crvOE.obj_id, &crvOE.mod_env   );
+
+	       if( hullGeom ) { free( hullGeom ); hullGeom = NULL; }
+               vs$get_geometry( msg      = &msg ,
+                                grobjId  = &crvOE.obj_id ,
+                                grobjEnv = &crvOE.mod_env ,
+                                geometry = &hullGeom ) ;
+	
+	       BSfndcent( hullGeom, hull_csorg, &rc );
+	   }
+	   else continue;
+
+	   vdobj$GetParent( objID = &list[j], idx = 1, parentID = &pcgMacroID );
+           vdobj$GetFoot( objID    = &pcgMacroID,
+                          footName = "cs",
+                          footOE   = &footOE      );
+           if( footOE.obj_id.objid == NULL_OBJID ) continue;
+
+           if( VDcheckClassname ( footOE.obj_id, "GRgencs" ) == FALSE )
+              continue;
+
+           sts = ci$send( msg = message GRgencs.GRgetmatrix(
+                                        &msg, cs_mat ),
+                          targetid = footOE.obj_id.objid,
+                          targetos = footOE.obj_id.osnum   );
+           if( !(sts&1&msg) )  continue;
+
+           pcg_csorg[0] = cs_mat[3]; pcg_csorg[1] = cs_mat[7];
+           pcg_csorg[2] = cs_mat[11];
+
+	   if( BSdistptpt( &msg, hull_csorg, pcg_csorg ) > 50.0 )
+	   {
+	      sprintf(tmpStr, "%s %s", 
+		      "hull_pene Macro is placed on wrong structure", cutType);
+              vd$VAL_addObject( GRid     = list[j],
+				PostText = tmpStr );
+ 	   }
+        }
+
+	if( mac_count > 1 )
+	{
+           sprintf(tmpStr, "%s %s", "pcgMacro with more than one dependant", 
+				cutType );
+           vd$VAL_addObject(    GRid     = obj_chk,
+                                PostText = tmpStr );
+	}
+
+	if( !strcmp( approval, "Approved" )  &&
+	    hullpen_count == 0 )
+	{
+	   sprintf(tmpStr, "%s %s", "hull_pene Macro is not Placed", cutType);
+           vd$VAL_addObject(	GRid     = obj_chk,
+				PostText = tmpStr );
+	}
+
+     }
+   }
+
+   vd$VAL_closeLog();
+
+wrapup:
+   if( hullGeom ) { free( hullGeom ); hullGeom = NULL; }
+   if( list     ) { free( list );     list = NULL;     } 
+   if( loc_list ) { free( loc_list ); loc_list = NULL; }
+   return 1;
+}

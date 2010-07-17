@@ -1,0 +1,68 @@
+
+SUN=`uname -s`
+if [ $SUN = "SunOS" ] ;
+then
+    SFdloadObj="STRFEM.so"
+    OMprodinit="OMprodinit.so"
+    STRFEMver="STRFEMver.so"
+    LD="/usr/ccs/bin/ld"
+    LDOPT=" -z text -G "
+    CC="/opt/SUNWspro/bin/cc"
+    OPLCLEAN=${STRFEM}/etc/bin/oplclean.o.isl
+else
+    SFdloadObj="STRFEM.o"
+    OMprodinit="OMprodinit.o"
+    STRFEMver="STRFEMver.o"
+    LD="/bin/ld"
+    LDOPT=" -r -M "
+    CC="/bin/acc"
+    OPLCLEAN=${STRFEM}/etc/bin/oplclean.o.cli
+fi
+
+${EXNUC}/bin/opl -o ${STRFEM}/config/dload/cmds/tmp.C -d Strfem STRFEM.o
+
+${OPLCLEAN} "SF" ${STRFEM}/config/dload/cmds/tmp.C OMprodinit.C
+
+rm -f ${STRFEM}/config/dload/cmds/tmp.C
+
+# remove some junk
+/bin/grep -v "_OM_class_init" OMprodinit.C                              \
+                | /bin/sed -e "/Strfem_class_definitions/,/};/d"        \
+                           -e "/INGR_p_PRODUCT_DEF/,/};/d"              \
+                | ${EXNUC}/bin/omcpp    -I${EXNUC}/include              \
+                > OMprodinit.c
+rm OMprodinit.C
+
+# add app id
+/bin/cat >>  OMprodinit.c <<!
+                extern INGR_S_PRODUCT_DEF STRFEM_appl_version_id ;
+                INGR_p_PRODUCT_DEF Strfem_appl_version[] = {
+                                &STRFEM_appl_version_id,
+                                0
+                } ;
+!
+
+${CC} ${COMPOPT} -I${EXNUC}/include -c OMprodinit.c
+#  acc -c -knr -O3  OMprodinit.c
+rm OMprodinit.c
+
+#make version file
+${CC} ${COMPOPT} -I${EXNUC}/include -c STRFEMver.c
+
+if [ $SUN = "SunOS" ] ;
+then
+    ld -z text -G -o ${SFdloadObj} STRFEM.o
+    ld -z text -G -o ${OMprodinit} OMprodinit.o
+    rm OMprodinit.o
+    ld -z text -G -o ${STRFEMver}  STRFEMver.o
+    rm STRFEMver.o
+fi
+
+if [ $SUN = "SunOS" ]
+then
+    mv ${SFdloadObj} ${STRFEM}/config/dload/cmds/.
+else
+    cp ${SFdloadObj} ${STRFEM}/config/dload/cmds/.
+fi
+mv ${OMprodinit} ${STRFEM}/config/dload/init/.
+mv ${STRFEMver} ${STRFEM}/config/dload/init/.

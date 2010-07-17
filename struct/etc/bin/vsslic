@@ -1,0 +1,270 @@
+integer NBSYNS
+
+if . ${STRUCT}/etc/bin/vschkvars ; then : ; else exit 3 ; fi
+
+export COBCPPOPT="	-I${EXNUC}/include	\
+			-I${GRNUC}/include	\
+			-I${EMS}/include	\
+			-I${MODEL}/include	\
+			-I${PDU}/include	\
+			-I${BS}/include		\
+			-I${VDS}/include	\
+			-I${STRUCT}/include"
+
+#-------------------------------------------------------------------------------
+function getCmdKeys {
+
+AWK=/usr/bin/awk
+FILE=$1
+
+CMDKEY=""
+if CMDSTRING=`grep command_string ${FILE}` ; then
+	CMDKEY=`echo ${CMDSTRING} | ${AWK} -F, '{ print $3 ; }'`
+fi
+SYNS=""
+if CMDSTRING=`grep synonym ${FILE}` ; then
+	SYNS=`grep synonym ${FILE} | ${AWK} -F, '/synonym/ { print $3 ; }'`
+fi
+
+echo ${CMDKEY} ${SYNS}
+
+} # function getCmdKeys
+#-------------------------------------------------------------------------------
+function CheckFromCmdTable {
+
+AWK=/usr/bin/awk
+FILE=$1
+CMDSTRING=""
+SYNS=""
+CMDKEY=""
+
+if CMDSTRING=`grep command_string ${FILE}` ; then
+	CMDKEY=`echo ${CMDSTRING} | ${AWK} -F, '{ print $3 ; }'`
+	if [ -n "${CMDKEY}" ] ; then 
+		echo "\tCommand <${CMDKEY}>"
+	else
+		echo "\tCommand key not found in ${FILE}"
+		exit 1 ;
+	fi
+fi
+
+if CMDSTRING=`grep synonym ${FILE}` ; then
+	NBSYNS=`grep synonym ${FILE} | wc -l`
+	if [ ${NBSYNS} -gt 0 ] ; then
+		echo "\t${NBSYNS} synonyms : \c"
+	fi
+	SYNS=`grep synonym ${FILE} | ${AWK} -F, '/synonym/ { print $3 ; }'`
+	if [ -n "${SYNS}" ] ; then 
+		for SYNKEY in ${SYNS} ; do
+			echo "<${SYNKEY}> \c"
+		done
+		echo
+	else
+		echo "\n\tSynonyms not found in ${FILE}"
+		exit 1 ;
+	fi
+fi
+
+CMDKEYS="${CMDKEY} ${SYNS}"
+
+CMDTABLE=${VScmdtbl}
+
+integer NEWENTRY
+
+NEWENTRY=0
+
+if CMDSTRING=`grep ",${CMDKEY}," ${CMDTABLE}` ; then
+	echo "\tIn command_table : <${CMDSTRING}>"
+else
+	echo "\t<${CMDKEY}> not found in command table."
+	echo "\tNew entry in ${CMDTABLE}."
+	NEWENTRY=1
+fi
+
+return ${NEWENTRY}
+
+} # CheckFromCmdTable
+#-------------------------------------------------------------------------------
+function RmFromCmdTable {
+
+AWK=/usr/bin/awk
+FILE=$1
+CMDSTRING=""
+SYNS=""
+CMDKEY=""
+
+if CMDSTRING=`grep command_string ${FILE}` ; then
+	CMDKEY=`echo ${CMDSTRING} | ${AWK} -F, '{ print $3 ; }'`
+	if [ -n "${CMDKEY}" ] ; then 
+		echo "\tCommand <${CMDKEY}>"
+	else
+		echo "\tCommand key not found in ${FILE}"
+		exit -1 ;
+	fi
+fi
+
+if CMDSTRING=`grep synonym ${FILE}` ; then
+	NBSYNS=`grep synonym ${FILE} | wc -l`
+	if [ ${NBSYNS} -gt 0 ] ; then
+		echo "\t${NBSYNS} synonyms : \c"
+	fi
+	SYNS=`grep synonym ${FILE} | ${AWK} -F, '/synonym/ { print $3 ; }'`
+	if [ -n "${SYNS}" ] ; then 
+		for SYNKEY in ${SYNS} ; do
+			echo "<${SYNKEY}> \c"
+		done
+		echo
+	else
+		echo "\n\tSynonyms not found in ${FILE}"
+		exit -1 ;
+	fi
+fi
+
+CMDKEYS="${CMDKEY} ${SYNS}"
+
+CMDTABLE=${VScmdtbl}
+
+TMP1=/usr/tmp/TMP${RANDOM}
+TMP2=/usr/tmp/TMP${RANDOM}
+
+/bin/cp ${CMDTABLE} ${TMP1}
+
+integer NEWENTRY
+
+NEWENTRY=0
+
+for CMDKEY in ${CMDKEYS} ; do
+	if CMDSTRING=`grep ",${CMDKEY}," ${CMDTABLE}` ; then
+		echo "\tIn command_table : <${CMDSTRING}>"
+		grep -v ",${CMDKEY}," ${TMP1} > ${TMP2}
+		/bin/mv ${TMP2} ${TMP1}
+	else
+		echo "\t<${CMDKEY}> not found in command table."
+		echo "\tNew entry in ${CMDTABLE}."
+		NEWENTRY=1
+	fi
+done
+
+# Move ${TMP1} to ${CMDTABLE}
+/bin/mv ${TMP1} ${CMDTABLE}
+
+return ${NEWENTRY}
+
+} # RmFromCmdTable
+#-------------------------------------------------------------------------------
+function slic_SL {
+
+if /bin/ls *.sl > /dev/null 2>&1 ; then
+
+  for DOT_SL in *.sl ; do
+
+	SLIC=0 ; MUSTTOUCH=0
+	Class=${DOT_SL%.sl}
+	if   [ ! -f ./${Class}.S  -o ./${DOT_SL} -nt ./${Class}.S  ] ; then
+		echo "\n\t${DOT_SL} newer than ${Class}.S"
+		SLIC=1
+	elif [ ! -f ./${Class}i.I -o ./${DOT_SL} -nt ./${Class}i.I ] ; then
+		echo "\n\t${DOT_SL} newer than ${Class}i.I"
+		SLIC=1
+	elif [ ${STRUCT}/include/VSmsg.h -nt ./${DOT_SL}     ] ; then
+		echo "\n\tVSmsg.h newer than ${DOT_SL}"
+		SLIC=1 ; MUSTTOUCH=1 ;
+	elif [ ${STRUCT}/include/VScmd.h -nt ./${DOT_SL}     ] ; then
+		echo "\n\tVScmd.h newer than ${DOT_SL}"
+		SLIC=1 ; MUSTTOUCH=1 ;
+	fi
+
+	CheckFromCmdTable ./${DOT_SL}
+	RC=$?
+	if [ ${RC} -eq 1 ] ; then
+		echo "\n\t${DOT_SL} not in cmd_tbl_list"
+		SLIC=1
+	fi
+
+	if [ ${SLIC} -eq 1 ] ; then
+		echo "\tSlic-ing ./${DOT_SL}:"
+
+		if [ ${MUSTTOUCH} -eq 1 ] ; then
+			# Make .sl newer than VScmd.h and VSmsg.h
+			/bin/touch -c ./${DOT_SL}
+		fi
+		# Remove command from command table
+		RmFromCmdTable ./${DOT_SL}
+
+		slicOPT="-C"
+		${EXNUC}/bin/slic ${slicOPT} ./${DOT_SL}
+		RC=$?
+		if [ ${RC} -ne 0 ] ; then
+			slicRC=${RC}
+		fi
+	fi
+  done
+else
+  slicRC=0
+fi
+
+return ${slicRC}
+
+} # slic_SL
+#-------------------------------------------------------------------------------
+function slic_T {
+
+if /bin/ls *.t > /dev/null 2>&1 ; then
+  for DOT_T in *.t ; do
+
+	SLIC=0 ; MUSTTOUCH=0
+	if   [ ${STRUCT}/include/VSmsg.h -nt ./${DOT_T}     ] ; then
+		echo "\n\tVSmsg.h newer than ${DOT_T}"
+		SLIC=1 ; MUSTTOUCH=1 ;
+	elif [ ${STRUCT}/include/VScmd.h -nt ./${DOT_T}     ] ; then
+		echo "\n\tVScmd.h newer than ${DOT_T}"
+		SLIC=1 ; MUSTTOUCH=1 ;
+	else
+		CMDFILES=`getCmdKeys ./${DOT_T}`
+		for FILE in ${CMDFILES} ; do
+			F=${VScommands}/${FILE}
+			if [ ! -f ${F} -o ./${DOT_T} -nt ${F} ] ; then
+				echo "\n\t${DOT_T} newer than\n\t\t${F}"
+				SLIC=1
+				break
+			fi
+		done
+	fi
+
+	CheckFromCmdTable ./${DOT_T}
+	RC=$?
+	if [ ${RC} -eq 1 ] ; then
+		echo "\n\t${DOT_T} not in cmd_tbl_list"
+		SLIC=1
+	fi
+
+	if [ ${SLIC} -eq 1 ] ; then
+		echo "\tSlic-ing ./${DOT_T}:"
+
+		if [ ${MUSTTOUCH} -eq 1 ] ; then
+			# Make .sl newer than VScmd.h and VSmsg.h
+			/bin/touch -c ./${DOT_T}
+		fi
+		# Remove command from command table
+		RmFromCmdTable ./${DOT_T}
+
+		slicOPT="-Csi"
+		${EXNUC}/bin/slic ${slicOPT} ./${DOT_T}
+		RC=$?
+		if [ ${RC} -ne 0 ] ; then
+			slicRC=${RC}
+		fi
+	fi
+  done
+else
+  slicRC=0
+fi
+
+} # slic_T
+#-------------------------------------------------------------------------------
+/usr/bin/tput smul
+echo "\n\tRunning slic in ${PWD}"
+/usr/bin/tput rmul
+
+slic_SL
+slic_T

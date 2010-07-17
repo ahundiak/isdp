@@ -1,0 +1,166 @@
+/* $Id: VStoltests.C,v 1.3 2001/01/23 23:11:45 ramarao Exp $  */
+
+/* --------------------------------------------------------------------
+ * I/STRUCT
+ *
+ * File:        struct/vsmisc/VStoltests.C
+ *
+ * Description:
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ *      $Log: VStoltests.C,v $
+ *      Revision 1.3  2001/01/23 23:11:45  ramarao
+ *      Fixed TR# 4410.
+ *
+ *      Revision 1.2  2001/01/16 23:31:07  ramarao
+ *      *** empty log message ***
+ *
+ * Revision 1.1  2000/12/12  16:57:18  pinnacle
+ * Created: struct/vsmisc/VStoltests.C by rchennup for Service Pack
+ *
+ * Revision 1.1  1998/04/30  10:08:06  pinnacle
+ * STRUCT 2.5.1
+ *
+ * Revision 1.1  1997/05/08  14:03:58  pinnacle
+ * Struct 250
+ *
+ * Revision 1.4  1996/01/31  08:06:30  pinnacle
+ * Replaced: vsmisc/VStoltests.C for:  by svkadamb for struct
+ *
+
+ *
+ * History:
+ *      MM/DD/YY        AUTHOR          DESCRIPTION
+ *
+ * -------------------------------------------------------------------*/
+
+/*
+	I/STRUCT
+*/
+#include <stdio.h>
+#define _INGR_EXTENSIONS
+#include <math.h>
+#include <values.h>
+#include "OMminimum.h"
+#include "igetypedef.h"
+#include "igrtypedef.h"
+#include "bstypes.h"
+#include "bserr.h"
+#include "bsparameters.h"
+/*
+ * Includes of function prototypes.
+ */
+#include "bscrossp.h"
+#include "bsdistptpts.h"
+#include "bsdotp.h"
+#include "bslenvec.h"
+#include "maang2vc.h"
+/*----------------------------------------------------------------------------*/
+int VSzeroDist( d ) double d ; {
+
+	long	msg ;
+	double	tollenvec ;
+
+	BSEXTRACTPAR( &msg, BSTOLLENVEC, tollenvec ) ;
+
+	return d < tollenvec ;
+
+} /* VSzeroDist */
+/*----------------------------------------------------------------------------*/
+int VSeqPoints( p1, p2 ) IGRpoint p1, p2 ; {
+
+	long	msg ;
+	double	distSq,
+		tolsqlenvec ;
+
+	BSEXTRACTPAR( &msg, BSTOLSQLENVEC, tolsqlenvec ) ;
+
+	distSq = BSdistptpts( &msg, p1, p2 ) ;
+
+	return distSq < tolsqlenvec ;
+
+} /* VSeqPoints */
+/*----------------------------------------------------------------------------*/
+int VScolinearVectors( v1, v2 ) IGRvector v1, v2 ; {
+
+	long		msg ;
+	double		length,
+			tolcollinvec ;
+	IGRvector	v1Xv2 ;
+
+	BScrossp( &msg, v1, v2, v1Xv2 ) ;
+	length = BSlenvec( &msg, v1Xv2 ) ;
+
+	BSEXTRACTPAR( &msg, BSTOLCOLLINVEC, tolcollinvec ) ;
+
+	return length <= tolcollinvec ;
+
+} /* VScolinearVectors */
+/*----------------------------------------------------------------------------*/
+int VSorthoVectors( v1, v2 ) IGRvector v1, v2 ; {
+
+	long		msg ;
+	double		tolorthovec ;
+
+	BSEXTRACTPAR( &msg, BSTOLORTHOVEC, tolorthovec ) ;
+
+	return fabs( BSdotp( &msg, v1, v2 ) ) <= tolorthovec ;
+
+} /* VSorthoVectors */
+/*----------------------------------------------------------------------------*/
+int VSareaColinearVectors( v1, v2, angle ) IGRvector v1, v2 ; double angle ; {
+
+	/*
+	 * This function returns TRUE if vector v2 is inside the set of
+	 * colinear vectors of vector v1. This set is defined by the two
+	 * cones ( v1, angle ) and ( -v1, angle ).
+	 *
+	 *	    ^	  ^			^ v2 ( FALSE )
+	 *	     \	 /			|
+	 *	      \ / \ <- angle		|
+	 *   -v1 <-----.-----> v1	  <-----.-----> v2 ( TRUE )
+	 *	      / \	    v2 ( TRUE )  \
+	 *	     /	 \			  \
+	 *	    v	  v			   v v2 ( TRUE )
+	 *
+	 * Note : angle should be in radian.
+	 */
+	long		msg ;
+	double		angleV1V2[3] ;
+
+	MAang2vc( &msg, v1, v2, angleV1V2 ) ;
+
+	return fabs( angleV1V2[1] ) <= fabs( sin( angle ) ) ;
+
+} /* VSareaColinearVectors */
+/*----------------------------------------------------------------------------*/
+int VSareaOrthoVectors( v1, v2, angle ) IGRvector v1, v2 ; double angle ; {
+
+	/*
+	 * This function returns TRUE if vector v2 is inside the set of
+	 * orthogonal vectors of vector v1. This set is defined by the cone
+	 * of revolution ( vector orthogonal to v1, angle ).
+	 *
+	 *
+	 *   ^	^  ^			^ v2 ( TRUE )
+	 *    \ |\/  <- angle		|
+	 *     \|/			|
+	 *	.----> v1		.-----> v2 ( FALSE )
+	 *     /|\			|\
+	 *    / | \			| \ v2 ( TRUE )
+	 *   v	v  v			v  v
+	 *			      v2 ( TRUE )
+	 *
+	 * Note : angle should be in radian.
+	 */
+	long		msg ;
+	double		angleV1V2[3] ;
+
+	MAang2vc( &msg, v1, v2, angleV1V2 ) ;
+
+	return fabs( angleV1V2[2] ) <= fabs( cos( (M_PI/2.0) - angle ) ) ;
+
+} /* VSareaOrthoVectors */
+/*----------------------------------------------------------------------------*/

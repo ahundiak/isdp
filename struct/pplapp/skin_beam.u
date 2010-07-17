@@ -1,0 +1,291 @@
+/* $Id: skin_beam.u,v 1.2 2001/02/15 14:13:52 build Exp $  */
+
+/***************************************************************************
+ * I/STRUCT
+ *
+ * File:	pplcmd/skin_beam.u	
+ *
+ * Description:
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ *	$Log: skin_beam.u,v $
+ *	Revision 1.2  2001/02/15 14:13:52  build
+ *	Modifications for SetProc() macro
+ *	
+ *	Revision 1.1.1.1  2001/01/04 21:10:02  cvs
+ *	Initial import to CVS
+ *	
+# Revision 1.1  2000/01/21  23:02:00  pinnacle
+# by ylong
+#
+ *
+ * History:
+ * MM/DD/YY  AUTHOR  DESCRIPTION
+ * 07/31/98  ah      Creation
+ * 12/16/99  ylong   TR179900955
+ ***************************************************************************/
+#include "VDppl.h"
+#include "VDobj.h"
+
+#include "msdef.h"
+#include "msmacros.h"
+
+#include "ci_mac_def.h"
+#include "acrepdef.h"
+#include "bserr.h"
+#include "gr.h"
+#include "csdef.h"
+#include "grdpbmacros.h"
+#include "grcoordsys.h"
+
+#include "vs.h"
+#include "vsmiscpplmac.h"
+
+/*
+#define vsDEBUG 1
+#define vserrDEBUG 1
+*/
+#include "vsdbgmacros.h"
+#include "VDgeom.h"
+
+#include "vscsby2el.h"
+#include "vsgadgetCS.h"
+#include "VSmsg.h"
+
+#include "vsbeamdef.h"
+#include "vsbeam.h"
+#include "vsplatedef.h"
+#include "vssectiondef.h"
+
+#include "AS_status.h"
+#include "vsdpb.h"
+#include "vdAPImacros.h"
+
+#define EXP_DOUBLE	0
+
+struct 	GRid		CI_MACRO_ID;
+struct 	GRid		footID;
+
+GRobj 			ci_mac_def1;
+IGRchar	 		*temp_names[MAX_TEMP], *feet_names[1];
+IGRchar	 		tempBuff[MAX_TEMP*MAX_CHAR_FEET];
+IGRint			temp_types[MAX_TEMP], j, k;
+
+IGRint                  options[OPTIONS_NUMBER];
+struct GRid             GR_OBJ;
+IGRlong			sts;
+
+extern 			MAmulmx(), MAtypemx(),
+			EX_get_modid_given_osnum();
+
+extern	IGRlong		VSfind_longer_u_v_iso(), VSgetBeamCenter(), 
+			VSfind_surf_to_intersect(), VSfind_botu0_web(),
+			VSfind_origin(), VSfind_xaxis(), VSfind_yaxis(),
+			VSgetDetailedRepBeam();
+
+extern	IGRlong		EXP_create_double();
+extern			GRdelete_object(), GRdpb_get();
+
+
+extern  GRclassid       OPP_VSplate_class_id;
+extern  GRclassid       OPP_VSbeam_class_id;
+extern  GRclassid       OPP_VSsrcBeam_class_id;
+extern  GRclassid       OPP_VSimgFeature_class_id;
+
+extern VSmake_beam_segment();
+extern VSmoveCrossSectionNormalToSf();
+
+/* ========================================================================= */
+main ()
+{
+  /* Templates definition */
+  temp_names[0] = "profile";
+  temp_types[0] =  curve_generic;
+  temp_names[1] = "surface";
+  temp_types[1] =  other_generic;
+  temp_names[2] = "axis";
+  temp_types[2] =  curve_generic;
+
+
+  /* Feet definition */
+  feet_names[0] = "ressur";
+
+  /* CImacro definition creation */
+  ci_mac_def1 = NULL_OBJID;
+  ac$cimacdef ( cimacdef        = ci_mac_def1,
+		status		= &msg, 	
+		name            = "skin_beam",
+		temp_num          = 3, 	
+		temp_names        = temp_names,
+		temp_types        = temp_types,
+		extern_feet_num   = 1, 	
+		extern_feet_names = feet_names );
+  __CheckRC ( 1, msg, "ac$cimacdef()", wrapup ) ;
+
+wrapup:
+  return 1;
+}
+
+/* ========================================================================= */
+place ()
+{
+
+  get_solid();
+  if (footID.objid == NULL_OBJID)	return 0;
+ 
+  sts = ci$send ( msg = message ci_macro.set_all_extern_feet
+		  ( &msg, 1, &footID, &MOD_ENV ),
+		  targetid = CI_MACRO_ID.objid,
+		  targetos = CI_MACRO_ID.osnum );
+	__CheckRC ( sts, msg, "ci_macro.set_all_extern_feet", wrapup ) ;
+
+wrapup:
+	return 1;
+}
+/* ========================================================================= */
+compute ()
+{
+  get_solid();
+
+  if (footID.objid == NULL_OBJID)	return 0;
+  sts = ci$send ( msg = message ci_macro.set_all_extern_feet
+		  ( &msg, 1, &footID, &MOD_ENV ),
+		  targetid = CI_MACRO_ID.objid,
+		  targetos = CI_MACRO_ID.osnum );
+  __CheckRC ( sts, msg, "ci_macro.set_all_extern_feet", wrapup ) ;
+
+wrapup:
+  return 1;
+}
+/* ========================================================================= */
+get_solid()
+{
+  IGRint  retFlag;
+  IGRlong sts,msg;
+  
+  TGRid     objID;
+  TGRmd_env objENV;
+  
+  TGRobj_env profileOE,surfaceOE,axisOE;
+
+  TGRdisplay dis;
+
+  SetProc( get_solid ); Begin
+
+  // Init
+  footID.objid = NULL_OBJID;
+  retFlag = 0;
+  gr$get_module_env (buffer = &objENV);
+  
+  //vdobj$Print(objID = &CI_MACRO_ID);
+  //vdobj$Print(objENV = &objENV);
+
+  // Pull profile
+  sts = ci$send ( msg = message 
+		  ACcpx.ACfind_exp_temp_obj( &msg, 0, &objID ),
+		  targetid = CI_MACRO_ID.objid,
+		  targetos = CI_MACRO_ID.osnum ); 
+  __CheckRC ( sts, msg, "ACcpx.ACfind_exp_temp_obj 0", wrapup ) ;
+
+  sts = vd_$return_foot ( msg     = &msg,
+			  objId	  = &objID,
+			  objEnv  = &objENV,
+			  footId  = &profileOE.obj_id,
+			  footEnv = &profileOE.mod_env );
+  __CheckRC ( sts, msg, "vd_$return_foot()", wrapup ) ;
+
+  /* TR179900955 by ylong */
+  profileOE.mod_env.md_id.osnum = profileOE.obj_id.osnum;
+  sts = ex$get_modid(     mod_osnum = profileOE.mod_env.md_id.osnum,
+                          mod_id    = &profileOE.mod_env.md_id.objid );
+
+  // Pull surface
+  sts = ci$send ( msg = message 
+		  ACcpx.ACfind_exp_temp_obj( &msg, 1, &objID ),
+		  targetid = CI_MACRO_ID.objid,
+		  targetos = CI_MACRO_ID.osnum ); 
+  __CheckRC ( sts, msg, "ACcpx.ACfind_exp_temp_obj 1", wrapup ) ;
+
+  sts = vd_$return_foot ( msg     = &msg,
+			  objId	  = &objID,
+			  objEnv  = &objENV,
+			  footId  = &surfaceOE.obj_id,
+			  footEnv = &surfaceOE.mod_env );
+  __CheckRC ( sts, msg, "vd_$return_foot()", wrapup ) ;
+
+  /* TR179900955 by ylong */
+  surfaceOE.mod_env.md_id.osnum = surfaceOE.obj_id.osnum;
+  sts = ex$get_modid(     mod_osnum = surfaceOE.mod_env.md_id.osnum,
+                          mod_id    = &surfaceOE.mod_env.md_id.objid );
+
+  // Pull Axis
+  sts = ci$send ( msg = message 
+		  ACcpx.ACfind_exp_temp_obj( &msg, 2, &objID ),
+		  targetid = CI_MACRO_ID.objid,
+		  targetos = CI_MACRO_ID.osnum ); 
+  __CheckRC ( sts, msg, "ACcpx.ACfind_exp_temp_obj 2", wrapup ) ;
+
+  sts = vd_$return_foot ( msg     = &msg,
+			  objId	  = &objID,
+			  objEnv  = &objENV,
+			  footId  = &axisOE.obj_id,
+			  footEnv = &axisOE.mod_env );
+  __CheckRC ( sts, msg, "vd_$return_foot()", wrapup ) ;
+
+  /* TR179900955 by ylong */
+  axisOE.mod_env.md_id.osnum = axisOE.obj_id.osnum;
+  sts = ex$get_modid(     mod_osnum = axisOE.mod_env.md_id.osnum,
+                          mod_id    = &axisOE.mod_env.md_id.objid );
+
+  //vdobj$Print(objOE = &profileOE);
+  //vdobj$Print(objOE = &surfaceOE);
+  //vdobj$Print(objOE = &axisOE);
+
+  /* Build construction list */
+  init_cnst_list();
+  get_symb();
+  dis.color       = cnst_list.color;
+  dis.weight      = cnst_list.weight;
+  dis.style       = cnst_list.style;
+
+  cst.msg         = &msg;
+  cst.properties  = GRIS_LOCATABLE | GRIS_DISPLAYABLE | GRIS_NEW ;
+  cst.display     = &dis;
+  cst.env_info    = &MOD_ENV;
+  cst.newflag     = FALSE;
+  cst.level       = cnst_list.level;
+  cst.name        = 0;
+
+  cst.class_attr  = (IGRchar *)NULL;
+  cst.geometry 	  = (IGRchar *)NULL;
+
+  sts = VSmake_beam_segment(&msg,
+			    &profileOE,
+			    &surfaceOE,
+			    &axisOE,
+			    &cst,
+			    &footID);
+
+  __CheckRC ( sts, msg, "VSmake_beam_segment", wrapup ) ;
+
+  retFlag = 1;
+  
+wrapup:
+End
+  return retFlag;
+}
+
+
+/* ========================================================================= */
+init()
+{
+	return OM_S_SUCCESS;
+}
+/* ========================================================================= */
+wakeup()
+{
+	return OM_S_SUCCESS;
+}
+/* ========================================================================= */

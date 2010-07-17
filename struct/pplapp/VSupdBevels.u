@@ -1,0 +1,512 @@
+/* $Id: VSupdBevels.u,v 1.4 2001/05/01 14:55:05 ramarao Exp $  */
+/*************************************************************************
+ * I/STRUCT
+ *
+ * File:        struct/pplapp/VSupdBevels.u
+ *
+ * Description: PPL to update all the bevels nicely. Before running this PPL,
+ *		user shouldn't accept the associative dependency form.
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ *      $Log: VSupdBevels.u,v $
+ *      Revision 1.4  2001/05/01 14:55:05  ramarao
+ *      Fixed TR# 5140.
+ *
+ *      Revision 1.3  2001/03/22 15:03:52  ramarao
+ *      Deleted neat plate and bevels if a parent plate get deleted.
+ *      Also changed the bevel color to red.
+ *
+ *      Revision 1.2  2001/03/20 20:55:29  ramarao
+ *      Update the bevels for mismatched neat plates.
+ *
+ *      Revision 1.1  2001/03/03 21:28:16  ramarao
+ *      Implemented a PPL to recompute the bevels nicely.
+ *
+ *
+ * History:
+ *      MM/DD/YY   AUTHOR       DESCRIPTION
+ *      03/03/01   Rama Rao     File Creation.
+ *************************************************************************/
+
+#include "VDppl.h"
+#include "VDobj.h"
+#include "VDchn.h"
+#include "asmacros.h"
+#include "nddef.h"
+#include "ndmacros.h"
+
+extern GRclassid	OPP_ACpretend_class_id, OPP_nci_macro_class_id,
+			OPP_VSplate_class_id, OPP_VSdivFeature_class_id;
+
+extern  VDpms_findall_ancestryobjects(), VDupdateNeatPlates(), sleep(),
+	VD_is_ancestry_valid(), VSgetChildrenGoThruPretends(), NDwait_batch(),
+	VDobjGetObjectByPath(), ASmake_source_from_env(), NDget_mod_batch(),
+	NDexec_batch(), VDosValidate(), GetNeatPlate(), VD_bulkDeleteByGRids(),
+	VDcheckNeatPlateForBevels(), VDScheckRefFilesDependency();
+
+IGRint          nb_neat_compute;
+struct GRid     neat_compute[200];
+
+CheckOutdatedNeatPlates( cur_env )
+struct GRmd_env          cur_env;
+{
+IGRlong                 sts;
+IGRint                  i, misCon, cn_type;
+OM_S_TAG_CON_INFO       *tags ;
+GRobjid                 refObj;
+GRspacenum              osnum, cur_osnum;
+struct GRobj_env        plateOE, neatPlateOE;
+
+  tags = NULL;
+  cn_type = ND_COMP;
+
+  cur_osnum = cur_env.md_id.osnum;
+
+  /*
+   * Go through all the object spaces and see if there are any plates outdated.
+   */
+  for( osnum = 0; VDosValidate(osnum); osnum=osnum+1 )
+  {
+    sts = om$mismatched_connections( osnum        = cur_osnum,
+                                     tagged_osnum = osnum,
+                                     p_count      = (OMuint *) &misCon );
+    if( !( sts & 1 ) || !misCon ) continue;
+
+    if( tags ) { free( tags ); tags = NULL; }
+    tags  = ( OM_S_TAG_CON_INFO * ) malloc( sizeof(OM_S_TAG_CON_INFO)*misCon );
+
+    if( tags == NULL ) goto wrapup;
+
+    sts = om$mismatched_connections( osnum          = cur_osnum,
+                                     tagged_osnum   = osnum,
+                                     p_count        = &misCon,
+                                     size           = misCon,
+                                     p_tag_con_info = tags ) ;
+    if( !( sts & 1 ) ) continue;
+
+    for( i = 0 ; i < misCon ; i=i+1 )
+    {
+        sts = om$tag_to_objid( osnum   = osnum,
+                               tag     = tags[i].tag,
+                               p_objid = &refObj       );
+        if( !( sts & 1 ) ) continue;
+
+        plateOE.obj_id.objid = refObj;
+        plateOE.obj_id.osnum = osnum;
+        if( VD_is_ancestry_valid( &plateOE.obj_id, OPP_VSplate_class_id ) )
+        {
+	   /* Get the neat plate associated with this plate */
+           GetNeatPlate( &plateOE, &neatPlateOE );
+
+	   /*
+	    * Compute the neat plate to update itself.
+	    * nd$wait_batch() is not called intentionally.
+	    */
+           sts = ci$send(msg = message NDnode.NDs_compute_node(
+                                     &msg, ND_COMP, &cur_env ),
+                        targetid = neatPlateOE.obj_id.objid,
+                        targetos = neatPlateOE.obj_id.osnum );
+
+	   VDcheckNeatPlateForBevels( neatPlateOE.obj_id, cur_env );
+        }
+    }
+  }
+
+wrapup:
+  if( tags ) { free( tags ); tags = NULL; }
+  return;
+}
+
+/*
+ * Following function will get the proper parent for a neat plate and connect
+ * it to it. Idea is to get all the bevels attached to a neat plate. Get the 
+ * parent plate names. Fetch the common name. Get the corresponding plate having
+ * this name from the reference files and attch it to the neat plate.
+ */
+ModifyNeatPlateAndbevels( old_pretend, neat_plate, cur_env )
+struct GRid	old_pretend;
+struct GRid	neat_plate;
+struct GRmd_env cur_env;
+{
+IGRlong			sts, msg, isConsumed;
+IGRint			i, j, nbMac, bevelCnt, int_msg, matched, cn_type, color;
+IGRchar			plt1Name[1024], plt2Name[1024], matchName[1024], 
+			macName[1024];
+struct GRid		new_pretend, *bevelList;
+struct GRobj_env	plateOE;
+struct ret_struct       rs ;
+
+  bevelCnt  = 0;
+  bevelList = NULL;
+
+  /*
+   * Get All the Bevel Objects.
+   */
+  sts = VSgetChildrenGoThruPretends(  &msg, &neat_plate, &nbMac, &bevelList );
+  if( !(sts&1&msg) ) goto wrapup;
+
+  for( i=0; i<nbMac; i=i+1 )
+  {
+     vdobj$Get( objID = &bevelList[i], macName = macName );
+     if( !strcmp( macName, "Bevel"     ) ||
+         !strcmp( macName, "EJ_Bevel"  ) ||
+         !strcmp( macName, "Fab_Stock" )    )
+     {
+        bevelList[bevelCnt] = bevelList[i];
+	bevelCnt = bevelCnt + 1 ;
+     }
+  }
+
+  /*
+   * If there are no bevels, nothing is to be done.
+   */
+  if( !bevelCnt ) goto wrapup;
+
+  matchName[0] = '\0';
+  for( i=0; i<bevelCnt; i=i+1 )
+  {
+     if( matchName[0] == '\0' ) matched = 1;
+     else			matched = 0;
+
+     for( j=0; j<2; j=j+1 )
+     {
+	 sprintf( macName, "attributes:PlateName%d", j );
+         sts = ci$send( msg = message NDmacro.ACgive_structure( &int_msg, NULL,
+					macName, &rs, NULL ),
+		    targetid = bevelList[i].objid,
+		    targetos = bevelList[i].osnum );
+         if( sts&1&int_msg )
+         {
+	    if( i==0 )
+	    {
+	       if( j==0 ) strcpy( plt1Name, rs.var.text_st.text_string );
+	       else       strcpy( plt2Name, rs.var.text_st.text_string );
+	    }
+	    else if( matchName[0] != '\0' )
+	    {
+	       if( !strcmp( matchName, rs.var.text_st.text_string ) ) matched = 1;
+	    }
+	    else
+	    {
+	       if( !strcmp( plt1Name, rs.var.text_st.text_string ) )
+               {
+		  strcpy( matchName, plt1Name );
+	          matched = 1;
+	       }
+	       else if( !strcmp( plt2Name, rs.var.text_st.text_string ) )
+               {
+                  strcpy( matchName, plt2Name );
+                  matched = 1;
+               }
+	    }
+         }
+     }
+     if( matched == 0 ) goto wrapup;
+  }
+
+  /*
+   * If there is no common name, nothing to do.
+   */
+  if( matchName[0] == '\0' ) goto wrapup;
+
+  /*
+   * Get the Corresponding plate with this name from the reference files.
+   */
+  VDobjGetObjectByPath( matchName, &plateOE );
+
+  /*
+   * Check if this plate is not consumed or if it is not a split plate case.
+   */
+  sts = ci$send( msg      = message NDmacro.ACtest_consumed( &isConsumed ),
+                 targetid = plateOE.obj_id.objid,
+                 targetos = plateOE.obj_id.osnum );
+  if( !(sts&1) || isConsumed ||
+      VD_is_ancestry_valid( &plateOE.obj_id, OPP_VSdivFeature_class_id ) )
+  {
+     matched = 0;
+     goto wrapup;
+  }
+
+  /*
+   * Do make source on this plate.
+   */
+  as$make_source( go_grid = plateOE.obj_id,
+		  mod_env = &plateOE.mod_env,
+		  as_grid = &new_pretend );
+  if( new_pretend.objid == NULL_OBJID )  goto wrapup;
+
+  /*
+   * Change the parent from prevoius pretend to this pretend.
+   */
+  sts = ci$send(  msg      = message NDnode.NDchange_connect(
+				1, &old_pretend, &new_pretend ),
+                  targetid = neat_plate.objid,
+                  targetos = neat_plate.osnum ) ;
+
+  /*
+   * Put the object in batch.
+   */
+  cn_type = ND_COMP;
+  nd$wait_batch( type       = GR_GEOM_POSTED,
+                 nb_obj     = 1,
+                 l_object   = &neat_plate,
+                 l_obj_info = &cn_type       );
+
+  /*
+   * Store the objects to recompute again in the finishing stages.
+   */
+  neat_compute[nb_neat_compute] = neat_plate;
+  nb_neat_compute = nb_neat_compute + 1;
+
+  /*
+   * For all the bevels, do change-connect from the old plate to the new plate.
+   */
+  for( i=0; i<bevelCnt; i=i+1 )
+  {
+      sts = ci$send(  msg      = message NDnode.NDchange_connect(
+                                    1, &old_pretend, &new_pretend ),
+                  targetid = bevelList[i].objid,
+                  targetos = bevelList[i].osnum ) ;
+  }
+  
+wrapup:
+  /*
+   * Delete the pretend object, which is no longer needed.
+   */
+  VD_bulkDeleteByGRids( &cur_env, 1, &old_pretend );
+
+  /*
+   * If there is no match found, just delete the neat plate and change the
+   * color of the bevels to RED.
+   */
+  if( matched == 0 )
+  {
+     VD_bulkDeleteByGRids( &cur_env, 1, &neat_plate );
+
+     color = 2;
+
+     for( i=0; i<bevelCnt; i=i+1 )
+     {
+        ci$send( msg = message GRvg.GRchgcolor( &msg, NULL, &color ),
+                 targetid = bevelList[i].objid,
+                 targetos = bevelList[i].osnum );
+     }
+  }
+
+  if( bevelList ) { free( bevelList ); bevelList = NULL; }
+  return;
+}
+
+main()
+{
+  IGRlong               msg, sts, isConsumed ;
+  IGRint                i, j, nb_class, loc_cnt,consmdCnt,state,child_count,mode;
+  IGRint                status, cn_type;
+  IGRchar		msg_str[1024],cr_flag[2],macName[40];
+  GRclassid	        classid[1];
+  OM_S_OBJID            *loc_list;
+  struct GRid	        obj_chk, pret_parent,goId,neat_plate,child_list[100];
+  struct GRid           *consmdPar, *pretends;
+  struct GRmd_env       cur_env;
+  struct GRobj_env      footOE;
+
+  extern IGRboolean     ASbroadcast_in_progress ;
+  IGRboolean            saveBroad;
+  
+  message( "Update out-dated Bevels" );
+
+  UI_status("WARNING: This will cause all the bevels to recompute");
+  ci$get ( prompt = "Update any out-of-date bevel macros (Y/N) ?",
+           string = cr_flag, rc = status );
+
+  if( strcmp(cr_flag,"Y") && strcmp(cr_flag,"y") ) 
+  {
+     UI_status( "" );
+     return;
+  }
+  
+  loc_cnt    = 0;
+  consmdCnt  = 0;
+  nb_class   = 1;
+  loc_list   = NULL;
+  consmdPar  = NULL;
+  pretends   = NULL;
+  sts        = MSSUCC;
+  msg        = MSSUCC;
+
+  nb_neat_compute = 0;
+  
+  classid[0] = OPP_ACpretend_class_id;
+  
+  ci$get_module_info( md_env = &cur_env );
+
+  /*
+   * Example when an operator is moved, bool plate will be updated.
+   * Since the user didn't accept the compute of associative dependency graph,
+   * We need to do something here to see that the neat plate corresponding to the
+   * modified plate is updated
+   */
+  CheckOutdatedNeatPlates( cur_env );
+ 
+  /*
+   * Now, we need to get all the ACpretend objects in the design file to see if
+   * there are any pretends hanging in the object space or connected to consumed
+   * parents.
+   */ 
+  loc_cnt = 0;
+  VDpms_findall_ancestryobjects( cur_env.md_id.osnum, nb_class, 
+				 classid, &loc_cnt, NULL );
+  if( !loc_cnt ) goto wrapup;
+  
+  loc_list  = ( OM_S_OBJID * ) malloc( sizeof(OM_S_OBJID)*loc_cnt );
+  consmdPar = ( struct GRid *) malloc( sizeof(struct GRid)*loc_cnt );
+  pretends  = ( struct GRid *) malloc( sizeof(struct GRid)*loc_cnt );
+
+  VDpms_findall_ancestryobjects(  cur_env.md_id.osnum, nb_class,
+				  classid, &loc_cnt, loc_list );
+
+  for( i=0; i<loc_cnt; i=i+1 )
+  {
+    consmdPar[i].objid = NULL_OBJID;
+    consmdPar[i].osnum = cur_env.md_id.osnum;
+  }
+
+  for( i=0; i<loc_cnt; i=i+1 )
+  {
+    isConsumed = 0;
+    obj_chk.objid = loc_list[i];
+    obj_chk.osnum = cur_env.md_id.osnum;
+
+    /*
+     * Get the Pretend parent. If there is no Parent for this pretend, that means
+     * that the plate went back to its prevoius state in the history graph.
+     * In this case, we need to do something here to connect the hanging neat
+     * plates to the correct plate parents.
+     */
+    vdobj$GetPretendParent( pretendID = &obj_chk,
+			    parentID  = &pret_parent );
+    if( pret_parent.objid == NULL_OBJID )
+    {
+      /*
+       * Check if there are any neat plate children for this pretend objects.
+       * If there are, the call a function to connect them to proper plate parents.
+       */
+      vdchn$GetList( objID   = &obj_chk,
+                     chnIDx  = VDCHN_IDX_CHILDREN,
+                     maxCnt  = 100,
+                     cnt     = &child_count,
+                     outIDs  = child_list     );
+      for( j=0; j<child_count; j=j+1 )
+      {
+        if( VD_is_ancestry_valid( &child_list[j], OPP_nci_macro_class_id ) )
+        {
+	  vdobj$Get( objID = &child_list[j], macName = macName );
+	  if( !strcmp( macName, "neat_plate" ) )
+		ModifyNeatPlateAndbevels( obj_chk, child_list[j], cur_env );
+        }
+      }
+      continue;
+    } 
+   
+    /*
+     * If the pretend parent is consumed, that means, plate is moved to a next 
+     * state and the neat plate is still connected to the previous plate.
+     * Store them in a buffer to change the connections.
+     */ 
+    sts = ci$send( msg      = message NDmacro.ACtest_consumed( &isConsumed ),
+		   targetid = pret_parent.objid,
+		   targetos = pret_parent.osnum );
+    if(isConsumed)
+    {
+      consmdPar[consmdCnt] = pret_parent;
+      pretends[consmdCnt]  = obj_chk;
+      consmdCnt            = consmdCnt + 1;
+    }
+  }
+
+  /*
+   * If there are any neat plates connected to the prevoius state of the plate,
+   * connect them to the latest plate and recompute them, which in turn updates
+   * all the connected bevels.
+   */
+  if( consmdCnt )
+  {
+       VDupdateNeatPlates( consmdPar, pretends, consmdCnt );
+  }
+
+  /*
+   * Try to recompute the neat plates and bevels, which are connected till now.
+   */
+  nd$mod_batch( request = ND_INQ, p_ret_mode = &mode );
+  if( mode != ND_DEFER )	nd$exec_batch();
+
+  /*
+   * Recompute the previously stored plates.
+   */
+  if( nb_neat_compute > 0 )
+  {
+    nd$wait_batch( type       = GR_GEOM_POSTED,
+	           nb_obj     = nb_neat_compute,
+		   l_object   = neat_compute,
+		   l_obj_info = &cn_type       );
+
+    saveBroad = ASbroadcast_in_progress ;
+    ASbroadcast_in_progress = FALSE ;
+
+    if( mode != ND_DEFER ) nd$exec_batch();
+
+    ASbroadcast_in_progress = saveBroad ;
+  }
+
+  /*
+   * Just clean up all the pretend objects having neat plate parents and
+   * no children. This means that bevels are moved to new plate parents.
+   * There is no point in having obsolete pretends hanging around.
+   */ 
+  if( loc_list   ) { free( loc_list   ); loc_list   = NULL; }
+  loc_cnt = 0;
+  VDpms_findall_ancestryobjects( cur_env.md_id.osnum, nb_class,
+                                classid, &loc_cnt, NULL );
+  if( !loc_cnt ) goto wrapup;
+
+  loc_list  = ( OM_S_OBJID * ) malloc( sizeof(OM_S_OBJID)*loc_cnt );
+ 
+  VDpms_findall_ancestryobjects(  cur_env.md_id.osnum, nb_class,
+                                  classid, &loc_cnt, loc_list );
+
+  for( i=0; i<loc_cnt; i=i+1 )
+  {
+    obj_chk.objid = loc_list[i];
+    obj_chk.osnum = cur_env.md_id.osnum;
+
+    child_count = 0;
+    vdchn$GetList( objID   = &obj_chk,
+                   chnIDx  = VDCHN_IDX_CHILDREN,
+                   maxCnt  = 100,
+                   cnt     = &child_count  );
+    if( child_count > 0 ) continue;
+
+    vdobj$GetPretendParent( pretendID = &obj_chk,
+                            parentID  = &pret_parent );
+    vdobj$Get( objID = &pret_parent, macName = macName );
+    if( !strcmp( macName, "neat_plate" ) ) 
+    {
+       VD_bulkDeleteByGRids( &cur_env, 1, &obj_chk );
+    }
+  }
+
+  VDScheckRefFilesDependency( &msg, TRUE, NULL, NULL );
+  
+ wrapup:
+  /*
+   * We are done.
+   */
+  UI_status( "Done" );
+  if( loc_list   ) { free( loc_list   ); loc_list   = NULL; }
+  if( pretends   ) { free( pretends   ); pretends   = NULL; }
+  if( consmdPar  ) { free( consmdPar  ); consmdPar  = NULL; }
+  
+  return 1;
+}

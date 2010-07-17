@@ -1,0 +1,589 @@
+/*
+	I/STRUCT
+*/
+#include "ciminimum.h"
+#include "parametric.h"
+#include "cievent.h"
+#include "cisend.h"
+#include "msdef.h"
+#include "macro.h"
+#include "ACattrib.h"
+#include "DIdef.h"
+#include <FI.h>
+#include "CIforms.h"
+#include "VSmsg.h"
+#include "vsbtchctsdef.h"
+
+extern long	VSgetMacroInformation(),
+		VSgetOperatorToOperandsMap(),
+		VS_gP_KyInMcName,
+		VS_gP_ModForm,
+		VS_gI_SaveMacLib,
+		VS_gP_SlcCuttrThenCuttees,
+		VS_gI_NoCuttrSlctd,
+		VS_gI_CmpltPathToCuttr,
+		VS_gW_MacNotFnd ;
+extern int	strncmp(),
+		printf(),
+		sprintf(),
+		VS_Wait_timer() ;
+extern int	ci_notification(),
+		FIf_delete(),
+		FIf_display(),
+		FIf_erase(),
+		FIf_get_location(),
+		FIf_new(),
+		FIf_reset(),
+		FIf_set_cmd_oid_os(),
+		FIf_set_location(),
+		FIfld_get_active_row(),
+		FIfld_get_text(),
+		FIfld_get_text_length(),
+		FIfld_set_text(),
+		FIfld_set_select(),
+		FIg_disable(),
+		FIg_display(),
+		FIg_enable(),
+		FIg_reset(),
+		FIg_set_state_off(),
+		FIgrp_callback(),
+		 FImcf_get_active_col(),
+		COm_set_form_select(),
+		COm_list_macro(),
+		VSfi_msgkey(),
+		VSfi_prompt() ;
+extern void	free(),
+		VSfreeList() ;
+extern char		*VSstripString(),
+			*VSmsgkey2string() ;
+extern struct GRid	*ACpath_grid ;
+
+struct CIform_st	form_st ;
+
+#define MAIN_FORM_NAME	"VSdefopinmc.fm"
+#define MAIN_FORM_LABEL	0
+char	*MainForm ;
+#define MACNAME_FLD	19
+#define MACLIB_FLD	21
+#define INPUTS_FLD	12
+#define OUTPUTS_FLD	13
+#define EDIT_FIELD	22
+#define MACLIB_BTN	15
+
+#define SUB_FORM_NAME	"VSlsMacLibs.fm"
+#define SUB_FORM_LABEL	1
+char	*SubForm ;
+#define MACLIBS_FLD	13
+#define LIBCONTENT_FLD	14
+
+struct {
+	/*
+	 * Collection associted with a macro definition and containing its
+	 * options.
+	 */
+	struct GRid	optObj ;
+
+	/*
+	 * Number of active output (last-selected one). 
+	 */
+	int		actOutput,
+
+	/*
+	 * Count of operators and operands.
+	 */
+			optrCnt ;
+	/*
+	 * Number of templates and feet of macro definition.
+	 */
+	int		inputCnt,
+			outputCnt ;
+
+#define MAP( Operand, Operator ) map[(Operator)*VS_K_MAX_OPNDS+(Operand)]
+	char		map[VS_K_MAX_OPTRS*VS_K_MAX_OPNDS] ;
+
+} instance, *me ;
+
+#define MAX	100
+/*----------------------------------------------------------------------------*/
+void Post() {
+
+  long msg ;
+  int  nIn, nOut, sel, pos, j, l ;
+  char text1[MAX] ;
+  char n[DI_PATH_MAX] ;
+
+  rmOld() ;
+  for( nIn = 0 ; nIn < me->inputCnt ; nIn = nIn + 1 ) {
+    j = getOperandNumber( nIn ) ;
+    if( j != -1 ) {
+      FIfld_get_text( MainForm, INPUTS_FLD, nIn, 0, MAX, text1, &sel, &pos ) ;
+      sprintf( n, "%s%d", VS_K_opndKyWord, j ) ;
+
+      ci$send( msg	= message ACdiowner.ACadd_attribute_by_type(
+						&msg, AC_ATTRIB_TEXT, n, text1),
+	       targetid= me->optObj.objid,
+	       targetos= me->optObj.osnum ) ;
+    }
+  }
+
+  for( nOut = 0 ; nOut < me->outputCnt ; nOut = nOut + 1 ) {
+    j = getOperatorNumber( nOut ) ;
+    if( j != -1 ) {
+      l = sprintf( n, "%s%d", VS_K_optrKyWord, j ) ;
+      for( nIn = 0 ; nIn < VS_K_MAX_OPTRS ; nIn = nIn + 1 ) {
+        if( me->MAP( nIn, nOut ) ) {
+          l = l + sprintf( n + l, "~%d", getOperandNumber( nIn ) ) ;
+        }
+      }
+      FIfld_get_text( MainForm, OUTPUTS_FLD, nOut, 0, MAX, text1, &sel, &pos ) ;
+
+      ci$send( msg	= message ACdiowner.ACadd_attribute_by_type(
+						&msg, AC_ATTRIB_TEXT, n, text1),
+	       targetid= me->optObj.objid,
+	       targetos= me->optObj.osnum ) ;
+
+    }
+  }
+  VSfi_msgkey( MainForm, VS_gI_SaveMacLib ) ;
+  VS_Wait_timer( 40 ) ;
+
+} /* Post */
+/*----------------------------------------------------------------------------*/
+void Reset() {
+	int	i ;
+
+	me->actOutput = -1 ;
+	for( i = 0 ; i < VS_K_MAX_OPTRS * VS_K_MAX_OPNDS ; i = i + 1 ) {
+		me->map[i] = FALSE ;
+	}
+	if( MainForm ) {
+		FIf_reset( MainForm ) ;
+		FIg_disable( MainForm, FI_ACCEPT ) ;
+		FIg_disable( MainForm, FI_EXECUTE ) ;
+		VSfi_prompt( MainForm, VSmsgkey2string( VS_gP_KyInMcName ) ) ;	
+	}
+} /* Reset */
+/*----------------------------------------------------------------------------*/
+init() {
+	MainForm	= NULL ;
+	SubForm		= NULL ;
+
+	me = &instance ;
+	Reset() ;
+}
+/*----------------------------------------------------------------------------*/
+wakeup() {	
+
+	message( VS_M_VSDfOpIMc ) ;
+	if( MainForm != NULL ) FIf_display( MainForm ) ;
+	if( SubForm  != NULL ) FIf_display( SubForm  ) ;
+}
+/*----------------------------------------------------------------------------*/
+sleep()	{
+	if( MainForm != NULL ) FIf_erase( MainForm ) ;
+	if( SubForm  != NULL ) FIf_erase( SubForm  ) ;
+}
+/*----------------------------------------------------------------------------*/
+delete() {
+	if( MainForm != NULL ) FIf_delete( MainForm ) ;
+	if( SubForm  != NULL ) FIf_delete( SubForm  ) ;
+}
+/*----------------------------------------------------------------------------*/
+void displayMacro( macDefName, macLibName ) char *macDefName, *macLibName ; {
+
+	long		 msg ;
+	long		 sts ;
+	struct myfeet	 *feet ;
+	struct stemp	 *temp ;
+	int		 i,
+			 j,
+			 k ;
+	char		 lib[MAX],
+			 *pLib ;
+	int		 error ;
+	int		 actsOnAllOpnds ;
+	long		 messg ;
+	VSoprtrOprndMap	 map[VS_K_MAX_OPTRS] ;
+	int		 count ;
+        char		 text[MAX] ;
+        char		 name[MAX] ;
+	struct ret_struct rs ;
+
+	error = FALSE ; messg = MS_NO_MSG ;
+
+	if( NULL == macLibName ) pLib = macLibName = lib ;
+	else                     pLib = NULL ;
+
+	VSgetMacroInformation(	&msg,
+				macDefName,
+				NULL,
+				pLib,
+				&me->inputCnt,
+				&temp,
+				&me->outputCnt,
+				&feet,
+				&me->optObj ) ;
+	if( !( msg & 1 ) ) {
+          messg = VS_gW_MacNotFnd ; error = TRUE ;
+        } else if( me->optObj.objid == NULL_OBJID ) error = TRUE ;
+
+	if( error ) {
+	  Reset() ;
+	  if( MS_NO_MSG != messg ) VSfi_msgkey( MainForm, messg ) ;
+	  return ;
+	}
+	
+	for( i = 0 ; i < me->inputCnt ; i = i + 1 ) {
+	  FIfld_set_text( MainForm, INPUTS_FLD, i, 0, temp[i].name, FALSE ) ;
+	}
+	for( i = 0 ; i < me->outputCnt ; i = i + 1 ) {
+	  FIfld_set_text( MainForm, OUTPUTS_FLD, i, 0, feet[i].name, FALSE ) ;
+	  FIfld_set_text( MainForm, OUTPUTS_FLD, i, 1, "", FALSE ) ;
+	}
+	me->optrCnt = me->outputCnt ;
+
+	FIfld_set_text( MainForm, MACNAME_FLD, 0, 0, macDefName, FALSE ) ;
+	FIfld_set_text( MainForm, MACLIB_FLD , 0, 0, macLibName, FALSE ) ;
+
+	/*
+	 * Did macro have an already-defined operation ?
+	 */
+	VSgetOperatorToOperandsMap( &msg, &me->optObj, map, &count ) ;
+
+	for( i = 0 ; i < count ; i = i + 1 ) {
+
+	  for( j = 0 ; j < me->outputCnt ; j = j + 1 ) {
+
+	    if( !strcmp( map[i].oprtrName, feet[j].name ) ) break ;
+	  }
+
+	  /* If the map is empty, the operator acts on all operands */
+	  actsOnAllOpnds = VS_K_MAP_ALL == map[i].oprndIndices[0] ;
+
+	  *text = '\0' ;
+
+	  if( !actsOnAllOpnds ) {
+	    for( k = 0 ; ; k = k + 1 ) {
+	      if( VS_K_END_OF_MAP == map[i].oprndIndices[k] ) break ;
+	      sprintf( name, "%s%d", VS_K_opndKyWord, map[i].oprndIndices[k] ) ;
+	      sts = ci$send( msg    = message NDmacro.ACgive_structure(
+	                                          &msg, NULL, name, &rs, NULL ),
+	                     targetid = me->optObj.objid,
+	                     targetos = me->optObj.osnum ) ;
+	      if( !( sts & 1 & msg ) ) continue ;
+
+	      if( text_type == rs.type ) {
+	        if( *text ) strcat( text, "," ) ;
+	         strcat( text, rs.var.text_st.text_string ) ;
+	      }
+	    }
+	  } else {
+	    /*
+	     * (Legacy) When there is only one operand we can have "~~operand"
+	     * instead of "~~operand0", hence the trick with k = -1.
+	     */
+	    for( k = -1 ; k < VS_K_MAX_OPNDS ; k = k + 1 ) {
+	      if( -1 == k ) {
+	        strcpy( name, VS_K_opndKyWord ) ;
+	      } else {
+	        sprintf( name, "%s%d", VS_K_opndKyWord, k ) ;
+	      }
+
+	      sts = ci$send( msg    = message NDmacro.ACgive_structure(
+	      	                                  &msg, NULL, name, &rs, NULL ),
+	                     targetid = me->optObj.objid,
+	                     targetos = me->optObj.osnum ) ;
+	      if( !( sts & 1 & msg ) ) continue ;
+
+	      if( text_type == rs.type ) {
+	        if( *text ) strcat( text, "," ) ;
+	        strcat( text, rs.var.text_st.text_string ) ;
+	      }
+	    }
+	  }
+	  /*
+	   * We may have MORE operators then the macro has outputs since we
+	   * can have nested outputs!
+	   */
+	  if( j >= me->outputCnt ) {
+	    j = me->optrCnt ; me->optrCnt = me->optrCnt + 1 ;
+	    FIfld_set_text( MainForm, OUTPUTS_FLD, j, 0, map[i].oprtrName, FALSE ) ;
+	  }
+	  FIfld_set_text( MainForm, OUTPUTS_FLD, j, 1, text, FALSE ) ;
+	}
+
+	FIg_enable( MainForm, FI_ACCEPT  ) ;
+	FIg_enable( MainForm, FI_EXECUTE ) ;
+	VSfi_prompt( MainForm, VSmsgkey2string( VS_gP_SlcCuttrThenCuttees ) ) ;
+
+} /* displayMacro */
+/*----------------------------------------------------------------------------*/
+main() {
+	int response ;
+
+	FIf_new( MAIN_FORM_LABEL, MAIN_FORM_NAME, ci_notification, &MainForm ) ;
+	FIf_set_cmd_oid_os( MainForm, my_id(), my_os() );
+	FIg_disable( MainForm, FI_ACCEPT  ) ;
+	FIg_disable( MainForm, FI_EXECUTE ) ;
+	FIf_display( MainForm ) ;
+	VSfi_prompt( MainForm, VSmsgkey2string( VS_gP_KyInMcName ) ) ; 
+
+	do {
+	  ci$get( prompt = VS_gP_ModForm, response = &response ) ;
+
+	} while( EX_FORM_FINISHED != response ) ;
+}
+/*----------------------------------------------------------------------------*/
+int isInputAnOperand( inputNumber ) int inputNumber ; {
+
+	int j ;
+	for( j = 0 ; j < me->optrCnt ; j = j + 1 ) {
+	  if( me->MAP( inputNumber, j ) ) {
+	  	return TRUE ;
+	  }
+	}
+	return FALSE ;
+}
+/*----------------------------------------------------------------------------*/
+int isOutputAnOperator( outputNumber ) int outputNumber ; {
+
+	int i ;
+	for( i = 0 ; i < me->inputCnt ; i = i + 1 ) {
+	  if( me->MAP( i, outputNumber ) ) return TRUE ;
+	}
+	return FALSE ;
+}
+/*----------------------------------------------------------------------------*/
+int getOperatorNumber( outputNumber ) int outputNumber ; {
+
+	int	i ;
+	int     operatorNumber ;
+
+	operatorNumber = -1 ;
+	if( isOutputAnOperator( outputNumber ) ) {
+	  for( i = 0 ; i < outputNumber ; i = i + 1 ) {
+	    if( isOutputAnOperator( i ) ) operatorNumber = operatorNumber + 1 ;
+	  }
+	  operatorNumber = operatorNumber + 1 ;
+	}
+	return operatorNumber ;
+}
+/*----------------------------------------------------------------------------*/
+int getOperandNumber( inputNumber ) int inputNumber ; {
+
+	int	i ;
+	int     operandNumber ;
+
+	operandNumber = -1 ;
+	if( isInputAnOperand( inputNumber ) ) {
+	  for( i = 0 ; i < inputNumber ; i = i + 1 ) {
+	    if( isInputAnOperand( i ) ) operandNumber = operandNumber + 1 ;
+	  }
+	  operandNumber = operandNumber + 1 ;
+	}
+	return operandNumber ;
+}
+/*----------------------------------------------------------------------------*/
+int startMacLibForm() {
+
+  int rc, xpos, ypos ; struct GRid macro_def ;
+
+  if( FIf_new( SUB_FORM_LABEL, SUB_FORM_NAME, ci_notification, &SubForm ) == FI_SUCCESS ) {
+
+      FIf_set_cmd_oid_os( SubForm, my_id(), my_os() );
+      FIf_get_location( MainForm, &xpos, &ypos ) ;
+      xpos = xpos ;
+      ypos = ypos ;
+      FIf_set_location( SubForm, xpos, ypos + 100 ) ;
+      FIf_display( SubForm ) ;
+      macro_def.objid = NULL_OBJID ;
+      COm_set_form_select( &macro_def.objid, NULL, SubForm ) ;
+      rc = TRUE ;
+  } else rc = FALSE ;
+ 
+  return rc ;
+
+} /* startMacLibForm */
+/*----------------------------------------------------------------------------*/
+form_notification() {
+
+	char	*t, *s ;
+	int	gadget,
+		*array,
+		p,
+		row,
+		col,
+		opndNum,
+		selectRow,
+		haveMapped,
+		updateField ;
+	double	value ;
+	char	text1[MAX],
+		text2[MAX] ;
+	int	sel,
+		pos, j ;
+	struct GRid
+		macro_def ;
+
+  gadget = form_st.gadget_label ;
+  value	 = form_st.value ;
+
+  if( MAIN_FORM_LABEL == form_st.form_label ) {
+	switch( gadget ) {
+
+	  case FI_ACCEPT	:
+	    Post() ;
+	    ci$put( response = EX_FORM_FINISHED ) ;
+	    break ;
+
+	  case FI_EXECUTE	:
+	    Post() ;
+	    FIg_set_state_off( MainForm, gadget ) ;
+	    /* No break intentionaly */
+
+	  case FI_RESET	:
+	    FIf_reset( MainForm ) ;
+	    Reset() ;
+	    ci$put( response = EX_BACK_UP ) ;
+	    break ;
+
+	  case FI_CANCEL	:
+	    ci$put( response = EX_FORM_FINISHED ) ;
+	    break ;
+
+	  case INPUTS_FLD	:
+	    if( -1 == me->actOutput ) {
+	      VSfi_msgkey( MainForm, VS_gI_NoCuttrSlctd ) ;
+	      break ;
+	    }
+	    row = (int) value ;
+	    /* Do not add it several times... */
+	    if( me->MAP( row, me->actOutput ) ) break ;
+
+	    me->MAP( row, me->actOutput ) = 1 ;
+
+	    FIfld_get_text( MainForm, gadget, row, 0, MAX, text1, &sel, &pos ) ;
+	    FIfld_get_text( MainForm, OUTPUTS_FLD, me->actOutput, 1, MAX, text2, &sel, &pos ) ;
+	    if( *text2 ) strcat( text2, "," ) ;
+	    strcat( text2, text1 ) ;
+	    FIfld_set_text( MainForm, OUTPUTS_FLD, me->actOutput, 1, text2, FALSE ) ;
+	    break ;
+
+	  case OUTPUTS_FLD	:
+            FImcf_get_active_col( MainForm, gadget, &col, &pos ) ;
+	    row = (int) value ;
+	    if( 0 == col ) {
+	      FIfld_get_text( MainForm, gadget, row, 0, MAX, text1, &sel, &pos ) ;
+	      FIfld_set_text( MainForm, EDIT_FIELD, 0, 0, text1, FALSE ) ;
+	      VSfi_msgkey( MainForm, VS_gI_CmpltPathToCuttr ) ;
+	      me->actOutput = row ;
+	    } else if( 1 == col ) {
+	      /* Suppress mapping if any */
+	      FIfld_set_text( MainForm, gadget, row, 1, "", FALSE ) ;
+	      for( j = 0 ; j < VS_K_MAX_OPNDS ; j = j + 1 ) {
+	      	me->MAP( j, row ) = FALSE ;
+	      }
+	      if( me->actOutput == row ) {
+	      	me->actOutput = -1 ;
+	      	FIfld_set_select( MainForm, gadget, row, 0, FALSE ) ;
+	      }
+	    }
+	    break ;
+
+	  case EDIT_FIELD :
+
+	    if( me->actOutput != -1 ) {
+	      FIfld_get_text( MainForm, gadget, 0, 0, MAX, text1, &sel, &pos ) ;
+
+	      if( *VSstripString( text1 ) ) {
+	        FIfld_set_text( MainForm, OUTPUTS_FLD, me->actOutput, 0, text1, FALSE ) ;
+	      }
+	    }
+	    FIg_reset( MainForm, gadget ) ;
+	    break ;
+
+	  case MACLIB_BTN :
+
+	    if( startMacLibForm() )
+              FIgrp_callback( MainForm, FI_FORM_GROUP, FIg_disable, NULL );
+	    break ;
+
+	  case MACNAME_FLD :
+	    FIfld_get_text( MainForm, gadget, 0, 0, MAX, text1, &sel, &pos ) ;
+	    displayMacro( text1, NULL ) ;
+	    break ;
+
+	} /* switch */
+  } else if( SUB_FORM_LABEL == form_st.form_label ) {
+
+	switch( gadget ) {
+
+	  case FI_ACCEPT :
+	    FIfld_get_active_row( SubForm, MACLIBS_FLD, &row, &pos ) ;
+	    FIfld_get_text( SubForm, MACLIBS_FLD, row, 0, MAX, text1, &sel, &pos ) ;
+
+	    FIfld_get_active_row( SubForm, LIBCONTENT_FLD, &row, &pos ) ;
+	    FIfld_get_text( SubForm, LIBCONTENT_FLD, row, 0, MAX, text2, &sel, &pos ) ;
+	    displayMacro( text2, text1 ) ;
+	    /* No break intentionally */
+
+	  case FI_CANCEL :
+	    FIf_delete( SubForm ) ; SubForm = NULL ;
+            FIgrp_callback( MainForm, FI_FORM_GROUP, FIg_enable, NULL );
+    	    break;
+
+	  case MACLIBS_FLD : /* Display content of macro lib */
+	     FIfld_get_active_row( SubForm, gadget, &row, &pos ) ;
+	     macro_def.objid = NULL_OBJID ;
+	     COm_list_macro( ACpath_grid + row, &macro_def, SubForm ) ;
+             break ;
+        }
+  }
+
+} /* form_notification */
+/*----------------------------------------------------------------------------*/
+rmOld() {
+
+  long              sts, msg ;
+  int               i, count, l1, l2 ;
+  char              n[DI_PATH_MAX] ;
+  struct GRid       *ids ;
+  char              **names ;
+
+  if( me->optObj.objid == NULL_OBJID ) return ;
+
+  names = NULL ; ids = NULL ;
+  count = 0;
+
+  sts = ci$send( msg      = message IGRdir.dump( &msg, "*", NULL, &names, &ids,
+                                                 &count, 0 ),
+		 targetid= me->optObj.objid,
+		 targetos= me->optObj.osnum ) ;
+  if( !( sts & 1 & msg ) ) goto wrapup ;
+
+  l1 = strlen( VS_K_opndKyWord ) ;
+  l2 = strlen( VS_K_optrKyWord ) ;
+
+  for( i = 0 ; i < count ; i = i + 1 ) {
+	if ( names[i] ) 
+	{
+    		if(    !strncmp( names[i], VS_K_opndKyWord, l1 )
+        		|| !strncmp( names[i], VS_K_optrKyWord, l2 ) ) {
+#ifdef vsDEBUG
+	printf( "deleting %s\n", names[i]) ;
+#endif
+       			ci$send( msg     = message ACdiowner.ACrem_attribute( 
+							             &msg, 
+								     names[i] ),
+				targetid= me->optObj.objid,
+				targetos= me->optObj.osnum ) ;
+    		}
+	}
+  }
+  wrapup :
+  	if ( ids ) 	free( ids ) ;
+  	VSfreeList( count, names ) ;
+
+} /* RmOld */
+/*----------------------------------------------------------------------------*/
+

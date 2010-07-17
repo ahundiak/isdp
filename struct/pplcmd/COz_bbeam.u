@@ -1,0 +1,116 @@
+/* $Id $  */
+
+/*************************************************************************
+ * I/LOFT
+ *
+ * File:        src/vdppl/COz_compbbeam.u
+ *
+ * Description: check all the boolean beam objects in the active file
+ *              for whom the GRgetsymb() fails and recompute them 
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ *      $Log $
+ *
+ * History:
+ *      MM/DD/YY   AUTHOR       DESCRIPTION
+ *      31/07/01   Jayadev      ppl to support TR#MP5469 
+ *************************************************************************/
+
+#include "VDppl.h"
+#include "VDobj.h"
+#include "vdVALmacros.h" //support for the validate form
+#include "ndmacros.h" 
+
+extern                  NDwait_batch(),NDexec_batch();
+extern int		VDpms_findall_ancestryobjects();
+extern GRclassid	OPP_VSbooBeam_class_id;
+
+main()
+{
+  IGRlong               msg, sts, bad_cnt,isConsumed ;
+  IGRint                i, nb_class, loc_cnt, stat, cnType;
+  IGRchar		msg_str[1024];
+  GRclassid	        classid[1];
+  OM_S_OBJID            *loc_list;
+  struct GRid	        obj_chk, pret_parent;
+  struct GRmd_env       cur_env;
+  struct GRobj_env      footOE;
+  struct GRsymbology    smb;
+  
+  message( "Compute boolean beams with bad symbology" );
+  
+  loc_cnt       = 0;
+  nb_class      = 1;
+  loc_list      = NULL;
+  bad_cnt       = 0;
+  sts           = MSSUCC;
+  msg           = MSSUCC;
+  
+  
+  /* added the output to .process.log for display in VSvalidate form */
+  vd$VAL_openLog( msg = msg );
+  if( !(msg&1) ){ printf("validate log file could not be opened\n"); }
+  
+  classid[0] = OPP_VSbooBeam_class_id;
+  
+  ci$get_module_info( md_env = &cur_env );
+  
+  loc_cnt = 0;
+  VDpms_findall_ancestryobjects( cur_env.md_id.osnum, nb_class, 
+				 classid, &loc_cnt, NULL );
+  if( !loc_cnt ) goto wrapup;
+  
+  loc_list = ( OM_S_OBJID * ) malloc( sizeof(OM_S_OBJID)*loc_cnt );
+  VDpms_findall_ancestryobjects(  cur_env.md_id.osnum, nb_class,
+				  classid, &loc_cnt, loc_list );
+  
+  cnType = ND_COMP;
+  
+  for( i=0; i<loc_cnt; i=i+1 )
+  {
+    obj_chk.objid = loc_list[i];
+    obj_chk.osnum = cur_env.md_id.osnum;
+    
+    ci$send ( msg = message GRvg.GRgetsymb ( &stat,
+                                             &smb ),
+              targetid = obj_chk.objid,
+              targetos = obj_chk.osnum );
+    
+    if(!(stat&1))
+    { 
+      if( bad_cnt == 0 ) 
+        vd$VAL_addInfo( Text = "The following are bad boolean beams found." );	
+      vd$VAL_addObject(
+	GRid = obj_chk, 
+	PreText = "\t",
+	PostText = "has bad symbology" );
+      
+      printf( "%s", msg_str );
+      bad_cnt = bad_cnt + 1;
+      
+      nd$wait_batch( type       = GR_GEOM_POSTED,
+                     l_object   = &obj_chk,
+                     l_obj_info = &cnType,
+                     nb_obj     = 1);
+    }
+  }
+  
+  if( bad_cnt == 0 )
+  {
+    vd$VAL_addInfo( Text = "No bad beams found" ); 
+    goto wrapup;
+  }
+  // recompute the bad boolean beams
+  nd$exec_batch();
+  
+ wrapup:
+  status( "Done" );
+  if( loc_list   ) { free( loc_list   ); loc_list   = NULL; }
+  vd$VAL_closeLog();
+  
+  return 1;
+}
+
+
