@@ -1,0 +1,510 @@
+/*
+	I/STRUCT.
+
+	"Copy Surface Dependency" command.
+*/
+
+#include "OMminimum.h"
+#include "OMprimitives.h"
+#include "cieveryone.h"
+#include "cievent.h"
+#include "cilocate.h"
+#include "cisend.h"
+#include "dp.h"
+#include "exmacros.h"
+#include "msdef.h"
+#include "madef.h"
+#include "nddef.h"
+#include "nd.h"
+#include "ndmacros.h"
+#include "msmacros.h"
+#include "asmacros.h"
+#include "vsmiscpplmac.h"
+
+extern void	UI_status(),
+		free(),
+		MAidmx(),
+		ShowObj(),
+		EX_findmod() ;
+extern char	*malloc(),
+		*realloc() ;
+extern long	NDget_graph(),
+		NDcopy_graph(),
+		NDupdate_graph(),
+		NDget_list(),
+		NDget_comp_state() ;
+extern long	ASmake_source_from_env() ;
+extern int	VS_Wait_timer();
+
+extern  GRclassid       OPP_VSplate_class_id ;
+extern  GRclassid       OPP_EMSsubbs_class_id ;
+
+// #define DEBUG 1
+
+#define CHK_MSG( sts, msg, message ) if( !( (sts) & 1 & (msg) ) ) {\
+					printf( "ERROR in %s\n", (message) ) ;\
+					exit ;\
+				     }
+
+#ifdef DEBUG
+int rc ;
+char C[OM_K_MAXCLASS_LEN] ;
+#define PR_OBJ( comment, obj ) printf( "%s : [%d,%d]\n", (comment),\
+							 (obj).osnum,\
+							 (obj).objid ) ;
+
+#define PR_INT( comment, val ) printf( "%s : %d\n", (comment), (val) ) ;
+#define PR_CLS( comment, os, id )\
+{\
+	rc = om$get_classname( objid = (id), osnum = (os), classname = C ) ;\
+	if( !( rc & 1 ) ) strcpy( C, "UNKNOWN" ) ;\
+	printf( "\t%s : [%d,%d] < %s >\n", (comment), (os), (id), C ) ;\
+}
+#else
+#define PR_OBJ( comment, obj )
+#define PR_INT( comment, val )
+#define PR_CLS( comment, os, id )
+#endif
+
+/*----------------------------------------------------------------------------*/
+wakeup() { message( "Copy Surface Dependency" ) ; }
+/*----------------------------------------------------------------------------*/
+void show_failed_elements() {
+
+	long		sts ;
+	struct GRid	*buffer,
+			*list ;
+	int		i,
+			count,
+			comp_state ;
+
+	sts = nd$get_list_in_graph( rej_type = ND_ROOT,
+				    p_count  = &count,
+				    buf_addr = &buffer ) ;
+
+	if( !( sts & 1 ) ) {
+		printf( "Cannot get elements NOT computed\n" ) ;
+		return ;
+	}
+
+	if( count != 0 ) {
+		list = (struct GRid*) malloc( count * sizeof( struct GRid ) ) ;
+		if( list == NULL ) {
+			printf( "No memory available to see elements NOT computed\n" ) ;
+			return ;
+		}
+	} else {
+		printf( "Nothing in graph !!!\n" ) ;
+		return ;
+	}
+
+	for( i=0; i<count; i=i+1 )
+		list[i] = buffer[i] ;
+
+	printf( "----------------------------------------\n\n" ) ;
+
+	for( i=0; i<count; i=i+1 ) {
+		sts = NDget_comp_state( list+i,
+					1,
+					&comp_state,
+					&ND_graph ) ;
+
+		if( !( sts & 1 ) ) {
+			printf( "UNKNOWN compute state :" ) ;
+			ShowObj( list + i ) ;
+			continue ;
+		}
+
+		if( comp_state != MSSUCC ) {
+			printf( "FAILED :" ) ;
+			ShowObj( list + i ) ;
+		}
+	}
+
+	printf( "\n----------------------------------------\n" ) ;
+
+	free( list ) ;
+
+} /* show_failed_elements */
+/*----------------------------------------------------------------------------*/
+IGRboolean VSwarnIfToSrfHasPlate( surf1, surf2 )
+struct GRid	surf1 ;
+struct GRid 	surf2 ; {
+
+	long			sts ;
+	struct GRid		*myKids ;
+	IGRchar mesg[40];
+	int			i, nbKids ;
+	IGRboolean		fromSrfHasPlate, toSrfHasPlate ;
+	IGRboolean		bothHasPlate;
+
+	myKids = NULL;
+	nbKids = 0;
+ 	fromSrfHasPlate = FALSE ;
+	toSrfHasPlate	= FALSE ;
+	bothHasPlate 	= FALSE ;
+
+	sts = ci$send( msg = message NDnode.NDget_objects (
+							ND_CHILDREN | ND_IN_BUF,
+                                                        NULL,
+                                                        0,
+                                                        &myKids,
+                                                        0,
+                                                        OM_K_MAXINT,
+                                                        &nbKids ),
+                                targetid = surf1.objid,
+				targetos = surf1.osnum ) ;
+
+	if( nbKids ) {
+		for( i=0; i<nbKids ; i=i+1 ) {
+			if( vs$is_ancestry_valid (      
+				object  = myKids + i ,
+				classid = OPP_VSplate_class_id ) ) {
+				fromSrfHasPlate = TRUE ;
+				break ;
+		        } else {
+		                fromSrfHasPlate = FALSE ;
+			}
+		}
+	}
+	
+	if ( fromSrfHasPlate ) {
+		sts = ci$send( msg = message NDnode.NDget_objects (
+							ND_CHILDREN | ND_IN_BUF,
+                                                       	NULL,
+                                               		0,
+                                       	                &myKids,
+                               	                        0,
+                       	                                OM_K_MAXINT,
+               	                                        &nbKids ),
+       	                        targetid = surf2.objid,
+				targetos = surf2.osnum ) ;
+
+		if( nbKids ) {
+			for( i=0; i<nbKids ; i=i+1 ) {
+				if( vs$is_ancestry_valid (      
+					object  = myKids + i ,
+					classid = OPP_VSplate_class_id ) ) {
+					toSrfHasPlate = TRUE ;
+					break ;
+			        } else {
+		        	        toSrfHasPlate = FALSE ;
+				}
+			}
+		}
+	}
+
+	if( fromSrfHasPlate && toSrfHasPlate ) {
+		sprintf (mesg,"TO Surface Has Already A Plate");
+		ex$message( field         = ERROR_FIELD,
+                            justification = CENTER_JUS,
+                            in_buff       = mesg );
+		VS_Wait_timer( 60 ) ;
+		bothHasPlate = TRUE ;
+	}
+
+return	bothHasPlate;
+  
+} /* VSwarnIfToSrfHasPlate */
+/*----------------------------------------------------------------------------*/
+main() {
+	long			sts,
+				msg ;
+	struct GRid		surfOId,
+				*surfCId,
+				surfId,
+				source,
+				*buffer,
+				*externId ;
+	struct GRmd_env 	surfOEnv,
+				surfCEnv,
+				curEnv ;
+	int			response,
+				i,
+				j,
+				nb_surf,
+				cn_type,
+				nb_extern ;
+	struct NDcp_struct	copy_info ;
+	OM_S_OBJID		save_md_id ;
+
+	/*
+	 * Added
+	 */
+
+	OM_S_CLASSLIST          locate_eligible_thing;
+	GRclassid               fromClass[2], toClass;
+	IGRboolean              fromObjIsPlate;
+	char			*myPrompt;
+	int			nbKids;
+	struct GRid		*myKids;
+	IGRboolean		goAhead;
+	struct	GRevent		myEvent ;
+
+	surfCId = NULL ;
+	nb_surf = 0 ;
+	myKids = NULL;
+
+ 	fromObjIsPlate = FALSE;
+
+	ex$get_cur_mod( id    = &curEnv.md_id.objid,
+			osnum = &curEnv.md_id.osnum ) ;
+	MAidmx( &msg, curEnv.md_env.matrix ) ;
+	curEnv.md_env.matrix_type = MAIDMX ;
+
+	cn_type = ND_COMP | ND_COMP_NO_ERASE | ND_COMP_NO_REM_RT ;
+
+	while( TRUE ) {
+
+	FROM_SURF :
+
+        locate_eligible_thing.w_count  = 2;
+        locate_eligible_thing.w_flags  = 1;
+
+        fromClass[0] = OPP_VSplate_class_id;
+        fromClass[1] = OPP_EMSsubbs_class_id;
+
+        locate_eligible_thing.p_classes  = fromClass;
+
+	ci$locate(
+		prompt		= "Identify FROM Surface / Plate",
+		eligible_classes= &locate_eligible_thing,
+		properties	= LC_LC_ONLY | LC_DP_ONLY | LC_RW,
+		owner_action	= LC_RIGID_COMP | LC_REF_OBJECTS |
+				  LC_RIGID_OWNER | LC_FLEX_COMP |
+				  LC_FLEX_OWNER,
+		obj		= &surfOId.objid,
+		osnum		= &surfOId.osnum,
+		md_env		= &surfOEnv,
+		response	= &response ) ;
+
+	if( response != EX_DATA &&
+	    response != EX_OBJID ) goto FROM_SURF ;
+
+	if( vs$is_ancestry_valid (      object  = &surfOId,
+                                        classid = OPP_VSplate_class_id ) ) {
+                fromObjIsPlate = TRUE ;
+        } else {
+                fromObjIsPlate = FALSE;
+        }
+
+	sts = as$make_source( go_grid	= surfOId,
+			      mod_env	= &surfOEnv,
+			      as_os	= surfOId.osnum,
+			      as_grid	= &source ) ;
+
+	CHK_MSG( sts, 1, "as$make_source" ) ;
+
+	surfOId = source ;
+
+
+	TO_SURF :
+
+	locate_eligible_thing.w_count  = 1;
+        locate_eligible_thing.w_flags  = 1;
+
+        if( fromObjIsPlate ) {
+		myPrompt = "Identify TO Plate /Move-on";
+		toClass = OPP_VSplate_class_id;
+	} else {
+		toClass = OPP_EMSsubbs_class_id;
+		myPrompt = "Identify TO Surface /Move-on";
+	}
+
+        locate_eligible_thing.p_classes  = &toClass;
+	ci$locate(
+		prompt		= myPrompt,
+		eligible_classes= &locate_eligible_thing,
+		properties	= LC_LC_ONLY | LC_DP_ONLY | LC_RW,
+		owner_action	= LC_RIGID_COMP |LC_REF_OBJECTS |
+				  LC_RIGID_OWNER | LC_FLEX_COMP |
+				  LC_FLEX_OWNER,
+		obj		= &surfId.objid,
+		osnum		= &surfId.osnum,
+		md_env		= &surfCEnv,
+		response	= &response ) ;
+
+	switch( response ) {
+		case EX_BACK_UP :
+			if( surfCId ) {
+				free( surfCId ) ;
+				surfCId = NULL ;
+				nb_surf = 0 ;
+			}
+			goto FROM_SURF ;
+			break ;
+
+		case EX_OBJID	:
+		case EX_DATA	:
+			if( nb_surf ) {
+				surfCId = (struct GRid*) realloc( surfCId,
+								(nb_surf + 1) *
+						       sizeof( struct GRid ) ) ;
+				if( surfCId == NULL ) {
+					UI_status( "Out of memory, command terminate" ) ;
+					exit ;
+				}
+			} else {
+				surfCId = (struct GRid*) malloc( sizeof( struct GRid ) ) ;
+				if( surfCId == NULL ) {
+					UI_status( "Out of memory, command terminate" ) ;
+					exit ;
+				}
+			}
+
+			sts = as$make_source( go_grid	= surfId,
+					      mod_env	= &surfCEnv,
+					      as_os	= surfId.osnum,
+					      as_grid	= &source ) ;
+
+			CHK_MSG( sts, 1, "as$make_source" ) ;
+
+			surfCId[nb_surf] = source ;
+			nb_surf = nb_surf + 1 ;
+			goto TO_SURF ;
+			break ;
+
+		case EX_RJT_MOVEON :
+			if( nb_surf == 0 ) goto TO_SURF ;
+			break ;
+
+		default :
+			goto TO_SURF ;
+
+	}
+
+	for( i = 0; i < nb_surf; i = i + 1 ) {
+		if( VSwarnIfToSrfHasPlate ( surfOId, surfCId[i] ) ) {
+			ci$getevent( 	response = &response,
+					event	 = &myEvent,
+					prompt   = "Would You Like To Continue y/n[y]");
+
+			if(((response == STRING)&&((myEvent.event.keyin[0]=='n')
+        	        ||(myEvent.event.keyin[0]=='N')))||(response==EX_RJT_MOVEON)) {
+				if( surfCId ) {
+					free( surfCId ) ;
+					surfCId = NULL ;
+					nb_surf = 0 ;
+				}
+				goto FROM_SURF ;
+			}
+		}
+	}
+
+	PR_OBJ( "FROM surface", surfOId ) ;
+	/*
+	 * Get external elements.
+	 */
+	sts = nd$get_graph( p_root  = &surfOId,
+			    nb_root = 1 ) ;
+
+	CHK_MSG( sts, 1, "nd$get_graph" ) ;
+
+	sts = nd$get_list_in_graph( acc_type = ND_EXTERN,
+				    p_count  = &nb_extern,
+				    buf_addr = &buffer ) ;
+
+	CHK_MSG( sts, 1, "nd$get_list_in_graph" ) ;
+
+	if( nb_extern ) {
+		externId = (struct GRid*) malloc( nb_extern *
+						  sizeof( struct GRid ) ) ;
+
+		if( externId == NULL ) {
+			UI_status( "Out of memory, command terminate" ) ;
+			free( surfCId ) ;
+			exit ;
+		}
+
+		for( i=0; i<nb_extern; i=i+1 ) {
+			externId[i] = buffer[i] ;
+			PR_CLS( "Extern",
+				externId[i].osnum,
+				externId[i].objid ) ;
+		}
+	}
+
+	PR_INT( "nb TO surfaces", nb_surf ) ;
+
+	for( i=0; i<nb_surf; i=i+1 ) {
+
+		PR_OBJ( "TO surface", surfCId[i] ) ;
+
+		sts = nd$get_graph( p_root  = &surfOId,
+				    nb_root = 1 ) ;
+
+		CHK_MSG( sts, 1, "nd$get_graph" ) ;
+
+		save_md_id = curEnv.md_id.objid ;
+		curEnv.md_id.objid = NULL_OBJID ;
+
+		sts = NDcopy_graph( &msg,
+				    0,
+				    surfCId+i,
+				    1,
+				    NULL,
+				    0,
+				    externId,
+				    nb_extern,
+				    ND_CON_TIP_LIST | ND_CON_EXT_GRAPH,
+				    &curEnv,
+				    &curEnv,
+				    &ND_graph,
+				    &copy_info ) ;
+
+		curEnv.md_id.objid = save_md_id ;
+
+		if( !( sts & 1 & msg ) ) {
+			printf( "Error in copy graph for root [%d,%d]\n", surfCId[i].osnum, surfCId[i].objid ) ;
+			continue ;
+		}
+
+		if( copy_info.nb_obj == 0 ) continue ;
+
+#ifdef DEBUG
+		for( j=0; j<copy_info.nb_obj; j=j+1 ) {
+			PR_CLS( "original",
+				curEnv.md_id.osnum,
+				copy_info.list[j].original ) ;
+			PR_CLS( "\t-> clone",
+				curEnv.md_id.osnum,
+				copy_info.list[j].clone    ) ;
+		}
+#endif
+		sts = nd$get_graph( nb_root = 1,
+				    p_root  = surfCId+i ) ;
+
+		if( !( sts & 1 ) ) {
+			printf( "Error in copy graph for root [%d,%d]\n", surfCId[i].osnum, surfCId[i].objid ) ;
+			goto NEXT ;
+		}
+
+		sts = nd$update_graph( cn_type	    = cn_type,
+				       md_env	    = &curEnv,
+				       root_compute = ND_DONT_UPT_ROOT ) ;
+
+		if( !( sts & 1 ) ) {
+			printf( "Error in copy graph for root [%d,%d]\n", surfCId[i].osnum, surfCId[i].objid ) ;
+			show_failed_elements() ;
+		}
+
+		NEXT :
+		free( copy_info.list ) ;
+		copy_info.list	 = NULL ;
+		copy_info.nb_obj = 0 ;
+	}
+
+	if( nb_surf ) {
+		free( surfCId ) ;
+		surfCId = NULL ;
+		nb_surf = 0 ;
+	}
+
+	if( nb_extern ) {
+		free( externId ) ;
+		externId  = NULL ;
+		nb_extern = 0 ;
+	}
+	}
+}
+/*----------------------------------------------------------------------------*/

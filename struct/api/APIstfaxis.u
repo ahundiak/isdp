@@ -1,0 +1,183 @@
+/***************************************************************************
+ * I/STRUCT
+ *
+ * File:	api/APIstfaxis.u
+ *
+ * Description:
+ * 
+ * This ppl modify a stiffener axis using the API vs$modify_stiffener_axis().
+ *
+ * Dependencies:
+ *
+ * History:
+ *	MM/DD/YY	AUTHOR		DESCRIPTION
+ *			i-paris		creation date
+ *
+ ***************************************************************************/
+
+#include "OMminimum.h"
+#include "cieveryone.h"
+#include "cievent.h"
+#include "cilocate.h"
+#include "cisend.h"
+#include "vsAPImacros.h"
+
+extern void printf() ;
+
+/*----------------------------------------------------------------------------*/
+wakeup() { message( "API: Modify Stiffener Axis" ) ; }
+/*----------------------------------------------------------------------------*/
+main() {
+	long		 sts,
+			 msg ;
+	int		 response,
+			 have_input[4],
+			 rmLimiting ;
+	char		 strYN[128] ;
+	struct GRid	 inputId[4],
+			 axisId ;
+	struct GRmd_env  inputEnv[4],
+			 axisEnv ;
+	struct GRid	 *plateId,
+			 *directionId,
+			 *startSurfId,
+			 *endSurfId ;
+	struct GRmd_env	 *plateEnv,
+			 *directionEnv,
+			 *startSurfEnv,
+			 *endSurfEnv ;
+
+	while( TRUE ) {
+	ci$locate(
+		prompt		= "Identify stiffener axis to modify",
+		classes 	= "VSbeamAxis",
+		properties	= LC_LC_ONLY | LC_DP_ONLY | LC_RW,
+		owner_action	= LC_RIGID_COMP  |
+				  LC_RIGID_OWNER | LC_FLEX_COMP |
+				  LC_FLEX_OWNER  | LC_REF_OBJECTS,
+		obj		= &axisId.objid,
+		osnum		= &axisId.osnum,
+		md_env		= &axisEnv ) ;
+
+	ci$locate(
+		prompt		= "Identify new plate support / Move-on for none",
+		classes 	= "VSplate",
+		properties	= LC_LC_ONLY | LC_DP_ONLY | LC_RW,
+		owner_action	= LC_RIGID_COMP  |
+				  LC_RIGID_OWNER | LC_FLEX_COMP |
+				  LC_FLEX_OWNER  | LC_REF_OBJECTS,
+		obj		= &inputId[0].objid,
+		osnum		= &inputId[0].osnum,
+		md_env		= &inputEnv[0],
+		response	= &response ) ;
+
+	if( response == EX_RJT_MOVEON ) have_input[0] = FALSE ;
+	else have_input[0] = TRUE ;
+
+ 	ci$locate(
+		prompt		= "Identify new surface/curve for axis direction / Move-on for none",
+		classes 	= "EMSsubbs",
+		properties	= LC_LC_ONLY | LC_DP_ONLY | LC_RW,
+		owner_action	= LC_RIGID_COMP  |
+				  LC_RIGID_OWNER | LC_FLEX_COMP |
+				  LC_FLEX_OWNER  | LC_REF_OBJECTS,
+		obj		= &inputId[1].objid,
+		osnum		= &inputId[1].osnum,
+		md_env		= &inputEnv[1],
+		response	= &response ) ;
+
+	if( response == EX_RJT_MOVEON ) have_input[1] = FALSE ;
+	else have_input[1] = TRUE ;
+
+	ci$locate(
+		prompt		= "Identify new start surface limit / Move-on for none",
+		classes 	= "EMSsubbs",
+		properties	= LC_LC_ONLY | LC_DP_ONLY | LC_RW,
+		owner_action	= LC_RIGID_COMP  |
+				  LC_RIGID_OWNER | LC_FLEX_COMP |
+				  LC_FLEX_OWNER  | LC_REF_OBJECTS,
+		obj		= &inputId[2].objid,
+		osnum		= &inputId[2].osnum,
+		md_env		= &inputEnv[2],
+		response	= &response ) ;
+
+	if( response == EX_RJT_MOVEON ) {
+		ci$get( prompt = "Do you want to remove existing limiting surfaces if any [y/n] ?",
+			string = strYN ) ;
+
+		if( strYN[0] == 'y' || strYN[0] == 'Y' ) {
+			rmLimiting = TRUE ;
+			have_input[2] = TRUE ;
+			inputId[2].objid = NULL_OBJID ;
+			have_input[3] = TRUE ;
+			inputId[3].objid = NULL_OBJID ;
+		} else {
+			rmLimiting = FALSE ;
+			have_input[2] = FALSE ;
+		}
+	} else have_input[2] = TRUE ;
+
+	if( !rmLimiting ) {
+		ci$locate(
+		prompt		= "Identify new end surface limit / Move-on for none",
+		classes 	= "EMSsubbs",
+		properties	= LC_LC_ONLY | LC_DP_ONLY | LC_RW,
+		owner_action	= LC_RIGID_COMP  |
+				  LC_RIGID_OWNER | LC_FLEX_COMP |
+				  LC_FLEX_OWNER  | LC_REF_OBJECTS,
+		obj		= &inputId[3].objid,
+		osnum		= &inputId[3].osnum,
+		md_env		= &inputEnv[3],
+		response	= &response ) ;
+
+		if( response == EX_RJT_MOVEON ) have_input[3] = FALSE ;
+		else have_input[3] = TRUE ;
+	}
+
+ 	plateId		= NULL ;
+ 	plateEnv	= NULL ;
+ 	directionId	= NULL ;
+ 	directionEnv	= NULL ;
+ 	startSurfId	= NULL ;
+ 	startSurfEnv	= NULL ;
+ 	endSurfId	= NULL ;
+ 	endSurfEnv	= NULL ;
+
+	if( have_input[0] ) {
+		plateId = &inputId[0] ;
+		plateEnv = &inputEnv[0] ;
+	}
+
+	if( have_input[1] ) {
+		directionId = &inputId[1] ;
+		directionEnv = &inputEnv[1] ;
+	}
+
+	if( have_input[2] ) {
+		startSurfId = &inputId[2] ;
+		startSurfEnv = &inputEnv[2] ;
+	}
+
+	if( have_input[3] ) {
+		endSurfId = &inputId[3] ;
+		endSurfEnv = &inputEnv[3] ;
+	}
+
+	sts = vs$modify_stiffener_axis( msg		= &msg,
+			         	axisId		= &axisId,
+			         	plateId		= plateId,
+			         	plateEnv	= plateEnv,
+			         	directionId	= directionId,
+			         	directionEnv	= directionEnv,
+			         	startSurfId	= startSurfId,
+			         	startSurfEnv	= startSurfEnv,
+			         	endSurfId	= endSurfId,
+			         	endSurfEnv	= endSurfEnv,
+			         	topOfPlate 	= NULL ) ;
+
+	if( !( sts & 1 & msg ) ) {
+		printf( "Error in modification of stiffener axis\n" ) ;
+	}
+	}
+}
+/*----------------------------------------------------------------------------*/

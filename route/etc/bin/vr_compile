@@ -1,0 +1,124 @@
+#!/bin/ksh
+# $Id: vr_compile,v 1.7 2002/05/03 21:58:55 ylong Exp $
+# -------------------------------------------------------------------
+# I/ROUTE
+#
+# File:	route/etc/bin/vd_compile
+#
+# Description:
+#	Compile Route files
+#
+# Dependencies:
+#
+# Revision History:
+#	$Log: vr_compile,v $
+#	Revision 1.7  2002/05/03 21:58:55  ylong
+#	*** empty log message ***
+#	
+#	Revision 1.6  2002/05/03 21:33:36  ylong
+#	*** empty log message ***
+#	
+#	Revision 1.5  2002/04/30 18:25:46  anand
+#	#!Shebang line has to be the first line in a script#!
+#	
+#	Revision 1.4  2001/01/24 23:45:55  anand
+#	Added check for existence of a makefile in a directory,
+#	so that the build would not attempt to make directories
+#	without one (such as vrinclude and vcinclude).
+#	
+#	Revision 1.3  2001/01/23 17:29:23  anand
+#	Added -k option to grmake to enable it to continue despite errors.
+#	
+#	Revision 1.2  2001/01/19 20:28:28  anand
+#	Modified script to use the newly created makefile in every source
+#	directory of I/Route.
+#	
+#	Revision 1.1.1.1  2001/01/04 21:12:07  cvs
+#	Initial import to CVS
+#	
+# Revision 1.2  1995/12/08  21:25:46  pinnacle
+# Replaced: etc/bin/vr_compile for:  by r240_int for route240
+#
+# Revision 1.1  1995/12/03  21:07:02  pinnacle
+# Created: etc/bin/vr_compile by r240_int for route240
+#
+#
+# History:
+#	12/03/95	tlb		created based on vrrebuild
+#	12/05/95	tlb		Add case for updating makefile
+#					Adapt to use vrmake
+#	01/19/01	Anand		Replaced call to vrmake script
+#					with grmake (since I/Route now
+#					has a makefile in every directory).
+# -------------------------------------------------------------------
+function cleanup {
+        /bin/rm /tmp/VR* > /dev/null 2>&1 ;
+        return 0
+}
+# -------------------------------------------------------------------
+function Error {
+	/usr/bin/tput bel
+	echo $1
+        echo "\t\tError $1" >> ${LOGFILE} 2>$1
+}
+
+# -------------------------------------------------------------------
+trap "cleanup ; tput smso ; echo '- INTERRUPT -' ; tput rmso ; exit 2" 2 3
+
+cd ${ROUTE}
+RC=0
+MAKE="${GRNUC}/bin/grmake -k"
+ERROR=""
+
+sequence="vr* vc*"
+for dir in `find $sequence -type d -print | uniq`
+do
+	if [ -f ${ROUTE}/${dir}/[mM]akefile ] ; then
+
+		echo "\n"
+		echo "------------------------------------------------------"
+ 		echo "----------------: ${dir}"
+		echo "------------------------------------------------------"
+
+		TMP=/tmp/VR${RANDOM}
+
+	    cd ${ROUTE}/$dir
+	    if $MAKE | /bin/tee ${TMP} ; then
+
+	      if /bin/grep "Cannot find file" ${TMP} /dev/null ; then
+		ERROR=${ERROR}" \t--> Makemake failed in ${dir}\n"
+
+	      elif /bin/grep "cannot execute" ${TMP} > /dev/null ; then
+		ERROR=${ERROR}" \t--> Make failed in ${dir}\n"
+
+	      elif /bin/grep "Cannot load" ${TMP} > /dev/null ; then
+		ERROR=${ERROR}" \t--> Make failed in ${dir}\n"
+
+	      elif /bin/grep "*** Error code" ${TMP} > /dev/null ; then
+		ERROR=${ERROR}" \t--> Make failed in ${dir}\n"
+
+	      elif /bin/grep "Don't know how to make" ${TMP} > /dev/null ; then
+		ERROR=${ERROR}" \t--> Make problem in ${dir}\n"
+
+	      elif /bin/grep "Don't know how to make target" ${TMP} > /dev/null ; then
+		ERROR=${ERROR}" \t--> Make problem in ${dir}\n"
+
+	      elif /bin/grep "because of errors" ${TMP} > /dev/null ; then
+		ERROR=${ERROR}" \t--> Make problem in ${dir}\n"
+	      fi
+	    else
+		ERROR=${ERROR}" \t--> Make failed in ${dir}\n"
+	    fi
+
+	    cleanup
+	  fi
+done
+
+if [ "blob${ERROR}" != "blob" ] ; then
+	/bin/echo "\n${ERROR}"
+	/usr/bin/tput bel
+	trap 2 3
+	RC=1
+fi
+
+exit $RC

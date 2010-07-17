@@ -1,0 +1,124 @@
+/* $Id: DelTagMan.u,v 1.2 2001/02/20 01:10:57 build Exp $  */
+
+/***************************************************************************
+ * I/ROUTE
+ *
+ * File:        vcppl/DelTagMan.u
+ *
+ * Description:
+ *	This file written basically to remove the Tag Manager object. Why we
+ *	need to remove is to have a proper Management of the Tag Numbers.
+ *	In the older versions the Tag Numbers were stored in a 13 characters
+ *	array. Whereas the Tag Numbers can be of length upto 20 characters.
+ *	
+ *	In order to reset the information in the Old Files are files created
+ *	using the older versions of the product, we need to run this PPL, to
+ *	destroy the Tag Manager object. And the new Tag Manager is created
+ *      gathering all the informations present in the current design file.
+ *	
+ * Dependencies:
+ *
+ * Revision History:
+ *      $Log: DelTagMan.u,v $
+ *      Revision 1.2  2001/02/20 01:10:57  build
+ *      Replaced v_dbgmacros.h with product specific dbgmacros.h
+ *
+ *      Revision 1.1.1.1  2001/01/04 21:12:35  cvs
+ *      Initial import to CVS
+ *
+# Revision 1.2  1998/07/22  08:19:16  pinnacle
+# Replaced: vcppl/DelTagMan.u for:  by apazhani for route
+#
+# Revision 1.1  1998/04/30  10:52:34  pinnacle
+# ROUTE 2.5.1
+#
+# Revision 1.1  1998/02/19  05:57:50  pinnacle
+# initial revision
+#
+ *
+ * History:
+ *      MM/DD/YY        AUTHOR          DESCRIPTION
+ *      02/11/98	Alwin		Creation 
+ *      16/07/98        Alwin           Construct the New Tag Manager if not
+ *                                      found.
+ *
+ ***************************************************************************/
+
+#include "exproto.h"
+#include "exmacros.h"
+#include "ciminimum.h"
+#include "cieveryone.h"
+#include "cisymb.h"
+#include "cisend.h"
+#include "msdef.h"
+#include "msmacros.h"
+#include "vrdbgmacros.h"
+
+#include "stdio.h"
+
+extern int VC_TAGobj ();
+
+main(argc, argv)
+int argc;
+char **argv;
+{
+   IGRint		Status, lRet; 
+   struct GRid		TagId, ModId;
+
+   /****
+   Status = VC_TAGobj (&lRet, &TagId );
+   ****/
+
+   Status = ex$get_cur_mod (osnum = &ModId.osnum, id = &ModId.objid);
+    
+   TagId.osnum    = ModId.osnum;
+   TagId.objid    = NULL_OBJID;
+    
+   Status = ex$get_super (mod_id           = ModId.objid,
+			   mod_osnum       = ModId.osnum,
+			   super_name      = "TagManager",
+			   create          = FALSE,
+			   wakeup_flag     = FALSE,
+			   super_class     = "VCTagMgr",
+			   super_id        = &TagId.objid,
+			   super_osnum     = &TagId.osnum );
+    
+   __DBGpr_obj( " Tag Manager Object Id ", TagId );
+
+   if (!(Status&1) || TagId.objid == NULL_OBJID)  
+   {
+      printf( "\n Tag Manager not Found \n" );
+      goto construct;
+   }
+
+   Status =
+   ci$send(msg      = message ACmodel_mgr.delete(0),
+	   targetid = TagId.objid,
+	   targetos = TagId.osnum );
+
+   if( Status & 1 )
+   {
+     __DBGpr_com( " Deleted the Tag Manager " );	
+     UI_status( " Deleted the Tag Manager " );
+     TagId.objid = NULL_OBJID;
+   }
+
+construct:
+ 
+   /* Construct the New Tag Manager object. Alwin */
+   UI_status( " Constructing New Tag Manager... " );
+ 
+   __DBGpr_com( " Constructing the New Tag Manager object " );
+ 
+   /* This function will create the Tag Manager object if its not created
+   earlier and populate the Manager with all the existing Cable tags found
+   in the design file. Alwin */
+ 
+   Status = VC_TAGobj( &lRet, &TagId );
+ 
+   __DBGpr_obj( " New Tag Manager Id ", TagId );
+   UI_status( " " );
+
+} /* end main */
+
+/**********************************************************/

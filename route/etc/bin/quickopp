@@ -1,0 +1,123 @@
+#	I/ROUTE
+#	Chain-opping of a directory
+#	Usage: bigopp <.S and .I files>
+#
+opp=${EXNUC}/bin/opp
+
+OPPFLAGS="\
+	-I$EXNUC/include \
+	-I$GRNUC/include \
+	-I$PDU/include \
+	-I$MODEL/include \
+	-I$EMS/include \
+	-I$BS/include \
+	-I$EXNUC/om/spec \
+	-I$EXNUC/exec/spec \
+	-I$EXNUC/fi/spec \
+	-I$GRNUC/spec \
+	-I$GRNUC/assoc/spec \
+	-I$GRNUC/go/spec \
+	-I$MODEL/spec \
+	-I$EMS/spec \
+	-I$PDU/spec \
+	-I$STRUCT/spec"
+
+IPATH="\
+	-I$EXNUC/include \
+	-I$GRNUC/include \
+	-I$PDU/include \
+	-I$MODEL/include \
+	-I$EMS/include \
+	-I$BS/include \
+	-I$ROUTE/vrinclude \
+	-I$ROUTE/include"
+CC=cc
+OPPOPT=
+COPT="-ga -O"
+RC=0
+
+function _opp {
+	integer u
+	integer m
+	integer	count
+
+	SOURCE=
+	for f in $* ; do
+		if [ -r ${f} ] ; then
+			SOURCE="${SOURCE} ${f}"
+		else
+			echo "${f} not found"
+		fi
+	done
+	echo "***" Big OPP of :"\n"${SOURCE}"\n"
+
+	let count=0
+	for f in ${SOURCE} ; do
+		toOpp[${count}]=${f}
+		if [ blob${f%.I} = blob${f} ] ; then
+			# .S file
+			toCC[${count}]=${f%.S}.c
+		else	# .I file
+			toCC[${count}]=${f%.I}.c
+		fi
+		let count=count+1
+	done
+
+	# Opp everybody
+	oppList=""
+	ccList=""
+	k=0
+	while [ ${k} -lt ${count} ] ; do
+		oppList="${oppList} ${toOpp[${j}+${k}]}"
+		ccList="${ccList} ${toCC[${j}+${k}]}"
+		let k=k+1
+	done
+
+	echo ${opp} ${OPPOPT} ${OPPFLAGS} ${oppList}
+	if ${opp} ${OPPOPT} ${OPPFLAGS} ${oppList} ; then
+		:
+	else
+		RC=1
+	fi
+		
+	echo ${CC} -c ${COPT} ${DOPT} ${IPATH} ${ccList}
+	if ${CC} -c ${COPT} ${DOPT} ${IPATH} ${ccList} ; then
+		:
+	else
+		RC=1
+	fi
+
+	echo
+	let u=0
+	let m=0
+	for U in ${ccList} ; do
+		echo "\tremoving ${U}"
+		if /bin/rm ${U} ; then
+			:
+		else
+			case ${m} in
+				0)	let m=100000;;
+				100000) let m=1
+					missed=${toOpp[${u}]};;
+				*)	let m=m+1
+					missed="${missed} ${toOpp[${u}]}";;
+			esac
+		fi
+		let u=u+1
+	done
+}
+
+# Beware of one argument being a like "*.[IS]" with no .Is or .Ss
+if [ $# -eq 1 ] && [ ! -r $1 ] ; then
+	echo "$1 not found"
+	exit 0
+fi
+_opp $*
+if [ "blob${missed}" != blob ] ; then
+
+		/usr/bin/tput bel
+		echo "\nFiles not processed: ${missed}"
+		_opp ${missed}
+fi	
+
+exit $RC

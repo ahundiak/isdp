@@ -1,0 +1,332 @@
+/* $Id: VSstfEndInfo.u,v 1.1.1.1 2001/01/04 21:09:33 cvs Exp $  */
+
+/***************************************************************************
+ * I/STRUCT
+ *
+ * File:	api/StfEndInfo.u
+ *
+ * Description:
+ *	The file has the function go get the Structural Selector or nci_macro
+ *		information from the end_treatments macros. Output data
+ *		can be embedded inside the endcut macros on beams.
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ *	$Log: VSstfEndInfo.u,v $
+ *	Revision 1.1.1.1  2001/01/04 21:09:33  cvs
+ *	Initial import to CVS
+ *	
+# Revision 1.2  1998/05/11  19:30:34  pinnacle
+# TR179603965
+#
+# Revision 1.1  1998/04/30  10:08:06  pinnacle
+# STRUCT 2.5.1
+#
+# Revision 1.3  1998/04/17  18:38:06  pinnacle
+# Replaced: pplcmd/VSstfEndInfo.u for:  by s250_int for struct
+#
+# Revision 1.2  1998/03/29  18:05:00  pinnacle
+# ah
+#
+# Revision 1.1  1998/03/26  21:19:54  pinnacle
+# Created: pplcmd/VSstfEndInfo.u by azuurhou for struct
+#
+ *
+ * History:
+ * MM/DD/YY  AUTHOR  DESCRIPTION
+ * 03/26/98  adz     Creation
+ * 05/11/98  ah      TR179603965 Core dumps on endtreatmentinfo
+ *
+ ***************************************************************************/
+
+#include "VDppl.h"
+
+#include "v_slcdef.h"
+#include "v_pplslc.h"
+
+extern OMuword OPP_nci_macro_class_id ;
+extern OMuword OPP_VSselector_class_id ;
+
+/*----------------------------------------------------------------------------*/
+/* 
+ * Used External routines inside this module.
+ */
+extern	int	VD_drwGetACcpxInfo();
+extern	int	VD_is_ancestry_valid();
+extern	int	VD_getComponents();
+
+extern free();
+
+/* ---------------------------------------------------------------
+ * These two variables will be set with the object being processed
+ */
+TGRid     OBJECT_ID;
+TGRmd_env OBJECT_ENV;
+
+/* ---------------------------------------------------------------
+ * Object data is the argument portion of the smart attribute
+ * That is 'xxx' in the example above
+ */
+IGRchar   OBJECT_DATA[128];
+
+/* ---------------------------------------------------------------
+ * This is the return structure where the ppl stores it's results
+ * It is cleared before the ppl is called
+ * you will generally return either a string or double
+ * though other data types are supported
+ *
+ * OBJECT_RS.type = text_type;
+ * OBJECT_RS.var.text_st.text_string
+ *
+ * OBJECT_RS.type = double_type;
+ * OBJECT_RS.var.root_pm_st.value
+ * 
+ */
+Tret_struct OBJECT_RS;
+
+/*----------------------------------------------------------------------------*/
+/* 
+ * Standard input names for End Treatment information.
+ */
+
+#define	ET_MACRO_NAME	"et_type"
+#define	ET_FEET_NAME	"id"
+
+/*----------------------------------------------------------------------------*/
+/* I don't think that the drawing extraction ppl routines are working
+ * quite right.  The global argument passing may have some memory problems.
+ * Change this to use the smart attribute format and see if that helps
+ */
+main()
+{
+IGRlong			msg, sts, i, j ;
+int			Index, cmpCount, slcCount;
+GRname			macName ;
+struct	GRid		*cmpList, *slcList;
+struct	ret_struct	retStr ;
+GRname			EndTrName ;
+
+
+	sts		= TRUE ;
+	cmpCount	= 0 ;
+	slcCount	= 0 ;
+	cmpList		= NULL ;
+	slcList		= NULL ;
+	Index		= -1 ;
+	EndTrName[0]	= '\0' ;
+
+	if( OBJECT_ID.objid == NULL_OBJID ) goto wrapup ;
+
+	sts =
+	VD_getComponents( &msg, &OBJECT_ID, &OBJECT_ENV, &cmpCount, &cmpList );
+
+	if( ! cmpCount )	goto wrapup ;
+
+	for( i=0 ; i<cmpCount ; i=i+1 ){
+
+	 if( VD_is_ancestry_valid( &cmpList[i], OPP_VSselector_class_id ) ){
+
+	  /*
+	   * get the information from the object and return.
+	   */
+	  slcCount = 0 ;
+	  VD_getComponents( &msg, &cmpList[i], &OBJECT_ENV,
+				  &slcCount,   &slcList );
+	  if( !slcCount ) goto wrapup ;
+
+	  for( j=0 ; j<slcCount ; j=j+1 ){
+
+	    sts =
+	    ci$send(	msg	= message NDnode.NDgive_structure(
+						msg, &retStr, NULL ),
+            		targetid = slcList[j].objid,
+            		targetos = slcList[j].osnum );
+	    if( !(sts&msg&1)) continue; 
+
+	    strcat( EndTrName, retStr.var.text_st.text_string );
+	  }
+
+	  break ; /* assumption that there is only one occurence */
+
+         } /* if VSselector object */
+
+	 if( VD_is_ancestry_valid( &cmpList[i], OPP_nci_macro_class_id ) ){
+
+	  /*
+	   * Check the name of the macro is et_type.
+	   */
+	  macName[0] = '\0' ;
+
+	  if( VD_drwGetACcpxInfo( &cmpList[i], macName, 1 )) {
+
+	    if( strcmp ( macName, ET_MACRO_NAME ) == 0 ){
+
+                sts =
+		ci$send(msg = message NDmacro.ACgive_structure(
+                                                   &msg,
+                                                   &Index,
+                                                   ET_FEET_NAME,
+                                                   &retStr,
+                                                   NULL ),
+			targetid = cmpList[i].objid,
+			targetos = cmpList[i].osnum );
+
+		if( !(sts&msg&1)) continue; 
+
+	        strcat( EndTrName , retStr.var.text_st.text_string );
+
+		break ;
+
+	    } /* if object is an ET_MACRO_NAME */
+	  }  /* Found Macro Name */
+	 } /* if object is an nci_macro */
+	} 
+
+	if( EndTrName [0] == '\0' ){
+		sts = FALSE ;
+		goto wrapup ;
+	}
+
+        /*
+         * Set the number of output arguments.
+         */
+        vd$ppl_set_size(  which_info = OUTPUT_INFO,
+                          size       = 1                );
+
+        /*
+         * Set the value of the first output argument.
+         */
+        vd$ppl_setarg_at_index( which_info = OUTPUT_INFO,
+                                index      = 0,
+                                type       = VD_string,
+                                value      = EndTrName   );
+
+	sts = TRUE ;
+
+wrapup :
+	if( !( sts & 1 )){
+
+		vd$ppl_set_size( which_info = OUTPUT_INFO,
+                          	 size       = 0 );
+	}
+
+	if( cmpList )	free( cmpList );
+	if( slcList )	free( slcList );
+
+	return sts ;
+}
+
+
+/* ---------------------------------------------------
+ * Smart sttribute format
+ */
+int GetEndInfo()
+{
+IGRlong			msg, sts, i, j ;
+int			Index, cmpCount, slcCount;
+GRname			macName ;
+struct	GRid		*cmpList, *slcList;
+Tret_struct             retStr;
+GRname			EndTrName ;
+
+
+  sts		= TRUE ;
+  cmpCount	= 0 ;
+  slcCount	= 0 ;
+  cmpList	= NULL ;
+  slcList	= NULL ;
+  Index		= -1 ;
+  EndTrName[0]	= '\0' ;
+
+  OBJECT_RS.type = text_type;
+  strcpy(OBJECT_RS.var.text_st.text_string,"");
+
+  if( OBJECT_ID.objid == NULL_OBJID ) goto wrapup ;
+
+  sts = VD_getComponents( &msg, &OBJECT_ID, &OBJECT_ENV, &cmpCount, &cmpList );
+
+  if( ! cmpCount )	goto wrapup ;
+
+  for( i=0 ; i<cmpCount ; i=i+1 ){
+
+    if( VD_is_ancestry_valid( &cmpList[i], OPP_VSselector_class_id ) ){
+
+      /*
+       * get the information from the object and return.
+       */
+      slcCount = 0 ;
+      if (slcList != NULL) {
+	free(slcList);
+	slcList = NULL;
+      }
+      
+      VD_getComponents( &msg, &cmpList[i], &OBJECT_ENV,
+			&slcCount,   &slcList );
+      if( !slcCount ) goto wrapup ;
+
+      for( j=0 ; j<slcCount ; j=j+1 ){
+
+	sts = ci$send(msg = message 
+		      NDnode.NDgive_structure(msg, &retStr, NULL ),
+		      targetid = slcList[j].objid,
+		      targetos = slcList[j].osnum );
+	if( !(sts&msg&1)) continue; 
+
+	strcat( EndTrName, retStr.var.text_st.text_string );
+      }
+
+      break ; /* assumption that there is only one occurence */
+
+    } /* if VSselector object */
+
+    if( VD_is_ancestry_valid( &cmpList[i], OPP_nci_macro_class_id ) ){
+
+      /*
+       * Check the name of the macro is et_type.
+       */
+      macName[0] = '\0' ;
+
+      if( VD_drwGetACcpxInfo( &cmpList[i], macName, 1 )) {
+
+	if( strcmp ( macName, ET_MACRO_NAME ) == 0 ){
+
+	  sts = ci$send(msg = message 
+			NDmacro.ACgive_structure(
+						 &msg,
+						 &Index,
+						 ET_FEET_NAME,
+						 &retStr,
+						 NULL ),
+			targetid = cmpList[i].objid,
+			targetos = cmpList[i].osnum );
+
+	  if( !(sts&msg&1)) continue; 
+
+	  strcat( EndTrName , retStr.var.text_st.text_string );
+
+	  break ;
+
+	} /* if object is an ET_MACRO_NAME */
+      }  /* Found Macro Name */
+    } /* if object is an nci_macro */
+  } 
+
+  if( EndTrName [0] == '\0' ){
+    sts = FALSE ;
+    goto wrapup ;
+  }
+  strcpy(OBJECT_RS.var.text_st.text_string,EndTrName);
+
+  sts = TRUE ;
+
+wrapup :
+  if( !( sts & 1 )){
+  }
+
+  if( cmpList )	free( cmpList );
+  if( slcList )	free( slcList );
+
+  return sts ;
+}
+

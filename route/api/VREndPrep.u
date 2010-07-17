@@ -1,0 +1,1128 @@
+/* $Id: VREndPrep.u,v 1.2 2001/05/21 20:40:18 anand Exp $ */
+
+/***************************************************************************
+ * I/ROUTE
+ *
+ * File:	api/VREndPrep.u
+ *
+ * Description:
+ * 	This PPL contains the compatibility matrix between various end
+ * 	preparations i.e., given two end preparations, 'decide' whether they
+ * 	are compatible or not.
+ *
+ * 	The user, provided he/she knows what he/she is doing, is free to edit
+ * 	this file to alter the behavior of the product. If the file is altered,
+ * 	in order for the changes to take effect, the file should be compiled as
+ * 	a PPL, and the resulting .e file should be located in an appropriate
+ * 	ppl/bin directory. The resulting .e file in this location would
+ * 	override the software's behavior for deciding End Preparation
+ * 	compatibility.
+ *
+ * 	Intergraph's ISDP customer support personnel should be contacted for
+ * 	further information.
+ *
+ * Dependencies:
+ *
+ * History:
+ *
+ * $Log: VREndPrep.u,v $
+ * Revision 1.2  2001/05/21 20:40:18  anand
+ * Added documentation.
+ *
+ * Revision 1.1  2001/05/18 16:50:21  anand
+ * *** empty log message ***
+ *
+ *
+ *	MM/DD/YY	AUTHOR		DESCRIPTION
+ *	05/18/01	Anand		Creation 
+ *
+ ***************************************************************************/
+
+#include "VDppl.h"
+
+IGRint		end_treat1;
+IGRint		end_treat2;
+IGRboolean 	bCmptble;
+
+/***********************************************************************
+ *
+ * The following is reproduced from the document "Piping End Prep
+ * Compatibility". It was originally the Appendix A of a bigger document
+ * prepared by Michael A. Brown sometime in 1994.
+ *
+
+			  END TREATMENT COMPATIBILITY
+
+	Each end treatment (prep_g, prep_r, etc.) is coded to match
+	with a limited number of other end treatments.  When the
+	allowable matches for a given end prep are not found in the
+	system's search, the result will be some type of connector
+	between the two components.
+
+	E.g.:  End prep 301 will mate with end preps 301, 391,401, and
+	421 without requiring a mating flange.
+
+	Automatic flange selection is processed with a system lookup of
+	the end preps of the two components to be connected.  If a
+	flange (comp_code = FLANGE) exists with a matching end prep and
+	pressure rating is found in the database, the system will place
+	an auto mating flange.  Otherwise, manual placement of a
+	flange, with an end prep meeting the compatibility requirement,
+	will be required.  If neither requirement is met, the system
+	will place an auto default flange of its own.
+
+
+			      AVAILABLE END PREPS 
+
+	Codelist 331
+
+	Code			Description 
+	Number
+	1	Blank
+	11	Flat faced flange end (FFFE)
+	16	Flat faced flange end with integral gasket (FFFEWG)
+	21	Raised face flange end (RFFE)
+	26	Raised face flange end with integral gasket (FFFEWG)
+	31	RTJ faced flange end (RJFE)
+	301	Beveled end, or butt weld (BW)
+	331	Male threaded end (MTH)
+	371	Male hose end (MHE)
+	391	Plain end (PL)
+	401	Socket end or silver braze end (SE)
+	402	Socket welded termination type (SWTP)
+	421	Socket welded end (SWE)
+	441	Female threaded end (FTH)
+	521	Female hose end (FHE)
+
+
+		       END PREP MATCHES (COMPATIBILITY)
+
+	End Prep			Compatible with (Match)
+	11	(FFFE)			11, 16, 21, 26
+	16	(FFFEWG)		11, 16, 21, 26
+	21	(RFFE)			11, 16, 21, 26
+	26	(RFFEWG)		11, 16, 21, 26
+	31	(RJFE)			31
+	301	(BW)			301, 391, 401, 421, 441
+	331	(MTH)			301, 441
+	371	(MHE)			521
+	391	(PL)			301, 391, 401, 421, 441
+	401	(SE)			301, 391
+	402	(SWTP)
+	421	(SWE)			301, 391
+	441	(FTH)			331, 391
+	521	(FHE)			371
+ *
+ *
+ *		\     /					\     /
+ *                \ /                                     \ /
+ *              ---*---	      DISCLAIMER/WARNING:	---*---
+ *                / \                                     / \
+ *              /     \                                 /     \
+ *
+ *
+ * 	The below code may not necessarily correspond to the above
+ * 	documentation. The software could behave differently in some
+ *	situations. Some of the variable names may be different from the
+ *	abbreviations used for the end preparations listed above.
+ *
+ ***********************************************************************/
+
+VRChkEndPrepCmpblty()
+{
+    IGRint 	i;
+
+    IGRint FFFE[14]; 		/* (11) */
+    IGRint FFFEWG[14];		/* (16) */
+    IGRint RFFE[13];		/* (21) */
+    IGRint RFFEWG[12];		/* (26) */
+    IGRint RJFE[5];		/* (31) */
+    IGRint STFE[2];		/* (41) */
+    IGRint LTFE[2]; 		/* (42) */
+    IGRint SMFE[2];		/* (43) */
+    IGRint LMFE[2];		/* (44) */
+    IGRint SGFE[2];		/* (51) */
+    IGRint LGFE[2];		/* (52) */
+    IGRint SFFE[2];		/* (53) */
+    IGRint LFFE[2];		/* (54) */
+    IGRint FFLFE[10];		/* (61) */
+    IGRint RFLFE[11];		/* (71) */ 
+    IGRint RJLFE[4];		/* (81) */
+    IGRint STLFE[2];		/* (91) */
+    IGRint LTLFE[2];		/* (92) */
+    IGRint SMLFE[2];		/* (93) */
+    IGRint LMLFE[2];		/* (94) */
+    IGRint SGLFE[2];		/* (101) */
+    IGRint LGLFE[2];		/* (102) */
+    IGRint SFLFE[2];		/* (103) */
+    IGRint LFLFE[2];		/* (104) */
+    IGRint FFTBE[11];		/* (111) */ 
+    IGRint FFTBEWG[11];		/* (116) */ 
+    IGRint RFTBE[12];		/* (121) */
+    IGRint RFTBEWG[11];		/* (126) */ 
+    IGRint RJTBE[5];		/* (131) */
+    IGRint MRJTBEWG[3];		/* (146) */
+    IGRint FFTBCSE[3];		/* (151) */
+    IGRint FFTBCSEWG[3];	/* (156) */
+    IGRint RFTBCSE[3];		/* (161) */
+    IGRint RFTBCSEWG[3];	/* (166) */
+    IGRint RJTBCSE[2];		/* (171) */
+    IGRint FFFTBE[3];		/* (181) */
+    IGRint FFFTBEWG[3];		/* (186) */
+    IGRint MJE[1];		/* (191) */
+    IGRint BE[7];		/* (301) */
+    IGRint TBE[5];		/* (311) */
+    IGRint MFE[4];		/* (321) */ 
+    IGRint MTE[1];		/* (331) */
+    IGRint MGE[1];		/* (341) */
+    IGRint MQCE[1];		/* (351) */
+    IGRint MFRE[1];		/* (361) */
+    IGRint MHE[1];		/* (371) */
+    IGRint SPE[1];		/* (381) */
+    IGRint PE[8];		/* (391) */
+    IGRint FFPE3[1];		/* (393) */
+    IGRint FFPE6[1];		/* (395) */
+    IGRint SE[5];		/* (401) */
+    IGRint SBE[5];		/* (402) */
+    IGRint SWE[6];		/* (421) */
+    IGRint FTE[4];		/* (441) */ 
+    IGRint FGE[1];		/* (461) */
+    IGRint FQCE[1];		/* (481) */
+    IGRint FFRE[1];		/* (501) */
+    IGRint FHE[1];		/* (521) */ 
+    IGRint BLE[1];		/* (541) */ 
+    IGRint HCE[5];		/* (591) */
+
+    FFFE[0]  = 11;   FFFE[1]  = 16;   FFFE[2]  = 21;   FFFE[3]  = 26;
+    FFFE[4]  = 61;   FFFE[5]  = 71;   FFFE[6]  = 111;  FFFE[7]  = 116;
+    FFFE[8]  = 121;  FFFE[9]  = 126;  FFFE[10] = 151;  FFFE[11] = 156;
+    FFFE[12] = 181;  FFFE[13] = 186;
+
+    FFFEWG[0] = 11;   FFFEWG[1] = 16;   FFFEWG[2] = 21;   FFFEWG[3] = 26;
+    FFFEWG[4] = 61;   FFFEWG[5] = 71;   FFFEWG[6] = 111;   FFFEWG[7] = 116;
+    FFFEWG[8] = 121;   FFFEWG[9] = 126;   FFFEWG[10] = 151;   FFFEWG[11] = 156;
+    FFFEWG[12] = 181;   FFFEWG[13] = 186;
+
+
+    RFFE[0] = 11;   RFFE[1] = 16;   RFFE[2] = 21;   RFFE[3] = 26;
+    RFFE[4] = 61;   RFFE[5] = 71;   RFFE[6] = 111;   RFFE[7] = 116;
+    RFFE[8] = 121;   RFFE[9] = 126;   RFFE[10] = 161;   RFFE[11] = 166;
+    RFFE[12] = 321;   
+
+    RFFEWG[0] = 11;   RFFEWG[1] = 16;   RFFEWG[2] = 21;   RFFEWG[3] = 26;
+    RFFEWG[4] = 61;   RFFEWG[5] = 71;   RFFEWG[6] = 111;   RFFEWG[7] = 116;
+    RFFEWG[8] = 121;   RFFEWG[9] = 126;   RFFEWG[10] = 161;   RFFEWG[11] = 166;
+
+
+    RJFE[0] = 31;   RJFE[1] = 81;   RJFE[2] = 131;   RJFE[3] = 146;
+    RJFE[4] = 171;
+
+    STFE[0] = 51;   STFE[1] = 101;
+
+    LTFE[0] = 52;   LTFE[1] = 102;
+
+    SMFE[0] = 53;   SMFE[1] = 103;
+
+    LMFE[0] = 54;   LMFE[1] = 104;
+
+    SGFE[0] = 41;   SGFE[1] = 91;
+
+    LGFE[0] = 42;   LGFE[1] = 92;
+
+    SFFE[0] = 43;   SFFE[1] = 93;
+
+    LFFE[0] = 44;   LFFE[1] = 94;
+
+    FFLFE[0] = 11;   FFLFE[1] = 16;
+    FFLFE[2] = 21;   FFLFE[3] = 26;   FFLFE[4] = 61;   FFLFE[5] = 71;
+    FFLFE[6] = 111;   FFLFE[7] = 116;   FFLFE[8] = 121;   FFLFE[9] = 126;
+
+    RFLFE[0] = 11;   RFLFE[1] = 16;   RFLFE[2] = 21;   RFLFE[3] = 26;
+    RFLFE[4] = 61;   RFLFE[5] = 71;   RFLFE[6] = 111;   RFLFE[7] = 116;
+    RFLFE[8] = 121;   RFLFE[9] = 126;   RFLFE[10] = 321;
+
+    RJLFE[0] = 31;   RJLFE[1] = 81;   RJLFE[2] = 131;   RJLFE[3] = 146;
+
+    STLFE[0] = 51;   STLFE[1] = 101;
+
+    LTLFE[0] = 52;   LTLFE[1] = 102;
+
+    SMLFE[0] = 53;   SMLFE[1] = 103;
+
+    LMLFE[0] = 54;   LMLFE[1] = 104;
+
+    SGLFE[0] = 41;   SGLFE[1] = 91;
+
+    LGLFE[0] = 42;   LGLFE[1] = 92;
+
+    SFLFE[0] = 43;   SFLFE[1] = 93;
+
+    LFLFE[0] = 44;   LFLFE[1] = 94;
+
+    FFTBE[0] = 11;   FFTBE[1] = 16;   FFTBE[2] = 21;   FFTBE[3] = 26;
+    FFTBE[4] = 61;   FFTBE[5] = 71;   FFTBE[6] = 111;   FFTBE[7] = 116;
+    FFTBE[8] = 121;   FFTBE[9] = 126;   FFTBE[10] = 151;
+
+    FFTBEWG[0] = 11;   FFTBEWG[1] = 16;   FFTBEWG[2] = 21;   FFTBEWG[3] = 26;
+    FFTBEWG[4] = 61;   FFTBEWG[5] = 71;   FFTBEWG[6] = 111;   FFTBEWG[7] = 116;
+    FFTBEWG[8] = 121;   FFTBEWG[9] = 126;   FFTBEWG[10] = 156;
+
+    RFTBE[0] = 11;   RFTBE[1] = 16;   RFTBE[2] = 21;   RFTBE[3] = 26;
+    RFTBE[4] = 61;   RFTBE[5] = 71;   RFTBE[6] = 111;   RFTBE[7] = 116;
+    RFTBE[8] = 121;   RFTBE[9] = 126;   RFTBE[10] = 161;   RFTBE[11] = 321;
+
+    RFTBEWG[0] = 11;   RFTBEWG[1] = 16;   RFTBEWG[2] = 21;   RFTBEWG[3] = 26;
+    RFTBEWG[4] = 61;   RFTBEWG[5] = 71;   RFTBEWG[6] = 111;
+    RFTBEWG[7] = 116;   RFTBEWG[8] = 121;   RFTBEWG[9] = 126;
+    RFTBEWG[10] = 166;
+
+    RJTBE[0] = 31;   RJTBE[1] = 81;   RJTBE[2] = 131;   RJTBE[3] = 146;
+    RJTBE[4] = 171;
+
+    MRJTBEWG[0] = 31;   MRJTBEWG[1] = 81;   MRJTBEWG[2] = 131;
+
+    FFTBCSE[0] = 11;   FFTBCSE[1] = 16;   FFTBCSE[2] = 111;
+
+    FFTBCSEWG[0] = 11;   FFTBCSEWG[1] = 16;   FFTBCSEWG[2] = 116;
+
+    RFTBCSE[0] = 21;   RFTBCSE[1] = 26;   RFTBCSE[2] = 121;
+
+    RFTBCSEWG[0] = 21;   RFTBCSEWG[1] = 26;   RFTBCSEWG[2] = 126;
+
+    RJTBCSE[0] = 31;   RJTBCSE[1] = 131;
+
+    FFFTBE[0] = 11;   FFFTBE[1] = 16;   FFFTBE[2] = 181;
+
+    FFFTBEWG[0] = 11;   FFFTBEWG[1] = 16;   FFFTBEWG[2] = 186;
+
+    MJE[0] = 191;
+
+    BE[0] = 301;   BE[1] = 311;   BE[2] = 391;   BE[3] = 401;   BE[4] = 402;
+    BE[5] = 421;   BE[6] = 591;
+
+
+    TBE[0] = 301;   TBE[1] = 311;   TBE[2] = 391;   TBE[3] = 421;
+    TBE[4] = 591;
+
+    MFE[0] = 21;   MFE[1] = 71;   MFE[2] = 121;   MFE[3] = 321;
+
+    MTE[0] = 441;
+
+    MGE[0] = 461;
+
+    MQCE[0] = 481;
+
+    MFRE[0] = 501;
+
+    MHE[0] = 521;
+
+    SPE[0] = 541;
+
+    PE[0] = 391;   PE[1] = 301;   PE[2] = 311;   PE[3] = 401;   PE[4] = 402;
+    PE[5] = 421;   PE[6] = 441;   PE[7] = 591;
+
+    FFPE3[0] = 591;
+
+    FFPE6[0] = 591;
+
+    SE[0] = 301;   SE[1] = 391; SE[2] = 401; SE[3] = 402; SE[4] = 421;
+
+    SBE[0] = 301;   SBE[1] = 391; SBE[2] = 401; SBE[3] = 402; SBE[4] = 421;
+
+    SWE[0] = 301;   SWE[1] = 311; SWE[2] = 391; SWE[3] = 401; SWE[4] = 402;
+    SWE[5] = 421;
+
+    FTE[0] = 331;   FTE[1] = 391; FTE[2] = 301;	FTE[3] = 441;
+
+    FGE[0] = 341;
+
+    FQCE[0] = 351;
+
+    FFRE[0] = 361;
+
+    FHE[0] = 371;
+
+    BLE[0] = 381;
+
+    HCE[0] = 301;   HCE[1] = 311;   HCE[2] = 391;   HCE[3] = 393;
+    HCE[4] = 395;
+
+    /* ------------------------- search ------------------- */
+
+    if( end_treat1 == 11 ) 
+    {
+	for( i=0; i<14; i=i+1 )
+	{
+	    if( end_treat2 == FFFE[i] )
+	    {
+		bCmptble = TRUE; /* End Preps match*/
+		return 1;
+	    }
+	}
+	bCmptble = FALSE; /* End Preps do not match*/
+	return 1;
+    }
+
+    if( end_treat1 == 16 ) 
+    {
+	for (i=0;i<14;i=i+1)
+	{
+	    if (end_treat2 == FFFEWG[i])
+	    {
+		bCmptble = TRUE; /* End Preps match*/
+		return 1;
+	    }
+	}
+	bCmptble = FALSE; /* End Preps do not match*/
+	return 1;
+    }
+
+    if (end_treat1 == 21) 
+    {   
+	for (i=0;i<13;i=i+1)
+	{  
+	    if (end_treat2 == RFFE[i])
+	    {
+		bCmptble = TRUE; /* End Preps match*/
+		return 1;
+	    }
+	}
+	bCmptble = FALSE; /* End Preps do not match*/
+	return 1;
+    }
+
+
+    if (end_treat1 == 26) 
+    {   
+	for (i=0;i<12;i=i+1)
+	{
+	    if (end_treat2 ==  RFFEWG[i])
+	    {
+		bCmptble = TRUE; /* End Preps match*/
+		return 1;
+	    }
+	}
+	bCmptble = FALSE; /* End Preps do not match*/
+	return 1;
+    }
+
+
+    if (end_treat1 == 31) 
+    { 
+	for (i=0;i<5;i=i+1)
+	{
+	    if (end_treat2 ==  RJFE[i])
+	    {
+		bCmptble = TRUE; /* End Preps match*/
+		return 1;
+	    }
+	}
+	bCmptble = FALSE; /* End Preps do not match*/
+	return 1;
+    }
+
+    if (end_treat1 == 41) 
+    { 
+	for (i=0;i<2;i=i+1)
+	{
+	    if (end_treat2 ==  STFE[i])
+	    {
+		bCmptble = TRUE; /* End Preps match*/
+		return 1;
+	    }
+	}
+	bCmptble = FALSE; /* End Preps do not match*/
+	return 1;
+    }
+
+    if (end_treat1 == 42) 
+    {
+	for (i=0;i<2;i=i+1)
+	{
+	    if (end_treat2 ==  LTFE[i])
+	    {
+		bCmptble = TRUE; /* End Preps match*/
+		return 1;
+	    }
+	}
+	bCmptble = FALSE; /* End Preps do not match*/
+	return 1;
+    }
+
+    if (end_treat1 == 43) 
+    {  
+	for (i=0;i<2;i=i+1)
+	{
+	    if (end_treat2 == SMFE[i])
+	    {
+		bCmptble = TRUE; /* End Preps match*/
+		return 1;
+	    }
+	}
+	bCmptble = FALSE; /* End Preps do not match*/
+	return 1;
+    }
+
+    if (end_treat1 == 44) 
+    {
+	for (i=0;i<2;i=i+1)
+	{
+	    if (end_treat2 ==  LMFE[i])
+	    {
+		bCmptble = TRUE; /* End Preps match*/
+		return 1;
+	    }
+	}
+	bCmptble = FALSE; /* End Preps do not match*/
+	return 1;
+    }
+
+    if (end_treat1 == 51) 
+    {
+	for (i=0;i<2;i=i+1)
+	{
+	    if (end_treat2 ==  SGFE[i])
+	    {
+		bCmptble = TRUE; /* End Preps match*/
+		return 1;
+	    }
+	}
+	bCmptble = FALSE; /* End Preps do not match*/
+	return 1;
+    }
+
+    if (end_treat1 == 52) 
+    {
+	for (i=0;i<2;i=i+1)
+	{
+	    if (end_treat2 ==  LGFE[i])
+	    {
+		bCmptble = TRUE; /* End Preps match*/
+		return 1;
+	    }
+	}
+	bCmptble = FALSE; /* End Preps do not match*/
+	return 1;
+    }
+
+    if (end_treat1 == 53) 
+    {
+	for (i=0;i<2;i=i+1)
+	{
+	    if (end_treat2 ==  SFFE[i])
+	    {
+		bCmptble = TRUE; /* End Preps match*/
+		return 1;
+	    }
+	}
+	bCmptble = FALSE; /* End Preps do not match*/
+	return 1;
+    }
+
+    if (end_treat1 == 54) 
+    {
+	for (i=0;i<2;i=i+1)
+	{
+	    if (end_treat2 ==  LFFE[i])
+	    {
+		bCmptble = TRUE; /* End Preps match*/
+		return 1;
+	    }
+	}
+	bCmptble = FALSE; /* End Preps do not match*/
+	return 1;
+    }
+
+    if (end_treat1 == 61) 
+    {
+	for (i=0;i<10;i=i+1)
+	{
+	    if (end_treat2 ==  FFLFE[i])
+	    {
+		bCmptble = TRUE; /* End Preps match*/
+		return 1;
+	    }
+	}
+	bCmptble = FALSE; /* End Preps do not match*/
+	return 1;
+    }
+
+    if (end_treat1 == 71) 
+    {
+	for (i=0;i<11;i=i+1)
+	{
+	    if (end_treat2 == RFLFE[i])
+	    {
+		bCmptble = TRUE; /* End Preps match*/
+		return 1;
+	    }
+	}
+	bCmptble = FALSE; /* End Preps do not match*/
+	return 1;
+    }
+
+    if (end_treat1 == 81) 
+    {
+	for (i=0;i<4;i=i+1)
+	{
+	    if (end_treat2 == RJLFE[i])
+	    {
+		bCmptble = TRUE; /* End Preps match*/
+		return 1;
+	    }
+	}
+	bCmptble = FALSE; /* End Preps do not match*/
+	return 1;
+    }
+
+    if (end_treat1 == 91) 
+    {
+	for (i=0;i<2;i=i+1)
+	{
+	    if (end_treat2 == STLFE[i])
+	    {
+		bCmptble = TRUE; /* End Preps match*/
+		return 1;
+	    }
+	}
+	bCmptble = FALSE; /* End Preps do not match*/
+	return 1;
+    }
+
+    if (end_treat1 == 92) 
+    {
+	for (i=0;i<2;i=i+1)
+	{
+	    if (end_treat2 == LTLFE[i])
+	    {
+		bCmptble = TRUE; /* End Preps match*/
+		return 1;
+	    }
+	}
+	bCmptble = FALSE; /* End Preps do not match*/
+	return 1;
+    }
+
+    if (end_treat1 == 93) 
+    {
+	for (i=0;i<2;i=i+1)
+	{
+	    if (end_treat2 == SMLFE[i])
+	    {
+		bCmptble = TRUE; /* End Preps match*/
+		return 1;
+	    }
+	}
+	bCmptble = FALSE; /* End Preps do not match*/
+	return 1;
+    }
+
+    if (end_treat1 == 94) 
+    {
+	for (i=0;i<2;i=i+1)
+	{
+	    if (end_treat2 == LMLFE[i])
+	    {
+		bCmptble = TRUE; /* End Preps match*/
+		return 1;
+	    }
+	}
+	bCmptble = FALSE; /* End Preps do not match*/
+	return 1;
+    }
+
+    if (end_treat1 == 101) 
+    {
+	for (i=0;i<2;i=i+1)
+	{
+	    if (end_treat2 == SGLFE[i])
+	    {
+		bCmptble = TRUE; /* End Preps match*/
+		return 1;
+	    }
+	}
+	bCmptble = FALSE; /* End Preps do not match*/
+	return 1;
+    }
+
+    if (end_treat1 == 102) 
+    {
+	for (i=0;i<2;i=i+1)
+	{
+	    if (end_treat2 == LGLFE[i])
+	    {
+		bCmptble = TRUE; /* End Preps match*/
+		return 1;
+	    }
+	}
+	bCmptble = FALSE; /* End Preps do not match*/
+	return 1;
+    }
+
+    if (end_treat1 == 103) 
+    {
+	for (i=0;i<2;i=i+1)
+	{
+	    if (end_treat2 == SFLFE[i])
+	    {
+		bCmptble = TRUE; /* End Preps match*/
+		return 1;
+	    }
+	}
+	bCmptble = FALSE; /* End Preps do not match*/
+	return 1;
+    }
+
+    if (end_treat1 == 104) 
+    {
+	for (i=0;i<2;i=i+1)
+	{
+	    if (end_treat2 == LFLFE[i])
+	    {
+		bCmptble = TRUE; /* End Preps match*/
+		return 1;
+	    }
+	}
+	bCmptble = FALSE; /* End Preps do not match*/
+	return 1;
+    }
+
+    if (end_treat1 == 111) 
+    {
+	for (i=0;i<11;i=i+1)
+	{
+	    if (end_treat2 == FFTBE[i])
+	    {
+		bCmptble = TRUE; /* End Preps match*/
+		return 1;
+	    }
+	}
+	bCmptble = FALSE; /* End Preps do not match*/
+	return 1;
+    }
+
+    if (end_treat1 == 116) 
+    {
+	for (i=0;i<11;i=i+1)
+	{
+	    if (end_treat2 == FFTBEWG[i])
+	    {
+		bCmptble = TRUE; /* End Preps match*/
+		return 1;
+	    }
+	}
+	bCmptble = FALSE; /* End Preps do not match*/
+	return 1;
+    }
+
+    if (end_treat1 == 121) 
+    {
+	for (i=0;i<12;i=i+1)
+	{
+	    if (end_treat2 == RFTBE[i])
+	    {
+		bCmptble = TRUE; /* End Preps match*/
+		return 1;
+	    }
+	}
+	bCmptble = FALSE; /* End Preps do not match*/
+	return 1;
+    }
+
+    if (end_treat1 == 126) 
+    {
+	for (i=0;i<11;i=i+1)
+	{
+	    if (end_treat2 == RFTBEWG[i])
+	    {
+		bCmptble = TRUE; /* End Preps match*/
+		return 1;
+	    }
+	}
+	bCmptble = FALSE; /* End Preps do not match*/
+	return 1;
+    }
+
+    if (end_treat1 == 131) 
+    {
+	for (i=0;i<5;i=i+1)
+	{
+	    if (end_treat2 == RJTBE[i])
+	    {
+		bCmptble = TRUE; /* End Preps match*/
+		return 1;
+	    }
+	}
+	bCmptble = FALSE; /* End Preps do not match*/
+	return 1;
+    }
+
+    if (end_treat1 == 146) 
+    {
+	for (i=0;i<3;i=i+1)
+	{
+	    if (end_treat2 == MRJTBEWG[i])
+	    {
+		bCmptble = TRUE; /* End Preps match*/
+		return 1;
+	    }
+	}
+	bCmptble = FALSE; /* End Preps do not match*/
+	return 1;
+    }
+
+    if (end_treat1 == 151) 
+    {
+	for (i=0;i<3;i=i+1)
+	{
+	    if (end_treat2 == FFTBCSE[i])
+	    {
+		bCmptble = TRUE; /* End Preps match*/
+		return 1;
+	    }
+	}
+	bCmptble = FALSE; /* End Preps do not match*/
+	return 1;
+    }
+
+    if (end_treat1 == 156) 
+    {
+	for (i=0;i<3;i=i+1)
+	{
+	    if (end_treat2 == FFTBCSEWG[i])
+	    {
+		bCmptble = TRUE; /* End Preps match*/
+		return 1;
+	    }
+	}
+	bCmptble = FALSE; /* End Preps do not match*/
+	return 1;
+    }
+
+    if (end_treat1 == 161) 
+    {
+	for (i=0;i<3;i=i+1)
+	{
+	    if (end_treat2 == RFTBCSE[i])
+	    {
+		bCmptble = TRUE; /* End Preps match*/
+		return 1;
+	    }
+	}
+	bCmptble = FALSE; /* End Preps do not match*/
+	return 1;
+    }
+
+    if (end_treat1 == 166) 
+    {
+	for (i=0;i<3;i=i+1)
+	{
+	    if (end_treat2 == RFTBCSEWG[i])
+	    {
+		bCmptble = TRUE; /* End Preps match*/
+		return 1;
+	    }
+	}
+	bCmptble = FALSE; /* End Preps do not match*/
+	return 1;
+    }
+
+    if (end_treat1 == 171) 
+    {
+	for (i=0;i<2;i=i+1)
+	{
+	    if (end_treat2 == RJTBCSE[i])
+	    {
+		bCmptble = TRUE; /* End Preps match*/
+		return 1;
+	    }
+	}
+	bCmptble = FALSE; /* End Preps do not match*/
+	return 1;
+    }
+
+    if (end_treat1 == 181) 
+    {
+	for (i=0;i<3;i=i+1)
+	{
+	    if (end_treat2 == FFFTBE[i])
+	    {
+		bCmptble = TRUE; /* End Preps match*/
+		return 1;
+	    }
+	}
+	bCmptble = FALSE; /* End Preps do not match*/
+	return 1;
+    }
+
+    if (end_treat1 == 186) 
+    {
+	for (i=0;i<3;i=i+1)
+	{
+	    if (end_treat2 == FFFTBEWG[i])
+	    {
+		bCmptble = TRUE; /* End Preps match*/
+		return 1;
+	    }
+	}
+	bCmptble = FALSE; /* End Preps do not match*/
+	return 1;
+    }
+
+    if (end_treat1 == 191) 
+    {
+	if (end_treat2 == MJE[0]) 
+	    bCmptble = TRUE; /* End Preps match*/
+	else
+	    bCmptble = FALSE;/* End Preps do not match*/
+	return 1;
+    }
+
+    if (end_treat1 == 301) 
+    {
+	for (i=0;i<7;i=i+1)
+	{
+	    if (end_treat2 == BE[i])
+	    {
+		bCmptble = TRUE; /* End Preps match*/
+		return 1;
+	    }
+	}
+	bCmptble = FALSE; /* End Preps do not match*/
+	return 1;
+    }
+
+    if (end_treat1 == 311) 
+    {
+	for (i=0;i<5;i=i+1)
+	{
+	    if (end_treat2 == TBE[i])
+	    {
+		bCmptble = TRUE; /* End Preps match*/
+		return 1;
+	    }
+	}
+	bCmptble = FALSE; /* End Preps do not match*/
+	return 1;
+    }
+
+    if (end_treat1 == 321) 
+    {
+	for (i=0;i<4;i=i+1)
+	{
+	    if (end_treat2 == MFE[i])
+	    {
+		bCmptble = TRUE; /* End Preps match*/
+		return 1;
+	    }
+	}
+	bCmptble = FALSE; /* End Preps do not match*/
+	return 1;
+    }
+
+    if (end_treat1 == 331) 
+    {
+	if (end_treat2 == MTE[0]) 
+	    bCmptble = TRUE; /* End Preps match*/
+	else
+	    bCmptble = FALSE;/* End Preps do not match*/
+	return 1;
+    }
+
+    if (end_treat1 == 341) 
+    {
+	if (end_treat2 ==  MGE[0]) 
+	    bCmptble = TRUE; /* End Preps match*/
+	else
+	    bCmptble = FALSE;/* End Preps do not match*/
+	return 1;
+    }
+
+    if (end_treat1 == 351) 
+    {
+	if (end_treat2 ==  MQCE[0]) 
+	    bCmptble = TRUE; /* End Preps match*/
+	else
+	    bCmptble = FALSE;/* End Preps do not match*/
+	return 1;
+    }
+
+    if (end_treat1 == 361) 
+    {
+	if (end_treat2 == MFRE[0]) 
+	    bCmptble = TRUE; /* End Preps match*/
+	else
+	    bCmptble = FALSE;/* End Preps do not match*/
+	return 1;
+    }
+
+    if (end_treat1 == 371) 
+    {
+	if (end_treat2 == MHE[0]) 
+	    bCmptble = TRUE; /* End Preps match*/
+	else
+	    bCmptble = FALSE;/* End Preps do not match*/
+	return 1;
+    }
+
+
+    if (end_treat1 == 381) 
+    {
+	if (end_treat2 == SPE[0]) 
+	    bCmptble = TRUE; /* End Preps match*/
+	else
+	    bCmptble = FALSE;/* End Preps do not match*/
+	return 1;
+    }
+
+    if (end_treat1 == 391) 
+    {
+	for (i=0;i<8;i=i+1)
+	{
+	    if (end_treat2 == PE[i])
+	    {
+		bCmptble = TRUE; /* End Preps match*/
+		return 1;
+	    }
+	}
+	bCmptble = FALSE; /* End Preps do not match*/
+	return 1;
+    }
+
+    if (end_treat1 == 393) 
+    {
+	if (end_treat2 == FFPE3[0]) 
+	    bCmptble = TRUE; /* End Preps match*/
+	else
+	    bCmptble = FALSE;/* End Preps do not match*/
+	return 1;
+    }
+
+    if (end_treat1 == 395) 
+    {
+	if (end_treat2 ==  FFPE6[0]) 
+	{
+	    bCmptble = TRUE; /* End Preps match*/
+	    return 1;
+	}
+	else
+	    bCmptble = FALSE;/* End Preps do not match*/
+	return 1;
+    }
+
+    if (end_treat1 == 401) 
+    {
+	for (i=0;i<5;i=i+1)
+	{
+	    if (end_treat2 == SE[i])
+	    {
+		bCmptble = TRUE; /* End Preps match*/
+		return 1;
+	    }
+	}
+	bCmptble = FALSE; /* End Preps do not match*/
+	return 1;
+    }
+
+    if (end_treat1 == 402) 
+    {
+	for (i=0;i<5;i=i+1)
+	{
+	    if (end_treat2 == SBE[i])
+	    {
+		bCmptble = TRUE; /* End Preps match*/
+		return 1;
+	    }
+	}
+	bCmptble = FALSE; /* End Preps do not match*/
+	return 1;
+    }
+
+    if (end_treat1 == 421) 
+    {
+	for (i=0;i<6;i=i+1)
+	{
+	    if (end_treat2 == SWE[i])
+	    {
+		bCmptble = TRUE; /* End Preps match*/
+		return 1;
+	    }
+	}
+	bCmptble = FALSE; /* End Preps do not match*/
+	return 1;
+    }
+
+    if (end_treat1 == 441) 
+    {
+	for (i=0;i<4;i=i+1)
+	{
+	    if (end_treat2 == FTE[i])
+	    {
+		bCmptble = TRUE; /* End Preps match*/
+		return 1;
+	    }
+	}
+	bCmptble = FALSE; /* End Preps do not match*/
+	return 1;
+    }
+
+    if (end_treat1 == 461) 
+    {
+	if (end_treat2 == FGE[0]) 
+	    bCmptble = TRUE; /* End Preps match*/
+	else
+	    bCmptble = FALSE;/* End Preps do not match*/
+	return 1;
+    }
+
+    if (end_treat1 == 481) 
+    {
+	if (end_treat2 ==  FQCE[0]) 
+	    bCmptble = TRUE; /* End Preps match*/
+	else
+	    bCmptble = FALSE;/* End Preps do not match*/
+	return 1;
+    }
+
+    if (end_treat1 == 501) 
+    {
+	if (end_treat2 ==  FFRE[0]) 
+	    bCmptble = TRUE; /* End Preps match*/
+	else
+	    bCmptble = FALSE;/* End Preps do not match*/
+	return 1;
+    }
+
+    if (end_treat1 == 521) 
+    {
+	if (end_treat2 == FHE[0]) 
+	    bCmptble = TRUE; /* End Preps match*/
+	else
+	    bCmptble = FALSE;/* End Preps do not match*/
+	return 1;
+    }
+
+    if (end_treat1 == 541)
+    {
+	if (end_treat2 ==  BLE[0]) 
+	    bCmptble = TRUE; /* End Preps match*/
+	else
+	    bCmptble = FALSE;/* End Preps do not match*/
+	return 1;
+    }
+
+    if (end_treat1 == 591) 
+    {
+	for (i=0;i<5;i=i+1)
+	{
+	    if (end_treat2 == HCE[i])
+	    {
+		bCmptble = TRUE; /* End Preps match*/
+		return 1;
+	    }
+	}
+    }
+
+    bCmptble = FALSE; /* No matches found - invalid inputs? */
+    return 1;
+}

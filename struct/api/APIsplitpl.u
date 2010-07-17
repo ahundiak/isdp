@@ -1,0 +1,110 @@
+/***************************************************************************
+ * I/STRUCT
+ *
+ * File:	api/APIsplitpl.u
+ *
+ * Description:
+ * 
+ * This ppl split a plate and then place a joint between the two
+ * results using the two APIs vs$split_plate() and vs$place_joint().
+ *
+ * Dependencies:
+ *
+ * History:
+ *	MM/DD/YY	AUTHOR		DESCRIPTION
+ *			i-paris		creation date
+ *
+ ***************************************************************************/
+
+#include "OMminimum.h"
+#include "cieveryone.h"
+#include "cievent.h"
+#include "cilocate.h"
+#include "cisend.h"
+#include "vsAPImacros.h"
+
+extern void printf() ;
+
+extern OMuword	OPP_GRcurve_class_id,
+		OPP_EMSplane_class_id ;
+
+/*----------------------------------------------------------------------------*/
+wakeup() { message( "API: Split Plate" ) ; }
+/*----------------------------------------------------------------------------*/
+main() {
+	long		 sts,
+			 msg ;
+	struct GRid	 plateId,
+			 cutterId,
+			 splitId[2],
+			 jointId ;
+	struct GRmd_env  plateEnv,
+			 cutterEnv,
+			 curEnv,
+			 splitEnv[2] ;
+	OM_S_CLASSLIST	 eligibleClasses ;
+	OMuword		 cutterClasses[2] ;
+
+	while( TRUE ) {
+	ci$locate(
+		prompt		= "Identify plate to split",
+		classes 	= "VSplate",
+		properties	= LC_LC_ONLY | LC_DP_ONLY | LC_RW,
+		owner_action	= LC_RIGID_COMP  |
+				  LC_RIGID_OWNER | LC_FLEX_COMP |
+				  LC_FLEX_OWNER  | LC_REF_OBJECTS,
+		obj		= &plateId.objid,
+		osnum		= &plateId.osnum,
+		md_env		= &plateEnv ) ;
+
+	cutterClasses[0] = OPP_GRcurve_class_id ;
+	cutterClasses[1] = OPP_EMSplane_class_id ;
+
+	eligibleClasses.w_count   = 2 ;
+	eligibleClasses.w_flags   = OM_CLST_subclass ;
+	eligibleClasses.p_classes = cutterClasses ;
+
+	ci$locate(
+		prompt		= "Identify curve or plane cutter element",
+		eligible_classes= &eligibleClasses,
+		properties	= LC_LC_ONLY | LC_DP_ONLY | LC_RW,
+		owner_action	= LC_RIGID_COMP  |
+				  LC_RIGID_OWNER | LC_FLEX_COMP |
+				  LC_FLEX_OWNER  | LC_REF_OBJECTS,
+		obj		= &cutterId.objid,
+		osnum		= &cutterId.osnum,
+		md_env		= &cutterEnv ) ;
+
+	sts = vs$split_plate( msg	= &msg,
+			      plateId	= &plateId,
+			      plateEnv	= &plateEnv,
+			      cutterId	= &cutterId,
+			      cutterEnv	= &cutterEnv,
+			      splitId	= splitId ) ;
+
+	if( !( sts & 1 & msg ) ) {
+		printf( "Error to split plate : [%d,%d]\n", plateId.osnum,
+							    plateId.objid ) ;
+	} else {
+		printf( "Split #0 : [%d,%d]\n", splitId[0].osnum, 
+						splitId[0].objid ) ;
+		printf( "Split #1 : [%d,%d]\n", splitId[1].osnum, 
+						splitId[1].objid ) ;
+
+		ci$get_module_info( md_env = &curEnv ) ;
+
+		splitEnv[0] = curEnv ;
+		splitEnv[1] = curEnv ;
+
+		sts = vs$place_joint( msg	= &msg,
+				      elemId	= splitId,
+				      elemEnv	= splitEnv,
+				      jointId	= &jointId ) ;
+
+		if( !( sts & 1 & msg ) ) printf( "Error in placement of joint\n" ) ;
+		else printf( "Constructed joint : [%d,%d]\n", jointId.osnum,
+							      jointId.objid ) ;
+		}
+	}
+}
+/*----------------------------------------------------------------------------*/

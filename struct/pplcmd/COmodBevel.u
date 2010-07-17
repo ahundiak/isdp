@@ -1,0 +1,363 @@
+/* $Id: COmodBevel.u,v 1.1.1.1 2001/01/04 21:10:02 cvs Exp $  */
+
+/***************************************************************************
+ * I/STRUCT
+ *
+ * File:	pplcmd/COmodBevel.u
+ *
+ * Description: Modify Bevel Attribute CO
+ *              Provides capability to change certain attributes of an edge
+ *                attribute object with values obtained from an ascii setup
+ *                file. These attributes are:
+ *                      Spec Number, Process Number, Stock (Allowance),
+ *                      Gap (V). The Adjacent Plate Thickness, "THK" in the
+ *                setup file, is used to calculate the value, delta plate
+ *		  thickness, which is inserted into the object's collector
+ *		  object.
+ *              A sample expected format of the setup file follows:
+ *                      #@ SPEC_NUMBER 2A
+ *                      #@ SPEC_NUMBER 2B
+ *                      #@ SPEC_NUMBER 3A
+ *                      #@ PROCESS Manual
+ *                      #@ STOCK 0.0
+ *                      #@ STOCK 1.0
+ *                      #@ STOCK 25.4
+ *                      #@ GAP 0.0
+ *                      #@ THK 18.0
+ *                      #@ THK 20.0
+ *                      #@ THK 22.0
+ *                      #@ THK 25.0
+ *	
+ * Dependencies: form, VSmodBevel.F
+ *		 implementation code, vsedge/VSbevMod.I
+ *               setup file, "edge_setup" (searched for in current dir or
+ *                                         config/drawing  directories)
+ *
+ * Revision History:
+ *	$Log: COmodBevel.u,v $
+ *	Revision 1.1.1.1  2001/01/04 21:10:02  cvs
+ *	Initial import to CVS
+ *	
+# Revision 1.6  2000/04/02  20:11:26  pinnacle
+# Replaced: pplcmd/COmodBevel.u for:  by impd252 for struct
+#
+# Revision 1.5  1999/12/06  18:07:56  pinnacle
+# tr179900739
+#
+# Revision 1.3  1999/05/31  17:47:50  pinnacle
+# CR_179900195
+#
+ *
+ * History:
+ * MM/DD/YY  AUTHOR    DESCRIPTION
+ * 03/22/99  ejm       CR179900195 Creation of this command object
+ * 05/06/99  ejm       CR179900195 Cleanup
+ * 05/26/99  ejm       CR179900195 Process an object set
+ ***************************************************************************/
+
+#include "VDppl.h"
+#include "VSbevMod.h"		// info structure
+#include "vsmiscpplmac.h"
+
+struct CIform_st form_st;
+
+TVSbevModInfo info;
+
+#define theCommand "Modify Edge Attribute"
+#define FI_RESET 3
+
+extern EX_findmod();
+extern FIfld_get_value();
+extern FImcf_get_active_col();
+/* --------------------------------------
+ * The main routine
+ */
+int main()
+{
+  int sts;
+  int response;
+
+
+  sts = init_form();
+  if (!(sts & 1)) goto wrapup;
+
+  response = 0;
+
+  while(1) {
+
+    info.edgeOE.obj_id.objid = NULL_OBJID;
+    
+    form_st.gadget_label = 0;
+    response = 0;
+
+    UI_message(theCommand);
+
+    sts = ci$locate(prompt  = "Select Edge Attribute macro",
+                    classes = "VSedge3Datt",
+		    owner_action = LC_RIGID_OWNER | LC_FLEX_COMP | LC_FLEX_OWNER,
+		    response     = &response,
+		    md_env       = &info.edgeOE.mod_env,
+		    obj          = &info.edgeOE.obj_id.objid,
+		    osnum	 = &info.edgeOE.obj_id.osnum);
+    if (!(sts & 1)) goto the_loop;
+
+    info.gadget = VSBEV_FORM_MCF;
+
+    switch(response) {
+
+    case EX_DATA: {  // Single Object
+
+	// Fill MCF
+  	VSbev_FillMCF( &info );
+	// Display form
+	info.displayForm = 1;
+	VIf_display(info.form);
+	goto the_loop;
+    }
+
+    case EX_OBJID:{  // Object Set
+
+	// Fill MCF with each fence object
+	VSbev_Fence_FillMCF( &info );
+	// Display form
+	info.displayForm = 1;
+	VIf_display(info.form);
+	goto the_loop;
+    }
+
+    } // Switch
+
+  the_loop:
+    continue;
+
+  } // While
+
+wrapup:
+  return 1;
+}
+
+
+/* ---------------------------------
+ * Gadget handling
+ */
+form_notification()
+{
+  IGRint retFlag, sts;
+  IGRint pos,sel;
+  TGRid objID;
+  TGRobj_env objOE;
+  IGRdouble  objid;
+  IGRchar    text[MAX_FLD_LEN];  
+  // Init
+  retFlag = 1;
+  info.gadget =form_st.gadget_label;
+  
+  switch (info.gadget) {
+    
+    case FI_CANCEL: {
+      ci$put(response = TERMINATE);
+      goto wrapup;
+    }
+    
+    // Run, Check Off
+    case FI_ACCEPT: {
+      // Transfer attribute values on form 
+      //    to edge attribute object's collector
+      sts = VSbev_ModAttrs( &info );
+      update_edge_attributes();
+      ci$put(response = TERMINATE);
+      break;
+    }
+    
+    // Run and Return
+    case FI_EXECUTE: {
+      // Transfer attribute values on form 
+      //    to edge attribute object's collector
+      sts = VSbev_ModAttrs( &info );
+      update_edge_attributes();
+      break;
+    }
+    
+    case VSBEV_FORM_MCF: {
+      // Added code for hilighting
+      VIfld_get_active_row(info.form, info.gadget, &info.row, &pos);
+      FIfld_get_value(info.form,info.gadget,info.row, 6, &objid, &sel, &pos);
+      ex$get_cur_mod(osnum = &objID.osnum);
+      objID.objid = (int)objid;
+      VDahGetObjectEnv(&objID,&objOE);
+      //vd_$bulk_display(dpmode = GRhhd, objenvs = &objOE);
+      vs$bulk_display(count = 1,objenvs = &objOE, dpmode = GRhhd);
+      
+      sts = VSbev_PickedMCF( &info );
+      
+      break;
+    }
+    
+    case VSBEV_FORM_FLD_BTN: {
+      sts = VSbev_PickedUpdButton( &info );
+      sts = VSbev_ModAttrs( &info );
+      update_edge_attributes();
+      break;
+    }
+    
+    case VSBEV_FORM_FLD_LIST: {
+      sts = VSbev_PickedList( &info );
+      break;
+    }
+    case FI_RESET:{
+      sts = VSbev_ResetForm( &info );
+      break;
+    }
+    
+    
+  } // Switch
+  
+ wrapup:
+  return retFlag;
+  
+} // form_notification
+
+int update_edge_attributes()
+{
+  int retFlag;
+  double objid;
+  IGRint i,nrows, sel, pos;
+  TGRid objID;
+  TGRobj_env objOE;
+  
+  retFlag = 0;
+  
+
+  VIfld_get_num_rows( info.form, VSBEV_FORM_MCF, &nrows );
+  
+  for( i=0; i<nrows; i=i+1 ){
+    FIfld_get_value(info.form, VSBEV_FORM_MCF, i, 6, &objid, &sel, &pos);
+    ex$get_cur_mod(osnum = &objID.osnum);
+    objID.objid = (int)objid;
+    VDahGetObjectEnv(&objID,&objOE);
+    compute(&objOE);
+  }
+  retFlag = 1;
+  
+  return retFlag;
+}
+
+/* --------------------------------------------------------
+ * Get the form started
+ */
+int init_form()
+{
+  int retFlag;
+  int sts;
+  Form existingForm;
+
+  memset(&info,0,sizeof(info));
+  retFlag = 0;
+
+  sts = VI_get_form_by_name("VSmodBevel.F",&existingForm);
+  if (sts == FI_SUCCESS) {
+    UI_status("Modify Edge Attribute already running");
+    return 0;
+  }
+
+  VIf_new(100, "VSmodBevel.F", ci_notification, &info.form);
+
+  if (info.form == 0) {
+    printf("Could not init Modify Edg Attribute form\n");
+    goto wrapup;
+  }
+  
+  VDahFrmLoadPositionFromFile(info.form);
+
+  VIf_set_cmd_oid_os(info.form, MY_ID, OM_Gw_current_OS );
+
+  retFlag = 1;
+
+wrapup:
+  return retFlag;
+}
+
+
+/* ---------------------------------------------
+ * Copied from COz_CompObj
+ * Force a recompute
+ */
+#include "nddef.h"
+#include "ndmacros.h"
+
+extern	NDmod_batch();
+extern	NDexec_batch();
+extern	NDget_mod_batch();
+extern	NDwait_batch();
+
+int compute(objOE)
+TGRobj_env *objOE;
+{
+  extern IGRboolean	ASbroadcast_in_progress ;
+  IGRboolean		saveBroad;
+
+  IGRint cnType;
+  IGRint wtBatch;
+  
+  cnType = ND_COMP;
+
+  nd$wait_batch(type       = GR_GEOM_POSTED,
+		l_object   = &objOE->obj_id,
+		l_obj_info = &cnType,
+		nb_obj     = 1 );
+
+  nd$mod_batch(request    = ND_INQ,
+	       p_ret_mode = &wtBatch);
+
+  saveBroad = ASbroadcast_in_progress ;
+  ASbroadcast_in_progress = FALSE ;
+
+  if( wtBatch != ND_DEFER ) { /* else nothing to do */
+    nd$exec_batch(mode = ND_DISP_ROOT|ND_DISP_BODY);
+  }
+  
+  ASbroadcast_in_progress = saveBroad ;
+
+  return 1;
+}
+
+
+
+
+/* ------------------------------------------
+ * Usual command object messages
+ */
+init()
+{
+  info.form = NULL;
+  VSbevCMD_ModInit(&info);
+}
+sleep() 
+{
+  VSbevCMD_ModSleep(&info);
+  //if (info.form) FIf_erase(info.form);
+}
+wakeup()
+{
+  UI_message(theCommand);
+  VSbevCMD_ModWakeup(&info);
+  if (info.displayForm) {
+    if (info.form) VIf_display(info.form);
+  }
+  
+}
+delete()
+{
+  VSbevCMD_ModDelete(&info);
+  VDahFrmSavePositionInFile(info.form);
+  if (info.form) VIf_delete(info.form);
+  info.form = NULL;
+}
+
+
+
+
+
+
+
+

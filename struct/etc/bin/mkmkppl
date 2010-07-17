@@ -1,0 +1,277 @@
+#!/bin/ksh
+# $Id: mkmkppl,v 1.4 2001/03/31 00:15:39 anand Exp $
+
+# -------------------------------------------------------------------
+# I/VDS
+#
+# File:	vds/etc/bin/mkmkppl 
+#
+# Description:
+#
+# Dependencies:
+#
+# Revision History:
+#	$Log: mkmkppl,v $
+#	Revision 1.4  2001/03/31 00:15:39  anand
+#	removed some white space that supposedly causes "reader" errors in the
+#	generated pplmkfile for some directories.
+#	
+#	Revision 1.5  2001/03/30 19:35:13  anand
+#	One mkmkppl for all products controllable for SP by ISDP_MAKE_SP env var
+#	
+#	Revision 1.4  2001/01/24 22:16:45  build
+#	*** empty log message ***
+#	
+#	Revision 1.3  2001/01/23 20:21:23  anand
+#	Small modification that allows mkmkppl to be used by other products!!
+#	
+#	Revision 1.2  2001/01/23 16:53:12  ahundiak
+#	ah
+#	
+#	Revision 1.1.1.1  2001/01/04 21:07:29  cvs
+#	Initial import to CVS
+#	
+# Revision 1.4  1995/11/24  17:33:16  pinnacle
+# Replaced: ./etc/bin/mkmkppl for:  by azuurhou for vds.240
+#
+# Revision 1.3  1995/11/21  00:58:00  pinnacle
+# Replaced: ./etc/bin/mkmkppl for:  by azuurhou for vds.240
+#
+# Revision 1.2  1994/11/18  22:24:26  pinnacle
+# integration complete
+#
+# Revision 1.1  1994/11/14  22:42:32  pinnacle
+# Create vds.240 from vds.232
+#
+# Revision 1.1  1994/11/08  16:07:00  pinnacle
+# create vds.232
+#
+#
+# History:
+#	MM/DD/YY	AUTHOR		DESCRIPTION
+#	01/23/01	ah		Added PDUDP to include files
+#	01/23/01	Anand		Ensured PPLBIN to point to
+#					$PRODUCT/ppl/bin (as opposed to
+#					$VDS/ppl/bin).
+#	03/30/01	Anand		One SP-friendly mkmkppl for all
+# -------------------------------------------------------------------
+
+#
+# "makemake" for PPL file in I/VDS
+# .m file need only contain the .u files
+# Usage: mkmkppl <file>.m <makefile> <product>
+#
+
+# Check args.
+if [ $# -ne 3 ]
+then
+	echo "mkmkppl <file>.m <makefile> <product>"
+	exit 1
+fi
+DOT_M=$1
+MAKEFILE=$2
+PRODUCT=$3
+PPLBIN="$PRODUCT/ppl/bin"
+printf "\t\t${DOT_M} --> ${MAKEFILE} "
+
+# Check file existence, setting of shell variables, etc.
+if [ ! -r ${DOT_M} ] ; then
+	echo "${DOT_M}: cannot read"
+	exit 1
+fi
+
+if /bin/grep "CCIOPT" ${DOT_M} > /dev/null ; then
+	/bin/grep CCIOPT ${DOT_M} |& read -p cciopt opt
+	TMP=/tmp/VS$RANDOM
+        TMP1=/tmp/VS$RANDOM
+	/bin/grep -v CCIOPT ${DOT_M} > ${TMP}
+	if [ $ISDP_MAKE_SP -eq 1 ]
+	then
+	    cpp -P -DISDP_MAKE_SP=1 ${TMP} ${TMP1}
+	else
+	    cpp -P -DISDP_MAKE_SP=0 ${TMP} ${TMP1}
+	fi
+	DOT_M=${TMP1}
+fi
+
+DOT_Us=`/bin/cat ${DOT_M}`
+
+if [ $ISDP_MAKE_SP -eq 1 ]
+then
+	printf "for Service Pack\n"
+	/bin/cat - > ${MAKEFILE} <<-%
+	.SUFFIXES: .u.e
+	# Definitions  
+	omcpp = \$(EXNUC)/bin/omcpp
+
+	# Preprocessor include options
+	IPATH =  \\
+		-I\$(GRNUC)/unix_include/\$(CPUTYPE)	\\
+		-I\$(SPXL)/include		\\
+		-I\$(SPXL)/include/private	\\
+		-I\$(SPXR)/include		\\
+		-I\$(SPXR)/vrinclude/prototypes	\\
+		-I\$(SPXR)/vrinclude		\\
+		-I\$(SPXR)/vcinclude		\\
+		-I\$(SPXS)/include		\\
+		-I\$(SPXS)/include/prototypes	\\
+		-I\$(SPXV)/include		\\
+		-I\$(SPXV)/vdinclude		\\
+		-I\$(LOFT)/include		\\
+		-I\$(LOFT)/include/private	\\
+		-I\$(ROUTE)/include		\\
+		-I\$(ROUTE)/vrinclude/prototypes \\
+		-I\$(ROUTE)/vrinclude		\\
+		-I\$(ROUTE)/vcinclude		\\
+		-I\$(STRUCT)/include		\\
+		-I\$(STRUCT)/include/prototypes	\\
+		-I\$(VDS)/include		\\
+		-I\$(VDS)/vdinclude		\\
+		-I\$(NFMDP)/include		\\
+		-I\$(PDUDP)/include		\\
+		-I\$(PDU)/include		\\
+		-I\$(MODEL)/include		\\
+		-I\$(GRNUC)/src/assoc/include_priv \\
+		-I\$(GRNUC)/include		\\
+		-I\$(EXNUC)/include		\\
+		-I\$(FORMS)/include		\\
+		-I\$(BS)/include/prototypes 	\\
+		-I\$(BS)/include
+
+	CCI = \$(GRNUC)/bin/cci -q -s ${opt} -p\$(omcpp) \$(IPATH)
+	%
+else
+	printf "for Pload\n"
+	/bin/cat - > ${MAKEFILE} <<-%
+	.SUFFIXES: .u.e
+	# Definitions  
+	omcpp = \$(EXNUC)/bin/omcpp
+
+	# Preprocessor include options
+	IPATH =  \\
+		-I\$(GRNUC)/unix_include/\$(CPUTYPE)	\\
+		-I\$(LOFT)/include		\\
+		-I\$(LOFT)/include/private	\\
+		-I\$(ROUTE)/include		\\
+		-I\$(ROUTE)/vrinclude/prototypes \\
+		-I\$(ROUTE)/vrinclude		\\
+		-I\$(ROUTE)/vcinclude		\\
+		-I\$(STRUCT)/include		\\
+		-I\$(STRUCT)/include/prototypes	\\
+		-I\$(VDS)/include		\\
+		-I\$(VDS)/vdinclude		\\
+		-I\$(NFMDP)/include		\\
+		-I\$(PDUDP)/include		\\
+		-I\$(PDU)/include		\\
+		-I\$(MODEL)/include		\\
+		-I\$(GRNUC)/src/assoc/include_priv \\
+		-I\$(GRNUC)/include		\\
+		-I\$(EXNUC)/include		\\
+		-I\$(FORMS)/include		\\
+		-I\$(BS)/include/prototypes 	\\
+		-I\$(BS)/include
+
+	CCI = \$(GRNUC)/bin/cci -q -s ${opt} -p\$(omcpp) \$(IPATH)
+	%
+fi
+
+# Put object files
+
+integer count
+integer i
+
+count=0
+for F in $DOT_Us ; do
+	count=count+1
+done
+
+echo "# Object files\nobjects = \\" 	>> ${MAKEFILE}
+
+for F in $DOT_Us ; do
+	echo "\t${PPLBIN}/${F%.u}.e\c"	>> ${MAKEFILE}
+	i=i+1
+	if [ $i != $count ] ; then
+		echo "\\"	>> ${MAKEFILE}
+	else
+		echo "\n"	>> ${MAKEFILE}
+	fi
+done
+
+DIR=`/bin/basename $PWD`
+
+/bin/cat - >> ${MAKEFILE} <<%
+${DIR} : \\
+	\$(objects)
+	@echo "\\tPPL compilation complete"
+%
+echo "\n" >> ${MAKEFILE}
+
+IPATH=" .		\
+	$GRNUC/unix_include/$CPUTYPE	\
+	$LOFT/include		\
+	$LOFT/include/private	\
+	$ROUTE/include		\
+	$ROUTE/vrinclude/prototypes \
+	$ROUTE/vrinclude		\
+	$ROUTE/vcinclude		\
+	$STRUCT/include		\
+	$STRUCT/include/prototypes	\
+	$VDS/include		\
+	$VDS/vdinclude		\
+	$NFMDP/include		\
+	$PDUDP/include		\
+	$PDU/include		\
+	$MODEL/include		\
+	$GRNUC/src/assoc/include_priv \
+	$GRNUC/include		\
+	$EXNUC/include		\
+	$FORMS/include		\
+	$BS/include/prototypes 	\
+	$BS/include"
+
+if [ $ISDP_MAKE_SP -eq 1 ]
+then
+    IPATH=" .               \
+	    $GRNUC/unix_include/$CPUTYPE    \
+	    $SPXL/include	\
+	    $SPXL/include/private	\
+	    $SPXR/include	\
+	    $SPXR/vrinclude/prototypes	\
+	    $SPXR/vrinclude	\
+	    $SPXR/vcinclude	\
+	    $SPXS/include	\
+	    $SPXS/include/prototypes	\
+	    $SPXV/include
+	    $SPXV/vdinclude	\
+	    $IPATH"
+fi
+
+
+for F in $DOT_Us ; do
+	echo "\n${PPLBIN}/${F%.u}.e : \\" >> ${MAKEFILE}
+	echo "\t${PPLBIN}/${F%.u}.e : " 
+	if $VDS/etc/bin/pplscan ${F}	\
+		$IPATH >> ${MAKEFILE} ; then
+		:
+	else
+		/bin/rm ${MAKEFILE}
+		if [ blob${DOT_M} = blob${TMP} ] ; then
+			/bin/rm ${DOT_M}
+		fi
+		exit 1
+	fi
+
+	echo '\t@echo "\\n\\t make '"${F%.u}.e"'\\n"' >> ${MAKEFILE}
+
+	if [ CO${F#CO} = ${F} ] ; then
+		echo "\t\$(CCI) ${F}"			>> ${MAKEFILE}
+	else
+		echo "\t\$(CCI) -m ${F}"			>> ${MAKEFILE}
+	fi
+	echo "\tmv ${F%.u}.e ${PPLBIN}/${F%.u}.e\n"	>> ${MAKEFILE}
+done
+
+if [ blob${DOT_M} = blob${TMP} ] ; then
+	/bin/rm ${DOT_M}
+fi
+

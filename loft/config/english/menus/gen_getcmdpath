@@ -1,0 +1,118 @@
+#!/bin/ksh
+# $Id: gen_getcmdpath,v 1.1.1.1 2001/01/04 21:11:07 cvs Exp $
+#***********************************************************************
+# I/LOFT
+#
+# File:		config/english/menus/src/gen_getcmdpath
+#
+# Description:
+#		Script to generate get command paths for Loft. 
+# Dependencys:
+#		Loft, sed_file, awk_file, VDGBs                
+# Process:
+#		Each field is analyzed as follows:
+# 		while more fields
+# 		  process field based on level
+#  		  get next field
+#  		end
+#
+# Revision History
+#	$Log: gen_getcmdpath,v $
+#	Revision 1.1.1.1  2001/01/04 21:11:07  cvs
+#	Initial import to CVS
+#	
+# Revision 1.3  1996/05/07  16:41:14  pinnacle
+# Replaced: config/english/menus/gen_getcmdpath for:  by l240_int for loft
+#
+# Revision 1.2  1996/03/24  18:38:36  pinnacle
+# Replaced: config/english/menus/gen_getcmdpath for:  by l240_int for loft
+#
+# Revision 1.1  1996/03/23  19:23:10  pinnacle
+# Created: config/english/menus/gen_getcmdpath by azuurhou for loft
+#
+#
+# History:
+#	MM/DD/YY	AUTHOR		DESCRIPTION
+#	03/23/96	david A.	creation date
+#
+#***********************************************************************
+
+TMP="/usr/tmp/VLgen.tmp"
+EMS=`echopath Emsui02`
+if [ -z "${VDS}" -o -z "${LOFT}" ] ; then
+  echo "Error: LOft and/or Vds Path not defined"
+  exit 1 ;
+fi
+
+# Set the name for the get cmd list
+CmdPath=IMLoft
+VDGLOB="$VDS/config/english/menus/src/VDGBs"
+
+# Set the symbol for the top level VDS global menu for substitution
+VDGBMNU="VDheader0.sym 1 -1"
+
+# check for VDGBs existance if not present, exit
+if [ ! -f $VDGLOB ] ; then
+  echo "Error: VDGBs not found, this is required to compose the global commands."
+  exit 1 ;
+fi
+
+#Convert tabs to words (LEV1, LEV2, LEV5, LEV4) and place results in tmp file 
+sed -f $VDS/etc/bin/sed_file $LOFT/config/english/menus/src/VLpan.otl > $TMP
+
+# Entries in tmp file are analyzed one at a time as $1
+
+set `cat $TMP`
+    while [ $1 ]
+    do
+
+	# Look for LEV1 and if found set the level 1 symbol
+	if [ $1 = LEV1 ]
+            then LEVEL1="$3 $4 -1"
+
+	# Look for LEV2 and if found set the level 2 symbol
+	elif [ $1 = LEV2 ]
+            then
+                LEVEL2="$3 $4 -1"
+
+ 	        # Look to see if this is a global menu call, if so 
+                # read the VDGbs file
+		if [ $2 = "*VDGb" ]
+		    then sed s/"$VDGBMNU"/"$LEVEL1"/g $VDGLOB>>$CmdPath.s
+		fi
+
+        # Look for LEV3 and if found set the level 3 symbol
+	elif [ $1 = LEV3 ]
+	    then
+
+            #Look to see if this is a command. If so, write it to file
+	    TEST=`echo $6 | cut -c1`
+	    if [ $TEST = "#" ]
+	        then echo "$2\011$LEVEL1 $LEVEL2 $3 $4 $5" >>$CmdPath.s
+		else LEVEL3="$3 $4 -1"	
+		fi
+
+        # Look for LEV4 and if found set the level 4 symbol
+	elif [ $1 = LEV4 ]
+	then 
+	    echo ".\c"
+            LEVEL4="$3 $4 $5"
+	    echo "$2\011$LEVEL1 $LEVEL2 $LEVEL3 $LEVEL4" >>$CmdPath.s
+	fi
+	shift
+    done
+
+# Sort the CmdPath.s file and put it it in the correct format into CmdPath file
+
+echo "."
+
+sort $CmdPath.s |awk -f $VDS/etc/bin/awk_file > $CmdPath
+
+if [ -f $CmdPath ] ; then
+  mv $CmdPath $LOFT/config/english/cmdpaths/.
+  ls -l $LOFT/config/english/cmdpaths/$CmdPath
+fi
+
+rm -f $CmdPath.s $TMP
+
+echo "Finished"

@@ -1,0 +1,292 @@
+/* $Id: CircWidDep.u,v 1.3 2002/04/10 21:54:06 louis Exp $  */
+ 
+/***************************************************************************
+ * I/ROUTE
+ *
+ * File:        ROUTE/vrppl/CircWidDep.u
+ *
+ * Description:
+ *   This PPL ensures that the active parameters and all the HVAC circular
+ *   components have their depth attributes equal to their corresponding width
+ *   attributes.
+ *
+ * Motivation:
+ *   CR 179901997
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ *      $Log: CircWidDep.u,v $
+ *      Revision 1.3  2002/04/10 21:54:06  louis
+ *      TR5649-Standardize tolerance
+ *
+ *      Revision 1.2  2001/02/20 01:16:12  build
+ *      Replaced v_dbgmacros.h with product specific dbgmacros.h
+ *
+ *      Revision 1.1  2001/01/12 23:44:42  anand
+ *      New PPLs added in Service Pack.
+ *
+# Revision 1.2  2000/09/28  14:38:32  pinnacle
+# Replaced: route/vrppl/CircWidDep.u for:  by aharihar for Service Pack
+#
+# Revision 1.1  2000/09/26  18:14:38  pinnacle
+# Created: route/vrppl/CircWidDep.u by aharihar for Service Pack
+#
+ *
+ * History:
+ *	MM/DD/YY	AUTHOR		DESCRIPTION
+ *
+ *	Sep 26 2k	Anand		Creation
+ *      04/08/02        law             TR5649-standardize tolerance with VRGetTol
+ ***************************************************************************/
+
+
+#include <stdio.h>
+#include <string.h>
+
+#include "VDppl.h"
+#include "vrdef.h"
+#include "VRMath.h"
+#include "vrparameters.h"
+#include "VRattr_def.h"
+#include "VRact_params.h"
+#include "VRutilmacros.h"
+#include "VRprivmacros.h"
+
+/* #define vdsDEBUG	1 */ /* Uncomment for debugging */
+/* #define vdserrDEBUG	1 */ /* Uncomment for debugging */
+#include "vrdbgmacros.h"
+
+#define HARD_CODED_VALUE 0.0001  /* Value provided by support */
+
+extern VCobjInActiveSpace();
+
+extern GRclassid OPP_VRHComp_class_id;
+extern GRclassid OPP_VRHCComp_class_id;
+
+main()
+{
+    IGRint		NumHvacComps, FootIndex, sts, i;
+    IGRlong		msg;
+    IGRdouble		Width_1,Width_2,Depth_1,Depth_2;
+    struct GRid		ActParamId, SysParId, *HvacComps;
+    struct GRmd_env 	mod_env;
+    struct ret_struct	ParamAttr;
+    struct ACrg_coll	CollAttr;
+    GRclassid		ClassId[2];
+
+
+    HvacComps = NULL;
+    ci$get_module_info( md_env = &mod_env );
+
+/* Step 1: Ensure that width and depth attributes are equal in active
+ *	   parameters if shape code is circular. */
+
+    ActParamId.osnum = mod_env.md_id.osnum;
+    VR$active_params (  status		= msg,
+			VRproduct	= VR_HVAC,
+			act_param_id	= &ActParamId );
+    __CheckSTS( msg, "Call to VR$active_params failed!", wrapup );
+    __DBGpr_obj(" Active parameter ID",ActParamId);
+
+    strcpy( CollAttr.name, VR_N_SHAPE_IN );
+    sts = ci$send(msg = message ACrg_collect.ACget_named_attribute( &msg,
+								    &CollAttr),
+	     targetid = ActParamId.objid,
+	     targetos = ActParamId.osnum );
+    __CheckRC( sts, msg, "ACget_named_attribute for VR_N_SHAPE_IN failed!",
+								      wrapup );
+
+    if( CollAttr.desc.value.att_exp == VR_CIRC )
+    {
+	__DBGpr_com(" Shape code in Active parameters is circular!");
+
+	strcpy( CollAttr.name, VR_N_WIDTH1_DB );
+	sts = ci$send(msg = message ACrg_collect.ACget_named_attribute( &msg,
+								    &CollAttr),
+		 targetid = ActParamId.objid,
+		 targetos = ActParamId.osnum );
+	__CheckRC(sts, msg, "ACget_named_attribute for VR_N_WIDTH1_DB failed!",
+								      wrapup);
+	Width_1 = CollAttr.desc.value.att_exp;
+	__DBGpr_dbl(" Width_1 attribute in active params",Width_1);
+
+	strcpy( CollAttr.name, VR_N_DEPTH1_DB );
+	sts = ci$send(msg = message ACrg_collect.ACget_named_attribute( &msg,
+								    &CollAttr),
+		 targetid = ActParamId.objid,
+		 targetos = ActParamId.osnum );
+	__CheckRC(sts, msg, "ACget_named_attribute for VR_N_DEPTH1_DB failed!",
+								      wrapup);
+	Depth_1 = CollAttr.desc.value.att_exp;
+	__DBGpr_dbl(" Depth_1 attribute in active params",Depth_1);
+
+	if( fabs(Depth_1-Width_1)>VRGetTol(VR_DIST_TOL))
+	{
+	    strcpy( CollAttr.name, VR_N_DEPTH1_DB );
+	    CollAttr.desc.type		= AC_ATTRIB_DOUBLE;
+	    CollAttr.desc.value.att_exp	= Width_1;
+
+	    sts =
+	    VR$ModifyCollection( p_msg			= &msg,
+				 Operation		= VR_MERGE_COLL,
+				 p_ParamsListToModify	= &CollAttr,
+				 NbParamsToModify	= 1,
+				 p_OutputCollectionId	= &ActParamId);
+	    __CheckRC(sts, msg, "Call to VR$ModifyCollection failed!", wrapup);
+	}
+
+	strcpy( CollAttr.name, VR_N_WIDTH2_DB );
+	sts = ci$send(msg = message ACrg_collect.ACget_named_attribute( &msg,
+								    &CollAttr),
+		 targetid = ActParamId.objid,
+		 targetos = ActParamId.osnum );
+	__CheckRC(sts, msg, "ACget_named_attribute for VR_N_WIDTH2_DB failed!",
+								      wrapup );
+	Width_2 = CollAttr.desc.value.att_exp;
+	__DBGpr_dbl(" Width_2 attribute in active params",Width_2);
+
+	strcpy( CollAttr.name, VR_N_DEPTH2_DB );
+	sts = ci$send(msg = message ACrg_collect.ACget_named_attribute( &msg,
+								    &CollAttr),
+		 targetid = ActParamId.objid,
+		 targetos = ActParamId.osnum );
+	__CheckRC(sts, msg, "ACget_named_attribute for VR_N_DEPTH2_DB failed!",
+								      wrapup );
+	Depth_2 = CollAttr.desc.value.att_exp;
+	__DBGpr_dbl(" Depth_2 attribute in active params",Depth_2);
+
+	if( fabs(Depth_2-Width_2)> VRGetTol(VR_DIST_TOL))
+	{
+		    /* Prepare a ACrg_collect */
+	    strcpy( CollAttr.name, VR_N_DEPTH2_DB );
+	    CollAttr.desc.type		= AC_ATTRIB_DOUBLE;
+	    CollAttr.desc.value.att_exp	= Width_2;
+
+	    sts =
+	    VR$ModifyCollection( p_msg			= &msg,
+				 Operation		= VR_MERGE_COLL,
+				 p_ParamsListToModify	= &CollAttr,
+				 NbParamsToModify	= 1,
+				 p_OutputCollectionId	= &ActParamId);
+	    __CheckRC(sts, msg, "Call to VR$ModifyCollection failed!", wrapup);
+	}
+    }
+
+/* Step 2: Get all objects of VRHComp/VRHCComp class in design file. */
+
+    ClassId[0] = OPP_VRHComp_class_id;
+    ClassId[1] = OPP_VRHCComp_class_id;
+    sts = VCobjInActiveSpace( &msg, &NumHvacComps, &HvacComps, ClassId, 2 );
+    /* Commenting below function call, because the return status of above
+     * function is not reliable. msg is not set at all, and sts corresponds to
+     * the last return status of a function call in a for-loop. */
+/*    __CheckRC( sts, msg, "Call to VCobjInActiveSpace failed!", wrapup ); */
+    __DBGpr_int(" Number of HVAC components in design file",NumHvacComps);
+
+    for( i=0 ; i<NumHvacComps ; i=i+1 )
+    {
+/* Step 3: */
+	sts = ci$send( msg = message ACncpx.ACgive_structure( (IGRint *) &msg,
+							      &FootIndex,
+							      VR_N_SHAPE_IN,
+							      &ParamAttr,
+							      &mod_env ),
+		  targetid = HvacComps[i].objid,
+		  targetos = HvacComps[i].osnum );
+	__CheckRC( sts, msg, "Call to ACgive_structure failed!", wrapup );
+
+	if( fabs(ParamAttr.var.root_pm_st.value-2.0)<VRGetTol(VR_DIST_TOL) )
+	{
+	    __DBGpr_obj(" HVAC comp id is circular",HvacComps[i]);
+
+		    /* Get the system parameter ID of the HVAC component */
+	    sts=ci$send(msg = message VRGeneric.VRGetParams( &msg, &SysParId,
+							     NULL, NULL),
+		   targetid = HvacComps[i].objid,
+		   targetos = HvacComps[i].osnum );
+	    __CheckRC( sts, msg, "Call to VRGetParams failed!", wrapup );
+	    __DBGpr_obj(" System parameter ID",SysParId);
+
+	    strcpy( CollAttr.name, VR_N_WIDTH1_DB );
+	    sts=ci$send(msg = message ACrg_collect.ACget_named_attribute( &msg,
+								   &CollAttr),
+		   targetid = SysParId.objid,
+		   targetos = SysParId.osnum );
+	    __CheckRC(sts, msg, "ACget_named_attribute-VR_N_WIDTH1_DB failed!",
+								      wrapup);
+	    Width_1 = CollAttr.desc.value.att_exp;
+	    __DBGpr_dbl(" Width_1 attribute in system params",Width_1);
+
+	    strcpy( CollAttr.name, VR_N_DEPTH1_DB );
+	    sts=ci$send(msg = message ACrg_collect.ACget_named_attribute( &msg,
+								   &CollAttr),
+		   targetid = SysParId.objid,
+		   targetos = SysParId.osnum );
+	    __CheckRC(sts, msg, "ACget_named_attribute-VR_N_DEPTH1_DB failed!",
+								      wrapup);
+	    Depth_1 = CollAttr.desc.value.att_exp;
+	    __DBGpr_dbl(" Depth_1 attribute in system params",Depth_1);
+
+	    if( fabs(Depth_1-Width_1)>VRGetTol(VR_DIST_TOL))
+	    {
+		    /* Prepare a ACrg_collect */
+		strcpy( CollAttr.name, VR_N_DEPTH1_DB );
+		CollAttr.desc.type		= AC_ATTRIB_DOUBLE;
+		CollAttr.desc.value.att_exp	= Width_1;
+
+		sts =
+		VR$ModifyCollection( p_msg		  = &msg,
+				     Operation		  = VR_MERGE_COLL,
+				     p_ParamsListToModify = &CollAttr,
+				     NbParamsToModify	  = 1,
+				     p_OutputCollectionId = &SysParId);
+		__CheckRC(sts, msg, "VR$ModifyCollection failed!", wrapup);
+	    }
+
+	    strcpy( CollAttr.name, VR_N_WIDTH2_DB );
+	    sts=ci$send(msg = message ACrg_collect.ACget_named_attribute( &msg,
+								   &CollAttr),
+		   targetid = SysParId.objid,
+		   targetos = SysParId.osnum );
+	    __CheckRC(sts, msg, "ACget_named_attribute-VR_N_WIDTH2_DB failed!",
+								     wrapup );
+	    Width_2 = CollAttr.desc.value.att_exp;
+	    __DBGpr_dbl(" Width_2 attribute in system params",Width_2);
+
+	    strcpy( CollAttr.name, VR_N_DEPTH2_DB );
+	    sts=ci$send(msg = message ACrg_collect.ACget_named_attribute( &msg,
+								   &CollAttr),
+		   targetid = SysParId.objid,
+		   targetos = SysParId.osnum );
+	    __CheckRC(sts, msg, "ACget_named_attribute-VR_N_DEPTH2_DB failed!",
+								     wrapup );
+	    Depth_2 = CollAttr.desc.value.att_exp;
+	    __DBGpr_dbl(" Depth_2 attribute in system params",Depth_2);
+
+	    if( fabs(Depth_2-Width_2)>VRGetTol(VR_DIST_TOL))
+	    {
+		    /* Prepare a ACrg_collect */
+		strcpy( CollAttr.name, VR_N_DEPTH2_DB );
+		CollAttr.desc.type		= AC_ATTRIB_DOUBLE;
+		CollAttr.desc.value.att_exp	= Width_2;
+
+		sts =
+		VR$ModifyCollection( p_msg		  = &msg,
+				     Operation		  = VR_MERGE_COLL,
+				     p_ParamsListToModify = &CollAttr,
+				     NbParamsToModify	  = 1,
+				     p_OutputCollectionId = &SysParId);
+		__CheckRC(sts, msg, "VR$ModifyCollection failed!", wrapup);
+	    }
+	}
+    }
+
+wrapup:
+
+    if( HvacComps )
+    {
+	__DBGpr_com(" Free HvacComps memory allocated by VCobjInActiveSpace");
+	free( HvacComps );
+    }
+}

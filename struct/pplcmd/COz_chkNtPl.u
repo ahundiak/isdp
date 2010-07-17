@@ -1,0 +1,150 @@
+/* $Id: COz_chkNtPl.u,v 1.2 2002/05/06 16:43:27 ramarao Exp $ */
+/*************************************************************************
+ * I/STRUCT
+ *
+ * File:        pplcmd/COz_chkNtPl.u
+ *
+ * Description: Checks the neat plate placement.
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ *      $Log: COz_chkNtPl.u,v $
+ *      Revision 1.2  2002/05/06 16:43:27  ramarao
+ *      Moved the command as a part of "Validate Structure".
+ *
+ *      Revision 1.1  2002/03/11 19:14:35  ramarao
+ *      Implemented CR# 6121.
+ *
+ *
+ * History:
+ *      MM/DD/YY   AUTHOR               DESCRIPTION
+ *      03/11/02   Rama Rao             File Creation
+ *************************************************************************/
+
+#include "VDppl.h"
+#include "VDobj.h"
+#include "VDefp.h"
+#include "vdVALmacros.h"
+
+extern	VDpms_findall_ancestryobjects(), VDefpGetSurfaceEdgeBspsBS();
+
+extern GRclassid	OPP_VSplate_class_id;
+
+int main()
+{
+IGRlong			msg, sts, isConsumed;
+IGRint                	i, j, nb_class, loc_cnt, edgeCnt, logUsed;
+IGRdouble		tol;
+IGRchar			err_txt[50];
+GRclassid		classid[1];
+OM_S_OBJID		*loc_list;
+struct GRid           	obj_chk;
+struct GRmd_env		cur_env;
+struct  GRsymbology     symb;
+struct GRobj_env	plateOE, srfOE;
+struct IGRbsp_curve     *edgeGeom[VDEFP_NEAT_EDGES_MAX];
+
+  loc_cnt    = 0;
+  nb_class   = 1;
+  loc_list   = NULL;
+  logUsed    = 0;
+
+  sts = MSSUCC;
+  msg = MSSUCC;
+
+  classid[0] = OPP_VSplate_class_id;
+
+  ci$get_module_info( md_env = &cur_env );
+
+  loc_cnt = 0;
+  VDpms_findall_ancestryobjects( cur_env.md_id.osnum, nb_class,
+                                 classid, &loc_cnt, NULL );
+  if( !loc_cnt ) goto wrapup;
+
+  loc_list = ( OM_S_OBJID * ) malloc( sizeof(OM_S_OBJID)*loc_cnt );
+  VDpms_findall_ancestryobjects(  cur_env.md_id.osnum, nb_class,
+                                  classid, &loc_cnt, loc_list );
+
+  vdgeom$GetTolerance( cht = &tol );
+  for( i=0; i<VDEFP_NEAT_EDGES_MAX; i=i+1 ) edgeGeom[i] = NULL;
+
+  plateOE.mod_env = cur_env;
+
+  vd$VAL_openLog( msg = msg );
+
+  for( i=0; i<loc_cnt; i=i+1 )
+  {
+      plateOE.obj_id.objid = loc_list[i];
+      plateOE.obj_id.osnum = cur_env.md_id.osnum;
+
+      isConsumed    = 0;
+
+      for( j=0; j<100; j=j+1 )   
+      {
+	 if( edgeGeom[j] != NULL )
+	 {
+	   free( edgeGeom[j] );
+	   edgeGeom[j] = NULL ;
+	 }
+      }
+
+      srfOE.obj_id.objid = NULL_OBJID;
+
+      sts = ci$send(  msg     = message NDmacro.ACtest_consumed(
+                                                &isConsumed ),
+                      targetid = plateOE.obj_id.objid,
+                      targetos = plateOE.obj_id.osnum );
+      if( !(sts&1) || isConsumed ) continue;
+
+      ci$send(  msg     = message GRvg.GRgetsymb( &msg, &symb ),
+		targetid = plateOE.obj_id.objid,
+		targetos = plateOE.obj_id.osnum );
+      if( symb.level != 52 && symb.level != 72 && symb.level != 92 ) continue;
+
+      // Get the surface
+      vdobj$GetFoot( objOE    = &plateOE,
+                     footName = VDEFP_PLATE_BASE_SURF_NAME,
+                     footOE   = &srfOE          );
+      if (srfOE.obj_id.objid == NULL_OBJID) 
+      {
+         strcpy( err_txt, "Can not get the base surface" );
+         goto report_plate;
+      }
+
+      sts = VDefpGetSurfaceEdgeBspsBS( 	&srfOE, 100,tol, 
+					&edgeCnt, edgeGeom );
+      if( !(sts&1) )
+      {
+         strcpy( err_txt, "Neat Plate Placement Failed" );
+         goto report_plate;
+      }
+
+      if( edgeCnt != 0 && edgeCnt != 1 ) continue;
+     
+      sprintf( err_txt, "Neat Edge Count = %d", edgeCnt );
+
+report_plate:
+      logUsed = 1;
+      vd$VAL_addObject( GRid = plateOE.obj_id,
+			PostText = err_txt );
+  }
+
+  if( logUsed == 0 )
+  {
+      vd$VAL_addInfo( msg = msg, Text = "No Problems found" );
+  }
+
+wrapup:
+  for( j=0; j<100; j=j+1 )   
+  {
+     if( edgeGeom[j] != NULL )
+     {
+        free( edgeGeom[j] );
+        edgeGeom[j] = NULL;
+     }
+  }
+  if( loc_list   ) { free( loc_list   ); loc_list   = NULL; }
+  vd$VAL_closeLog();
+  return 1;
+}

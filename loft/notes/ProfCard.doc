@@ -1,0 +1,716 @@
+
+
+		INTERGRAPH	INTERGRAPH	INTERGRAPH	INTERGRAPH
+
+
+
+
+
+
+		LLL            OO        FFFFFFFF   TTTTTTTTTTT
+		LLL          OO  OO      FFFFFFFF   TTTTTTTTTTT
+		LLL         OOO  OOO     FFF            TTT
+		LLL        OOO    OOO    FFFFFF         TTT
+		LLL        OOO    OOO    FFFFFF         TTT
+		LLL         OOO  OOO     FFF            TTT
+		LLLLLLLL     OO  OO      FFF            TTT
+		LLLLLLLL       OO        FFF            TTT
+
+		_______________________________________________
+		_______________________________________________
+
+
+
+
+
+
+			###############################
+			#                             #
+			#        PROFILE CARD  (PC)   #
+			#                             #
+			#	 DOCUMENTATION        #
+			#                             #
+			###############################
+
+
+
+
+
+
+
+		Summary
+		=======
+
+		I    - Profile Card Overview
+
+		II   - Key Words
+			vl-pc-Start
+			vl-pc-Label
+			vl-pc-End
+			vl-pc-StartStiffener
+			vl-pc-EndStiffener
+
+		III  - Retrieve data from 3d Cutting Macros
+			vl-pc-McPosition
+			vl-pc-McAngle
+			vl-pc-McSide
+			vl-pc-McDefAttribute
+			vl-pc-FirstEtPosition
+			vl-pc-InterEtsLength
+
+		IV   - Transform 3d data into the working view (graphicPc)
+			vl-pc-ViewProjection
+			vl-pc-ViewMember
+			vl-pc-ViewCs
+			vl-pc-ViewEndCs
+			vl-pc-ViewMcCs
+
+		V    - Retrieve data from Drawing Border (textPc)
+			vl-pc-BorderAnchorPoint
+			vl-pc-BorderInstPoint
+			vl-pc-BorderMember
+
+		VI   - Labeling Management
+			vl-pc-SetLabel
+			vl-pc-GetLabelOrigin
+			vl-pc-GetLabelText
+			vl-pc-GetLabelReference
+
+		VII  - Conventions at modeling macro creation time 
+
+		VIII - Border creation
+
+		IX   - Restrictions
+
+		X    - User Interface
+
+		XI   - Configuration Files
+
+
+
+
+I -  PROFILE CARD OVERVIEW
+===========================
+
+	The Loft Profile Card (PC) or Bar Sheet command is an interface 
+	between Stiffener modeled in the 3d Space by I_STRUCT product and 
+	its manufacturing process. 
+
+	This command builds a set of objects composed by a stiffener and 
+	the cutting macros defined along its history ( end-treatments, cuts 
+	through and cuts out ) and provides a way for each Shipyard to 
+	format their outputs for the manufacturing process. 
+
+	The shipyard defines the output format via Apfel-Strudel files, which
+	will be interpreted by the command.
+
+	The command process at first the symbolic graphic representation of 
+	the Stiffener (drives by the file "graphicPc") and after the text and 
+	ASCII representation (drives by the file "textPc"). These two 
+	processes are applied by the command, they depend on the same 
+	ship yard drawing border definition but there are no dependencies 
+	between there.
+
+	All dimensions defines in the profile card command are relative to 
+	the following reference coordinate system extract from stiffener.
+
+
+		Origin is the bottom left corner of the web left plane with 
+			the flange on the top.
+		X vector is taken from this end to the other end.
+		Y vector is taken bottom to top.
+
+		End-on View :	 /    /
+				/    /
+				.---.
+				|   |       
+				._. |       
+			  	  | | /	    
+			  	  | |/	
+			  	  .-o  <-- origin of the stiffener.	
+
+		Side view :	_______________________________
+				|                             |
+				| - - - - - - - - - - - - - - |
+				^ Y                           |
+				|    X                        |
+			 	o___>__________________________
+
+		The sketch orientation describes the positionning of the bar
+		on the robot. web_left surface on top , bulb down.
+		
+	For graphic and text Apfel-Strudel file, the command process the
+	blocks on the same following order.
+		1- vl-pc-Start
+		2- Stiffener
+		3- Cutting macros and vl-pc-Label sort by increase X value.
+		4- vl-pc-End
+
+	The user can use all primitives defined by Struct (see 
+	drawing.doc file) or Loft primitives which have a larger domain 
+	(see SdlLoft.doc file) to write its Apfel-Strudel file.
+	A new set of primitives and key words has specifically been defined 
+	for this command. We describe now this new primitives.
+
+
+
+
+
+
+
+
+II  - KEY WORDS
+===============
+
+	The code included into this Apfel-Strudel blocks will be evaluate
+	during the profile card generation.
+
+o vl-pc-Start :
+	It is the first block processed by the PC command.
+	It is usually the time to initialize user variables like counters
+	and/or open an ASCII file.
+
+o vl-pc-Label :
+	Into this block, the user declares all instructions to process the
+	labeling.
+	The labels are dynamically declared into the stiffener Block. Each
+	label has a X position, which is used to order the label processing
+	time among the cutting Macros.
+
+o vl-pc_End :
+	It is the last block processed by the PC command.
+	It is usually the time to write a short report on the manufacturing 
+	process like to compute the manufacturing time and/or close the above
+	opened ASCII file.
+
+o vl-pc-StartStiffener
+	If no start end-treatment macro is detected into the cutting macros 
+	list, this block will be processed at start of macros list.
+
+o vl-pc-EndStiffener
+	If no end end-treatment macro is detected into the cutting macros 
+	list, this block will be processed at end of macros list.
+
+
+
+
+
+
+III - RETRIEVE DATA FROM 3D CUTTING MACROS
+===========================================
+
+	All dimensions are computed relatively to the Stiffener coordinate
+	system of reference (left bottom corner of the web left plane with
+	flange on top.
+
+o vl-pc-McPosition
+	Returns the X and Y positions of the Macro. 
+	For bent stiffeners, the X position is the curvilinear length taken 
+	along the neutral fiber.
+
+	synopsis :
+	$pos : = vl-pc-McPosition();
+		$pos : S - String which concatenates the X and Y values 
+				separated by a space.
+
+
+o vl-pc-McAngle
+	Returns the rotation angle of the macro. The angle is computed 
+	between the normal of the neutral fiber at the macro origin and the 
+	Y vector of the the macro CS.
+	The angle value is returned in radians.
+
+	synopsis :
+	$angle := vl-pc-McAngle();
+		$angle : S - angle value.
+
+o vl-pc-McSide
+	This primitive compares the X direction of the Stiffener with the
+	X direction of the Macro Cs.
+	If it is the same direction then side value = 1 else = -1;
+
+	synopsis :
+	$side := vl-pc-McSide();
+		$side : I - side value.
+
+o vl-pc-McDefAttribute
+	Returns an attribute value stored into the macro definition 
+	corresponding to the given attribute name.
+
+	synopsis :
+	$value := vl-pc-McDefAttribute( <attribute name> );
+		<attribute name> : S - attribute name.
+		$value : S D I - attribute value.
+
+
+o vl-pc-FirstEtPosition
+	Returns the X position of the first End Treatment. If No Et is find,
+	the value 0 is returned.
+
+	sysnopsis :
+	$etPos := vl-pc-FirstEtPosition();
+		$etPos : D - First Et X position.
+
+o vl-pc-InterEtsLength
+	Returns the length of between the first and end End Treatment.
+
+	sysnopsis :
+	$etsLen := vl-pc-InterEtsLength();
+		$etsLen : D - length between Ets.
+
+
+
+
+
+Example :
+=========
+
+			Stiffener X --->
+
+		_________________________________________
+		\                                       /
+		 \ - - - - - - - - - - - - - - - - - - /
+		  \    __         ___                 /
+		  |   \   \      /   /               |
+		  |    \  _\    /_  /                |
+		  ______\ \______/ /_________________|
+
+                ET1      CT1     CT2                  ET2
+
+
+	The macros ET1 and ET2 are occurrences of the same macro definition 
+	named ET. The Cs orientation and ET shape are defined as follow :
+                        ____
+			|   \
+			|    \
+			|     \
+			|      \	   	
+			|     Y	^ 
+			|	|
+			________o-> X
+
+		The ET owns the attribute ~~RobotMacro = BBC.
+
+	The macros CT1 and CT2  are occurrences of the same macro definition 
+	named CT. The Cs orientation and CT shape are defined as follow :
+
+				.___.
+				|   |	
+			      Y	^ __.
+				| |
+				o-> X
+
+		The ET owns the attribute ~~RobotMacro = ACX.
+		Note that the flange direction of the penetrating profile 
+		can be defined relatively to the X direction.
+
+
+	We apply now the above primitives to this 4 macros.
+
+	$pos	:= vl-pc-McPosition();
+	$angle	:= vl-pc-McAngle();
+	$side	:= vl-pc-McSide();
+	$rMacro := vl-pc-McDefAttribute( "~~RobotMacro" );
+
+	The results of the primitives applied to the cutting macros 
+	return :
+
+	Macro Name : X value | Y value | Angle | Side | Robot Macro
+	------------------------------------------------------------
+	ET1	   : Xet1    | Yet1    | 0     | 1    | BBC
+	-----------------------------------------------------------
+	ET2	   : Xet2    | Yet2    | 0     | -1   | BBC
+	-----------------------------------------------------------
+	CT1	   : Xct1    | Yct1    | beta  | 1    | ACX
+	-----------------------------------------------------------
+	CT2	   : Xct2    | Yct2    | -beta | -1   | ACX
+	-----------------------------------------------------------
+
+
+
+
+
+
+IV  - TRANSFORM 3D DATA INTO THE WORKING VIEW (graphicPc)
+=========================================================
+
+	Information on stiffeners and macros are retrieved from the 3d model, 
+	the following primitives convert 3d data into the working view. The 
+	working view is the space where the 3d data are going to be 
+	symbolically represented, it is represented by a coordinate system 
+	and a point. This primitives can only be included into the graphicPc 
+	Apfel-Strudel file.
+
+o vl-pc-ViewProjection	: OUTPUT
+	Same behavior that I/Struct "projection" primitive but the result is 
+	fitted into the working view (with straight profiles only). 
+
+	synopsis :
+	vl-pc-ViewProjection();
+
+
+o vl-pc-ViewMember	: OUTPUT
+	Same behavior that I/Struct "member" primitive but the result is
+	fitted into the working view (with straight profiles only).
+
+	synopsis :
+	vl-pc-ViewMember([member name]);
+		[member name] : S - path to access the member of the 
+					processed element 
+			      = "".
+
+o vl-pc-ViewCs
+	Returns the working view Coordinate System.
+
+	synopsis :
+	$cs := vl-pc-ViewCs();
+		$cs : O - working view CS
+
+o vl-pc-ViewEndCs
+	Returns a Coordinate System placed at end of the working view.
+
+	synopsis :
+	$cs := vl-pc-ViewEndCs();
+		$cs : O - Cs at End of working view.
+
+o vl-pc-ViewMcCs
+	Return the Coordinate system of the macro processed fitted into the
+	working view.
+
+	synopsis :
+	$mcCs := vl-pc-ViewMcCs();
+		$mcCs : O - Macro coordinate system.
+	
+
+
+
+
+
+V  - RETRIEVE DATA FROM DRAWING BORDER (textPc)
+===============================================
+
+o vl-pc-BorderAnchorPoint
+	Set current anchor point for text placement on the ShipYard drawing
+	border. The function accepts pathes for points and coordinate system. 
+
+	synopsis :
+	$no_var := vl-pc-BorderAnchorPoint(<anchor name>);
+		<anchor name> : S - path to access to the anchor point on the
+					drawing border.
+
+
+o vl-pc-BorderInstPoint
+	Set current anchor point for instruction. An internal counter is
+	incremented at each call. The border output radical is forced to 
+	be "i".
+
+	synopsis :
+	$no_var := vl-pc-BorderInstPoint();
+
+o vl-pc-BorderMember	: OUTPUT
+
+	Same behavior that I/Struct "member" primitive but will be applied
+	on the Profile card drawing border.
+
+	synopsis :
+	vl-pc-BorderMember(<path>);
+		<path> : S - path to acess the member.
+
+
+
+
+VI  - LABELING MANAGEMENT
+=========================
+
+	During the stiffener block process the user can define label
+	entities. This labels will be sorted among the cutting macros 
+	attached to the current processed stiffener and its process time 
+	will respect the new sort order. The label is defined by an origin 
+	(X position), a text and a user refence.
+	For the label, block identifier is vl-pc-Label.
+
+o vl-pc-SetLabel
+
+	synopsis :
+	$noVar := vl-pc-SetLabel( <origin>, <text>, [reference] );
+		<origin> : D I - label origin taken onto 3d Stiffener.
+		<text>   : S   - label text.
+		[reference] : S - label reference.
+
+o vl-pc-GetLabelOrigin
+	This primitive returns the label origin.
+	If a length argument is given this function computes the first space 
+	where the label can be placed without cutting macro overlap.
+
+	synopsis :
+	$origin := vl-pc-GetLabelOrigin( [length] );
+		[length] : D I - metric length of the label.
+		$origin  : D   - label origin
+
+o vl-pc-GetLabelText
+	This primitive returns the label text.
+
+	synopsis :
+	$text := vl-pc-GetLabelText();
+		$text  : S   - label text
+
+o vl-pc-GetLabelReference
+	This primitive returns the label user reference.
+
+	synopsis :
+	$ref := vl-pc-GetLabelText();
+		$ref  : S   - label reference
+
+
+example :
+=========
+
+	1/ Into Stiffener Block we define 3 types of label :
+	# define an overlength label
+	$noVar := vl-pc-SetLabel( 100, "Ovl start = 20 ", "OVL" );
+
+	#define a marking label
+	$noVar := vl-pc-SetLabel( $stiffLen/2, "| middle stiffener ", "MARK" );
+
+	#define stiffener Naming label
+	$label := "376-13003-56-B1-D-->";
+	$labelLen := (string-length( $label ) * $charSize ) + ( 2 * $gap );
+	$lab_ori := vl-pc-GetLabelOrigin( $labelLen ) + $gap;
+	$noVar := vl-pc-SetLabel( $lab_ori, $label, "LAB" );
+
+	2/ Retrieve Label data into vl-pc-Label block.
+
+	$labText := vl-pc-GetLabelText();
+	$labRef  := vl-pc-GetLabelReference();
+	$labOri  := vl-Sprintf("%.0f", vl-pc-GetLabelOrigin() );
+
+
+VII) Conventions at modeling macro creation time  
+================================================
+
+To allow macro location in the profile card extraction process.
+
+		1) Macros MUST be placed on the web_____l face of the beam.
+		   This face has to exist in the profile definition.
+		   (see I/STRUCT command "Attach name to face")
+
+		2) ~~operand = stf 
+
+		3) ~~operator0 = {path of the cuttout curve} crv must exists
+
+		4) ~~orientation = {path of cs}
+
+			A (non displayable, non locatable) coordinate system 
+			MUST be in the list of feet and called with any name. 
+			(the coordinate system gives the plane and the 
+			location of the macro.
+			This cs has to be placed on the web_____l face.
+
+		5) ~~marking## = {path of the marking curve}.
+
+			This ~~marking## is optional and has to be provided
+			mainly for internal cuthroughs for beams/stiffeners.
+			It should exist if:
+			the macro requires to be marked on the profile card 
+			or on the templates for stiffeners.
+			The marking element (usually a line) is a foot in the 
+			macro. 
+			The element should be named. 
+			The element is oriented from bottom of the macro to the
+			top,(normally +y of the placement coordinate system).
+			The element is limited in length to the contact with the
+			crossing stiffener in order to be able to put an 
+			overlength/allowance if needed. 
+			You may want more than one ~~marking## in a macro.	
+			At a ~~marking## corresponds a ~~track##.
+
+		6) ~~track## = {path of point or path of cs} (optional)
+
+			This template exists if the corresponding ~~marking 
+			exists. 
+			It gives the direction of an optional overlength 
+			(for drawing).
+			In case of cs , the origin of the cs will be given
+			as a track point.
+		 	The number of ~~track[n] is not limited.
+			To a ~~track[n] corresponds a ~~marking[n].
+
+        	7) The origin of the macro is usually the origin of the 
+		   coordinate system (see 4), except in the macros with 
+		   markings, where the software will intersect the ~~marking##
+		   line direction with the stiffener axis .  
+
+		8) All required parameters for driving the robot must be in
+		   the templates or in the feet list if you want to extract
+		   them.
+
+	example :
+	macrolib: ETclib_rd
+	macro	: e21rd2
+	
+	macrolib: OPclib_rd
+	macro	: op_dp3
+
+	macrolib: CRclib_rd
+	macro	: cut3d
+	
+
+VIII ) Border creation :
+=======================
+
+	The profile card is a drawing border symbol macro which is filled in 
+	by using the APFELSTRUDEL language. 
+
+
+
+		      		CS				template
+		      		 |
+		     		 |
+		     ..........	MACRO BORDER
+		   .		/      \
+		  .	       /        \
+		CS	Named points    Named coordinate system	    feet
+	(template-foot
+	 named cs)
+
+	Views creation :
+	----------------
+	. 3 views : represented by a coordinate system and a named
+		    point define the range of the drawing view.
+		    hard coded names:
+			coordinate system : side
+					    bottom
+		
+			named points	  : maxrgside
+					    maxrgbottom
+
+		bottom view   : view of the flange.
+		
+		side view : view of the web with the bulb direction going down
+			    the drawing sheet.
+ 	
+		any_view :  context where instructions are going to be written.
+
+		__________________________________________________
+		|  						  |
+		|  ..................................o maxrgside  |
+		|  Y               		     . named point|
+		|  ^	drawing view side	     .		  |
+		|  | 				     .		  |
+		|  |___>X.............................            |        
+		|  side						  |
+		|						  |
+		|						  |
+		|  						  |
+		|  ..................................o maxrgbottom|
+		|  Y               		     . named point|
+		|  ^	drawing view bottom	     .		  |
+		|  | 				     .		  |
+		|  |___>X.............................            |        
+		|  bottom					  |
+		|						  |
+		|_________________________________________________|
+
+
+
+	. non associative lines and text attached to a coordinate system
+	  made of cosmetic graphics attached to a coordinate system.
+
+	. A set of non named non assoc points are put on an other layer .
+	  Each point is put in a non displayable, non locatable mode.
+	  They are used for the automatic text annotation :
+	  You need a set of named points as feet of the border macro to 
+	  defined the different fields wich are going to be filled up 
+	  with APFEL-STRUDDL. 
+
+	  2 types anchors points for text :
+
+		.Border anchor points: any name
+		 No limit number.
+
+		.Instruction anchor points : named i1, i2, ik...., i45
+		 45 is the limit.
+
+	. other user-defined coordinate system can be defined in the
+	  feet of the border to place any user defined macro.
+	  (for a detailed figure).
+
+	. The border may be a nested macro or not.
+	  It is better to create a symbol macro.
+	  Store your border in a macro lib.
+
+	  Example 1:
+		In the macro lib "PC2dn.lib"
+		symbol macro RDSpcBorder
+					
+				
+		RDSpcBorder	:template --> cs
+				 feet     --> dummy graphic(cadre)
+				              dummy named points
+					      named coordinate system.	
+	Example 2:
+		In macro lib "PC2dn.lib"
+		symbol macro YSLpcBorder.
+
+	. Modeling Macro extraction (cutthroughs , end-treatments):
+	  --------------------------------------------------------
+
+	  3 features are offered to display a representation
+	  of the modeling macros in the profile card views.
+
+	. Project the member of the modeling macro on to the view.
+	  (no additional work)
+
+	. Use the ~~marking## to produce a line on the view.
+	  (no additional work)
+
+	. Place a 2d macro replacing the modeling macro on the view. 
+	  A set of 2d macros for each type of modeling macro needs
+	  to be created.
+	  How to create them :
+		coordinate system
+		dummy graphic attached to it
+		or normal symbol macro fed with the parameters you want
+		example in: PC2dn.lib
+
+	.All holes and end-treatments modeling macros MUST
+	 have a coordinate system(non displayable, non locatable)
+	 in their feet called with any name.
+	 The  macro X position on the stiffener is taken at the origin 
+	 of the foot coordinate system (~~orientation).
+
+IX - RESTRICTIONS
+====================
+
+	No detection of identical elements.
+
+	One profile-card/bar-sheet  per stiffener.
+
+
+X - USER-INTERFACE
+===================
+
+	select a (set of) beam(s)/stiffener(s)
+
+	expand for status form
+		x distance between border along the x axis
+		y distance between border along the y axis
+		verbose / no verbose
+
+	select coordinate system
+
+XI - CONFIGURATION FILES
+=======================
+
+	In /usrx/ip32/loft/config/drawing
+		textPc
+		graphicPC
+
+	In /usrx/ip32/loft/ppl/bin
+		modeling macro-lib
+		2d macro for profile cards
+		border macro-lib for profile cards  
+
+	Make sure when running the "create profile card" command that
+	all macro libraries have been attached to your working file, 
+	and that you call the right macro in the status form.

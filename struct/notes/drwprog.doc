@@ -1,0 +1,1501 @@
+
+	       Extending APFEL-STRUDEL For Application Use
+	       -------------------------------------------
+
+			--- TABLE OF CONTENTS ---
+
+	I   Introduction
+
+	II  Defining actions associated with keywords
+		A) Action associated to an element type, element view,
+		   and element filter.
+		B) Action associated with a built-in function
+		C) Action associated with an output statements
+		D) Adding a new keyword type for a view
+
+	III Inserting keywords in the APFEL-STRUDEL engine
+
+	IV  Calling APFEL-STRUDEL
+
+	V   Appendix
+		A) Description of the input data structure
+		B) Description of the exec  data structure
+		C) Useful preprocessor macros
+		D) The verbose mode
+		E) Conversion rules between types
+		F) The view cone angle
+
+
+
+                                           //
+                                          //
+                                 @ @@@    ||  @@@ 
+                              @@@@ @  @@      @   @  
+                             @   @ @   @ @@@@ @@@ @   
+                            @@@@@@ @@@@  @    @   @    
+                           @     @ @     @@   @   @
+                          @      @ @     @    @@@ @@@@@
+                           *****=====*** |  |*** ===*   
+                            *     |  *  *|  |*  *|  *  
+                             ***  |  *  *|  |*  *|= **
+                               *  |  *** |  |*  *|   
+                              **  |  * * |  |*  *===
+                                  |  *  * == *  * 
+                                     *       ***
+
+	I   Introduction
+	----------------
+
+		The APFEL-STRUDEL engine may be extended by applications
+	which need some drawing-like process to be user-configurable.
+	The method consists in extending the syntax so that application-
+	specific keywords may be recognized in the APFEL-STRUDEL file
+	which pilots the drawing-like process.
+
+	Extensions may be performed in three areas:
+
+		- Element types
+		- Built-in functions
+		- Output statements
+
+	Additional element types may be introduced and will be used
+	in the same way as 'beam', 'plate', etc. are in APFEL-STRUDEL,
+	say for type 'mytype':
+
+
+		*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*
+		:	beam : {				:
+		:		...				:
+		:	}					:
+		:	mytype : {				:
+		:		...				:
+		:	}					:
+		*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*
+
+	Additional output statements may be introduced and will be used
+	in the same way as 'projection', 'intersection', etc. are in
+	APFEL-STRUDEL, say for output 'myoutput' :
+
+		*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*
+		: mytype: {					:
+		:	...					:
+		:	top : {					:
+		:		...				:
+		:		myoutput[ color = "green",	:
+		:			  style = 2 ] ;		:
+		:	}					:
+		:	...					:
+		: }						:
+		*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*
+
+	Additional built-in functions may be introduced, say for function
+	'myfunction' :
+
+		*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*
+		:						:
+		:	$x := myfunction( $y, 3 ) ;		:
+		:						:
+		*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*
+
+
+	II  Defining actions associated with keywords
+	---------------------------------------------
+
+	A) Action associated to an element type, element view, and element
+	------------------------------------------------------------------
+	   filter
+	   ------
+
+	The action associated with an element type, view and filter is
+	query function function which given an element, performs the
+	following tasks:
+
+	- if queried for the element type:
+	    if the element is of the requested type, sets the type to some
+	    non-zero application specific value, otherwise sets it to zero.
+
+	- if queried for the view under which the element is seen:
+	    computes and sets that view.
+
+	- if queried for a regular expression which will be used in
+	  a preprocessing phase where elements are located and then
+	  filtered out to keep only those satisfying a criterion, sets
+	  this filter.
+
+	Such a function is declared as:
+
+	+---------------------------------------------------------------+
+	| extern void F(	unsigned long 		query,		|
+	|                       VSdrwInputData		*inp,		|
+	|			VSdrwExecData		*xData ) ;	|
+	+---------------------------------------------------------------+
+
+	Where
+	- query   (IN)  is and OR of what is wanted.
+	- inp     (I/O) contains all the data input to APFEL-STRUDEL, such
+			as the id and module environment of the element
+			being processed, the view vector, etc. Some fields
+			of this structure will be updated.
+	- xData   (I/O) contains all the data which evolve during execution.
+	                Some fields of this structure will be updated.
+
+	The macros
+		DRW_wantType		(TRUE if type is wanted)
+		DRW_wantFilter		(TRUE if filter is wanted)
+		DRW_wantView		(TRUE if view is wanted)
+		DRW_elmId,		(In: id of element)
+		DRW_elmEnv,		(In: environment of element)
+		DRW_elmDesc		(In: lexical token in APFEL-STRUDEL
+		                             file which is associated to
+		                             the ISOFTYPE function).
+		DRW_elmType,		(Out: type of element, to be set if
+					 DRW_wantType is TRUE)
+		DRW_elmView,		(Out: view of element, to be set if
+					 DRW_wantView is TRUE)
+		DRW_elmFilter		(Out: filter for element, to be set
+					 DRW_wantFilter is TRUE)
+		DRW_viewConeAngle	(In: for view calculation: tolerance
+					 around the view vector - WARNING this
+					 value is in degrees)
+		DRW_viewVector		(In: Eye vector)
+		DRW_appData		(In: application-specific data as
+		                         passed to vs$drwExecConfig)
+		
+		
+	have been defined for easy access of these fields.
+
+	If F has been associated with "mytype" then when
+
+		*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*
+		: 		mytype: {			:
+		:			...			:
+		:		}				:
+		*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*
+
+	is reached, F gets called.
+
+	F may be called in two different contexts:
+
+	a)  in a pre-processing phase, to gather all the types present in the
+	file so as to build a class filter for locate, in this case only
+	'DRW_elmId', and 'DRW_elmEnv' are set to a meaningful value (the other
+	fields of the two structures may contain garbage)
+
+	For instance, when "sphere : { ..." is encountered, the following
+	call is made:
+
+	+---------------------------------------------------------------+
+	|								|
+	|     		F( VSdrwQueryFilter, ..., ... ) ;		|
+	|								|	
+	+---------------------------------------------------------------+
+
+	and the function returns, say "EMSsphere" (to allow spheres to be
+	to be located) in 'DRW_elmFilter':
+	
+	+---------------------------------------------------------------+
+	|								|
+	|		strcpy( DRW_elmFilter, "EMSsphere" ) ;		|
+	|								|	
+	+---------------------------------------------------------------+
+
+	b) in the processing phase, F gets called with all the arguments
+	set.
+
+	When queried for the type, if the element is not of the type
+	associated with the function, 'DRW_elmType' should be set to 0
+	(zero), otherwise the value stored in 'DRW_elmType' must be unique
+	to a data type so that APFEL-STRUDEL can differentiate types easily
+	and fast. How to give a value which would not conflict with values
+	given by other applications which have also inserted type keywords
+	into APFEL-STRUDEL ? By using a number generated by Message Builder,
+	which will be unique among applications since it depends upon the
+	application key.
+
+	When queried for the view, 'DRW_elmView' must be set to one of the
+	following:
+		VSfromTop		Element seen from top
+		VSfromBottom		Element seen from bottom
+		VSfromSide		Element seen from side
+		VSendOn			Element seen end-on
+		VSunknownViewType	View could not be determined
+	It case of error, set the view to 'VSunknownViewType'.
+
+	The determination of the view is sensitive to the view cone angle,
+	which is a tolerance around the view vector:
+
+	  /
+         /\ View cone angle                  |-
+	+--)----> View vector               /   Element
+	 \/                                 [_
+	  \                                 
+
+	The view cone angle is set by the user in the APFEL-STRUDEL file
+	by the statement:
+	
+              +------------------------------------------+
+	      |	set view-cone-angle <angle in degrees> ; |
+              +------------------------------------------+
+
+	and its value is available in `DRW_viewConeAngle'. Refer to appendix
+	F for a sample usage of this value. Remember that the view cone angle
+	is in degrees -not radian- and that its value must often be divided
+	by 2 in angle manipulations.
+
+		Below is a sample example for keyword "sphere" of an asso-
+	ciated function of an application APP:
+
+	+---------------------------------------------------------------+
+	| #include <string.h>		/* For 'strcpy'              */	|
+	| #include "emsclasses.h"	/* For 'EC_I_EMSsphere'      */	|
+	| #include "vsmiscmacros.h"	/* For 'vs$is_ancestry_valid */	|
+	| #include "vsdrw.h"						|
+        |								|
+	| #argsused /* Suppress compiler warning for unused args */	|
+	| void APPdrwISOFTYPEFsphere(					|
+	|			unsigned long 		query,		|
+	|                       VSdrwInputData		*inp,		|
+	|			VSdrwExecData		*xData )	|
+	|								|
+	|	if( DRW_wantFilter ) {					|
+	|		/* Preprocessor pass */				|
+	|		strcpy( DRW_elmFilter, "EMSsphere" ) ;		|
+	|	}							|
+	|	if( DRW_wantType ) {					|
+	|		/* Execution pass */				|
+	|		extern OMuword OPP_EMSsphere_class_id ;		|
+	|		if( vs$is_ancestry_valid(			|
+	|			 object  = DRW_elmId,			|
+	|			 classid = OPP_EMSsphere_class_id ) ) {	|
+	|		    DRW_elmType = EC_I_EMSsphere ;		|
+	|		} else {					|
+	|	            DRW_elmType = 0 ;				|
+	|		}						|
+	|	}							|
+	|       if( DRW_wantView ) {					|
+	|		/* Execution pass */				|
+	|		/* Seems that a sphere is only seen end-on */	|
+	|		DRW_elmView = VSendOn ;				|
+	|	}							|	
+	| }								|
+	+---------------------------------------------------------------+
+
+	Note: do not use
+	
+	   if(  DRW_wantFilter ) { ... } ELSE if( DRW_wantType ) ...
+
+	since you may be queried for several thing at the same time.
+
+	Preprocessor macros are defined in "vsdrwapi.h" to ease the writing
+	of type-checking functions:
+	
+	+---------------------------------------------------------------+
+	| #include <string.h>		/* For 'strcpy'              */	|
+	| #include "emsclasses.h"	/* For 'EC_I_EMSsphere'      */	|
+	| #include "vsmiscmacros.h"	/* For 'vs$is_ancestry_valid */	|
+	| #include "vsdrwapi.h"						|
+        |								|
+	| #argsused /* Suppress compiler warning for unused args */	|
+	| IMPLEMENT_ISOFTYPE( APP, sphere ) {				|
+	|								|
+	|	if( DRW_wantFilter ) {					|
+	|		/* Preprocessor pass */				|
+	|		strcpy( DRW_elmFilter, "EMSsphere" ) ;		|
+	|	}							|
+	|	if( DRW_wantType ) {					|
+	|		/* Execution pass */				|
+	|		extern OMuword OPP_EMSsphere_class_id ;		|
+	|		if( vs$is_ancestry_valid(			|
+	|			 object  = DRW_elmId,			|
+	|			 classid = OPP_EMSsphere_class_id ) ) {	|
+	|		    DRW_elmType = EC_I_EMSsphere ;		|
+	|		} else {					|
+	|	            DRW_elmType = 0 ;				|
+	|		}						|
+	|	}							|
+	|       if( DRW_wantView ) {					|
+	|		/* Execution pass */				|
+	|		/* Seems that a sphere is only seen end-on */	|
+	|		DRW_elmView = VSendOn ;				|
+	|	}							|	
+	| }								|
+	+---------------------------------------------------------------+
+
+	The function thus defined can be declared with:
+
+	+---------------------------------------------------------------+
+	| #include "vsdrwapi.h"						|
+	|								|
+	| DECLARE_ISOFTYPE( APP, sphere ) ;				|
+	+---------------------------------------------------------------+
+	
+	
+	B) Action associated with a built-in function
+	---------------------------------------------
+
+	An APFEL-STRUDEL functions takes arguments by value and always
+	returns a value of type integer, double floating-point value,
+	character string or element (object).
+	The action associated with an APFEL-STRUDEL function is a C function
+	which returns a value of type integer, double floating-point value,
+	character string or element (object).
+
+	Such a function is declared as:
+
+	+---------------------------------------------------------------+
+	| extern VSxfRC F(	const VSdrwInputData	*inp,		|
+	|			VSdrwExecData		*xData,		|
+	|			const char		*function,	|
+	|			const VSdrwArgLst	*arglist,	|
+	|			int			argc,		|
+	|			VSexecRes		*res ) ;	| 
+	+---------------------------------------------------------------+
+
+	Where:
+	- inp       (IN)  contains all the data input to APFEL-STRUDEL, such
+			  as the id and module environment of the element
+			  being processed, the view vector, etc.
+	- xData     (I/O) contains all the data which evolve during execution
+		          such as the verbose flag and the current symbology.
+		          It is declared as I/O since it may sometimes be
+		          modified when objects are flagged for garbage
+		          collection; otherwise is should *** NOT *** be
+		          modified.
+	- function  (IN)  is the name of the APFEL-STRUDEL function which
+			  this C function implements, only given if needed
+			  for info in verbose mode.
+	- arglist   (IN)  is a linked list of the function's arguments.
+	- argc	    (IN)  is the number of arguments
+	- res	    (OUT) is the result returned by the function
+
+	Return value: one of the following
+		xfSUCCESS	: Successful evaluation
+		xfINVARG	: Invalid argument
+		xfARGCOUNT	: Wrong number of arguments
+		xfFAILURE	: Evaluation failure
+
+	The number and type of the arguments must be checked inside the
+	C function; actually only arguments of type 'element/object' must be
+	checked since the three other types are convertible into one another.
+
+	Even in case of failure, a value must be returned.
+
+	Macros exist in "vsdrwapi.h" to ease the writing of functions:
+
+	- IMPLEMENT_FUNCTION( app-prefix, function )
+	  Creates the header for the function definition.
+
+	- DECLARE_FUNCTION( app-prefix, function )
+	  Creates the declaration for the function.
+
+	- CHECK_ARGCOUNT( n )
+	  Checks that there are 'n' arguments, errs off and exits if not
+
+	- CHECK_ARGCOUNTS( n1, n2 )
+	  Checks that there are 'n1' or 'n2' arguments, errs off and exits
+	  if not
+
+	- CHECK_FOR_OBJ( arg, argno )	
+	  Checks that argument number 'argno' is an object, errs off and
+	  exits if not.
+
+	- INT_RES( v )
+	  Assigns the integer value 'v' to the result 'res'.
+
+	- DBL_RES( v )
+	  Assigns the double  value 'v' to the result 'res'.
+
+	- STR_RES( v )
+	  Assigns the string  value 'v' to the result 'res'.
+
+	- XFERR
+	  Checks for verbose mode and prints errors to the terminal.
+
+	- BAD_ARG_TYPE( argno, wantedType )
+	  Prints an error message in case of bad object type for argument
+	  number 'argno'.
+
+	- BAD_OBJ_TYPE( wantedType )
+	  Prints an error message in case of bad object type for the element
+	  being processed and exits.
+
+	Let us code for example the function "get-radius", which returns
+	the radius of the sphere being processed:
+
+		*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*
+		:    sphere : {					:
+		:	   ...					:
+		:	   $diameter := get-radius() * 2 ;	:
+		:    }						:
+		*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*
+
+	+---------------------------------------------------------------+
+	| #include "vsmiscmacros.h"	/* For 'vs$is_ancestry_valid */	|
+	| #include "vsdrwapi.h"						|
+	|								|
+	| from EMSsurface import EMget_params ;				|
+	| 								|
+	| #argsused /* Suppress compiler warning for unused args */	|
+	| IMPLEMENT_FUNCTION( APP, get_radius ) {			|
+	| 								|
+	|  /* Set default value */					|
+	|  DBL_RES( 0 ) ;						|
+	| 								|
+	|  /* Check number of arguments */				|
+	|  CHECK_ARGCOUNT( 0 ) ;					|
+	| 								|
+	|  /* Since we have no argument, we take the element being	|
+	|     processed: is it a sphere ? */				|
+	| 								|
+	|  if( !vs$is_ancestry_valid(					|
+	|		 object  = elmId,				|
+	|		 classid = OPP_EMSsphere_class_id ) ) {		|
+	|	BAD_OBJ_TYPE( "sphere" ) ;				|
+	|  }								|
+	| 								|
+	|  {								|
+	|    long			sts ;				|
+	|    long			msg ;				|
+	|    struct EMsurface_params	sfInfo ;			|
+	|    unsigned short		sfType ;			|
+	| 								|
+	|    sts = om$send( msg = message EMSsurface.EMget_params(	|
+	|				&msg, NULL, inp->elmEnv,	|
+	|				&sfType, &sfInfo ),		|
+	|		    senderid = inp->elmId->objid,		|
+	|		    targetid = inp->elmId->objid,		|
+	|		    targetos = inp->elmId->osnum ) ;		|
+	|   if( !( sts & 1 & msg ) ) return xfFAILURE ;			|
+	|								|
+	|   DBL_RES( sfInfo.params.sphere.radius ) ;			|
+	|  }								|
+	|								|
+	|  return xfSUCCESS ;						|
+	| }								|
+	+---------------------------------------------------------------+
+
+	The function thus defined can be declared with:
+
+	+---------------------------------------------------------------+
+	| #include "vsdrwapi.h"						|
+	|								|
+	| DECLARE_FUNCTION( APP, get_radius ) ;				|
+	+---------------------------------------------------------------+
+
+	If we would prefer "get-radius" to either take no argument as above
+	or take one argument (for instance an object returned by some
+	other function), we could code it as follows:
+
+	+---------------------------------------------------------------+
+	| #include "vsmiscmacros.h"	/* For 'vs$is_ancestry_valid */	|
+	| #include "vsdrwapi.h"						|
+	|								|
+	| from EMSsurface import EMget_params ;				|
+	| 								|
+	| #argsused /* Suppress compiler warning for unused args */	|
+	| IMPLEMENT_FUNCTION( APP, get_radius ) {			|
+	|								|
+	|  struct GRid *target ;					|
+	|  struct GRmd_env *env ;					|
+	| 								|
+	|  /* Set default value */					|
+	|  DBL_RES( 0 ) ;						|
+	| 								|
+	|  /* Check number of arguments */				|
+	|  CHECK_ARGCOUNTS( 0, 1 ) ;					|
+	| 								|
+	|  /* If we have no argument, we take the element being	proces- |
+	|     sed, otherwise arg# 0, then: is it a sphere ? */		|
+	|  if( argc ) { 						|
+	|	target = &arglist->arg._oval._grid ;			|
+	|	env    = &arglist->arg._oval.mod_env ;			|
+	|  } else {							|
+	|	target = inp->elmId ;					|
+	|	env    = inp->elmEnv ;					|
+	|  |								|
+	|								|
+	|  if( !vs$is_ancestry_valid(					|
+	|		 object  = target,				|
+	|		 classid = OPP_EMSsphere_class_id ) ) {		|
+	|	if( !argc ) BAD_OBJ_TYPE( "sphere" ) ;			|
+	|	else        BAD_ARG_TYPE( "sphere" ) ;			|
+	|  }								|
+	| 								|
+	|  {								|
+	|    long			sts ;				|
+	|    long			msg ;				|
+	|    struct EMsurface_params	sfInfo ;			|
+	|    unsigned short		sfType ;			|
+	| 								|
+	|    sts = om$send( msg = message EMSsurface.EMget_params(	|
+	|				&msg, NULL, env,		|
+	|				&sfType, &sfInfo ),		|
+	|		    senderid = target->objid,       		|
+	|		    targetid = target->objid,	        	|
+	|		    targetos = target->osnum ) ;		|
+	|   if( !( sts & 1 & msg ) ) return xfFAILURE ;			|
+	|								|
+	|   DBL_RES( sfInfo.params.sphere.radius ) ;			|
+	|  }								|
+	|								|
+	|  return xfSUCCESS ;						|
+	| }								|
+	+---------------------------------------------------------------+
+
+
+	Let us now study the code for a function which concatenates n
+	strings:
+
+		*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*
+		:                                                :
+		: $bigstring := multicat( "ABC", 2, " ", 3.1 ) ; :
+		:                                                :
+		*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*
+
+	Since non-object types convert into one another, the above call
+	is legal and will yield "ABC2 3.1".
+
+	+---------------------------------------------------------------+
+	| #include <string.h>						|
+	| #include "vsdrwapi.h"						|
+	|								|
+	| #argsused /* Suppress compiler warning for unused args */	|
+	| IMPLEMENT_FUNCTION( APP, multicat ) {				|
+	|								|
+	|  const VSdrwArgLst	*a ;					|
+	|  const int		maxlen = sizeof( res->_sval ) -1 ;	|
+	|  const int		remain = maxlen ;			|
+	|								|
+	|  /* Set default value */					|
+	|  STR_RES( "" ) ;						|
+	|								|
+	|  for( a = arglist ; a && remain > 0 ; a = a->next ) {		|
+	|	VStktxt	str ;						|
+	|	int	l ;						|
+	|	VSdrwStrVal( &a->arg, str ) ;				|
+	|	l = strlen( str ) ;					|
+	|	if( l < remain ) {					|
+	|		strcat( res->_sval, str ) ;			|
+	|	} else {						|
+	|		strncat( res->_sval, str, remain ) ;		|
+	|		res->_sval[maxlen] = '\0' ;			|
+	|		a = NULL ; /* Stops looping */			|
+	|	}							|
+	|  }								|
+	|  return xfSUCCESS ;						|
+	| }								|
+	+---------------------------------------------------------------+
+
+	The function
+
+	+---------------------------------------------------------------+
+	|								|
+	|	char *VSdrwStrVal( const VSexecRes* val, char* buf ) ;	|
+	|								|
+	+---------------------------------------------------------------+
+
+	converts whatever is in 'buf' into a character string which it
+	stores in 'buf'. It also returns 'buf', such that the two calls:
+
+	+---------------------------------------------------------------+
+	|								|
+	|	VSdrwStrVal( &a->arg, str ) ;				|
+	|	l = strlen( str ) ;					|
+	|								|
+	+---------------------------------------------------------------+
+
+	could have been compressed into one:
+
+	+---------------------------------------------------------------+
+	|								|
+	|	l = strlen( VSdrwStrVal( &a->arg, str ) ) ;		|
+	|								|
+	+---------------------------------------------------------------+
+
+	Three other functions exist:
+
+	+---------------------------------------------------------------+
+	|								|
+	|	int    VSdrwIntVal ( const VSexecRes* val ) ;		|
+	|	int    VSdrwBoolVal( const VSexecRes* val ) ;		|
+	|	double VSdrwDblVal ( const VSexecRes* val ) ;		|
+	|								|
+	+---------------------------------------------------------------+
+
+	which return the integer, boolean and double value of whatever
+	is stored in 'val'. The conversion scheme of these functions is
+	detailed in the appendix.
+
+	These functions should be used to use the non-object arguments.
+
+
+	Finally, let us study a function which returns an object. We have
+	here to deal with two cases: either the function returns an
+	already-existing object which it will retrieve by some query, or
+	it will construct one.
+	The objects created by functions are not destined to be part of the
+	output of APFEL-STRUDEL but to be short-lived computation auxilliary:
+	they will live as long as the file is executed and will be deleted
+	upon exit. To that purpose they need to be garbage-collected.
+
+	The first function "translate" is an example of an already-existing
+	object being returned, and the second of an object created on the
+	fly.
+
+		*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*
+		:                                               :
+		: $element := translate( ":usr:line" ) ;        :
+		:                                               :
+		*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*
+
+	+---------------------------------------------------------------+
+	| ... many includes ...						|
+	| #include "madef.h"						|
+	| #include "maidmx.h"						|
+	| #include "vsmiscmacros.h"					|
+	| #include "vsdrwapi.h"						|
+	|								|
+	| #argsused /* Suppress compiler warning for unused args */	|
+	| IMPLEMENT_FUNCTION( APP, translate ) {			|
+	|								|
+	|  long sts ;							|
+	|  VStktxt str ;						|
+	|								|
+	|  /* Set default value */					|
+	|  res->_oval._objid = NULL_OBJID ;				|
+	| 								|
+	|  /* Check number of arguments */				|
+	|  CHECK_ARGCOUNT( 1 ) ;					|
+	|								|
+	|  sts = di$translate(						|
+	|		objname = VSdrwstrVal( &arglist->arg, str ),	|
+	|		objid	= &objid,				|
+	|		osnum	= &osnum ) ;				|
+	|  if( !( sts & 1) ) return xfFAILURE ;				|
+	|								|
+	|  res->_oval._objid = objid ;					|
+	|  res->_oval._osnum = osnum ;					|
+	|  res->_oval._md_id = NULL_OBJID ;				|
+	|  res->_oval._md_os = osnum ;					|
+	|  res->_oval._matrix_type = MAIDMX ;				|
+	|  MAidmx( &sts, res->_oval._matrix ) ;				|
+	|								|
+	|  return xfSUCCESS ;						|
+	| }								|
+	+---------------------------------------------------------------+
+
+		*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*
+		:                                               :
+		: $element := create-an-obj( ... ) ;            :
+		:                                               :
+		*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*
+
+	+---------------------------------------------------------------+
+	| ...								|
+	| ... An object has been successfully created			|
+	| ...								|
+	|  /* Tell APFEL-STRUDEL to garbage collect object at the end */|
+	|								|
+	|  if( VSdrwAddGarbage( &msg, xData, &res->_oval ) ) {		|
+	|	return xfSUCCESS ;					|
+	|   } else {							|
+	|	/* Could not add it to garbage collector: kill the	|
+	|	   object and then err off */				|
+	|	om$send(msg = message GRgraphics.GRdelete(		|
+	|				&msg, &res->_oval.mod_env ),	|
+	|		senderid = NULL_OBJID,				|
+	|		targetid = res->_oval.objid,			|
+	|		targetos = res->_oval.osnum ) ;			|
+	|			   					|
+	|	res->_oval._objid = NULL_OBJID ;			|
+	|	return xfFAILURE ;					|
+	|  }								|
+	+---------------------------------------------------------------+
+
+
+	C) Action associated with an output statements
+	----------------------------------------------
+
+		Output statements are statements creating persitent
+	graphics which will be returned by APFEL-STRUDEL to the caller.
+	An output statement has a format such as:
+
+		*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*
+		:						:
+		:	myoutput[  color  = "green",		:
+		:		   style  = 2,			:
+		:		   weight = 1			:
+		:		] ;				:
+		:						:
+		*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*
+
+	where 'color', 'style', 'weight', 'level', 'filled-display',
+	'scale', 'hidden-style' and 'tag' are optional modifiers to
+	the default values. 'color', 'style', 'weight', 'level',
+	'filled-display', and 'scale' are used to construct the
+	graphic output, 'hidden-style' is the style assigned to the
+	hidden lines and 'tag' is a value which will be associated
+	with the output and passed back to the caller of APFEL-STRUDEL.
+
+		An output statement can also have input arguments in the
+	 same way as a function:
+
+		*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*
+		:						:
+		:	myoutput( 1, "abc" ) [			:
+		:		   color  = "green",		:
+		:		   style  = 2,			:
+		:		   weight = 1			:
+		:		] ;				:
+		:						:
+		*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*
+
+	Output statements are not associated with a particular type of
+	element being processed, so the relevance of the statement for
+	a particular type must be checked at runtime. It is all right
+	to construct nothing in case of error.
+
+		When an output statement is encountered such as the one
+	above, the C function which has been associated to it is called:
+
+	+---------------------------------------------------------------+
+	|								|
+	| extern VSxfRC F(	VSdrwInputData		*inp,		|
+	|			VSdrwExecData		*xData,		|
+	|			const char		*output,	|
+	|			const VSdrwARgLst	*arglist,	|
+	|			int			argc,		|
+	|			VSdrwGraphicGroup	*outpgr  ) ;	|
+	|								|
+	+---------------------------------------------------------------+
+
+	- inp       (IN)  contains all the data input to APFEL-STRUDEL, such
+			  as the id and module environment of the element
+			  being processed, the view vector, etc.
+	- xData     (I/O) contains all the data which evolve during execution
+		          such as the verbose flag and the current symbology.
+		          It is declared as I/O since it may sometimes be
+		          modified when objects are flagged for garbage
+		          collection; otherwise is should *** NOT *** be
+		          modified.
+	- output    (IN)  is the name of the output statement which
+			  this C function implements, only given if needed
+			  for info in verbose mode.
+	- arglist   (IN)  is a linked list of the output's arguments.
+	- argc	    (IN)  is the number of arguments
+	- outputgr  (OUT) is the set of graphic elements created by the
+			  outout statement.
+
+	Return value: one of the following
+		xfSUCCESS	: Successful evaluation
+		xfINVARG	: Invalid argument
+		xfARGCOUNT	: Wrong number of arguments
+		xfFAILURE	: Evaluation failure
+
+	The data needed for the construction of the graphic objects to be
+	output are:
+
+	For 'color', 'weight' and 'style' :
+
+	+- struct IGRdisplay -------------------------------------------+
+	|		xData->overrides.elmDisplay			|
+	+---------------------------------------------------------------+
+
+	For 'level' :
+
+	+- short -------------------------------------------------------+
+	|		xData->overrides.elmLevel			|
+	+---------------------------------------------------------------+
+
+	For 'filled-display' :
+
+	+- int (TRUE/FALSE) --------------------------------------------+
+	|		xData->overrides.dpAttr.filledDisplay		|
+	+---------------------------------------------------------------+
+
+	For 'scale' :
+
+	+- double ------------------------------------------------------+
+	|		xData->overrides.dpAttr.scale			|
+	+---------------------------------------------------------------+
+
+	The module environment for construction is :
+
+	+- struct GRmd_env * -------------------------------------------+
+	|			inp->drwInfo.drwEnv			|
+	+---------------------------------------------------------------+
+
+	Note that the keyword representing the type (e.g. "sphere") and
+	the unique identifier associated to it in the function associated
+	to the type can be found respectively in
+
+	+---------------------------------------------------------------+
+	|			xData->parsedElmDesc			|
+	|			xData->parsedElmType			|
+	+---------------------------------------------------------------+
+	
+
+	Macros exist in "vsdrwapi.h" to ease the writing of functions:
+
+	- IMPLEMENT_OUTPUT( app-prefix, output )
+	  Creates the header for the function definition.
+
+	- DECLARE_OUTPUT( app-prefix, output )
+	  Creates the declaration for the function.
+
+	Let us suppose that we have the following output statement
+
+		*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*
+		: sphere : {					:
+		:       ...					:
+		:	circle[	   color  = "green",		:
+		:		   style  = 2,			:
+		:		   weight = 1,			:
+		:		   scale  = 0,25		:
+		:	      ] ;				:
+		: }						:
+		*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*
+
+	which mean that we represent the sphere by a circle drawn on
+	the drawing plane. We can implement it by the following C
+	function:
+
+	+---------------------------------------------------------------+
+	| ... many includes ...						|
+	| #include "bsbasisvect.h"					|
+	| #include "maptplpro.h"					|
+	| #include "vsmiscmacros.h"					|
+	| #include "vsdrwapi.h"						|
+	|								|
+	| from EMSsurface import EMget_params ;				|
+	| 								|
+	| #argsused /* Suppress compiler warning for unused args */	|
+	| IMPLEMENT_OUTPUT( APP, circle ) {				|
+	|								|
+	|  long				sts ;				|
+	|  long				msg ;				|
+	|  struct EMsurface_params	sfInfo ;			|
+	|  unsigned short		sfType ;			|
+	|  struct IGRarc		arc ;				|
+	|  IGRvector			vx, vy, vz ;			|
+	|  int				i ;				|
+	|  struct GRvg_construct	cst ;				|
+	|  OM_S_OBJID			circle ;			|
+	|  extern OMuword		OPP_GR3dcircle_class_id ;	|
+	|								|
+	|  outpgr->count = 0 ; outpgr->list = NULL ;			|
+	|								|
+	|  sts = om$send( msg = message EMSsurface.EMget_params(	|
+	|				&msg, NULL, inp->elmEnv,	|
+	|				&sfType, &sfInfo ),		|
+	|		 senderid = inp->elmId->objid,			|
+	|		 targetid = inp->elmId->objid,			|
+	|		 targetos = inp->elmId->osnum ) ;		|
+	|  if( !( sts & 1 & msg ) || sfType != EMsphere ) {		|
+	|	 /* Probably a bad type */				|
+	|	 WRONG_OUTPUT ;						|
+	|  }								|
+	|  /* Project center of sphere onto drawing plane */		|
+	|  MAptplproj( &msg, sfInfo.params.sphere.center,		|
+	|		inp->drwInfo.drwPlane, arc.cent_p ) ;		|
+	|  /* Fill structure defining an circle (scaling honored) */	|
+	|  arc.prim_axis =   sfInfo.params.sphere.radius		|
+	|		   * xData->overrides.dpAttr.scale ;		|
+	|  arc.sec_axis  = arc.prim_axis ;				|
+	|								|
+	|  BSbasisvect( &msg, inp->drwPlane->normal, vx, vy, vz ) ;	|
+	|  for( i = 0 ; i < 3 ; i++ ) {					|
+	|	arc.rot_matrix[4*i    ] = vx[i] ;			|
+	|	arc.rot_matrix[4*i + 1] = vy[i] ;			|
+	| 	arc.rot_matrix[4*i + 2] = vz[i] ;			|
+	|	arc.rot_matrix[4*i + 3] = cent_p[i] ;			|
+	|  }								|
+	|  for( i = 12 ; i < 15 ; i++ ) arc.rot_matrix[i] = 0 ;		| 
+	|  arc.rot_matrix[15] = 1 ;					|
+	|								|
+	|  /* Fill construction list */					|
+	|  vs$fill_cnst_list(	Msg	= &msg,				|
+	|			Display	= &xData->overrides.elmDisplay,	|
+	|			Level	= xData->overrides.elmLevel,	|
+	|			Env_info= inp->drwInfo.drwEnv,		|
+	|			Class_attr = &arc,			|
+	|			Cnst_list  = cst ) ;			|
+	|								|
+	|  /* We choose to honor the filled display */			|
+	|  if( xData->overrides.dpAttr.filledDisplay )			|
+	|	cst.properties |= GRFILLED_DISPLAY ;			|
+	|								|
+	|  sts = om$construct(						|
+	|	  classid = OPP_GR3dcircle_class_id,			|
+	|	  osnum   = Env_info->md_env.md_id.osnum,		|
+	|	  p_objid = circle,					|
+	|	  msg     = message GRgraphics.GRaltconstruct( &cst )) ;|
+	|  if( !( sts & 1 & msg ) ) return xfFAILURE ;			|
+	|								|
+	|  outpgr->list = malloc( sizeof( struct GRid ) ) ;		|
+	|  outpgr->count= 1 ;						|
+	|  outpgr->list->objid = circle ;				|
+	|  outpgr->list->osnum = Env_info->md_env.md_id.osnum ;		|
+	|								|
+	|  return xfSUCCESS ;						|
+	| }								|
+	+---------------------------------------------------------------+
+
+	Note that instead of using EMSsurface.EMget_params to perform
+	the type check, we could have done it with 
+
+	+---------------------------------------------------------------+
+	|								|
+	|  if( !strcmp( xData->parsedElmDesc, "sphere" ) ) {		|
+	|	WRONG_OUTPUT ;						|
+	|  }								|
+	|								|
+	+---------------------------------------------------------------+
+
+	or, using the unique type identifier
+
+	+---------------------------------------------------------------+
+	|								|
+	|	if( xData->parsedElmType != EC_I_EMSsphere ) {		|
+	|		WRONG_OUTPUT ;					|
+	|	}							|
+	|								|
+	+---------------------------------------------------------------+
+
+		The use of arglist and argc is the same as for functions.
+
+		D) Adding a new view type
+
+		If the need arises, more keywords than the current ones
+	("top", "bottom", "side", "end-on", "unknown-view"). The addition
+	consists in associating a keyword to a value. APFEL-STRUDEL
+	requires that the value associated to a view be a unsigned integer
+	with one bit set (i.e. a poer of 2) strictly greater than 16 (the
+	first 5 values being used by "top"," bottom", etc.)
+
+		The view values can then be returned in ISOFTYPE
+	functions, when asked for the view type of an element.
+	+---------------------------------------------------------------+
+	|	plane : {                                               |
+	|      		left: {                                         |
+	|			...                                     |
+	|		}                                               |
+	|		right: {                                        |
+	|               	...                                     |
+	|		}                                               |
+	|		slanted: {                                      |
+	|               	...                                     |
+	|		}                                               |
+	+---------------------------------------------------------------+
+
+	III Inserting keywords in the APFEL-STRUDEL engine
+	--------------------------------------------------
+
+		The new keywords are inserted with a call to the following
+	function:
+
+	+---------------------------------------------------------------+
+	|								|
+	| int VSdrwAddFunctions(	int		count ;		|
+	|				char		*keywords[],	|
+	|				VSdrwUsrTokType	usages[],	|
+	|				VSdrwAction	addresses[] ) ;	|
+	|								|
+	+---------------------------------------------------------------+
+
+	where 'count' is the number of keywords to add, 'keywords',
+	'usages' and 'addresses' are arrays of 'count' elements containing
+	the keywords (**), their usages and the functions (actions) to invoke
+	when they are encountered.
+
+	(**) Keywords should start with a letter and then be made of letters,
+	digits and '-' (minus sign).
+
+	The function returns TRUE if the addition was successful (for
+	instance no duplicated keyword) else FALSE.
+	It is recommended for optimization's sake to introduce all the
+	keywords at the same time.
+
+	For instance, such a call could be made with the preceeding
+	examples in II-A), B) and C)
+
+	+---------------------------------------------------------------+
+	| #include "vsdrwapi.h"						|
+	| #include "vsdrwproto.h"					|
+	|								|
+	| DECLARE_ISOFTYPE( APP, sphere )				|
+	| DECLARE_FUNCTION( APP, get_radius )				|
+	| DECLARE_OUTPUT( APP, circle )					|
+	|								|
+	| char			*K[4] ;					|
+	| VSdrwUsrTokType	U[4] ;					|
+	| VSdrwAction		A[4] ;					|
+	|								|
+	| K[0]			= "sphere" ;				|
+	| U[0] 			= VSdrwTYPE ;				|
+	| A[0].elmQuery		= ISOFTYPE_ADDRESS( sphere ) ;		|
+	| K[1]			= "get-radius" ;			|
+	| U[1] 			= VSdrwFUNCTION ;			|
+	| A[1].function		= FUNCTION_ADDRESS( get_radius ) ;	|
+	| K[2]			= "circle" ;				|
+	| U[2] 			= VSdrwOUTPUT ;				|
+	| A[2].output		= OUTPUT_ADDRESS( circle ) ;		|
+	| K[2]			= "left" ;				|
+	| U[2] 			= VSdrwVIEW ;				|
+	| A[2].view  		= 32 ; /* power of 2 greater than 16 */ |
+	|								|
+	| if( ! VSdrwAddFunctions( 4, K, U, A ) ) {			|
+	|    /* Something went wrong  ... */ 				|
+	| } ...								|
+	+---------------------------------------------------------------+
+
+	Once APFEL-STRUDEL is no longer needed the inserted keywords and
+	their related actions may be removed from APFEL-STRUDEL with the
+	call:
+
+	+---------------------------------------------------------------+
+	|                     VSdrwRmFunctions() ;                      |
+	+---------------------------------------------------------------+
+
+
+	IV  Calling APFEL-STRUDEL
+
+		Once keywords have been inserted, APFEL-STRUDEL can be
+	called to process a file containing these keywords.
+	The call is to be made using the preprocessor macro, defined
+	in vsdrwmacros.h
+	
+	+---------------------------------------------------------------+
+	|								|
+	| vs$drwExecConfig(	long		      *msg,		|
+	|			const struct GRid     *elmId,		|
+	|			const struct GRmd_env *elmEnv,		|
+	|			const struct IGRplane *drwPlane,	|
+	|			const struct IGRplane *viewPlane,	|
+	|			const IGRvector	      viewVector,	|
+	|			const struct GRmd_env *drwEnv,		|
+	|			const struct IGRlbsys *drwLbsys,	|
+	|			const int	      selCount,		|
+	|			const int	      selList[],	|
+	|			const char	      *filename,	|
+	|			void		      *appData,		|
+	|			VSdrwOutputData	      **output ) ;	|
+	|								|
+	+---------------------------------------------------------------+
+
+	Where:
+
+	msg	  (OUT) is the completion code (odd=OK,even=KO)
+	elmId	  (IN)  is the id of the element to be processed.
+	elmEnv	  (IN)  is the module environment of the element above.
+	drwPlane  (IN)	is the plane where the element is to be drawn.
+	viewPlane (IN)  is the plane from which the element is seen.
+	viewVector(IN)  is the direction under which the element is seen.
+	drwEnv	  (IN)  is the module environment for the drawn elements.
+	drwLbsys  (IN)  is the view cube.
+	selCount  (IN)	is the number of elements in the set
+			(including *elmId).
+	selList	  (IN)	is the list of elements in the set
+			(including *elmId).
+	filename  (IN)	is the name of the APFEL-STRUDEL file to execute.
+	appData	  (IN)	is the application data (optional). Ignored by
+			Apfel-Strudel, this pointer is passed to the
+			all the implementation functions in the argument of
+			type `VSdrwInputData'.
+	output	  (OUT) is the linked list of outputs created by the output
+			statements in the AFPEL-STRUDEL file.
+
+
+		     /|
+		    / |view plane
+		   /  |				x = element being processed
+		  / \ |				y = output corresponding to
+		 /   \/view vector                  element x
+		/    /\    --------------------
+		|   /  x  /                   /
+		|  /	\/                   /
+		| /     /\                  /
+		|/     /  y                /
+		      /                   /
+		     --------------------- drawing plane
+
+
+                 <- view vector
+		|-> eye vector		|
+		|			|
+		|	x		y
+		|			|
+		|			|
+		|			|
+	  view plane		drawing plane
+
+	**** Note that the view vector is the ooposite of the eye vector
+	**** where the eye vector goes from the observer to x, the element
+	**** being processed.
+
+	Note that 'filename' is optional and the default name is "setup",
+	searched for in the current directory and then the config/drawing
+	directories of the product path.
+
+	'output' is a linked list in which each element corresponds to
+	an output statement in the APFEL-STRUDEL file, and contains
+
+		- the number of graphic elements created by the statement
+		- the list of graphic elements created by the statement
+		- the tag specified in the output statement if any (if
+		  no tag was specified then the tag is integer 0)
+		- whether the graphic is text or not
+
+	The memory allocated for the linked list must be freed with
+
+	+---------------------------------------------------------------+
+	|								|
+	| void VSdrwFreeOutputData( VSdrwOutputData **output ) ;	|
+	|								|
+	+---------------------------------------------------------------+
+
+	Below is a portion of code showing a sample invocation of
+	'vs$drwExecConfig'. Is is supposed that we are in a command object,
+	that the located object is 'me->event1.located_object[0]', that the
+	other selected elements are in 'selectedElements' and that they
+	all live in a reference file 'ref'
+
+	+---------------------------------------------------------------+
+	| #include "vsdrwproto.h"					|
+	| #include "vsdrwmacros.h"					|
+	| ...								|
+	| struct GRref_instance_data	rfi ;				|
+	| struct GRinquire_list		inq[2] ;			|
+	| IGRboolean			pass = FALSE ;			|
+	| long				msg ;				|
+	| long				sts ;				|
+	| long				rc ;				|
+	| IGRpoint			point ;				|
+	| IGRpoint			ori ;				|
+	| IGRvector			vector ;			|
+	|								|
+	| /* ++++ Use the origin of the reference file and its range to	|
+	|    ++++ build the view cube */				|
+	| inq[0].var		= REFERENCE_INSTANCE_DATA ;		|
+	| inq[0].num_requested	= sizeof( rfi ) ;			|
+	| inq[0].var_ptr	= (char *) &rfi ;			|
+	| inq[1].var		= END_REPORT_REQUEST ;			|
+	|								|
+	| om$send( msg = message GRreffile.GRinquireref(		|
+	|			&msg, me->ModuleInfo,inq, &rc,		|
+	|			&pass, NULL ) ,				|
+	|		senderid = NULL_OBJID,				|
+	|		targetid = ref.objid,				|
+	|		targetos = ref.osnum ) ;			|
+	|								|
+	| { double	*m = rfi.ref_to_master_matrix ;			|
+	|   double	*p = rfi.vw_origin ;				|
+	|   IGRboolean	world = FALSE ;					|
+	|   GRrange	range ;						|
+	|   ori[0] = m[0] * p[0] + m[1] * p[1] + m[ 2] * p[2] + m[ 3] ;	|
+	|   ori[1] = m[4] * p[0] + m[5] * p[1] + m[ 6] * p[2] + m[ 7] ;	|
+	|   ori[2] = m[8] * p[0] + m[9] * p[1] + m[10] * p[2] + m[11] ;	|
+	|								|
+	|   om$send( msg = message GRgraphics.GRgetrang(		|
+	|			&msg, NULL, NULL, &world, range ),	|
+	|	     targetid = ref.objid,				|
+	|	     targetos = ref.osnum ) ;				|
+	|								|
+	|   MAidmx( &msg, lbs.matrix ) ;				|
+	|   { int i ;							|
+	|     for( i = 0 ; i < 3 ; i++ ) {				|
+	|	lbs.diag_pt1[i]   = range[0+i] - ori[i] ;		|
+	|	lbs.diag_pt2[i]   = range[3+i] - ori[i] ;		|
+	|	lbs.matrix[3+4*i] = ori[i] ;				|
+	|     }								|
+	|   }								|
+	| }								|
+	| /* ++++ Compute the view plane using window information */	|
+	| { IGRmatrix vwRot ; int i ;					|
+	|   om$send( msg = message IGEgragad.DPinrot( &msg, vwRot ),	|
+ 	|		targetid = me->event1.event.button.objid,	|
+	|		targetos = me->event1.event.button.osnum ) ;	|
+	|   for( i = 0 ; i < 3 ; i++ ) {				|
+	|	vector[i] = vwRot[8+i] ; point[i] = vwRot[12+i] ;	|
+	|   }								|
+	| }								|
+	| { IGRplane		viewPlane ;				|
+	|   IGRplane		drawingPlane ;				|
+	|   VSdrwOutputData	*output = NULL ;			|
+	|								|
+	|   drawingPlane.point	= point ;				|
+	|   drawingPlane.normal	= vector ;				|
+	|   viewPlane.point	= ori ;					|
+	|   viewPlane.normal	= vector ;				|
+	|								|
+	|   vs$drwExecConfig(						|
+	|	msg	   = &msg,					|
+	|	elmId	   = me->event1.located_object[0].located_obj,	|
+	|	elmEnv	   = me->event1.located_object[0].module_info,	|
+	|	drwPlane   = &drawingPlane,				|
+	|	viewPlane  = &viewPlane,				|
+	|	viewVector = vector,					|
+	|	drwEnv	   = &me->ModuleInfo,				|
+	|	drwLbsys   = &lbs,					|
+	|	selCount   = count,					|
+	|	selList    = selectedElements,				|
+	|	filename   = "myfile",					|
+	|	output	   = &output ) ;				|
+	|   if( msg & 1 ) {						|
+	|     VSdrwOutputData	*p ;					|
+	|     for( p = output ; p ; p = p->next ) {			|
+	|	int j ;							|
+	|	prinf( "Number of elements in group %d\nTag = ",	|
+	|		p->set.count ) ;				|
+	|				  				|
+	|	switch( p->tag.type ) {					|
+	|	  case VS_int   : printf( "%d\n", p->tag._ival ) ;break;|
+	|	  case VS_double: printf( "%g\n", p->tag._dval ) ;break;|
+	|	  case VS_string: printf( "%s\n", p->tag._sval ) ;break;|
+	|       }							|
+	|	for( j = 0 ; j < p->set.count ; i++ ) {			|
+	|	  printf( "\t%d : %d, %d\n", j, p->set.list[j].osnum,	|
+	|				        p->set.list[j].objid ) ;|
+	|	}							|
+	|     } /* for p... */						|
+	|     /* ++++ Free data returned by 'vsdrwExecConfig' */	|
+	|     VSdrwFreeOutputData( &output ) ;				|
+	|  } /* if */							|
+	|  ...								|
+	+---------------------------------------------------------------+
+
+
+	V   Appendix
+	------------
+
+	A) Description of the input data structure
+	------------------------------------------
+
+	TYPE: VSdrwInputData
+	FIELDS:
+
+	elmId        : id of element being processed
+	elmEnv	     : module environment of element being processed
+	defaults     : defaults parameters for construction. They should not
+	               be used: use those in the exec data structure
+	               described in V-B)
+	drwInfo      : info about drawing
+	               drwEnv    : module environment for outputs
+	               drwLbsys  : extent of view
+	               drwPlane  : drawing plane
+	               viewPlane : view plane
+	               viewVector: view vector
+	toBeDrawn    : list of all elements which have been selected for
+	               at the same time as the element being processed.
+	viewType     : type of the view.
+	inputFiles   : stack of input files (to handle file inclusion).
+	constDefName : name of macro definition (for extraction of macro
+	               occurrences).
+	appData	     : Application data. Set to the pointer to application
+		       data passed to vs$drwExecConfig.
+
+	B) Description of the exec data structure
+	-----------------------------------------
+
+	TYPE: VSdrwExecData
+	FIELDS:
+
+	logFile       : file pointer to log file.
+	overrides     : overrides of construction defaults of 
+			'VSdrwInputData'. Must be used for output element
+			construction.
+	parsedElmType : type of the element for which interpreter is run.
+	parsedElmDesc : lexical token corresponding to element type.
+	parsedViewType: type of view.
+	anchorPoint   : anchor point for text (optional).
+	anchorCurve   : anchor curve for text (optional).
+	textFormat    : format for text (including possible text commands).
+	parsedDefName : name of macro definition read in APFEl-STRUDEL file
+			(for macro occurrences).
+	viewCriterion : name of member of macro occurrence which is to be
+	                used to determine the view.
+	constMember   : (path)name of member of const to use for output.
+	garbageList   : temporary objects to get rid of at end of execution.
+
+
+	C) Useful preprocessor macros
+	-----------------------------
+
+	* vs$is_ancestry_valid: checks the ancestry of an object, see
+	  vsmiscmacros.h
+
+	* vs$bulk_delete: deletes a list of graphic objects, see
+	  vsmiscmacros.h
+
+	* vs$fill_cnst_list: fills a GRvg_construct structure, providing
+	  defaults, see vsmiscmacros.h
+
+	* vs$get_geometry: retrieves the geometry of a curve or surface
+	  and stores it in a dynamically-allocated buffer, see
+	  vsgeommacros.h
+
+	* vs$makeCompCurve: creates a composite curve, see vsgeommacros.h
+
+
+	D) The verbose mode
+	-------------------
+
+		If the APFEL-STRUDEL file is played with the verbose mode
+	enabled, then actions are diplayed to the terminal or to the
+	log file as they are executed. This display of information is taken
+	care of by the APFEL-STRUDEL engine. The verbose mode being on also
+	means that warnings and errors can be dumped to the terminal or the
+	log file.
+
+	Most of the preprocessor macros defined in vsdrwapi.h and described
+	in II-A), B) and C) will suffice to explain the errors.
+
+	If you need to print a message for a specific error, use the
+	function
+
+	+---------------------------------------------------------------+
+	|								|
+	|         void VSdrwPrintf( const char *format, ... ) ;	        |
+	|								|
+	+---------------------------------------------------------------+
+
+	of which the usage is the same as that of 'printf' (3C).
+
+	Error messages must be output with the following conventions:
+
+	* in type-checking function:
+
+		VSdrwPrintf( "!!! Type '%s': <your error here>",
+			     elmDesc, ... ) ;
+
+	* in a function implementing an APFEL-STRUDEL function
+
+		VSdrwPrintf( "!!! %s(): <your error here>",
+			     function, ... ) ;
+
+	* in a function implementing an output statement function
+
+		VSdrwPrintf( "!!! Output(): <your error here>",
+			     output, ... ) ;
+
+
+	E) Conversion rules between types
+	---------------------------------
+	
+	           +-------+--------+----------------+-------------------+
+		   | int   | double | string         | boolean           |
+	+----------+-------+--------+----------------+-------------------+
+	| int 	   | =	   | =      | =              | TRUE if non-null  |
+	| 123      | 123   | 123.   | "123"          | TRUE              |
+	+----------+-------+--------+----------------+-------------------+
+	| double   | trunc | =      | possible trunc | TRUE if non 0.0   |
+	| 123.23   | 123   | =      | "123.23"       | TRUE              |
+	+----------+-------+--------+----------------+-------------------+
+	| string   | scan  | scan   | =              | TRUE if non empty |
+	| "123.23" | 123   | 123.23 | "123.23        | TRUE              |
+	| "123.2x" | 123   | 123.2  | "123.2x"       | TRUE              |
+	| "abcs"   | 0     | 0.     | "abcd"         | TRUE              |
+	| ""       | 0     | 0.     | ""             | FALSE             |
+	+----------+-------+--------+----------------+-------------------+
+	| boolean  | =     | =      | =              | =                 |
+	| TRUE     | 1     | 1.     | "1"            | TRUE              |
+	| FALSE    | 0     | 0.     | "0"            | FALSE             |
+	+----------+-------+--------+----------------+-------------------+
+
+	F) The view cone angle
+	----------------------
+
+		The following example is the ISOFTYPE function for an
+	EMSplane. In particular, the 'DRW_wantView' section makes use of
+	the view cone angle:
+
+                                 seen from top
+                                      .
+                unknown view        .   .            unknown view
+                                  .       .
+
+          /                                            ^           \
+         / seen                                        |       seen \
+	.  from		========================plane===       from  .
+         \ side                                                side /
+	  \                                                        /
+
+                                  .       .
+                unknown view        .   .            unknown view
+                                      .
+                                seen from bottom
+
+	!!!WARNING!!!: the command Extract Drawing always passes a view
+	vector which goes from the observed object to the eye therefore
+	is the opposite of the usual convention.
+	This is why the test on the dot product are reversed in the code
+	below.
+	+-----------------------------------------------------------------+
+	| IMPLEMENT_ISOFTYPE( XX, plane ) {                               |
+	|                                                                 |
+	|   if( DRW_wantFilter ) strcpy( DRW_elmFilter, "EMSplane" ) ;    |
+	|                                                                 |
+	|   if( DRW_wantType ) {                                          |
+	|     DRW_elmType = vs$is_ancestry_valid(                         |
+	|                             object = DRW_elmId,                 |
+	|                             class  = OPP_EMSplane_class_id )    |
+	|                  ? EC_I_Plane : 0 ;                             |
+	|   }                                                             |
+	|                                                                 |
+	|   if( DRW_wantView ) {                                          |
+	|     /* We are sure at this point that the element               |
+	|        is an EMSplane */                                        |
+	|     long            sts, msg ;                                  |
+	|     struct IGRplane plane ;                                     |
+	|     IGRpoint        p ;                                         |
+	|     IGRvector       n ;                                         |
+	|                                                                 |
+	|     DRW_elmView  = VSunknownViewType ;                          |
+	|                                                                 |
+	|     plane.point  = p ;                                          |
+	|     plane.normal = n ;                                          |
+	|     sts = om$send( msg = message GRvg.GRdetplane(               |
+	|                               &msg, &DRW_elmEnv._MATRIX_TYPE,   |
+	|	                        DRW_elmEnv._MATRIX, &plane ),     |
+	|                    senderid = NULL_OBJID,                       |
+	|	             targetid = DRW_elmId->objid,                 |
+	|		     targetos = DRW_elmId->osnum ) ;              |
+	|                                                                 |
+	|     if( sts & 1 & msg ) {                                       |
+	|       /* Take half-angle in radians */                          |
+	|       double a =  0.5 * DRW_viewConeAngle * M_PI / 180. ;       |
+	|                                                                 |
+	|       if( VSareaColinearVectors( n, DRW_viewVector, a ) ) {	  |
+	|	    DRW_elmView = BSdotp( &msg, n, DRW_viewVector ) > 0   |
+	|	                   ? VSfromTop                            |
+	|	                   : VSfromBottom ;                       |
+	|       } else if( VSareaOrthoVectors( n, DRW_viewVector, a ) ) { |
+	|	    DRW_elmView = VSfromSide ;                            |
+	|       }                                                         |
+	|     } else if( xData->verbose ) {                               |
+	|       VSdrwPrintf( "!!! Could not determine plane's view        |
+	|                     Set to `unknown-view'\n" ) ;                |
+	|   }                                                             |
+	| }                                                               |
+	+-----------------------------------------------------------------+
+
+	The functions
+
+		int VSareaColinearVectors( IGRvector, IGRvector, double )
+	and
+		int VSareaOrthoVectors( IGRvector, IGRvector, double )
+
+	test if two vectors are colinear or orthogonal within a tolerance
+	area defined by the half of the view cona angle:
+
+          /**
+         /**** if v2 in that region then v2 is considered
+        /****** parallel to v1
+	-------> v1
+
+
+        ******. 
+        ****. if v2 in that region then v2 is considered
+        **. orhtogonal to v1
+	.
+	-------> v1 

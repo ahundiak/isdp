@@ -1,0 +1,230 @@
+/* $Id: COz_valFeat.u,v 1.2 2002/02/07 00:19:35 jayadev Exp $  */
+
+/*************************************************************************
+ * I/STRUCT
+ *
+ * File:        struct/pplapp/COz_valFeat.u
+ *
+ * Description: checks all the features for bad consumed states in their
+ *              operation graph
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ *      $Log: COz_valFeat.u,v $
+ *      Revision 1.2  2002/02/07 00:19:35  jayadev
+ *      *** empty log message ***
+ *
+ *      Revision 1.1  2002/02/06 22:35:16  jayadev
+ *      ppl to validate operation graph for features w.r.t consumed state
+ *
+ *
+ * History:
+ *      MM/DD/YY   AUTHOR       DESCRIPTION
+ *      02/05/02   Jayadev      Validation tool for checking the consumed
+ *                              state of features 
+ *************************************************************************/
+
+#include "VDppl.h"
+#include "VDobj.h"
+#include "VDmem_ppl.h"
+#include "vs.h"
+#include "vsplatedef.h"
+#include "vdVALmacros.h" 
+#include "vsgeommacros.h"
+#include "vsmiscmacros.h"
+#include "vsdbgmacros.h"
+#include "vsipthmacros.h"
+#include "bssfeval.h"
+#include "bsdistptpt.h"
+#include "bsmdistptsf.h"
+#include "bserr.h"
+
+extern   VDpms_findall_ancestryobjects();
+extern   VSgetFinalChild();
+extern   VDatGetConsumingChild();
+
+extern   GRclassid OPP_VSfeature_class_id;
+extern   GRclassid OPP_VSplate_class_id;
+extern   GRclassid OPP_VSbeam_class_id;
+extern   GRclassid OPP_VSdivFeature_class_id;
+extern   sleep();
+
+main()
+{
+  IGRlong		sts, msg, rc;
+  IGRint		i, j, k, count, badCount;
+  GRclassid		classids[1], clid;
+  OM_S_OBJID		*list;
+  struct GRid           *objects, *badFeats ;
+  IGRint                *consFlags;
+  struct GRmd_env	loc_env;
+  struct GRobj_env	objEnv, childEnv;
+  IGRchar 		buffer[1024];
+  GRname                classname, consumed;
+  IGRboolean            isPlate;
+ 
+  message("List features(Plates & Beams) with improper consumed state");
+  
+  count         = 0;
+  badCount      = 0;
+  isPlate       = 0;
+  list          = NULL;
+  objects       = NULL;
+  badFeats      = NULL;
+  
+  /* added the output to .process.log for display in VSvalidate form */
+  vd$VAL_openLog( msg = msg );
+  if( !(msg&1) ){ printf("validate log file could not be opened\n"); }
+  
+  ci$get_module_info( md_env = &loc_env);
+  classids[0] = OPP_VSfeature_class_id ;
+  
+  VDpms_findall_ancestryobjects( loc_env.md_id.osnum, 1, classids, 
+				 &count, NULL );
+  
+  sprintf(buffer,"%d VSfeature Objects found in the file ", count );
+  UI_status(buffer);
+  sleep(1);
+  
+  if(count == 0) goto wrapup;
+  
+  list      = ( OM_S_OBJID *  ) malloc( sizeof( OM_S_OBJID )  * count ) ;
+  objects   = ( struct GRid * ) malloc( sizeof( struct GRid ) * count ) ;
+  badFeats  = ( struct GRid * ) malloc( sizeof( struct GRid ) * count ) ;
+  consFlags = ( IGRint *      ) malloc( sizeof(IGRint)        * count ) ;
+  
+  VDpms_findall_ancestryobjects( loc_env.md_id.osnum, 1, classids,
+                                 &count, list );
+  for( i=0; i<count; i=i+1 )
+  {
+    objects[i].objid = list[i];
+    objects[i].osnum = loc_env.md_id.osnum;
+    consFlags[i]     = -1;
+  }
+  
+  for( i=0; i<count; i=i+1 )
+  {
+    //__DBGpr_int("start loop for ",i); 
+
+    objEnv.obj_id  = objects[i];    
+    objEnv.mod_env = loc_env;    
+
+    if(vs$is_ancestry_valid( object   = &objects[i],
+                              classid = OPP_VSdivFeature_class_id  ))
+    {
+      /*
+       * split features are only connecting objects 
+       */
+      continue;
+    }
+
+    if(vs$is_ancestry_valid( object   = &objects[i],
+                              classid = OPP_VSplate_class_id  ))
+    {
+      isPlate = 1; 
+    }
+    else isPlate = 0;
+
+    /*
+     * The following is an attempt to detect all possible bad
+     * states in the feature opeation graph
+     */
+    sts = ci$send(msg = message NDmacro.ACtest_consumed(&msg),
+                  targetid = objEnv.obj_id.objid,
+                  targetos = objEnv.obj_id.osnum);
+    
+    if(sts&msg&1) 
+    {
+       childEnv.obj_id.objid = NULL_OBJID;
+       VSgetFinalChild( &objEnv, &childEnv, isPlate);
+       //VDatGetConsumingChild( &objEnv, &childEnv);
+
+       if((childEnv.obj_id.objid == NULL_OBJID) ||
+            ((objEnv.obj_id.objid == childEnv.obj_id.objid) &&
+         (objEnv.obj_id.osnum == childEnv.obj_id.osnum)))
+       {
+         /*
+          * The object is consumed, but doesn't have a consuming
+          * child; We are taking the output of VDatGetConsumingChild
+          * as the benchMark for our analysis
+          */
+         __DBGpr_obj("CONSUMED OBJECT :",objEnv.obj_id);
+         __DBGpr_obj("CONSUMING CHILD :",childEnv.obj_id);
+
+         badFeats[badCount]  = objects[i];
+         consFlags[badCount] = 1;
+         badCount            = badCount + 1;
+       } 
+    }
+    else
+    {
+       childEnv.obj_id.objid = NULL_OBJID;
+       VSgetFinalChild( &objEnv, &childEnv, isPlate);
+       //VDatGetConsumingChild( &objEnv, &childEnv);
+
+       if((childEnv.obj_id.objid != NULL_OBJID) &&
+            (objEnv.obj_id.objid != childEnv.obj_id.objid))
+       {
+         /*
+          * The object is unconsumed, but has a consuming child 
+          */
+         __DBGpr_obj("UNCONSUMED OBJECT :",objEnv.obj_id);
+         __DBGpr_obj("CONSUMING CHILD :",childEnv.obj_id);
+
+         badFeats[badCount]  = objects[i];
+         consFlags[badCount] = 0;
+         badCount            = badCount + 1;
+       } 
+    }
+    //__DBGpr_int("end loop for ",i); 
+  }
+
+  for(k=0; k<badCount; k=k+1)
+  {
+    if( k == 0 ) 
+      vd$VAL_addInfo(Text ="Bad features with improper consumed state" );
+
+    classname[0] = '\0';
+    consumed[0]  = '\0';
+    om$get_classname(osnum     = badFeats[k].osnum,
+                     objid     = badFeats[k].objid,
+                     classname = classname ); 
+
+    if(consFlags[k]) 
+      strcpy(consumed,"Wrongly CONSUMED");
+    else
+      strcpy(consumed,"Wrongly UNCONSUMED");
+      
+    sprintf(buffer,"%s %s",classname, consumed); 
+    vd$VAL_addObject(
+                      GRid     = badFeats[k],
+                      PreText  = "\t",
+                      PostText = buffer );
+
+  }
+  
+  if( badCount == 0 ){
+    vd$VAL_addInfo( Text = "No bad features found" );
+    sprintf(buffer,"No bad features discovered\n");
+    UI_status(buffer);
+    sleep(1);
+  }
+  else
+  {
+    sprintf(buffer,"%d bad features discovered\n",badCount);
+    UI_status(buffer);
+    sleep(1);
+  }
+  sprintf(buffer,"DONE");
+  UI_status(buffer);
+  
+ wrapup:
+  _FREE ( list ); 
+  _FREE ( objects ); 
+  _FREE ( badFeats ); 
+  _FREE ( consFlags ); 
+  vd$VAL_closeLog();
+  return 1;
+}
+

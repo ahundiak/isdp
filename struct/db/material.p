@@ -1,0 +1,60 @@
+[
+n_catalogname=material
+n_itemname='steel'
+n_itemrev='A56'
+n_itemdesc=''
+n_creator='nfmadmin'
+n_creationdate='04/07/90'
+p_parttype='G'
+density=490.000000
+unit='E'
+n_cofilename='tmp'
+]
+[
+n_catalogname=material
+n_itemname='steel'
+n_itemrev='A42'
+n_itemdesc='Steel grade A42'
+n_creator='nfmadmin'
+n_creationdate='04/09/90'
+p_parttype='G'
+density=490.000000
+unit='E'
+n_cofilename='tmp'
+]
+[
+n_catalogname=material
+n_itemname='galvanized'
+n_itemrev='G90 Z275'
+n_itemdesc='coated steel sheets'
+n_creator='nfmadmin'
+n_creationdate='04/30/90'
+p_parttype='G'
+density=544.000000
+unit='E'
+n_cofilename='tmp'
+]
+[
+n_catalogname=material
+n_itemname='aluminium'
+n_itemrev='1100'
+n_itemdesc='99.00 min Al - 0.12 Cu'
+n_creator='nfmadmin'
+n_creationdate='04/30/90'
+p_parttype='G'
+density=169.179
+unit='E'
+n_cofilename='tmp'
+]
+[
+n_catalogname=material
+n_itemname='steel'
+n_itemrev='cold rolled'
+n_itemdesc='sheets'
+n_creator='nfmadmin'
+n_creationdate='04/30/90'
+p_parttype='G'
+density=490.000000
+unit='E'
+n_cofilename='tmp'
+]

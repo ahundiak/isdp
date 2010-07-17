@@ -1,0 +1,334 @@
+/***************************************************************************
+ * INGR - PPL
+ *
+ * File:        PCpcg2d.u
+ *
+ * Description:	PPL macro for stf openings on profile cards
+ *
+ * Dependencies:
+ *
+ * History:
+ *      MM/DD/YY        AUTHOR          DESCRIPTION
+ *      09/17/01        mjablko         creation date
+ *
+ ***************************************************************************/
+
+#define VD_PPL
+
+// DEBUG INFO
+//***********
+
+//#define DEBUG 
+//#define DEBUG_MORE
+
+// INCLUDES
+//***********
+#include "cieveryone.h"
+#include "cimacros.h"
+#include "ci_mac_def.h"
+#include "cimath.h"
+#include "vd_ve.h"
+#include "v_edgedef.h"
+#include "v_edgemacros.h"
+#include "vdparmacros.h"
+#include "vdsetmacros.h"
+#include "vldbgmacros.h"
+#include "grwireframe.h"
+
+#include "grdpb.h"
+#include "grdpbmacros.h"
+#include "fontmacros.h"
+#include "cotxmacros.h"
+
+
+// Macro constants
+//******************
+#define MAX_FEET	3
+#define MAX_TEMP	6
+#define MAX_CHA_TEMP	20
+
+
+/* txt scale factors */
+#define ANG_FAC 0.15
+#define DIM_OVL 1.5
+#define DIM_LEN 15
+
+// CI_MACRO variables
+//**********************
+GRobj 	 	ci_mac_def1; 
+int		stat, msg, grCount; 
+int		temp_types[MAX_TEMP];
+char 		*temp_names[MAX_TEMP], *feet_names[MAX_FEET];
+char            txt[15], buff[MAX_FEET*MAX_CHA_TEMP];
+struct GRmd_env	MOD_ENV;
+
+// Macro templates
+//*******************
+struct GRobj_env  ViewCS, Point;
+double			LabelHeight;
+char    		Label[30], Font[20];
+int     		Just, Weight;
+
+// Auxilary global variables
+//*****************************
+struct ret_struct	expr; 
+struct GRid		CI_MACRO_ID,  GRid_list[MAX_FEET];
+struct GRvg_construct   cst;
+struct IGRdisplay	dis;
+
+
+// Global variables
+//****************
+double	dim_txt_ht ;
+double	lbl_txt_ht ;
+double	lbl_pnt[3] ;
+double	txt_cs[16] ;
+
+int	sts, mcsign ;
+
+double	vwcs[16], macs[16];
+double	mcxvec[3], mcyvec[3], mczvec[3], mcorigin[3];
+double	vwxvec[3], vwyvec[3], vwzvec[3], vworigin[3];
+
+double p1[3], p2[3], p3[3], p4[3], p5[3], p6[3];
+
+extern	char *strncpy ();
+extern	char *strrchr ();
+extern  sprintf(), printf();
+extern  free(), abs(), tan(), fasb();
+extern 	int	init_cnst_list();
+extern 	GRretrieve_font(), GRplace_text(),
+	GRdpb_get(), 
+	GRang_place_text(), 
+	BSac2ptctvc(),
+	BSellctaxrm(),
+  	GRsymbology_options(), 
+        GRcreate_linestring(), 
+        GRcreate_conic_by_edge();
+extern  EX_get_oid_nodname(), EX_get_modid_given_osnum();
+extern  GRdisplay_object ();
+extern  BSmdstptcv();
+extern  BSactivsplt(), VLgetPtCoord();
+
+/* ================================ */
+
+#include "SupMacros.h"
+#include "PC2d.h"
+
+
+
+/* ========================================================================= */
+/* the main function is the one implementing the definition creation
+/* ========================================================================= */
+
+main ()
+{
+  int i, j;
+
+
+  temp_names[0]  = "ViewCS";		temp_types[0] = ref_generic;
+  temp_names[1]  = "Point";		temp_types[1] = point_generic;
+  temp_names[2]  = "Label";		temp_types[2] = text_type;
+  temp_names[3]  = "LabelHeight";	temp_types[3] = double_type;
+  temp_names[4]  = "Font";		temp_types[4] = text_type;
+  temp_names[5]  = "Justification";	temp_types[5] = double_type;
+ 
+  for ( i=0; i<MAX_FEET; i=i+1){
+        j = i * MAX_CHA_TEMP;
+        sprintf(&buff[j],"pcpcg_%d", i);
+  	feet_names[i] = &buff[j];
+  }
+  ci_mac_def1 = NULL_OBJID;
+
+  ac$cimacdef( 	cimacdef =  ci_mac_def1,
+		status 	 = &stat, 	    
+                name = "PCtext2d",
+              	temp_num = MAX_TEMP,        
+                temp_names = temp_names,
+              	temp_types = temp_types,
+	      	extern_feet_num = MAX_FEET, 
+                extern_feet_names = feet_names );
+}
+
+/* ========================================================================= */
+
+compute ()
+{
+
+  construct_comp();
+
+  if( GRid_list[0].objid == NULL_OBJID ) 
+  	return(0);
+
+  ci$send( msg = message  ci_macro.set_all_extern_feet
+		( &stat, MAX_FEET, GRid_list, &MOD_ENV ),
+	   	targetid = CI_MACRO_ID.objid,
+	   	targetos = CI_MACRO_ID.osnum);
+  return(1) ;
+}
+
+/* ========================================================================= */
+
+place ()
+{
+  construct_comp();
+  
+  if( GRid_list[0].objid == NULL_OBJID ) 
+  	return(0);
+
+  ci$send( msg = message  ci_macro.set_all_extern_feet
+		(&stat, MAX_FEET, GRid_list, &MOD_ENV ),
+	   	targetid = CI_MACRO_ID.objid,
+	   	targetos = CI_MACRO_ID.osnum);
+
+  return(1);
+}
+
+
+/* ========================================================================= 
+
+
+ * ========================================================================= */
+
+construct_comp()
+{
+
+  /* Initialize and get input data */
+  initialize();
+ 
+  /* start laying out the points */
+  Construct_graphics();  	
+  	
+  /* null out the next id for some kind of checking later */	
+  GRid_list[grCount].objid = NULL_OBJID;
+
+}
+
+
+/* ========================================================================= */
+
+int initialize()
+{
+  int i;
+	
+  /* initialize the graphics counter */
+  grCount = 0;
+  GRid_list[0].objid = NULL_OBJID ;
+
+  get_symb();
+
+  dis.weight		= cnst_list.weight;
+  dis.style		= cnst_list.style;
+
+  cst.msg		= &msg;
+  cst.properties	= GRIS_LOCATABLE | GRIS_NEW | GRIS_DISPLAYABLE;
+  cst.display		= &dis;
+  cst.env_info		= &MOD_ENV;
+  cst.newflag		= 0;
+  cst.geometry		= NULL;
+  cst.class_attr	= 0;
+  cst.name		= 0;
+
+  /* Collect input data */
+  getinput();
+
+#ifdef DEBUG
+  printf("Input retrieved!\n");
+#endif
+
+  /* set the dimension text height */
+  dim_txt_ht = LabelHeight;
+  dimension_text_height = dim_txt_ht;
+
+  /* set the label text height */
+  lbl_txt_ht = LabelHeight;
+
+  /* Get coordinate system matrices */
+  compute_cs( ViewCS.obj_id, vwcs, vworigin, vwxvec, vwyvec, vwzvec );
+
+  /* Get the MacroCS orientation */
+  if( mcxvec[0] < 0 )
+    mcsign = -1;
+  else
+    mcsign = 1;
+  
+  /* flip the coord system for the text coord system */
+  txt_cs[0] = vwcs[0];
+  txt_cs[1] = vwcs[4];
+  txt_cs[2] = vwcs[8];
+  
+  txt_cs[4] = vwcs[1];
+  txt_cs[5] = vwcs[5];
+  txt_cs[6] = vwcs[9];
+  
+  txt_cs[8] = vwcs[2];
+  txt_cs[9] = vwcs[6];
+  txt_cs[10] = vwcs[10];
+  
+  txt_cs[3] = vwcs[12];
+  txt_cs[7] = vwcs[13];
+  txt_cs[11] = vwcs[14];
+  
+  txt_cs[12] = vwcs[3];
+  txt_cs[13] = vwcs[7];
+  txt_cs[14] = vwcs[11];
+  
+  txt_cs[15] = vwcs[15];
+  
+
+#ifdef DEBUG
+  printf("Initialized!\n");
+#endif
+
+}
+
+/* ========================================================================= */
+
+int getinput()
+{
+  
+  /* GET PARAMETER VALUES */
+  getIntParm    ( CI_MACRO_ID, "Justification", &Just );
+  getTextParm   ( CI_MACRO_ID, "Label", Label );
+  getDoubleParm ( CI_MACRO_ID, "LabelHeight", &LabelHeight );
+  getTextParm   ( CI_MACRO_ID, "Font", Font );
+  getIntParm    ( CI_MACRO_ID, "Justification", &Just );
+
+  /* GET GRAPHIC OBJECTS */
+
+  /* Get viewCS  */
+  msg = getobj( CI_MACRO_ID, 0, &ViewCS );
+  if( !( msg&1 ) ) return FALSE;
+  
+#ifdef DEBUG
+  printf( "Coord id[%d, %d]\n", ViewCS.obj_id.objid, ViewCS.obj_id.osnum );
+#endif
+  
+  /* Get MacroCS */
+  msg = getobj( CI_MACRO_ID, 1, &Point );
+  if( !( msg&1 ) ) return FALSE;
+  
+#ifdef DEBUG
+  printf( "Coord id[%d, %d]\n", Point.obj_id.objid, Point.obj_id.osnum );
+#endif
+  
+  VLgetPtCoord( &msg,  Point.obj_id, 
+			 &Point.mod_env, p1 );
+
+   if( !(msg&1) )
+   	__DBGpr_com( "PCtext2d: Failed to get point coordinates" );
+#ifdef DEBUG
+  printpt( "Point", p1 );
+#endif
+   __DBGpr_vec( "Point Coordinates", p1 );
+  
+}
+
+/* ========================================================================= */
+
+Construct_graphics()
+{ 
+	place_symbol_globals( Label, p1, Font, Just, 0.0, 
+				dim_txt_ht, dim_txt_ht, txt_cs );
+	increment_data ( GRid_list, &grCount );
+}

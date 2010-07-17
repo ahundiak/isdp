@@ -1,0 +1,103 @@
+#include	<stdio.h>
+#include	<string.h>
+#include	"OMlimits.h"
+#include	"OMminimum.h"
+#include	"OMprimitives.h"
+#include	"ciminimum.h"
+#include	"cimacros.h"
+#include	"igrtypedef.h"
+#include	"igetypedef.h"
+#include	"gr.h"
+#include	"exmacros.h"
+#include	"vrparameters.h"
+#include	"VRdimdef.h"
+#include	"VRdef.h"
+#include	"VRstructs.h"
+#include	"ACrg_collect.h"
+#include	"VRStSect.h"
+#include	"AS_status.h"
+
+extern int      VRGetSections(), VRRepPreDropRes();
+extern int	UI_status(), EX_findmod();
+
+/*
+	Manyam	27 Mar 93	Creation
+*/
+
+main()
+{
+	struct	GRid		TipId, ModId;
+	struct	GRmd_env	MdEnv;
+	IGRlong			status;
+	IGRint			Index, NbCmps;
+ 	struct	VRSection	Sections[200];
+	struct	VRSectInfo	SectInfo[200];
+	IGRint			i,j, retcode;
+	IGRchar			cFileName[40], cOsName[OM_K_MAXOSNAME_LEN];
+	IGRchar			*cPtr, cMsgString[30], *cDelimiter;
+
+
+	while (1)
+	{
+		cPtr = NULL;
+		cFileName[0] = '\0';
+
+		if ( !ci$locate(
+			prompt  = "Identify the tip of the NetWork",
+			classes	= "VRHvac",
+			obj     = &TipId.objid,
+			osnum   = &TipId.osnum,
+			md_env	= &MdEnv ) ) exit;
+
+		/*A get the default file name */
+		status =
+		ex$get_cur_mod(	id	= &ModId.objid,
+				osnum	= &ModId.osnum	);
+		as$status();
+
+		status =
+		om$os_number_to_name(	osnum	= ModId.osnum,
+					osname	= cOsName	);
+		as$status( action = RET_STATUS );
+
+		cDelimiter = "/";
+		cPtr = strrchr( cOsName, (int)*cDelimiter );
+		cPtr=cPtr+1;
+		strcpy( cFileName, cPtr );
+		strncat( cFileName, ".PRE",5 );
+
+		/*A get the file name to write into	*/
+		sprintf( cMsgString, "%s <%s>", "Default filename", cFileName );
+		UI_status( cMsgString );
+
+		ci$get(	
+		prompt	= "Keyin the results file name/<Move-on for default",
+		string	= cFileName );
+
+		UI_status( "Getting the Sections..." );	
+
+		/*A divide the network in to sections */
+		Index = -1;
+		status =
+		VRGetSections( &TipId, 0, Sections, &Index, &MdEnv );
+
+		/*A set the number of sections	*/
+		Index=Index+1;
+
+		/*
+		for ( i=0; i < Index; i=i+1 )
+	  	{
+			printf(" Section :%d , Start Element:%d \n",
+				i, Sections[i].StartId.objid );
+			printf(" Section :%d , Start Element:%d \n",
+				i, Sections[i].EndId.objid );
+	  	}
+		*/
+
+		UI_status( " Reporting the results ..." );	
+		/*A report the section information to the file	*/
+		status =
+		VRRepPreDropRes( Sections, Index, cFileName, &MdEnv );
+		UI_status( " Reported Successfully " );
+	}
+}

@@ -1,0 +1,445 @@
+/* $Id: cbl_convert.u,v 1.2 2001/02/20 01:11:04 build Exp $  */
+ 
+/***************************************************************************
+ * I/ROUTE
+ *
+ * File:        vcppl/cbl_convert.u 
+ *
+ * Description:
+ * 	This ppl has been written to convert the design files created with
+ *	I/CABLE 02.04.02.20 to the PLOADED version I/ROUTE 02.05
+ *
+ *	In this Cable object instance data needs to be updated. B'cas in the
+ *	recent version we've added some instance variables, so we've to 
+ *	recreate the old object with the new definition.
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ *      $Log: cbl_convert.u,v $
+ *      Revision 1.2  2001/02/20 01:11:04  build
+ *      Replaced v_dbgmacros.h with product specific dbgmacros.h
+ *
+ *      Revision 1.1.1.1  2001/01/04 21:12:35  cvs
+ *      Initial import to CVS
+ *
+# Revision 1.1  1998/07/25  12:42:56  pinnacle
+# initial revision
+#
+ *
+ * History:
+ * MM/DD/YY  AUTHOR  DESCRIPTION
+ * 06/09/98  Alwin   Creation for TR179801127
+ * 06/19/98  ah      Move children to new parent  
+ ***************************************************************************/
+
+#include "VDppl.h"
+#include "VDobj.h"
+#include "VDchn.h"
+
+#include "nddef.h"
+#include "AS_status.h"
+#include "VRattr_def.h"
+#include "vc_define.h"
+#include "vc_structs.h"
+#include "VCstructs.h"
+#include "VCdefine.h"
+#include "VCDBpar.h"
+#include "vrdbgmacros.h"
+
+extern struct GRid NULL_GRID;
+extern GRclassid OPP_VRCptIn_class_id;
+extern GRclassid OPP_VCElCable_class_id;
+extern GRclassid OPP_VCFoCable_class_id;
+
+extern 		GRdpb_get();
+extern 		NDexec_batch();
+extern 		NDwait_batch();
+extern		VC_CreateCab();
+
+/* The following functions implementation can be found in the file 
+$ROUTE/vccable/VCfunc.I file */
+extern		VCGetCabConnDet();
+extern		VCCalOffVector();
+extern 		VCobjInActiveSpace();
+
+main()
+{
+  IGRint	NbOfOffsets;
+  IGRint 	count, NbParents;
+  IGRint 	cn_type, i, j;
+  IGRint	M_response;
+  IGRdouble	dOffsetVector[6];
+  IGRlong 	sts, msg, ret;
+  struct GRid 	*loc_obj, TerminalId[2], located_object; 
+  struct GRid	CableParents[VC_X_MAX_CONNECT_DB], NewCabId, temp;
+  struct GRmd_env 	md_env;
+  struct GRsymbology	CableSymb;
+  OM_S_CLASSLIST        locate_eligible_thing;
+
+  IGRshort	nPos0, nPos1;
+  struct VCpos	*cab0, *cab1, *trm0, *trm1;
+  IGRchar	**szSignal0, **szSignal1;
+
+  struct VCGenInfo	GenInfo;
+  GRclassid 		class_array[2], Classes[2];
+
+  TGRid  childID;
+  TGRid *childIDs;
+  IGRint childCNT;
+  
+  IGRint nb_change;
+  
+  __DBGpr_com( " >> Entered the PPL " );
+  szSignal0 = NULL; 
+  szSignal1 = NULL ;
+
+  ci$get_module_info( md_env = &md_env );
+
+  class_array[0] = OPP_VCElCable_class_id;
+  class_array[1] = OPP_VCFoCable_class_id;
+
+  locate_eligible_thing.w_count = 2;
+  locate_eligible_thing.p_classes = class_array;
+
+  while( 1 )
+  {
+      count=0; 
+      nPos0=0; 
+      nPos1=0; 
+      loc_obj = NULL;
+
+      ci$locate(  prompt          = "Select Cable to Convert/Move-on for all",
+		  acc_prompt      = "Accept with next element/Reject" ,
+		  eligible_classes= &locate_eligible_thing,
+		  owner_action    =  LC_RIGID_OWNER | LC_RIGID_COMP |
+					LC_FLEX_OWNER | LC_FLEX_COMP,
+		  obj             = &located_object.objid,
+		  osnum           = &located_object.osnum,
+		  response        = &M_response,
+		  md_env          = &md_env ) ;
+
+      switch (M_response) 
+      {
+	 case EX_DATA  :
+	 case EX_OBJID :      /* fence event      */
+
+	     count = 1;
+	     loc_obj = (struct GRid *) malloc( count * sizeof( struct GRid ) );
+	     loc_obj->objid = located_object.objid;
+	     loc_obj->osnum = located_object.osnum;
+	     break;
+
+	 case EX_RJT_MOVEON :
+
+	    /* Get all the Electrical & Fiber Optic Cable objects in  the 
+	    active design file*/
+     	    Classes[0] = OPP_VCElCable_class_id;
+	    Classes[1] = OPP_VCFoCable_class_id;
+
+	    /* This function gets all the objects of classes specified in the
+	    array. */
+	    sts = VCobjInActiveSpace(      &msg, &count,
+				    	   &loc_obj, Classes, 2 );
+
+	    __DBGpr_int( " Nb. of Cable Objects found ", count );
+	    break;
+
+	 default :
+	    printf("\n Not a Cable Object \n" );
+	    exit;
+	    break;
+      }
+
+      if( count == 0 )
+      {
+	 printf("\n  NO Cable objects in the design file !!! \n" );
+	 exit;
+      }
+
+      __DBGpr_com( " ################################ " );
+      __DBGpr_int( " ####### Cable Count ############ ", count );
+      __DBGpr_com( " ################################ " );
+
+      for( i=0; i<count; i=i+1 )
+      {
+	  __DBGpr_com( " #################################### " );
+	  __DBGpr_int( " ########## Cable No. ############### ", i );
+	  __DBGpr_com( " #################################### " );
+
+	  NbOfOffsets = 0;
+	  sts = VCCalOffVector( &msg, loc_obj[i], &md_env, dOffsetVector, 
+				&NbOfOffsets );
+	  as$status( sts = sts );
+
+	  for( j=0; j<NbOfOffsets; j=j+1 )
+	      __DBGpr_vec( " Offsets --> ", &dOffsetVector[3*j] );
+
+	  /* Get the Cable Connection Details at the end 0 */
+	  sts = VCGetCabConnDet( &msg,  loc_obj[i], 0, 
+				    &nPos0, NULL, NULL, NULL ); 
+	  __DBGpr_int( " Nb. of Lead connected to Terminal 0 ", nPos0 );
+
+	  /* Allocating memory for the Cable leads */
+	  if( nPos0 ) 
+	  {
+	      cab0 = (struct VCpos*) malloc( nPos0 * sizeof( struct VCpos ));
+	      trm0 = (struct VCpos*) malloc( nPos0 * sizeof( struct VCpos ));
+	      szSignal0 = (IGRchar **) malloc( nPos0 * sizeof( IGRchar *) ); 
+
+	      if( cab0 == NULL || trm0 == NULL ) 
+	      {
+		   __DBGpr_com( " Memory Allocation Error-dVertices !!! " );
+		   exit;
+	      }
+	      for( j = 0; j< nPos0 ; j = j+1 ) 
+	      {
+		  szSignal0[j] = (IGRchar *)malloc( VC_MAX_SIG_ID* sizeof( IGRchar) );
+
+		  if( szSignal0[j] == NULL ) 
+		  {
+		       __DBGpr_com( " Memory Allocation Err-szSignal0[j]!!! " );
+		       exit;
+		  }
+	      }
+	      __DBGpr_com( " Retreiving the lead info " );
+	      sts = VCGetCabConnDet( &msg,  loc_obj[i], 0, 
+					&nPos0, cab0, trm0, szSignal0 ); 
+	  }
+
+	  /* Get the Cable Connection Details at the end 1 */
+	  sts = VCGetCabConnDet( &msg,  loc_obj[i], 1, 
+				    &nPos1, NULL, NULL, NULL ); 
+	  __DBGpr_int( " Nb. of Lead connected to Terminal 1 ", nPos1 );
+
+	  if( nPos1 ) 
+	  {
+	      cab1 = (struct VCpos*) malloc( nPos1 * sizeof( struct VCpos ) );
+	      trm1 = (struct VCpos*) malloc( nPos1 * sizeof( struct VCpos ) );
+	       szSignal1 = (IGRchar **) malloc( nPos1 * sizeof( IGRchar* ) ); 
+
+	      if( cab1 == NULL || trm1 == NULL ) 
+	      {
+		   __DBGpr_com( " Memory Allocation Error-cab1-trm1 !!! " );
+		   exit;
+	      }
+
+	      for( j = 0; j< nPos1 ; j = j+1 ) 
+	      {
+		  szSignal1[j] = (IGRchar *)malloc( VC_MAX_SIG_ID* sizeof( IGRchar) );
+
+		  if( szSignal1[j] == NULL ) 
+		  {
+		       __DBGpr_com( " Memory Allocation Err-szSignal1[j]!!! " );
+		       exit;
+		  }
+	      }
+	      sts = VCGetCabConnDet( &msg,  loc_obj[i], 1, 
+					&nPos1, cab1, trm1, szSignal1 ); 
+
+	  }
+
+	  /* Get the Section Map details from the Instance Data */
+	  GenInfo.Attr.Cable.pVertex = NULL;
+	  GenInfo.Attr.Cable.pSect   = NULL;
+
+	  GenInfo.Attr.Cable.NbSections = 0;
+	  GenInfo.Attr.Cable.NbVertices = 0;
+
+	  sts = ci$send ( msg = message VCCable.VCGetInstance( &msg, &GenInfo ),
+			  targetid = loc_obj[i].objid,
+			  targetos = loc_obj[i].osnum );
+
+	  __DBGpr_int( " Nb. of Sections ", GenInfo.Attr.Cable.NbSections );
+	  __DBGpr_int( " Nb. of Vertices ", GenInfo.Attr.Cable.NbVertices );
+
+	  /* Allocate the required memory to store the instance data */
+	  GenInfo.Attr.Cable.pVertex = (IGRdouble*) 
+			       malloc( GenInfo.Attr.Cable.NbVertices * 3 *
+					       sizeof( IGRdouble ) );
+
+	  GenInfo.Attr.Cable.pSect = ( struct VCCL_sectmap* ) 
+				     malloc( GenInfo.Attr.Cable.NbSections
+					    * sizeof( struct VCCL_sectmap ) );
+
+	  if( ( GenInfo.Attr.Cable.pVertex == NULL ) || 
+	      ( GenInfo.Attr.Cable.pSect   == NULL ) ) 
+	  {
+	       __DBGpr_com( " Memory Allocation Error-dVertices !!! " );
+	       exit;
+	  }
+
+	  sts = ci$send ( msg = message VCCable.VCGetInstance( &msg, &GenInfo ),
+			  targetid = loc_obj[i].objid,
+			  targetos = loc_obj[i].osnum );
+
+#ifdef vdsDEBUG
+	  for ( j=0; j<GenInfo.Attr.Cable.NbSections; j=j+1 )
+	  {
+	    printf (" sections %d %d %d %d %d %d \n",
+					 GenInfo.Attr.Cable.pSect[j].type,
+					 GenInfo.Attr.Cable.pSect[j].iFrom,
+					 GenInfo.Attr.Cable.pSect[j].iTo,
+					 GenInfo.Attr.Cable.pSect[j].numvert,
+					 GenInfo.Attr.Cable.pSect[j].strno,
+					 GenInfo.Attr.Cable.pSect[j].parno );
+	  }
+#endif
+
+	  NbParents = 0;
+	  sts = ci$send ( msg = message NDnode.NDget_objects( 
+				    ND_ROOT, CableParents, VC_X_MAX_CONNECT_DB, 
+				    NULL, 0, OM_K_MAXINT, &NbParents ),
+			  targetid = loc_obj[i].objid,
+			  targetos = loc_obj[i].osnum );
+
+	  sts = ci$send( msg = message GRvg.GRgetsymb( &msg, &CableSymb ),
+			  targetid = loc_obj[i].objid,
+			  targetos = loc_obj[i].osnum );
+
+	  /* Having obtained all the information from the Old Cable object, 
+	  lets remove it from Rtree, wait till later, need kids to transfer 
+	  sts = ci$send ( msg = message NDnode.NDdelete( &md_env ),
+			  targetid = loc_obj[i].objid,
+			  targetos = loc_obj[i].osnum );
+			  */
+	  /*********
+	  __DBGpr_com( " Deleting the Old Cable " );
+	  cn_type = ND_COMP;
+	  nd$wait_batch( 	
+		    	type	   = GR_DELETED,
+			l_object   = &loc_obj[i],
+			l_obj_info = &cn_type,
+			nb_obj 	   = 1 );
+	  nd$exec_batch();
+	  *********/
+	
+	  /* Construct the New Cable with the old information, and with the
+	  offset vectors set properly */
+
+	  __DBGpr_com( " Constructing the Cable object " );
+	  NewCabId.osnum = loc_obj[i].osnum;
+	  sts = (IGRlong) VC_CreateCab( &msg, NbParents, 
+			      CableParents, &GenInfo,
+			      CableSymb.level, &CableSymb.display_attr, 
+			      &md_env, &NewCabId, 
+			      NbOfOffsets, dOffsetVector );
+	  __DBGpr_obj( " New Cable Id ", NewCabId );
+
+	  /* Free the unwanted memory */
+	  __DBGpr_com( " Freeing the memory " );
+	  if( GenInfo.Attr.Cable.pVertex ) free( GenInfo.Attr.Cable.pVertex );
+	  if( GenInfo.Attr.Cable.pSect ) free( GenInfo.Attr.Cable.pSect );
+
+	  GenInfo.Attr.Cable.pVertex = NULL;
+	  GenInfo.Attr.Cable.pSect   = NULL;
+
+	  /* Re-set Cable Connections to the New Cable just constructed */
+	  if( nPos0 )
+	  {
+	    __DBGpr_com( " Connecting the Cable0 Leads to Terminal Pins " );
+	    sts =
+	    ci$send ( msg = message VCCable.VCConnect
+			    ( &msg, nPos0, cab0, trm0, &temp ),
+		    targetid = NewCabId.objid,
+		    targetos = NewCabId.osnum );
+     
+	    for( j=0;  j<nPos0; j=j+1 )
+	    {
+		sts =
+		ci$send ( msg = message VCCable.VCPutSignal
+			    ( &msg, &cab0[j], szSignal0[j] ),
+		    targetid = NewCabId.objid,
+		    targetos = NewCabId.osnum );
+ 
+		__DBGpr_com( " Put the signal in the Cable0 Lead " );
+		free( szSignal0[j] );
+		szSignal0[j] = NULL;
+	    }
+     
+	    free( cab0 );
+	    free( trm0 );
+	    free( szSignal0 );
+
+	    cab0 = NULL;
+	    trm0 = NULL;
+	    szSignal0 = NULL;
+	  } /* End of the if loop nPos1 */
+     
+	  if( nPos1 )
+	  {
+	    __DBGpr_com( " Connecting the Cable1 Leads to Terminal Pins " );
+	    sts =
+	    ci$send ( msg = message VCCable.VCConnect
+			    ( &msg, nPos1, cab1, trm1, &temp ),
+		    targetid = NewCabId.objid,
+		    targetos = NewCabId.osnum );
+     
+	    for( j=0;  j<nPos1; j=j+1 )
+	    {
+		sts =
+		ci$send ( msg = message VCCable.VCPutSignal
+			    ( &msg, &cab1[j], szSignal1[j] ),
+		    targetid = NewCabId.objid,
+		    targetos = NewCabId.osnum );
+ 
+		__DBGpr_com( " Put the signal in the Cable1 Lead " );
+		free( szSignal1[j] );
+		szSignal1[j] = NULL;
+	    }
+ 
+	    free( cab1 );
+	    free( trm1 );
+	    free( szSignal1 );
+
+	    cab1 = NULL;
+	    trm1 = NULL;
+	    szSignal1 = NULL;
+
+	} /* End of the if loop nPos1 */
+
+	  /* Hook children back up from the old cable */
+	  nb_change = 1;
+	  childIDs = NULL;
+	  childCNT = 0;
+	  
+	  ci$send( msg = message 
+		   NDnode.NDget_objects( ND_CHILDREN | ND_IN_BUF,
+					 NULL,
+					 0,
+					 &childIDs,
+					 0,
+					 OM_K_MAXINT,
+					 &childCNT ),
+		   targetid = loc_obj[i].objid,
+		   targetos = loc_obj[i].osnum);
+
+	  nb_change = 1;
+	  for(j = 0; j < childCNT; j = j + 1) {
+	    
+	    // vdobj$Print(objID = &childIDs[j]);
+	    
+	    ci$send(msg = message 
+		    NDnode.NDchange_connect (nb_change, &loc_obj[i], &NewCabId),
+		    targetid = childIDs[j].objid,
+		    targetos = childIDs[j].osnum);
+	  }
+	  
+	  /* Having obtained all the information from the Old Cable object, 
+	  lets remove it from Rtree */
+	  sts = ci$send ( msg = message NDnode.NDdelete( &md_env ),
+	 		  targetid = loc_obj[i].objid,
+		 	  targetos = loc_obj[i].osnum );
+			  
+
+      } /* End of the for loop to count */
+
+      if( count )
+      {
+	 free( loc_obj );
+	 loc_obj = NULL;
+      }
+  } /* End of while loop */
+
+  __DBGpr_com( " << Exiting the PPL " );
+}

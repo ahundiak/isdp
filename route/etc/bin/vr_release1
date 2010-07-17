@@ -1,0 +1,574 @@
+#!/bin/ksh
+# $Id: vr_release1,v 1.3 2002/04/30 18:25:46 anand Exp $
+
+# -------------------------------------------------------------------
+# I/ROUTE
+#
+# File:		/etc/bin/vr_release 
+#
+# Description:
+#	
+#	This script will generate the following files for a release of ROUTE.
+#
+#	File Name		PROD	CLIX	ISL	Info
+#	---------		----	----	---	----
+#	product.def		yes	yes	yes	CLIX/ISL package
+#	product.clip		yes	yes		CLIX package
+#	product.isl		yes		yes	ISL package
+#
+#	install.sh		yes	yes	yes	All identical
+#	install.clip		yes	yes		All identical
+#	install.isl		yes		yes	All identical
+#
+#	remove.sh		yes	yes	yes	All identical
+#	remove.clip		yes	yes		All identical
+#	remove.isl		yes		yes	All identical
+#
+#
+#	File Information (release platform):
+#	====================================
+#	product.XXX	Product identification information and package info.
+#	install.XXX	Installation script for product.
+#	remove.XXX	Remove script for product
+#
+#	config.p	General product information.
+#	include.p	Include files.
+#	routehelp.p	Help files.
+#	library.p	Macro Libraries.
+#	pplXXX.p	PPL executables.
+#	routeXXX.p	System depenend info		(C100/C400/ISL)
+#
+#	File Information (development platform):
+#	========================================
+#	devel.p		Development support files
+#				- spec
+#				- vrinclude
+#				- etc
+#				- config/english/messages
+#	libXXX.p	Library files to regenerate executable.
+#			and etc/dload directory.
+#
+#	
+#
+# Dependencies:
+#
+# Revision History:
+#	$Log: vr_release1,v $
+#	Revision 1.3  2002/04/30 18:25:46  anand
+#	#!Shebang line has to be the first line in a script#!
+#	
+#	Revision 1.2  2002/03/21 17:48:56  ad
+#	iMove oplclean from ROUTE to VDS
+#	
+#	Revision 1.1.1.1  2001/01/04 21:12:07  cvs
+#	Initial import to CVS
+#	
+# Revision 1.2  1998/10/11  16:36:06  pinnacle
+# ah
+#
+# Revision 1.1  1998/09/07  18:58:52  pinnacle
+# ah
+#
+# Revision 1.4  1996/06/22  14:24:42  pinnacle
+# Replaced: etc/bin/vr_release for:  by r240_int for route240
+#
+# Revision 1.3  1996/01/22  18:05:38  pinnacle
+# Replaced: etc/bin/vr_release for:  by azuurhou for route240
+#
+# Revision 1.2  1995/12/08  21:50:00  pinnacle
+# Replaced: etc/bin/vr_release for:  by r240_int for route240
+#
+# Revision 1.1  1995/12/06  14:15:40  pinnacle
+# Created: etc/bin/vr_release by r240_int for route240
+#
+#
+# History:
+#	12/05/95	adz		created
+#	12/08/95	tlb		modified to deliver to atlantis
+#
+# -------------------------------------------------------------------
+#
+#-------------------------------------------------------------------------------
+function cleanup {
+        /bin/rm ${TMPFILE} >/dev/null 2>&1
+        return 0
+
+} #cleanup
+
+#-------------------------------------------------------------------------------
+function sendEcho {
+
+	echo "-------------------------------------------------------------"
+	echo "\t\tSending $*"
+	echo ""
+
+	echo "\t\tSending $*" >> ${LOGFILE} 2>&1
+	echo ""		      >> ${LOGFILE} 2>&1
+
+} # sendEcho
+#
+#-------------------------------------------------------------------------------
+function sendInfo {
+
+	echo "\t\t$*"
+	echo "\t\t$*" >> ${LOGFILE} 2>&1
+
+} # sendInfo
+
+#-------------------------------------------------------------------------------
+function sendError {
+
+	echo "\t\tERROR $*"
+	echo "\t\tERROR $*"
+	echo "\t\tERROR $*"
+	echo "\t\tERROR $*"  >> ${LOGFILE} 2>&1
+	echo "\t\tERROR $*"  >> ${LOGFILE} 2>&1
+
+	exit 1;
+
+} # sendError
+
+#-------------------------------------------------------------------------------
+function Tput {
+        /usr/bin/tput $1
+} # Tput
+
+#-------------------------------------------------------------------------------
+function sendInfoFile {
+
+        echo "File $* not found"
+        echo "File $* not found" >> ${LOGFILE} 2>&1
+
+} # sendInfoFile 
+
+#-------------------------------------------------------------------------------
+function sendInfoDir {
+
+        echo "Directory $* not found"
+        echo "Directory $* not found" >> ${LOGFILE} 2>&1
+
+} # sendInfoDir
+
+#
+#-------------------------------------------------------------------------------
+#
+function getCpuId {
+
+    integer	RC
+
+    RC=0
+
+    case ${OPSYS} in
+	CLIX)
+		sendInfo "\n\t\tCLIPPER SUPPORTED."
+		sendInfo
+		if [ -x /bin/inqcpuid ] ; then		  
+			CPUID=`/bin/inqcpuid`
+		else
+			sendInfoFile "inqcpuid not found. load DELTOOLS"
+			RC=1
+		fi
+		;; # end CLIX
+
+	SunOS)
+		sendInfo "\n\t\tINTEL_SOLARIS SUPPORTED."
+		sendInfo
+		CPUID=$CPUISL
+		;; # end SunOS
+
+	IRIX)
+		sendInfo "\nIRIX NOT SUPPORTED."
+		RC=1
+		;; # end IRIX
+
+	*)
+		sendInfo "\nUnknown target operating system \"${OPSYS}\""
+		RC=1
+		;;
+    esac
+
+    return ${RC}
+}
+#
+#-------------------------------------------------------------------------------
+#
+function transInfo {
+
+	integer	RC
+
+	RC=0
+
+	if (	echo user ${REL_LOGIN} ${REL_PSWRD}
+		echo bin
+		echo put $1 ${REL_TRANS}/$2
+		echo quit
+		) | ftp -ni $REL_NODE ; then
+
+		sendEcho "$2 to $REL_NODE"
+	else
+		sendError "$1 FAILED"
+		RC=1
+	fi
+
+	return ${RC}
+}
+#-------------------------------------------------------------------------------
+#
+# Configuration directory
+#
+function sendConfig {
+
+    integer	RC
+
+    RC=0
+
+    if [ -d ${ROUTE}/config/dload ] ; then
+
+	sendEcho "Executable $CPUID"
+
+	cd $ROUTE
+	cleanup
+	find 	config/dload \
+		! -name "_rev_.pnc" -print | \
+		cpio -o | compress > $TMPFILE
+	transInfo $TMPFILE route${CPUID}.p
+	RC=$?
+
+    else
+	sendInfoDir "$ROUTE/config/dload"
+	RC=1
+    fi
+    if [ ${RC} = "1" ] ; then return ${RC} ; fi
+
+    if [ -d ${ROUTE}/ppl/bin ] ; then
+	sendEcho "ppl files."
+	cd ${ROUTE}
+	cleanup
+	find ppl/bin \
+		-name "*.e" \
+		! -name "_rev_.pnc" -print | \
+		cpio -o | compress > $TMPFILE
+	transInfo $TMPFILE ppl${CPUID}.p
+	RC=$?
+    else
+	sendInfoDir "${ROUTE}/ppl/bin"
+	RC=1
+    fi
+    if [ ${RC} = "1" ] ; then return ${RC} ; fi
+
+#
+#	test release type to stop process.
+# KDD 9-97 "route.cmd" is needed:	! -name "*.cmd" -print | \
+#
+
+    if [ ${CPUID} != "C400" ] ; then return ${RC} ; fi
+
+    ln ${ROUTE}/config/english/menus/src/*.otl ${ROUTE}/config/english/menus/.
+
+    if [ -d ${ROUTE}/config -a -d ${ROUTE}/bin ] ; then
+	sendEcho "configuration files."
+	cd ${ROUTE}
+	cleanup
+	find api bin config \
+		! -name "*.o" \
+		! -name "*.mb" \
+		! -name "_rev_.pnc" \
+		  -print | \
+		cpio -o | compress > $TMPFILE
+	transInfo $TMPFILE config.p
+	RC=$?
+    else
+	if [ ! -d ${ROUTE}/config ] ; then 
+		sendInfoDir "${ROUTE}/config"
+	fi
+	if [ ! -d ${ROUTE}/bin ] ; then
+		sendInfoDir "${ROUTE}/bin"
+	fi
+	RC=1
+    fi
+    if [ ${RC} = "1" ] ; then return ${RC} ; fi
+
+    if [ -d ${ROUTE}/ppl/bin ] ; then
+	sendEcho "ppl Libraries."
+	cd ${ROUTE}
+	cleanup
+	find ppl/bin \
+		! -name "*.e" \
+		! -name "_rev_.pnc" -print | \
+		cpio -o | compress > $TMPFILE
+	transInfo $TMPFILE library.p
+	RC=$?
+    else
+	sendInfoDir "${ROUTE}/ppl/bin"
+	RC=1
+    fi
+    if [ ${RC} = "1" ] ; then return ${RC} ; fi
+
+    if [ -d ${ROUTE}/include ] ; then
+	sendEcho "include files."
+	cd ${ROUTE}
+	cleanup
+	find include \
+		! -name "_rev_.pnc" -print | \
+		cpio -o | compress > $TMPFILE 
+	transInfo $TMPFILE include.p 
+	RC=$?
+    else
+	sendInfoDir "${ROUTE}/include"
+	RC=1
+    fi
+    return ${RC}
+}
+#-------------------------------------------------------------------------------
+#
+# Source files
+#
+function sendSource {
+
+	integer	RC
+
+	RC=0
+
+	if [ ${CPUID} != "C400" ] ; then return ${RC} ; fi
+
+	cd ${ROUTE}
+
+	sendEcho "Source files vr* ..."
+	cleanup
+	find vc* vr* \
+		! -name "*.o" \
+		! -name "_rev_.pnc"  \
+		! -name "*.e" -print | \
+		cpio -o | compress > $TMPFILE
+	transInfo $TMPFILE SrcVRoute.p
+	RC=$?
+	if [ ${RC} = "1" ] ; then return ${RC} ; fi
+
+	sendEcho "Source files config ..."
+	cleanup
+	find bin config ppl \
+		! -name "*.o" \
+		! -name "_rev_.pnc"  \
+		! -name "*.e" -print | \
+		cpio -o | compress > $TMPFILE
+	transInfo $TMPFILE SrcVRConf.p
+	RC=$?
+	if [ ${RC} = "1" ] ; then return ${RC} ; fi
+
+	sendEcho "Source files include ..."
+	cleanup
+	find include vrinclude vcinclude \
+		! -name "*.o" \
+		! -name "_rev_.pnc"  \
+		! -name "*.e" -print | \
+		cpio -o | compress > $TMPFILE
+	transInfo $TMPFILE SrcVRIncl.p
+	RC=$?
+	if [ ${RC} = "1" ] ; then return ${RC} ; fi
+
+	sendEcho "Source files other ..."
+	cleanup
+	find fixes etc spec \
+		! -name "*.o" \
+		! -name "_rev_.pnc"  \
+		! -name "*.e" -print | \
+		cpio -o | compress > $TMPFILE
+	transInfo $TMPFILE SrcVROthe.p
+	RC=$?
+	if [ ${RC} = "1" ] ; then return ${RC} ; fi
+        
+	return ${RC}
+}
+#-------------------------------------------------------------------------------
+#
+# Development Files files
+#
+function sendDevel {
+
+	integer	RC
+
+	RC=0
+
+	sendEcho "Development files ROUTE ..."
+
+	cd ${ROUTE}
+	cleanup
+	find lib etc/dload -print | \
+			cpio -o | compress > $TMPFILE
+	transInfo $TMPFILE lib${CPUID}.p
+	RC=$?
+	if [ ${RC} = "1" ] ; then return ${RC} ; fi
+
+	if [ ${CPUID} != "C400" ] ; then return ${RC} ; fi
+
+	cd ${ROUTE}
+	cleanup
+	find spec etc fixes vcinclude vrinclude \
+		config/english/messages \
+			! -name "_rev_.pnc" \
+			! -name "*.o" -print | \
+			cpio -o | compress > $TMPFILE
+	transInfo $TMPFILE devel.p
+	RC=$?
+
+	return ${RC}
+}
+#-------------------------------------------------------------------------------
+#
+#  Initialization of files om server
+#  always manually init
+function initServer {
+
+    integer	RC
+
+    if [ ${CPUID} != "Z400" ] ; then return ${RC} ; fi
+
+    RC=0
+    sendInfo "Initialize the product on $SERVER"
+
+    $FMU $SERVER command $REL_BIN/initprod2
+    RC=$?
+
+    return ${RC}
+}
+#-------------------------------------------------------------------------------
+#
+# Start the procedure
+#
+if [ -f "/usr/bin/RELEASE" ] ; then
+        . /usr/bin/RELEASE
+        export REL_TRANS="$REL_TRANS/route"
+else
+        sendInfo  "Files /usr/bin/RELEASE not defined"
+        sendError "QUIT PROCESSING."
+        exit 1
+fi
+
+LOGFILE="/usr/tmp/rel.log"
+SERVER="$REL_NODE.$REL_LOGIN.$REL_PSWRD"
+TMPCOMP="/usr/tmp"
+TMPFILE=$TMPCOMP/VR$RANDOM
+
+OPSYS=`uname -s`
+FMU="fmu -a"
+CPUID=""
+CPU100="C100"
+CPU300="C300"
+CPU400="C400"
+CPUISL="_ISL"
+
+getCpuId
+
+trap "cleanup ; Tput smso ; sendInfo '- INTERRUPT -' ; Tput rmso ; exit 2" 2 3
+
+sendInfo "The release will be sent to $REL_NODE.$REL_LOGIN.$REL_PSWRD"
+sendInfo "\tREL_TRANS    : $REL_TRANS "
+sendInfo "\tREL_BIN      : $REL_BIN "
+sendInfo "\tSERVER       : $SERVER "
+sendInfo "\tOPSYS        : $OPSYS "
+sendInfo "\tCPUID        : $CPUID "
+sendInfo ""
+
+#sendInfo "Like to continue (y/n) ?: \c"
+#read answer
+#if [ "$answer" != "y" ]
+#then
+#	sendInfo "Transfer aborted on your request..."
+#	exit
+#fi
+
+if [ ! -d "${ROUTE}" ] ; then
+    if [ -x /usr/bin/banner ] ; then
+	echo "\n\n\n"
+	/usr/bin/banner "Define ROUTE"
+	echo "\n\n\n"
+    fi
+    exit 1
+fi
+
+#
+#	Ask for type of release
+#
+#while true ; do
+#	echo "\n\tType of package to be created:\n"
+#	echo "\t\t- [0] : All."
+#	echo "\t\t- [1] : Release."
+#	echo "\t\t- [2] : Source."
+#	echo "\t\t- [e] : Exit."
+#
+#	sendType=`getanswer "\t\tType of package ?" "0"`
+#
+#	echo "\t\tType of package ?: \c"
+#	read sendType
+#	case ${sendType} in
+#		0) break ;;
+#		1) break ;;
+#		2) break ;;
+#		e) exit 1 ;;
+#		*) echo "\nInvalid repsonse \"${sendType}\"\n";;
+#	esac
+#done
+
+sendType="0"
+
+# Make sure files have execute permission
+
+# sendInfo "Like to check +x mode (y/n) ?: \c"
+# read answer
+
+answer="y"
+if [ "$answer" = "y" ] ; then
+	cd ${ROUTE}
+	find . -name *.sh -exec chmod ugo+x {} \;
+	cd - 
+fi
+
+if [ ${sendType} = "1" -o ${sendType} = "0" ] ; then
+#
+#	Release files
+#
+	if sendConfig ; then
+	    sendInfo "sendConfig Done"
+	    if sendDevel ; then
+		sendInfo "sendDevel"
+	    else
+		sendError "Error sendDevel"
+	    fi
+	else
+	    sendError "sendConfig"
+	fi
+fi
+
+
+if [ ${sendType} = "2" -o ${sendType} = "0" ] ; then
+#
+#	Source files
+#	
+	if sendSource ; then
+	    sendInfo "sendSource Done"
+	else
+	    sendError "sendSource"
+	fi
+fi
+
+#
+#	Initialisation on server.
+#
+	if initServer ; then
+	    sendInfo "initServer done"
+	else
+	    sendError "initServer"
+	fi
+
+if [ -x /usr/bin/banner ] ; then
+
+	echo "\n\n\n"
+	/usr/bin/banner "  Done"
+	echo "\n\n\n"
+
+fi
+
+cleanup
+
+exit 0;
+

@@ -1,0 +1,146 @@
+/* $Id: VCInvCabLen.u,v 1.1 2001/07/31 22:38:06 anand Exp $ */
+ 
+/***************************************************************************
+ * I/ROUTE
+ *
+ * File:        vrppl/VRInvCabLen.u 
+ *
+ * Description:
+ *	This ppl will identify all cables that have invalid tail and/or
+ *	estimated lengths (length lying outside of bounds [0,1e8]).
+ *
+ * Revision History:
+ *      $Log: VCInvCabLen.u,v $
+ *      Revision 1.1  2001/07/31 22:38:06  anand
+ *      Renamed file to VCInvCabLen.u (PPL name length restriction).
+ *
+ *      Revision 1.1  2001/05/02 16:21:01  anand
+ *      TR 5097
+ *
+ *
+ * History:
+ *	MM/DD/YY  AUTHOR  DESCRIPTION
+ *	05/01/01  Anand   Creation (motivation TR 5097)
+ *
+ ***************************************************************************/
+
+#include "VDppl.h"
+#include "vdVALmacros.h"
+#include "vc_define.h"
+#include "vc_structs.h"
+#include "vc_param.h"
+#include "VCstructs.h"
+#include "vrdbgmacros.h"
+
+extern GRclassid	OPP_VCElCable_class_id;
+extern GRclassid	OPP_VCFoCable_class_id;
+extern GRclassid	OPP_VCCable_class_id;
+
+extern		VCobjInActiveSpace();
+
+main()
+{
+    IGRshort	noret;
+    IGRint	nClassCount, count, j, nObjects;
+    IGRlong	sts, msg, ret;
+    IGRboolean	bInvCabLen;
+    struct GRid		*loc_obj, *buffer;
+    struct GRmd_env	md_env;
+    struct VCEXpan	ExRec;
+    OM_S_CLASSLIST	locate_eligible_thing;
+    GRclassid		class_array[10];
+
+    __DBGpr_com( " >> Entered the PPL " );
+    ci$get_module_info( md_env = &md_env );
+
+    class_array[0] = OPP_VCCable_class_id;
+    class_array[1] = OPP_VCElCable_class_id;
+    class_array[2] = OPP_VCFoCable_class_id;
+
+    nClassCount = 3;
+    locate_eligible_thing.w_count = nClassCount;
+    locate_eligible_thing.p_classes = class_array;
+
+/* This function gets all the objects of classes specified in the array. */
+    loc_obj = NULL;
+    sts = VCobjInActiveSpace(&msg, &count, &loc_obj, class_array, nClassCount);
+
+    __DBGpr_int( " Nb. of Objects found ", count );
+
+/*
+ * OPEN the Log file for the Validate process.
+ */
+    vd$VAL_openLog();
+
+    nObjects = 0;
+    for( j=0; j<count; j=j+1 )
+    {
+	__DBGpr_obj( " Object Id ", loc_obj[j] );
+	bInvCabLen = FALSE;
+
+	sts = ci$send( msg = message VCRoot.VCGetExpand( &msg, VC_EXIN_TAIL,
+							 &noret, &ExRec),
+		  targetid = loc_obj[j].objid,
+		  targetos = loc_obj[j].osnum );
+
+	if ( ExRec.AT.EXd < 0.0 || ExRec.AT.EXd > 1e8 )
+	    bInvCabLen = TRUE;
+
+	sts = ci$send( msg = message VCRoot.VCGetExpand( &msg, VC_EXIN_ESTIM,
+							 &noret, &ExRec),
+		  targetid = loc_obj[j].objid,
+		  targetos = loc_obj[j].osnum );
+
+	if ( ExRec.AT.EXd < 0.0 || ExRec.AT.EXd > 1e8 )
+	{
+	    if( bInvCabLen )
+	    {
+		vd$VAL_addObject( PostText	=
+				"Cable has invalid tail and estimated lengths",
+				  GRid		= loc_obj[j] );
+	    }
+	    else
+	    {
+		bInvCabLen = TRUE;
+		vd$VAL_addObject( PostText	=
+					  "Cable has invalid estimated length",
+				  GRid		= loc_obj[j] );
+	    }
+	}
+	else if( bInvCabLen )
+	{
+	    vd$VAL_addObject( PostText	= "Cable has invalid tail length",
+			      GRid	= loc_obj[j]	);
+	}
+
+	if( bInvCabLen )
+	    nObjects = nObjects+1;
+    } /* End of the for loop to count */
+
+    if( ! nObjects )
+    {
+	vd$VAL_addInfo( Text = "No cables having invalid lengths found");
+    }
+
+    vd$VAL_closeLog();
+
+    if( count )
+    {
+	free( loc_obj );
+	loc_obj = NULL;
+    }
+
+    __DBGpr_com( " << Exiting the PPL " );
+}
+
+delete()
+{
+}
+
+wakeup()
+{
+}
+
+sleep()
+{
+}

@@ -1,0 +1,115 @@
+/***************************************************************************
+ * I/STRUCT
+ *
+ * File:	api/APIcrshexp.u
+ *
+ * Description:
+ * This ppl creates a shell expansion using the API vs$create_shell_expansion().
+ *
+ * Dependencies:
+ *
+ * History:
+ *	MM/DD/YY	AUTHOR		DESCRIPTION
+ *			i-paris		creation date
+ *
+ ***************************************************************************/
+
+#include "OMminimum.h"
+#include "cieveryone.h"
+#include "cievent.h"
+#include "cilocate.h"
+#include "cisend.h"
+#include "vsAPImacros.h"
+
+extern void printf() ;
+
+/*----------------------------------------------------------------------------*/
+wakeup() { message( "API: Create Shell Expansion" ) ; }
+/*----------------------------------------------------------------------------*/
+main() {
+	long		 sts,
+			 msg ;
+	int		 response ;
+	struct GRid	 shellId,
+			 rPlanId,
+			 *p_rPlanId,
+			 sPlanId,
+			 *p_sPlanId,
+			 ePlanId,
+			 *p_ePlanId,
+			 xPlanId ;
+
+	while( TRUE ) {
+	LOCATE:
+
+	p_rPlanId = &rPlanId ;
+	p_sPlanId = &sPlanId ;
+	p_ePlanId = &ePlanId ;
+
+	ci$locate(
+		prompt		= "Identify shell",
+		classes 	= "EMSsubbs",
+		properties	= LC_LC_ONLY | LC_DP_ONLY | LC_RW,
+		owner_action	= LC_RIGID_COMP  |
+				  LC_RIGID_OWNER | LC_FLEX_COMP |
+				  LC_FLEX_OWNER  | LC_REF_OBJECTS,
+		obj		= &shellId.objid,
+		osnum		= &shellId.osnum ) ;
+
+	ci$locate(
+		prompt		= "Identify reference plane/ Move-on for none",
+		classes		= "EMSplane",
+		properties	= LC_LC_ONLY | LC_DP_ONLY | LC_RW,
+		owner_action	= LC_RIGID_COMP  |
+				  LC_RIGID_OWNER | LC_FLEX_COMP |
+				  LC_FLEX_OWNER  | LC_REF_OBJECTS,
+		obj		= &rPlanId.objid,
+		osnum		= &rPlanId.osnum,
+		response	= &response ) ;
+
+	if( response == EX_RJT_MOVEON ) p_rPlanId = NULL ;
+
+	ci$locate(
+		prompt		= "Identify start plane limit / Move-on for none",
+		classes 	= "EMSsubbs",
+		properties	= LC_LC_ONLY | LC_DP_ONLY | LC_RW,
+		owner_action	= LC_RIGID_COMP  |
+				  LC_RIGID_OWNER | LC_FLEX_COMP |
+				  LC_FLEX_OWNER  | LC_REF_OBJECTS,
+		obj		= &sPlanId.objid,
+		osnum		= &sPlanId.osnum,
+		response	= &response ) ;
+
+	if( response == EX_RJT_MOVEON ) {
+		p_sPlanId = NULL ;
+		p_ePlanId = NULL ;
+		goto CONSTRUCT ;
+	}
+
+	ci$locate(
+		prompt		= "Identify end plane limit",
+		classes 	= "EMSsubbs",
+		properties	= LC_LC_ONLY | LC_DP_ONLY | LC_RW,
+		owner_action	= LC_RIGID_COMP  |
+				  LC_RIGID_OWNER | LC_FLEX_COMP |
+				  LC_FLEX_OWNER  | LC_REF_OBJECTS,
+		obj		= &ePlanId.objid,
+		osnum		= &ePlanId.osnum ) ;
+
+	CONSTRUCT:
+	sts = vs$create_shell_expansion( msg		= &msg,
+					 shellId	= &shellId,
+					 rPlanId	= p_rPlanId,
+					 sPlanId	= p_sPlanId,
+					 ePlanId	= p_ePlanId,
+					 xPlanId	= &xPlanId ) ;
+
+	if( !( sts & 1 & msg ) ) {
+		printf( "Error in construction of shell expansion\n" );
+		goto LOCATE;
+	} else 
+		printf( "Constructed shell expansion : [%d,%d]\n", xPlanId.osnum, 
+								   xPlanId.objid );
+	}
+}
+/*----------------------------------------------------------------------------*/

@@ -1,0 +1,114 @@
+/***************************************************************************
+ * I/FEM
+ *
+ * File:        plt_stf.u
+ *
+ * Description:
+ *       This file contains an example ppl proogram that uses the API
+ *	 vsf$convert_plate_and_given_stfs.
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ *
+ * History:
+ *      MM/DD/YY        AUTHOR          DESCRIPTION
+ *
+ ***************************************************************************/
+   
+#include "ciminimum.h"
+#include "cimacros.h"
+#include "igrdp.h"
+#include "godef.h"
+#include "go.h"
+#include "growner.h"
+#include "SFapimacros.h"
+
+#define MAX_STFNRS 20 
+
+extern IGRint  init_cnst_list();
+extern printf();
+
+main()
+{
+IGRint		 	i, suc, nb_stfnrs;
+IGRlong			sts, msg;
+struct IGRdisplay	dis_att;
+struct GRvg_construct   cst;
+struct GRmd_env 	md_env;
+struct GRobj_env 	plate, stfnrs[MAX_STFNRS];
+IGRchar			txt[40];
+struct GRid		NMid;
+
+      	suc = ci$locate( prompt       = "Identify Plate",
+		         classes      = "VSplate",
+                         properties   = LC_LC_ONLY | LC_DP_ONLY | LC_RW,
+                         owner_action = LC_RIGID_COMP
+                                      | LC_RIGID_OWNER | LC_FLEX_COMP
+                                      | LC_FLEX_OWNER  | LC_REF_OBJECTS,
+	                 obj          = &plate.obj_id.objid,
+                         osnum        = &plate.obj_id.osnum,
+		         md_env       = &plate.mod_env );
+
+	nb_stfnrs = 0;
+      	while(1)
+      	{
+	  strcpy(txt,"Identify Stiffener ");
+	  strcat(txt,itoa(nb_stfnrs + 1));
+	  if( nb_stfnrs > 0 ) strcat(txt,"/Move on");
+
+          if(!ci$locate(  prompt       = txt,
+			  classes      = "VSbeam",
+                          properties   = LC_LC_ONLY | LC_DP_ONLY | LC_RW,
+                          owner_action =   LC_RIGID_COMP
+                                         | LC_RIGID_OWNER | LC_FLEX_COMP
+                                         | LC_FLEX_OWNER  | LC_REF_OBJECTS,
+ 	                  obj          = &stfnrs[nb_stfnrs].obj_id.objid,
+                          osnum        = &stfnrs[nb_stfnrs].obj_id.osnum,
+		          md_env       = &stfnrs[nb_stfnrs].mod_env  ) ) break;
+
+		nb_stfnrs = nb_stfnrs +1;
+		/* Check the maximum limit */
+		if( nb_stfnrs == MAX_STFNRS ) break;
+      	}
+
+	/* Get the Module Environment */
+        ci$get_module_info(md_env = &md_env);
+
+	/* Get the symbology and level */
+        init_cnst_list();
+        get_symb();
+
+	/* Fill the construction list */
+        cst.level             	  = cnst_list.level;
+        dis_att.color             = cnst_list.color;
+        dis_att.weight            = cnst_list.weight;
+        dis_att.style             = cnst_list.style;
+
+        cst.msg         = &msg ;
+        cst.env_info    = &md_env;
+        cst.newflag     = FALSE;
+        cst.display     = &dis_att ;
+        cst.geometry    = NULL ;
+        cst.properties  = GRIS_DISPLAYABLE | GRIS_LOCATABLE ;
+        cst.class_attr  = NULL ;
+        cst.name        = NULL ;
+
+	sts = vsf$convert_plate_and_given_stfs(
+			        msg            = &msg,
+			       	plate          = &plate,
+				nb_stfnrs      = nb_stfnrs,
+				stfnrs_list    = stfnrs,
+			       	cst            = &cst,
+			        nm_obj         = &NMid   );
+
+        if ( sts & msg & 1 )
+	{
+           printf("Embeded the plate with given stiffenrs successfully\n");
+	   printf("NMid = %d, %d\n", NMid.objid, NMid.osnum );
+	}
+        else
+           printf("ERROR : vsf$embedges_with_given_stfs failed\n");
+}
+
+

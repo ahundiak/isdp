@@ -1,0 +1,287 @@
+/* $Id: COz_cmpPen.u,v 1.3 2001/09/01 21:10:16 ramarao Exp $  */
+/* --------------------------------------------------------------------
+ * I/STRUCT
+ *
+ * File:        struct/pplcmd/COz_cmpPen.u
+ *
+ * Description: PPL to control the selective recompute of structural elements.
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ *      $Log: COz_cmpPen.u,v $
+ *      Revision 1.3  2001/09/01 21:10:16  ramarao
+ *      Fixed TR# 5558.
+ *
+ *      Revision 1.2  2001/05/03 13:41:11  ramarao
+ *      Added a ppl ( COz_cmpPen.u ) to control the recompute of the penetration macros.
+ *
+ *      Revision 1.1  2001/05/03 13:03:12  ramarao
+ *      Added a ppl ( COz_cmpPen.u ) to control the recompute of the penetration macros.
+ *
+ *
+ * History:
+ *      MM/DD/YY        AUTHOR          DESCRIPTION
+ *      05/02/01        Rama Rao        File Creation.
+ * -------------------------------------------------------------------*/
+
+#include "VDppl.h"
+#include "VDobj.h"
+#include "GMdef.h"
+#include "nddef.h"
+#include "GMmacros.h"
+#include "ndmacros.h"
+#include "GMerrordef.h"
+#include "vdrefmacros.h"
+
+struct GRmd_env cur_env;
+IGRint		total_size, list_size, recomp_opt;
+struct GRid	*list_ids;
+
+extern 	VD_is_ancestry_valid(), VDosValidate(), GMinit_graph(),
+	NDget_graph(), GMlist_access_init(), GMaccess_element(),
+	GMremove_graph(), realloc(), GRget_sorted_nested_files(),
+	VSgetChildrenGoThruPretends(), VD_bulkDisplayByGRids();
+
+extern GRclassid	OPP_VSfeature_class_id, OPP_ACpretendin_class_id;
+
+extern OM_S_CHANSELECT  AS_listeners, AS_notification;
+
+#define INCREMENT	10
+
+AddToList( objid, osnum )
+GRobjid		objid;
+GRspacenum	osnum;
+{
+IGRint		i;
+
+   for( i=0; i<list_size; i=i+1 )
+   {
+      if( list_ids[i].objid == objid &&
+	  list_ids[i].osnum == osnum ) return 1;
+   }
+
+   if( total_size == 0 || list_size < total_size )
+   {
+      total_size = total_size + INCREMENT;
+
+      if( list_ids )
+      {
+         list_ids = realloc( list_ids, 
+			( total_size ) * sizeof( struct GRid ) );
+      }
+      else
+      {
+         list_ids = malloc( total_size * sizeof( struct GRid ) );
+      }
+   }
+
+   list_ids[list_size].objid = objid;
+   list_ids[list_size].osnum = osnum;
+
+   list_size = list_size + 1;
+
+   return 1;
+}
+
+CheckOutdatedMacros()
+{
+IGRlong                 sts, l_msg;
+IGRint                  i, j, misCon, cn_type, n_main, i_main, n_ref, i_ref,
+			cnt;
+IGRchar			macName[40];
+OM_S_TAG_CON_INFO       *tags ;
+GRobjid                 refObj;
+GRspacenum 		main_osnum, ref_osnum, *main_os, *osnums, 
+			his_version, my_version;
+struct GRid		pretendID, hullpen_macro, *list;
+
+  list = NULL;
+  tags = NULL;
+  osnums = NULL;
+  cn_type = ND_COMP;
+
+  i_main = i_ref = 0;
+ 
+  main_os = NULL;
+  osnums  = NULL;
+
+  vd$get_ref_os_list( msg = &msg, main_os = &cur_env.md_id.osnum,
+                      num_ref_os = &n_main, ref_os_list = &osnums );
+  if( !n_main ) goto wrapup;
+
+  main_os = ( GRspacenum * ) malloc( (n_main+1) * sizeof(GRspacenum) );
+
+  main_os[0] = cur_env.md_id.osnum;
+  for( i_main=1; i_main<n_main; i_main = i_main+1 )
+	main_os[i_main] = osnums[i_main];
+
+  for( i_main=n_main-1 ; i_main>=0 ; i_main=i_main-1 )  
+  {
+    main_osnum = main_os[i_main];
+
+    n_ref = 0;
+    if( osnums ) { free( osnums ); osnums = NULL; }
+    vd$get_ref_os_list( msg = &msg, main_os = &main_osnum,
+                        num_ref_os = &n_ref, ref_os_list = &osnums );
+    if( !(msg&1) ) continue;
+
+    for( i_ref = n_ref-1 ; i_ref>=0 ; i_ref=i_ref-1 )
+    {
+       ref_osnum = osnums[i_ref];
+       sts = om$mismatched_connections( osnum        = main_osnum,
+                                        tagged_osnum = ref_osnum,
+                                        p_count      = (OMuint *) &misCon );
+       if( !( sts & 1 ) || !misCon ) continue;
+
+       if( tags ) { free( tags ); tags = NULL; }
+       tags  = ( OM_S_TAG_CON_INFO * ) 
+		 malloc( sizeof(OM_S_TAG_CON_INFO)*misCon );
+
+        if( tags == NULL ) goto wrapup;
+
+        sts = om$mismatched_connections( osnum          = main_osnum,
+                                         tagged_osnum   = ref_osnum,
+                                         p_count        = &misCon,
+                                         size           = misCon,
+                                         p_tag_con_info = tags ) ;
+        if( !( sts & 1 ) ) continue;
+
+        for( i = 0 ; i < misCon ; i=i+1 )
+        {
+     	    sts = om$tag_to_objid( osnum = ref_osnum,
+                                   tag =   tags[i].tag,
+                                   p_objid = &refObj,
+                                   p_version = &his_version);
+           if( !( sts & 1 ) ) continue;
+	   if(his_version == tags[i].version) continue;
+
+	   pretendID.objid = tags[i].objid;
+	   pretendID.osnum = main_osnum;
+
+   	   if( !VD_is_ancestry_valid( &pretendID,
+                                      OPP_ACpretendin_class_id ) ) continue;
+
+      	   ci$send(  msg     = message NDnode.NDget_objects(
+                                  ND_CHILDREN, 
+                                  &hullpen_macro, 1, NULL, 0, 0, &cnt ),
+                       targetid = pretendID.objid,
+                       targetos = pretendID.osnum ) ;
+
+	    vdobj$Get( objID = &hullpen_macro, macName = macName );
+	    if( strcmp( macName, "hull_pene" ) ) continue;
+
+	    if( recomp_opt )
+	    {
+               sts = om$test_connection( osnum = main_osnum,
+                                         objid = tags[i].objid,
+                                         p_chanselect = &AS_listeners,
+                                         tag_osnum = ref_osnum,
+                                         tag_objid = refObj,
+                                         p_tag_chanselect = &AS_notification,
+                                         p_tag_version = &his_version,
+                                         p_tag_connect_version = &my_version,
+                                         force_flag = TRUE );
+
+	       ci$send( msg = message NDnode.NDs_compute_node(
+                                 	&l_msg, ND_COMP, &cur_env ),
+                 	targetid = hullpen_macro.objid,
+                 	targetos = hullpen_macro.osnum );
+	   }
+
+	   if( list ) { free( list ); list = NULL; }
+           VSgetChildrenGoThruPretends( &msg, &hullpen_macro, &cnt, &list );
+	   for( j=0; j<cnt; j=j+1 )
+	   {
+	      if( VD_is_ancestry_valid( &list[j], OPP_VSfeature_class_id ) ) 
+	        AddToList( list[j].objid, list[j].osnum );
+	   }
+        }
+     }
+  }
+
+wrapup:
+  if( osnums ) { free( osnums ); osnums = NULL; }
+  if( tags ) { free( tags ); tags = NULL; }
+  if( main_os ) { free( main_os ); main_os = NULL; }
+  if( list ) { free( list ); list = NULL; }
+  return;
+}
+
+main()
+{
+IGRint			i, desc;
+IGRshort		type;
+IGRlong			l_msg;
+IGRchar			exp_txt[100];
+struct GRid		object;
+struct GMgraph		graph;
+
+extern int     GMsel_and(); /* Function to select internal types */
+
+  list_size  = 0;
+  total_size = 0;
+
+  list_ids = NULL;
+
+  dp$erase_hilite( msg = &l_msg );
+
+  message( "Recompute Outdated Structure" );
+  status( "0 - Hilight, 1 - Recompute" );
+
+  ci$get( prompt = "Enter Option ( 0/1 )",
+          string = exp_txt  );
+  recomp_opt = atoi( exp_txt );
+
+  ci$get_module_info( md_env = &cur_env );
+
+  CheckOutdatedMacros();
+
+  if( list_size == 0 ) goto wrapup;
+
+#if 0
+
+  gm$init_graph( p_graph = &graph );
+
+  nd$get_graph( p_root = list_ids, nb_root = list_size, p_graph = &graph  );
+
+  desc = GM_FROM_BEGIN;
+  gm$list_access_init( p_graph = &graph, p_desc = &desc );
+
+  type = ND_BODY | ND_ROOT ;
+  while( gm$list_access_next
+          ( select_fct   = GMsel_and,
+            p_sel_info   = &type,
+            p_graph      = &graph,
+            p_desc       = &desc,
+            p_object     = &object)== GM_S_SUCCESS )
+#endif
+  for( i=0; i<list_size; i=i+1 )
+  {
+      object = list_ids[i] ;
+      if( VD_is_ancestry_valid( &object,
+                                OPP_VSfeature_class_id  ) )
+      {
+	 VD_bulkDisplayByGRids( &cur_env, GRhd, 1, &object );
+
+	 if( recomp_opt )	printf( "Recomputing -- " );
+	 else			printf( "Highlighting -- " );
+	 vdobj$Print( objID = &object );
+
+	 if( recomp_opt )
+	 {
+             ci$send( msg = message NDnode.NDs_compute_node(
+                                 &l_msg, ND_COMP, &cur_env ),
+                 targetid = object.objid,
+                 targetos = object.osnum ); 
+	 }
+      }
+  }
+
+  //gm$free_graph( p_graph = &graph );
+
+wrapup:
+  status( "" );
+  if( list_ids ) { free( list_ids ); list_ids = NULL; }
+  return 1;
+}
