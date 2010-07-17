@@ -1,0 +1,217 @@
+/* $Id: COz_chkUnw.u,v 1.1 2002/04/16 13:58:56 ramarao Exp $  */
+/***************************************************************************
+ * I/LOFT
+ *
+ * File:        isdp/loft/src/unwext/COz_chkUnw.u
+ *
+ * Description: PPL to check the unwrap lengths against the base and
+ *              offset surface curves.
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ *      $Log: COz_chkUnw.u,v $
+ *      Revision 1.1  2002/04/16 13:58:56  ramarao
+ *      Implemented CR# 5993.
+ *
+ *
+ * History:
+ *      MM/DD/YY        AUTHOR          DESCRIPTION
+ *      04/16/02        Rama Rao        File Creation.
+ ***************************************************************************/
+
+#include "VDppl.h"
+#include "VDobj.h"
+#include "VDsa.h"
+#include "coparamac.h"
+#include "vsplatedef.h"
+
+extern 			VDpms_findall_ancestryobjects(), VLunwCheckLengths();
+extern GRclassid	OPP_VLunwObj_class_id;
+
+extern ASstart_var_fence(), ASend_fence();
+
+main()
+{
+IGRlong               msg, sts;
+IGRint		      i, j, loc_cnt, state, lenCnt, response;
+IGRboolean	      is_malloc;
+IGRchar		      clsName[128], unwfile[40], platePcmk[40], 
+		      tolStr[40], baseStr[100], offsetStr[100];
+IGRdouble	      *lengths, tol;
+GRclassid             classid[1];
+OM_S_OBJID            *loc_list;
+struct GRid	      *unwrapCrvIDs, plateID;
+struct GRmd_env       cur_env;
+struct GRobj_env      obj_chk, objOE, *locOEs;
+FILE		      *fp;
+
+   message( "Check Unwrap Objects" );
+
+   loc_cnt    = 0;
+   loc_list   = NULL;
+   lengths    = NULL;
+   locOEs     = NULL;
+   unwrapCrvIDs = NULL;
+
+   fp = NULL;
+
+   is_malloc = FALSE;
+
+   response = 0;
+   sts = ci$locate( prompt  = "Locate Unwraps/Move on to process all",
+                    classes = "VLunwObj",
+                    owner_action = LC_RIGID_OWNER |
+                                   LC_RIGID_COMP  |
+                                   LC_FLEX_COMP   |
+                                   LC_FLEX_OWNER  |
+                                   LC_REF_OBJECTS,
+                    stackable    = 1,
+                    response     = &response,
+                    md_env       = &objOE.mod_env,
+                    obj          = &objOE.obj_id.objid,
+                    osnum        = &objOE.obj_id.osnum);
+   if (!(sts & 1)) response = 0;
+
+   switch( response )
+   {
+       case EX_OBJID:   // Object Set
+
+                /* Grab Located Objects */
+                as$start_fence(  set       = &objOE.obj_id,
+                                 set_env   = &objOE.mod_env,
+                                 nb_obj    = &loc_cnt,
+                                 p_obj_env = &locOEs );
+
+                ASend_fence();
+                is_malloc = TRUE;
+                break;
+
+       case EX_DATA:    // Single Object
+                loc_cnt = 1;
+                locOEs = &objOE;
+                break;
+
+   } // Switch
+
+   status( "Press Enter to accept 1/8th inch as tolerance" );
+
+   ci$get( prompt = "Tolerance for comparision, fraction of inch [8]", 
+	   string = tolStr );
+
+   if( strlen( tolStr ) < 1 ) strcpy( tolStr, "8" );
+
+   tol = 25.4 / atof( tolStr ) ;
+
+   status( "" );
+
+   status( "Press Enter to output to the unix window" );
+
+   ci$get( prompt = "Enter Output File Name", string = unwfile );
+   if( strlen( unwfile ) < 1 )  fp = stdout;
+   else                          fp = fopen( unwfile, "w" );
+
+   status( "" );
+
+
+   if( response == 0 )
+   {
+      ci$get_module_info( md_env = &cur_env );
+
+      classid[0] = OPP_VLunwObj_class_id;
+
+      loc_cnt = 0;
+      VDpms_findall_ancestryobjects( cur_env.md_id.osnum, 1, classid,
+				     &loc_cnt, NULL );
+      if( !loc_cnt ) goto wrapup;
+
+      loc_list = ( OM_S_OBJID * ) malloc( sizeof(OM_S_OBJID)*loc_cnt );
+      VDpms_findall_ancestryobjects(  cur_env.md_id.osnum, 1, classid,
+                                      &loc_cnt, loc_list );
+   }
+
+   obj_chk.mod_env = cur_env;
+
+   for( i=0; i<loc_cnt; i=i+1 )
+   {
+       if( loc_list ) 
+       {
+          obj_chk.obj_id.objid = loc_list[i];
+          obj_chk.obj_id.osnum = cur_env.md_id.osnum; 
+       }
+       else
+       {
+	  obj_chk = locOEs[i];
+       }
+
+       lenCnt = 0;
+       if( lengths ) { free( lengths ); lengths = NULL; }
+       if( unwrapCrvIDs ) { free( unwrapCrvIDs ); unwrapCrvIDs = NULL; }
+
+       VLunwCheckLengths( obj_chk, &lenCnt, &unwrapCrvIDs, &lengths );
+
+       vdobj$GetParent( objOE    = &obj_chk,
+                        idx      = 1, 
+		        parentID = &plateID );
+
+       vdsa$GetStruct( objID   = &plateID,
+                       name    = "SA_AST:StagingTree:0:pcmk",
+	               txt     = platePcmk );
+	
+       fprintf( fp, "Piece Mark %s --- ", platePcmk );
+       vdobj$Print( objOE = &obj_chk, file = fp );
+
+       fprintf( fp, "Unwrap Curves Count = %d\n", lenCnt );
+       fprintf( fp, "Curve ID\t\tUnwrap\t\tBase\t\tOffset\n", "", "", "" );
+
+       for( j=0; j<lenCnt; j=j+1 )
+       {
+           if( lengths[3*j+1] < 0.0 )
+	   {
+	      strcpy( baseStr, "----- \t" );
+	   }
+	   else
+	   {
+	      sprintf( baseStr, "%g(%.1f)", lengths[3*j+1],
+			      	(lengths[3*j]-lengths[3*j+1]) );
+	   }
+
+	   if( lengths[3*j+2] < 0.0 )
+	   {
+	      strcpy( offsetStr, "----- \t" );
+           }
+           else
+           {
+               sprintf( offsetStr, "%g(%.1f)", lengths[3*j+2],
+                                 (lengths[3*j]-lengths[3*j+2]) );
+           }
+
+	   fprintf( fp, " %d,%d\t\t%g\t\t%s\t%s", 
+				unwrapCrvIDs[j].objid, 
+				unwrapCrvIDs[j].osnum,
+				lengths[3*j], 
+				baseStr, offsetStr );
+	   if( (lengths[3*j+1]-lengths[3*j]) > tol &&
+	       (lengths[3*j+2]-lengths[3*j]) > tol )
+	   {
+	      fprintf( fp, " --- Problem\n" );
+	   }
+   	   else
+	   {
+	      fprintf( fp, "\n" );
+ 	   }
+       }
+       fprintf( fp, "\n" );
+   }
+
+wrapup:
+   if( loc_list ) { free( loc_list   ); loc_list   = NULL; }
+   if( lengths  ) { free( lengths ); lengths = NULL; }
+   if( is_malloc )
+        if( locOEs )    { free( locOEs ); locOEs = NULL; }
+
+   if( unwrapCrvIDs ) { free( unwrapCrvIDs ); unwrapCrvIDs = NULL; }
+
+   if( fp != NULL & fp != stdout ) fclose( fp );
+   return 1;
+}

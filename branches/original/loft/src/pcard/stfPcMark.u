@@ -1,0 +1,272 @@
+/* $Id: stfPcMark.u,v 1.1 2001/01/28 18:38:52 ramarao Exp $  */
+/* --------------------------------------------------------------------
+ * I/LOFT
+ *
+ * File:        loft/src/pcard/stfPcMark.u
+ *
+ * Description:
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ *      $Log: stfPcMark.u,v $
+ *      Revision 1.1  2001/01/28 18:38:52  ramarao
+ *      Implemented CR# MP 4301 on Stiffner Automarking process.
+ *
+ *
+ * History:
+ *      MM/DD/YY        AUTHOR          DESCRIPTION
+ *      01/24/00        Rama Rao        File Creation.
+ * -------------------------------------------------------------------*/
+
+#include "VDppl.h"
+#include "ci_mac_def.h"
+#include "AS_status.h"
+#include "VDobj.h"
+
+#define MACRO_NAME      "stfPcMark"
+#define MAX_TEMP        3
+#define MAX_FEET        1
+#define MAX_CHAR_FEET   10
+
+// #define DEBUG		1
+
+extern 	EX_get_modid_given_osnum(), VLreturn_foot(), VD_is_ancestry_valid(),
+    	VLcheckPlateForMarking(), VLstfMarkPlate(), sleep(); 
+
+extern GRclassid OPP_expression_class_id;
+
+struct GRid 	CI_MACRO_ID, GEOM ;    
+
+/* ------------------------------------------------------------------------- */
+/*    The main function is the one implementing the definition creation      */
+/* ------------------------------------------------------------------------- */
+
+main ()
+{
+IGRint  i;
+IGRlong stat;
+IGRchar *temp_names[MAX_TEMP] ;
+IGRchar *feet_names[MAX_FEET] ;
+IGRchar buffer[MAX_CHAR_FEET * MAX_FEET] ;
+IGRint  temp_types[MAX_TEMP]  ;
+GRobj   ci_mac_def1    ;
+
+    temp_names[0] = "Stiffener"  ;
+    temp_types[0] = macro_generic ;
+
+    temp_names[1] = "Plate"  ;
+    temp_types[1] = macro_generic ;
+
+    temp_names[2] = "Mark";
+    temp_types[2] = line_generic | curve_generic | conic_generic |
+		    parameter_generic | other_generic ;
+
+    feet_names[0] = "Geom";
+
+    ci_mac_def1 = NULL_OBJID ;
+
+    ac$cimacdef( cimacdef            = ci_mac_def1,
+                 status              = &stat,
+                 name                = MACRO_NAME,
+                 temp_num            = MAX_TEMP,
+                 temp_names          = temp_names,
+                 temp_types          = temp_types,
+		 extern_feet_num     = MAX_FEET,
+		 extern_feet_names   = feet_names );
+}
+
+place ()
+{
+IGRboolean  compute_flag ;
+IGRlong     sts, msg ;
+
+    compute_flag = FALSE ;
+    sts = compute_mark( compute_flag );
+    if( !(sts & 1) || GEOM.objid == NULL_OBJID )
+    {
+        #ifdef DEBUG
+        printf("\nplace() : error in compute_mark()\n\n") ;
+        #endif
+        return 0 ;
+    }
+
+    sts = ci$send(msg = message ci_macro.set_all_extern_feet
+                                (&msg, 1, &GEOM, &MOD_ENV),
+        targetid = CI_MACRO_ID.objid,
+        targetos = CI_MACRO_ID.osnum) ; as$status(sts = sts) ;
+    if (!(sts & msg & 1))
+    {
+        printf("Error with ci_macro.set_all_extern_feet() in place() method \n");
+        return 0 ;
+    }
+
+    return 1 ;
+} /* place() */
+
+compute ()
+{
+IGRboolean  compute_flag ;
+IGRlong     sts, msg ;
+
+    compute_flag = TRUE ;
+    GEOM.objid = NULL_OBJID;
+    sts = compute_mark( compute_flag );
+    if( !(sts & 1) || GEOM.objid == NULL_OBJID )
+    {
+        #ifdef DEBUG
+        printf("\nplace() : error in compute_mark()\n\n") ;
+        #endif
+        return 0 ;
+    }
+
+    sts = ci$send(msg = message ci_macro.set_all_extern_feet
+                                (&msg, 1, &GEOM, &MOD_ENV),
+        targetid = CI_MACRO_ID.objid,
+        targetos = CI_MACRO_ID.osnum) ; as$status(sts = sts) ;
+    if (!(sts & msg & 1))
+    {
+        printf("Error with ci_macro.set_all_extern_feet() in compute() method \n");
+        return 0 ;
+    }
+
+    return 1 ;
+} /* compute() */
+
+compute_mark( comp_flag )
+IGRboolean comp_flag;
+{
+IGRlong			sts, msg;
+IGRint			retFlag, left_or_right;
+struct GRid		stiffID, plateID, markID;
+struct GRobj_env	Stiff, Plate, Mark;	
+
+  retFlag = FALSE;
+
+  sts = ci$send( msg = message  ACcpx.ACfind_exp_temp_obj(
+                                  &msg, 0, &stiffID ),
+                targetid = CI_MACRO_ID.objid,
+                targetos = CI_MACRO_ID.osnum );
+  if( !(sts&msg&1) ) {
+      printf("Can not get the Stiffener input\n");
+      goto wrapup ;
+  }
+
+  sts = ci$send( msg = message  NDmacro.ACreturn_foot(
+                                &msg, "", &Stiff.obj_id,
+                                Stiff.mod_env.md_env.matrix_type,
+                                &Stiff.mod_env.md_env.matrix ),
+                targetid = stiffID.objid,
+                targetos = stiffID.osnum );
+  if( !(sts&msg&1) )
+  {
+      printf("Can not get the Stiffener Graphic Input\n");
+      goto wrapup ;
+  }
+  Stiff.mod_env.md_id.osnum = Stiff.obj_id.osnum;
+  ex$get_modid( mod_osnum = Stiff.mod_env.md_id.osnum,
+                 mod_id   = &Stiff.mod_env.md_id.objid );
+
+  #if DEBUG
+     printf("Stiffner --  " );
+     vdobj$Print( objOE = &Stiff );
+  #endif
+
+  sts = ci$send( msg = message  ACcpx.ACfind_exp_temp_obj(
+                                  &msg, 1, &plateID ),
+                targetid = CI_MACRO_ID.objid,
+                targetos = CI_MACRO_ID.osnum );
+  if( !(sts&msg&1) ) {
+      printf("Can not get the Plate input\n");
+      goto wrapup ;
+  }
+
+  sts = ci$send( msg = message  NDmacro.ACreturn_foot(
+                                &msg, "", &Plate.obj_id,
+                                Plate.mod_env.md_env.matrix_type,
+                                &Plate.mod_env.md_env.matrix ),
+                targetid = plateID.objid,
+                targetos = plateID.osnum );
+  if( !(sts&msg&1) )
+  {
+      printf("Can not get the Plate Graphic Input\n");
+      goto wrapup ;
+  }
+  Plate.mod_env.md_id.osnum = Plate.obj_id.osnum;
+  ex$get_modid( mod_osnum = Plate.mod_env.md_id.osnum,
+                 mod_id   = &Plate.mod_env.md_id.objid );
+
+  #if DEBUG
+     printf("Plate --  " );
+     vdobj$Print( objOE = &Plate );
+  #endif
+
+  sts = ci$send( msg = message  ACcpx.ACfind_exp_temp_obj(
+                                  &msg, 2, &markID ),
+                targetid = CI_MACRO_ID.objid,
+                targetos = CI_MACRO_ID.osnum );
+  if( !(sts&msg&1) ) {
+      printf("Can not get the Marking Curve input\n");
+      goto wrapup ;
+  }
+
+  sts = ci$send( msg = message  NDmacro.ACreturn_foot(
+                                &msg, "", &Mark.obj_id,
+                                Mark.mod_env.md_env.matrix_type,
+                                &Mark.mod_env.md_env.matrix ),
+                targetid = markID.objid,
+                targetos = markID.osnum );
+  if( !(sts&msg&1) )
+  {
+      printf("Can not get the Marking Curve Graphic Input\n");
+      goto wrapup ;
+  }
+  Mark.mod_env.md_id.osnum = Mark.obj_id.osnum;
+  ex$get_modid( mod_osnum = Mark.mod_env.md_id.osnum,
+                 mod_id   = &Mark.mod_env.md_id.objid );
+
+  #if DEBUG
+     printf("Marking Curve --  " );
+     vdobj$Print( objOE = &Mark );
+  #endif
+
+  GEOM.objid = NULL_OBJID;
+  GEOM.osnum = MOD_ENV.md_id.osnum;
+
+  if( VD_is_ancestry_valid( &Mark.obj_id, OPP_expression_class_id ) )
+  {
+     if( VLcheckPlateForMarking( &Stiff, &Plate, &left_or_right,
+                                 &MOD_ENV ) & 1 )
+     {
+	sts = VLstfMarkPlate( &msg, &Stiff, &Plate, 
+			      left_or_right, &GEOM );
+        if( !(sts&1&msg) ) 
+        {
+	   printf("Can not Mark the Plate with Stiffener\n" );
+           goto wrapup;
+        }
+     }
+     else
+     {
+        status( "Plate is NOT touching the Stiffener" );
+        sleep( 1 );
+        goto wrapup;
+     }
+  }
+  else
+  {
+     sts = ci$send( msg = message GRgraphics.GRcopy (
+                         &msg, &Mark.mod_env, &MOD_ENV, &GEOM.objid ),
+                targetid = Mark.obj_id.objid,
+                targetos = Mark.obj_id.osnum );
+     if( !(sts&msg&1) ) {
+            printf("Can not copy the Marking Line Graphics\n");
+            goto wrapup ;
+     }
+  }
+
+  retFlag = TRUE;
+
+wrapup:
+  return retFlag;
+}

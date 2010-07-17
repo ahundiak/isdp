@@ -1,0 +1,474 @@
+#******************************************************************************
+#	STRUDEL FILE FOR AVONDALE PROFILE CARDS
+#
+#	Maciej Jablkowski - INTERGRAPH Corp., September 18th, 1998
+#
+# Strudel file contains rules for extracting 3D model stiffeners 
+# to the 2D profile card not-to-scale manufacturing sketches
+#
+# This file contains code for End Treatments
+#
+#	This file uses external PPL program "PChelp.e" which helps to 
+#	determine a name of a 2D symbol macro to place on the profile
+#	card from striffener type being processed and aplied macros.
+#
+# History:	09-18-1998 - Creation
+#		12-10-1998 - Enhancements 
+#		04-19-1999 - SIM symbols introduced with non-standard dimensions.
+#		01-20-2000 - Major change in macro placement.
+#			     New PPL macro is used to place ET 2d symbol on 
+#			     profile card.
+#			     Conversion table modified, PPL modified, 
+#			     macro placement modified.
+#		03-09-2001 - Fixes by MJ.
+#
+#		08-02-2001 - Major review and update
+#		09-18-2001 - PPL calls reduced by using attributes. 
+#				Additional checks for :
+#				- double placed ET at each end
+#				- proper contents of ET 3D model macros
+#
+#******************************************************************************
+
+#set logfile "./pc.log";
+
+
+silent;
+#verbose;
+
+#*********************************************************
+#
+#	END TREATMENTS
+#
+#*********************************************************
+
+const( definition = "iget*", 
+	  view-criterion = vl-pc-McDefAttribute("~~operator0~0") ) : {
+
+   any-view : {
+   
+     #*****************************************************************
+     # Check if ET macro has proper feet and proceed only if it does
+     #*****************************************************************
+     $ETOK := exec-ppl-func( "PcET", "CheckET" );
+     select when $ETOK = 1 :
+   
+        #*********************************
+	# Get position of a 3d model macro
+	#**********************************
+	$prof_len	:= vl-GetAttributeVal( "ProfileLength" );
+	$macPos 	:= vl-pc-McPosition();
+	$macPosX 	:= vl-pc-CvrtDouble( get-word( $macPos, 0 ));
+	$numcharX 	:= string-length( $macPosX ); 
+	$formatX 	:= format-number(
+				catenate-strings( $numcharX,".0" ) , $macPosX );
+
+	#*****************************************************************
+	# Find proper side of the profile for macro placement
+	#*****************************************************************
+	select when 
+		$macPosX < $prof_len * 0.5 :
+			$ETcs := vl-pc-ViewCs();
+			$side := 1;	# Left side - revert macro
+	otherwise: 
+			$side := 0;	# Right side - do not revert
+			$ETcs := vl-pc-ViewEndCs();
+	end;
+
+	$StartETDbl	:= vl-GetAttributeVal("StartETDouble");
+	$EndETDbl	:= vl-GetAttributeVal("EndETDouble");
+   	
+	#************************************************************
+	# DO NOT PLACE IF DOUBLE ETs HAVE BEEN DISCOVERED
+	#************************************************************
+   	select when ($side = 1 and $StartETDbl = 0) or ($side = 0 and $EndETDbl = 0) :
+   
+	#***********************************
+	# FIND ET_TYPE:ID
+	#***********************************
+	$m_label := attribute("et_type:id");
+	select when $m_label = "" :
+		$m_label := attribute("et_typeb1:id");
+	end;
+
+	#*************************************
+	# Do not place NON STD ETs
+	#*************************************
+	select when $m_label != "NON STD" :
+	
+		$lbl_cnt := word-count($m_label);
+		select when $lbl_cnt > 1 :
+			$sim 	:= "";
+			$label 	:= get-word($m_label, 1);
+			$id	:= $label;
+		otherwise:
+			$sim 	:= "";
+			$label 	:= $m_label;
+			$id	:= $label;
+		end;         			
+
+		$id_num := vl-pc-CvrtDouble( sub-string( $id, 
+						string-length( $id ) - 2, 
+						string-length( $id ) - 1 ) );
+
+		#**********************************
+		# Get basic attributes
+		#**********************************
+		$cope_depth	:= 0;
+		$cope_rad	:= 0;
+
+		$et_type	:= const-type() ;
+
+	       	$stf    	:= vl-pc-GetStiff();
+	       	$prof_type      := vl-GetAttributeVal( "ProfileType" );
+	       	$prof_height	:= vl-GetAttributeVal( "ProfileHeight" );
+		$flange_thk	:= vl-GetAttributeVal( "FlgThickness" );
+
+		#********************************
+		# Execute PPL to find 2d symbol
+		#********************************
+		$et_info   	:= exec-ppl-func( $ppl_ET, $ppl_ET, $ETCodeFile, 
+							$et_type, $stf, $id );
+		$ETtype		:= $et_info[20];
+		$is_flg 	:= $et_info[19];
+
+		#****************************
+		# Get stock values
+		#****************************
+		$start_stock    := vl-GetAttributeVal( "StartStock" );
+		$end_stock    := vl-GetAttributeVal( "EndStock" );
+
+
+		#************************************************
+		# Get view coordinate system & current view name
+		#************************************************
+		$csO 	:= vl-pc-ViewCs();
+		$VwName := vl-pc-GetViewName();
+	
+		#**********************************
+		# Process only for web (side) view
+		#**********************************
+		select when $VwName = "side" :
+
+			#**********************************
+			# Web Part - assign all dimensions
+			#**********************************
+
+			$macro := $webET_mac;
+
+			$angle0 := $et_info[1];
+			$angle2 := $et_info[2];
+			$WebAng := $et_info[3];
+			$Ttype 	:= $et_info[4];
+			$Thor 	:= $et_info[5];
+			$Tvert 	:= $et_info[6];
+			$Trad 	:= $et_info[7];
+			$Btype 	:= $et_info[8];
+			$Bhor 	:= $et_info[9];
+			$Bvert 	:= $et_info[10];
+			$Brad 	:= $et_info[11];
+			$FlCut 	:= $et_info[12];
+
+			#***********************************************************************
+		       	# Make sure the web angle gets set to 90, if the top difference is
+		       	# smaller than 3 mm. To simplify the calculations it is assumed that 
+		       	# the tan(angle) == angle for small angles.
+			#***********************************************************************
+		       	$delta_angle := (90 - $WebAng) * 3.14159 / 180;
+		       	select when $delta_angle < 0 : 
+		       		$delta_angle := -$delta_angle;
+		        end;
+		       	select when $delta_angle * $prof_height < 3 :
+	        		$WebAng := 90;
+		       	end;
+
+			$TFlSn 	:= $et_info[14];
+			$BFlSn	:= $et_info[15];
+			
+			#***********************************************************************
+			# Check if the difference for the flange is less than 3mm
+			# If so - disregard it
+			#***********************************************************************
+			select when 	$TFlSn - $BFlSn < 3 & $TFlSn - $BFlSn > 0 | 
+					$BFlSn - $TFlSn < 3 & $BFlSn - $TFlSn > 0 :
+				$TFlSn := $BFlSn;
+			end;
+			$flg_delta := $BFlSn - $TFlSn;		
+
+			select when $ETtype = $ITEE | $ETtype = $CHAN :
+				$cope_depth := $et_info[21];
+				select 	when $ETtype = $CHAN :
+						$cope_rad := $cope_radius;
+				end;
+			end;
+
+			#************************************
+			# Check if template
+			#************************************
+			select when $ETtype = $TEMPL1 | $ETtype = $TEMPL2 :
+				$macro 	:= $web_ET_template;
+				$symbol := $et_info[0];
+			end;
+
+			#***********************************************
+			# Prepare text to be output (ET label and SIM)
+			#***********************************************
+			select when $et_info[0] = "default" :
+				$sim 	:= "default";
+				$label 	:= "symbol";
+			end;
+			select when $ETtype = $TEMPL1 | $ETtype = $TEMPL2 :
+				$sim 	:= "";
+				$label 	:= $symbol;
+			end;
+
+			#***********************************************
+			# PLACE 2D SYMBOL MACRO
+			#***********************************************
+
+			#******************************************************************
+			# etWeb2d macro parameters
+			# =======================
+			#
+			# Frame_Height, Frame_Width, Cut_Angle, Label_Upper, Label_Lower, ETtype
+			# Top_Cut_Type, Top_Horizontal, Top_Vertical, Top_Radius ,
+			# Bot_Cut_Type, Bot_Horizontal, Bot_Vertical, Bot_Radius,
+			# Beam_Type, Stiffener_height, Flange_Cutback, Stock, CopeDepth, CopeRad, 
+			# Flip_Across_CS, FlgDelta, Coord_Sys
+			#******************************************************************
+
+			# Check to see if the cope_depth equals the flange, if so, set to zero
+			select when $flange_thk >= $cope_depth :
+	   			$cope_depth := 0;
+			end;   
+
+			select when $ETtype = $TEMPL1 | $ETtype = $TEMPL2 :
+				vl-PlaceMacro(  $macro, $ETcs, $side, $hprof, $hprof, 
+						$id_num, $prof_type, $sim, $label )
+					[color = 13];
+			otherwise :
+				vl-PlaceMacro(  $macro, $hprof, $hprof, $WebAng, $sim, $label, $ETtype, 
+						$Ttype, $Thor, $Tvert, $Trad, $Btype, $Bhor, $Bvert, $Brad,  
+						$prof_code[0], $prof_height, $FlCut, $stock, 
+						$cope_depth, $cope_rad, $side, $flg_delta, $ETcs ) 
+					[color = 13];
+			end;
+
+		#************************************
+		# Process for flange (not side) view
+		#************************************
+		otherwise : 
+
+			#*************
+			# Flange Part
+			#*************
+			$macro 	:= $flgET_mac;
+			$Ttype 	:= $et_info[4];
+			$FlSn  	:= $et_info[13];
+			$TFlSn  := $et_info[14];
+			$BFlSn  := $et_info[15];
+			$TFlAng	:= $et_info[16];
+			$BFlAng := $et_info[17];
+			$WebSn  := $et_info[18];
+			$FlCut 	:= $et_info[12];
+			$angle0 := $et_info[1];
+
+			#********************************************************
+			# Check if the flange cormer difference is less than 3mm
+			# If so - disregard it
+			#********************************************************
+			select when 	$TFlSn - $BFlSn < 3 & $TFlSn - $BFlSn > 0 | 
+					$BFlSn - $TFlSn < 3 & $BFlSn - $TFlSn > 0 :
+				$BFlSn := $TFlSn;
+				$angle0 := 90;
+			end;
+			$flg_delta := $BFlSn - $TFlSn;
+
+			select 	when $Ttype = $NONE : 
+					$sn_type := $NONE;
+				when $Ttype = $SCALLOP & $ETtype = $ANGLE : 
+					$sn_type := $OTHER;
+			otherwise :
+				select when $Thor <= $Tver :
+					$sn_type := $SNIPE;
+				otherwise :
+					$sn_type := $SCALLOP;
+				end;
+			end;
+
+			#******************************************************************
+			# etFlg2d macro parameters
+			# =======================
+			#
+			# Frame_Height, Frame_Width, Flange_Snipe, 
+			# Top_Flg_Snipe, Bot_Flg_Snipe, Top_Flg_Angle, Bot_Flg_Angle, 
+			# WebAngle, Web_SnipeType, Flange_Cutback, Beam_Type, 
+			# Flip_Across_CS, Coord_Sys
+			#******************************************************************
+			select when $prof_type != $FLAT & $prof_type != $BTEE : # if not flat bar
+
+				select when $ETtype = $TEMPL1 | $ETtype = $TEMPL2 :
+				vl-PlaceMacro( $noETmacroFlg, $wprof, $hprof, "", "", $prof_type,
+					 	$prof_height, $stock, $side, $ETcs )
+					[color = 13];
+
+				otherwise :	
+					vl-PlaceMacro( $macro, $wprof, $hprof, $FlSn, $TFlSn, $BFlSn, 
+							$TFlAng, $BFlAng, $angle0, $sn_type,
+							$FlCut, $prof_type, $side, $ETcs ) 
+						[color = 13];
+				end;
+			end;
+		end;
+	end;
+	end;
+     end;
+   }
+}
+
+silent;
+#verbose;
+
+const( definition = "fb_snipe*", 
+	  view-criterion = vl-pc-McDefAttribute("~~operator0~0") ) : {
+
+   top, bottom : {
+   
+   	$macro		:= $webET_mac;
+   	$cope_depth	:= 0;
+   	$cope_rad	:= 0;
+
+	$profile_length := vl-GetAttributeVal( "ProfileLength" );
+	$et_type	:= const-type() ;
+
+        $stf    	:= vl-pc-GetStiff();
+        $prof_type      := vl-GetAttributeVal( "ProfileType" );
+        $prof_height	:= vl-GetAttributeVal( "ProfileHeight" );
+		
+	$m_label := attribute("et_type:id");
+	$lbl_cnt := word-count($m_label);
+	select when $lbl_cnt > 1 :
+		$sim 	:= "";
+		$label 	:= get-word($m_label, 1);
+		$id	:= $label;
+	otherwise:
+		$sim 	:= "";
+		$label 	:= $m_label;
+		$id	:= $label;
+	end;         			
+
+	$id_num := vl-pc-CvrtDouble( sub-string( $id, 
+					string-length( $id ) - 2, 
+					string-length( $id ) - 1 ) );
+        	
+	#********************************
+	# Execute PPL to find 2d symbol
+	#********************************
+	$et  	   := exec-ppl-func( $ppl_ET, $ppl_ET, $ETCodeFile, $et_type, $stf, $id );
+	$ETtype	   := $et_info[20];
+	$is_web    := $et_info[19];
+
+	#****************************
+	# Get stock values
+	#****************************
+	$start_stock    := vl-GetAttributeVal( "StartStock" );
+
+	select when $is_web = 1 :
+
+		#*************
+		# Web Part
+		#*************
+
+		$macro := $webET_mac;
+
+		$m_label := attribute("et_type:id");
+		$lbl_cnt := word-count($m_label);
+
+		$angle0 := $et_info[1];
+		$angle2 := $et_info[2];
+		#$WebAng 	:= $et_info[3];
+		$WebAng 	:= 90;
+		$Ttype 	:= $et_info[4];
+		$Thor 	:= $et_info[5];
+		$Tvert 	:= $et_info[6];
+		$Trad 	:= $et_info[7];
+		$Btype 	:= $et_info[8];
+		$Bhor 	:= $et_info[9];
+		$Bvert 	:= $et_info[10];
+		$Brad 	:= $et_info[11];
+		$FlCut 	:= $et_info[12];
+		select when $ETtype = 2 | $ETtype = 3 :
+			$cope_depth := $et_info[21];
+			select when $ETtype = 3 :
+				$cope_rad := $cope_radius;
+			end;
+		end;
+	end;
+
+	#*********************************
+	# Get position of a 3d model macro
+	#**********************************
+	$macPos 	:= vl-pc-McPosition();
+	$macPosX 	:= vl-pc-CvrtDouble( get-word( $macPos, 0 ));
+	$numcharX 	:= string-length($macPosX); 
+	$formatX 	:= format-number(catenate-strings($numcharX,".0") , $macPosX );
+
+	#*****************************************************************
+	# Find proper side of the profile for macro placement
+	#*****************************************************************
+	$ETcs := vl-pc-ViewCs();
+	$side := 1;	# Left side - revert macro
+	$ETendcs := vl-pc-ViewEndCs();
+	$sideend := 0;	# Right side - do not revert			
+
+	#***********************************************
+	# Prepare text to be output (ET label and SIM)
+	#***********************************************
+
+	select when $is_web = 1:
+		select when $et_info[0] = "default" :
+			$sim := "default";
+			$label := "symbol";
+		end;
+
+		select when $ETtype = 8 | $ETtype = 9 :
+			$sim := "";
+			$label := $m_label;
+		end;
+	end;
+
+	#***********************************************
+	# PLACE 2D SYMBOL MACRO
+	#***********************************************
+
+	#******************************************************************
+	# etWeb2d macro parameters
+	# =======================
+	#
+	# Frame_Height, Frame_Width, Cut_Angle, Label_Upper, Label_Lower, ETtype
+	# Top_Cut_Type, Top_Horizontal, Top_Vertical, Top_Radius ,
+	# Bot_Cut_Type, Bot_Horizontal, Bot_Vertical, Bot_Radius,
+	# Beam_Type, Stiffener_height, Flange_Cutback, Stock, CopeDepth, CopeRad, 
+	# Flip_Across_CS, FlgDelta, Coord_Sys
+	#******************************************************************
+
+		vl-PlaceMacro(  $macro, $hprof, $hprof, $WebAng, $sim, $label, $ETtype, 
+				$Ttype, $Thor, $Tvert, $Trad, $Btype, $Bhor, $Bvert, $Brad,  
+				$prof_type, $prof_height, $FlCut, $stock, 
+				$cope_depth, $cope_rad, $side, $flg_delta, $ETcs ) 
+				[color = 13];
+
+		vl-PlaceMacro(  $macro, $hprof, $hprof, $WebAng, $sim, $label, $ETtype, 
+				$Ttype, $Thor, $Tvert, $Trad, $Btype, $Bhor, $Bvert, $Brad,  
+				$prof_type, $prof_height, $FlCut, $stock, 
+				$cope_depth, $cope_rad, $sideend, $flg_delta, $ETendcs ) 
+				[color = 13];
+	}
+}
+
+
+silent;
+
+
+
+

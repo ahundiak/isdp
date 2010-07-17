@@ -1,0 +1,86 @@
+/* $Id: COunwParent.u,v 1.1 2001/01/16 19:53:53 ramarao Exp $  */
+/* --------------------------------------------------------------------
+ * I/LOFT
+ *
+ * File:        src/unwext/COunwParent.u
+ *
+ * Description: PPL to connect plate as a parent to the unwrap.
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ *      $Log: COunwParent.u,v $
+ *      Revision 1.1  2001/01/16 19:53:53  ramarao
+ *      *** empty log message ***
+ *
+# Revision 1.1  2000/05/02  23:29:22  pinnacle
+# Created: loft/src/unwext/COunwParent.u by rchennup for Service Pack
+#
+ *
+ * History:
+ *      MM/DD/YY        AUTHOR          DESCRIPTION
+ *      05/01/00        Rama Rao        File Creation.
+ * -------------------------------------------------------------------*/
+
+#include "VDppl.h"
+#include "VDchn.h"
+
+extern struct GRid NULL_GRID;
+extern		   ASmake_source_from_env();
+extern		   VSbulkDisplayByGRids();
+
+main()
+{
+long			sts;
+struct GRid		child;
+struct GRobj_env	unwrap, plate;
+
+  child.objid        = NULL_OBJID;
+  unwrap.obj_id.objid = NULL_OBJID;
+  plate.obj_id.objid  = NULL_OBJID;
+
+  message( "Add Plate Parent to Unwrap" );
+  if( ! ci$locate( prompt	=  "Identify Unwrap",
+		   classes      =  "VLunwObj",
+		   obj		=  &unwrap.obj_id.objid,
+		   osnum	=  &unwrap.obj_id.osnum,
+		   md_env       =  &unwrap.mod_env,
+		   properties   =  LC_LC_ONLY | LC_DP_ONLY | LC_RW,
+		   owner_action =  LC_RIGID_COMP  | LC_RIGID_OWNER |
+				   LC_FLEX_COMP   | LC_FLEX_OWNER ) ) return 1; 
+
+  if( ! ci$locate( prompt       =  "Identify Plate",
+                   classes      =  "VSplate",
+                   obj          =  &plate.obj_id.objid,
+                   osnum        =  &plate.obj_id.osnum,
+                   md_env       =  &plate.mod_env,
+                   properties   =  LC_LC_ONLY | LC_DP_ONLY | LC_RW,
+                   owner_action =  LC_RIGID_COMP  | LC_RIGID_OWNER |
+                                   LC_FLEX_COMP   | LC_FLEX_OWNER  |
+                                   LC_REF_OBJECTS ) )  return 1;
+
+  if( unwrap.obj_id.objid == NULL_OBJID || 
+      plate.obj_id.objid  == NULL_OBJID    )  return 1;
+
+  vdchn$GetChildrenByClass( objOE     = &plate,
+			    className = "VLunwObj",
+			    childID   = &child		);
+
+  if( child.objid != NULL_OBJID )
+  {
+      status("Plate is already unwrapped");
+      VSbulkDisplayByGRids( &unwrap.mod_env, GRhd, 1, &child );
+      return 1;
+  }
+
+  ASmake_source_from_env( &plate.obj_id, &unwrap.mod_env, &plate.obj_id );
+
+  sts = ci$send( msg = message NDnode.NDconnect( 1, &plate.obj_id, 
+					   NULL_GRID, ND_ADD ),
+			targetid = unwrap.obj_id.objid,
+			targetos = unwrap.obj_id.osnum );
+  if( sts&1 )	status("Done");
+  else		status("Failed");
+
+  return 1;
+}
