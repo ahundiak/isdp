@@ -1,0 +1,592 @@
+/*******************************************************************************
+ THIS FILE WILL READ AN ISOGEN PLOT FILE AND DRAW LINESTRINGS
+ AND TEXT 
+ WRITTEN BY JIM HANSON 7-24-91
+* 
+* HISTORY: MM/DD/YY
+*
+*	07/24/91     JIM HANSON	creation 
+*	10/20/96	KDD	VRiso_batch().NQS batch creation of drawing file
+*******************************************************************************/
+
+
+#define	DATAFILE	"isogen.dat"
+#define	DGNFILE		"isogen.file"
+#define OFF		22.0
+
+#include <stdio.h>
+#include "cieveryone.h"
+#include "cimacros.h"
+#include "exmacros.h"
+#include "ex.h"
+
+int	slen;
+char	txt[132], new_str[132];
+
+extern int	EX_get_oid_nodname();
+extern int	EX_retrieve_os();
+extern int	Close_OS();
+extern int	Save_OS();
+extern int	EX_get_invis_info_by_index();
+extern int	EX_file_status ();
+extern int	VRiso_batch(); 
+extern int	system();
+
+main()
+{
+FILE		*outfile;
+GRobj		OBJECT;
+char		*newval;
+char		filename[132], s1[132];
+double		pnt[3];
+struct GRmd_env	MOD_ENV;
+struct GRid	REF_FILE;
+int		msg, stat, index, osnum, mode, ok, response, i;
+char		txt1[132];
+
+
+message("Draw Isometrics");
+
+top:
+// CHECK TO SEE IF isogen.dat IS THERE
+
+outfile = ( FILE * ) fopen( DATAFILE, "r" );
+
+if ( outfile == NULL ||  strcmp( DATAFILE,"") == 0 )
+{
+	strcpy(s1,"cannot open file: ");
+	strcat(s1, DATAFILE);
+	#ifdef DEBUG
+	write(s1,'\n');
+	#endif
+/* 	status(s1); KDD as of Jan 30 1997 by Tyler's request	 */
+	fclose( outfile );
+
+	if ( VRiso_batch(DATAFILE, DGNFILE) == 0 ) exit; 
+	else goto top;
+/* 	exit;	KDD Oct 96 */
+}
+
+// OPEN DGNFILE TO GET THE ACTUAL FILENAME FOR THE ISOGEN OUTPUT FILE NAME
+
+outfile = ( FILE * ) fopen( DGNFILE, "r" );
+
+if ( outfile == NULL ||  strcmp( DGNFILE,"") == 0 )
+{
+	strcpy(s1,"cannot open file: ");
+	strcat(s1, DGNFILE);
+	#ifdef DEBUG
+	write(s1,'\n');
+	#endif
+/* 	status(s1); KDD as of Jan 30 1997 by Tyler's request	 */
+	fclose( outfile );
+
+	if ( VRiso_batch(DATAFILE, DGNFILE) == 0 ) exit; 
+	else goto top;
+/* 	exit;	KDD Oct 96 */
+}
+else
+{
+	ok=fscanf(outfile,"%s",filename);
+	fclose( outfile );
+  	//write("filename from isogen.file =",filename,'\n');
+newfl:
+  	outfile = ( FILE * ) fopen( filename, "r" );
+
+  	if ( outfile != NULL )
+  	{
+        	fclose( outfile );
+		strcpy(s1,"File: ");
+		strcat(s1,filename);
+		strcat(s1," exists");
+		status(s1);
+		strcpy(txt, "Data to overwrite/ Keyin new file/ Rst to exit");
+
+
+		ci$getevent( 	prompt 	 = txt,
+  				mask     = GRm_RJT_MOVEON | GRm_STRING | GRm_DATA,
+				data 	 = newval, 
+				response = &response);
+
+  		if( response == EX_RJT_MOVEON) 
+  		{ 
+	   		write("exited because I got a reset\n");
+			exit;	
+		}
+		else if( response == DATA)
+		{
+			/* remove the existing file before starting */
+			strcpy(txt,"rm ");
+			strcat(txt, filename);
+			system( txt );
+		}
+		else if( response == STRING)
+		{
+			strcpy(filename, newval);
+			goto newfl;
+		}
+		else exit;
+
+  	}
+	else
+	{
+		fclose( outfile );
+	}
+}
+
+create:
+
+strcpy(new_str, "Drawing ");
+strcat(new_str, filename);
+slen = strlen(new_str);
+for(i=slen; i< slen+11; i=i+1) new_str[i] = 32;
+new_str[slen+11] = 0;
+status(new_str);
+
+  // RETRIEVE A FILE AS REFERENCE TO PUT ISO IN
+ 
+  msg = ex$retrieve_module (  	ftype = EX_invisible,
+				filename = filename,
+				flag = EX_read_write,
+				mount_name=filename,
+				file_no = &index );
+
+  if( msg != 1 )
+  {
+	status("Design file could not be opened");
+	#ifdef DEBUG
+	write("ex$retrieve_module msg=",msg,"index=",index,'\n');
+	#endif
+ 	goto fin;
+  }
+
+  // GET THE MODULE ID FROM THE INDEX
+  msg = ex$get_invis_info_by_index(  index = index,
+				   mod_id = &REF_FILE.objid,
+                                   mod_osnum = &REF_FILE.osnum);
+
+  if( msg != 1 || REF_FILE.objid == NULL_OBJID)
+  {
+	#ifdef DEBUG
+	write("ex$get_invis_info_by_index msg=",msg,"module number=",REF_FILE.objid,REF_FILE.osnum,'\n');
+	#endif
+	goto close_file;
+  }
+
+  // CHECK THE FILE STATUS FOR WRITE PRIVILAGE
+  msg = ex$file_status ( modid = REF_FILE.objid, modos = REF_FILE.osnum, mode = &mode );
+
+  if(msg != 1 || mode != 0)
+  {
+	#ifdef DEBUG
+	write("ex$file_status msg=",msg,"mode 0 writeable, 1 not=",mode,'\n');
+	#endif
+	goto close_file;
+  }
+
+  // THIS IS THE FUNCTION TO CREATE THE GRAPHICS
+
+  stat = graphics( REF_FILE);
+  if( stat == 3)
+  {
+	 status("Data file not found");
+	 goto close_file;
+  }
+
+  // SAVE THE REFERENCE FILE
+  msg = ex$save_module ( index=index );
+
+  if(msg != 1)
+  {
+	status("Failure on saving the file");
+	#ifdef DEBUG
+	write("ex$save_module msg=",msg,"index=",index,'\n');
+	#endif
+  }
+
+close_file:
+
+  // CLOSE OUT THE NEW FILE 
+  msg = ex$close_module ( ftype = EX_invisible, index=index );
+  if(msg != 1)
+  {
+	status("Failure on closing the file");
+	#ifdef DEBUG
+	write("ex$close_module msg=",msg,"index=",index,'\n');
+	#endif
+  }
+  else
+  {
+	status("Cleaning up");
+/* KDD Jan-97 	if (stat != 3) system("rm -f isogen.dat"); */
+	system("rm -f isogen.dat");
+	status("Cleaning up .");
+  	system("rm -f isogen.file");
+	status("Cleaning up ..");
+//	sh("rm -f big_file att_file");
+   }
+
+  status("");
+  strcpy(txt1,"Use Retrieve to view ");
+  strcat(txt1, filename);  
+  prompt(txt1);
+
+fin:
+        msg=10;
+	#ifdef DEBUG
+	write("");
+	#endif
+}
+
+
+#include "grmacros.h"
+#include "grwireframe.h"
+#include "cotxmacros.h"
+#include "fontdef.h"
+#include "fontmacros.h"
+#include "grdpbdef.h"
+#include "grdpb.h"
+#include "grdpbmacros.h"
+
+FILE 			*outfile;
+IGRint 			i, j, num_pnts, ok, d1, t1, t2, t3, t4, t5;
+IGRint			net;
+IGRint			size;
+IGRint			nret;
+IGRint			num;
+IGRint			add;
+IGRint			procount, pr1;
+IGRint			msg;
+IGRint			count, slen1;
+IGRshort		font_flags;
+IGRshort		position;
+IGRlong			sizebuf;
+IGRdouble		pnts[900];
+IGRdouble		p1;
+IGRdouble		p2;
+IGRdouble		offx;
+IGRdouble		offy;
+IGRdouble		xoff;
+IGRdouble		yoff;
+IGRdouble		point[3];
+IGRdouble		angle;
+IGRdouble		text_height;
+IGRchar			name[132];
+IGRchar			font_name[20];
+IGRchar			filename[14], s1[132], s2[132];
+IGRchar			s3[132], pro[132], ch;
+
+struct GRid		TEXT;
+struct GRid		LINE, FONTMGR;
+struct IGRdisplay	dis;
+struct IGRdisplay	active, dis_sav;
+struct GRdpb_text_symb  text_symb;
+struct GRmd_env		MOD_ENV;
+
+extern int 	GRdpb_get();
+extern int	GRang_place_text();
+extern int	GRplace_text();
+extern int	EX_get_oid_nodname();
+extern int	GRretrieve_font();
+extern int	init_cnst_list();
+extern int  	GRdpb_put();
+extern int	GRdpb_get();
+extern int	EX_get_super();
+extern int 	EX_get_global();
+extern int	fclose();
+extern int	fscanf();
+extern int	fprintf();
+extern int	printf();
+extern int	strncmp();
+extern int	GRcreate_linestring();
+extern char	*strchr();
+extern char	*strrchr();
+extern char	*strncpy();
+
+int graphics(IN_ENV)
+struct GRid  IN_ENV;
+{
+
+ci$get_module_info( md_env = &MOD_ENV);
+
+MOD_ENV.md_id.objid = IN_ENV.objid;
+MOD_ENV.md_id.osnum = IN_ENV.osnum;
+
+#ifdef DEBUG
+write("I'm setting the font to font 50\n");
+#endif
+
+msg =  ex$get_super(mod_id = MOD_ENV.md_id.objid,
+                    mod_osnum = MOD_ENV.md_id.osnum,
+                    super_name = FONTMGR_NO_NAME,
+                    create = TRUE,
+                    super_class = "GRfm",
+                    super_id = &FONTMGR.objid,
+                    super_osnum = &FONTMGR.osnum);
+
+#ifdef DEBUG
+write("ex$get_super msg = ",msg,"\nfont mgr id=",FONTMGR.objid,FONTMGR.osnum,'\n');
+#endif
+
+// get the position of the string in the font manager
+
+position = -1;
+
+ci$send(msg = message GRfm.GRvirt_search(
+	&msg, "50", &position),
+	targetid = FONTMGR.objid,
+	targetos = FONTMGR.osnum);
+
+#ifdef DEBUG
+write("GRfm.GRvirt_search \n");
+#endif
+
+if(position == -1)
+{
+	//if font not found then retrieve it
+
+	font_flags = 0x01;
+
+	ci$send(msg = message GRfm.GRmake_entry(
+		&msg, "50", "50",  font_flags, &position),
+		targetid = FONTMGR.objid,
+		targetos = FONTMGR.osnum);
+
+	#ifdef DEBUG
+	write("font$retrieve msg=",msg,"\n");
+	#endif
+}
+
+sizebuf = sizeof( active );
+
+gr$get_active_display(	 msg = &msg,
+			 sizbuf = &sizebuf,
+			 buffer = &active,
+			 nret	= &nret);
+dis_sav = active;
+
+strcpy(filename,DATAFILE);
+
+outfile = ( FILE * ) fopen( filename, "r" );
+
+if ( outfile == NULL ||  strcmp(filename,"") == 0 )
+{
+	strcpy(s1,"cannot open file: ");
+	strcat(s1,filename);
+	#ifdef DEBUG
+	write(s1,'\n');
+	#endif
+	status(s1);
+	return(3);
+}
+
+#ifdef DEBUG
+write("starting to read file ",s1,'\n');
+#endif
+
+strcpy(pro,new_str);
+procount = slen;
+slen1 = slen;
+pr1=procount;
+add = 1;
+ch = 46;
+count=0;
+status(pro);
+
+do
+{
+
+	if( count % 100 == 0 ) 
+	{
+		if( procount < slen1+1 ) { add = 1; ch = 46; }
+		else if( procount > slen1+9 ){ add = -1; ch = 32; }
+		status(pro);
+		pro[procount] = ch;
+		procount = procount + add;
+	}
+	count = count+1;
+	
+	fgets( s1, 132, outfile);
+
+	#ifdef DEBUG
+	write("general scan ",s1,'\n');
+  	#endif
+
+	if( strncmp(s2, "LINTO2", 6) == 0 && strncmp(s1, "LINTO2",6) != 0 )
+	{
+
+           #ifdef DEBUG
+	   write("I'm in place linestring with ",num," points\n");
+  	   #endif
+
+	   num = i/3;
+
+	   gr$place_linear_object
+		       (msg = &msg,
+			md_env= &MOD_ENV,
+			num_points = num,
+			points = pnts,  					
+			object_id = &LINE,
+			name = NULL, 					
+			display_flag=1);
+
+	   #ifdef DEBUG
+	   write("I'm out of place linestring, msg=",msg,"\n");
+  	   #endif
+
+	}
+	if( strncmp(s1,"ICIEOF", 6) == 0)
+	{
+		status("");
+	}
+	else if( strncmp(s1,"ICIEOD", 6) == 0)
+	{
+		offx=offx + xoff;
+		offy=offy + yoff;	
+	}  
+	else if( strncmp(s1,"ICIOPN", 6) == 0)
+	{
+		fgets( s2, 132, outfile);
+	  	#ifdef DEBUG
+		write(d1,'\n');
+		write(s1,'\n');
+  	  	#endif
+	}
+	else if( strncmp(s1,"ICILIS", 6) == 0)
+	{
+		fgets( s3, 132, outfile);
+		d1 = atoi(s3);		
+	  	#ifdef DEBUG
+		write("ICILIS=",d1,'\n');
+  	  	#endif
+
+		active.style = d1;
+
+ 		gr$put_active_display(	 msg = &msg,
+					 sizbuf = &sizebuf,
+					 buffer = &active);
+
+
+	}
+	else if( strncmp(s1,"NEWPEN", 6) == 0)
+	{
+		fgets( s3, 132, outfile);
+		d1 = atoi(s3);
+		if( d1 == 1 )
+		{
+			active.color = 4;
+			active.weight = 1;
+		}
+		else
+		{
+			active.color = 3;
+			active.weight = 4;
+		}	
+ 		gr$put_active_display(	 msg = &msg,
+					 sizbuf = &sizebuf,
+					 buffer = &active);
+
+	}
+	else if( strncmp(s1,"MOVTO2",6) == 0)
+	{
+		i=3;
+		fgets( s3, 14, outfile);
+		xoff = atof(s3);
+		pnts[0] = atof(s3)+offx;
+		fgets( s3, 14, outfile);
+		yoff = atof(s3);
+		pnts[1] = atof(s3)+offy;	
+	}
+	else if( strncmp(s1,"LINTO2",6) == 0)
+	{
+		i=i+3;	
+		fgets( s3, 14, outfile);
+		xoff = atof(s3);
+		pnts[i-3] = atof(s3)+offx;
+		fgets( s3, 14, outfile);
+		yoff = atof(s3);
+		pnts[i-2] = atof(s3)+offy;	
+	}
+	else if( strncmp(s1,"ICITXT",6) == 0)
+	{
+		fgets( s3, 11, outfile);
+		point[0] = atoi(s3)/254.0+offx;
+
+		fgets( s3, 13, outfile);
+		point[1] = atoi(s3)/254.0+offy;
+		point[2] = 0.0;
+
+		fgets( s3, 13, outfile);
+		text_height = atoi(s3)/254.0;
+
+		fgets( s3, 13, outfile);
+		angle = atof(s3)*3.14159/180;
+
+		fgets( s3, 132, outfile);
+		slen=atoi(s3);
+
+		#ifdef DEBUG
+		write("origin=",point,"\ntext height=",text_height,"\nangle=",angle,"\nnum chars=",slen,'\n');
+		#endif
+
+		fgets(txt,132,outfile);
+		if( txt[0] == '~' )txt[0]=32; /*replace ~ that Bob puts in*/
+		#ifdef DEBUG
+		write("text string=",txt,'\n');
+		#endif
+
+		// get the active text symbology
+
+  		size = sizeof( struct GRdpb_text_symb );
+  		gr$get_text_symb(
+			msg     = &msg, 
+		   	sizbuf  = &size, 
+		   	buffer  = &text_symb, 
+		   	nret    = &net);
+
+  		text_symb.Active_font = position;
+  		text_symb.Active_just       = 1;
+  		text_symb.Active_charspac   = 1;
+  		text_symb.Active_linespac   = 1;
+  		text_symb.Active_height = text_height;
+  		text_symb.Active_width = text_height*6/7;
+
+  		init_cnst_list();
+  		get_symb();
+  		dis.color      = cnst_list.color;
+  		dis.weight     = cnst_list.weight;
+  		dis.style      = cnst_list.style;
+
+  		#ifdef DEBUG
+  		write("going into co$place_text\n");
+		ci$get(value=d1, prompt ="reset to cont");
+  		#endif
+
+		slen = strlen( txt)-1;
+
+  		co$place_text( 	msg = &msg, 
+		 	text_string = txt,
+		 	text_length = &slen,
+		 	origin = point,
+		 	rot_matrix = MOD_ENV.md_env.matrix,
+		 	ActiveDisplay=&dis,
+                   	ModuleInfo = &MOD_ENV,
+		 	ActiveAngle = angle,
+                 	TextSymb = &text_symb,
+			mode = 14,
+		 	buffer = &TEXT);
+
+		#ifdef DEBUG
+		write("co$place_text msg =",msg,"\n");
+		#endif
+      }
+      strcpy(s2,s1);	
+  }while( feof( outfile ) == 0 );
+  fclose( outfile );
+
+  gr$put_active_display( msg = &msg,
+			 sizbuf = &sizebuf,
+			 buffer = &dis_sav);
+
+
+}

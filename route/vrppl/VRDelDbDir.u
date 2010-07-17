@@ -1,0 +1,93 @@
+/* $Id: VRDelDbDir.u,v 1.2 2002/06/03 22:25:40 anand Exp $ */
+
+/***************************************************************************
+ * I/ROUTE
+ *
+ * File:        vrppl/VRDelDbDir.u
+ *
+ * Revision History:
+ *      $Log: VRDelDbDir.u,v $
+ *      Revision 1.2  2002/06/03 22:25:40  anand
+ *      TR 4891
+ *
+ *      Revision 1.1  2002/05/30 22:00:12  anand
+ *      TR 4891.
+ *
+ *
+ * History:
+ *      MM/DD/YY        AUTHOR          DESCRIPTION
+ *
+ *   May 30 2002	Anand		Creation (motivation TR 4891)
+ *   Jun 03 2002	Anand		Request for prompt to be in infinite
+ *					loop (not to bring up PPL several times
+ *					for deleting multiple entries).
+ *
+ ***************************************************************************/
+
+#include "VDppl.h"
+#include "v_strngproto.h"
+#include "AS_status.h"
+#include "vrdbgmacros.h"
+
+main()
+{
+    IGRint	status;
+    IGRlong	retmsg;
+    IGRchar	*p;
+    GRname	szName,szPattern,szMsg;
+    struct GRid	PbId;
+    struct GRmd_env	md_env;
+
+    ci$get_module_info( md_env = &md_env );
+
+    // Prepare RE.
+    szPattern[0]=':';
+    ex$filename(name = &szPattern[1], len = sizeof(szPattern)-2);
+    p=NULL;
+    p = strrchr(szPattern,'/');
+    if( p )
+	strcpy(&szPattern[1],p+1);
+    // do a "man egrep" for explanation of below string.
+    strcat(szPattern,":(piping|hvac|rway|item)db:[^:]+");
+    __DBGpr_str("RE that catches db dirs",szPattern);
+
+    while(TRUE)
+    {
+	// Get directory entry.
+	ci$get( prompt = "Key-in directory name (clear-stack to quit)",
+		string = szName );
+
+	if( ! VD_matchRE( (const char *)szPattern , (const char *)szName ) )
+	{
+	    UI_status("OUCH! This directory too hot to touch!");
+	    continue;
+	}
+
+	status = di$translate( objname	= szName,
+			       p_objid	= &PbId.objid,
+			       p_osnum	= &PbId.osnum );
+	__DBGpr_obj("obj id",PbId);
+
+	status =
+	ci$send( msg = message ACrg_collect.ACset_list_attribute(&retmsg,
+								 0, NULL),
+		 targetid = PbId.objid,
+		 targetos = PbId.osnum );
+	as$status();
+
+	status = ci$send( msg = message GRvg.GRchgname( &retmsg, &md_env, "" ),
+			  targetid = PbId.objid,
+			  targetos = PbId.osnum );
+	as$status();
+
+	status =
+	ci$send( msg = message NDnode.NDchg_state( (IGRchar)ND_DEL_NO_CH,
+						   (IGRchar)ND_DEL_NO_CH ),
+			  targetid = PbId.objid,
+			  targetos = PbId.osnum );
+	as$status();
+
+	sprintf(szMsg,"Deleted \"%s\"",szName);
+	UI_status(szMsg);
+    }
+}
