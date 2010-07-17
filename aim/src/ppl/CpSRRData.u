@@ -1,0 +1,376 @@
+/* $Id: CpSRRData.u,v 1.2 2001/11/14 16:01:40 jdsauby Exp $ */
+/***************************************************************************
+ * I/AIMSIR
+ *
+ * File:	aim/src/ppl/CpSRRData.u
+ *
+ * Description: This PPL is used to copy the contents of the SRReqData collector
+ * 	into a file.  Then, the PPL is ran again on a different model file to
+ * 	copy the contents from a text file into a new collector of the model file.
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ * $Log: CpSRRData.u,v $
+ * Revision 1.2  2001/11/14 16:01:40  jdsauby
+ * Updated some prompts, fixed an error for collector already existing. jds
+ *
+ * Revision 1.1  2001/11/14 15:20:59  jdsauby
+ * JTSMP CR 5551, jds
+ *
+ * MM/DD/YY	AUTHOR		DESCRIPTION
+ * 10/24/01	JS	Creation
+ ***************************************************************************/
+#include "VDppl.h"
+#include "VDobj.h"
+#include "VDgeom.h"
+#include "VDefp.h"
+#include "VDefpSrf.h"
+#include "coparamac.h"
+#include "VDpdm.h"
+#include "vdparmacros.h"
+#include "OMprimitives.h"   /* om$send                                      */
+#include "OMmacros.h"       /* indirectly for OM_S_SUCCESS, OM_E_NODYNMEM   */
+
+extern EX_findmod();
+extern GRdelete_object();
+extern EX_get_oid_nodname();
+
+#define  THE_MESSAGE    "Copy SRReqData Collector"
+
+
+/* PPL Global Variables */
+IGRchar     option[10];
+IGRchar     filename[256];
+VDosnum     s_osnum;
+
+void importFromFile()
+{
+    FILE *file;
+    IGRint numAttrs;
+    struct ACrg_coll *attrs;
+    TGRid  collectID;
+    IGRchar path_name[DI_PATH_MAX];
+    IGRchar dir_name[DI_PATH_MAX];
+
+    IGRlong    status,
+    	       retcode,
+    	       dirstat,
+	       retFlag;
+    
+    IGRchar    cur_dir[DI_PATH_MAX];
+    TGRid      tmp_obj;
+    GRspacenum cur_os;
+    struct GRmd_env    mod_env;
+    IGRint  i;
+    IGRchar buf[1024];
+    IGRchar file_dir[1024];
+    IGRchar *p;
+    IGRint  type;
+
+
+    // init
+    cur_dir[0]          = '\0';
+
+    // get the current directory
+    dirstat = di$pwd( dirname = cur_dir );
+    if ( dirstat != DIR_S_SUCCESS ) goto wrapup;
+
+    // need an osnum
+    ex$get_cur_mod( osnum = &cur_os);
+    ci$get_module_info(md_env = &mod_env); 
+    
+    // determine the current path
+    status = di$give_pathname(osnum    = cur_os,
+	                      pathname = path_name);
+    
+    if ( status != DIR_S_SUCCESS )
+    {
+     di$report_error( sts = status,  comment = "error in give pathname" );	
+     goto wrapup;
+    }
+
+    // see if the SIRGlobal directory exists, if not, create it
+    strcpy( dir_name, path_name );
+    strcat( dir_name, ":IGENOD:SIRGlobal" );
+
+    status = di$translate (objname = dir_name,
+	                   osnum   = cur_os,
+			   p_objid = &collectID.objid,
+			   p_osnum = &collectID.osnum );
+    if (status != DIR_S_SUCCESS)
+    {
+	di$mkdir(dirname = dir_name,
+		 osnum   = cur_os );
+    }
+
+    // Construct a new collector.  This will replace one if it already exists
+    collectID.objid = NULL_OBJID;
+    strcat( path_name, ":IGENOD:SIRGlobal:SRReqData" );
+
+    //printf("path_name <%s>\n",path_name);
+#if 0
+    
+    status = di$translate ( objname = path_name,
+	    		    osnum   = cur_os,
+			    p_objid = &collectID.objid,
+			    p_osnum = &collectID.osnum );
+    if (status == DIR_S_SUCCESS) {
+	printf("Delete the collector\n");
+	// delete the object
+	gr$delete_object(msg          = &status,
+		         object_id    = &collectID,
+			 display_flag = 0 );
+    }
+#endif
+
+    // construct a new one
+    status = ci$send (
+			msg 	  = message ACrg_collect.ACcreate (
+						&retcode, path_name ),
+			targetid   = collectID.objid,
+			targetos   = collectID.osnum,
+			construct  = 1);
+
+    if ( collectID.objid == NULL_OBJID ) goto wrapup;
+
+    // just to make sure we got it
+    collectID.objid = NULL_OBJID;
+    ex$get_objid_from_NOD (   
+		NODname   = "IGENOD:SIRGlobal",
+                objname   = "SRReqData",
+                pobjid    = &collectID.objid,
+                mod_osnum = cur_os);
+
+    if (collectID.objid == NULL_OBJID)
+    {
+	printf("*** Error in getting collector ID***\n");
+	goto wrapup;
+    }
+
+    collectID.osnum = cur_os;
+    // open the file, determine the number of attributes
+    file = NULL;
+    sprintf(file_dir,"./%s",filename);
+    file = fopen(file_dir,"r");
+    if (file == NULL) 
+    {
+	printf("***Error, could not fine file <%s>***\n",file_dir);
+	goto wrapup;
+    }
+
+    numAttrs = 0;
+    while (fgets(buf,sizeof(buf),file))
+    {
+	numAttrs = numAttrs + 1;
+    }
+    if (file) fclose(file);
+
+    attrs = NULL;
+    attrs = (struct ACrg_coll *) malloc( sizeof( struct ACrg_coll ) *
+                                                   numAttrs );
+
+    // get the attributes from the file
+    // TYPE|ATTR_NAME|ATTR_VALUE|
+    file = NULL;
+    file = fopen(file_dir,"r");
+    if (file == NULL) goto wrapup;
+    
+    numAttrs = 0;
+    while (fgets(buf,sizeof(buf),file))
+    {
+	p = strchr(buf,'|');
+	if (p) {
+	    *p = 0;
+	    type = atoi(buf);
+	    if (type == AC_ATTRIB_DOUBLE)
+	    {
+		attrs[numAttrs].desc.type = type;
+		strcpy(buf,p + 1);
+		p = strchr(buf,'|');
+		if (p) {
+		    *p = 0;
+		    strcpy(attrs[numAttrs].name,buf);
+		    strcpy(buf, p + 1);
+		}
+		p = strchr(buf,'|');
+		if (p) {
+		    *p = 0;
+		    attrs[numAttrs].desc.value.att_exp = atof(buf);
+		}
+	    }
+	    else
+	    {
+		attrs[numAttrs].desc.type = type;
+		strcpy(buf,p + 1);
+		p = strchr(buf,'|');
+		if (p) {
+		    *p = 0;
+		    strcpy(attrs[numAttrs].name,buf);
+		    strcpy(buf, p + 1);
+		}
+		p = strchr(buf,'|');
+		if (p) {
+		    *p = 0;
+		    strcpy(attrs[numAttrs].desc.value.att_txt,buf);
+		}
+	    }
+	}
+	numAttrs = numAttrs + 1;
+    }
+
+    // set the attributes on the collector
+    ci$send ( msg = message ACrg_collect.ACset_list_attribute( 
+		&retcode,
+		numAttrs,
+		attrs ),
+		targetid = collectID.objid,
+		targetos = collectID.osnum);
+
+
+wrapup:
+    if (file) fclose(file);
+    if (attrs) free(attrs);
+    return;
+
+}
+
+void createToFile()
+{
+    FILE *file;
+    IGRint numAttrs;
+    struct ACrg_coll *attrs;
+    TGRid  collectID;
+    IGRchar path_name[DI_PATH_MAX];
+
+    IGRlong    status,
+    	       retcode,
+    	       dirstat,
+	       retFlag;
+    
+    IGRchar    cur_dir[DI_PATH_MAX];
+    TGRid      tmp_obj;
+    GRspacenum cur_os;
+    struct GRmd_env    mod_env;
+    IGRint  i;
+    IGRchar buf[1024];
+    IGRchar file_dir[1024];
+
+
+    // init
+    collectID.objid 	= NULL_OBJID;
+    cur_dir[0]          = '\0';
+
+    // get the current directory
+    dirstat = di$pwd( dirname = cur_dir );
+    if ( dirstat != DIR_S_SUCCESS ) goto wrapup;
+
+    // need an osnum
+    ex$get_cur_mod( osnum = &cur_os);
+    ci$get_module_info(md_env = &mod_env); 
+    
+    // determine the current path
+    status = di$give_pathname(osnum    = cur_os,
+	                      pathname = path_name);
+    
+    if ( status != DIR_S_SUCCESS )
+    {
+     di$report_error( sts = status,  comment = "error in give pathname" );	
+     goto wrapup;
+    }
+
+    // Get / Create itemdb directory
+    strcat( path_name, ":IGENOD:SIRGlobal:SRReqData" );
+
+    status = di$translate ( objname = path_name,
+	    		    osnum   = cur_os,
+			    p_objid = &collectID.objid,
+			    p_osnum = &collectID.osnum );
+    if (status != DIR_S_SUCCESS) goto wrapup;
+
+    vd$get_parameters( sts    = &status,
+                       object = &collectID,
+                       md_env = &mod_env,
+                       count  = &numAttrs );
+
+    attrs = NULL;
+    attrs = (struct ACrg_coll *) malloc( sizeof( struct ACrg_coll ) *
+                                                   numAttrs );
+
+    vd$get_parameters( sts = &status,
+                       object = &collectID,
+                       md_env = &mod_env,
+                       plist  = attrs,
+                       size   = numAttrs,
+                       count  = &numAttrs );
+
+    // open the file
+    file = NULL;
+    sprintf(file_dir,"./%s",filename);
+    file = fopen(file_dir,"w");
+    if (file == NULL) goto wrapup;
+
+    for (i = 0; i < numAttrs; i = i + 1)
+    {
+	if (attrs[i].desc.type == AC_ATTRIB_DOUBLE)
+	{
+	    sprintf(buf,"%d|%s|%.0f|",
+		    attrs[i].desc.type,attrs[i].name,attrs[i].desc.value.att_exp);
+	}
+	else
+	{
+	    sprintf(buf,"%d|%s|%s|",
+		    attrs[i].desc.type,attrs[i].name,attrs[i].desc.value.att_txt);
+	}
+
+	fprintf(file,"%s\n",buf);
+    }
+	
+	
+wrapup:
+    if ( cur_dir[0] != '\0' ) {
+	status = di$cd( dirname = cur_dir );
+    }
+    if (file) fclose(file);
+    if (attrs) free(attrs);
+    return;
+}
+
+main()
+{
+    UI_message(THE_MESSAGE);
+    // determine whether making a file, or creating from file
+    ci$get(string = option, prompt = "E)xport or I)mport SRReqData File (E or I): ");
+
+    
+
+    switch (*option)
+    {
+      case 'I':
+      case 'i':
+	  ci$get(string = filename,
+		 prompt = "Enter Text Filename to Import from: ");
+	  importFromFile();
+	  break;
+	  
+      case 'E':
+      case 'e':
+	  ci$get(string = filename, 
+		 prompt = "Enter Text Filename to Export to: ");
+	  createToFile();
+	  break;
+
+      default:
+	  UI_status("Option Not understood");
+	  break;
+    }
+    
+    ci$put(response = TERMINATE);
+    exit;
+
+} // end of main
+
+
+    
+
+

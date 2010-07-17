@@ -1,0 +1,364 @@
+# $Id: aimdload,v 1.4 2002/06/07 21:49:16 ylong Exp $
+
+# -------------------------------------------------------------------
+# I/AIMSIR
+#
+# File:	aim/etc/bin/aimdload 
+#
+# Dependencies:
+#	$Log: aimdload,v $
+#	Revision 1.4  2002/06/07 21:49:16  ylong
+#	*** empty log message ***
+#	
+#	Revision 1.3  2002/05/23 16:33:31  ylong
+#	*** empty log message ***
+#	
+#	Revision 1.2  2002/05/02 18:20:14  ahundiak
+#	*** empty log message ***
+#	
+#	Revision 1.1.1.1  2001/06/01 20:06:26  tlstalli
+#	Creating aim module
+#	
+#
+# Description:
+#
+#	I/AIMSIR
+#	Procedure to create OMprodinit.C needed by a dloadable .o
+#	then creating the dloadable product and commands object files.
+#	This procedure tries to automate every step. Generating OMprofinit.C
+#	the version file, modifying OMprodinit.C, compiling OMprodinit.C and
+#	the version version file and linking them into prod's .o.
+#
+# History :
+#	MM/DD/YY	AUTHOR		DESCRIPTION
+#
+#-------------------------------------------------------------------------------
+function Tput {
+	/usr/bin/tput $1
+} # Tput
+#-------------------------------------------------------------------------------
+function Info {
+	echo "$*"
+	return 0
+} # Info
+#-------------------------------------------------------------------------------
+function getDirs {
+
+	#
+	# Initialize file names and directoies names
+	#
+	integer nC
+
+	if [ -z "${TMPDIR}" ] ; then
+		TMPDIR="/usr/tmp"
+	fi
+
+	RC=0
+	OPL="${EXNUC}/bin/opl" ;
+	OPLCLEAN=${VDS}/etc/bin/oplclean
+	OMCPP="${EXNUC}/bin/omcpp"
+
+	if [ ! -x ${OPL} ] ; then
+		Info "** Cannot execute ${OPL}."
+		RC=1
+	fi
+
+	if [ ! -x ${OPLCLEAN} ] ; then
+		Info "** Cannot execute ${OPLCLEAN}."
+		RC=1
+	fi
+
+	if [ ! -x ${OMCPP} ] ; then
+		Info "** Cannot execute ${OMCPP}."
+		RC=1
+	fi
+
+	AIMprodDir="${AIM}/etc/dload"
+	mkdir -p ${AIMprodDir}
+	if [ ! -d ${AIMprodDir} -o ! -w ${AIMprodDir} ] ; then
+		Info "** Cannot access directory ${AIMprodDir}"
+		RC=1
+	else
+		AIMversFile="${AIMprodDir}/AIMversion.c"
+		TMPprodInit="${TMPDIR}/AIM${RANDOM}.C"
+		OMprodInit="OMprodinit.C"
+		AIMprodInit="${AIMprodDir}/${OMprodInit}"
+	fi
+	pDef="${AIM}/etc/version/product.def"
+	if [ ! -r ${pDef} ] ; then
+		Info "** Cannot access file ${pDef}"
+		RC=1
+	fi
+	AIMdloadProd="${AIM}/config/dload/init"
+	if [ ! -d ${AIMdloadProd} -o ! -w ${AIMdloadProd} ] ; then
+		Info "** Cannot access directory ${AIMdloadProd}"
+		RC=1
+	fi
+	AIMdloadCmds="${AIM}/config/dload/cmds"
+	if [ ! -d ${AIMdloadCmds} -o ! -w ${AIMdloadCmds} ] ; then
+		Info "** Cannot access directory ${AIMdloadCmds}"
+		RC=1
+	else
+		SUN=`uname -s`
+		if [ $SUN = "SunOS" ] ;
+		then
+			AIMdloadObj="${AIMdloadCmds}/AIMSIR.so"
+                        LD="/usr/ccs/bin/ld"
+                        LDOPT=" -z text -G "
+                        CC="/opt/SUNWspro/bin/cc"
+		else
+                        AIMdloadObj="${AIMdloadCmds}/AIMSIR.o"
+			LD="/bin/ld"
+			LDOPT=" -r -M "
+			CC="/bin/acc"
+		fi
+	fi
+
+	return ${RC}
+
+} # getDirs
+
+#-------------------------------------------------------------------------------
+function oplMinusD {
+	integer RC 
+	typeset libDir name toCC
+
+	if [ ! -x ${EXNUC}/bin/opl ] ; then
+		Info "** Cannot execute ${EXNUC}/bin/opl."
+		RC=1
+	else
+		Info "\tProcessing:\n"
+		if ${OPL} -o ${TMPprodInit} -d ${AIMname} \
+                  `find ${AIM}/src/lib -name \*.o -print`; then
+#
+#			Strip opl output of non-AIM references.
+#
+			echo "\n\tKeep AIM symbols\n"
+
+			if ${OPLCLEAN} "AIM" ${TMPprodInit} ${AIMprodInit} ; then
+				\cd ${AIMprodDir}
+
+				toCC=${AIMprodInit%.C}.c
+				echo "\n\t\tCompiling OMprodinit.C\n"
+
+#
+#				Preprocess file, get rid of class_init
+#				info as well, and the array containing them.
+#				Delete OM_p_APPL_VERSION array (generated
+#				empty by opl), replace it afterwards with
+#				one containing AIM's version.
+#				NOTE that this is done on the .c file, not
+#				the .C file.
+#
+				arrayName="${AIMname}_class_definitions"
+				
+				/bin/grep -v "_OM_class_init" ${AIMprodInit} \
+				| /bin/sed -e "/${arrayName}/,/};/d"	\
+					   -e "/INGR_p_PRODUCT_DEF/,/};/d" \
+				| ${OMCPP}	-I${EXNUC}/include	\
+				> ${toCC}
+#
+#				Put AIM's version stamp in list.
+#
+				/bin/cat >> ${toCC} <<!
+				extern INGR_S_PRODUCT_DEF AIM_appl_version_id ;
+				INGR_p_PRODUCT_DEF ${AIMname}_appl_version[] =
+				{	
+					&AIM_appl_version_id,
+					0	
+				} ;
+!
+
+				if ${CC} ${AIMaccOpt} -I${EXNUC}/include -c ${toCC}; then
+					RC=0
+				else
+					RC=$?
+					Info "** Compilation failed."
+				fi
+				\cd -
+			else
+				RC=$?
+				Info "** oplclean failed."
+			fi
+		else
+			RC=$?
+			Info "** opl failed."
+		fi
+	fi
+	return ${RC}
+
+} # oplMinusD
+#------------------------------------------------------------------------------
+function getVersion {
+
+	integer RC
+
+	if [ ! -r ${pDef} ] ; then
+		Info "** Cannot read ${pDef}."
+		RC=1
+	else
+		AIMvers=`/usr/bin/awk -F= \
+				'\
+					/IDversion/ { print $2 ; }
+				' ${pDef}`
+		RC=$?
+		if [ ${RC} -ne 0 ] ; then
+			Info "** Cannot get version from ${pDef}."
+		fi
+	fi
+
+	return ${RC}
+
+} # getVersion
+
+#-------------------------------------------------------------------------------
+function mkApplVersion {
+
+	integer RC
+	typeset STRING
+
+	set +x
+
+	echo "\n\t\tCreating application version\n"
+
+	STRING="\"ISDP AIM ${AIMvers} `/bin/date '+%d-%b-%Y'`\""
+
+	Info "\t\tVersion stamp : ${STRING}"
+
+	if /bin/cat > ${AIMversFile} <<-%
+		#include "OMversion.h"
+		INGR_S_PRODUCT_DEF AIM_appl_version_id = { ${STRING}, 0 } ;
+%
+		then
+
+		echo "\n\t\tCompiling version file\n"
+
+		\cd ${AIMprodDir}
+		if ${CC} ${AIMaccOpt} -I${EXNUC}/include -c ${AIMversFile} ; then
+			RC=0
+		else
+			RC=$?
+			Info "** Compilation error."
+		fi
+		\cd -
+	else
+		RC=$?
+	fi
+	return ${RC}
+
+} # mkApplVersion
+#-------------------------------------------------------------------------------
+function mkDloadObj {
+	integer  RC
+	typeset toLD libDir name
+	typeset	CPUID Cdir Cname 
+
+	set +x
+
+#	if [ $SUN = "SunOS" ];
+#	then
+#		BSF=" -u BSpl_pl_pl ${BS}/lib/bsot_sn5.a"
+#	else
+#		CPUID=`/bin/inqcpuid`
+#		case ${CPUID} in
+#		 [Cc]100) Cdir=c100 ; Cname="" ; break ;;
+#		 [Cc]300) Cdir=c100 ; Cname="" ; break ;;
+#		 [Cc]400) Cdir=c400 ; Cname="4" ; break ;;
+#		 *) Cdir=c100 ; Cname="" ; break ;;
+#		esac
+#		BSF="${BS}/lib/${Cdir}/bsot_ap${Cname}.a"
+#	fi
+
+	if [ $SUN = "SunOS" ];
+	then
+		echo "\n\t\tCreating AIMSIR.so\n"
+	else
+		echo "\n\t\tCreating AIMSIR.o\n"
+	fi
+		
+	if ${LD} ${LDOPT} -o ${AIMdloadObj}	\
+		`find ${AIM}/src/lib -type file -name "*.o" -print` \
+		${BSF} 
+	then
+		RC=0
+		/bin/ls -ls ${AIMdloadObj}
+	else
+		RC=$?
+		Info "** Link failed."
+		return ${RC}
+	fi
+
+	return ${RC}
+
+} # mkDloadObj
+#-------------------------------------------------------------------------------
+#-------------------------------------------------------------------------------
+function cleanup {
+	/bin/rm ${TMPprodInit} >/dev/null 2>&1
+	return 0
+
+} #cleanup
+#-------------------------------------------------------------------------------
+function moveprod {
+mv ${AIMversFile%c}o ${AIMdloadProd}  
+mv ${AIMprodInit%C}o ${AIMdloadProd}  
+rm `find ${AIMprodDir} -type f -print`
+}
+#-------------------------------------------------------------------------------
+integer rc
+
+#
+#	Init globals.
+#
+OMCPP=""		# Omcpp executable
+OPL=""			# Opl executable
+OPLCLEAN=""		# Oplclean executable
+AIMname="AimSir"	# Name of AIM in "product_data"
+AIMvers=""		# Version of AIM in product.def
+TMPprodInit=""		# .C generated by "opl -d"
+AIMprodInit=""		# OMprodinit.C with AIM symbols only
+AIMprodDir=""		# Directory where OMprodinit.C and version file
+pDef=""			# Path to product.def
+AIMdloadProd=""		# Dload directory in release version
+AIMdloadCmds=""		# Dload (commands) directory in release version
+AIMdloadProc=""		# Dload (functions directory in release version
+AIMversFile=""		# Version file
+AIMdloadObj=""		# DLOADable object file
+AIMaccOpt="${COMPOPT}"
+
+echo "\n\t\tCreation of a DLOADdable object file of AIMSIR\n"
+
+trap "cleanup ; Tput smso ; Info '- INTERRUPT -' ; Tput rmso ; exit 2" 2 3
+
+
+if [ -d "${AIM}" ] ; then
+ 	if getDirs ; then
+			rm `find ${AIM}/config/dload  -type f -print`
+			if oplMinusD ; then
+				if getVersion ; then
+					if mkApplVersion ; then
+						if mkDloadObj; then
+						    moveprod
+						else
+						echo "FAILURE !!!"
+						fi
+					fi
+				fi
+			fi
+	fi
+fi
+
+cleanup
+
+if [ $SUN = "SunOS" ]
+then
+         dot=`ls -1 $AIM/config/dload/init/*.o`
+         for i in $dot
+         do
+                 name=${i%.*}
+                 ${LD} -z text -G -o ${name}.so ${name}.o
+                 rm ${name}.o
+         done
+fi
+
+exit ${rc}
