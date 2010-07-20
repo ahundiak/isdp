@@ -31,6 +31,7 @@ $(BS)/include
 $(EXNUC)/include
 $(GRNUC)/include
 $(MODEL)/include
+$(FORMS)/include
 $(VDS)/include
 $(STRUCT)/include
 $(STRUCT)/include/prototypes
