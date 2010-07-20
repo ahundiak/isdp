@@ -134,6 +134,7 @@ $(EXNUC)/include
 $(GRNUC)/include
 $(GRNUC)/proto_priv
 $(MODEL)/include
+$(FORMS)/include
 $(VDS)/include
 $(STRUCT)/include
 $(STRUCT)/include/prototypes

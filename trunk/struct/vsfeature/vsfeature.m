@@ -172,6 +172,7 @@ $(GRNUC)/include
 $(GRNUC)/proto_priv
 $(GRNUC)/src/assoc/include_priv
 $(MODEL)/include
+$(FORMS)/include
 $(VDS)/include
 $(VDS)/vdinclude
 $(STRUCT)/include
