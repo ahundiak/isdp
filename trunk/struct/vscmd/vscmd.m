@@ -191,6 +191,8 @@ $(EXNUC)/include
 $(GRNUC)/include
 $(GRNUC)/proto_priv
 $(MODEL)/include
+$(FORMS)/include
+$(UMS)/include
 $(VDS)/include
 $(VDS)/include/prototypes
 $(VDS)/include/vdinclude
