@@ -25,6 +25,8 @@ $(EXNUC)/include
 $(GRNUC)/include
 $(GRNUC)/src/assoc/include_priv
 $(MODEL)/include
+$(UMS)/include
+$(FORMS)/include
 $(VDS)/include
 $(STRUCT)/include
 
