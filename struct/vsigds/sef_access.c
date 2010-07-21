@@ -1,3 +1,9 @@
+/* ----------------------------------------
+ * 21 Jul 2010
+ * Hardcode this for now
+ */
+#define _ENVELOPE_AR_ 1
+
 /* begin ifdefs for underbars */
 #ifndef _CLIX_P_
 #define    stripins_                           stripins
