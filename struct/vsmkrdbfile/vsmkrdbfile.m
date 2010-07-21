@@ -81,6 +81,7 @@ INCLUDE
 $(EXNUC)/include
 $(GRNUC)/include
 $(MODEL)/include
+$(FORMS)/include
 $(VDS)/include
 $(VDS)/include/prototypes
 $(VDS)/vdinclude

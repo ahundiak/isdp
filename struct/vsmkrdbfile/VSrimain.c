@@ -1,3 +1,12 @@
+/* =====================================================
+ * 21 Jul 2010 - ah
+ * Hard code for now
+ *
+ * The _mcount has something to do with profiling in XFI
+ */
+#define XWINDOWS 1
+int _mcount;
+
 /*
 	I/STRUCT
 */
