@@ -3,9 +3,6 @@
 #include <string.h>
 #include <unistd.h>
 
-#ifdef NT
-#include <direct.h>
-#endif
 
 static int ondx=0;
 static char *Cwd = 0;
