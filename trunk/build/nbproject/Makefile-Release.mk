@@ -10,6 +10,8 @@
 # Environment
 MKDIR=mkdir
 CP=cp
+GREP=grep
+NM=nm
 CCADMIN=CCadmin
 RANLIB=ranlib
 CC=cc
@@ -32,8 +34,9 @@ OBJECTDIR=build/${CND_CONF}/${CND_PLATFORM}
 # Object Files
 OBJECTFILES=
 
+
 # C Compiler Flags
-CFLAGS=
+CFLAGS=-Xc
 
 # CC Compiler Flags
 CCFLAGS=
@@ -50,7 +53,7 @@ LDLIBSOPTIONS=
 
 # Build Targets
 .build-conf: ${BUILD_SUBPROJECTS}
-	${MAKE}  -f nbproject/Makefile-Release.mk dist/Release/SunStudio-Solaris-x86/build
+	"${MAKE}"  -f nbproject/Makefile-Release.mk dist/Release/SunStudio-Solaris-x86/build
 
 dist/Release/SunStudio-Solaris-x86/build: ${OBJECTFILES}
 	${MKDIR} -p dist/Release/SunStudio-Solaris-x86

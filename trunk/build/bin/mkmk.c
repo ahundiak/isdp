@@ -238,77 +238,30 @@ int main (int argc, char *argv[], char **envr)
    int  option;
    char filename[50];
 
-#if defined(NT)
-   char  *p, *p2;
-
-	{
-		/*
-		*	See if mkmk was executed with a pathname.  This
-		*	path is used later to reference other executables
-		*	that the output makefile may depend on.
-		*/
-   		char	*separator = 0;
-   		if (separator = strrchr(argv[0], '\\'))
-   		{
-   			Path_to_mkmk = _strdup(argv[0]);
-   			Path_to_mkmk[separator - argv[0]] = 0;
-   		}
-   	}
-#endif
-
-#if defined (UNIX)
    whyFlag = 1;
-#elif defined (NT)
-   whyFlag = 0;	/* When NT's nmake allows a larger buffer, can take this out */
-#else
-#error Unknown OS
-#endif
 
-   while (EOF != (option = getopt(argc,argv,"vo:i:w")))
+
+   while (EOF != (option = getopt(argc,argv,"Vvo:i:w")))
    {
       switch(option)
       {
+          case 'V':
+              printf("mkmk version 2010-04-15\n");
+              exit(0);
+              break;
+              
          case 'v':
             verbose = 1;
             break;
          case 'o':
             if ('-' == *optarg && 0 == *(optarg+1))
                outfp = stdout;
-#ifdef NT
-            else
-            {
-               /* Generate the path for any M<src_group> files
-                * generated for use by the makefile
-                */
 
-               strcpy(obj_file, optarg);
-               p = strrchr(obj_file, '\\');
-               p2 = strrchr(obj_file, '/');
-               if (p && (p > p2))
-               {
-                  *(++p) = 'M';
-                  *(++p) = '\0';
-               }
-               else if (p2)
-               {
-                  *(++p2) = 'M';
-                  *(++p2) = '\0';
-               }
-               else
-                  strcpy(obj_file, "M");
-               if (!(outfp = fopen(optarg, "w")))
-               {
-                  perror(optarg);
-                  exit(1);
-               }
-            }
-#else
             else if (!(outfp = fopen(optarg, "w")))
             {
                perror(optarg);
                exit(1);
             }
-#endif
             break;
 	 case 'i':
 	    ignore = get_ignore_list(optarg);
@@ -317,7 +270,7 @@ int main (int argc, char *argv[], char **envr)
 	    whyFlag = 0; /* Don't include the "WHY ... $?" clause in makefile */
 	    break;
          default:
-            fprintf(stderr,"usage: mkmk [-i ignorefile] [-v] [-w] [-o makefile] [spec.m]\n");
+            fprintf(stderr,"usage: mkmk [-i ignorefile] [-v] [-w] [-o makefile] [spec.m] V2010\n");
             exit(1);
             break;
       }
@@ -355,9 +308,6 @@ int main (int argc, char *argv[], char **envr)
    generate_dep();            /* Add dependencies to source linked lists. */
    write_outfile();           /* Generate the make file. */
    exit(Errors);
-#ifdef NT
-   return Errors;
-#endif
 }
 
 /*========================================
@@ -1193,7 +1143,17 @@ void generate_dep ()
             /*=====================================================*/
 
 	    if( ! d->DN_macro  &&  ! d->DN_nodep )
-		add_to_dep_list (d->fname);
+            {
+                /* ----------------------------------------------------------
+                 * This eliminates nested include files under /usr/include
+                 * Still get the ones directly included which is fine for now
+                 */
+                if (strncmp("/usr/include/",d->fname,13))
+                {
+                    printf("Dep File %s\n",d->fname);
+                    add_to_dep_list (d->fname);
+                }
+            }
             d = d->next;
          }
          p = p->next;
@@ -1243,13 +1203,7 @@ void write_defaults()
             if (s->archive)
                fprintf (outfp," %s",  s->archive->fname);
          fprintf (outfp,"\n\n");
-#if defined(UNIX)
          fprintf (outfp,".SUFFIXES: .a");
-#elif defined(NT)
-         fprintf (outfp,".SUFFIXES: .lib");
-#else
-#error Unknown OS
-#endif
       }
       else
          fprintf (outfp,".SUFFIXES:");
@@ -1261,13 +1215,8 @@ void write_defaults()
          fprintf (outfp," .C");
       if (src_flags.assm)
          fprintf (outfp," .s");
-#if defined(UNIX)
+
       fprintf(outfp, " .c .o\n\n");
-#elif defined(NT)
-      fprintf(outfp, " .c .obj\n\n");
-#else
-#error Unknown OS
-#endif
    }
 
    if (verbose_rules)
@@ -1279,22 +1228,9 @@ void write_defaults()
       fprintf (outfp,"omcpp = %s\n\n", OMCPP);
    if (!ccpath)
       fprintf (outfp,"CC = %s\n\n", CC);
-#ifdef NT
-   if (!echopath)
-   {
-   	if (Path_to_mkmk)
-		fprintf(outfp, "ECHO = %s\\execho\n\n", Path_to_mkmk);
-	else
-		fprintf(outfp, "ECHO = execho\n\n");
-   }
-#endif
 
    if ( !linkflags )
-#ifdef NT
-     fprintf(outfp, "LINKOPT = -subsystem:console -entry:mainCRTStartup\n\n" );
-#else
      fprintf(outfp, "LINKOPT =\n\n" );
-#endif
 
    if (!src_specified)
       fprintf(outfp, "SRC = %s\n\n", srcpath->fname);
@@ -1345,13 +1281,6 @@ char *dot_o (char *x, char c)
    }
    i++;
    doto_arr[i] = c;
-#ifdef NT
-   if ('o' == c)
-   {
-   	doto_arr[++i] = 'b';
-   	doto_arr[++i] = 'j';
-   }
-#endif
    doto_arr[i+1] = 0;
    return (doto_arr);
 }
@@ -1382,11 +1311,7 @@ struct dtree_node	*list;
 
 *****************************************************************/
 
-#ifdef NT
-void write_file_dep(struct dtree_node *p_list, char *archive, FILE *fp)
-#else
 void write_file_dep(struct dtree_node *p_list, char *archive)
-#endif
 {
    struct dtree_node *d, *deps;
 
@@ -1396,9 +1321,6 @@ void write_file_dep(struct dtree_node *p_list, char *archive)
          fprintf (outfp,"%s(%s) :", archive, dot_o(p_list->fname, 'o'));
       else
          fprintf (outfp,"%s :", dot_o (p_list->fname, 'o'));
-#ifdef NT
-      fprintf(fp, "%s\n", dot_o (p_list->fname, 'o'));
-#endif
 
       fprintf (outfp," \\\n	$(SRC)%s%s", SEPARATOR_S, p_list->fname);
 
@@ -1432,53 +1354,8 @@ void write_src_deps ()
 {
    struct source_group_node *s = srcfiles;
 
-#ifdef NT
-   FILE  *objects_file = 0;
-   char  outfname[256];
-   int   i;
-   struct dtree_node *p_list;
-   int   index=strlen(obj_file);
-#endif
-
    while(s)
    {
-#ifdef NT
-      strcat(obj_file, s->sgrp_name);
-      if (!(objects_file = fopen(obj_file, "w" )))
-      {
-         perror(obj_file);
-         exit(1);
-      }
-
-      write_file_dep(s->c_list, (char *)0, objects_file);
-      write_file_dep(s->C_list, (char *)0, objects_file);
-      write_file_dep(s->spec_list, (char *)0, objects_file);
-      write_file_dep(s->imp_list, (char *)0, objects_file);
-      write_file_dep(s->assm_list, (char *)0, objects_file);
-      write_file_dep(s->yacc_list, (char *)0, objects_file);
-      write_file_dep(s->lex_list, (char *)0, objects_file);
-      write_file_dep(s->unk_list, (char *)0, objects_file);
-/*Added this to include DEPLIB files in M<src_grp>file generated -KK */
-      p_list = s->deplib;
-      while(p_list)
-      {
-        /* Remove MACROS from the filename written to M<src> - KK */
-        if (p_list->fname[0] == '$')
-          expand_filename(p_list->fname, outfname,256);
-        else
-          strcpy(outfname,p_list->fname);
-        /* if the file is a .lib dont convert it to .obj - kk */
-        i = strlen (outfname);
-        if (!strcmp(&outfname[i - 3], "lib"))
-          fprintf(objects_file, "%s\n", outfname);
-        else
-          fprintf(objects_file, "%s\n", dot_o(outfname, 'o'));
-
-        p_list = p_list->next;
-      }
-      fclose(objects_file);
-      obj_file[index] = '\0';
-#else
       write_file_dep(s->c_list, (char *)0);
       write_file_dep(s->C_list, (char *)0);
       write_file_dep(s->spec_list, (char *)0);
@@ -1487,7 +1364,6 @@ void write_src_deps ()
       write_file_dep(s->yacc_list, (char *)0);
       write_file_dep(s->lex_list, (char *)0);
       write_file_dep(s->unk_list, (char *)0);
-#endif
       s = s->next;
    }
 }
@@ -1776,23 +1652,10 @@ void write_src_group_targets()
          for (p = s->deplib; p; p = p->next)
             fprintf(outfp, " \\\n\t%s", p->fname);
          fprintf(outfp, "\n");
-#if defined(UNIX)
          fprintf (outfp,"\t@echo \n" );
-#elif defined(NT)
-         fprintf (outfp,"\t@$(ECHO)\n" );
-#else
-#error Unknown OS
-#endif
          if (s->execname)
          {
-#if defined(UNIX)
             fprintf (outfp,"\t$(CC) $(LINKOPT) $(EXECOPT) $(COPT) -o %s ", name);
-#elif defined(NT)
-            fprintf (outfp,"\t@if exist %s del/q %s\n", name, name);
-            fprintf (outfp,"\tlink $(DEBUGAMOUNT) $(DEBUGTYPE) $(LINKOPT) $(EXECOPT) $(COPT) -out:%s ", name);
-#else
-#error Unknown OS
-#endif
             fprintf (outfp,"$(%s)", s->sgrp_name);
             for (p = s->deplib; p; p = p->next)
                fprintf(outfp, " %s", p->fname);
@@ -1801,9 +1664,6 @@ void write_src_group_targets()
                   fprintf(outfp, " $(LINKLIB_%s)", s->sgrp_name);
                else
                   fprintf(outfp, " $(LINKLIB)");
-#ifdef NT
-            fprintf(outfp, " libc.lib kernel32.lib");
-#endif
             fprintf(outfp, "\n");
          }
          else if (s->libname)
@@ -1816,35 +1676,11 @@ void write_src_group_targets()
          }
          else
          {
-#if defined(SYSV)
             fprintf (outfp,"\tar rsuv %s $(%s)", s->archive->fname, s->sgrp_name);
-#elif defined(BSD)
-            fprintf (outfp,"\tar ruv %s $(%s)", s->archive->fname, s->sgrp_name);
-#elif defined(NT)
-            fprintf (outfp,"\tlib $(DEBUGTYPE) -out:%s @%s%s\n", name, obj_file, s->sgrp_name);
-#else
-#error Unknown OS
-#endif
 
-#ifndef NT
-            for (p = s->deplib; p; p = p->next)
-               fprintf(outfp, " %s", p->fname);
-            fprintf(outfp, "\n");
-#endif
-
-#if defined(BSD)
-  	    fprintf(outfp, "\tranlib %s\n", s->archive->fname);
-#endif
          }
-#if defined(UNIX)
+
          fprintf (outfp,"\t@if test -n \"$(VERBOSE_RULES)\"; then echo \"\\tls -ls %s\"; fi; ls -ls %s; echo\n\n", name, name);
-#elif defined(NT)
-         fprintf (outfp,"\t@if not \"$(VERBOSE_RULES)\" == \"\" $(ECHO) \"\\\\tdir /n %s\"\n", name);
-         fprintf (outfp,"\t@dir /n %s\n", name);
-         fprintf (outfp,"\t@$(ECHO)\n\n");
-#else
-#error Unknown OS
-#endif
       }
       else
       {
@@ -1854,10 +1690,14 @@ void write_src_group_targets()
             fprintf(outfp, " %s", p->fname);
          fprintf(outfp, "\n\n");
       }
+      /* ===================================
+       * Get rid of all the FAST stuff
+       *
 #if !defined(NT)
       fprintf(outfp, "%s_FAST: FASTstart $(%s) FASTfinish $(%s_TARGET)\n", s->sgrp_name, s->sgrp_name, s->sgrp_name);
       fprintf(outfp, "\n");
 #endif
+       */
       s = s->next;
    }
 }
@@ -2041,16 +1881,6 @@ void write_outfile()
             case 28:                 /* VERBOSE_RULES */
                break;
             case 29:                 /* ECHO */
-#ifdef NT
-               fprintf(outfp, "ECHO =");
-               p = mk->linked_list;
-               while(p)
-               {
-                  fprintf(outfp, " %s", p->fname);
-                  p = p->next;
-               }
-               fprintf(outfp, "\n\n");
-#endif
                break;
             case 30:                 /* LINKOPT */
                fprintf(outfp, "LINKOPT = ");
@@ -2075,24 +1905,16 @@ void write_outfile()
    /*
    **	Write hardware specific -D flags.
    */
+/* ------------------------------------------------
+ * Make this go away as they always get overwritten
+ */
+   // fprintf(outfp, "MOPT = -Dsun=1 -D__sun__=1 -Di386=1 -D__i386=1 -D__i386__=1\n\n" );
 
-#if defined(clipper)
-   fprintf(outfp, "MOPT = -Dclipper=1 -D__clipper__=1\n\n");
-#elif defined(sparc)
-   fprintf(outfp, "MOPT = -Dsparc=1 -D__sparc__=1 -Dsun=1 -D__sun__=1\n\n");
-#elif defined(__mips) || defined(mips)
-   fprintf(outfp, "MOPT = -Dmips=1 -D__mips__=1 -D__mips=1\n\n");
-#elif defined(_M_IX86)
-   fprintf(outfp, "MOPT = -D_M_IX86=%d -Di386=1\n\n", _M_IX86);
-#elif defined(i386)
-   fprintf(outfp, "MOPT = -Dsun=1 -D__sun__=1 -Di386=1 -D__i386=1 -D__i386__=1\n\n" );
-#else
-#error Unknown processor type
-#endif
-#if !defined(NT)
+   /* ---------------------------------------------
+    * Make all the FAST stuff go away
+    */
    /* Leave out on NT until FAST is working */
-   fprintf(outfp, "ocfiles = %s\n\n", OCFILES);
-#endif
+   // fprintf(outfp, "ocfiles = %s\n\n", OCFILES);
 
    write_object_files();
    write_src_group_targets();
@@ -2110,6 +1932,10 @@ void write_outfile()
       fprintf(outfp, "\n");
    }
 
+   /* ----------------------------------------------
+    * Make all the FAST stuff go away
+    */
+#ifdef FAST_RULES
 #if !defined(NT)
          fprintf(outfp, "FASTstart:\n");
          fprintf(outfp, "\t@rm -f opp.list cc.list\n\n");
@@ -2172,7 +1998,8 @@ void write_outfile()
 		}
 	}
 #endif
-	fprintf(outfp, "\n\n");
+#endif
+         fprintf(outfp, "\n\n");
 }
 
 /*****************************************************************

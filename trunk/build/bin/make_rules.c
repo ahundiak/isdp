@@ -10,16 +10,11 @@ char	*ccdef = "$(CC) $(COPT) $(IPATH) $(IPATH1) $(IPATH2) $(MOPT) $(DOPT) $(DOPT
 char	*oppdef = "$(opp) $(OPPOPT) $(OPPFLAGS) $(DOPT) $(DOPT1) $(DOPT2)";
 char	*omcppdef = "$(omcpp) $(OMCPPOPT) $(OPPFLAGS) $(DOPT) $(DOPT1) $(DOPT2)";
 
-#if defined(CLIX) || defined(SUNOS) || defined(IRIX)
 #define cNameFromObjName	"$(SRC)/$(@:.o=.c)"
 #define cToObjActionFormat	"%s -c $(SRC)/$(@:.o=.c)%s"
 
 #define asmNameFromObjName	"$(SRC)/$(@:.o=.s)"
-#if defined(CLIX)
-#define asmToObjActionFormat	"as $(ASOPT) $(SRC)/$(@:.o=.s)"
-#elif defined(SUNOS) || defined(IRIX)
 #define asmToObjActionFormat	"as $(ASOPT) -o $(@F) $(SRC)/$(@:.o=.s)"
-#endif
 
 #define SNameFromObjName	"$(@:.o=.S)"
 #define INameFromObjName	"$(@:.o=.I)"
@@ -30,56 +25,26 @@ char	*omcppdef = "$(omcpp) $(OMCPPOPT) $(OPPFLAGS) $(DOPT) $(DOPT1) $(DOPT2)";
 #define IToObjTransition	".I.o"
 #define SToObjTransition	".S.o"
 
-#elif defined(NT)
-#define cNameFromObjName	"$(SRC)\\$(@:.obj=.c)"
-#define cToObjActionFormat	"%s -c $(SRC)\\$(@:.obj=.c)%s"
-
-#define asmNameFromObjName	"$(SRC)\\$(@:.obj=.s)"
-#define asmToObjActionFormat	"$(CC) $(ASOPT) -c $(SRC)\\$(@:.obj=.asm)"
-
-#define SNameFromObjName	"$(@:.obj=.S)"
-#define INameFromObjName	"$(@:.obj=.I)"
-#define CNameFromObjName	"$(SRC)\\$(@:.obj=.C)"
-#define OmcppOutFileName	"$(@:.obj=.i)"
-#define OmcppOutExtension	".i"
-
-#define IToObjTransition	".I.obj"
-#define SToObjTransition	".S.obj"
-
-#else
-#error Unknown OS
-#endif
 
 static void	write_why(char *who)
 {
+    if (1) return;
+    
       if (!whyFlag)
          return;      /* Users can turn off this feature altogether */
-#if defined(SYSV) || defined(BSD)
-	fprintf(outfp, "\t@if [ \"$(WHY)\" ]; then echo \"\\t%s: $?\"; fi\n", who);
-#elif defined(NT)
-	fprintf(outfp, "\t@if not \"$(WHY)\" == \"\" $(ECHO) \"\\\\t%s: $?\"\n", who);
-#else
-#error Unknown OS
-#endif
+	// fprintf(outfp, "\t@if [ \"$(WHY)\" ]; then echo \"\\t%s: $?\"; fi\n", who);
 }
 
 static void	write_transition(char *from, char *to)
 {
-#if defined(CLIX) || defined(SUNOS) || defined(IRIX)
 	fprintf(outfp, "\t@if [ -z \"$(VERBOSE_RULES)\" ]; \\\n");
 	fprintf(outfp, "\t then \\\n");
 	fprintf(outfp, "\t     echo \"\\t%s -> %s\"; \\\n", from, to);
 	fprintf(outfp, "\t fi\n");
-#elif defined(NT)
-	fprintf(outfp, "\t@if \"$(VERBOSE_RULES)\" == \"\" $(ECHO) \"\\\\t%s -> %s\"\n", from, to);
-#else
-#error Unknown OS
-#endif
 }
 
 static void	write_change_dir(void)
 {
-#if defined(CLIX) || defined(SUNOS) || defined(IRIX)
       fprintf(outfp, "\t@if [ -n \"$(@D)\" -a \"$(@D)\" != \".\" ]; \\\n");
       fprintf(outfp, "\t then \\\n");
       fprintf(outfp, "\t     if [ -n \"$(VERBOSE_RULES)\" ]; \\\n");
@@ -88,17 +53,10 @@ static void	write_change_dir(void)
       fprintf(outfp, "\t     fi; \\\n");
       fprintf(outfp, "\t     cd $(@D); \\\n");
       fprintf(outfp, "\t fi; \\\n");
-#elif defined(NT)
-      fprintf(outfp, "\t@if not \"$(@D)\" == \"\" if not \"$(@D)\" == \".\" if not \"$(VERBOSE_RULES)\" == \"\" $(ECHO) \"\\\\tcd $(@D)\"\n");
-      fprintf(outfp, "\t@if not \"$(@D)\" == \"\" if not \"$(@D)\" == \".\" cd $(@D)\n");
-#else
-#error Unknown OS
-#endif
 }
 
 static void	write_dependency_action(char *action_format, char *arg1, char *arg2)
 {
-#if defined(CLIX) || defined(SUNOS) || defined(IRIX)
       fprintf(outfp, "\t if [ -n \"$(VERBOSE_RULES)\" ]; \\\n");
       fprintf(outfp, "\t then \\\n");
       fprintf(outfp, "\t     echo \"\\t");
@@ -109,22 +67,16 @@ static void	write_dependency_action(char *action_format, char *arg1, char *arg2)
       fprintf(outfp, action_format, arg1, arg2);
       fprintf(outfp, "\n");
       fprintf(outfp, "\t@echo \n\n");
-#elif defined(NT)
-      fprintf(outfp, "\t@if not \"$(VERBOSE_RULES)\" == \"\" $(ECHO) \"\\\\t");
-      fprintf(outfp, action_format, arg1, arg2);
-      fprintf(outfp, "\"\n");
-      fprintf(outfp, "\t@");
-      fprintf(outfp, action_format, arg1, arg2);
-      fprintf(outfp, "\n");
-      fprintf(outfp, "\t@$(ECHO) \n\n");
-#else
-#error Unknown OS
-#endif
 }
 
 static void	write_dependency_file_cleanup(char *extension)
 {
-#if defined(CLIX) || defined(SUNOS) || defined(IRIX)
+    /* --------------------------------------------------------
+     * We don't ever want to remove the generated .c files
+     * Always need them for debugging
+     */
+    if (1) return;
+
       fprintf(outfp, "\t     if [ \"$(COPT)\" != \"-g\" -a \"$(DEBUG)\" != \"yes\" ]; \\\n");
       fprintf(outfp, "\t     then \\\n");
       fprintf(outfp, "\t         if [ -z \"$(VERBOSE_RULES)\" ]; \\\n");
@@ -140,19 +92,10 @@ static void	write_dependency_file_cleanup(char *extension)
       fprintf(outfp, "\t             echo \"\\tleaving $(@:.o=%s)\"; \\\n", extension);
       fprintf(outfp, "\t         fi; \\\n");
       fprintf(outfp, "\t     fi; \\\n");
-#elif defined(NT)
-      fprintf(outfp, "\t@if \"$(DEBUGAMOUNT)\" == \"\" if \"$(VERBOSE_RULES)\" == \"\" $(ECHO) \"\\\\tremoving $(@:.obj=%s)\"\n", extension);
-      fprintf(outfp, "\t@if \"$(DEBUGAMOUNT)\" == \"\" if not \"$(VERBOSE_RULES)\" == \"\" $(ECHO) \"\\\\tdel/q $(@F:.obj=%s)\"\n", extension);
-      fprintf(outfp, "\t@if \"$(DEBUGAMOUNT)\" == \"\" del/q $(@F:.obj=%s)\n", extension);
-      fprintf(outfp, "\t@if not \"$(DEBUGAMOUNT)\" == \"\" if \"$(VERBOSE_RULES)\" == \"\" $(ECHO) \"\\\\tleaving $(@:.obj=%s)\"\n", extension);
-#else
-#error Unknown OS
-#endif
 }
 
 static void	write_opp_dependency_action(char *from, char *filter)
 {
-#if defined(CLIX) || defined(SUNOS) || defined(IRIX)
       fprintf(outfp, "\t if [ \"$(FAST)\" ]; \\\n");
       fprintf(outfp, "\t then \\\n");
       fprintf(outfp, "\t     if [ -f $(@) ]; then rm $(@); fi; \\\n");
@@ -178,23 +121,13 @@ static void	write_opp_dependency_action(char *from, char *filter)
       write_dependency_file_cleanup(".c");
       fprintf(outfp, "\t fi\n");
       fprintf(outfp, "\t@echo \n\n");
-#elif defined(NT)
-      fprintf(outfp, "\t@if \"$(VERBOSE_RULES)\" == \"\" $(ECHO) \"\\\\t$(SRC)\\%s -> $(@:.obj=.c)\"\n", from);
-      fprintf(outfp, "\t@if not \"$(VERBOSE_RULES)\" == \"\" $(ECHO) \"\\\\t%s %s\"\n", oppdef, from);
-      fprintf(outfp, "\t@%s %s\n", oppdef, from);
-      fprintf(outfp, "\t@if \"$(VERBOSE_RULES)\" == \"\" $(ECHO) \"\\\\t$(@:.obj=.c) -> $(@)\"\n");
-      fprintf(outfp, "\t@if not \"$(VERBOSE_RULES)\" == \"\" $(ECHO) \"\\\\t%s -c $(@F:.obj=.c)%s\"\n", ccdef, filter);
-      fprintf(outfp, "\t@%s -c $(@F:.obj=.c)%s\n", ccdef, filter);
-      write_dependency_file_cleanup(".c");
-      fprintf(outfp, "\t@$(ECHO) \n\n");
-#else
-#error Unknown OS
-#endif
 }
 
 static void	write_inference_rule_file_cleanup(char *extension)
 {
-#if defined(CLIX) || defined(SUNOS) || defined(IRIX)
+    // Don't ever want to remove intermediate files
+    if (1) return;
+
       fprintf(outfp, "\t     if [ \"$(COPT)\" != \"-g\" -a \"$(DEBUG)\" != \"yes\" ]; \\\n");
       fprintf(outfp, "\t     then \\\n");
       fprintf(outfp, "\t        if [ -z \"$(VERBOSE_RULES)\" ]; \\\n");
@@ -210,21 +143,13 @@ static void	write_inference_rule_file_cleanup(char *extension)
       fprintf(outfp, "\t            echo \"\\tleaving $*%s\"; \\\n", extension);
       fprintf(outfp, "\t        fi; \\\n");
       fprintf(outfp, "\t     fi; \\\n");
-#elif defined(NT)
-      fprintf(outfp, "\t@if \"$(DEBUGAMOUNT)\" == \"\" if \"$(VERBOSE_RULES)\" == \"\" $(ECHO) \"\\\\tremoving $*%s\"\n", extension);
-      fprintf(outfp, "\t@if \"$(DEBUGAMOUNT)\" == \"\" if not \"$(VERBOSE_RULES)\" == \"\" $(ECHO) \"\\\\tdel/q $*%s\"\n", extension);
-      fprintf(outfp, "\t@if \"$(DEBUGAMOUNT)\" == \"\" del/q $*%s\n", extension);
-      fprintf(outfp, "\t@if not \"$(DEBUGAMOUNT)\" == \"\" if \"$(VERBOSE_RULES)\" == \"\" $(ECHO) \"\\\\tleaving $*%s\"\n", extension);
-#else
-#error Unknown OS
-#endif
-}
 
+}
 void write_opp_inference_rule(char *transition, char *filter)
 {
       fprintf(outfp, "%s:\n", transition);
       write_why("$<");
-#if defined(CLIX) || defined(SUNOS) || defined(IRIX)
+
       fprintf(outfp, "\t@if [ \"$(FAST)\" ]; \\\n");
       fprintf(outfp, "\t then \\\n");
       fprintf(outfp, "\t     if [ -f $(@) ]; then rm $(@); fi; \\\n");
@@ -248,18 +173,6 @@ void write_opp_inference_rule(char *transition, char *filter)
       write_inference_rule_file_cleanup(".c");
       fprintf(outfp, "\t fi\n");
       fprintf(outfp, "\t@echo \n\n");
-#elif defined(NT)
-      fprintf(outfp, "\t@if \"$(VERBOSE_RULES)\" == \"\" $(ECHO) \"\\\\t$< -> $*.c\"\n");
-      fprintf(outfp, "\t@if not \"$(VERBOSE_RULES)\" == \"\" $(ECHO) \"\\\\t%s $<\"\n", oppdef);
-      fprintf(outfp, "\t@%s $<\n", oppdef);
-      fprintf(outfp, "\t@if \"$(VERBOSE_RULES)\" == \"\" $(ECHO) \"\\\\t$*.c -> $*.o\"\n");
-      fprintf(outfp, "\t@if \"$(VERBOSE_RULES)\" == \"\" $(ECHO) \"\\\\t%s -c $*.c%s\"\n", ccdef, filter);
-      fprintf(outfp, "\t@%s -c $*.c%s\n", ccdef, filter);
-      write_inference_rule_file_cleanup(".c");
-      fprintf(outfp, "\t@$(ECHO) \n\n");
-#else
-#error Unknown OS
-#endif
 }
 
 void write_rules ()
@@ -352,7 +265,7 @@ void write_rules ()
             write_why("$(@)");
             write_transition(CNameFromObjName, OmcppOutFileName);
             write_change_dir();
-#if defined(CLIX) || defined(SUNOS) || defined(IRIX)
+
             fprintf(outfp, "\t if [ -n \"$(VERBOSE_RULES)\" ]; \\\n");
             fprintf(outfp, "\t then \\\n");
             fprintf(outfp, "\t      echo \"\\t%s $(SRC)/$(@:.o=.C) $(@F:.o=.c)\"; \\\n", omcppdef);
@@ -379,17 +292,7 @@ void write_rules ()
             write_dependency_file_cleanup(OmcppOutExtension);
             fprintf(outfp, "\t fi\n");
             fprintf(outfp, "\t@echo \n\n");
-#elif defined(NT)
-            fprintf(outfp, "\t@if not \"$(VERBOSE_RULES)\" == \"\" $(ECHO) \"\\\\t%s $(SRC)\\$(@:.obj=.C) $(@F:.obj=.i)\"\n", omcppdef);
-            fprintf(outfp, "\t@%s \\\n\t\t$(SRC)\\$(@:.obj=.C) $(@F:.obj=.i)\n", omcppdef);
-            fprintf(outfp, "\t@if \"$(VERBOSE_RULES)\" == \"\" $(ECHO) \"\\\\t$(@:.obj=.i) -> $(@)\"\n");
-            fprintf(outfp, "\t@if not \"$(VERBOSE_RULES)\" == \"\" $(ECHO) \"\\\\t%s -c -Tc $(@F:.obj=.i)%s\"\n", ccdef, filter);
-            fprintf(outfp, "\t@%s -c -Tc $(@F:.obj=.i)%s\n", ccdef, filter);
-            write_dependency_file_cleanup(OmcppOutExtension);
-            fprintf(outfp, "\t@$(ECHO) \n\n");
-#else
-#error Unknown OS
-#endif
+
          }
          s = s->next;
       }
@@ -405,7 +308,6 @@ void write_rules ()
 
    if ( src_flags.C )
    {
-#if defined(CLIX) || defined(SUNOS) || defined(IRIX)
       fprintf(outfp, ".C.o:\n");
       write_why("$<");
       fprintf(outfp, "\t@if [ -z \"$(VERBOSE_RULES)\" ]; \\\n");
@@ -436,26 +338,11 @@ void write_rules ()
       write_inference_rule_file_cleanup(OmcppOutExtension);
       fprintf(outfp, "\t fi\n");
       fprintf(outfp, "\t@echo \n\n");
-#elif defined(NT)
-      fprintf(outfp, ".C.obj:\n");
-      write_why("$<");
-      fprintf(outfp, "\t@if \"$(VERBOSE_RULES)\" == \"\" $(ECHO) \"\\\\t$< -> $*.c\"\n");
-      fprintf(outfp, "\t@if not \"$(VERBOSE_RULES)\" == \"\" $(ECHO) \"\\\\t%s $< $*.c\"\n", omcppdef);
-      fprintf(outfp, "\t@%s $< $*.c\n", omcppdef);
-      fprintf(outfp, "\t@if \"$(VERBOSE_RULES)\" == \"\" $(ECHO) \"\\\\t$*.c -> $*.o\"\n");
-      fprintf(outfp, "\t@if not \"$(VERBOSE_RULES)\" == \"\" $(ECHO) \"\\\\t%s -c $*.c%s\"\n", ccdef, filter);
-      fprintf(outfp, "\t@%s -c $*.c%s\n", ccdef, filter);
-      write_inference_rule_file_cleanup(OmcppOutExtension);
-      fprintf(outfp, "\t@$(ECHO) \n\n");
-#else
-#error Unknown OS
-#endif
    }
 
    if ( src_flags.spec )
       write_opp_inference_rule(SToObjTransition, filter);
 
-#if defined(CLIX) || defined(SUNOS) || defined(IRIX)
    fprintf(outfp, ".c.o:\n");
    write_why("$<");
    fprintf(outfp, "\t@if [ -z \"$(VERBOSE_RULES)\" ]; \\\n");
@@ -466,14 +353,4 @@ void write_rules ()
    fprintf(outfp, "\t fi\n");
    fprintf(outfp, "\t@%s -c $*.c%s\n", ccdef, filter);
    fprintf(outfp, "\t@echo \n\n");
-#elif defined(NT)
-   fprintf(outfp, ".c.obj:\n");
-   write_why("$<");
-   fprintf(outfp, "\t@if \"$(VERBOSE_RULES)\" == \"\" $(ECHO) \"\\\\t$< -> $*.obj\"\n");
-   fprintf(outfp, "\t@if not \"$(VERBOSE_RULES)\" == \"\" $(ECHO) \"\\\\t%s -c $*.c%s\"\n", ccdef, filter);
-   fprintf(outfp, "\t@%s -c $*.c%s\n", ccdef, filter);
-   fprintf(outfp, "\t@$(ECHO) \n\n");
-#else
-#error Unknown OS
-#endif
 }

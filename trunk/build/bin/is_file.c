@@ -10,7 +10,7 @@
 #include <string.h>
 #include <limits.h>
 #include "toolshash.h"
-#include "exsysdep.h"
+// #include "exsysdep.h"
 
 static S_HASHTABLE	*FilTbl = 0;
 
@@ -19,13 +19,7 @@ char	*f;
 {
 	S_HASHRECORD	*p_hrec = 0;
 	int		found = 1;
-#if defined(CLIX) || defined(SUNOS) || defined(IRIX)
 	struct stat 	statbuff;
-#elif defined(NT)
-	struct _stat 	statbuff;
-#else
-#error Unknown OS
-#endif
 
 	if (!FilTbl)
 		FilTbl = new_hash_table(511, 0, 0);
@@ -33,13 +27,7 @@ char	*f;
 	if (!(p_hrec = hash_lookup(FilTbl, f)))
 	{
 
-#if defined(CLIX) || defined(SUNOS) || defined(IRIX)
 		if (stat(f,&statbuff))
-#elif defined(NT)
-		if (_stat(f,&statbuff))
-#else
-#error Unknown OS
-#endif
 			found = 0;
 		else
 		{
@@ -62,13 +50,7 @@ char	*find_in_path(filename, path)
 char	*filename;
 char	*path;
 {
-#if defined(CLIX) || defined(SUNOS) || defined(IRIX)
 	static char	namebuf[MAXPATHLEN];
-#elif defined(NT)
-	static char	namebuf[_MAX_PATH];
-#else
-#error Unknown OS
-#endif
 	if (SEPARATOR_C != filename[0] && path)
 	{
 		char	*end_path = path + strlen(path);
