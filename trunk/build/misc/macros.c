@@ -95,8 +95,8 @@ int main(int argc, char** argv)
   
   /*
 
-__RESTRICT -Xa and -Xt
-__PRAGMA_REDEFINE_EXTNAME
+ __RESTRICT -Xa and -Xt
+ __PRAGMA_REDEFINE_EXTNAME
 
    */
   return (EXIT_SUCCESS);
