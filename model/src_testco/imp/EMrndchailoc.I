@@ -1,5 +1,5 @@
 class implementation ECsfedloc;
-
+#if 0
 /*
 DESCRIPTION
 	This method locates edges using the chain edge option.
@@ -23,6 +23,8 @@ HISTORY
 
 	Jaikish  01/06/98 added roundn as fix for TR#119701572
 */
+#endif
+
 %safe
 #include <math.h>
 %endsafe

@@ -6,9 +6,6 @@ OMCPP
 $(EXTARG)/bin/omcpp
 INCLUDE
 $(INGRHOME)/include
-#ifndef IRIX
-$(GRNUC)/unix_include/$(CPUTYPE)
-#endif
 $(XINC)
 $(GRNUC)/ingrsys
 $(MODEL)/include

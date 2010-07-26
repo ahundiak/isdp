@@ -1,6 +1,6 @@
 /* ###################   APOGEE COMPILED   ################## */
 class implementation EMSsubbs;
-
+#if 0
 /*
  DESCRIPTION
 
@@ -22,6 +22,7 @@ class implementation EMSsubbs;
                  created so I added code here to handle them.
  06/11/93   Jack Added a condition for the above fix, only do it if WANT_POST220_BEHAVIOR.
  */
+#endif
 
 %safe
 #include <math.h>
