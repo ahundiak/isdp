@@ -1,0 +1,830 @@
+
+		This document describes Dr. OS, a utility for examining
+          filed object spaces 'outside' of OM.  It can display quite a lot
+          about an object space, including:
+                     
+          o  Total number of objects and total space used by those objects.
+
+          o  Total classes with counts of objects and space used by objects of
+             those classes.
+
+          o  Statistics about all classes, including the percentage of space
+             used by each class.
+
+          o  Structure of the clusters and groups within an object space,
+             including any 'holes' in the file.
+
+          o  A list of object id's, class id's, size and file location for all
+             objects in each cluster.
+
+          o  A list of object id's, class id', size and file position for all
+             objects in each cluster.
+
+	  Dr. OS also has:
+
+          o  A mechanism for displaying any part of the file in hex, both
+             forwards and byte-reversed.  This can be used to dump any object
+             or cluster of objects in hex once you know the file location of
+             the object or cluster.
+
+          o Display of any ISO connections in the file, displaying the
+            internal name of the target object space, the object and class of
+            the connected object and the defining channel's classname.
+
+          o Ability to get and execute a shell command.
+
+          o A sub-function which enables the user to search for classnames in
+            a file with the metacharacters '*' and '?'.  For files with many
+            classes, this can help in determining the presence or absence of a
+            particular class in a file.
+
+          o Ability to deposit a byte anywhere in the file.
+           
+          What Dr. OS cannot do:
+
+          - Display formatted instance data, including information about
+            channels.
+           
+          In this document, program output will be surrounded by the following
+          fence:
+
+          vvvvvvvv program output vvvvvvvv
+          ^^^^^^^^ end of program output ^^^^^^^
+           
+           
+          
+		To activate Dr. OS, you simply type 'dros'.  You may also
+	  specify a file name of a filed object space on the command line
+	  using the '-f' option.
+
+                If your filed object space is corrupt in some way, and
+          Dr. OS is not able to read it without core-dumping, use the -m
+          option on the command line ($ dros -m [-f filename]) to run a
+          minimal Dr. OS.  In minimal mode, Dr. OS will open the file
+          and read the object space file header only (Dr. OS normally reads
+          the entire object space when it starts up), then prompt you to
+          enter a command from a subset of the usual list of commands.
+           
+          vvvvvvvv program output vvvvvvvv
+          Dr. OS, V4.5
+          [Dr.OS]           
+          ^^^^^^^^ end of program output ^^^^^^^
+           
+		If you see the prompt you can infer that at least the file
+	  header of the filed object space was readable and understood by
+          Dr. OS.  Dr. OS also tries during activation to read the entire
+          object space file and gather and store information about the object
+          space that it may need later.  If Dr. OS can successfully read the
+          file, you can then select a command from the following list.
+          (If the file is corrupt or only partially written, there will only
+          be a limited amount of information that this utility can find.  In
+          that case, the list of accepted commands will be shorter.)  You can
+          get this list of commands any time you are at the [Dr.OS] prompt
+          by typing '?'.
+          
+          vvvvvvvv program output vvvvvvvv
+          [Dr.OS] ?
+             valid commands are :
+             q - quit
+             h - display os header
+             c - display class info
+             C - display cluster statistics
+             D - deposit a byte into the file
+             f - show object/classid/size/file pointer by cluster
+             g - display general information
+             G - display Group statistics
+             i - display ISO information
+             I - display summary ISO information
+             L - open a logfile. Subsequent output goes to the file
+                 as well as the standard output.
+             o - show object/classid/size/file pointer by object
+             O - dump an object in hex
+             s - gather channel and VLA statistics on an OS
+             u - get and execute a shell command
+             x - display the file in hex
+             X - display the file in hex (byte reversed)
+
+          ^^^^^^^^ end of program output ^^^^^^^
+                     
+		Here is what each option is and what it could be used for.
+           
+
+          ***************
+          ***************
+          The 'q' command
+          ***************
+          ***************
+
+          Exit the program.  Dr. OS is not built on top of OM, therefore,
+          it is not neccessary to worry about a graceful exit.  CTRL-C works
+          just as well.
+	     
+
+          ***************
+          ***************
+          The 'h' command
+          ***************
+          ***************
+
+          Display information from the OS file header, which is the first 1024
+          bytes of the file.  Here is an example of an OS header:
+           
+          vvvvvvvv program output vvvvvvvv
+      
+          OSheader contents ------------------------------------
+          OM version            4.5
+          File size             151304
+          Spacemap size         2048
+          Cluster 0 size        14792
+          Cluster 0 file loc    136528
+          OSO file loc          150220
+          OSO instance file loc 150288
+          Cluster 0 inst loc    150224
+          OS object id          0
+          OSO filed classid     7
+          OSO classname         OMFiledOS
+          Appl ver file loc     0
+          Num appl versions     0
+          Write OS start time   Wed May 24 09:43:01 1989
+          Write OS end time     Wed May 24 09:43:08 1989
+          Write OS error msg    Successful write
+          System name           CLIX
+          Nodename              oprah
+          Unix release          3.1
+          Unix version          r.0.0.24
+          Processor             IP32C
+          -------------------------------------------------------
+          -------------------------------------------------------
+
+          ^^^^^^^^ end of program output ^^^^^^^
+           
+          There is critical information stored here which could potentially be
+          of use to someone unable to reload a filed object space.  For
+          instance, the oid of the OSO will be 0 unless an application has
+          changed it.  Knowing that this oid is not 0 could be useful.  The
+          >Cls0 size:< field tells you the minimum number of bytes of memory
+          that will be needed by OM to load the file.  (OM will always read in
+          Cluster 0 when loading a filed object space, though user clusters
+          are not read in until one of their objects is referenced.)  Another
+          useful field is the >OSO classname<.  This field is the classname of
+          the object space object.  This classname must be defined to the
+          running system trying to load this OS or the load will fail.
+           
+           
+          ***************
+          ***************
+          The 'c' command
+          ***************
+          ***************
+
+          This command places you in an environment where you can get more
+          specific information about the classes in the file.  It has its own
+          prompt:
+           
+          vvvvvvvv program output vvvvvvvv
+           
+          Class-display>
+           
+          ^^^^^^^^ end of program output ^^^^^^^
+           
+          Typing a '?' (or any illegal option) will display:
+           
+          vvvvvvvv program output vvvvvvvv
+
+	  ===== Options are =====
+	  q - to quit.
+	  a - all classes sorted ascendingly by name.
+	  A - all classes sorted ascendingly classid).
+	  d - all classes srted decsendingly by name.
+	  D - all classes sorted decsendingly by classid).
+	  u - get and execute a shell command.
+	  c - specific class description by class id.
+	  n - get specific subsets of classnames using '*' and '?' metacharacters.
+          Default display is name only. Use '-l' after name to display statistics of
+          the classes. Use -C to display in columns.
+
+          ^^^^^^^^ end of program output ^^^^^^^
+           
+	  The a,A,d,and D commands all display the same information, just
+          sorted differently.  For example, here is the output from the 'a'
+          command, which displays the classes sorted in ascending sequence by
+          the name.
+           
+          vvvvvvvv program output vvvvvvvv
+
+          Class-display> a
+          ------Class OMCluster (version 4.0) ------
+          Classid: 1  opp ver: 4.5  Num of objs: 1  Active Subclasses 1  Oid: 6
+               Number of parents: 1  Component size: 64
+            Ancestry: 
+              Root    Classid: 0   Offset: 0
+                 Number of variable length arrays: 0
+                 Number of channels: 0
+              OMCluster    Classid: 1   Offset: 8
+                 Number of variable length arrays: 2
+                   Element size: 4     Offset from object: 8
+                   Element size: 2     Offset from object: 16
+                 Number of channels: 1
+                   Offset from object: 36
+          ------Class OMFiledOS (version 4.0) ------
+          Classid: 7  opp ver: 4.5  Num of objs: 1  Active Subclasses 0  Oid: 4
+               Number of parents: 2  Component size: 0
+            Ancestry: 
+              Root    Classid: 0   Offset: 0
+                 Number of variable length arrays: 0
+                 Number of channels: 0
+              OMCluster    Classid: 1   Offset: 8
+                 Number of variable length arrays: 2
+                   Element size: 4     Offset from object: 8
+                   Element size: 2     Offset from object: 16
+                 Number of channels: 1
+                   Offset from object: 36
+              OMObjSpace    Classid: 4   Offset: 72
+                 Number of variable length arrays: 3
+                   Element size: 8     Offset from object: 264
+                   Element size: 132   Offset from object: 276
+                   Element size: 8     Offset from object: 284
+                 Number of channels: 4
+                   Offset from object: 356
+                   Offset from object: 360
+                   Offset from object: 364
+                   Offset from object: 368
+              OMFiledOS    Classid: 7   Offset: 0
+                 Number of variable length arrays: 5
+                   Element size: 4     Offset from object: 8
+                   Element size: 2     Offset from object: 16
+                   Element size: 8     Offset from object: 328
+                   Element size: 132   Offset from object: 340
+                   Element size: 8     Offset from object: 348
+                 Number of channels: 0
+          ------Class OMGroup (version 4.0) ------
+          Classid: 10  opp ver: 4.5  Num of objs: 1  Active Subclasses 0  Oid: 7
+               Number of parents: 1  Component size: 168
+            Ancestry: 
+              Root    Classid: 0   Offset: 0
+                 Number of variable length arrays: 0
+                 Number of channels: 0
+              OMGroup    Classid: 10   Offset: 8
+                 Number of variable length arrays: 1
+                   Element size: 8     Offset from object: 168
+                 Number of channels: 2
+                   Offset from object: 160
+                   Offset from object: 164
+          ------Class OMOSCO (version 4.1) ------
+          Classid: 11  opp ver: 4.5  Num of objs: 7  Active Subclasses 0  Oid: 2
+               Number of parents: 1  Component size: 104
+            Ancestry: 
+              Root    Classid: 0   Offset: 0
+                 Number of variable length arrays: 0
+                 Number of channels: 0
+              OMOSCO    Classid: 11   Offset: 8
+                 Number of variable length arrays: 5
+                   Element size: 4     Offset from object: 64
+                   Element size: 4     Offset from object: 72
+                   Element size: 2     Offset from object: 80
+                   Element size: 1     Offset from object: 88
+                   Element size: 2     Offset from object: 96
+                 Number of channels: 1
+                   Offset from object: 60
+          ------Class OMObjSpace (version 4.0) ------
+          Classid: 4  opp ver: 4.5  Num of objs: 0  Active Subclasses 1  Oid: 5
+               Number of parents: 1  Component size: 300
+            Ancestry: 
+              Root    Classid: 0   Offset: 0
+                 Number of variable length arrays: 0
+                 Number of channels: 0
+              OMObjSpace    Classid: 4   Offset: 8
+                 Number of variable length arrays: 3
+                   Element size: 8     Offset from object: 264
+                   Element size: 132   Offset from object: 276
+                   Element size: 8     Offset from object: 284
+                 Number of channels: 4
+                   Offset from object: 292
+                   Offset from object: 296
+                   Offset from object: 300
+                   Offset from object: 304
+          ------Class Root (version 3.0) ------
+          Classid: 0  opp ver: 4.5  Num of objs: 0  Active Subclasses 5  Oid: 3
+               Number of parents: 0  Component size: 8
+            Ancestry: 
+              Root    Classid: 0   Offset: 0
+                 Number of variable length arrays: 0
+                 Number of channels: 0
+          ------Class vla (version 4.0) ------
+          Classid: 64  opp ver: 4.5  Num of objs: 2  Active Subclasses 0  Oid: 8
+               Number of parents: 1  Component size: 32
+            Ancestry: 
+              Root    Classid: 0   Offset: 0
+                 Number of variable length arrays: 0
+                 Number of channels: 0
+              vla    Classid: 64   Offset: 8
+                 Number of variable length arrays: 4
+                   Element size: 1     Offset from object: 8
+                   Element size: 2     Offset from object: 16
+                   Element size: 4     Offset from object: 24
+                   Element size: 4     Offset from object: 32
+                 Number of channels: 0
+          Class-display> q
+
+     	  These commands are useful for scanning a list of classes looking
+          for a particular class.
+           
+          The 'c' command will display the same stats as above, but for
+          a particular classid.
+           
+          The 'n' command can be used as a 'directory' command to look for a
+          particular class or set of classes in an object space with many
+          classes.  It has its own prompt, as well:
+           
+          vvvvvvvv program output vvvvvvvv
+           
+          classes (-q to quit, -h for help)>
+           
+          ^^^^^^^^ end of program output ^^^^^^^
+           
+          typing '-h' reveals some help:
+           
+          vvvvvvvv program output vvvvvvvv
+
+          Use metacharacters and options as with the UNIX 'ls' command.
+	  Use * by itself for all classes, '*' means 0 or more characters,
+	  '?' means any single character.
+	  Default display is name only. Use '-l' after name to display
+  	  statistics of the classes. Use -C to display in columns.
+	  Use -s to display # of objects in the class(es). Examples:
+
+          classes (-q to quit, -h for help)>* -l
+          (would display statistics of all classes in the object space.)
+
+          classes (-q to quit, -h for help)>*command*
+          (would display all classes with the embedded word 'command')
+
+          classes (-q to quit, -h for help)>??grafix
+          (would display all classes whose names are 8 characters long
+           and which end with 'grafix')
+           
+          ^^^^^^^^ end of program output ^^^^^^^
+           
+          With that in mind, We look for all classes beginning with OM in our
+          test object space.
+           
+          vvvvvvvv program output vvvvvvvv
+
+          classes (-q to quit, -h for help)>OM*
+	  Found 6 (of 9) matches to pattern "OM*"
+	  OMCluster
+	  OMFiledOS
+	  OMGroup
+	  OMOSCO
+	  OMObjSpace
+	  OMTag
+
+          ^^^^^^^^ end of program output ^^^^^^^
+           
+          To exit this level, you must type '-q' instead of 'q'.
+
+
+          ***************
+          ***************
+          The 'C' command
+          ***************
+          ***************
+
+          This command displays information about the clusters in the file,
+          giving the breakdowns of class information per cluster.  Here is an
+          example of the output for a very small object space.
+           
+          vvvvvvvv program output vvvvvvvv
+           
+          >>Cluster   0 -----------
+
+            Offset(fp): 512     Objects: 10  
+            Oid: 0    Alloc/File size:    2488/2416   
+
+          - Class summary -
+          Classname      -classid-   -count-   -used-   -% used-   -avg size-
+          OMCluster           1          1       100       4.1%         100.0
+          OMFiledOS           7          1      1060      43.9%        1060.0
+          OMGroup            10          1       196       8.1%         196.0
+          OMOSCO             11          7      1060      43.9%         151.4
+
+          >>Cluster   1 -----------
+
+            Offset(fp): 2928    Objects: 2   
+            Oid: 10   Alloc/File size:     176/120    
+
+          - Class summary -
+          Classname      -classid-   -count-   -used-   -% used-   -avg size-
+          vla                64          2       120     100.0%          60.0
+
+
+          ^^^^^^^^ end of program output ^^^^^^^
+           
+	  In the first section, we learn that there are 312 objects in this
+	  cluster, and that a total of 36608 bytes are being taken up by
+	  objects.  The second section gives some very useful information about
+	  the classses in this cluster.  For each class of object found in the
+	  cluster, you see the class id number, the number of objects of that
+	  class, number of bytes used by objects of that class, and percent of
+	  the total cluster size.  The average size of an object is based on the
+          bytes used by objects of that class divided by the count of objects
+          of that class.
+           
+
+          ***************
+          ***************
+          The 'D' command
+          ***************
+          ***************
+
+          This command will allow you to change the filed object space.  It
+          allows you to deposit any byte value at any file location.  You
+          should be very careful when using this command.  If you are not, you
+          might cause the file to be unreadable by OM (or even Dr. OS).  You
+          will be prompted for the file offset of the byte you wish to change.
+          Dr. OS will then show you in hexadecimal what is already stored at
+          that location, and then prompt you for the value you wish to store
+          there.  You must enter the value in hex.
+
+          The following is an example of using the 'x' command with the 'D'
+          command to change a byte in the file.  First, 'x' is used to dump a
+          portion of the file.  From looking at the dump, the user decides that
+          byte 101 should be changed, so he issues the 'D' command to change
+          it.  He then uses the 'x' command again to make sure he changed the
+          correct byte.  (This is a contrived example.  It is not expected that
+          many users will have a use for the 'D' command.  Its purpose is to
+          help those who are experiencing object space file corruption and
+          need a way to 'repair' files.)
+
+          vvvvvvvv program output vvvvvvvv
+
+          [Dr.OS]  x
+
+          Starting byte/number of bytes (dec):100/20
+          100: 04000500 02000000 E80B0000 08800100 000000C1 | ....................
+          : q
+
+          [Dr.OS]  D
+          Enter the file location of the byte to be changed: 101
+          Current value of byte at loc. 101: 00
+          Enter new value in hexadecimal: db
+
+          [Dr.OS]  x
+
+          Starting byte/number of bytes (dec):100/20
+          100: 04db0500 02000000 E80B0000 08800100 000000C1 | ....................
+          : q
+
+          ^^^^^^^^ end of program output ^^^^^^^
+
+
+          ***************
+          ***************
+          The 'f' command
+          ***************
+          ***************
+
+          This comand is shows the same data per object as the 'o' command,
+          but you request the data not by object id but by cluster number(s).
+          For each cluster number specified, there will be displayed data on
+          each object in the cluster, given in the order that the object is
+          stored within the cluster (not necessarily ordered by object id).
+          You will prompted for the cluster number(s) and you will enter
+          either a single cluster number, a range of cluster numbers (e.g.,
+          6-10), or an 'A', which will cause all clusters to be listed.
+          Clusters are not necessarily written to file in numerical order.
+          The file pointer given for an object by this command and the 'o'
+          command is the offset (starting with zero) into the file where the
+          object resides.  The 'x' command can be used to dump in hexadecimal
+          the data at this location.  Below is an example of output from the
+          'f' command where the user requested only cluster 1.
+           
+          vvvvvvvv program output vvvvvvvv
+
+          Object/Classid/Size/File pointer lists by cluster
+
+          >>Cluster 1 (fp=2928 length=120)----------- 
+          11/64/60/2928      12/64/60/2988      
+           
+          ^^^^^^^^ end of program output ^^^^^^^
+           
+
+          ***************
+          ***************
+          The 'g' command
+          ***************
+          ***************
+
+          Display general information.  This is a useful command for giving the
+          big picture of what is in an object space.
+           
+          vvvvvvvv program output vvvvvvvv
+
+	  General statistics for OS /usr/tmp/os1
+	  OS creation date: 1:02 pm Oct 8,1988
+	  Filename: os12
+	  Total objects = 2014
+	  -- OSD of this oso --
+	  Int name: os1~100819871302~6DE1
+	  osname: /usr/tmp/os1
+	  OSO oid: 0     Group 0 oid: 1     osnum: 3
+	  Type: Filed  Flag(s) at write: Inuse Delete pending
+	  Spacemap size: 2048  # clusters: 6
+
+          Cluster   1 :  First byte: 512   | Length: 30600 | Last byte: 31111 
+
+          Cluster   2 :  First byte: 31112 | Length: 30668 | Last byte: 61779 
+
+          Cluster   3 :  First byte: 61784 | Length: 30668 | Last byte: 92451 
+
+          Cluster   4 :  First byte: 92456 | Length: 30668 | Last byte: 123123 
+
+          Cluster   5 :  First byte: 123128 | Length: 13396 | Last byte: 136523 
+
+          Cluster   0 :  First byte: 136528 | Length: 14792 | Last byte: 151319 
+
+          ^^^^^^^^ end of program output ^^^^^^^
+
+	  Note that the osname on line 7 may or may not be the same as the
+	  file name.  The cluster section will show the way that clusters are
+	  arranged in the file, as well as any holes that might exist in the
+	  file.  Holes result from clusters moving around in the file from run
+	  to run.  Some clusters might stay in position while others move about
+	  due to an increase or decrease in their size.
+           
+
+          ***************
+          ***************
+          The 'i' command
+          ***************
+          ***************
+
+          Display ISO information.  Objects can be connected via channels across
+          object spaces.  When this is the case, then each object space will
+          have an ISO entry for each object space that it has connections to.
+          An ISO entry is actually an object, and it contains information about
+          all the connections to the object space which it represents.  Put
+          another way, if object space 'A' has 10 connections to object space
+          'B' then there will be one ISO object in 'A' and one ISO object in
+          'B'.  Each ISO object will have data on 10 connections.  Mostly it is
+          the presence or absence of an ISO object which is useful.  If you
+          know that there should or should not be connections and this command
+          reveals the opposite of your expectations, then that could clue you
+          to a potential problem.  Here is an example of the output of this
+          command:
+           
+          vvvvvvvv program output vvvvvvvv
+           
+          >>Internal OS name of target OS: TESTF1~102319861647~64C5 | Oid of iso 15 
+             Dangles: 0 | Target iso oid: 15 | Flags: Target OS not loaded
+
+             Classid of To oid:  67 | Classname: A 
+             To oid:  10 | Channel  67. 3 (def class A)
+             Flags: (2 hex)(iso points to an object)
+             ------------------------------------------           
+          >>Internal OS name of target OS: TESTF2~102319861647~55CA | Oid of iso 16 
+             Dangles: 0 | Target iso oid: 15 | Flags: Target OS not loaded
+             Classid of To oid:  67 | Classname: A 
+             To oid:  11 | Channel  67. 3 (def class A)
+             Flags: (2 hex)(iso points to an object)
+             ------------------------------------------
+          ^^^^^^^^ end of program output ^^^^^^^
+
+		This indicates that there are two ISO objects.  That means that
+	  this object space has connections to two other object spaces.  The
+	  internal name of the target OS can be a clue to the target.  The
+	  characters up to the first tilde are the first 13 characters of the
+	  filename.  The filename is stripped of directory prefixes before
+	  deriving the internal name.  The characters between the first and
+          second tilde in the internal name are the date and time of that
+          object space's creation in the form mmddyyyyhhmm, where the hhmm is in
+          military time.  This might be useful in identifying a target OS.  The
+          section which refers to each connection identified by this ISO looks
+          like this:
+           
+             Classid of To oid:  67 | Classname: A 
+             To oid:  11 | Channel  67. 3 (def class A)
+             Flags: (2 hex)(iso points to an object)
+           
+          This tells us oid 11, class 'A' (classid 67), has an iso connection
+          over channel 67.3 (which was defined by class 'A'). 
+           
+
+          ***************
+          ***************
+          The 'I' command
+          ***************
+          ***************
+
+          Display summary ISO information.
+          vvvvvvvv program output vvvvvvvv
+          -- ISO links by class --
+           Links   Classname
+             150   B
+          ^^^^^^^^ end of program output ^^^^^^^
+           
+
+          ***************
+          ***************
+          The 'o' command
+          ***************
+          ***************
+
+          This command will gives information on any object or range of object
+          id numbers in the file.  You will be prompted for the object id(s)
+          of the objects you wish, and you will enter either a single object
+          id, a range of object id's (e.g., 500-2000), or an 'A', which will
+          cause information for ALL objects in the file to be listed.  The
+          object data will be displayed in order of object id, not by the
+          order in which the objects were written to file (objects are not
+          written in consecutive order, but by how they are stored within
+          their clusters).  Below is an example of requesting the 'A' option
+          of the 'o' command:
+           
+          vvvvvvvv program output vvvvvvvv
+
+          There are 12 objects in this object space, id's ranging from 0 to 12
+
+          >>Objects 0 through 11----------- 
+           Object   Cluster   Classid   Size   File Pointer
+                0       0         7     1060         1868
+                1       0        10      196          512
+                2       0        11      164          708
+                3       0        11      132          872
+                4       0        11      164         1004
+                5       0        11      156         1168
+                6       0        11      148         1324
+                7       0        11      148         1472
+                8       0        11      148         1620
+          9 -- Unused object id
+               10       0         1      100         1768
+               11       1        64       60         2928
+               12       1        64       60         2988          
+           
+          ^^^^^^^^ end of program output ^^^^^^^
+           
+
+          ***************
+          ***************
+          The 'O' command
+          ***************
+          ***************
+
+	  This command allows you step through the file an object at
+	  a time.  In order to use it, you must know the file pointer
+	  of the object you wish to begin with (or the file pointer of
+	  a cluster).  You will first see a hexadecimal dump of the
+	  header and instance data of the object at the given file
+	  pointer, similar to a hex dump the "x" command would give
+	  you, but it will include data only belonging to one object.
+	  You then have the option of continuing to the next object in
+	  the file by typing 'y' or just a carriage return to the
+	  "Continue?" prompt, or typing 'q' to quit this option.
+
+	  In the example below, the user began dumping objects at file
+	  location 512, knowing that objects began immediately after
+	  the 512-byte file header.  The user dumped the first three
+	  objects of the file and then quit.
+
+
+          vvvvvvvv program output vvvvvvvv  
+           
+	  Enter file location of object to dump: 512
+
+	     512 4a000000 20000000 02000000 20000000 | J... ....... ...
+	     528 01000000 00000000 00000000 18000000 | ................
+	     544 03000000 41424344 45464748 41414344 | ....ABCDEFGHAACD
+	     560 45464748 00000000 01000000 02000000 | EFGH............
+	     576 03000000                            | ....
+	  Continue? ['q' to quit]:
+
+	     580 4a000000 20000000 02000000 20000000 | J... ....... ...
+	     596 01000000 00000000 00000000 18000000 | ................
+	     612 03000000 41424344 45460080 41414500 | ....ABCDEF..AAE.
+	     628 10000080 00000000 01000000 02000000 | ................
+	     644 03000000                            | ....
+	  Continue? ['q' to quit]:
+
+	     648 4a000000 20000000 02000000 20000000 | J... ....... ...
+	     664 01000000 00000000 00000000 18000000 | ................
+	     680 03000000 41424344 45460080 41414a00 | ....ABCDEF..AAJ.
+	     696 38000080 00000000 01000000 02000000 | 8...............
+	     712 03000000                            | ....
+	  Continue? ['q' to quit]: q
+
+          ^^^^^^^^ end of program output ^^^^^^^
+
+
+	  In displaying an object, dros reads the integer at the file
+	  location specified by the user to determine the size of the
+	  object.  Then, that number of bytes minus the size of an OM
+	  object header (eight bytes) is read from the file, and the
+	  data read is displayed in hexadecimal and ASCII.  Note: When
+	  an object is written to a file, the first integer of the
+	  object header is stripped off, so that only the size field of
+	  the object header and the object instance data is written.
+	  The size written includes the entire object header even though
+	  only part of the header is written.  The size field also
+	  contains flags in the lower three bits, which should be ignored
+	  anyway, since all objects are 8-byte aligned.
+
+	  Entering a random file pointer to the "O" command could cause
+	  read errors if the file pointer does not happen to point to an
+	  object header.
+
+	  In the above example, the size field of each object contains 4a
+	  (hex).  To determine the actual size of the object in the file,
+	  strip off the flag bits, to give you 48 (hex), or 72.  Subtract
+	  4 from this (for the 4 bytes of the header not written to file),
+	  to get the file size of the object, 68 bytes.
+
+
+          ***************
+          ***************
+          The 'x' command
+          ***************
+          ***************
+
+          This command is used to dump parts of the file in hex and in ascii. 
+          After 20 bytes of data and a fence, the same 20 bytes are shown
+          in ascii with a period (.) representing an unprintable character.
+          The period character is also displayed as a period.  You are
+          prompted with
+           
+          vvvvvvvv program output vvvvvvvv  
+           
+          Starting byte/number of bytes (dec):
+           
+          ^^^^^^^^ end of program output ^^^^^^^
+           
+          This means enter the first byte you wish to see, followed by a slash,
+          followed by the number of bytes that you wish to see in a screen.
+          You will be able to go forwards or backwards through the file.  All
+          numbers are in decimal.  When '0/400' was entered, the following
+          was displayed:
+           
+          vvvvvvvv program output vvvvvvvv
+
+            0: 04000400 01010000 00910000 00000000 00000000 | ....................
+           20: 00200000 008F0000 008F0000 00020000 00020000 | . ..................
+           40: D4020000 08020000 00000000 00000000 00000000 | ....................
+           60: 00000000 00000000 00000000 00000000 00000000 | ....................
+           80: 00000000 00000000 00000000 00000000 00000000 | ....................
+          100: 00000000 00000000 00000000 00000000 00000000 | ....................
+          120: 00000000 00000000 00000000 00000000 00000000 | ....................
+          140: 00000000 00000000 00000000 00000000 00000000 | ....................
+          160: 00000000 00000000 00000000 00000000 00000000 | ....................
+          180: 00000000 00000000 00000000 00000000 00000000 | ....................
+          200: 00000000 00000000 00000000 00000000 00000000 | ....................
+          220: 00000000 00000000 00000000 00000000 00000000 | ....................
+          240: 00000000 00000000 00000000 00000000 00000000 | ....................
+          260: 00000000 00000000 00000000 00000000 00000000 | ....................
+          280: 00000000 00000000 00000000 00000000 00000000 | ....................
+          300: 00000000 00000000 00000000 00000000 00000000 | ....................
+          320: 00000000 00000000 00000000 00000000 00000000 | ....................
+          340: 00000000 00000000 00000000 00000000 00000000 | ....................
+          360: 00000000 00000000 00000000 00000000 00000000 | ....................
+          380: 00000000 00000000 00000000 00000000 00000000 | ....................
+          :
+
+          ^^^^^^^^ end of program output ^^^^^^^
+           
+          The colon (:) is a prompt for further viewing.  Typing '?' at this
+          prompt dipslays the options for hex viewing:
+           
+          vvvvvvvv program output vvvvvvvv
+
+	  q - quit
+	  f  page forward
+	  F  page forward (byte reversed)
+	  b  page backward
+	  B  page backward (byte reversed)
+	  - (minus) move back one byte
+	  + (plus)  move forward one byte
+	  t this screen
+	  T this screen (byte reversed)
+
+          ^^^^^^^^ end of program output ^^^^^^^
+           
+	  The 'f' will show another screen of data, 'F' will display the next
+          page byte reversed.  The 'b' will get back to the previous page,
+          and the 'B' option will do it byte reversely.  The '+' and '-'
+          options will adjust the view by one byte at a time.  Remember, the
+          displacements into the file are in decimal.  The ability to see
+          fields byte reversed is very handy for looking at integers.  Here
+          are the first 60 bytes of the file displayed byte-reversed.  All
+          these values are integer values.  You can see that it is easier to
+          interpret them in this format.  The '<-' symbol points to the 0th
+          byte.
+           
+          vvvvvvvv program output vvvvvvvv
+
+	  00000000 00000000 00009100 00000101 00040004 <-    0 | ....................
+	  00000200 00000200 00008F00 00008F00 00002000 <-   20 | .................. .
+	  00000000 00000000 00000000 00000208 000002D4 <-   40 | ....................
+                   ................
+                   ................
+                   ................
+
+          ^^^^^^^^ end of program output ^^^^^^^
+
