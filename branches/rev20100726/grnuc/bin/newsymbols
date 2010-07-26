@@ -1,0 +1,121 @@
+#This is a shell script to find new imported symbols
+
+case $# in 
+0|1|2)	echo 'Usage: newsymbols shlib_host_file shlib_tag files' 1>&2; exit 1;;
+esac
+
+tmpfile=/usr/tmp/tmp10.file
+shlib_file=$1; shift
+shlib_tag=$1; shift
+
+if  test ! -f $shlib_file
+then 
+	echo $shlib_file: No such file; exit 1
+fi
+
+first_time=1
+
+trap	'if test -f /usr/tmp/newsym.$$
+	 then
+	   rm -f /usr/tmp/newsym.$$;
+	 fi
+	 if test -f /usr/tmp/newsym1.$$
+	 then
+	   rm -f /usr/tmp/newsym1.$$;
+	 fi
+	 if test -f /usr/tmp/tmp10.file
+	 then
+	   rm -f /usr/tmp/tmp10.file;
+	 fi
+	 exit 1' 1 2 15
+
+if test -f newsym.h
+then
+	rm -f newsym.h
+fi
+
+if test -f newsym.c
+then
+	rm -f newsym.c
+fi
+
+if test -f newsymar.c
+then
+	rm -f newsymar.c
+fi
+
+if test -f newsym.sl
+then
+	rm -f newsym.sl; 
+fi
+
+if test -f newsym.bt
+then
+	rm -f newsym.bt; 
+fi
+
+for i in $*
+do
+	if test $first_time -eq 1
+	then 
+	   first_time=0
+	   dump -vt $shlib_file | grep extern | awk '{print $5,$9 }' > /usr/tmp/newsym.$$
+	   echo 'shlib finished' >> /usr/tmp/newsym.$$
+	fi
+
+	if test ! -f $i
+	then 
+	   echo $i: No such file
+	else
+	   dump -vh $i | 
+awk '
+BEGIN {
+ count = 1
+ text = 0
+ data = 0
+ tmp_file = "'$tmpfile'"
+}
+
+/\./	{
+	   if (substr($1,1,1) == ".")
+	   {
+	      if (substr($1,2) == "text")
+	      {
+		text = count
+	      }
+	      else
+	      {
+		 if (substr($1,2) == "data")
+		 {
+		    data = count
+		 }
+	      }
+	      count++
+	   }
+	}
+END {
+	printf "data=%d\n",data > tmp_file
+	printf "text=%d\n",text > tmp_file
+     }'
+chmod +x $tmpfile
+. $tmpfile
+	   dump -vt $i | grep extern | awk '{print $5,$9,$4}' > /usr/tmp/newsym1.$$
+	   awk -f `whence newsymbols`.awk data_section=$data text_section=$text file=$i tag=$shlib_tag /usr/tmp/newsym.$$ /usr/tmp/newsym1.$$
+	fi
+done
+
+if test -f /usr/tmp/newsym.$$
+then
+	rm -f /usr/tmp/newsym.$$; 
+fi
+
+if test -f /usr/tmp/newsym1.$$
+then
+	rm -f /usr/tmp/newsym1.$$; 
+fi
+
+if test -f /usr/tmp/tmp10.file
+then
+	rm -f /usr/tmp/tmp10.file; 
+fi
+exit 0

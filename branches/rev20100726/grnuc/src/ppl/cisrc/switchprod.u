@@ -1,0 +1,1167 @@
+/*
+Name
+        switchprod.u
+
+Description
+        Switch Products
+
+History
+        jrg     06/11/90    removed NC code for DB
+        DLB     06/18/90    numerous changes
+        DLB     07/12/90    fixed prod_dat path clash, invalid prod entry etc.
+        Ashok	01/04/91    modified to accept key-in for product name.
+        mrm     08/15/91    rearranged functions to prevent undefined symbol
+                            errors when compiling with -Xexternfn
+        mrm     11/04/91    changed to read UMS-compiled command tables
+        mrm     12/13/91    reattach the menu intercepts for popups
+        mrm     03/27/92    fix debug printf when find_file fails
+        wdg     07/dd/92    fix numerous bugs.  don't run startup cmds for
+                            previously loaded product.
+        elp     07/22/92    put cmd keys on queue instead of cmd string
+                            so invisible startup cmds will be run.  Don't
+                            run startup cmds for previously loaded dependencies
+                            of product to switch to.
+        prt     09/01/92    always run startup files on switch
+        mrm     11/23/92    push session init commands on before file inits
+        mrm     12/10/92    added invocation of checkswitch, converted to UMS,
+                            cleaned up the code quite a bit (although it's
+                            still nothing to be proud of)
+	jet	01/26/93    Changed to display logoname instead of product name
+			    disabled search path display
+        mrm     03/29/93    Specify response to ci$getevent to work around
+                            problems in CIgetevent (TR119303265 & TR119303847)
+        mrm     03/31/93    ignore products with no dependencies (TR119303907)
+        mrm     04/06/93    weed out different UI versions
+        mrm     07/08/93    tweaked previous fix to allow applications (NC
+                            post-processors) to have the strings "01" or "02"
+                            in the product names
+
+        gvk     08/15/93    As per John Thompson's notes, added checks to 
+	                    suppress products with dependency on "Noswitch".
+	                    
+	hari	11/28/96    Dummy checkin
+*/
+
+#include <stdio.h>
+#include <string.h>
+#include "ciminimum.h"
+#include "cimacros.h"
+#include "FI.h"
+#include "CIforms.h"
+#include "exmacros.h"
+#include "igr.h"
+#include "griodef.h"
+#include "godef.h"
+#include "gr.h"
+#include "igrdp.h"
+#include "go.h"
+#include "ex.h"
+#include "grio.h"
+#include "griomacros.h"
+#include "msdef.h"
+#include "msmacros.h"
+#include "EXproduct.h"
+#include "grmessage.h"
+
+#define FORM     2
+#define PRODUCT 16
+#define PATH    17
+#define CUR_PROD 13
+
+#define ShortFormat     0       /* arguments to EX_get_srch_path1 */
+#define LongFormat      1
+
+#define verbose(x) if (verbose_flag) x
+
+struct command_list
+{
+    char key[32];
+    struct command_list *next;
+};
+
+extern char EX_runname[];
+
+extern int MSmessage();
+extern int EX_peek_event_queue();
+extern int EX_get_prod_info();
+extern int EX_get_prod_flag();
+extern int EX_set_search_path();
+extern int EX_get_srch_path1();
+extern int EX_context_switch_to();
+extern int EX_getpath();
+extern int EX_flush_event_queue();
+extern int COvsd_empty();
+extern int ci_notification();
+extern void GRcustomize_menus();
+extern Form GRgetbarmenu();
+
+extern char        *getenv();  // cci barfs on stdlib
+
+Form *switchprod_form;
+char *fp;
+char *fp2;
+char *logo;
+char logoname[128];
+char product[2048];
+char path[1024];
+char current_product[2048];
+char current_path[1024];
+char temp[1024];
+char line[1024];
+char config_dir[1024];
+char baseprod[15];
+int ret0;
+int ret1;
+int ii;
+int form_is_displayed;
+int sts;
+int verbose_flag;
+struct CIform_st form_st;
+
+char prev_product[20];
+
+
+/*
+Name
+        setup_current_path
+
+Description
+        This function initializes the global array "current_path" with a
+        dependency list of active products (I think).
+*/
+
+int setup_current_path()
+{
+    verbose(printf("switchprod.setup_current_path >\n"));
+    ii = 0;
+    sts = 1;
+    current_path[0]=0;
+    while (sts)
+    {
+        sts = ex$get_path(index = ii,
+                          path = temp,
+                          len = sizeof(temp),
+                          type = EX_CONFIG_PATH);
+        if (sts)
+        {
+            sprintf(&current_path[strlen(current_path)], "%s:",temp);
+        }
+        ii = ii + 1;
+    }
+    verbose(printf("switchprod.setup_current_path <\n"));
+    return(TRUE);
+}
+
+/*
+Name
+        get_product_path
+
+Description
+        This function returns the directory spec to a product, ie product
+        "Ems" might return path "$INGRHOME/ems".
+*/
+int get_product_path(product, path)
+char *product;
+char *path;
+{
+    sts = ex$get_prod_info(runname = product,
+                           config_flag = 1,
+                           pstring = &path);
+    if (!(sts & 1))
+        path[0] = 0;
+
+    return(TRUE);
+}
+
+/*
+Name
+        get_base_product
+
+Description
+        This function fills in the global character array "baseprod" with the
+        name of the executable as determined through the command line
+        arguments.
+*/
+
+void get_base_product()
+{
+    int argc_p;
+    char **argv_p, **envp_p, *c;
+
+    getargs(&argc_p, &argv_p, &envp_p);
+    if (c = strrchr(*argv_p, '/'))
+        c = c + 1;
+    else /* there were no '/' characters in the string */
+        c = *argv_p;
+    strcpy(baseprod, c);
+}
+
+/*
+Name
+        read_products
+
+Description
+        This function displays in the form the products listed in the product
+        data file that are built on the active base product (eg Model, Draft,
+        or Mds).
+*/
+
+int read_products()
+{
+    char *ptr, *c;
+    char buf[512];
+    char prodpath[1024]; 
+    char *ui01, *ui02, *ui99, *invalid_ui_num, deplist[BUFSIZ];
+    char *dep;
+    char depend_str[1024];
+    int next_product;
+
+    verbose(printf("switchprod.read_products >\n"));
+
+    ex$message(msgnumb = GR_I_ReadingProducts);
+
+    ret0 = 1;
+    prodpath[0] = 0;
+    current_product[0] = 0;
+
+    get_product_path(baseprod, prodpath);
+    if (!prodpath[0])
+    {
+        /* make direct UMS call since ppl can't handle ex$message expansion */
+        UMSGetByNum(buf, GR_E_NotInProdData, "%s", baseprod);
+        status(buf);
+        goto ret_error_exit;    
+    }
+
+    sprintf(buf, "%s/product_data", GRget_ingrhome(NULL));
+    fp = (char *) fopen(buf, "r");
+    if (!(int) fp)
+    {
+        ex$message(msgnumb = GR_E_CantReadProdData);
+        goto ret_error_exit;
+    }
+
+    // determine the current User Interface version
+    ui01 = "ui01";
+    ui02 = "ui02";
+    ui99 = "ui99";     // Paul sez to assign this one to customers
+    ii = BUFSIZ;
+    EX_get_srch_path1(EX_runname, ShortFormat, deplist, &ii);
+    verbose(printf("\tdeplist: %s\n", deplist));
+    if (strstr(deplist, ui01))
+        invalid_ui_num = ui02;
+    else if (strstr(deplist, ui02))
+        invalid_ui_num = ui01;
+    else if (strstr(deplist, ui99))
+        invalid_ui_num = ui99;
+    else
+        invalid_ui_num = NULL;
+
+    next_product = 0;
+    while (fgets(line, 1024, fp))
+    {
+        verbose(printf("\tchecking: %s", line));        // \n included in line
+
+        if (line[0] == 0 || line[0] == '#' || line[0] == '\n') continue;
+        line[strlen(line) - 1] = 0;
+
+        // Add some bullet-proofing for invalid product data entries
+        if (line[0] != '"')
+        {
+            UMSGetByNum(buf, GR_E_InvalidProductDataEntry, NULL);
+            status(buf);
+            fprintf(stderr, "%s\n\t%s\n", buf, line);
+            continue;
+        }
+
+        ptr = (char *) strrchr(&line[1], '"'); /* product */
+        if (ptr == NULL)
+        {
+            // more bullet-proofing, the Navy hit this once
+            UMSGetByNum(buf, GR_E_InvalidProductDataEntry, NULL);
+            status(buf);
+            fprintf(stderr, "%s\n\t%s\n", buf, line);
+            continue;
+        }
+
+        strncpy(product, &line[1], strlen(&line[1]) - strlen(ptr));
+        product[strlen(&line[1]) - strlen(ptr)] = 0 ;
+        verbose(printf("\tproduct \"%s\"\n", product));
+
+        /* skip if an IGR entry */
+        if (!strncmp(product, "IGR", 3))
+        {
+            verbose(printf("\tIGR entry, skipping\n"));
+            continue; 
+        }
+
+        /* skip if a Model entry-DLB*/
+        if (!strncmp(product, "Model", 5))
+        {
+            verbose(printf("\tModel entry, skipping\n"));
+            continue; 
+        }
+
+        // skip Fenuc
+        if (!strncmp(product, "Fenuc", 5))
+        {
+            verbose(printf("\tFenuc entry, skipping\n"));
+            continue; 
+        }
+
+        ii=1024;
+        path[0]=0;
+        ret0 = EX_get_srch_path1(product, LongFormat, path, &ii);
+        if (!(1 & ret0))
+        {
+            ret0 = 1;
+            verbose(printf("\tfailed to get search path, skipping\n"));
+            continue;
+        }
+
+        // Skip if based on a different UI version.  This may be removed when
+        // (1) FORMS provides a way to flush the symbol cache, or (2) EMS and
+        // all apps rename their symbol files so that there are no like-named
+        // files in different UI config directories.  In the mean time,
+        // prevent swapping between different UI versions since the symbol
+        // slots do not match, and the resulting menus are unusable.
+
+        if (invalid_ui_num)
+            if (strstr(path, invalid_ui_num))
+            {
+                verbose(printf("\tinvalid ui number, skipping\n"));
+                continue; 
+            }
+
+        // If the path does not have multiple dependencies, then it is not a
+        // "real" product.  It is probably a low-level dependency product
+        // (e.g. bspmath) or a UI product (e.g. EMS-UI01 or I/MDS-UI01).  It
+        // is particularly important to weed out the MDS UI stuff here, or the
+        // strstr to follow will mistakenly assume that MDS-UI01 et al are
+        // valid products.  This happens because MDS UI is under the MDS
+        // platform, rather than being under a separate product (like EMSPP
+        // and friends).  See TR119303907.
+
+        if (c = strchr(path, (int)':'))
+            if (strchr(c + 1, (int)':') == NULL)
+            {
+                verbose(printf("\tonly one dependency, skipping\n"));
+                continue;
+            }
+
+	/* Check if the product dependency shows "Noswitch" in its path.
+	   Noswitch products should not be shown on the form*/
+	
+        dep=depend_str;
+        ex$get_product_data(in_runname=product, dependency=&dep);
+        if (strstr(dep, "Noswitch"))
+        {
+            verbose(printf("\tProduct %s Dependent on Noswitch, skipping\n", product));
+            continue; 
+        }
+
+        /* Is it dependent on prodpath? */
+        if (strstr(path, prodpath))
+        {
+            if (!strcmp(product,EX_runname))
+            {
+                /* Got the current product */
+                verbose(printf("\tgot the current product\n"));
+                ii=1024;
+                current_path[0]=0;
+                ret0 = EX_get_srch_path1(product, ShortFormat, 
+                                         current_path, &ii); 
+                if ((ret0 & 1) ^ 1)
+                {
+                    ret0 = 1;
+                    continue;
+                }
+                strcpy (current_product, product);
+            }
+            else
+            {
+                /* Got something other than the current product */
+                logo = &logoname[0];
+                ex$get_prod_info ( runname = product, pstring = &logo );
+                verbose(printf("\tadding %s to the form\n", logoname));
+                FIfld_set_list_text(switchprod_form, PRODUCT, next_product,
+                                    0, logoname, 0);
+                next_product = next_product + 1;
+            }
+        }
+        else
+        {
+            verbose(printf("\tnot dependent on %s, skipping\n", prodpath));
+            continue; 
+        }
+    }
+
+  ret_error_exit:
+    status("");
+    if ((int) fp) fclose (fp);
+    fp = 0;
+    if (next_product == 0) ret0 = 0;
+    verbose(printf("switchprod.read_products <\n"));
+    return ret0;
+}
+
+int init_form()
+{
+    ret0 = 1;
+
+    verbose(printf("switchprod.init_form >\n"));
+    if (!(int) switchprod_form)
+    {
+        ret1 = FIf_new(FORM, "swipro", ci_notification, &switchprod_form);
+        if (ret1) goto ret_error_exit;
+    }
+    if (switchprod_form)
+    {
+        ret1 = FIf_set_cmd_oid_os(switchprod_form, MY_ID, OM_Gw_current_OS);
+        if (ret1) goto ret_error_exit;
+
+        ret0 = setup_current_path();
+        if (!(1 & ret0)) goto ret_error_exit;
+
+        ret0 = read_products();
+        if (!(1 & ret0))
+        {
+            ex$message(msgnumb = GR_I_NoMoreProducts);
+            goto ret_error_exit;
+        }
+
+//        ret1 = FIg_set_text(switchprod_form, PATH, current_path);
+//        if (ret1) goto ret_error_exit;
+
+        logo = &logoname[0];
+        ex$get_prod_info ( runname = EX_runname, pstring = &logo );
+        ret1 = FIg_set_text(switchprod_form, PRODUCT, logoname);
+        if (ret1) goto ret_error_exit;
+
+        ret1 = FIfld_set_text(switchprod_form, CUR_PROD, 0, 0, logoname, 0);
+
+    }
+
+  ret_error_exit:
+    if (ret1)
+    {
+        ret1 = 0;
+        ret0 = -1;
+    }
+    verbose(printf("switchprod.init_form <\n"));
+    return ret0;
+}
+
+int display_form()
+{
+    int sts;
+
+    verbose(printf("switchprod.display_form >\n"));
+    sts = FIf_display(switchprod_form);
+    if (sts == FI_SUCCESS)
+    {
+        sts = TRUE;
+        form_is_displayed = 1;
+    }
+    else
+        sts = FALSE;
+    verbose(printf("switchprod.display_form <\n"));
+    return(sts);
+}
+
+/*
+Name
+        get_exec_flag
+
+Description
+        This function scans a command table entry for an exec flag (EX_SINIT,
+        EX_FINIT, etc.)
+*/
+
+int get_exec_flag(cmd_line, exec_flag)
+char *cmd_line;
+int *exec_flag;
+{
+    char *pos, *exec_end;
+
+    *exec_flag = 0;
+
+    if (pos = strchr(cmd_line, ','))            /* scan past message key... */
+        if (pos = strchr(pos + 1, ','))         /* ...and command key... */
+            if (pos = strchr(pos + 1, ','))     /* ...and classname... */
+                if (pos = strchr(pos + 1, ',')) /* ...and command type... */
+                    if (strlen(pos + 1))        /* ...and check exec flag */
+                    {
+                        /* exec flag present - find its end */
+                        pos = pos + 1;
+                        if (exec_end = strchr(pos, ','))
+                            *exec_end = NULL;
+
+                        /* eliminate blanks */
+                        while (isspace(*pos))
+                            pos = pos + 1;
+
+                        /* read the flag */
+                        *exec_flag = atoi(pos);
+                    }
+    return(*exec_flag);
+}
+  
+int switch_product(prod)
+char *prod;
+{
+    char *c0, *c1;
+    char *prod0;
+    char *ptr;
+    char *c, buf[64];
+    char depends[1024];
+    char basedepends[1024];
+    char barmenuname[32];
+    char prevprod[32];
+    char prodpath[1024];
+    int sts, msg;
+    int exec_flag, xx;
+    int size, response;
+    int active;
+    Form barmenu;
+    struct command_list *sinit_commands, *finit_commands, *p_command_list;
+
+    sinit_commands = NULL;
+    finit_commands = NULL;
+
+    ex$clear_event_queue ();
+
+    /* get a full-path list of dependencies for the target product */
+
+    ii=1024;
+    path[0]=0;
+    sts = EX_get_srch_path1(prod, LongFormat, path, &ii);
+    if (!(sts & 1))
+    {
+        /* make direct UMS call since ppl can't handle ex$message expansion */
+        UMSGetByNum(buf, GR_E_CantFindProduct, "%s", prod);
+        status(buf);
+        goto ret_error_exit;
+    }
+
+    /* clear the form from the screen during processing */
+    if (switchprod_form)
+        FIf_erase(switchprod_form);
+
+    /* let the user know something is going on... */
+    /* make direct UMS call since ppl can't handle ex$message expansion */
+    logo = &logoname[0];
+    ex$get_prod_info ( runname = prod, pstring = &logo );
+    UMSGetByNum(buf, GR_I_SwitchingTo, "%s", logoname);
+    status(buf);
+    prompt("");
+
+    /* get a dependency list for the active product */
+
+    ii = 1024;
+    basedepends[0] = 0;
+    sts = EX_get_srch_path1(EX_runname, ShortFormat, basedepends, &ii);
+    if (!(sts & 1))
+    {
+        UMSGetByNum(buf, GR_E_CantFindProduct, "%s", EX_runname);
+        status(buf);
+        goto ret_error_exit;
+    }
+
+    /* get a dependency list for the target product */
+
+    ii = 1024;
+    depends[0] = 0;
+    sts = EX_get_srch_path1(prod, ShortFormat, depends, &ii);
+    if (!(sts & 1))
+    {
+        UMSGetByNum(buf, GR_E_CantFindProduct, "%s", prod);
+        status(buf);
+        goto ret_error_exit;
+    }
+    strcpy(temp, depends);
+
+    /* save the old product name */
+    strcpy(prevprod, EX_runname);
+
+    /*
+        Switch to the specified product even though it may have already been
+        dloaded, because the menus for the specified product must be
+        activated, form config paths set, help initialized, commands tables
+        loaded, etc.
+    */
+
+    sts = EX_context_switch_to(prod);
+    if ((sts & 1)^1)
+    {
+        UMSGetByNum(buf, GR_E_ErrorSwitchingTo, "%s", prod);
+        status(buf);
+        goto ret_error_exit;
+    }
+
+    /* make sure base product is loaded (I think) */
+    prodpath[0] = NULL;
+    get_product_path(baseprod, prodpath);
+    if (prodpath[0] == NULL)
+        goto ret_error_exit;
+    if (strstr(path, prodpath) == NULL)
+        goto ret_error_exit;
+
+    /*
+        Run product startup commands.
+    */
+
+    ex$message(msgnumb = GR_I_RunningStartupCmds);
+
+    ii = 0;
+    prod0 = depends;
+    verbose(printf("switchprod: depends = %s\n", depends));
+    while (ptr = (char *)strchr(prod0, ':'))
+    {
+        *ptr = 0;
+
+        verbose(printf("switchprod: checking %s for startups\n", prod0));
+
+        /*
+            Determine whether the product being switched to (or any of its
+            dependencies) is already active.  Any active product does not need
+            its startup commands run again.  For example, NC and FEM are both
+            built on EMS, so switching from NC to FEM would not necessitate
+            running EMS's startup commands again, since it is already active.
+            Products with names beginning with "IGR" seem to be an exception,
+            due to some NC craziness.
+
+            Note that MODEL and GRNUC startup commands are not set up to
+            handle being invoked more than once per session, although
+            application commands *must* be able to handle it.
+        */
+
+        if (!strncmp("IGR", prod0, 3))    // added for NC (Randy)
+            active = FALSE;
+        else if (strstr(basedepends, prod0))
+            active = TRUE;
+        else
+            active = FALSE;
+        if (active)
+        {
+            verbose(printf("switchprod: skipping %s: already loaded\n",prod0));
+            ii = ii + 1;
+            prod0 = ptr + 1;
+            continue;
+        }
+
+        /* is it a valid entry? */
+
+        get_product_path(prod0, path);
+        if (! path[0]) 
+        {
+            verbose(printf("switchprod: skipping %s: invalid entry\n", prod0));
+            ii = ii + 1;
+            prod0 = ptr + 1;
+            continue;
+        }
+
+        ii = ii + 1;
+        prod0 = ptr + 1;
+
+        /* check for a command table list */
+
+        sprintf(config_dir, "%sconfig/", path);
+        sprintf(temp, "%scmd_tbl_list", config_dir);
+        if (access(temp, 04)) /* ok if it does not have a cmd_tbl_list */
+        {
+            verbose(printf("switchprod: %s: no cmd_tbl_list\n", path));
+            continue;
+        }
+
+        if ((int)fp) fclose(fp);
+        verbose(printf("switchprod: opening %s\n", temp));
+        fp = (char *) fopen(temp, "r");
+        if (!(int) fp)
+        {
+            printf("Unable to open file %s\n", temp);
+            continue;
+        }
+
+        /* read the command table list */
+
+        while (fgets(line, 1024, fp))
+        {
+            line[strlen(line)-1] = 0;
+            sprintf(temp, "%s%s", config_dir, line);
+            if (access(temp, 04)) /* ok if message file does not exist */
+            {
+                printf("Cannot find file %s\n", temp);
+                continue;
+            }
+
+            if ((int)fp2) fclose(fp2);
+            verbose(printf("switchprod: opening %s\n", temp));
+            fp2 = (char *) fopen(temp, "r");
+            if (!(int) fp2)
+            {
+                printf("Cannot open file %s\n", temp);
+                continue;
+            }
+
+            /* read the command table */
+
+            while(fgets(line, 1024, fp2))
+            {
+                line[strlen(line)-1] = 0;
+
+                /* weed out the obvious ones */
+                if (line[0] == '#') 
+                    /* Comment line encountered */
+                    continue; 
+
+                /* check for an exec flag */
+                if (get_exec_flag(line, &exec_flag))
+                {
+                    if (exec_flag & (EX_SINIT | EX_FINIT))
+                    {
+                        verbose(printf("found a startup: %s\n", line));
+
+                        /* allocate a new node in the command linked list */
+                        if (exec_flag & EX_SINIT)
+                            p_command_list = sinit_commands;
+                        else
+                            p_command_list = finit_commands;
+                        if (p_command_list)
+                        {
+                            while (p_command_list->next)
+                                p_command_list = p_command_list->next;
+                            p_command_list->next = (struct command_list *)
+                                calloc(1, sizeof(struct command_list));
+                            p_command_list = p_command_list->next;
+                        }
+                        else
+                        {
+                            p_command_list = (struct command_list *)
+                                calloc(1, sizeof(struct command_list));
+                            if (exec_flag & EX_SINIT)
+                                sinit_commands = p_command_list ;
+                            else
+                                finit_commands = p_command_list ;
+                        }
+
+                        /* add the command key to the list */
+                        c0 = strchr(line, ',') + 1;
+                        c1 = strchr(c0, ',');
+                        *c1 = NULL;
+                        strcpy(p_command_list->key, c0);
+
+                    } /* if (exec_flag & (EX_SINIT | EX_FINIT)) */
+                } /* if (get_exec_flag(line, exec_flag)) exec flag? */
+            } /* while(fgets(line, 1024, fp2)) a command table */
+        } /* while (fgets(line, 1024, fp)) command_tbl_list */ 
+    } /* while (ptr = (char *) strchr(prod0, ':')) a product */
+
+    /*
+        Push a command on the queue that will verify that all necessary
+        licenses were obtained.  If not, that command will switch back to the
+        previous product.
+    */
+
+    sprintf(buf, "ci=checkswitch %s %s\n", prevprod, EX_runname);
+    size = strlen(buf) + 1;
+    verbose(printf("pushing %s...\n", buf));
+    response = EX_STRING;
+    sts = ex$putque(msg = &msg,
+                    pos = FRONT,
+                    response = &response,
+                    byte = &size,
+                    buffer = buf);
+    if (!(sts & msg & 1)) 
+    {
+        verbose(printf("\t\terror - %#x, %#x\n", sts, msg));
+        goto ret_error_exit;
+    }
+
+    /* set a flag to tell applications that switchprod is in use - this */
+    /* will be cleared in checkswitch */
+    GRset_switchprod_state(TRUE);
+
+    /* 
+        Now push all the file init, then session init commands on the front of
+        the queue.  They will then be executed in the reverse order.  Note
+        that this order is important to remain consistent with the order used
+        by the exec during startup; applications depend on this order.
+    */
+
+    verbose(printf("pushing file init commands\n"));
+    response = EX_CMD_KEY;
+    for (p_command_list = finit_commands;
+         p_command_list;
+         p_command_list = p_command_list->next)
+    {
+        verbose(printf("pushing %s...\n", p_command_list->key));
+        size = strlen(p_command_list->key) + 1;
+        sts = ex$putque(msg = &msg,
+                        pos = FRONT,
+                        response = &response,
+                        byte = &size,
+                        buffer = p_command_list->key);
+        if (!(sts & msg & 1)) 
+        {
+            verbose(printf("\t\terror - %#x, %#x\n", sts, msg));
+            goto ret_error_exit;
+        }
+    }
+
+    verbose(printf("pushing session init commands\n"));
+    for (p_command_list = sinit_commands;
+         p_command_list;
+         p_command_list = p_command_list->next)
+    {
+        verbose(printf("pushing %s...\n", p_command_list->key));
+        size = strlen(p_command_list->key) + 1;
+        sts = ex$putque(msg = &msg,
+                        pos = FRONT,
+                        response = &response,
+                        byte = &size,
+                        buffer = p_command_list->key);
+        if (!(sts & msg & 1)) 
+        {
+            verbose(printf("\t\terror - %#x, %#x\n", sts, msg));
+            goto ret_error_exit;
+        }
+    }
+
+    /* free the command list memory */
+    while (sinit_commands)
+    {
+        p_command_list = sinit_commands->next;
+        free(sinit_commands);
+        sinit_commands = p_command_list;
+    }
+    
+    while (finit_commands)
+    {
+        p_command_list = finit_commands->next;
+        free(finit_commands);
+        finit_commands = p_command_list;
+    }
+
+    /* kill any commands previously on the command stack */
+    size = 0;
+    response = CLEAR_STACK;
+    sts = ex$putque(msg = &msg,
+                    pos = FRONT,
+                    response = &response);
+    if (!(sts & msg & 1)) 
+        goto ret_error_exit;
+
+    /* reattach the menu intercepts for popups */
+    GRcustomize_menus();
+
+    /* notify interested parties about bar menu changes */
+    if (barmenu = GRgetbarmenu())
+        if (FIf_get_name(barmenu, barmenuname) == FI_SUCCESS)
+            GRswap_menu_notification(barmenuname, barmenu);
+
+    /* delete all the popups (new product may have different definitions) */
+    GRdelete_popups();
+
+    /*
+      Notify products to cleanup if they have to before products are changed.
+      This is implemented to notify Fem and I/Design. TR11924164 --Mrudula
+    */ 
+    GRswitch_prod_notification(current_product, prod);
+
+    /* reinitialize the palette structures to pick up new product directories
+       and eliminate old ones */
+    GRpal_reset_paths();
+
+  ret_error_exit:
+
+    status("");
+    if ((int) fp) fclose(fp);
+    if ((int) fp2) fclose(fp2);
+    fp = 0;
+    fp2 = 0;
+
+    return(sts);
+}
+
+main(argc, argv)
+int argc;
+char *argv[];
+{
+    int sts, msg, response, size;
+    char event_data[EX_RESPONSE_DATA_SIZE], list[BUFSIZ], buf[128];
+    struct GRevent my_event;
+    IGRboolean aflag;
+    FILE *fptr;
+    char tmpdir[2048];
+    char *tmpenv;
+
+    /* initialize data */
+    ret0 = 1;
+    ret1 = 1;
+    switchprod_form = 0;
+    fp = 0;
+    fp2 = 0;
+    get_base_product();
+
+    /* check for verbose flag */
+    verbose_flag = FALSE;
+    if (argc > 1)
+        if (strcmp(argv[1], "verbose") == 0)
+            verbose_flag = TRUE;
+    verbose(printf("switchprod.main\n"));
+
+    /*
+     * Kludge added to enable cmd_tbl_list swapping when switching to
+     * Emsultra and back. 
+     */
+    if (argc > 1) 
+    {
+      if (!strcmp(argv[1], "Emsultra") || !strcmp(argv[1], "Return"))
+      {
+        if (!strcmp(argv[1], "Return"))
+        {
+          aflag = pwIsActivationOn();
+          if (aflag)
+          {
+             ex$message (in_buff="Deactivate the activated part",
+                         time = 4,
+                         field=ERROR_FIELD);
+             exit;
+          }
+          GetProductName(prev_product);
+          switch_product(prev_product);
+          SetProductName(NULL);
+        }
+        else
+        {
+          SetProductName(EX_runname);
+          switch_product(argv[1]);
+        }
+        exit;
+      }
+    }
+
+    ex$message(msgnumb = GRC_M_SwitchProducts);
+
+    /*
+        Check whether the target product was specified on the command line, eg
+        "switchprod=Nc".
+    */
+
+    /* try to pull an event off the queue (this won't wait for input) */
+    size = EX_RESPONSE_DATA_SIZE;
+    event_data[0] = 0;
+    sts = ex$getque(msg = &msg,
+                    response = &response, 
+                    byte = &size,
+                    buffer = event_data);
+
+    verbose(printf("switchprod.main: ex$getque: %#x, %#x\n", sts, msg));
+    verbose(if (*event_data) 
+            printf("switchprod.main: event_data: %s\n", event_data));
+
+    if (sts & msg & 1)
+    {
+        /* check whether the product exists */
+        size = BUFSIZ;
+        list[0] = NULL;
+        sts = EX_get_srch_path1(event_data, ShortFormat, list, &size);
+        verbose(printf("switchprod.main: search path: %#x, %s\n", sts, list));
+        if (sts & 1)
+        {
+            /* check whether the product is built on an active base product */
+            if (strstr(list, event_data))
+            {
+                /* is the product already active */
+                if (strcmp(event_data, EX_runname) != NULL)
+                {
+                    /* valid product - switch to it */
+                    switch_product(event_data);
+                    exit;
+                }
+                else
+                {
+                    UMSGetByNum(buf, GR_I_ProductIsRunning, "%s", event_data);
+                    status(buf);
+                    exit;
+                }
+            }
+            else
+            {
+                UMSGetByNum(buf, GR_I_NotBuiltOn, "%s %s", 
+                            event_data, EX_runname);
+                status(buf);
+                exit;
+            }
+        }
+        else
+        {
+            UMSGetByNum(buf, GR_E_CantFindProduct, "%s", event_data);
+            status(buf);
+            exit;
+        }
+    }
+        
+    /*
+        No valid product specified, so display the form and wait for input.
+    */
+
+    sts = init_form();
+    if (!(sts & 1))
+        goto ret_error_exit;
+
+    sts = display_form();
+    if (!(sts & 1))
+        goto ret_error_exit;
+
+    while (1)
+    {
+        verbose(printf("switchprod.main: calling ci$getevent\n"));
+
+        ci$getevent(response = &response,
+                    event = &my_event, 
+                    stackable = 1,
+                    msgnum = GR_P_EnterProduct);
+    
+        if (my_event.response == STRING)
+        {
+            strcpy(product, my_event.event.keyin);
+            ii=1024;
+            path[0]=0;
+            ret0 = EX_get_srch_path1(product, ShortFormat, path, &ii);
+            ret1 = (int) strstr(path, baseprod);
+            if (!(1 & ret0) || (!ret1))
+            {
+		product[10]='\0';
+                UMSGetByNum(buf, GR_E_CantFindProduct, "%s", product);
+                status(buf);
+                ret0 = 1;
+                ret1 = 1;
+            }
+            else
+            {
+                if (strcmp(product,EX_runname))
+                    switch_product(product);
+                break;
+            }
+
+        }
+        else if (my_event.response == MOVE_ON)
+        {
+            break;
+        }
+
+        if (form_is_displayed == 0)       /* display the form */ 
+        {
+            ret0  = display_form();
+            if ((ret0 & 1) ^ 1) goto ret_error_exit;
+        }
+    }                           /* while loop */
+
+  ret_error_exit:
+    verbose(if ((ret0 & 1) ^ 1) printf("Error: ret0 = %d\n", ret0));
+    exit;
+}
+
+form_notification()
+{
+    int selected;
+
+    verbose(printf("switchprod.form_notification\n"));
+
+    switch (form_st.gadget_label)
+    {
+      case FI_CANCEL:
+        ci$put(response = MOVE_ON);
+        break;
+
+      case FI_ACCEPT:
+        logoname[0]=0;
+        FIg_get_text(switchprod_form, PRODUCT, logoname);
+        if (strlen(logoname))
+        {
+            logo = &product[0];
+            ex$get_prod_info(logo = logoname, pstring = &logo);
+            if (strcmp(product, EX_runname))
+                switch_product(product);
+        }
+        ci$put(response = MOVE_ON);
+        break;
+
+      case PRODUCT:
+        logoname[0]=0;
+        FIg_get_text(switchprod_form, PRODUCT, logoname);
+        if (strlen(logoname) == 0)
+        {
+            // grab the first entry as a default
+            FIfld_get_list_text(switchprod_form, PRODUCT, 0, 0, 128, 
+                                logoname, &selected);
+            FIg_set_text(switchprod_form, PRODUCT, logoname);
+        }
+ 	logo = &product[0];
+        ex$get_prod_info ( logo = logoname, pstring = &logo );
+        ii=1024;
+        path[0]=0;
+        ret0 = EX_get_srch_path1(product, ShortFormat, path, &ii);
+        ret1 = (int) strstr(path, baseprod);
+        if (!(1 & ret0) || (!ret1))
+        {
+            ex$message(msgnumb = GR_I_ProdNotFnd);
+
+            FIg_set_text(switchprod_form, PRODUCT, logoname);
+            ret0 = 1;
+            ret1 = 1;
+            goto ret_error_exit;
+        }
+//        else
+//        {
+//            FIg_set_text(switchprod_form, PATH, path);
+//        }
+        break;
+      default:
+        break;
+    }
+
+  ret_error_exit:
+    if (!(1 & ret0)) ret0 = 1;
+    return ret0;
+}
+
+init()
+{
+    form_is_displayed = 0;
+    return 1;
+}
+
+wakeup()
+{
+    if (form_is_displayed == 1) 
+        ret0 = display_form();
+    return ret0;
+}
+
+sleep()
+{
+    verbose(printf("switchprod.sleep\n"));
+    if (switchprod_form)
+        if (form_is_displayed == 1)
+            FIf_erase(switchprod_form);
+    return 1;
+}
+
+delete()
+{
+    verbose(printf("switchprod.delete\n"));
+
+    if ((int) fp) fclose(fp);
+    if ((int) fp2) fclose(fp2);
+
+    if (switchprod_form)
+    {
+        if (form_is_displayed == 1)
+            FIf_erase(switchprod_form);
+        FIf_delete(switchprod_form);
+    }
+    return(1);
+}

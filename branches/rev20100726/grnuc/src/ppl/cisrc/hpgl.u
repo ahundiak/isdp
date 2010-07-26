@@ -1,0 +1,3310 @@
+/*
+Name
+        hpgl.u - Create Local Plot
+
+Abstract
+        This code drive the Create Local Plot command to produce HPGL output.
+
+Description
+        This code uses a display feedback buffer (the same as is used in view
+        dynamics) to stroke elements in the desired range, then translate
+        those strokes into simple HPGL pen-up and pen-down instructions.
+
+        Filled elements are not handled at all in this version.  The feedback
+        display buffer used to obtain strokes does not include the filled
+        attribute, and there is no way to relate the strokes back to the
+        object they came from in this implementation.  An alternative
+        implementation might be to replace the dp$gen_update call with a
+        controlled Rtree pass which updated the elements one at a time,
+        checking for fill mode with each element.
+
+        The output stroking resolution is calculated to produce accuracy
+        similar to that displayed on the screen.  This calculation uses the
+        approximate screen resolution, since EnvironV provides no way to
+        determine it precisely.  There is provision to allow the user to
+        specify a precision, although it is not currently compiled into the
+        product.
+
+        This code is heavily dependent on the display code, which does not
+        work well in a batch/EnvironV combination.  That situation is trapped
+        and disallowed in this command to prevent undesirable results (e.g.
+        crashes, hangs).  It is not anticipated that the display code will be
+        modified to handle this anytime soon.  See TR119301294.
+
+History
+        mrm     06/26/92    creation
+        gang    07/03/92    added support for all views.
+        gang    07/06/92    GRwriteHPGLpoint added for points.
+        gang    07/10/92    added support for Line Styles.
+        gang    07/20/92    added support for Line Weight.
+        gang    07/28/92    added support for Symbology Override.
+        gang    07/31/92    taking plot using fence included.
+        gang    08/07/92    driver for the user interface form included.
+        mrm     09/30/92    stroke at larger scale so circles come out round
+        mrm     09/30/92    added pipe/lpr option to output field
+        mrm     10/15/92    fixed color-to-pen mapping
+        gang    11/25/92    fixed line style problem.
+        dhm     12/18/92    fixed some hard coded messages to be UOM compliant
+        mrm     03/09/93    punt in Environ V batch
+        mrm     03/18/93    change stroking scale to match the scale shown on
+                            the form (TR119302910); change to plot weights 1 &
+                            2 for styles > 0
+        mrm     03/19/93    clip to fence
+        mrm     04/26/93    plot weight outward from center
+        mrm     05/06/93    check for zero-length segments
+        mrm     05/07/93    honor default units, handle arbitrary units in the
+                            size fields (TR119300624)
+        mrm     06/10/93    added plotter_limits code (TR11913789)
+        mrm     07/21/93    reworked scale calculation again, added
+                            user-definable resolution
+        mrm     08/30/93    Prevent overwrite of current file, warn about
+                            overwriting existing files.
+        mrm     09/13/93    Add hack for SunOS inclusion of sys/stat.h
+        mrm     11/09/93    Add more hacks for SunOS & SGI
+        mrm     12/03/93    Use ex$fork on SGI
+        gang    04/20/93    Use fence area pixels instead of window area
+                            pixels for stroke accuracy when fence is used.
+        satya   08/31/94    While calculating the scale factor for stroke
+                            accuracy and wintofen_ratio, take ranges in
+                            view coordinate system and instead of
+                            world_coordinate system - TR# 119309445
+        gvk     09/26/94    Set default output file for TD/SSL to
+                            /dev/tty00, 119422683,119422699,119422682
+        rjd     06/20/96    added references for Postscript in code and made
+                            function names generic
+        bala    07/18/96    Skip creation of NaN entries. TR# 119526618
+        rjd     05/20/97    Added ability to stroke out element weights by full
+                            element, rather than segments CR#119309315
+        rjd     05/20/97    Changed postscript to plot x axis being along paper
+                            flow. TR119700674
+        rjd     05/21/97    Added full true color ability in postscript code.
+*/
+
+#include <stdio.h>
+#include <string.h>
+#ifdef IRIX             // Hack.  Cci can't handle "signed" in sys/types.h
+#define signed
+#endif
+#ifdef SUNOS5           // Hack.  The file sys/stat.h for SunOS has some
+#define _KERNEL         // function declarations that are not externs in
+#endif                  // an ifndef KERNEL, which chokes cci.
+#include <sys/types.h>
+#include <sys/stat.h>
+#ifdef IRIX             // Undo above hack.
+#undef signed
+#endif
+#ifdef SUNOS5           // Undo above hack.
+#undef _KERNEL
+#endif
+#include <FI.h>
+#include <values.h>
+#include "ciminimum.h"
+#include "cimacros.h"
+#include "CIforms.h"
+#include "bserr.h"
+#include "bstypes.h"
+#include "bsvalues.h"
+#include "OMprimitives.h"
+#include "igrdef.h"
+#include "igr.h"
+#include "mapriv.h"
+#include "ex.h"
+#include "exmacros.h"
+#include "msdef.h"
+#include "msmacros.h"
+#include "gr.h"
+#include "igrdp.h"
+#include "godef.h"
+#include "go.h"
+#include "dpdef.h"
+#include "dp.h"
+#include "dpstruct.h"
+#include "dpmacros.h"
+#include "griodef.h"
+#include "grio.h"
+#include "griomacros.h"
+#include "plotdef.h"
+#include "plotmsg.h"
+#include "plotmacros.h"
+#include "grmessage.h"
+#include "execmsg.h"
+#include "UOMdef.h"
+#include "dpcodef.h"
+#include "wl.h"
+#include "igetypedef.h"
+#include "igecolor.h"
+#include "igewindef.h"
+#include "igecolordef.h
+#include "igecolmacros.h"
+
+//
+// Additional function declarations -- dmg.
+//
+
+#ifdef IRIX
+extern int unlink();
+extern int EX_fork();
+#endif
+
+extern IGRboolean  BSnorvec();
+extern IGRboolean  BSmkvec();
+extern void        BScvincvfnc();
+extern void        BScv_clpsp2();
+extern void        BSbrkcvaprs();
+extern void        BSptsincfnc();
+extern int         GRfind_file_in_products();
+extern int         COspformatqinfo();
+extern int         UMSGetByNum();
+extern int         system();
+extern IGRboolean  MAptsxform();
+extern void        DPinq_style();
+extern IGRboolean  MA2ptdis();
+extern void        free();
+extern int         FIfld_set_text();
+extern int         rand();
+extern int         DPsetinqgragad();
+extern IGRboolean  MAinvmx();
+extern IGRint      GRcvt_exp_to_wrk();
+extern IGRboolean  MAtrnmx();
+extern int         GRunit_database_type();
+extern IGRint      DPstart_frame();
+extern void        DEinq_localplot();
+extern void        DEset_localplot();
+extern IGRint      DPcodpb_get_dvd_flags();
+extern IGRint      DPcodpb_set_dvd_flags();
+extern int         DPgenupdate();
+extern void        DEreset_localplot();
+extern int         DPend_frame();
+extern int         COspcvttoout();
+extern int         FIf_display();
+extern int         FIf_erase();
+extern int         FIf_delete();
+extern int         EX_is_batch();
+extern int         FIf_new();
+extern int         FIf_set_cmd_oid_os();
+extern int         get_modtype_data();
+extern int         FIg_set_value();
+extern int         FIg_set_state_on();
+extern IGRint      DPgetggid();
+extern IGRint      COplot_get_window_range();
+extern int         FIg_set_state_off();
+extern IGRint      COget_fence_range();
+extern int         FIfld_get_text();
+extern int         EX_filename1();
+extern int         stat();
+extern IGRlong     COexpression_preprocessor();
+extern IGRlong     COexpreval();
+extern int         FIg_get_value();
+
+//
+//
+//
+
+extern IGRboolean  MApytobc();
+extern char        *malloc(), *realloc();
+extern char        *getenv();  // cci barfs on stdlib
+
+//
+//      Definitions, constants, and so on
+//
+
+//#define DEBUG          1
+//#define TRACE          1
+//#define VERBOSE        1
+
+//#define AllowResolutionToBeSpecified 1
+
+#ifdef DEBUG
+#define debug(x) x
+#else
+#define debug(x)
+#endif
+
+#ifdef TRACE
+#define trace(x) x
+#else
+#define trace(x)
+#endif
+
+#ifdef VERBOSE
+#define verbose(x) x
+#else
+#define verbose(x)
+#endif
+
+#define LP_TOGGLE_WINDOW        0
+#define LP_TOGGLE_FENCE         1
+
+#define LP_OUTPUT_LENGTH        256
+
+// cci barfs on sys/param.h, so define this here
+#define MAXPATHLEN        1024
+#define MAX_PLOT_COLORS   1024
+
+// indicators returned from BScv_clpsp2
+#define BS_OUTSIDE      0
+#define BS_INSIDE       1
+#define BS_OVERLAP      2
+
+// flags to the internal GRshowsize function
+#define LP_INIT_SIZE            1
+#define LP_X_CHANGED            2
+#define LP_Y_CHANGED            3
+#define LP_SCALE_CHANGED        4
+
+// Flags for file type
+#define HPGL            0
+#define POSTSCRIPT      1
+
+// Flags for origin location
+#define CENTER_ORG          0
+#define CORNER_ORG          1
+
+
+struct localplot_data
+{
+   IGRchar             output[LP_OUTPUT_LENGTH];
+   IGRchar             plot_unit[8];
+   IGRchar             max_unit[32];
+   IGRshort            maxpens;
+   IGRshort            wftoggle;
+   IGRshort            origflag;
+   IGRint              resolution;
+   IGRdouble           plotx;
+   IGRdouble           ploty;
+   IGRdouble           scale;
+   IGRdouble           range[12];
+   IGRdouble           xmax, ymax;
+   struct GRid         window;
+   struct IGRcv_prism  *cvprism;
+   IGRshort            filetype;
+};
+
+//
+//      HPGL plotter units and lengths.  Specified in HPGL manuals.
+//
+
+#define HPGL_PlotterUnit        "mm"    /* HPGL plotter unit */
+#define HPGL_PlotterUnitLength  0.025   /* HPGL plotter unit length */
+
+//
+//      Postscript plotter units and lengths.  Specified in Postscript manual
+//
+
+#define PS_PlotterUnit          "inch"    /* Postscript plotter unit */
+#define PS_PlotterUnitLength    0.0133    /* Postscript plotter unit length.
+                                             1/75 of an inch */
+
+//
+//      Size of a pixel in mm; used to determine length of strokes for dashed
+//      line styles to approximate the screen display.  Determined empirically
+//      by examining output from the InterPlot HPGL metafile interpreter.
+//
+
+#define HPGLPixelWidth              20.0
+#define PSPixelWidth                3.0
+
+//
+//      Distance between strokes for lines with weight
+//
+
+#define WeightDelta             5
+
+//
+//      Form labels
+//
+
+#define OutputField             38
+#define XSizeField              18
+#define YSizeField              23
+#define ScaleField              19
+#define PenField                15
+#define WindowToggle            25
+//#define LowResolution           19
+//#define MediumResolution        17
+#define HighResolution          20
+#define OriginFlag              16
+#define FileType                20
+
+// ci notification function
+extern int ci_notification();
+
+//
+//      Global Data
+//
+
+IGRchar                defaultsfile[256];
+unsigned int           allocated_curve_size;
+IGRshort               wcreflag;
+IGRshort               fcreflag;
+IGRshort               lastpen;
+IGRdouble              origin[3];
+struct localplot_data  lpd;
+struct GRevent         window_event;
+struct IGRbsp_curve    *curve;
+IGRdouble              window_range[12];
+IGRdouble              wintofen_ratio;
+IGRint                 num_color_slots;
+WLuint32               context_no;
+
+//
+//      Structure required for form notification.
+//
+
+struct CIform_st form_st;
+
+//
+//      Form pointer
+//
+
+Form plot_form;
+
+//
+//      Functions
+//
+
+/*
+Name
+        GRget_plotter_limits
+
+Description
+        This function reads a data file supplied by the user which defines the
+        maximum size for a plot for a given device
+*/
+
+int GRget_plotter_limits( device, w, h, unit)
+
+char *device;
+double *w;
+double *h;
+char *unit;
+{
+   int     n;
+   char    *filename;
+   char    name[MAXPATHLEN];
+   char    line[BUFSIZ];
+   char    buf[BUFSIZ];
+   char    u[64];
+   double  w1;
+   double  h1;
+   FILE    *fp;
+   char    junk[80];
+
+   // set some monstrous limit
+
+   *w = MAXDOUBLE;
+   *h = MAXDOUBLE;
+
+   strcpy(unit, "in");
+
+   // look for a limits file
+   if (filename = getenv("PLOTTER_LIMITS"))
+   {
+      if ((fp = fopen(filename, "r")) == NULL)
+      {
+         return(GR_I_PltDefNotFnd);
+      }
+
+      strcpy(name, filename);
+   }
+   else if (GRfind_file_in_products("userdata/plotter_limits", name))
+   {
+      filename = name;
+      if ((fp = fopen(filename, "r")) == NULL)
+         return(GR_I_PltDefNotFnd);
+   }
+   else
+      return(GR_I_PltDefNotFnd);
+
+   // read the file
+   n = strlen(device);
+   while (fgets(line, sizeof(line), fp))
+   {
+      if (line[0] == '#')
+         continue;
+      if (strncmp(device, line, n) == 0)
+      {
+         // read the limits
+         n = sscanf(line, "%*s %lf %lf %s", &w1, &h1, u);
+         if (n == 3)
+         {
+            *w = w1;
+            *h = h1;
+            strcpy(unit, u);
+            COspformatqinfo(device, *w, *h, unit, buf);
+            status(buf);
+            return(GR_S_Success);
+         }
+         else
+         {
+            // ppl cannot handle ex$message expansion with input variables
+            UMSGetByNum(buf, GR_F_InvalidEntryInFile, "%s%s", filename, line);
+            strcat(buf, "\n");
+            UMSGetByNum(&buf[strlen(buf)], GR_I_HPGLLimitFormat, 0);
+            UMSGetByNum(unit, GR_I_Notice, 0);
+            fprintf(stderr, "\n%s\n%s\n\n", unit, buf);
+            EX_error_box(FI_CURRENT_SCREEN, buf, unit);
+            return(GR_E_Error);
+         }
+      }
+   }
+
+   // did not find a match
+   return(GR_I_PltDefNotFnd);
+}
+
+
+/*
+Name
+    MATH_ptalln
+
+Description
+    This function produces a point along a line at a specified
+    distance in direction from point1 toward point2 of line.
+*/
+
+IGRint MATH_ptalln (rc, point1, point2, distance, deltapt)
+IGRint *rc;
+IGRdouble point1[3];
+IGRdouble point2[3];
+IGRdouble distance;
+IGRdouble deltapt[3];
+
+{
+   int      i;
+   IGRpoint vector;
+
+   *rc = MSSUCC;
+
+   /* Get the direction vector from point1 and point2 */
+   BSmkvec(rc,vector,point1,point2);
+
+   /* Normalize the direction vector  */
+   BSnorvec(rc,vector);
+
+   for (i = 0; i < 3; i = i + 1)
+   {
+      deltapt[i] = point1[i] + vector[i] * distance;
+   }
+
+   return(TRUE);
+}
+
+
+/*
+Name
+        GRinitHPGLfile
+
+Description
+        This function will open the specified filename and write the standard
+        HPGL setup instructions into it.  The open file pointer is returned.
+*/
+
+IGRint GRinitHPGLfile(msg, filename, fp)
+IGRint *msg;                    /* output - return code */
+IGRchar *filename;              /* input  - name of file to open */
+FILE **fp;                      /* output - file pointer */
+
+{
+   IGRint sts;
+
+   trace(fprintf( stderr, "GRinitHPGLfile\n"));
+
+   sts = TRUE;
+   *msg = MSSUCC;
+
+   /*
+    *  Open the output file
+    */
+
+   if (*fp = fopen(filename, "w"))
+   {
+      /*
+       *  Write the standard setup instructions
+       */
+
+      fprintf(*fp, ".(");           /* Plotter On */
+      fprintf(*fp, ".I80;;17:");    /* Set Handshake Mode 2 */
+      fprintf(*fp, ".N;19:");       /* Set Extended Output and Handshake */
+      fprintf(*fp, "IN;\n");            /* Initialize */
+      fprintf(*fp,"IP;\n");
+   }
+   else
+   {
+      sts = FALSE;
+      *msg = GR_E_CantOpenPltFl;
+   }
+   return(sts);
+}
+
+
+/*
+Name
+        GRinitPSfile
+
+Description
+        This function will open the specified filename and write the standard
+        Postscript setup instructions into it.  The open file pointer is
+        returned.
+*/
+
+IGRint GRinitPSfile(msg, filename, fp)
+IGRint *msg;                    /* output - return code */
+IGRchar *filename;              /* input  - name of file to open */
+FILE **fp;                      /* output - file pointer */
+{
+   IGRint     sts;
+   IGRdouble  x_orig;
+   IGRdouble  y_orig;
+
+
+   trace(fprintf( stderr, "GRinitPSfile\n"));
+
+   sts = TRUE;
+   *msg = MSSUCC;
+
+   /*
+    *  Open the output file
+    */
+
+   if (*fp = fopen(filename, "w"))
+   {
+      /*
+       *  Write the standard Postscript comments
+       */
+
+      fprintf(*fp, "%sPS-Adobe-\n\n", "%!");
+      fprintf(*fp, "%s Intergraph Local Plot Postscript file\n\n", "%");
+
+      /*
+       *  make the box procedure for use later on
+       */
+      fprintf( *fp, "/box{\n");
+      fprintf( *fp, "    exch dup 0 rlineto\n");
+      fprintf( *fp, "    exch 0 exch rlineto\n");
+      fprintf( *fp, "    neg 0 rlineto\n");
+      fprintf( *fp, "    closepath\n");
+      fprintf( *fp, "} bind def\n\n");
+
+      if( lpd.origflag == 0)
+      {
+         // center origin, need to translate coordinates
+         x_orig = lpd.plotx * 72;
+         y_orig = lpd.ploty * 72;
+
+         fprintf( *fp, "%.0f %0.f translate\n\n", y_orig / 2, x_orig / 2 );
+      }
+      else
+      {
+         /* corner origin */
+         y_orig = lpd.ploty * 72;
+         fprintf( *fp, "%.0f 0 translate\n\n", y_orig);
+      }
+
+      // rotate by 90 degrees to get the x in direction of the paper flow
+      fprintf( *fp, "90 rotate");
+
+      fprintf( *fp, "\n\n.24 .24 scale\n\n");
+
+      fprintf( *fp, "3.0 setmiterlimit\n\n");
+      fprintf( *fp, "0 setlinejoin\n\n");
+   }
+   else
+   {
+      sts = FALSE;
+      *msg = GR_E_CantOpenPltFl;
+   }
+   return(sts);
+}
+
+/*
+Name
+	GRcompute_deltas
+
+Description
+	This function encapsulates the code to compute the delta for each plot
+	segment of the code.  Mainly this is used as a function call so the
+        messiness of the computation does not cause the code to be unreadable.
+*/
+
+void GRcompute_deltas( pt1, pt2, weight, stroke_count, dx, dy)
+IGRdouble *pt1;
+IGRdouble *pt2;
+IGRint    weight;
+IGRint    stroke_count;
+IGRdouble *dx;
+IGRdouble *dy;
+
+{
+   IGRdouble  diffx;
+   IGRdouble  diffy;
+   IGRdouble  diffsq;
+   IGRdouble  deltax;
+   IGRdouble  deltay;
+   IGRdouble  f;
+
+
+   // calculate distance to move between strokes
+   diffx = pt2[0] - pt1[0];
+   diffy = pt2[1] - pt1[1];
+   diffsq = sqrt((diffx * diffx) + (diffy * diffy));
+
+   if (diffsq == 0.0)
+   {
+      deltax = 0.0;   // this check avoids dividing by zero and writing
+      deltay = 0.0;   // "-nan0xffffffff" for 0-length segments - TR119300804
+   }
+   else
+   {
+      deltax = WeightDelta * (diffy / diffsq);
+      deltay = WeightDelta * (diffx / diffsq);
+   }
+
+   if (weight & 1)
+   {
+      // odd weight - work out from central gap
+      f = (double)stroke_count;
+      if (!(stroke_count & 1))
+         f = f + 1;
+      f = f / 2.0;
+      *dx = deltax * f;
+      *dy = deltay * f;
+   }
+   else
+   {
+      // even weight - work out from central stroke
+      *dx = deltax * ((stroke_count + 1) / 2);
+      *dy = deltay * ((stroke_count + 1) / 2);
+   }
+
+   if (!(stroke_count & 1))
+   {
+      // flop every other stroke to the opposite side of the center
+      *dx = *dx * -1;
+      *dy = *dy * -1;
+   }
+}
+
+
+
+/*
+Name
+        GRwrite_plot_segment
+
+Description
+        This is a helper function for GRwriteLinestring.  It strokes
+        segments with width, using multiple strokes.  The segments are stroked
+        outward from the center, so that adjoining curves (which may have
+        different u-directions) line up properly.  Weight 0 gets 1 stroke, 1
+        gets 2, and so on, as shown below:
+
+                Wt    0       1       2       ...
+                                   --------
+                           --------
+                   --------        --------
+                           --------
+                                   --------
+
+*/
+
+void GRwrite_plot_segment(fp, pts, weight, num_pts)
+FILE *fp;
+IGRdouble *pts;
+IGRuchar weight;
+IGRint   num_pts;
+
+{
+   char    *pu;
+   char    *pd;
+   int     stroke_count;
+   double  dx;
+   double  dy;
+   double  f;
+   int     i;
+
+
+   stroke_count = 0;
+   pu = "PU";
+   pd = "PD";
+
+   // write multiple strokes, working outward from the center
+   while(stroke_count <= (int)weight)
+   {
+      // stroke the segments out - you need to compute the deltas in each
+      // segment between points.  It is time consuming when creating large plots
+      // but ends up speeding up the final plotting speed. - CR 119309315
+      GRcompute_deltas(&pts[0], &pts[3], weight, stroke_count, &dx, &dy);
+
+      fprintf(fp, "%s%.0f,%.0f;\n%s", pu, pts[0] + dx, pts[1] - dy, pd);
+      if (num_pts > 1)
+      {
+         fprintf(fp, "%.0f,%.0f", pts[3] + dx, pts[4] - dy);
+         for (i = 2; i < num_pts; i = i + 1)
+         {
+            GRcompute_deltas( &pts[((i-1) * 3)],
+                              &pts[(i * 3)],
+                              weight,
+                              stroke_count,
+                              &dx,
+                              &dy );
+
+            fprintf(fp, ",%.0f,%.0f", pts[((i-1) * 3)] + dx,
+                                      pts[((i-1) * 3) +1] - dy);
+
+            fprintf(fp, ",%.0f,%.0f", pts[(i * 3)]+dx, pts[(i * 3) + 1]-dy);
+         }
+      }
+
+      fprintf(fp, ";\n");
+
+      // increment the stroke counter
+      stroke_count = stroke_count + 1;
+   }
+}
+
+/*
+Name
+        GRwriteLinestring
+
+Description
+        This function will write the necessary instructions into the specified
+        file to draw the linestring specified by the display and geometry
+        parameters.
+*/
+
+IGRint GRwriteLinestring(msg, fp, mx, dp, num_pts, pts)
+
+IGRint *msg;            /* output - return code */
+FILE *fp;               /* input  - file pointer */
+IGRdouble *mx;          /* input  - transformation from world to paper */
+struct IGRdisplay *dp;  /* input  - display attributes for the linestring */
+IGRint num_pts;         /* input  - number of points in the linestring */
+IGRdouble *pts;         /* input  - array of points in world coordinates */
+
+{
+   IGRchar    *pu;
+   IGRchar    *pd;
+   IGRchar    *ins;
+   IGRushort  style_mask;
+   IGRshort   pen;
+   IGRint     sts;
+   IGRint     i;
+   IGRint     j;
+   IGRint     k;
+   IGRint     finished;
+   IGRint     temp;
+   IGRint     state;
+   IGRint     last_state;
+   IGRint     more_length;
+   IGRint     ntransitions;
+   IGRdouble  lengths[16];
+   IGRdouble  segment_length;
+   IGRdouble  d;
+   IGRdouble  length_left;
+   IGRdouble  l;
+   IGRpoint   t1;
+   IGRpoint   t2;
+   IGRpoint   eos;
+   IGRint     oldwidth;
+   IGRuint    packed_color;
+   IGRint     r_temp;   /* temporary variables to store the correct var type */
+   IGRint     g_temp;
+   IGRint     b_temp;
+   IGRdouble  temp_r;
+   IGRdouble  temp_g;
+   IGRdouble  temp_b;
+   IGRdouble  line_weight;
+
+
+   trace(fprintf( stderr, "GRwriteLinestring\n"));
+
+   sts = TRUE;
+   *msg = MSSUCC;
+   pu = "PU";
+   pd = "PD";
+
+   // Select the proper pen
+   if(lpd.filetype == HPGL )
+   {
+      pen = dp->color % lpd.maxpens;
+      if (pen == 0)
+      {
+         pen = lpd.maxpens;
+      }
+   }
+   else
+   {
+      pen = dp->color;
+   }
+
+   if ((pen != lastpen) || (lastpen == 0))
+   {
+      lastpen = pen;
+
+      if( lpd.filetype == HPGL)
+      {
+         fprintf(fp, "SP%d;\n", lastpen);
+      }
+      else
+      {
+         if (lpd.maxpens == 1)
+         {
+            /* if only one pen selected, default this to black */
+            fprintf( fp, "0.0000 0.0000 0.0000 setrgbcolor\n");
+         }
+         else
+         {
+            /* need to get the RGB color of the pen to use color in      */
+            /* Postscript.  Since pen color = colortable entry, get RGB  */
+            /* slot value of the color                                   */
+            IGEindex_to_rgb( context_no,
+                             IGE_LOGICAL_INDEX_TO_LOG,
+                             lastpen,
+                             &r_temp,
+                             &g_temp,
+                             &b_temp );
+
+
+            temp_r = (IGRdouble)r_temp / (num_color_slots - 1);
+            temp_g = (IGRdouble)g_temp / (num_color_slots - 1);
+            temp_b = (IGRdouble)b_temp / (num_color_slots - 1);
+
+            fprintf( fp, "%f %f %f setrgbcolor\n", 
+                     temp_r, temp_g, temp_b);
+         }
+      }
+   }
+
+   // Map the EMS origin to plot window origin
+   for (i = 0; i < num_pts; i = i + 1)
+   {
+      pts[(i * 3)] =  pts[(i * 3)] - origin[0];
+      pts[(i * 3) + 1] = pts[(i * 3) + 1] - origin[1];
+      pts[(i * 3) + 2] = pts[(i * 3) + 2] - origin[2];
+   }
+
+   // Transform the coordinates to the paper coordinate system
+   MAptsxform(msg, &num_pts, mx, pts, pts);
+
+   //
+   // Write the pen instructions to generate the linestring
+   //
+
+   if (dp->style == 0) // Solid line - simple case
+   {
+      if (dp->weight < 1) // Weight 0 gets a single stroke
+      {
+         if( lpd.filetype == HPGL )
+         {
+            fprintf(fp, "%s%.0f,%.0f;\n%s", pu, pts[0], pts[1], pd);
+            if (num_pts > 1)
+            {
+               fprintf(fp, "%.0f,%.0f", pts[3], pts[4]);
+               for (i = 2; i < num_pts; i = i + 1)
+               {
+                  fprintf(fp, ",%.0f,%.0f", pts[(i * 3)], pts[(i * 3) + 1]);
+               }
+            }
+            fprintf(fp, ";\n");
+         }
+         else
+         {
+            fprintf(fp, "%.0f %.0f moveto\n", pts[0]*4, pts[1]*4);
+            if (num_pts > 1)
+            {
+               fprintf(fp, "%.0f %.0f lineto\n", pts[3]*4, pts[4]*4);
+               for (i = 2; i < num_pts; i = i + 1)
+               {
+                  fprintf(fp, "%.0f %.0f lineto\n", pts[(i * 3)]*4,
+                                                    pts[(i * 3) + 1]*4);
+               }
+            }
+            fprintf(fp, "1.5 setlinewidth\n");
+            fprintf(fp, "stroke\n\n");
+         }
+      }
+      else // Weights > 0 are plotted via multiple strokes
+      {
+         if( lpd.filetype == HPGL )
+         {
+            GRwrite_plot_segment(fp, pts, dp->weight, num_pts);
+         }
+         else
+         {
+            /* Postscript has line weight plotting ability */
+            fprintf( fp, "%.0f %.0f moveto\n", pts[0]*4, pts[1]*4);
+            if (num_pts > 1)
+            {
+               for (i = 1; i < num_pts; i = i + 1)
+               {
+                  fprintf(fp, "%.0f %.0f lineto\n", pts[i* 3]*4,
+                                                    pts[ (i * 3) + 1]*4);
+               }
+            }
+
+            /* Adjust the postscript standard weights to match the weights
+               that are more visually "correct" to what is seen on the
+               screen. */
+
+            line_weight = dp->weight * 1.5;
+            fprintf( fp, "%f setlinewidth\n",  line_weight );
+            fprintf( fp, "stroke\n\n");
+         }
+      }
+   }
+   else
+   {
+      // Line styles other than solid must be written out one stroke at a
+      // time.  Yuck.  There is no way (that I know of) to "teach" hpgl
+      // about our line styles.
+
+      // get the number of transitions and their lengths in this style
+      DPinq_style(dp->style, &style_mask);
+      memset(lengths, 0, sizeof(double) * 16);
+      ntransitions = 0;
+      last_state = (style_mask >> 15) & 1;
+      for (i = 15; i >= 0; i = i - 1)
+      {
+         state = (style_mask >> i) & 1;
+         if (state != last_state)
+         {
+            ntransitions = ntransitions + 1;
+         }
+
+         last_state = state;
+         if( lpd.filetype == HPGL)
+         {
+            lengths[ntransitions] = lengths[ntransitions] + HPGLPixelWidth;
+         }
+         else
+         {
+            lengths[ntransitions] = lengths[ntransitions] + PSPixelWidth;
+         }
+      }
+      ntransitions = ntransitions + 1;
+
+      // set up some variables for use in the upcoming loop
+      k = 0;
+      more_length = FALSE;
+      length_left = 0;
+      ins = pu;
+
+      // loop through each segment
+      for (i = 1; i < num_pts; i = i + 1)
+      {
+         // make copies of the start and end points of the segment
+         memcpy(t1, &pts[(i - 1) * 3], sizeof(double) * 3);
+         memcpy(eos, &pts[i * 3], sizeof(double) * 3);
+
+         // travel along the segment repeating this line style
+         finished = FALSE;
+         while (!finished)
+         {
+            if (k >= ntransitions || k == 0)
+            {
+               if (style_mask >> 15)
+                  ins = pd;
+               else
+                  ins = pu;
+               temp = 0;
+            }
+            else
+            {
+               temp = k;
+            }
+
+            // loop through the transitions in this style
+            for (k = temp; k < ntransitions; k = k + 1)
+            {
+               // check whether this transition will extend past segment
+               MA2ptdis(msg, t1, eos, &d);
+               if (more_length)
+                  l = length_left;
+               else
+                  l = lengths[k];
+
+               if (d < l)
+               {
+                  memcpy((char *)t2, (char *)eos, sizeof(IGRdouble) * 3);
+                  length_left = l - d;
+                  more_length = TRUE;
+                  finished = TRUE;
+               }
+               else
+               {
+                  // calculate next transition point along the segment
+                  MATH_ptalln(msg, t1, eos, l, t2);
+                  more_length = FALSE;
+               }
+
+               if (ins == pd)
+               {
+                  // write the segment
+                  if( lpd.filetype == HPGL)
+                  {
+                     // store the two transition points in the pts array
+                     // for processing
+                     for( j=0; j<3; j= j+1)
+                     {
+                        pts[j] = t1[j];
+                        pts[j + 3] = t2[j];
+                     }
+
+                     GRwrite_plot_segment(fp, pts, dp->weight, 2);
+                  }
+                  else
+                  {
+                     fprintf( fp, "%.0f %.0f moveto\n",  t1[0]*4, t1[1]*4);
+                     fprintf( fp, "%.0f %.0f lineto\n", t2[0]*4, t2[1]*4);
+                     line_weight = dp->weight * 1.5;
+                     fprintf( fp, "%f setlinewidth\n", line_weight);
+                     fprintf( fp, "stroke\n\n");
+                  }
+               }
+
+               // store the new transition point
+               memcpy((char *)t1, (char *)t2, sizeof(IGRdouble) * 3);
+
+               // determine the next pen operation
+               if (more_length)
+                  break;
+               else
+               {
+                  if (ins == pu)
+                     ins = pd;
+                  else
+                     ins = pu;
+               }
+            }
+         }
+      }
+   }
+
+   return(sts);
+}
+
+
+/*
+Name
+        GRwritePoint
+
+Description
+        This function will write the necessary instructions into the
+        specified file to draw the pointstring specified by the display
+        and geometry parameters.
+*/
+
+IGRint GRwritePoint(msg, fp, mx, dp, num_pts, pts)
+IGRint             *msg;    /* output - return code */
+FILE               *fp;     /* input - file pointer */
+IGRdouble          *mx;     /* input - transformation from world to paper */
+struct IGRdisplay  *dp;     /* input - dislpay attributes for the point */
+IGRint             num_pts; /* input - number of points (should be 1)   */
+IGRdouble          *pts;    /* input - point in world coordinates */
+
+{
+   IGRshort   pen;
+   IGRchar    *pu;
+   IGRchar    *pd;
+   IGRchar    *ft;
+   IGRchar    *ra;
+   IGRdouble  nextpoint[3];
+   IGRint     i;
+   IGRint     increment;
+   IGRint     sts;
+   IGRuint    packed_color;
+   IGRint     r_temp;   /* temporary variables to store the correct var type */
+   IGRint     g_temp;
+   IGRint     b_temp;
+   IGRdouble  temp_r;
+   IGRdouble  temp_g;
+   IGRdouble  temp_b;
+   IGRdouble  line_weight;
+
+
+
+   trace(fprintf( stderr, "GRwritePoint\n"));
+
+   *msg = MSSUCC;
+   sts = TRUE;
+   pd = "PD";          // Pen Down
+   pu = "PU";          // Pen Up
+   ft = "FT";          // Fill Type
+   ra = "RA";          // Rectangle Absolute
+
+   /*
+    *  Set up the proper display symbology
+    */
+
+   if( lpd.filetype == HPGL )
+   {
+      pen = dp->color % lpd.maxpens;
+
+      if (pen == 0)
+      {
+         pen = lpd.maxpens;
+      }
+   }
+   else
+   {
+      pen = dp->color;
+   }
+
+
+   if ((pen != lastpen) || (lastpen == 0))
+   {
+      lastpen = pen;
+      if( lpd.filetype == HPGL)
+      {
+         fprintf(fp, "SP%d;\n",lastpen);
+      }
+      else
+      {
+         if( lpd.maxpens == 1)
+         {
+            /* if only one pen selected, default this to black */
+            fprintf( fp, "0.0000 0.0000 0.0000 setrgbcolor\n");
+         }
+         else
+         {
+            /* need to get the RGB color of the pen to use color in          */
+            /* Postscript. Since pen color = colortable entry, get RGB value */
+            /* of the color.                                                 */
+            IGEindex_to_rgb( context_no,
+                             IGE_LOGICAL_INDEX_TO_LOG,
+                             lastpen,
+                             &r_temp,
+                             &g_temp,
+                             &b_temp );
+
+            temp_r = (IGRdouble)r_temp/(num_color_slots - 1);
+            temp_g = (IGRdouble)g_temp/(num_color_slots - 1);
+            temp_b = (IGRdouble)b_temp/(num_color_slots - 1);
+
+            fprintf( fp, "%f %f %f setrgbcolor\n", temp_r, temp_g, temp_b);
+         }
+      }
+   }
+
+   /* Map the EMS origin to plot window origin. */
+
+   for(i = 0;i < num_pts;i = i + 1)
+   {
+      pts[(i * 3)] =  pts[(i * 3)] - origin[0];
+      pts[(i * 3) + 1] = pts[(i * 3) + 1] - origin[1];
+      pts[(i * 3) + 2] = pts[(i * 3) + 2] - origin[2];
+   }
+
+   /* Transform the coordinates to the paper coordinate system */
+   MAptsxform(msg, &num_pts, mx, pts, pts);
+
+   increment = 10;
+   increment = increment + (dp->weight - 3) * 5;
+
+   nextpoint[0] = pts[0] + (IGRdouble)increment;
+   nextpoint[1] = pts[1] + (IGRdouble)increment;
+
+   if( lpd.filetype == HPGL)
+   {
+      /* Set the fill type solid  */
+      fprintf(fp,"%s;\n",ft);
+
+      /* Move the pen to the plotting location */
+      fprintf(fp,"%s%.0f,%.0f;\n",pu,pts[0],pts[1]);
+
+      fprintf(fp,"%s%.0f,%.0f;\n",ra,nextpoint[0],nextpoint[1]);
+   }
+   else
+   {
+      /*use the increment to make the filled box in Postscript*/
+      fprintf( fp, "%.0f %.0f moveto\n", pts[0] * 4 - dp->weight/2,
+                                          pts[1] * 4 - dp->weight/2);
+
+      line_weight = dp->weight * 1.5;
+      fprintf( fp, "%f %f box\n", line_weight, line_weight);
+      fprintf( fp, "fill\n");
+      fprintf( fp, "stroke\n\n");
+   }
+   return(sts);
+}
+
+/*
+Name
+        GRcloseHPGLfile
+
+Description
+        This function will write the standard shutdown instructions into the
+        specified file and close it.
+*/
+
+IGRint GRcloseHPGLfile(msg, fp)
+IGRint *msg;            /* output - return code */
+FILE   *fp;               /* input  - file pointer */
+
+{
+   *msg = MSSUCC;
+
+   trace(fprintf( stderr, "GRcloseHPGLfile\n"));
+
+   /*
+    *  Write the standard shutdown instructions
+    */
+
+   fprintf(fp, "SP0;\n");      /* Select Pen - return to carousel */
+   fprintf(fp, "NR;\n");       /* Not Ready */
+   fprintf(fp, ".)\n");      /* Plotter Off */
+
+   /*
+    *  Close the file
+    */
+
+   fclose(fp);
+
+   return(TRUE);
+}
+
+/*
+Name
+        GRclosePSfile
+
+Description
+        This function is used to write the standard Postscript shutdown
+        instructions into the specified file and close it
+*/
+
+IGRint GRclosePSfile(msg, fp)
+IGRint *msg;
+FILE   *fp;
+
+{
+   *msg=MSSUCC;
+
+   trace(fprintf( stderr, "GRclosePSfile\n"));
+
+   /* Write the standard Postscript shutdown instructions*/
+   /* Show the page for printing */
+   fprintf( fp, "showpage\n");
+
+   /* close the file */
+   fclose(fp);
+   return(TRUE);
+}
+
+/*
+Name
+        GRclipLinestring
+
+Description
+        This function is used to clip the strokes produced by the frame buffer
+        to the actual prism representing the fence.  The range used to specify
+        the volume to update is aligned with the world axes, but in a view not
+        aligned in with world axes, that range is too large.  Therefore,
+        elements will be stroked that are outside the actual fence cube.  This
+        function kicks out those extra strokes.
+
+Notes
+        A lot of this code is lifted from GRbspline.GRclip.
+
+History
+        mrm     03/19/93    creation
+*/
+
+int GRclipLinestring(msg, fp, cvprism, view_to_wld, dis_attr, npts, pts)
+
+int                *msg;         // o return code
+FILE               *fp;          // i output hpgl file
+struct IGRcv_prism *cvprism;     // i clipping prism representing fence
+double             *view_to_wld; // i view to world transformation matrix
+struct IGRdisplay  *dis_attr;    // i display attributes of data
+int                npts;         // i number of points
+double             *pts;         // i points
+
+{
+   char                 *c;
+   int                  i;
+   int                  j;
+   int                  sts;
+   int                  ncvs;
+   unsigned long        a;
+   BSrc                 bs_rc;
+   IGRint               num;
+   IGRint               ind;
+   IGRint               *inds;
+   IGRdouble            *pars;
+   IGRdouble            *tmp_pars;
+   IGRboolean           ma_sts;
+   struct IGRpolyline   py;
+   struct IGRbsp_curve  **clip_curves;
+
+
+   trace(fprintf( stderr, "GRclipLinestring\n"));
+
+   // initialize pointers
+   pars = NULL;
+   inds = NULL;
+   tmp_pars = NULL;
+   clip_curves = NULL;
+
+   // Get memory to store a bspline representing the linestring.  Try to
+   // minimize malloc calls by allocating a bit more than necessary.  Keep
+   // the memory through calls; it will be freed in delete()
+
+   i = sizeof(struct IGRbsp_curve) + (4 * npts + 2) * sizeof(double) + 64;
+   if (i > allocated_curve_size)
+   {
+      allocated_curve_size = i * 3;
+      if (curve == NULL)
+      {
+         c = malloc(allocated_curve_size);
+      }
+      else
+      {
+         c = realloc(curve, allocated_curve_size);
+      }
+
+      if (c)
+      {
+         curve = (struct IGRbsp_curve *)c;
+      }
+      else
+      {
+         allocated_curve_size = i;
+         if (curve == NULL)
+         {
+            c = malloc(allocated_curve_size);
+         }
+         else
+         {
+            c = realloc(curve, allocated_curve_size);
+         }
+
+         if (c)
+         {
+            curve = (struct IGRbsp_curve *)c;
+         }
+         else
+         {
+            fprintf(stderr, "Insufficient memory to clip\n");
+            goto punt;
+         }
+      }
+   }
+
+   // partition the curve - must be done on each call!
+   // align the poles on a double boundary - see gocmacros.h
+   curve->poles = (double *)(curve + 1);
+   a = (unsigned long)curve->poles;
+   if (a % 8)
+   {
+      curve->poles = (double *)(8 - a % 8 + a);
+   }
+
+   curve->knots = &curve->poles[3 * npts];
+   curve->bdrys = NULL;
+   curve->weights = NULL;
+
+   // convert the linestring to a curve
+   py.num_points = npts;
+   py.points = pts;
+   ma_sts = MApytobc(msg, &py, curve);
+   if (!(ma_sts & *msg & 1))
+   {
+      goto punt;
+   }
+
+   // check whether the curve is completely inside or outside the prism
+   BScvincvfnc(cvprism, curve, &ind, &bs_rc);
+   if (bs_rc != BSSUCC)
+   {
+      goto punt;
+   }
+
+   if (ind == BS_OUTSIDE)
+   {
+      // completely outside, skip it
+      return(TRUE);
+   }
+   else if (ind == BS_INSIDE)
+   {
+      // completely inside, plot it
+      sts = GRwriteLinestring(msg, fp, view_to_wld, dis_attr, npts, pts);
+      return(TRUE);
+   }
+
+   // clip the curve against the prism
+   BScv_clpsp2(cvprism, curve, &num, &pars, &inds, &bs_rc);
+   if (bs_rc != BSSUCC)
+   {
+      goto punt;
+   }
+
+   // check whether curve is entirely inside the prism
+   if ((num == 0) || (num == 1))
+   {
+      if (inds)
+      {
+         if (inds[0] == BS_INSIDE)
+         {
+            sts = GRwriteLinestring(msg, fp, view_to_wld,
+                                    dis_attr, npts, pts);
+            if (pars) free(pars);
+            if (inds) free(inds);
+            return(TRUE);
+         }
+      }
+   }
+
+   // The above BS routine that returns the clip parms on the curve does not
+   // include the initial parm (u=0.0) which is required by the BS routine
+   // that splits the curve at the clip parms so add it in here.
+
+   num = num + 1;
+   tmp_pars = (IGRdouble *)malloc(sizeof(IGRdouble) * num);
+   tmp_pars[0] = 0.0;
+   memcpy(tmp_pars + 1, pars, (sizeof(IGRdouble) * (num - 1)));
+   clip_curves = (struct IGRbsp_curve **)
+   malloc(sizeof(struct IGRbsp_curve *) * (num - 1));
+
+   // split the curve at the clip parms
+   BSbrkcvaprs(curve,          // the curve to clip
+               num,            // number of clip parms
+               tmp_pars,       // list of input clip parms
+               0,              // do not test for planarity
+               clip_curves,    // the returned curves (num-1)
+               &bs_rc);
+
+   if (bs_rc != BSSUCC)
+   {
+      goto punt;
+   }
+
+   // loop through the clipped pieces
+   for (i = 0; i < num - 1; i = i + 1)
+   {
+      if (inds[i] == BS_INSIDE)
+      {
+          // Wahoo!  Plot this sucker!
+          sts = GRwriteLinestring(msg, fp, view_to_wld, dis_attr,
+                                      clip_curves[i]->num_poles,
+                                      clip_curves[i]->poles);
+      }
+   }
+
+   // free memory
+   if (pars) free(pars);
+   if (inds) free(inds);
+   if (tmp_pars) free(tmp_pars);
+   if (clip_curves) free(clip_curves);
+
+   return(TRUE);
+
+punt:
+
+   // free memory allocated in BScv_clpsp2
+   if (pars) free(pars);
+   if (inds) free(inds);
+   if (tmp_pars) free(tmp_pars);
+   if (clip_curves) free(clip_curves);
+
+   // punt on clipping, just plot it
+   sts = GRwriteLinestring(msg, fp, view_to_wld, dis_attr, npts, pts);
+   return(TRUE);
+}
+
+
+/*
+Name
+        GRclipPoint
+
+Description
+        This function is used to clip the point strokes produced by the frame
+        buffer to the actual prism representing the fence.  See
+        GRclipLinestring for justification.
+*/
+
+int GRclipPoint(msg, fp, cvprism, view_to_wld, dis_attr, npts, pts)
+
+int                *msg;         // o return code
+FILE               *fp;          // i output hpgl file
+struct IGRcv_prism *cvprism;     // i clipping prism representing fence
+double             *view_to_wld; // i view to world transformation matrix
+struct IGRdisplay  *dis_attr;    // i display attributes of data
+int                npts;         // i number of points
+double             *pts;         // i points
+
+{
+   int   ind;
+   int   sts;
+   BSrc  bs_rc;
+
+
+   *msg = TRUE;
+   sts = TRUE;
+   BSptsincfnc((int)1, pts, NULL, cvprism, &ind, &bs_rc);
+   if ((bs_rc != BSSUCC) || (ind == BS_INSIDE))
+   {
+      sts = GRwritePoint(msg, fp, view_to_wld, dis_attr, npts, pts);
+   }
+
+   return(sts);
+}
+
+/*
+Name
+        GRgenerateHPGL
+
+Description
+        This function will generate the HPGL file for a given range and user
+        plot sizes.The generated file will be dumped to the output device.
+*/
+
+IGRint GRgenerateHPGL(mod)
+struct GRmd_env *mod;
+
+{
+   IGRchar            buffer[64];
+   IGRchar            plotfile[256];
+   IGRchar            *sc;
+   IGRchar            *ip;
+   IGRchar            command[250];
+   IGRchar            *tmpdir;
+   IGRchar            str[64];
+   IGRshort           color;
+   IGRshort           weight;
+   IGRshort           style;
+   IGRshort           pen_color;
+   IGRshort           used_colors[MAX_PLOT_COLORS];
+   IGRshort           matrix_dim;
+   IGRint             sts;
+   IGRint             msg;
+   IGRint             filter_data;
+   IGRint             size;
+   IGRint             i;
+   IGRint             done;
+   IGRint             total_wtf;
+   IGRint             poly_curve_wtf;
+   IGRint             num_pts;
+   IGRint             npoints;
+   IGRint             ele_type;
+   IGRint             vi_type;
+   IGRint             dyn_flags;
+   IGRint             gragad_flags;
+   IGRint             need_to_clip;
+   IGRint             pixel_extents[4];
+   IGRint             db_type;
+   IGRlong            ret_bytes1;
+   IGRlong            ret_bytes2;
+   IGRlong            which_error;
+   IGRdouble          wld_to_view[16];
+   IGRdouble          view_to_wld[16];
+   IGRdouble          *feedback_buf;
+   IGRdouble          *buf_ptr;
+   IGRdouble          *next_block;
+   IGRdouble          scale;
+   IGRdouble          screen_res;
+   IGRdouble          l_scale;
+   IGRmatrix          matrix;
+   struct             GRid frame;
+   struct IGRdisplay  *dis_attr;
+   struct DPviewinfo  view_info;
+   struct var_list    params[4];
+   FILE               *fp;
+
+#ifdef IRIX
+   char               *arguments[4];
+#endif
+
+   unsigned short     dvd_flags;
+   unsigned short     dl_active;
+
+
+   trace(fprintf( stderr, "GRgenerateHPGL\n"));
+
+   /*
+    *  Initialize variables
+    */
+
+   sts          = 1;
+   msg          = 1;
+   sc           = "SC";
+   ip           = "IP";
+   done         = FALSE;
+   need_to_clip = FALSE;
+   scale        = 1.0;
+   plotfile[0]  = NULL;
+   buffer[0]    = NULL;
+   feedback_buf = NULL;
+   frame.objid  = NULL_OBJID;
+   lastpen      = 0;
+
+   memset(used_colors, 0, sizeof(short) * MAX_PLOT_COLORS);
+   used_colors[1] = TRUE;
+
+   ex$message(msgnumb = GR_I_Working,buff=buffer);
+   FIfld_set_text(plot_form,FI_MSG_FIELD,0,0,buffer,0);
+
+   /*
+    *  Initialize the output file
+    */
+
+   if ((tmpdir = getenv("TMPDIR")) == NULL)
+      tmpdir = "/usr/tmp";
+
+   sprintf(plotfile, "%s/lplot%d", tmpdir, rand());
+
+   if (lpd.filetype == HPGL)
+   {
+      sts = GRinitHPGLfile(&msg, plotfile, &fp);
+   }
+   else
+   {
+      sts = GRinitPSfile(&msg, plotfile, &fp);
+   }
+
+   if (!(sts & msg & 1))
+   {
+      ex$message(msgnumb = GR_I_Error,buff=buffer);
+      FIfld_set_text(plot_form,FI_MSG_FIELD,0,0,buffer,0);
+      debug(fprintf( stderr, "GRinitHPGLfile: %#x, %#x\n", sts, msg));
+      goto wrapup;
+   }
+
+   // Get a matrix to transform points from database to plotter coordinate
+   // system.  Grab the gragad flags at the same time.
+
+   params[0].var            = WLD_TO_VIEW;
+   params[0].var_ptr        = (IGRchar *)wld_to_view;
+   params[0].num_bytes      = sizeof(IGRdouble) * 16;
+   params[0].bytes_returned = &ret_bytes1;
+
+   params[1].var            = GRAGAD_FLAGS;
+   params[1].var_ptr        = (IGRchar *)&gragad_flags;
+   params[1].num_bytes      = sizeof(IGRint);
+   params[1].bytes_returned = &ret_bytes1;
+
+   params[2].var             = GRAGAD_DEP;
+   params[2].var_ptr         = (IGRchar *)pixel_extents;
+   params[2].num_bytes       = sizeof(pixel_extents);
+   params[2].bytes_returned  = &ret_bytes1;
+
+   params[3].var             = END_PARAM;
+
+   sts = dp$inq_set_gragad(msg          = &msg,
+                           inq0_set1    = 0,
+                           osnum        = lpd.window.osnum,
+                           gragad_objid = lpd.window.objid,
+                           which_error  = &which_error,
+                           var_list     = params);
+
+   if (!(sts & msg & 1))
+   {
+      ex$message(msgnumb = GR_I_Error,buff=buffer);
+      FIfld_set_text(plot_form,FI_MSG_FIELD,0,0,buffer,0);
+      debug(fprintf( stderr, "dp$inq_set_gragad: %#x, %#x\n", sts, msg));
+      goto wrapup;
+   }
+
+   matrix_dim = 4;
+   sts = MAinvmx(&msg,&matrix_dim,wld_to_view,view_to_wld);
+
+   /*  Plotter origin */
+   if ( lpd.origflag == 0 )
+   {
+      /*        Center Origin                */
+      origin[0] = (lpd.range[3] + lpd.range[0])/2;
+      origin[1] = (lpd.range[4] + lpd.range[1])/2;
+      origin[2] = (lpd.range[5] + lpd.range[2])/2;
+   }
+   else
+   {
+      /*        corner origin        */
+      origin[0] = lpd.range[0];
+      origin[1] = lpd.range[1];
+      origin[2] = lpd.range[2];
+   }
+
+   /* calculate a scale factor from internal working units to plotter units */
+   if( lpd.filetype == HPGL )
+   {
+      /* HPGL file format */
+      sts = co$cvt_exp_to_wrk(msg       = &msg,
+                              osnum     = mod->md_id.osnum,
+                              unit_type = GRIO_DISTANCE,
+                              units     = HPGL_PlotterUnitLength,
+                              alias     = HPGL_PlotterUnit,
+                              result    = &scale);
+   }
+   else
+   {
+      /* Postscript file format */
+      sts = co$cvt_exp_to_wrk(msg       = &msg,
+                              osnum     = mod->md_id.osnum,
+                              unit_type = GRIO_DISTANCE,
+                              units     = PS_PlotterUnitLength,
+                              alias     = PS_PlotterUnit,
+                              result    = &scale);
+   }
+
+   if (!(sts & msg & 1))
+   {
+      ex$message(msgnumb = GR_I_Error,buff=buffer);
+      FIfld_set_text(plot_form,FI_MSG_FIELD,0,0,buffer,0);
+      debug(fprintf( stderr, "co$cvt_exp_to_wrk: %#x, %#x\n", sts, msg));
+      goto wrapup;
+   }
+
+   MAtrnmx(&msg,&matrix_dim,view_to_wld,view_to_wld);
+
+   /* incorporate the scale into the matrix */
+
+   view_to_wld[0] = view_to_wld[0] / scale * lpd.scale;
+   view_to_wld[1] = view_to_wld[1] / scale * lpd.scale;
+   view_to_wld[2] = view_to_wld[2] / scale * lpd.scale;
+   view_to_wld[3] = 0;
+   view_to_wld[4] = view_to_wld[4] / scale * lpd.scale;
+   view_to_wld[5] = view_to_wld[5] / scale * lpd.scale;
+   view_to_wld[6] = view_to_wld[6] / scale * lpd.scale;
+   view_to_wld[7] = 0;
+   view_to_wld[8] = view_to_wld[8] / scale * lpd.scale;
+   view_to_wld[9] = view_to_wld[9] / scale * lpd.scale;
+   view_to_wld[10] = view_to_wld[10] / scale * lpd.scale;
+   view_to_wld[11] = 0;
+   view_to_wld[12] = 0;
+   view_to_wld[13] = 0;
+   view_to_wld[14] = 0;
+   view_to_wld[15] = 1;
+
+   /*
+    *  Initiate view dynamics
+    */
+
+   /* allocate a buffer - try to grab half the available memory */
+
+   om$get_mem_info(p_avail_swap = &size);
+   size = size / 2;
+   if ((feedback_buf = (IGRdouble *)om$malloc(size = size)) == NULL)
+   {
+      ex$message(msgnumb = GR_I_NoMemory,buff=buffer);
+      FIfld_set_text(plot_form,FI_MSG_FIELD,0,0,buffer,0);
+      goto wrapup;
+   }
+
+   // Approximate screen resolution ranges from 80-100dpi, but it is not
+   // possible to determine dynamically (cannot distinguish 21 inch and 27
+   // inch screens from Environ V).  Make a guess on the too-accurate side,
+   // taking care not to mix unit types in later calculations.
+
+   screen_res = 100;   // dots per inch
+   co$unit_database_type(osnum = mod->md_id.osnum, db_type = &db_type);
+   if (db_type == GRIO_UNITS_ARE_METRIC)
+   {
+      screen_res = screen_res * 0.03937;      // dots per mm = dpi * .03937
+   }
+
+   // Calculate the stroking scale necessary to generate output with similar
+   // precision to that shown on the screen.  This is:
+   //
+   //      ((design-file-to-paper scale) (screen dpi) (plot size on paper))
+   //      ----------------------------------------------------------------
+   //                      (screen window size in pixels)
+
+/*
+   if(fcreflag == TRUE)
+   {
+      scale = (lpd.scale * screen_res * (lpd.range[9] - lpd.range[6])) /
+              ((pixel_extents[2] - pixel_extents[0])/wintofen_ratio);
+   }
+   else
+   {
+      scale = (lpd.scale * screen_res * (lpd.range[9] - lpd.range[6])) /
+              (pixel_extents[2] - pixel_extents[0]);
+   }
+*/
+   if(fcreflag == TRUE)
+   {
+      l_scale = (screen_res * (lpd.range[9] - lpd.range[6])) /
+                ((pixel_extents[2] - pixel_extents[0])/wintofen_ratio);
+   }
+   else
+   {
+      l_scale = (screen_res * (lpd.range[9] - lpd.range[6])) /
+                (pixel_extents[2] - pixel_extents[0]);
+   }
+
+/*
+    By default we are using 2/view_viewport_scale as tolerance scale.
+    Multipling scale with l_scale would result in constant factor.
+    But we have to take into considertion the window extents as
+    view_viewportscale does result fine curves when the extents are
+    are large. We got the following factor after lot of tuning.
+    We added another fix at stroker to have minimum of 9 points
+    for any curve
+ */
+
+   scale = 2*lpd.scale + l_scale * .1;
+
+#ifdef AllowResolutionToBeSpecified
+
+   // This is not released, but it seemed a darned shame to throw it away
+   // after a prototype, since someone will probably ask for it sooner or
+   // later.  If this does get released, the multiplication factors
+   // (especially the ones used for scale < 1.0) will probably need some
+   // trial-and-error fine-tuning.
+
+   // set the desired resolution
+   if (scale < 1.0)
+   {
+      if (lpd.resolution == LowResolution)
+      {
+         scale = scale * 4;
+      }
+      else if (lpd.resolution == MediumResolution)
+      {
+         scale = scale * 2;
+      }
+      // else HighResolution - use calculated scale
+   }
+   else
+   {
+      if (lpd.resolution == LowResolution)
+      {
+         scale = scale / 4;
+      }
+      else if (lpd.resolution == MediumResolution)
+      {
+         scale = scale / 2;
+      }
+      // else HighResolution - use calculated scale
+   }
+
+#endif
+
+   /* create the frame gadget */
+   sts = dp$start_frame(msg                   = &msg,
+                        load_frame            = FALSE,
+                        apparent_stroke_scale = scale,
+                        feedback              = TRUE,
+                        feedback_buf          = feedback_buf,
+                        feedback_size         = size,
+                        gragad_id             = lpd.window.objid,
+                        gragad_osnum          = lpd.window.osnum,
+                        frame_id              = &frame.objid,
+                        frame_osnum           = &frame.osnum);
+
+   if (!(sts & msg & 1))
+   {
+      ex$message(msgnumb = GR_I_Error,buff=buffer);
+      FIfld_set_text(plot_form,FI_MSG_FIELD,0,0,buffer,0);
+      debug(fprintf( stderr, "dp$start_frame: %#x, %#x\n", sts, msg));
+      goto wrapup;
+   }
+
+   /* set static variables for symbology overrides */
+
+   DEinq_localplot(&lpd.window.objid,1);
+   DEset_localplot();
+
+   /*
+     Update the frame to generate the strokes.  Note that the range argument
+     is passed as a pointer 6 doubles, rather than the struct DPdit_range
+     that the macro usually requires.  There is code in place in
+     GRviewdyn.DPgen_update to properly interpret the double range to set the
+     frame's dit_clip_range, so that the proper range will be plotted for
+     fence plotting cases involving reference files.
+   */
+
+   DPcodpb_get_dvd_flags(&dvd_flags);
+
+   if (dvd_flags & DVD_DLIST_ON)
+   {
+      dl_active = 1;
+      dvd_flags = dvd_flags & ~DVD_DLIST_ON;
+      DPcodpb_set_dvd_flags(dvd_flags);
+   }
+   else
+   {
+      dl_active = 0;
+   }
+
+   sts = dp$gen_update(msg = &msg,
+                       range = lpd.range,
+                       erase = FALSE,
+                       objid = frame.objid,
+                       osnum = frame.osnum);
+
+   if (dl_active)
+   {
+      DPcodpb_get_dvd_flags(&dvd_flags);
+      dvd_flags = dvd_flags | DVD_DLIST_ON;
+      DPcodpb_set_dvd_flags(dvd_flags);
+   }
+
+   if (!(sts & msg & 1))
+   {
+      ex$message(msgnumb = GR_I_Error,buff=buffer);
+      FIfld_set_text(plot_form,FI_MSG_FIELD,0,0,buffer,0);
+      debug(fprintf( stderr, "dp$gen_update: %#x, %#x\n", sts, msg));
+      goto wrapup;
+   }
+
+   // Clipping will be necessary for all fence plotting.  The display code is
+   // used to letting the window border clip, but that does not happen with a
+   // fence.  I thought it would be sufficient to only clip if the view is
+   // not aligned with the global coordinate system, since then the range
+   // will be skewed, and objects not within the actual plot cube will plot.
+   // However, reference files attached with some rotation also need clipping
+   // even in ortho views, so heck, clip everything.  Window plotting may
+   // also need clipping in non-ortho views, but I have not written the code
+   // to get the prism for window plotting yet.
+
+   if (lpd.wftoggle == LP_TOGGLE_FENCE)
+      need_to_clip = TRUE;
+
+   /*
+    *  Examine the feedback buffer and plot by color.
+    */
+
+   for(pen_color = 1; pen_color <= lpd.maxpens; pen_color = pen_color+1)
+   {
+      /** Don't examine the buffer if the color is not used **/
+
+      if (used_colors[pen_color] == FALSE)
+         continue;
+
+      buf_ptr = feedback_buf;
+      if (*(IGRint *)buf_ptr != DPWIREFRAME_FRAME)
+      {
+         ex$message(msgnumb = GR_I_Error,buff=buffer);
+         FIfld_set_text(plot_form,FI_MSG_FIELD,0,0,buffer,0);
+         debug(fprintf( stderr, "Invalid feedback buffer type: %d\n",
+                        *(IGRint *)buf_ptr));
+         goto wrapup;
+      }
+
+      buf_ptr = buf_ptr + 1;
+      next_block = (IGRdouble *) *(IGRint *) buf_ptr;
+      buf_ptr = buf_ptr + 1;
+
+      /*
+       *  Loop through each element
+       */
+      done = FALSE;
+
+      while (!done && ((*(IGRuint *) buf_ptr) != 0))
+      {
+         ele_type = *(IGRuint *) buf_ptr;
+
+         if (ele_type == DPFRAMELINK)
+         {
+            buf_ptr = next_block;
+            next_block = (IGRdouble *) *(IGRint *) buf_ptr;
+            buf_ptr = buf_ptr + 1;
+            continue;
+         }
+
+         total_wtf = *((IGRint *) buf_ptr + 1);
+         buf_ptr = buf_ptr + 1;
+
+         dyn_flags = *(IGRuint *) buf_ptr;
+
+         if (dyn_flags & DPVIEW_IND)
+         {
+            vi_type = *((IGRint *) buf_ptr + 1);
+            buf_ptr = buf_ptr + 1;
+
+            ci$send(msg = message IGEgragad.set_view_ind(vi_type,buf_ptr,
+                                                         &view_info),
+                    targetid = frame.objid);
+
+            buf_ptr = buf_ptr + 3;
+            total_wtf = total_wtf - 8;
+         }
+         else
+         {
+            buf_ptr = buf_ptr + 1;
+            total_wtf = total_wtf - 2;
+         }
+
+/*
+switch (ele_type)
+{
+   case IGRBC:
+      fprintf( stderr, "Element type = IGRBC\n\n");
+   case IGRQS:
+      fprintf( stderr, "Element type = IGRQS\n\n");
+   case IGRPY:
+      fprintf( stderr, "Element type = IGRPY\n\n");
+   case IGRLB:
+      fprintf( stderr, "Element type = IGRLB\n\n");
+   case IGRPS:
+      fprintf( stderr, "Element type = IGRPS\n\n");
+}
+*/
+
+         switch (ele_type)
+         {
+            case IGRBC:
+            case IGRQS:
+            case IGRPY:
+            case IGRLB:
+            case IGRPS:
+               while (total_wtf > 0)
+               {
+                  dis_attr       = (struct IGRdisplay *) buf_ptr;
+                  color          = dis_attr->color;
+                  weight         = dis_attr->weight;
+                  style          = dis_attr->style;
+                  buf_ptr        = buf_ptr + 1;
+                  total_wtf      = total_wtf - 2;
+                  poly_curve_wtf = *(IGRint *) buf_ptr;
+                  total_wtf      = total_wtf - (poly_curve_wtf + 1);
+                  buf_ptr        = buf_ptr + 1;
+                  poly_curve_wtf = poly_curve_wtf - 1;
+
+                  /* map the color to the pen */
+                  verbose(fprintf( stderr, "color = %d, lpd.maxpens = %d, ",
+                                  color, lpd.maxpens));
+
+                  color = color % lpd.maxpens;
+                  if (color == 0)
+                     color = lpd.maxpens;
+
+                  verbose(fprintf( stderr, "pen color = %d\n", color));
+
+                  used_colors[color] = TRUE;
+
+                  while (poly_curve_wtf > 0)
+                  {
+                     num_pts = *(IGRint *) buf_ptr;
+                     buf_ptr = buf_ptr + 1;
+                     poly_curve_wtf = poly_curve_wtf - 2;
+
+                     if (num_pts)
+                     {
+                        /*
+                         *  Check for nan0x7fffffff or NaN entries before
+                         *  further processing. TR# 119526618
+                         */
+
+                        for (i = 0; i < num_pts; i = i + 1)
+                        {
+                           sprintf(str,"%16.6f %16.6f %16.6f",
+                                        buf_ptr[(i * 3)],
+                                        buf_ptr[(i * 3) + 1],
+                                        buf_ptr[(i * 3) + 2]);
+
+                           if( strchr(str,'n') != NULL ||
+                                    strchr(str,'N') != NULL )
+                              goto skip;
+                        }
+
+                           if (ele_type == IGRPS)
+                           {
+#ifdef VERBOSE
+                              fprintf(stderr, "ele_type == IGRPS\n");
+                              fprintf(stderr, "\tnum_pts = %d\n", num_pts);
+                              for (i = 0; i < num_pts; i = i + 1)
+                              {
+                                 fprintf(stderr, "\t%16.6f\t%16.6f\t%16.6f\n",
+                                          buf_ptr[(i * 3)],
+                                          buf_ptr[(i * 3) + 1],
+                                          buf_ptr[(i * 3) + 2]);
+                              }
+#endif
+                              /* write an HPGL point */
+                              if (color == pen_color)
+                              {
+                                 if (need_to_clip)
+                                 {
+                                    sts = GRclipPoint(&msg,
+                                                   fp,
+                                                   lpd.cvprism,
+                                                   view_to_wld,
+                                                   dis_attr,
+                                                   num_pts,
+                                                   buf_ptr);
+                                 }
+                                 else
+                                 {
+                                    sts = GRwritePoint(&msg,
+                                                       fp,
+                                                       view_to_wld,
+                                                       dis_attr,
+                                                       num_pts,
+                                                       buf_ptr);
+                                 }
+                              }
+                           }
+                           else
+                           {
+#ifdef VERBOSE
+                              fprintf( stderr, "ele_type != IGRPS\n");
+                              fprintf( stderr, "\tnum_pts = %d\n", num_pts);
+
+                              for (i = 0; i < num_pts; i = i + 1)
+                              {
+                                 fprintf( stderr, "\t%16.6f\t%16.6f\t%16.6f\n",
+                                           buf_ptr[(i * 3)],
+                                           buf_ptr[(i * 3) + 1],
+                                           buf_ptr[(i * 3) + 2]);
+                              }
+#endif
+                           }
+
+                           /* write an HPGL linestring */
+                           if (color == pen_color)
+                           {
+                              if (need_to_clip)
+                              {
+                                 sts = GRclipLinestring(&msg,
+                                                        fp,
+                                                        lpd.cvprism,
+                                                        view_to_wld,
+                                                        dis_attr,
+                                                        num_pts,
+                                                        buf_ptr);
+                              }
+                              else
+                              {
+                                 sts = GRwriteLinestring(&msg,
+                                                         fp,
+                                                         view_to_wld,
+                                                         dis_attr,
+                                                         num_pts,
+                                                         buf_ptr);
+                              }
+
+                              if (!(sts & msg & 1))
+                              {
+                                 ex$message(msgnumb = GR_I_Error,
+                                               buff = buffer);
+
+                                 FIfld_set_text(plot_form, FI_MSG_FIELD,
+                                                0, 0, buffer, 0);
+
+                                 debug(fprintf( stderr, "GRwriteLinestring: %#x, %#x\n",
+                                                    sts, msg));
+                              }
+                           }
+skip:
+                        buf_ptr = buf_ptr + (num_pts * 3);
+                        poly_curve_wtf = poly_curve_wtf - (num_pts * 3 * 2);
+                     }
+                  }
+               }
+               break;
+
+            default:
+               done = TRUE;
+               break;
+         }
+
+         if (dyn_flags & DPVIEW_IND)
+         {
+            ci$send(msg = message IGEgragad.reset_view_ind(&view_info),
+                    targetid = frame.objid);
+         }
+      }
+   }
+
+   /*
+    *  Finish out the file
+    */
+   if( lpd.filetype == HPGL)
+   {
+      sts = GRcloseHPGLfile(&msg, fp);
+   }
+   else
+   {
+      sts= GRclosePSfile(&msg, fp);
+   }
+
+   if (!(sts & msg & 1))
+   {
+      ex$message(msgnumb = GR_I_Error,buff=buffer);
+      FIfld_set_text(plot_form,FI_MSG_FIELD,0,0,buffer,0);
+      debug(fprintf( stderr, "GRcloseHPGLfile: %#x, %#x\n", sts, msg));
+      goto wrapup;
+   }
+
+   /* construct the command string */
+   if (lpd.output[0] == '|')
+   {
+      if (lpd.output[1] == NULL)
+      {
+         /* assign lpr as the default command */
+         strcat(&lpd.output[1], "lpr");
+      }
+
+      /* format a command to pipe the data */
+      sprintf(command,"(cat %s | %s; rm %s)& ",
+               plotfile, &lpd.output[1], plotfile);
+
+      debug(fprintf( stderr, "%s\n", command));
+   }
+   else
+   {
+      sprintf(command,"(cat %s > %s; rm %s)& ", plotfile, lpd.output, plotfile);
+   }
+
+#ifdef IRIX
+   // IRIX has problems forking, so format up a quick script & ex$fork it
+   sts = -1;
+   sprintf(buffer, "%s/lplot%d", tmpdir, rand());
+   if (fp = fopen(buffer, "w"))
+   {
+      fprintf(fp, "#!/bin/ksh\n%s\n", command);
+      fclose(fp);
+      chmod(buffer, S_IRWXU | S_IRWXG | S_IRWXO);
+      arguments[0] = "/bin/ksh";
+      arguments[1] = "-e";
+      arguments[2] = buffer;
+      sts = ex$fork(num_entry = 3, argu = arguments, wait_flag = 1) >> 8;
+      if (sts != 0)
+         sts = -1;
+      unlink(buffer);
+   }
+#else
+   sts = system(command);
+#endif
+
+   if (sts == -1)
+   {
+      UMSGetByNum(buffer, PI_F_LocalOutputFailed, "%s", plotfile);
+      UMSGetByNum(command, GR_I_Notice, 0); // any buffer in a storm
+      EX_error_box(FI_CURRENT_SCREEN, buffer, command);
+      FIfld_set_text(plot_form, FI_MSG_FIELD, 0, 0, buffer, 0);
+      status(buffer);
+   }
+   else
+   {
+      ex$message(msgnumb = PI_I_JobCompleted, buff = buffer);
+      FIfld_set_text(plot_form, FI_MSG_FIELD, 0, 0, buffer, 0);
+   }
+
+  wrapup:
+
+   /* reset static variables used for symbology overrides */
+
+   DEinq_localplot(&lpd.window.objid,0);
+   DEreset_localplot();
+
+   if (frame.objid != NULL_OBJID)
+      sts = dp$end_frame(msg = &msg,
+                         frame_id = frame.objid,
+                         frame_osnum = frame.osnum);
+   if (feedback_buf)
+      om$dealloc(ptr = feedback_buf);
+
+   return MSSUCC;
+
+}
+
+
+/*
+Name
+       GRshowsize
+
+Description
+       This function will calculate xsize, ysize, or scale of the area to be
+       plotted when any of those values are changed.
+*/
+
+int GRshowsize(flag, range, w, h, x, y, s)
+
+int    flag;               // in - indicates which value changed
+double *range;          // in - range to be plotted
+double w;
+double h;            // in - the max size the plotter can handle
+double *x;
+double *y;
+double *s;      // in/out - xsize, ysize, and scale of area to plot
+
+{
+   int     sts;
+   char    buf[64];
+   char    buf2[64];
+   double  filex;
+   double  filey;
+
+   trace(fprintf( stderr, "GRshowsize\n"));
+
+   // get the xy range to be plotted
+   filex = range[3] - range[0];
+   filey = range[4] - range[1];
+
+   if (filex < 0)
+      filex = -filex;
+
+   if (filey < 0)
+      filey = -filey;
+
+   // check what has changed, and change the other values accordingly
+   switch (flag)
+   {
+      case LP_INIT_SIZE:
+         *s = 1.0;
+         *x = filex;
+         *y = filey;
+         break;
+
+      case LP_X_CHANGED:
+         *s = *x / filex;
+         *y = filey * *s;
+         break;
+
+      case LP_Y_CHANGED:
+         *s = *y / filey;
+         *x = filex * *s;
+         break;
+
+      case LP_SCALE_CHANGED:
+         *x = filex * *s;
+         *y = filey * *s;
+         break;
+   }
+
+   // check whether the plotter can handle this size
+   sts = 1;
+   if (*x > w)
+   {
+      sts = 0;
+      *s = w / filex;
+      *x = w;
+      *y = *s * filey;
+   }
+
+   if (*y > h)
+   {
+      sts = 0;
+      *s = h / filey;
+      *x = *s * filex;
+      *y = h;
+   }
+   if (sts == 0)
+   {
+      ex$message(msgnumb = PI_I_PlotScaled, buff = buf);
+      FIfld_set_text (plot_form, FI_MSG_FIELD, 0, 0, buf, 0);
+   }
+
+   // update the form
+   COspcvttoout(*x, *y, 64, buf, buf2);
+   FIfld_set_text(plot_form, XSizeField, 0, 0, buf, 0);
+   FIfld_set_text(plot_form, YSizeField, 0, 0, buf2, 0);
+   sprintf(buf, "%.5f", *s);
+   FIfld_set_text(plot_form, ScaleField, 0, 0, buf, 0);
+
+   return(TRUE);
+}
+
+init()
+{
+   trace(fprintf( stderr, "init\n"));
+   plot_form = NULL;
+}
+
+wakeup()
+{
+   trace(fprintf( stderr, "wakeup\n"));
+   if (plot_form) FIf_display(plot_form);
+}
+
+sleep()
+{
+   trace(fprintf( stderr, "sleep\n"));
+   if (plot_form) FIf_erase(plot_form);
+}
+
+delete()
+{
+   trace(fprintf( stderr, "delete\n"));
+   if (plot_form) FIf_delete(plot_form);
+   if (curve) free(curve);
+}
+
+main()
+{
+   int              response;
+   int              sts;
+   int              msg;
+   int              i;
+   int              j;
+   int              window;
+   struct GRevent   event;
+   struct GRmd_env  act_mod;
+   struct GRid      fence;
+   char             buf[128];
+   char             grnucpath[128];
+   char             tmpbuf[256];
+   char             *c;
+   FILE             *fp;
+   WLuint16         lscreen_no;
+   int              type_of_screen;
+   int              tmpint;
+
+
+   trace(fprintf( stderr, "main\n"));
+   ex$message(msgnumb = GRC_M_CrLcPl);
+
+#ifdef ENV5
+
+   /* check for batch mode - the display code can't handle that */
+   if (ex$is_batch())
+
+   {
+      ex$message(msgnumb = GR_F_NoBatchHPGL);
+      exit;
+   }
+
+#endif
+
+   plot_form            = NULL;
+   grnucpath[0]         = NULL;
+   defaultsfile[0]      = NULL;
+   tmpbuf[0]            = NULL;
+   lpd.output[0]        = NULL;
+   lpd.maxpens          = 0;
+   window               = 1;
+   fp                   = NULL;
+   i                    = 0;
+   lpd.window.objid     = NULL_OBJID;
+   lpd.resolution       = HighResolution;
+   wcreflag             = FALSE;
+   fcreflag             = FALSE;
+   lpd.cvprism          = NULL;
+   lpd.filetype         = POSTSCRIPT;
+   lpd.origflag         = CORNER_ORG;
+   allocated_curve_size = 0;
+   curve                = NULL;
+   wintofen_ratio       = 1;
+
+
+   // max pens in postscript is undefined, set to a standard colortable
+   // size of the machine - for use later on, need this variable so define here
+   WLget_active_screen( &lscreen_no, &type_of_screen );
+   CMget_active_context( lscreen_no, &context_no );
+   WLget_number_of_color_cells( context_no, &num_color_slots );
+
+   /* create the form */
+   sts = FIf_new(1, "GRLocalPlot", ci_notification, &plot_form);
+   if ((sts != FI_SUCCESS) || (plot_form == NULL))
+   {
+      ex$message(msgnumb = PI_I_CantCreateForm);
+      exit;
+   }
+
+   /* associate the icon with this command object */
+
+   FIf_set_cmd_oid_os(plot_form, MY_ID, OM_Gw_current_OS);
+
+   /* display the form */
+
+   FIf_display(plot_form);
+
+   get_modtype_data("Grnuc",NULL,NULL,NULL,NULL,grnucpath);
+
+   if (grnucpath[0] != NULL)
+   {
+      sprintf(defaultsfile,"%suserdata/lplot_defaults",grnucpath);
+
+      fp = fopen(defaultsfile,"r");
+      if (fp != NULL)
+      {
+         /* read in the output destination, taking care to read in */
+         /* possible spaces in the data (e.g. "qpr -q foo") */
+         i = strlen("Output: ");
+         fgets(tmpbuf, 256, fp);
+
+         if ((strncmp("Output: ", tmpbuf, i) == 0) && strlen(&tmpbuf[i]))
+         {
+            strcpy(lpd.output, &tmpbuf[i]);
+            if (c = strchr(lpd.output, (int)'\n'))
+               *c = NULL;
+         }
+         else
+         {
+            lpd.output[0] = NULL;
+         }
+
+         /* read the number of pens and the window/fence state */
+         fscanf(fp,"%s %d", tmpbuf, &tmpint);
+         lpd.maxpens = (short)tmpint;
+         fscanf(fp,"%s %d", tmpbuf, &window);
+
+         fscanf(fp,"%s %d", tmpbuf, &tmpint);
+         lpd.filetype = (short)tmpint;
+
+         fscanf(fp,"%s %d", tmpbuf, &tmpint);
+         lpd.origflag = (short)tmpint;
+
+         fclose(fp);
+      }
+   }
+   if (lpd.output[0] == NULL)
+   {
+#ifdef CLIX
+      strcpy(lpd.output,"/dev/tty00");
+#elif defined(SPARC)
+      strcpy(lpd.output,"/dev/ttya");
+#elif defined(INTEL)
+      strcpy(lpd.output,"/dev/tty00");
+#elif defined(IRIX)
+      strcpy(lpd.output,"/dev/ttyd2");
+#endif
+   }
+
+   // check the plotter limits
+   GRget_plotter_limits(lpd.output, &lpd.xmax, &lpd.ymax, &lpd.max_unit);
+
+   if( lpd.filetype == HPGL )
+   {
+      if (lpd.maxpens == 0)
+      {
+         lpd.maxpens = 8;
+      }
+   }
+   else
+   {
+      if (lpd.maxpens == 0)
+      {
+         lpd.maxpens = num_color_slots;
+      }
+   }
+
+   FIfld_set_text(plot_form,OutputField,0,0,lpd.output,0);
+   FIg_set_value(plot_form,PenField,(IGRdouble)lpd.maxpens);
+
+   ci$get_module_info(md_env = &act_mod);
+
+   /* set the state of the filetype toggle */
+   if( lpd.filetype == HPGL)
+   {
+      FIg_set_state_off (plot_form, FileType);
+
+      if( lpd.origflag == CENTER_ORG)
+      {
+         FIg_set_state_off(plot_form, OriginFlag);
+      }
+      else
+      {
+         FIg_set_state_on(plot_form, OriginFlag);
+      }
+   }
+   else
+   {
+      FIg_set_state_on (plot_form, FileType);
+      FIg_set_state_on (plot_form, OriginFlag);
+      FIg_disable (plot_form, OriginFlag);
+      lpd.origflag = 1;
+   }
+
+
+   if (window == 1)
+   {
+      FIg_set_state_on (plot_form, WindowToggle);
+      lpd.wftoggle = LP_TOGGLE_WINDOW;
+
+      sts = dp$get_gragad_id (msg = &msg,
+                              mod_GRid = &act_mod,
+                              name = "*",
+                              array_size = 1,
+                              total_num = &i,
+                              numberofids = &j,
+                              found_GRids = &lpd.window,
+                              type_gragad = IGE_GG | ACTIVE_GG);
+
+      if ((sts & msg & 1) && (i == 1))
+      {
+         /* single window active, simulate a user selection */
+
+         window_event.response = EX_DATA;
+         window_event.event.button.objid = lpd.window.objid;
+         window_event.event.button.osnum = lpd.window.osnum;
+
+         FIfld_set_text (plot_form, FI_MSG_FIELD, 0, 0, "", 0);
+         sts = plot$get_window_range(msg    = &msg,
+                                     event  = &window_event,
+                                     window = &lpd.window,
+                                     world  = lpd.range,
+                                     view   = &lpd.range[6]);
+         if (sts & msg & 1)
+         {
+            wcreflag = TRUE;
+            GRshowsize(LP_INIT_SIZE,
+                       &lpd.range[6],
+                       lpd.xmax,
+                       lpd.ymax,
+                       &lpd.plotx,
+                       &lpd.ploty,
+                       &lpd.scale);
+         }
+         else
+         {
+             ex$message(msgnumb = PI_P_IdWinPlt,buff = buf);
+             FIfld_set_text(plot_form,FI_MSG_FIELD,0,0,buf,0);
+         }
+      }
+      else
+      {
+         ex$message(msgnumb = PI_P_IdWinPlt,buff = buf);
+         FIfld_set_text(plot_form,FI_MSG_FIELD,0,0,buf,0);
+      }
+   }
+   else
+   {
+      FIg_set_state_off (plot_form, WindowToggle);
+      lpd.wftoggle = LP_TOGGLE_FENCE;
+      if (lpd.cvprism)
+         om$dealloc(ptr = lpd.cvprism);
+
+      COget_fence_range(&sts,
+                        &act_mod,
+                        &fence,
+                        &lpd.window,
+                        lpd.range,
+                        &lpd.range[6],
+                        &lpd.cvprism);
+
+      if (!(sts & 1))
+      {
+         ex$message(msgnumb=PI_F_NoActFncDfn,buff = buf);
+         FIfld_set_text(plot_form,FI_MSG_FIELD,0,0,buf,0);
+         fcreflag = FALSE;
+      }
+      else
+      {
+         window_event.response = EX_DATA;
+         window_event.event.button.objid = lpd.window.objid;
+         window_event.event.button.osnum = lpd.window.osnum;
+
+         sts = plot$get_window_range(msg = &msg,
+                                     event = &window_event,
+                                     window = &lpd.window,
+                                     world = window_range,
+                                     view = &window_range[6]);
+         if (sts & msg & 1)
+         {
+            wintofen_ratio = (window_range[9] - window_range[6]) /
+                             (lpd.range[9] - lpd.range[6]);
+         }
+         else
+         {
+            wintofen_ratio = 1;
+         }
+         fcreflag = TRUE;
+
+         GRshowsize(LP_INIT_SIZE,
+                    &lpd.range[6],
+                    lpd.xmax,
+                    lpd.ymax,
+                    &lpd.plotx,
+                    &lpd.ploty,
+                    &lpd.scale);
+      }
+   }
+
+   // pick high resolution
+
+/*
+   FIg_set_state_on(plot_form, HighResolution);
+*/
+
+   /* wait for the user to dismiss the form */
+
+   while (1)
+   {
+      ci$getevent(response  = &response,
+                  stackable = TRUE,
+                  msgnum    = EX_P_SelCmd,
+                  event     = &event);
+
+      if ((response == EX_FORM_FINISHED) || (response == EX_RJT_MOVEON))
+      {
+         break;
+      }
+      else if ((response == EX_DATA) || (response == EX_STRING))
+      {
+         FIfld_set_text (plot_form, FI_MSG_FIELD, 0, 0, "", 0);
+
+         if (response == EX_DATA)
+         {
+            window_event.response = event.response;
+            window_event.event.button.objid = event.event.button.objid;
+            window_event.event.button.osnum = event.event.button.osnum;
+         }
+         else
+         {
+            window_event.response = event.response;
+            strcpy(window_event.event.keyin,event.event.keyin);
+         }
+
+         if (lpd.wftoggle == LP_TOGGLE_WINDOW)
+         {
+            sts = plot$get_window_range(msg    = &msg,
+                                        event  = &window_event,
+                                        window = &lpd.window,
+                                        world  = lpd.range,
+                                        view   = &lpd.range[6]);
+            if (sts & msg & 1)
+            {
+               wcreflag = TRUE;
+               ci$get_module_info(md_env = &act_mod);
+               GRshowsize(LP_INIT_SIZE,
+                          &lpd.range[6],
+                          lpd.xmax,
+                          lpd.ymax,
+                          &lpd.plotx,
+                          &lpd.ploty,
+                          &lpd.scale);
+            }
+            else
+            {
+               wcreflag = msg;
+               if (msg == PI_F_NOWINDOW)
+               {
+                  ex$message(msgnumb = GR_E_WinNotFnd,buff=buf);
+                  FIfld_set_text(plot_form,FI_MSG_FIELD,0,0,buf,0);
+               }
+               else
+               {
+                  ex$message(msgnumb = GR_E_CantPltSelWin,buff=buf);
+                  FIfld_set_text(plot_form,FI_MSG_FIELD,0,0,buf,0);
+               }
+            }
+         }
+      }
+      else
+      {
+         ex$message(msgnumb = GR_I_InpDiscard);
+      }
+   }
+}
+
+form_notification()
+{
+   char             buf1[64];
+   char             buf2[64];
+   char             buf3[64];
+   char             buf4[256];
+   char             tmpbuf[1024];
+   char             unit_type[UOM_K_MAX_LEN];
+   char             filename[MAXPATHLEN];
+   char             *c;
+   char             *c1;
+   int              row;
+   int              sel;
+   int              i;
+   int              j;
+   int              changed_value;
+   int              sts;
+   int              msg;
+   double           temp;
+   double           *z;
+   FILE             *fp;
+   struct GRid      fence;
+   struct GRmd_env  mod;
+   struct stat      filestat;
+
+
+   trace(fprintf( stderr, "form_notification\n"));
+
+   temp      = 0;
+   tmpbuf[0] = NULL;
+   fp        = NULL;
+
+   FIfld_set_text(plot_form,FI_MSG_FIELD,0,0,"",0);
+
+   ci$get_module_info(md_env = &mod);
+
+   switch (form_st.gadget_label)
+   {
+      case FI_ACCEPT:
+         if (defaultsfile[0] != NULL)
+         {
+            fp = fopen(defaultsfile, "w");
+            if (fp != NULL)
+            {
+               fprintf(fp,"Output: %s\n",lpd.output);
+               fprintf(fp,"Pens: %d\n",lpd.maxpens);
+
+               if (lpd.wftoggle == LP_TOGGLE_WINDOW)
+                   fprintf(fp,"Window: 1\n");
+               else
+                   fprintf(fp,"Window: 0\n");
+
+               fprintf( fp, "Format: %d\n", lpd.filetype);
+               fprintf( fp, "Origin: %d\n", lpd.origflag);
+               fclose(fp);
+            }
+         }
+
+         // NO BREAK!!
+
+      case FI_CANCEL:
+         /* terminate this command */
+         ci$put(response = EX_FORM_FINISHED);
+         break;
+
+      case FI_EXECUTE:
+         if (lpd.output[0] == NULL)
+         {
+            ex$message(msgnumb = PI_P_EntFlNme, buff=buf4);
+            FIfld_set_text(plot_form,FI_MSG_FIELD,0,0,buf4,0);
+            break;
+         }
+
+         if (lpd.wftoggle == LP_TOGGLE_WINDOW)
+         {
+            if (wcreflag == FALSE)
+            {
+               ex$message(msgnumb = PI_P_IdWinPlt,buff = buf4);
+               FIfld_set_text(plot_form,FI_MSG_FIELD,0,0,buf4,0);
+            }
+            else
+            {
+               if (wcreflag == TRUE)
+               {
+                   GRgenerateHPGL(&mod);
+               }
+               else if (wcreflag == PI_F_NOWINDOW)
+               {
+                   ex$message(msgnumb = GR_E_WinNotFnd,buff=buf4);
+                   FIfld_set_text(plot_form,FI_MSG_FIELD,0,0,buf4,0);
+               }
+               else
+               {
+                   ex$message(msgnumb = GR_E_CantPltSelWin,buff=buf4);
+                   FIfld_set_text(plot_form,FI_MSG_FIELD,0,0,buf4,0);
+               }
+            }
+         }
+         else
+         {
+            if (lpd.cvprism)
+               om$dealloc(ptr = lpd.cvprism);
+
+            COget_fence_range(&sts,&mod,&fence,&lpd.window,lpd.range,
+                               &lpd.range[6], &lpd.cvprism);
+            if (!(sts & 1))
+            {
+               ex$message(msgnumb=PI_F_NoActFncDfn,buff = buf4);
+               FIfld_set_text(plot_form,FI_MSG_FIELD,0,0,buf4,0);
+               fcreflag = FALSE;
+            }
+            else
+            {
+               window_event.response           = EX_DATA;
+               window_event.event.button.objid = lpd.window.objid;
+               window_event.event.button.osnum = lpd.window.osnum;
+
+               sts = plot$get_window_range(msg    = &msg,
+                                           event  = &window_event,
+                                           window = &lpd.window,
+                                           world  = window_range,
+                                           view   = &window_range[6]);
+               if (sts & msg & 1)
+               {
+                   wintofen_ratio = (window_range[9] - window_range[6]) /
+                                        (lpd.range[9] - lpd.range[6]);
+               }
+               else
+               {
+                   wintofen_ratio = 1;
+               }
+               fcreflag = TRUE;
+               GRgenerateHPGL(&mod);
+            }
+         }
+
+         break;
+
+      case OutputField:
+
+         FIfld_get_text( plot_form,
+                       form_st.gadget_label,
+                       0,
+                       0,
+                       160,
+                       tmpbuf,
+                       &sel,
+                       &row);
+
+         if (tmpbuf[0] == NULL)
+         {
+            FIfld_set_text( plot_form,
+                           form_st.gadget_label,
+                           0,
+                           0,
+                           lpd.output,
+                           0);
+         }
+         else
+         {
+            /* prevent overwriting the current object space */
+            msg = 0;
+            ex$filename(name = filename, len = MAXPATHLEN);
+            if (c = strrchr(filename, '/'))
+               c = c + 1;
+            else
+               c = filename;
+
+            if (c1 = strrchr(tmpbuf, '/'))
+               c1 = c1 + 1;
+            else
+               c1 = tmpbuf;
+
+            if (!strcmp(c, c1))
+            {
+               msg           = PI_E_CantOvwtCurFl;
+               lpd.output[0] = NULL;
+
+               FIfld_set_text(plot_form, OutputField, 0, 0, "", 0);
+
+               ex$message(msgnumb = msg, buff = tmpbuf);
+               ex$message(in_buff = tmpbuf, field = ERROR_FIELD);
+
+               FIfld_set_text(plot_form,
+                              FI_MSG_FIELD,
+                              0,
+                              0,
+                              tmpbuf,
+                              0);
+            }
+            else if (stat(tmpbuf, &filestat) == 0)
+            {
+               if (filestat.st_mode & S_IFREG)
+               {   /*warn about overwriting existing files, but continue */
+                   strcpy(lpd.output, tmpbuf);
+                   ex$message(msgnumb = PI_I_ExstFOvrwrt, buff = tmpbuf);
+                   ex$message(in_buff = tmpbuf, field = ERROR_FIELD);
+
+                   FIfld_set_text(plot_form,
+                                  FI_MSG_FIELD,
+                                  0,
+                                  0,
+                                  tmpbuf,
+                                  0);
+               }
+               else if (filestat.st_mode & S_IFDIR)
+               {   /* cannot overwrite directories */
+                   lpd.output[0] = NULL;
+                   UMSGetByNum(buf4, msg = PI_E_IsDir, "%s", tmpbuf);
+                   ex$message(in_buff = buf4, field = ERROR_FIELD);
+                   FIfld_set_text( plot_form,
+                                   FI_MSG_FIELD,
+                                   0,
+                                   0,
+                                   buf4,
+                                   0);
+
+                   FIfld_set_text( plot_form,
+                                   OutputField,
+                                   0,
+                                   0,
+                                   "",
+                                   0);
+               }
+               else /* probably a device */
+                   strcpy(lpd.output, tmpbuf);
+            }
+            else
+               strcpy(lpd.output, tmpbuf);
+
+            if (msg == 0)
+            {
+               // check the plotter limits
+               GRget_plotter_limits(lpd.output,
+                                    &lpd.xmax,
+                                    &lpd.ymax,
+                                    &lpd.max_unit);
+
+               GRshowsize( LP_SCALE_CHANGED,
+                           &lpd.range[6],
+                           lpd.xmax,
+                           lpd.ymax,
+                           &lpd.plotx,
+                           &lpd.ploty,
+                           &lpd.scale);
+            }
+         }
+
+         break;
+
+      case XSizeField:
+      case YSizeField:
+      case ScaleField:
+
+         // grab the changed text
+         FIfld_get_text( plot_form,
+                       form_st.gadget_label,
+                       0,
+                       0,
+                       64,
+                       buf1,
+                       &sel,
+                       &row);
+
+         // check which field really changed
+         if (form_st.gadget_label == XSizeField)
+         {
+            strcpy(unit_type, GRIO_DISTANCE);
+            changed_value = LP_X_CHANGED;
+            z = &lpd.plotx;
+         }
+         else if (form_st.gadget_label == YSizeField)
+         {
+            strcpy(unit_type, GRIO_DISTANCE);
+            changed_value = LP_Y_CHANGED;
+            z = &lpd.ploty;
+         }
+         else
+         {
+            strcpy(unit_type, GRIO_SCALAR);
+            changed_value = LP_SCALE_CHANGED;
+            z = &lpd.scale;
+         }
+
+         // parse the input
+         sts = co$epp(msg     = &msg,
+                    string  = buf1,
+                    sizebuf = sizeof(buf1),
+                    buffer  = buf2);
+
+         if (sts & msg & 1)
+         {
+            sts = co$expreval(msg        = &msg,
+                             scale_flag = GRIO_NO_SCALE,
+                             expression = buf2,
+                             unit_type  = unit_type,
+                             result     = z);
+         }
+
+         // make sure something valid gets processed
+         if (!(sts & msg & 1) || (*z == 0.0))
+            *z = 1;
+
+         // display the results
+         if ((wcreflag == TRUE ) || (fcreflag == TRUE))
+            GRshowsize( changed_value,
+                       &lpd.range[6],
+                       lpd.xmax,
+                       lpd.ymax,
+                       &lpd.plotx,
+                       &lpd.ploty,
+                       &lpd.scale);
+
+         break;
+
+      case PenField:
+         FIg_get_value( plot_form,
+                      form_st.gadget_label,
+                      &temp);
+
+         if (temp == 0)
+         {
+            if( lpd.filetype == HPGL)
+            {
+               lpd.maxpens = 8;
+            }
+            else
+            {
+               lpd.maxpens = num_color_slots;
+            }
+
+            FIg_set_value( plot_form,
+                          form_st.gadget_label,
+                          (IGRdouble)lpd.maxpens);
+         }
+         else
+         {
+            lpd.maxpens = (IGRshort)temp;
+
+            if( lpd.filetype == HPGL )
+            {
+               if(lpd.maxpens > 8)
+               {
+                  lpd.maxpens = 8;
+               }
+            }
+            else
+            {
+               if( lpd.maxpens > num_color_slots )
+               {
+                  lpd.maxpens = num_color_slots;
+               }
+            }
+
+            FIg_set_value( plot_form,
+                          form_st.gadget_label,
+                          (IGRdouble)lpd.maxpens);
+         }
+
+         break;
+
+      case WindowToggle:
+         if (lpd.wftoggle == LP_TOGGLE_WINDOW)
+         {
+            if (lpd.cvprism)
+               om$dealloc(ptr = lpd.cvprism);
+
+            COget_fence_range( &sts,
+                              &mod,
+                              &fence,
+                              &lpd.window,
+                              lpd.range,
+                              &lpd.range[6],
+                              &lpd.cvprism);
+
+            if (!(sts & 1))
+            {
+               ex$message(msgnumb=PI_F_NoActFncDfn,buff = buf4);
+               FIfld_set_text( plot_form,
+                               FI_MSG_FIELD,
+                               0,
+                               0,
+                               buf4,
+                               0);
+
+               fcreflag = FALSE;
+            }
+            else
+            {
+               window_event.response           = EX_DATA;
+               window_event.event.button.objid = lpd.window.objid;
+               window_event.event.button.osnum = lpd.window.osnum;
+
+               sts = plot$get_window_range(msg    = &msg,
+                                           event  = &window_event,
+                                           window = &lpd.window,
+                                           world  = window_range,
+                                           view   = &window_range[6]);
+               if (sts & msg & 1)
+               {
+                  wintofen_ratio = (window_range[9] - window_range[6]) /
+                                        (lpd.range[9] - lpd.range[6]);
+               }
+               else
+               {
+                  wintofen_ratio = 1;
+               }
+
+               fcreflag = TRUE;
+               GRshowsize( LP_INIT_SIZE,
+                           &lpd.range[6],
+                           lpd.xmax,
+                           lpd.ymax,
+                           &lpd.plotx,
+                           &lpd.ploty,
+                           &lpd.scale);
+            }
+
+            lpd.wftoggle = LP_TOGGLE_FENCE;
+         }
+         else
+         {
+            lpd.wftoggle = LP_TOGGLE_WINDOW;
+            fcreflag = FALSE;
+            sts = dp$get_gragad_id (msg         = &msg,
+                                    mod_GRid    = &mod,
+                                    name        = "*",
+                                    array_size  = 1,
+                                    total_num   = &i,
+                                    numberofids = &j,
+                                    found_GRids = &lpd.window,
+                                    type_gragad = IGE_GG | ACTIVE_GG);
+
+            if ((sts & msg & 1) && (i == 1))
+            {
+               /* single window active, simulate a user selection */
+
+               window_event.response           = EX_DATA;
+               window_event.event.button.objid = lpd.window.objid;
+               window_event.event.button.osnum = lpd.window.osnum;
+
+               FIfld_set_text( plot_form,
+                               FI_MSG_FIELD,
+                               0,
+                               0,
+                               "",
+                               0);
+
+               sts = plot$get_window_range(msg    = &msg,
+                                           event  = &window_event,
+                                           window = &lpd.window,
+                                           world  = lpd.range,
+                                           view   = &lpd.range[6]);
+               if (sts & msg & 1)
+               {
+                  wcreflag = TRUE;
+                  GRshowsize( LP_INIT_SIZE,
+                              &lpd.range[6],
+                              lpd.xmax,
+                              lpd.ymax,
+                              &lpd.plotx,
+                              &lpd.ploty,
+                              &lpd.scale);
+               }
+               else
+               {
+                  ex$message(msgnumb = PI_P_IdWinPlt,buff = buf4);
+                  FIfld_set_text(plot_form,FI_MSG_FIELD,0,0,buf4,0);
+               }
+            }
+            else
+            {
+               ex$message(msgnumb = PI_P_IdWinPlt,buff = buf4);
+               FIfld_set_text(plot_form,FI_MSG_FIELD,0,0,buf4,0);
+            }
+         }
+         break;
+
+/*
+      case LowResolution:
+         lpd.resolution = LowResolution;
+         FIg_set_state_off(plot_form, MediumResolution);
+         FIg_set_state_off(plot_form, HighResolution);
+         break;
+
+      case MediumResolution:
+         lpd.resolution = MediumResolution;
+         FIg_set_state_off(plot_form, LowResolution);
+         FIg_set_state_off(plot_form, HighResolution);
+         break;
+
+      case HighResolution:
+         lpd.resolution = HighResolution;
+         FIg_set_state_off(plot_form, LowResolution);
+         FIg_set_state_off(plot_form, MediumResolution);
+         break;
+*/
+      case FileType:
+         if( lpd.filetype == HPGL)
+         {
+            lpd.filetype = POSTSCRIPT;
+            lpd.origflag = CORNER_ORG;
+            lpd.maxpens = num_color_slots;
+            FIg_set_value(plot_form,PenField,(IGRdouble)lpd.maxpens);
+            FIg_set_state_on(plot_form, OriginFlag);
+            FIg_disable(plot_form, OriginFlag);
+         }
+         else
+         {
+            lpd.filetype = HPGL;
+            lpd.maxpens = 8;
+            FIg_set_value(plot_form,PenField,(IGRdouble)lpd.maxpens);
+            FIg_enable(plot_form, OriginFlag);
+            FIg_enable(plot_form, PenField);
+         }
+         break;
+
+      case OriginFlag:
+         FIg_get_value (plot_form,form_st.gadget_label,&temp);
+         lpd.origflag = temp;
+         break;
+
+      default:
+         debug(fprintf( stderr, "Unknown input\n"));
+         break;
+   }
+}
+

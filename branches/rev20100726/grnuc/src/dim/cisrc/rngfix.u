@@ -1,0 +1,382 @@
+#include "cieveryone.h"
+#include "cimacros.h"
+#include "cievent.h"
+#include "cisend.h"
+#include "grdpbdef.h"
+#include "grdpbmacros.h"
+#include "OMindex.h"
+#include "grgsmacros.h"
+#include "dpmacros.h"
+#include "msdef.h"
+#include "msmacros.h"
+#include "DMcmd.h"
+#include "DMmsg.h"
+
+extern int MSmessage();
+
+
+extern strcpy();
+extern printf();
+extern GRdpb_get();
+extern GRgsmgr_fun();
+extern sprintf();
+extern BSrgbxint();
+extern DPinq_level();
+
+IGRchar locbuff[MS_MAX_MSG_LENGTH];
+int msg;
+int loop1,loop2;
+
+main()
+{
+	OM_S_CHANSELECT   chan;
+	IGRchar	      name[8];
+	IGRint	      how_big, obj_size;
+	IGRlong           sts;
+	IGRint            ret;
+	OM_S_KEY_DESC     rtree_key_test;
+	DB_3D_DBL_BOX     rtrange_test;
+	OM_S_KEY_DESC     my_key;
+	DB_3D_DBL_BOX     my_test;
+	OM_S_KEY_DESC     fence_key;
+	DB_3D_DBL_BOX     fence_test;
+	struct GRmd_env   md_env;
+	struct GRid	  fence_id;
+	IGRchar		  yn[32];
+	int badrng, badrng_count, elcount;
+	IGRchar classname[OM_K_MAXCLASS_LEN];
+	IGRpoint newmin, newmax;
+	IGRboolean intersect;
+	IGRchar stsmsg[64];
+	GRobj objid;
+	OMuword osnum;
+	IGRint no_of_levels;
+	IGRshort levels[1024];
+	struct GRsymbology symb;
+	IGRint response;
+	struct GRevent event;
+
+	int ret_bis,i,array_size;
+	OM_S_OBJARRAY *obj_array;
+	OM_S_OBJID *arr;
+
+	ex$message(msgnumb = DM_I_CorrElmntRng,
+ 		   field = 1);
+
+	ci$get_module_info(md_env = &md_env);
+	strcpy(name, "primary");
+	chan.type = OM_e_name;
+	chan.u_sel.name = name;
+	how_big = sizeof (DB_3D_DBL_BOX);    
+
+	obj_size = 5000;
+
+	/***********/
+	alloc_memory:
+	/***********/
+
+	array_size = (sizeof(OM_S_OBJID) * obj_size) + sizeof(OM_S_OBJARRAY);
+	obj_array = (OM_S_OBJARRAY *) om$malloc(size = array_size);
+	if (obj_array == NULL)
+	{
+		printf("malloc fails\n");
+		exit;
+	}
+
+	obj_array->size = array_size;
+	obj_array->count = 0;
+	obj_array->tree_type = KEY_3D_DBL;
+
+	rtree_key_test.type = KEY_3D_DBL;
+	rtree_key_test.key.p_3ddbl = &rtrange_test;
+	rtrange_test.xmin = -100000;
+	rtrange_test.ymin = -100000;
+	rtrange_test.zmin = -100000;
+	rtrange_test.xmax = 100000;
+	rtrange_test.ymax = 100000;
+	rtrange_test.zmax = 100000;
+
+	my_key.type = KEY_3D_DBL;
+	my_key.key.p_3ddbl = &my_test;
+
+	fence_key.type = KEY_3D_DBL;
+	fence_key.key.p_3ddbl = &fence_test;
+
+	sts =
+	ci$send(msg = message OMindex.translate(
+					obj_array,
+					&rtree_key_test,
+					NULL,
+					NULL,
+					&ret_bis),
+		targetid = md_env.md_id.objid,
+		targetos = md_env.md_id.osnum,
+		p_chanselect = &chan);
+	if (obj_array->count > obj_size)
+	{
+		obj_size = obj_array->count;
+		om$dealloc(ptr = obj_array);
+		goto alloc_memory;
+	}
+
+	printf("Number of objects in R_tree=%d\n", obj_array->count);
+
+ 	arr = obj_array->array;
+	badrng_count = 0;
+
+	for (loop1=0; loop1<obj_array->count; loop1=loop1+1)
+	{
+		if (arr[loop1] == NULL_OBJID)
+			continue;
+
+		badrng = FALSE;
+		elcount = 1;
+		for(loop2=loop1+1; loop2<obj_array->count; loop2=loop2+1)
+		{
+			if(arr[loop1] == arr[loop2])
+			{
+				badrng = TRUE;
+				elcount = elcount + 1;
+				arr[loop2] = NULL_OBJID;
+			}
+		}
+
+		if (badrng)
+		for (loop2=0; loop2<elcount; loop2=loop2+1)
+		{
+			sts =
+			ci$send(msg = message OMrtree.find_key(
+						&rtree_key_test,
+						&arr[loop1],
+						&my_key,
+						NULL,
+						&ret_bis),
+				targetid = md_env.md_id.objid,
+				targetos = md_env.md_id.osnum,
+				p_chanselect = &chan);
+			if (!(sts & 1))
+			{
+				printf("Error in find_key %d, %d\n", sts, ret_bis);
+				continue;
+			}
+
+			sts =
+			ci$send(msg = message OMindex.remove(
+						&my_key,
+						&arr[loop1],
+						NULL,
+						&ret_bis),
+				targetid = md_env.md_id.objid,
+				targetos = md_env.md_id.osnum,
+				p_chanselect = &chan);
+			if (!(sts & 1))
+			{
+				printf("Error in remove from rtree %d, %d\n", sts, ret_bis);
+				continue;
+			}
+		}
+
+		if (badrng)
+		{
+			sts =
+			ci$send(msg = message GRgraphics.GRaddwrng(&ret, &md_env),
+				targetid = arr[loop1]);
+			if (!(sts & ret & 1))
+			{
+				printf("Error in addwrng %d, %d\n", sts, ret);
+				continue;
+			}
+
+			printf("Element %d appears %d times\n", arr[loop1], elcount);
+			badrng_count = badrng_count + 1;
+		}
+	}
+
+	printf("Number of elements with bad range=%d\n", badrng_count);
+
+	while (1)
+	{
+		ex$message(msgnumb = DM_I_PFnceVwArea);
+
+
+		ex$message(msgnumb = DM_P_DtPrElmntOutFnceR,
+			   buff = locbuff);
+
+		sts =
+		ci$getevent(
+			prompt = locbuff,
+			response = &response,
+			stackable = 1,
+			event = &event,
+			window_id = &objid,
+			window_osnum = &osnum);
+		if (!(sts & 1)) continue;
+
+		if (response == DATA)
+		{
+			gr$gsget_fence(msg = &ret, fence_id = &fence_id);
+			if (ret & 1) break;
+			ex$message(msgnumb = DM_E_FnceNotFound);
+		}
+
+		if (response == RESET)
+			goto wrap_up;
+	}
+
+	no_of_levels = 1024;
+	dp$inq_levels(
+		msg = &ret,
+		num_of_levels = &no_of_levels,
+		levels = levels,
+		on_off_flag = 0,
+		gragad_objid = objid,
+		gragad_osnum = osnum);
+
+	sts =
+	ci$send(msg = message OMrtree.find_key(
+				&rtree_key_test,
+				&fence_id.objid,
+				&fence_key,
+				NULL,
+				&ret_bis),
+		targetid = md_env.md_id.objid,
+		targetos = md_env.md_id.osnum,
+		p_chanselect = &chan);
+	if (!(sts & 1))
+	{
+		printf("Error in finding fence range %d, %d\n", sts, ret_bis);
+		goto wrap_up;
+	}
+
+	elcount = 0;
+
+	for (loop1=0; loop1<obj_array->count; loop1=loop1+1)
+	{
+		if (arr[loop1] == fence_id.objid)
+		{
+			arr[loop1] = NULL_OBJID;
+			continue;
+		}
+
+		sts =
+		ci$send(msg = message GRvg.GRgetsymb(&ret, &symb),
+			targetid = arr[loop1]);
+		if (!(sts & 1))
+		{
+			arr[loop1] = NULL_OBJID;
+			continue;
+		}
+
+		for (loop2=0; loop2<no_of_levels; loop2=loop2+1)
+		{
+			if (symb.level == levels[loop2])
+			{
+				arr[loop1] = NULL_OBJID;
+				break;
+			}
+		}
+
+		if (arr[loop1] == NULL_OBJID)
+			continue;
+
+		sts =
+		ci$send(msg = message OMrtree.find_key(
+					&rtree_key_test,
+					&arr[loop1],
+					&my_key,
+					NULL,
+					&ret_bis),
+			targetid = md_env.md_id.objid,
+			targetos = md_env.md_id.osnum,
+			p_chanselect = &chan);
+		if (!(sts & 1))
+		{
+			printf("Error in find_key %d, %d\n", sts, ret_bis);
+			continue;
+		}
+
+		BSrgbxint(
+			&fence_test.xmin,
+			&fence_test.xmax,
+			&my_test.xmin,
+			&my_test.xmax,
+			&intersect,
+			newmin,
+			newmax,
+			&ret);
+
+		if (intersect)
+		{
+			arr[loop1] = NULL_OBJID;
+		}
+		else
+		{
+			elcount = elcount + 1;
+			display_object(arr[loop1], GRhd, &md_env);
+		}
+	}
+
+	if (!elcount)
+	{
+		ex$message(msgnumb = DM_E_NoElmntOutFnce);
+		goto wrap_up;
+	}
+	else
+	{
+		ex$message(msgnumb = DM_I_ElmntFndOutFnce, buff = locbuff);
+		sprintf(stsmsg, "%d %s", elcount,locbuff);
+		status(stsmsg);
+
+		while (1)
+		{
+			ex$message(msgnumb = DM_P_DelElmntOutFnceYN,
+				   buff = locbuff);
+
+			ci$get( prompt = locbuff,
+				string = yn,
+				rc = sts);
+
+			if (!(sts & 1)) continue;
+
+			if (yn[0] == 'y' || yn[0] == 'Y')
+				break;
+
+			if (yn[0] == 'n' || yn[0] == 'N')
+				goto wrap_up;
+		}
+
+		ex$message(msgnumb = DM_I_DelElmntOutFnce);
+
+		for (loop1=0; loop1<obj_array->count; loop1=loop1+1)
+		{
+			if (arr[loop1] == NULL_OBJID)
+				continue;
+
+			display_object(arr[loop1], GRbehe, &md_env);
+			ci$send(msg = message GRgraphics.GRdelete(&ret, &md_env),
+				targetid = arr[loop1]);
+		}
+	}
+
+	wrap_up:
+
+	om$dealloc(ptr = obj_array);
+	exit;
+}
+
+display_object(objid, mode, md_env)
+GRobj objid;
+int mode;
+struct GRmd_env *md_env;
+{
+	int ret;
+
+	ci$send(msg = message GRgraphics.GRdisplay(
+				&ret,
+				&md_env->md_env.matrix_type,
+				md_env->md_env.matrix,
+				&mode,
+				&md_env->md_id),
+		targetid = objid);
+}
+

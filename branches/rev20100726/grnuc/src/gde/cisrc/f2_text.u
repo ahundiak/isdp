@@ -1,0 +1,277 @@
+/* TGM 5/5/92 modified to work with message subsystem */
+
+/*
+$Log: f2_text.u,v $
+Revision 1.1.1.1  2001/12/17 22:39:36  hans
+Initial import to CVS
+
+# Revision 340.0  1997/05/27  23:17:03  root
+# COMMENT : Initial checkin to 3.4.0 RCS from 3.3.0 src
+#
+# Revision 330.0  1996/01/11  21:31:24  root
+# COMMENT : Initial checkin to 3.3.0 RCS from 3.2.0 src
+#
+# Revision 320.0  1994/12/12  18:00:10  root
+# COMMENT : Initial checkin to 3.2 RCS from 3.1 src
+#
+# Revision 240.0  1992/12/07  00:04:51  tim
+# COMMENT : Initial checkin to 2.4 RCS
+#
+# Revision 220.0  1992/08/29  06:41:01  root
+# COMMENT : Corresponds to Rel201.2 in 2.0.1 RCS
+#
+Revision 201.2  1992/07/13  20:43:17  tim
+COMMENT : added Log variable
+
+*/
+
+display_text_info(fileptr, mode)
+FILE 		*fileptr;
+int mode;
+{
+
+  IGRlong		om_msg;
+  IGRlong		ret_msg;
+  IGRint                i, j, count, dv_num, sht_num, array_size, which_error;
+  struct GRmd_env       mod_env;
+  struct GRid           /* grset_id, */
+			/* my_grid, */
+			drawview, ref_id;
+  struct GRobj_env *    objects;
+  IGRchar               name[256], description[256], standard[80], units[40],
+                        projection_angle[40], size[40];
+  IGRchar               dv_name[256], dv_description[256], dv_scale[40];
+  IGRdouble             scale_d[3];
+  struct my_sheet *     sheets;
+  OM_S_CHANSELECT       chansel;
+  OMuword               classid, drawview_classid;
+  struct GRref_instance_data ref_instance;
+  IGRchar               ref_file_name[256], ref_saved_view[80];
+  struct GRinquire_list requests[4];
+  IGRboolean            pass;
+  IGRint		type;
+
+  struct GRobj_info	element_type;
+  struct IGRbsp_curve   *bsp_ptr;
+  struct GRsymbology	symb;
+
+
+
+  struct IGRestx text_attr;
+  IGRshort text_length;
+  IGRchar *text_string;
+  int 			verbose_mode;
+  int			print_to_screen;
+  char			loc_buff[80], loc_buff2[80];
+
+
+
+  extern GRstrip_esc_sequences();
+
+
+
+
+
+  print_to_screen = mode & SCREEN_OUTPUT;
+  verbose_mode = mode & VERBOSE_OUTPUT;
+
+
+  /*
+   * Get the module enviroment.
+   */
+  om_msg = ci$get_module_info (md_env = &mod_env);
+
+
+  /*
+   * Construct GRgrset of GRgraphics elements.
+   */
+  om_msg = get_objects(&ret_msg, mod_env, fileptr, mode, 3);
+
+  ex$message(msgnumb=GR_I_LText,buff=loc_buff);
+  if (print_to_screen)
+  {
+    writestars();
+    write(loc_buff,"\n\n");
+  }
+  filestars(fileptr);
+  fprintf(fileptr, "%s\n\n",loc_buff);
+
+  count = 0;
+  om_msg = gr$gsinqcount ( msg = &ret_msg, 
+                           count = &count,
+	                   object_id = &my_grid, 
+                           senderid = MY_ID);
+
+  if (om_msg != OM_S_SUCCESS || ret_msg != MSSUCC)
+  {
+    ex$message(msgnumb=GR_E_NotAvail,buff=loc_buff);
+    if (print_to_screen) 
+      write("\t!!!   ",loc_buff,"   !!!\n");
+    fprintf(fileptr, "\t!!!   %s   !!!\n",loc_buff);
+
+  }
+  if (count == 0)
+  {
+    ex$message(msgnumb=GR_E_NoEleExst,buff=loc_buff);
+    if (print_to_screen)
+      write("\t!!!   ",loc_buff,"   !!!\n");
+    fprintf(fileptr, "\t!!!   %s   !!!\n",loc_buff);
+    return;
+  }
+  if ((om_msg & 1) && count )
+  {
+    objects = (struct GRobj_env *) malloc(count * sizeof(struct GRobj_env));
+    array_size = count * sizeof(struct GRobj_env);
+
+    om_msg = gr$gsget_objects ( msg = &ret_msg, array = objects,
+               size = array_size, count = &count, object_id = &my_grid, 
+		senderid = MY_ID);
+
+    if (om_msg != OM_S_SUCCESS || ret_msg != MSSUCC)
+    {
+      ex$message(msgnumb=GR_E_NotAvail,buff=loc_buff);
+      if (print_to_screen) 
+        write("\t!!!   ",loc_buff,"   !!!\n");
+      fprintf("\t!!!   %s   !!!\n",loc_buff);
+    }
+  }
+
+
+  /*
+   * For all elements 
+   */
+  for ( i=0; i<count; i=i+1 )
+  {
+    /*
+     * Get object name.
+     */
+
+    ci$send ( msg = message GRvg.GRgetname ( & ret_msg, name ),
+              targetid = objects[i].obj_id.objid,
+              targetos = objects[i].obj_id.osnum );
+
+    ci$send ( msg = message GRtext.GRgetobjinfo(&ret_msg, &element_type), 
+              targetid = objects[i].obj_id.objid,
+              targetos = objects[i].obj_id.osnum );
+
+    om_msg = ci$send ( msg = message GRtext.GRgettxattr(&ret_msg, 
+					&text_attr, 
+					&text_length, 
+					&text_string), 
+              targetid = objects[i].obj_id.objid,
+              targetos = objects[i].obj_id.osnum );
+
+    if (om_msg != OM_S_SUCCESS || ret_msg != MSSUCC)
+    {
+      ex$message(msgnumb=GR_E_NotAvail,buff=loc_buff);
+      if (print_to_screen) 
+        write("\t!!!   ",loc_buff,"   !!!\n");
+      fprintf(fileptr, "\t!!!   %s   !!!\n",loc_buff);
+    }
+
+     /*
+      * Output of text attributes
+      */
+	   
+    if (print_to_screen && verbose_mode)
+    {
+ 
+	writedashes();
+        ex$message(msgnumb=GR_I_TxtEle,buff=loc_buff);
+	write("\t",loc_buff," ...................... ", i, "\n");
+        ex$message(msgnumb=GR_I_String,buff=loc_buff);
+	write("\t     ",loc_buff," ....................... ");
+	GRstrip_esc_sequences(&ret_msg, text_string, &text_attr.text_length);
+	for (j = 0; j < text_attr.text_length; j = j+1)
+        {
+	  if (text_string[j] == '\n')
+	    printf("\n\t                                    ") ;
+	  else
+	    printf("%c", text_string[j]);
+	}
+	printf("\n");
+
+        ex$message(msgnumb=GR_I_Font,buff=loc_buff);
+	write("\t     ",loc_buff," ......................... ", text_attr.font, "\n");
+        ex$message(msgnumb=GR_I_Justifi,buff=loc_buff);
+	printf("\t     ",loc_buff," ................ %.2lf\n", 
+		text_attr.just);
+        ex$message(msgnumb=GR_I_Width,buff=loc_buff);
+	printf("\t     ",loc_buff," ........................ %.2lf\n", 
+		text_attr.width);
+        ex$message(msgnumb=GR_I_Height,buff=loc_buff);
+	printf("\t     ",loc_buff," ....................... %.2lf\n", 
+		text_attr.height);
+        ex$message(msgnumb=GR_I_NumChars,buff=loc_buff);
+	printf("\t     ",loc_buff," .............. %.2lf\n", 
+		text_attr.num_char);
+        ex$message(msgnumb=GR_I_LineSpacing,buff=loc_buff);
+	printf("\t     ",loc_buff," ................. %.2lf\n", 
+		text_attr.line_spac);	
+        ex$message(msgnumb=GR_I_CharSpacing,buff=loc_buff);
+	printf("\t     ",loc_buff," ............ %.2lf\n\n", 
+		text_attr.char_spac);
+    }  /* end of print_to_screen and verbose_mode */
+
+    if (verbose_mode)
+    {
+      filedashes(fileptr);
+      ex$message(msgnumb=GR_I_TxtEle,buff=loc_buff);
+      fprintf(fileptr, "\t%s ....................... %d\n", loc_buff, i);
+      ex$message(msgnumb=GR_I_String,buff=loc_buff);
+      fprintf(fileptr, "\t     %s ........................ ", loc_buff);
+      GRstrip_esc_sequences(&ret_msg, text_string, &text_attr.text_length);
+      for (j = 0; j < text_attr.text_length; j = j+1)
+      {
+        if (text_string[j] == '\n')
+          fprintf(fileptr, "\n\t                                     ");
+        else
+          fprintf(fileptr, "%c", text_string[j]);
+      }
+      fprintf(fileptr, "\n");
+ 
+      ex$message(msgnumb=GR_I_Font,buff=loc_buff);
+      fprintf(fileptr, "\t     %s .......................... %d\n", loc_buff,
+		text_attr.font);
+      ex$message(msgnumb=GR_I_Justifi,buff=loc_buff);
+      fprintf(fileptr, "\t     %s ................. %d\n", loc_buff,
+		text_attr.just);
+      ex$message(msgnumb=GR_I_Width,buff=loc_buff);
+      fprintf(fileptr, "\t     %s ......................... %.2lf\n", loc_buff,
+		text_attr.width);
+      ex$message(msgnumb=GR_I_Height,buff=loc_buff);
+      fprintf(fileptr, "\t     %s ........................ %.2lf\n", loc_buff,
+		text_attr.height);
+      ex$message(msgnumb=GR_I_NumChars,buff=loc_buff);
+      fprintf(fileptr, "\t     %s ............... %d\n", loc_buff,
+		text_attr.num_char);
+      ex$message(msgnumb=GR_I_LineSpacing,buff=loc_buff);
+      fprintf(fileptr, "\t     %s .................. %.2lf\n",
+                loc_buff, text_attr.line_spac);
+      ex$message(msgnumb=GR_I_CharSpacing,buff=loc_buff);
+      fprintf(fileptr, "\t     %s ............. %.2lf\n\n", loc_buff,
+		text_attr.char_spac);
+
+    }  /* end if verbose mode */
+  }
+
+
+  ex$message(msgnumb=GR_I_Summary,buff=loc_buff);
+  ex$message(msgnumb=GR_I_TxtExst,buff=loc_buff2);
+  if (print_to_screen)
+  {
+    write("\n\n\n\t",loc_buff,"\n\n");
+    write("\t\t", count, loc_buff2,"\n");
+  }
+
+
+  fprintf(fileptr, "\n\n\n\t%s\n\n",loc_buff);
+  fprintf(fileptr, "\t\t%d %s\n", count, loc_buff2);
+
+  free ( objects );
+}
+
+
+
+
+

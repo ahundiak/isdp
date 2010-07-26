@@ -1,0 +1,2474 @@
+/**
+**   PROGRAM:	GRCrFnFl.u
+**
+**   HISTORY:	Name	    Date	Note
+**              ---------------------------------------------
+**              Joe Wagner	11-90	Version 1.3.2,copied FTBCrClFl.u
+**                                  and made changes.
+**              Joe Wagner	12-90	Changed the locate & filter of elements
+**                                  to prepare to get the vectors.
+**              Ed Sieja	01-91	Added the routines to stroke elements
+**              Joe Wagner	01-91	Added the routines to write out the
+**                                  FONTLIB file.
+**              Ed Sieja	01-91	Fixed to handle multi vector elements
+**                                  per character.
+**              Joe Wagner	01-91	Added fix to check first space for a
+**                                  SPACE (33) with no elements. Fix to
+**                                  check if the tile box is on level 63.
+**              Joe Wagner	02-91	Added fix to filter_tile_box to check
+**                                  the symbology & level instead of the
+**                                  corner coords.
+**		Yvonne Chu	03-92  	Added routines to read/write font
+**				    library on the Sun (Big Endian format).
+**		Tim McKee 	05-92  	Converted messages to the message
+**				    sub-system
+**		Tim McKee 	09-92  	Fixed ppl compile problem with time.h
+**
+**              Mrudula         11-92   Fixed crash problem on SUN. Fixed to
+**                                  choose origin within tile box.
+**
+**		Scott Walters	09-96  	Removed references to OMprimindex.h
+**
+**  DESCRIPTION: This program creates a FONTLIB file from the graphics
+**    defined in the active design file that is in the proper format
+**    (i.e. Setup via the FTB setup program).
+**
+**/
+
+/**  TXT_FLAG is 33 decimal, x021,used in GRstrip_esc_sequences() **/
+#define TXT_FLAG        33
+
+#include <sys/types.h>
+
+//  #if defined ( SUNOS ) || defined ( SUNOS5 )
+//  #include <time.h>
+//  #endif
+
+//  #ifndef SUNOS
+//  struct  tm {    /* see ctime(3) */
+//          int     tm_sec;
+//          int     tm_min;
+//          int     tm_hour;
+//          int     tm_mday;
+//          int     tm_mon;
+//          int     tm_year;
+//          int     tm_wday;
+//          int     tm_yday;
+//          int     tm_isdst;
+//  };
+//  #endif
+
+
+#include "exsysdep.h"
+#include "ciminimum.h"
+#include "cieveryone.h"
+#include "cimath.h"
+#include "grgs.h"
+#include "grgsmacros.h"
+#include "growner.h"
+#include "cimacros.h"
+#include "msdef.h"
+#include "string.h"
+#include "OMindex.h"
+#include "OMprimitives.h"
+#include "igrtypedef.h"
+#include <stdio.h>
+#include "ci_easy.h"
+#include "ci_wire.h"
+#include "exmacros.h"
+#include "godef.h"
+#include "gr.h"
+#include "igr.h"
+#include "igrdp.h"
+#include "go.h"
+#include "grmacros.h"
+#include "FI.h"
+#include "grmsg.h"
+#include "msmacros.h"
+
+#ifdef BIG_ENDIAN
+#include "flibstruct.h"
+#endif
+
+#ifdef DEBUG
+#define dprintf(ARGS) fprintf ARGS
+#else
+#define dprintf(ARGS) ";";
+#endif
+
+#define WARNING(wmsg) FI_message_box(FI_CURRENT_SCREEN,-1,-1,"WARNING", FI_BLACK,"swiss742",24.0,wmsg,FI_BLACK,"swiss742",24.0,FI_FITTED,40)
+
+double      lower_left[3],acc_pnt[3], win_pnt[3],win_pnt2[3],
+            cell_origin[3],cell_ll[3],cell_ur[3],find_point[3],
+            arc_poly_points[301], bsp_poly_points[301], u1, u2,
+            temp_char_info;
+int         make_char, char_number, i, font_number,char_num,l,
+            number_of_chars,EOL_block,EOL_byte,bytes_in_font,ii,jj,kk,
+            dim_tbl_size,char_code_size,char_info_size;
+IGRint      count, ele_count, ele_data, ret1;
+int point_flag;
+
+#ifdef BIG_ENDIAN
+struct 	    library_header    	Xfl_hdr;
+struct      font_offset_table 	Xf_o_tbl;
+struct      font_header	 	Xf_hdr;
+char 	    Xftlb_hdr_buf[512], Xft_of_tbl_buf[12], Xft_hdr_buf[206];
+char	    *Xdim_tbl_buf,*Xchar_code_buf;
+#else
+short       ftlb_hdr_buf[256],ft_of_tbl_buf[6],ft_hdr_buf[103];
+short       *dim_tbl_buf,*char_code_buf;
+#endif
+
+IGRshort    beg_char,end_char, text_len;
+long        secs;
+IGRlong     ele_size, numpts;
+unsigned    char     *ptext;
+char        *fntlib_hdr_buf[256+1], *bsp_geom;
+char        class_name[OM_K_MAXCLASS_LEN+1],
+            user_file[256 +1], char_desc[30], name_desc[37], loc_buff[40],
+            text_string[265],temp_str[132],font_name[128], font_class[11];
+GRspacenum  os_num;        /* os_num where to select object */
+GRobj       obj_ids[512];
+short       osnum_array[512];
+
+extern  IGRboolean  GRstrip_esc_sequences();
+extern  printf(), fclose(), sprintf();
+#if !defined ( SUNOS ) && !defined ( SUNOS5 )
+extern  int time();
+#endif
+#ifdef CLIX
+extern int fwrite();
+#endif
+
+extern  struct tm *localtime();
+
+struct  tm           *time_now;
+struct  IGRestx      text_attr;
+struct  GRid         set_id;
+struct  GRmd_env     my_env;
+struct  IGRarc       conics;
+struct  IGRpolyline  poly,arc_poly,bsp_poly;
+struct  GRsymbology  TBsymb;
+
+FILE    *log_file, *font_file, *fopen();
+
+union
+  {
+  short  scale_short[4];
+  double scale_double;
+  } UN_scale;
+
+union
+  {
+  unsigned short  tmp_short;
+  unsigned char   tmp_char[2];
+  } UN;
+
+union   mixed
+  {
+  char  buf[2];
+  short val;
+  };
+union   mixed  fmt;
+
+unsigned short char_ndx, vec_elem_ndx, vec_data_ndx;
+short options, etype;
+
+
+struct vec_elem_info
+{
+   unsigned short num_vecs;
+   unsigned short *vec_data;
+};
+
+struct char_info_sd
+{
+   unsigned short        char_num;
+   unsigned short        num_vec_elems;
+   struct vec_elem_info *vec_elem;
+} char_info[256];
+
+struct vec_elem_info *tmp_vec_elem;
+unsigned short *tmp_vec_data;
+
+#ifdef BIG_ENDIAN
+/*================ Conversion Functions ================================*/
+
+/*----------------------------------------------------------------------*/
+/* Xconv routines -  convert the data to Little/Big to Big/Little 	*/
+/*		     Endian format.					*/
+/*----------------------------------------------------------------------*/
+
+Xconv_short(s)
+  short *s;
+{
+  union	{
+	char c[2];
+	short s;
+	} x, y;
+
+  x.s = *s;
+
+  y.c[0] = x.c[1];
+  y.c[1] = x.c[0];
+
+  *s = y.s;
+}
+
+Xconv_int(i)
+  int *i;
+{
+  union	{
+	char c[4];
+	int  i;
+	} x, y;
+
+  x.i = *i;
+
+  y.c[0] = x.c[3];
+  y.c[1] = x.c[2];
+  y.c[2] = x.c[1];
+  y.c[3] = x.c[0];
+
+  *i = y.i;
+}
+
+Xconv_double(d)
+  double *d;
+{
+  union	{
+	char c[8];
+	double d;
+	} x, y;
+
+  x.d = *d;
+
+  y.c[0] = x.c[7];
+  y.c[1] = x.c[6];
+  y.c[2] = x.c[5];
+  y.c[3] = x.c[4];
+  y.c[4] = x.c[3];
+  y.c[5] = x.c[2];
+  y.c[6] = x.c[1];
+  y.c[7] = x.c[0];
+
+  *d = y.d;
+}
+
+/*----------------------------------------------------------------------*/
+/* INCRconv routines -  convert the data to Little/Big to Big/Little 	*/
+/*			Endian format, stores it in location pointed to */
+/*			by second argument as well as autoincrements 	*/
+/*			the location pointer 				*/
+/*----------------------------------------------------------------------*/
+
+INCRconv_char(c, f_ptr)
+  char c, **f_ptr;
+{
+  **f_ptr = c;
+  *f_ptr = *f_ptr+1;
+}
+
+INCRconv_short(s, f_ptr)
+  short s;
+  char **f_ptr;
+{
+  union	{
+	char c[2];
+	short s;
+	} x;
+
+  x.s = s;
+
+  (*f_ptr)[0] = x.c[1];
+  (*f_ptr)[1] = x.c[0];
+
+  *f_ptr = *f_ptr+2;
+}
+
+INCRconv_int(i, f_ptr)
+  int i;
+  char **f_ptr;
+{
+  union	{
+	char c[4];
+	int  i;
+	} x;
+
+  x.i = i;
+
+  (*f_ptr)[0] = x.c[3];
+  (*f_ptr)[1] = x.c[2];
+  (*f_ptr)[2] = x.c[1];
+  (*f_ptr)[3] = x.c[0];
+
+  *f_ptr = *f_ptr+4;
+}
+
+INCRconv_double(d, f_ptr)
+  double d;
+  char **f_ptr;
+{
+  union	{
+	char c[8];
+	double d;
+	} x;
+
+  x.d = d;
+
+  (*f_ptr)[0] = x.c[7];
+  (*f_ptr)[1] = x.c[6];
+  (*f_ptr)[2] = x.c[5];
+  (*f_ptr)[3] = x.c[4];
+  (*f_ptr)[4] = x.c[3];
+  (*f_ptr)[5] = x.c[2];
+  (*f_ptr)[6] = x.c[1];
+  (*f_ptr)[7] = x.c[0];
+
+  *f_ptr = *f_ptr+8;
+}
+#endif
+
+/*================ SetUp Functions =====================================*/
+#ifdef BIG_ENDIAN
+int XSetUp_Ftlb_Hdr()
+{
+  int i;
+  char *f_ptr;
+
+  /* Initialize library header structure */
+
+  Xfl_hdr.form_ver_num 	    = 2;
+  Xfl_hdr.libr_ver_num.user = 2;
+  Xfl_hdr.libr_ver_num.nfnt = 1;
+  Xfl_hdr.libr_ver_num.chng = 4;
+  Xfl_hdr.libr_ver_num.fix  = 3;
+  Xfl_hdr.cre_date.year     = 1900 + time_now->tm_year;
+  Xfl_hdr.cre_date.month    = (char)time_now->tm_mon;
+  Xfl_hdr.cre_date.day	    = (char)time_now->tm_mday;
+  Xfl_hdr.cre_time.hour	    = (char)time_now->tm_hour;
+  Xfl_hdr.cre_time.min	    = (char)time_now->tm_min;
+  Xfl_hdr.cre_time.sec	    = (char)time_now->tm_sec;
+  Xfl_hdr.cre_time.sec_100th= 0;
+  Xfl_hdr.mod_date.year	    = 1900 + time_now->tm_year;
+  Xfl_hdr.mod_date.month    = (char)time_now->tm_mon;
+  Xfl_hdr.mod_date.day	    = (char)time_now->tm_mday;
+  Xfl_hdr.mod_time.hour	    = (char)time_now->tm_hour;
+  Xfl_hdr.mod_time.min	    = (char)time_now->tm_min;
+  Xfl_hdr.mod_time.sec	    = (char)time_now->tm_sec;
+  Xfl_hdr.mod_time.sec_100th= 0;
+  Xfl_hdr.last_font	    = 0;
+  strcpy(Xfl_hdr.lib_descrip, "FTB Ver. 1.4.1");
+  Xfl_hdr.char_fst_fnt	    = 1;
+  Xfl_hdr.sym_fst_fnt	    = 0;
+  Xfl_hdr.pat_fst_fnt	    = 0;
+  Xfl_hdr.line_fst_fnt	    = 0;
+  		/* for (i=0; i<56; i=i+1) Xfl_hdr.reserve[i] = 0; */
+  Xfl_hdr.fnt_ptr	    = 0;
+  Xfl_hdr.fot_ptr	    = 512;
+  Xfl_hdr.nxt_av_blk	    = 0;
+  Xfl_hdr.nxt_av_wrd	    = 0;
+  Xfl_hdr.rec_len	    = 0;
+  		/* for (i=0; i<161; i=i+1) Xfl_hdr.reserv[i] = 0; */
+
+  /* Xconv in Xftlb_hdr_buf */
+  for (i=0; i<512; i=i+1) Xftlb_hdr_buf[i] = 0;
+  f_ptr = Xftlb_hdr_buf;
+  INCRconv_int  (Xfl_hdr.form_ver_num,      	&f_ptr);
+  INCRconv_char (Xfl_hdr.libr_ver_num.user, 	&f_ptr);
+  INCRconv_char (Xfl_hdr.libr_ver_num.nfnt, 	&f_ptr);
+  INCRconv_char (Xfl_hdr.libr_ver_num.chng, 	&f_ptr);
+  INCRconv_char (Xfl_hdr.libr_ver_num.fix,  	&f_ptr);
+  INCRconv_short(Xfl_hdr.cre_date.year,     	&f_ptr);
+  INCRconv_char (Xfl_hdr.cre_date.month,    	&f_ptr);
+  INCRconv_char (Xfl_hdr.cre_date.day,      	&f_ptr);
+  INCRconv_char (Xfl_hdr.cre_time.hour,     	&f_ptr);
+  INCRconv_char (Xfl_hdr.cre_time.min,      	&f_ptr);
+  INCRconv_char (Xfl_hdr.cre_time.sec,      	&f_ptr);
+  INCRconv_char (Xfl_hdr.cre_time.sec_100th,	&f_ptr);
+  INCRconv_short(Xfl_hdr.mod_date.year,     	&f_ptr);
+  INCRconv_char (Xfl_hdr.mod_date.month,    	&f_ptr);
+  INCRconv_char (Xfl_hdr.mod_date.day,   	&f_ptr);
+  INCRconv_char (Xfl_hdr.mod_time.hour,   	&f_ptr);
+  INCRconv_char (Xfl_hdr.mod_time.min, 		&f_ptr);
+  INCRconv_char (Xfl_hdr.mod_time.sec, 		&f_ptr);
+  INCRconv_char (Xfl_hdr.mod_time.sec_100th,	&f_ptr);
+  INCRconv_int  (Xfl_hdr.last_font, 	  	&f_ptr);
+  strcpy(f_ptr, Xfl_hdr.lib_descrip); 		f_ptr=f_ptr+80;
+  INCRconv_short(Xfl_hdr.char_fst_fnt,		&f_ptr);
+  INCRconv_short(Xfl_hdr.sym_fst_fnt, 		&f_ptr);
+  INCRconv_short(Xfl_hdr.pat_fst_fnt,		&f_ptr);
+  INCRconv_short(Xfl_hdr.line_fst_fnt,		&f_ptr);
+  /* Xfl_hdr.reserve[56] = 0; */ 		f_ptr=f_ptr+56;
+  INCRconv_int  (Xfl_hdr.fnt_ptr, 	  	&f_ptr);
+  INCRconv_int  (Xfl_hdr.fot_ptr, 	  	&f_ptr);
+  INCRconv_int  (Xfl_hdr.nxt_av_blk,		&f_ptr);
+  INCRconv_short(Xfl_hdr.nxt_av_wrd,		&f_ptr);
+  INCRconv_int  (Xfl_hdr.rec_len, 	  	&f_ptr);
+  /* Xfl_hdr.reserv[161] = 0; */
+
+  return(0);
+}
+
+int XSetUp_Ft_Of_Tbl()
+{
+  /*** INIT the Xft_of_tbl_buf[] array  ***/
+  int i;
+  char *f_ptr;
+
+  for (i=0; i<12; i=i+1) Xft_of_tbl_buf[i] = 0;
+  f_ptr = &Xft_of_tbl_buf[8];
+  INCRconv_int(12, &f_ptr);
+
+  return(0);
+}
+
+int XSetUp_Ft_Hdr()
+{
+  char *f_ptr;
+  int i;
+
+  union	{
+	double u_scale;
+	short  u_s[4];
+	} XU_scale;
+
+  Xf_hdr.cre_date.year	 = 1900 + time_now->tm_year;
+  Xf_hdr.cre_date.month	 = time_now->tm_mon;
+  Xf_hdr.cre_date.day	 = time_now->tm_mday;
+  Xf_hdr.cre_time.hour	 = time_now->tm_hour;
+  Xf_hdr.cre_time.min	 = time_now->tm_min;
+  Xf_hdr.cre_time.sec	 = time_now->tm_sec;
+  Xf_hdr.cre_time.sec_100th = 0;
+  Xf_hdr.mod_date.year	 = 1900 + time_now->tm_year;
+  Xf_hdr.mod_date.month	 = time_now->tm_mon;
+  Xf_hdr.mod_date.day	 = time_now->tm_mday;
+  Xf_hdr.mod_time.hour	 = time_now->tm_hour;
+  Xf_hdr.mod_time.min	 = time_now->tm_min;
+  Xf_hdr.mod_time.sec	 = time_now->tm_sec;
+  Xf_hdr.mod_time.sec_100th = 0;
+  strcpy(Xf_hdr.font_descrip, "FTB Font");
+  Xf_hdr.font_class	 = 0;
+  Xf_hdr.display_font	 = 0;
+  Xf_hdr.vect_wrd_size	 = 1;
+  Xf_hdr.x_origin  	 = 0;
+  Xf_hdr.y_origin  	 = 0;
+  XU_scale.u_s[3]	 = 0x3e41;
+  XU_scale.u_s[2]	 = 0x8306;
+  XU_scale.u_s[1]	 = 0x0c18;
+  XU_scale.u_s[0]	 = 0x3061;
+/* ifndef BIG_ENDIAN
+  U_scale.u_s[0]	 = 0x3e41;
+  U_scale.u_s[1]	 = 0x8306;
+  U_scale.u_s[2]	 = 0x0c18;
+  U_scale.u_s[3]	 = 0x3061;
+*/
+  Xf_hdr.x_scale	 = XU_scale.u_scale;
+  Xf_hdr.y_scale	 = XU_scale.u_scale;
+  Xf_hdr.tile_hgth  	 = 127;
+  Xf_hdr.res_bm	  	 = 0;
+  Xf_hdr.res_0	  	 = 0;
+  Xf_hdr.res_1	  	 = 0;
+  Xf_hdr.res_2	  	 = 0;
+  Xf_hdr.res_3	  	 = 0;
+  Xf_hdr.res_4	  	 = 0;
+  Xf_hdr.res_5	  	 = 0;
+  Xf_hdr.res_6	  	 = 0;
+  Xf_hdr.res_7	  	 = 0;
+  Xf_hdr.reserv	  	 = 0;
+  Xf_hdr.beg_char  	 = 0;
+  Xf_hdr.end_char  	 = 0;
+  Xf_hdr.num_of_char	 = 0;
+  Xf_hdr.code_size  	 = 1;
+  Xf_hdr.face_fnt_dir	 = 0;
+  Xf_hdr.char_def_len	 = 0;
+  Xf_hdr.ccot_ptr  	 = 0;
+  Xf_hdr.cdt_ptr	  	 = 206;
+  Xf_hdr.dim_flag  	 = 5;
+  Xf_hdr.vcot_ptr  	 = 0;
+  Xf_hdr.flags	  	 = 0;
+  Xf_hdr.hdr_exp	  	 = 0;
+  Xf_hdr.fnt_len	  	 = 0;
+
+  for (i=0; i<206; i=i+1) Xft_hdr_buf[i] = 0;
+  f_ptr = Xft_hdr_buf;
+  INCRconv_short(Xf_hdr.cre_date.year, 	&f_ptr);
+  INCRconv_char (Xf_hdr.cre_date.month,	&f_ptr);
+  INCRconv_char (Xf_hdr.cre_date.day,	&f_ptr);
+  INCRconv_char (Xf_hdr.cre_time.hour,	&f_ptr);
+  INCRconv_char (Xf_hdr.cre_time.min,	&f_ptr);
+  INCRconv_char (Xf_hdr.cre_time.sec, 	&f_ptr);
+  INCRconv_char (Xf_hdr.cre_time.sec_100th,&f_ptr);
+  INCRconv_short(Xf_hdr.mod_date.year, 	&f_ptr);
+  INCRconv_char (Xf_hdr.mod_date.month,	&f_ptr);
+  INCRconv_char (Xf_hdr.mod_date.day, 	&f_ptr);
+  INCRconv_char (Xf_hdr.mod_time.hour,	&f_ptr);
+  INCRconv_char (Xf_hdr.mod_time.min,	&f_ptr);
+  INCRconv_char (Xf_hdr.mod_time.sec, 	&f_ptr);
+  INCRconv_char (Xf_hdr.mod_time.sec_100th,&f_ptr);
+  strcpy(f_ptr, Xf_hdr.font_descrip); 	f_ptr=f_ptr+80;
+  INCRconv_short(Xf_hdr.font_class,	&f_ptr);
+  INCRconv_short(Xf_hdr.display_font,	&f_ptr);
+  INCRconv_short(Xf_hdr.vect_wrd_size, 	&f_ptr);
+  INCRconv_int  (Xf_hdr.x_origin,  	&f_ptr);
+  INCRconv_int  (Xf_hdr.y_origin,  	&f_ptr);
+  INCRconv_double(Xf_hdr.x_scale, 	&f_ptr);
+  INCRconv_double(Xf_hdr.y_scale,	&f_ptr);
+  INCRconv_int  (Xf_hdr.tile_hgth,  	&f_ptr);
+  INCRconv_short(Xf_hdr.res_bm,	  	&f_ptr);
+  INCRconv_int  (Xf_hdr.res_0,	  	&f_ptr);
+  INCRconv_int  (Xf_hdr.res_1,	   	&f_ptr);
+  INCRconv_int  (Xf_hdr.res_2,	  	&f_ptr);
+  INCRconv_int  (Xf_hdr.res_3,	  	&f_ptr);
+  INCRconv_int  (Xf_hdr.res_4,	 	&f_ptr);
+  INCRconv_int  (Xf_hdr.res_5,	  	&f_ptr);
+  INCRconv_int  (Xf_hdr.res_6,	  	&f_ptr);
+  INCRconv_int  (Xf_hdr.res_7,	  	&f_ptr);
+  INCRconv_short(Xf_hdr.reserv,	 	&f_ptr);
+  INCRconv_short(Xf_hdr.beg_char,  	&f_ptr);
+  INCRconv_short(Xf_hdr.end_char,  	&f_ptr);
+  INCRconv_short(Xf_hdr.num_of_char, 	&f_ptr);
+  INCRconv_short(Xf_hdr.code_size, 	&f_ptr);
+  INCRconv_short(Xf_hdr.face_fnt_dir, 	&f_ptr);
+  INCRconv_int  (Xf_hdr.char_def_len,	&f_ptr);
+  INCRconv_int  (Xf_hdr.ccot_ptr,  	&f_ptr);
+  INCRconv_int  (Xf_hdr.cdt_ptr,  	&f_ptr);
+  INCRconv_short(Xf_hdr.dim_flag,  	&f_ptr);
+  INCRconv_int  (Xf_hdr.vcot_ptr,  	&f_ptr);
+  INCRconv_int  (Xf_hdr.flags,	  	&f_ptr);
+  INCRconv_int  (Xf_hdr.hdr_exp,  	&f_ptr);
+  INCRconv_int  (Xf_hdr.fnt_len, 	&f_ptr);
+
+  return(0);
+}
+#else
+int SetUp_Ftlb_Hdr()
+/** Writes all of the info except the EOL info,that will be done last */
+{
+  /*** INIT the ftlb_hdr_buf[] array  ***/
+  for( i=0 ; i < 256 ; i=i+1)
+  {
+    ftlb_hdr_buf[i] = 0;
+  }
+  ftlb_hdr_buf[0] = 2;       /* Format Version Number */
+  ftlb_hdr_buf[2] = 258;     /* FONTMGR Version */
+  ftlb_hdr_buf[3] = 772;     /*    Number       */
+  ftlb_hdr_buf[4] = 1900+time_now->tm_year; /* Creation date */
+  ftlb_hdr_buf[8] = 1900+time_now->tm_year; /* Modification date */
+  fmt.buf[0] = (char)time_now->tm_mon;
+  fmt.buf[1] = (char)time_now->tm_mday;
+  ftlb_hdr_buf[5] = fmt.val;                /* Creation date */
+  ftlb_hdr_buf[9] = fmt.val;                /* Modification date */
+  fmt.buf[0] = (char)time_now->tm_hour;
+  fmt.buf[1] = (char)time_now->tm_min;
+  ftlb_hdr_buf[6] = fmt.val;                /* Creation date */
+  ftlb_hdr_buf[10] = fmt.val;               /* Modification date */
+  fmt.buf[0] = (char)time_now->tm_sec;
+  fmt.buf[1] = 0;
+  ftlb_hdr_buf[7] = fmt.val;                /* Creation date */
+  ftlb_hdr_buf[11] = fmt.val;               /* Modification date */
+  fmt.buf[0] = "F";
+  fmt.buf[1] = "T";
+  ftlb_hdr_buf[14] = fmt.val;               /* FTB info in General */
+  fmt.buf[0] = "B";                         /* Description field   */
+  fmt.buf[1] = " ";
+  ftlb_hdr_buf[15] = fmt.val;
+  fmt.buf[0] = "V";
+  fmt.buf[1] = "e";
+  ftlb_hdr_buf[16] = fmt.val;
+  fmt.buf[0] = "r";
+  fmt.buf[1] = ".";
+  ftlb_hdr_buf[17] = fmt.val;
+  fmt.buf[0] = " ";
+  fmt.buf[1] = "1";
+  ftlb_hdr_buf[18] = fmt.val;
+  fmt.buf[0] = ".";
+  fmt.buf[1] = "4";
+  ftlb_hdr_buf[19] = fmt.val;
+  fmt.buf[0] = ".";
+  fmt.buf[1] = "1";
+  ftlb_hdr_buf[20] = fmt.val;
+
+  fmt.buf[0] = 1;                           /* Fast font display */
+  fmt.buf[1] = 0;
+  ftlb_hdr_buf[54] = fmt.val;
+  ftlb_hdr_buf[88] = 512;         /* Offset to Font Offset Table */
+
+  return(0);
+}
+
+/*=======================================================================*/
+int SetUp_Ft_Of_Tbl()
+{
+  /*** INIT the ft_of_tbl_buf[] array  ***/
+  for( i=0 ; i < 6 ; i=i+1)
+  {
+    ft_of_tbl_buf[i] = 0;
+  }
+            /* Begining Font # ,Set after the # is read from the */
+            /* Ending Font #   , design file.                    */
+  ft_of_tbl_buf[4] = 12;         /* Offset to Font Header */
+
+  return(0);
+}
+
+/*=======================================================================*/
+int SetUp_Ft_Hdr()
+{
+  /*** INIT the ft_hdr_buf[] array  ***/
+  for( i=0 ; i < 103 ; i=i+1)
+  {
+    ft_hdr_buf[i] = 0;
+  }
+  ft_hdr_buf[0] = 1900+time_now->tm_year; /* Creation date */
+  ft_hdr_buf[4] = 1900+time_now->tm_year; /* Modification date */
+  fmt.buf[0] = (char)time_now->tm_mon;
+  fmt.buf[1] = (char)time_now->tm_mday;
+  ft_hdr_buf[1] = fmt.val;                /* Creation date */
+  ft_hdr_buf[5] = fmt.val;                /* Modification date */
+  fmt.buf[0] = (char)time_now->tm_hour;
+  fmt.buf[1] = (char)time_now->tm_min;
+  ft_hdr_buf[2] = fmt.val;                /* Creation date */
+  ft_hdr_buf[6] = fmt.val;                /* Modification date */
+  fmt.buf[0] = (char)time_now->tm_sec;
+  fmt.buf[1] = 0;
+  ft_hdr_buf[3] = fmt.val;                /* Creation date */
+  ft_hdr_buf[7] = fmt.val;                /* Modification date */
+  fmt.buf[0] = "F";
+  fmt.buf[1] = "T";
+  ft_hdr_buf[8] = fmt.val;                /* FTB info in General */
+  fmt.buf[0] = "B";                       /* Description field   */
+  fmt.buf[1] = " ";
+  ft_hdr_buf[9] = fmt.val;
+  fmt.buf[0] = "F";
+  fmt.buf[1] = "o";
+  ft_hdr_buf[10] = fmt.val;
+  fmt.buf[0] = "n";
+  fmt.buf[1] = "t";
+  ft_hdr_buf[11] = fmt.val;
+  ft_hdr_buf[50] = 1;                     /* Vector Word Size */
+
+  ft_hdr_buf[55] = 0x3e41;
+  ft_hdr_buf[56] = 0x8306;
+  ft_hdr_buf[57] = 0x0c18;
+  ft_hdr_buf[58] = 0x3061;
+  ft_hdr_buf[59] = 0x3e41;
+  ft_hdr_buf[60] = 0x8306;
+  ft_hdr_buf[61] = 0x0c18;
+  ft_hdr_buf[62] = 0x3061;
+/*
+  UN_scale.scale_double = .000366;
+
+  ft_hdr_buf[55] = UN_scale.scale_short[0];
+  ft_hdr_buf[56] = UN_scale.scale_short[1];
+  ft_hdr_buf[57] = UN_scale.scale_short[2];
+  ft_hdr_buf[58] = UN_scale.scale_short[3];
+  ft_hdr_buf[59] = UN_scale.scale_short[0];
+  ft_hdr_buf[60] = UN_scale.scale_short[1];
+  ft_hdr_buf[61] = UN_scale.scale_short[2];
+  ft_hdr_buf[62] = UN_scale.scale_short[3];
+*/
+
+  ft_hdr_buf[63] = 127;                 /* Perfect Tile Height */
+
+  /* ft_hdr_buf[83] = ?; * Begining Char # *
+   * ft_hdr_buf[84] = ?; * Ending Char #   * Set at the end of FIRST
+   * ft_hdr_buf[85] = ?; * # of Chars      *  LOOP */
+
+  ft_hdr_buf[86] = 1;                     /* Character Code size */
+
+  /* ft_hdr_buf[88] = ?;                 # of Bytes in Char definition */
+
+  /* ft_hdr_buf[90] = ?;                   * Offset to Char Code table */
+  ft_hdr_buf[92] = 206;                   /* Offset to Char Dim. table */
+  ft_hdr_buf[94] = 5;                     /* Dimension flags */
+
+  /* ft_hdr_buf[101]= ?;                   * # of Bytes in Font */
+
+  return(0);
+}
+#endif
+
+/*=======================================================================*/
+IGRint Get_ele_count(ecount)
+IGRint   ecount;
+{
+  /*** INIT the obj_ids[] array  ***/
+  for( i=0 ; i < 512 ; i=i+1)
+  {
+    obj_ids[i] = 0;
+  }
+  /* ci$put(cmd_key="GRSlEInFn"); */
+
+  ci$put(cmd_key="GRSlEInOvF");
+  if (!ci$locate( obj = obj_ids, osnum = osnum_array, md_env = &my_env,
+                  classes = "GRcurve", count = &ecount) )
+  {
+    dprintf((stderr,"GRCrFnFl - ERROR: in Get_ele_count locate\n"));
+  }
+  return(ecount);
+}
+
+/*=======================================================================*/
+IGRint Get_linear_info()
+{
+  int action,sts, msg;
+
+  action = 0;
+  sts = 0;
+
+  ci$send(msg = message GRlinear.GRgetpolyline(&msg,
+                                               &my_env.md_env.matrix_type,
+                                               my_env.md_env.matrix,
+                                               &action, &poly),
+          targetid = set_id.objid);
+
+  /*  free previous buffer if it exists  */
+
+  if (poly.points != 0) free (poly.points);
+
+  /*  malloc buffer to hold correct number of points  */
+
+  poly.points = (double *)malloc( poly.num_points * sizeof(double) * 3);
+  if (poly.points==0) {
+    fprintf(stderr,"GRCrFnFl - ERROR: poly malloc %d bytes failed\n",
+            poly.num_points * sizeof(double));
+    fprintf(log_file,"GRCrFnFl - ERROR: poly malloc %d bytes failed\n",
+            poly.num_points * sizeof(double));
+    return(1);
+  }
+
+  action = 1;
+
+  ci$send(msg = message GRlinear.GRgetpolyline(&msg,
+                                               &my_env.md_env.matrix_type,
+                                               my_env.md_env.matrix,
+                                               &action, &poly),
+          targetid = set_id.objid);
+
+  /* dprintf((stderr,"GRCrFnFl - in Get_linear_info after 2 call\n")); */
+  return(0);
+}
+
+/*=======================================================================*/
+IGRint Get_point_info()
+{
+  int action,sts, msg;
+
+  sts = 0;
+
+ if (poly.points != 0) free (poly.points);
+
+  /*  malloc buffer to hold correct number of points  */
+
+  poly.points = (double *)malloc( poly.num_points * sizeof(double) * 3);
+  if (poly.points==0) {
+    fprintf(stderr,"GRCrFnFl - ERROR: poly malloc %d bytes failed\n",
+            poly.num_points * sizeof(double));
+    fprintf(log_file,"GRCrFnFl - ERROR: poly malloc %d bytes failed\n",
+            poly.num_points * sizeof(double));
+    return(1);
+  }
+
+  action = 1;
+
+  ci$send(msg = message GRlinear.GRgetpolyline(&msg,
+                                               &my_env.md_env.matrix_type,
+                                               my_env.md_env.matrix,
+                                               &action, &poly),
+          targetid = set_id.objid);
+
+return (0);
+}
+
+/*=======================================================================*/
+IGRint Get_conic_info()
+{
+  int sts, msg;
+
+  sts = 0;
+  dprintf((stderr,"in Get_conic_info():\n"));
+  if ( ci$send(msg = message GRconic.GRgetarc(&msg,
+                                              &my_env.md_env.matrix_type,
+                                              my_env.md_env.matrix,
+                                              &conics),
+               targetid = set_id.objid) )
+  {
+    dprintf((stderr,"in Get_conic_info(): GRconic.GRgetarc() worked\n"));
+    dprintf((stderr,"Prim axis = %f, Sec axis = %f\n",
+              conics.prim_axis,conics.sec_axis));
+    dprintf((stderr,"Origin: X = %f, Y = %f, Z = %f\n",
+              conics.origin[0],conics.origin[1],conics.origin[2]));
+    dprintf((stderr,"Start Ang = %f, Sweep Ang = %f\n",
+              conics.start_angle,conics.sweep_angle));
+  }
+  else
+  {
+    dprintf((stderr,"in Get_conic_info(): GRconic.GRgetarc() failed\n"));
+  }
+
+  return(0);
+}
+
+/*=======================================================================*/
+IGRint Get_bspcurve_info()
+{
+  int  sts;
+
+  sts = 0;
+  ele_size = 0;
+
+  ci$send(msg = message GRvg.GRgetsize(&msg,
+                                       &my_env.md_env.matrix_type,
+                                       my_env.md_env.matrix,
+                                       &ele_size),
+         targetid = set_id.objid);
+
+  dprintf((stderr,"in Get_bspcurve_info(): class    = %s\n", class_name));
+  dprintf((stderr,"in Get_bspcurve_info(): ele_size = %d\n", ele_size));
+
+  /*  free previous buffer if it exists  */
+
+  if (bsp_geom != 0) free (bsp_geom);
+
+  /*  malloc new buffer for correct size  */
+
+  bsp_geom = (char *)malloc( ele_size );
+  if (bsp_geom==0) {
+    fprintf(stderr,"GRCrFnFl - ERROR: bsp malloc %d bytes failed\n",ele_size);
+    fprintf(log_file,"GRCrFnFl - ERROR: bsp malloc %d bytes failed\n",ele_size);
+    return(1);
+  }
+
+  ci$send(msg = message GRvg.GRgetgeom(&msg,
+                                       &my_env.md_env.matrix_type,
+                                       my_env.md_env.matrix,
+                                       bsp_geom),
+                targetid = set_id.objid);
+
+  return(0);
+}
+
+/*=======================================================================*/
+int FTBis_linear()
+{
+  int sts;
+
+  sts = 0;
+  if (strcmp("GRbclineseg",class_name)==0  ||
+      strcmp("GR3dlineseg",class_name)==0  ||
+      strcmp("GR3ilineseg",class_name)==0  ||
+      strcmp("GR2ilineseg",class_name)==0  ||
+      strcmp("GRbclinestr",class_name)==0  ||
+      strcmp("GR3dlinestr",class_name)==0  ||
+      strcmp("GR3ilinestr",class_name)==0  ||
+      strcmp("GR2ilinestr",class_name)==0  ||
+      strcmp("GRbcorthlnst",class_name)==0 ||
+      strcmp("GR3dorthlnst",class_name)==0 ||
+      strcmp("GR3iorthlnst",class_name)==0 ||
+      strcmp("GR2iorthlnst",class_name)==0 ||
+      strcmp("GRbcorthpoly",class_name)==0 ||
+      strcmp("GR3dorthpoly",class_name)==0 ||
+      strcmp("GR3iorthpoly",class_name)==0 ||
+      strcmp("GR2iorthpoly",class_name)==0 ||
+      strcmp("GRbcpllnstr",class_name)==0  ||
+      strcmp("GR3dpllnstr",class_name)==0  ||
+      strcmp("GR3ipllnstr",class_name)==0  ||
+      strcmp("GR2ipllnstr",class_name)==0  ||
+      strcmp("GRbcpolygon",class_name)==0  ||
+      strcmp("GR3dpolygon",class_name)==0  ||
+      strcmp("GR3ipolygon",class_name)==0  ||
+      strcmp("GR2ipolygon",class_name)==0 )
+  {
+    dprintf((stderr,"is linear, class_name = %s\n", class_name));
+    return(1);
+  }
+  dprintf((stderr,"NOT linear, class_name = %s\n", class_name));
+  return(0);
+}
+
+/*=======================================================================*/
+int FTBis_conic( )
+{
+  int sts;
+
+  sts = 0;
+  if (strcmp("GRbccircle",class_name)==0  ||
+      strcmp("GR3dcircle",class_name)==0  ||
+      strcmp("GR3icircle",class_name)==0  ||
+      strcmp("GR2icircle",class_name)==0  ||
+      strcmp("GRbcellipse",class_name)==0 ||
+      strcmp("GR3dellipse",class_name)==0 ||
+      strcmp("GR3iellipse",class_name)==0 ||
+      strcmp("GR2iellipse",class_name)==0 ||
+      strcmp("GRbccirarc",class_name)==0  ||
+      strcmp("GR3dcirarc",class_name)==0  ||
+      strcmp("GR3icirarc",class_name)==0  ||
+      strcmp("GR2icirarc",class_name)==0  ||
+      strcmp("GRbcellarc",class_name)==0  ||
+      strcmp("GR3dellarc",class_name)==0  ||
+      strcmp("GR3iellarc",class_name)==0  ||
+      strcmp("GR2iellarc",class_name)==0 )
+  {
+    dprintf((stderr,"is conic, class_name = %s\n", class_name));
+    return(1);
+  }
+  dprintf((stderr,"NOT conic, class_name = %s\n", class_name));
+  return(0);
+}
+
+/*=======================================================================*/
+int FTBis_genbc( )
+{
+  int sts;
+
+  sts = 0;
+  if (strcmp( "GRbcsubbc", class_name ) == 0 )
+  {
+    dprintf((stderr,"is genbc, class_name = %s\n", class_name));
+    return(1);
+  }
+  dprintf((stderr,"NOT genbc, class_name = %s\n", class_name));
+  return(0);
+}
+
+/*=======================================================================*/
+int FTB_filter_fence()
+{
+  /** if the first and last (X,Y) of the 3dorthpoly = the lower left ***
+   ** (X,Y) and the third (X,Y) of the 3dorthpoly = the upper right ***
+   ** (X,Y) ****/
+  /* NEED to get the level info & check if on 63 */
+  if ( (poly.points[0] == cell_ll[0]) &&
+       (poly.points[1] == cell_ll[1]) &&
+       (poly.points[12] == cell_ll[0]) &&
+       (poly.points[13] == cell_ll[1]) &&
+       (poly.points[6] == cell_ur[0]) &&
+       (poly.points[7] == cell_ur[1]) )
+  {
+    dprintf((stderr,"is the FENCE.\n"));
+    return(1);
+  }
+  dprintf((stderr,"NOT the FENCE.\n"));
+  return(0);
+}
+
+/*=======================================================================*/
+int FTB_filter_tile_box()
+{
+  /** if the first and last (X,Y) of the 3dorthpoly = the ****
+   ** lower left (X,Y) + 1 ****
+  if ( (poly.points[0] == (lower_left[0] + 1.0) ) &&
+       (poly.points[1] == (lower_left[1] + 1.0) ) &&
+       (poly.points[12] == (lower_left[0] + 1.0) ) &&
+       (poly.points[13] == (lower_left[1] + 1.0) ) ) */
+ /***   Check the symbology of Tile Box to match below    ****/
+ /***    level=63 , color=green(1) , wt=0 , st=0          ****/
+ dprintf((stderr,"inside FTB_filter_tile_box().\n"));
+ get_symbology( set_id , TBsymb );
+ dprintf((stderr,"\tColor\t= %d\n",(int)TBsymb.display_attr.color));
+ dprintf((stderr,"\tWeight\t= %d\n",(int)TBsymb.display_attr.weight));
+ dprintf((stderr,"\tStyle\t= %d\n",(int)TBsymb.display_attr.style));
+ dprintf((stderr,"\tLevel\t= %d\n",TBsymb.level));
+ if ( ( TBsymb.level == 63 ) && ( TBsymb.display_attr.color == 1 ) &&
+      ( TBsymb.display_attr.weight == 0 ) &&
+      ( TBsymb.display_attr.style == 0 ) )
+  {
+    dprintf((stderr,"is the TILE_BOX.\n"));
+    return(1);
+  }
+  dprintf((stderr,"NOT the TILE_BOX.\n"));
+  return(0);
+}
+
+/*=======================================================================*/
+double ftb_normX(pt, orig)
+double pt, orig;
+{
+   double nx;
+
+   nx = pt - orig;
+   if (nx < -1.0 )
+    {
+     nx = -1.0;
+     fprintf(stderr,"GRCrFnFl - WARNING: character %d x axis normalized to 0.0\n", char_info[char_ndx].char_num);
+     WARNING("x axis normalized to -1.0");
+    }
+   else
+    {
+     if (nx > 1.0)
+      {
+        nx = 1.0;
+        fprintf(stderr,"GRCrFnFl - WARNING: character %d x axis normalized to 1.0\n", char_info[char_ndx].char_num);
+        WARNING("x axis normalized to 1.0");
+      }
+    }
+
+   return (nx);
+}
+
+/*=======================================================================*/
+double ftb_normY(pt, orig)
+double pt, orig;
+{
+   double ny;
+
+   ny = pt - orig;
+   if (ny > 1.0)
+    {
+      ny = 1.0;
+      fprintf(stderr,"GRCrFnFl - WARNING: character %d y axis normalized to 1.0\n", char_info[char_ndx].char_num);
+      WARNING("y axis normalized to 1.0");
+    }
+
+   return (ny);
+}
+
+/*=======================================================================*/
+IGRint Get_ele_data()
+{
+  int        ele_class,action,sts,point,Is_fence,Is_tile_box;
+  IGRdouble  theta, norm;
+  IGRboolean Unknown_ele;
+
+  ele_class = 0;
+  action = 0;
+  sts = 0;
+
+  while ( obj_ids[i] != 0 )
+  {
+    Is_fence = 0;
+    Is_tile_box = 0;
+    Unknown_ele = 0;
+
+    if (obj_ids[i] == -1) {
+       i = i + 1;
+       continue; /*Ignore additional point objects. */
+    }
+    dprintf((stderr,"[%d] = %d\n", i, obj_ids[i]));
+    if ( om$get_classname ( objid = obj_ids[i],
+                            osnum = os_num,
+                            classname = class_name ) != OM_S_SUCCESS )
+    {
+      fprintf(stderr,"GRCrFnFl - ERROR: in om$get_classname.\n");
+      fprintf(log_file,"GRCrFnFl - ERROR: in om$get_classname.\n");
+      return (1);
+    }
+    dprintf((stderr,"class = %s\n", class_name));
+    set_id.objid = obj_ids[i];
+    set_id.osnum = os_num;
+
+    if ( FTBis_linear( ) == 1 )
+    {
+      point = 1;
+      dprintf((stderr,"Linear case: class = %s\n", class_name));
+
+      sts = Get_linear_info();
+      dprintf((stderr,"Poly.num_points = %d\n",poly.num_points));
+
+      if ((strcmp("GR3dorthpoly",class_name)==0) && (poly.num_points == 5))
+      {
+         /* Check point coordinates so to Filter out ***
+         ** the Fence & Tile Box ***/
+         Is_fence = FTB_filter_fence();
+         Is_tile_box = FTB_filter_tile_box();
+      }
+
+      if ( (Is_fence == 0) && (Is_tile_box == 0) )
+      {
+        vec_data_ndx = 0;
+        char_info[char_ndx].num_vec_elems = vec_elem_ndx + 1;
+
+        if (vec_elem_ndx != 0)
+        {
+          dprintf((stderr,"REALLOC VEN=%d VE=%x\n",vec_elem_ndx,
+               char_info[char_ndx].vec_elem));
+
+          tmp_vec_elem = (struct vec_elem_info *)
+            realloc(char_info[char_ndx].vec_elem,
+                    sizeof(struct vec_elem_info) * (vec_elem_ndx+1));
+          char_info[char_ndx].vec_elem = tmp_vec_elem;
+          dprintf((stderr,"REALLOC tmp_vec_elem=%x\n",tmp_vec_elem));
+        }
+        else
+        {
+          dprintf((stderr,"MALLOC VEN=%d\n",vec_elem_ndx));
+          char_info[char_ndx].vec_elem = (struct vec_elem_info *)
+            malloc(sizeof(struct vec_elem_info));
+        }
+
+        if (char_info[char_ndx].vec_elem==0) {
+          fprintf(stderr,"GRCrFnFl - ERROR: vec_elem malloc failed\n");
+          fprintf(log_file,"GRCrFnFl - ERROR: vec_elem malloc failed\n");
+          return(1);
+        }
+
+        char_info[char_ndx].vec_elem[vec_elem_ndx].num_vecs = 0;
+
+        for( l=0 ; l < (poly.num_points)*3 ; l=l+3)
+        {
+          /* Subtract from the Char origin to determine the points */
+
+          norm = ftb_normX(poly.points[l],cell_origin[0]);
+          temp_char_info = norm * 127.0;
+
+          printf(stderr,"X::POLY=%f ORIG=%f\n",
+                    poly.points[l],cell_origin[0]);
+
+          UN.tmp_char[0] = (unsigned char)temp_char_info;
+
+          norm = ftb_normY(poly.points[l+1],cell_origin[1]);
+          temp_char_info = norm * 127.0;
+
+          printf(stderr,"Y::POLY=%f ORIG=%f\n",
+                    poly.points[l+1],cell_origin[1]);
+
+          UN.tmp_char[1] = (unsigned char)temp_char_info;
+
+          dprintf((stderr,"VECTOR X=%d  Y=%d\n",UN.tmp_char[0],
+                    UN.tmp_char[1]));
+
+          if (vec_data_ndx != 0)
+          {
+            dprintf((stderr,"REALLOC VDN=%d VE=%d VD=%x\n",vec_data_ndx,
+               vec_elem_ndx,
+               char_info[char_ndx].vec_elem[vec_elem_ndx].vec_data));
+
+            tmp_vec_data = (unsigned short *)
+              realloc(char_info[char_ndx].vec_elem[vec_elem_ndx].vec_data,
+                      sizeof(unsigned short) * (vec_data_ndx+1));
+            char_info[char_ndx].vec_elem[vec_elem_ndx].vec_data =
+              tmp_vec_data;
+            dprintf((stderr,"REALLOC tmp_vec_data=%x\n",tmp_vec_data));
+          }
+          else
+          {
+            dprintf((stderr,"MALLOC VDN=%d\n",vec_data_ndx));
+            char_info[char_ndx].vec_elem[vec_elem_ndx].vec_data =
+              (unsigned short *)malloc(sizeof(unsigned short));
+          }
+
+          if (char_info[char_ndx].vec_elem[vec_elem_ndx].vec_data==0) {
+            fprintf(stderr,"GRCrFnFl - ERROR: vec_data malloc failed\n");
+            fprintf(log_file,"GRCrFnFl - ERROR: vec_data malloc failed\n");
+            return(1);
+          }
+          char_info[char_ndx].vec_elem[vec_elem_ndx].vec_data[vec_data_ndx]
+            = UN.tmp_short;
+
+          vec_data_ndx = vec_data_ndx + 1;
+          char_info[char_ndx].vec_elem[vec_elem_ndx].num_vecs =
+                vec_data_ndx;
+
+          point = point + 1;  /* increment points */
+        } /* End of for loop */
+
+        fprintf(log_file,"    Vector Element %d has %d vectors.\n",
+                vec_elem_ndx+1,vec_data_ndx+1);
+
+      } /* End if ( (Is_fence == 0) || (Is_tile_box == 0) ) */
+    }
+    else if (!strcmp(class_name, "GR3dpoint")) {
+       Get_point_info();
+       cell_origin[0] = poly.points[0];
+       cell_origin[1] = poly.points[1];
+       point_flag = 1;
+    }
+    else if ( FTBis_conic( ) == 1 )
+    {
+      dprintf((stderr,"Conic case: class = %s\n", class_name));
+      Get_conic_info();
+
+      theta = .081;
+      arc_poly.points = arc_poly_points;
+
+
+      if (sts = MApyfrar(&msg,&conics,&theta,&arc_poly))
+      {
+        dprintf((stderr,"Arc_poly.num_points = %d\n",arc_poly.num_points));
+        point = 1;
+
+        vec_data_ndx = 0;
+        char_info[char_ndx].num_vec_elems = vec_elem_ndx + 1;
+        if (vec_elem_ndx != 0)
+        {
+          dprintf((stderr,"REALLOC VEN=%d VE=%x\n",vec_elem_ndx,
+               char_info[char_ndx].vec_elem));
+
+          tmp_vec_elem = (struct vec_elem_info *)
+            realloc(char_info[char_ndx].vec_elem,
+                    sizeof(struct vec_elem_info) * (vec_elem_ndx+1));
+          char_info[char_ndx].vec_elem = tmp_vec_elem;
+          dprintf((stderr,"REALLOC tmp_vec_elem=%x\n",tmp_vec_elem));
+        }
+        else
+        {
+          dprintf((stderr,"MALLOC VEN=%d\n",vec_elem_ndx));
+          char_info[char_ndx].vec_elem = (struct vec_elem_info *)
+            malloc(sizeof(struct vec_elem_info));
+        }
+
+        if (char_info[char_ndx].vec_elem==0) {
+          fprintf(stderr,"GRCrFnFl - ERROR: ARC vec_elem malloc failed\n");
+          fprintf(log_file,"GRCrFnFl - ERROR: ARC vec_elem malloc failed\n");
+          return(1);
+        }
+
+        char_info[char_ndx].vec_elem[vec_elem_ndx].num_vecs = 0;
+
+        for( l=0 ; l < (arc_poly.num_points)*3 ; l=l+3)
+        {
+          /* Subtract from the Char origin to determine the points */
+
+          norm = ftb_normX(arc_poly.points[l],cell_origin[0]);
+          temp_char_info = norm * 127.0;
+
+          UN.tmp_char[0] = (unsigned char)temp_char_info;
+
+          norm = ftb_normY(arc_poly.points[l+1],cell_origin[1]);
+          temp_char_info = norm * 127.0;
+
+          UN.tmp_char[1] = (unsigned char)temp_char_info;
+
+          dprintf((stderr,"VECTOR X=%d  Y=%d\n",UN.tmp_char[0],
+                    UN.tmp_char[1]));
+
+          if (vec_data_ndx != 0)
+          {
+            dprintf((stderr,"REALLOC VDN=%d VE=%d VD=%x\n",vec_data_ndx,
+               vec_elem_ndx,
+               char_info[char_ndx].vec_elem[vec_elem_ndx].vec_data));
+
+            tmp_vec_data = (unsigned short *)
+              realloc(char_info[char_ndx].vec_elem[vec_elem_ndx].vec_data,
+                      sizeof(unsigned short) * (vec_data_ndx+1));
+            char_info[char_ndx].vec_elem[vec_elem_ndx].vec_data =
+              tmp_vec_data;
+            dprintf((stderr,"REALLOC tmp_vec_data=%x\n",tmp_vec_data));
+          }
+          else
+          {
+            dprintf((stderr,"MALLOC VDN=%d\n",vec_data_ndx));
+            char_info[char_ndx].vec_elem[vec_elem_ndx].vec_data =
+              (unsigned short *)malloc(sizeof(unsigned short));
+          }
+
+          if (char_info[char_ndx].vec_elem[vec_elem_ndx].vec_data==0) {
+            fprintf(stderr,"GRCrFnFl - ERROR: ARC vec_data malloc failed\n");
+            fprintf(log_file,"GRCrFnFl - ERROR: ARC vec_data malloc failed\n");
+            return(1);
+          }
+
+          char_info[char_ndx].vec_elem[vec_elem_ndx].vec_data[vec_data_ndx]
+            = UN.tmp_short;
+
+          vec_data_ndx = vec_data_ndx + 1;
+          char_info[char_ndx].vec_elem[vec_elem_ndx].num_vecs =
+                vec_data_ndx;
+
+          point = point + 1;  /* increment points */
+        }
+      }
+      else
+      {
+        dprintf((stderr,"GRCrFnFl - ERROR: MApyfrar() failed,sts =%d\n",
+                 sts));
+        fprintf(log_file,"GRCrFnFl - ERROR: MApyfrar() failed,sts =%d.\n",
+                sts);
+        return(1);
+      }
+      fprintf(log_file,"    Vector Element %d has %d vectors.\n",
+              vec_elem_ndx+1,vec_data_ndx+1);
+    }
+    else if( FTBis_genbc( ) == 1 )
+    {
+      dprintf((stderr,"Bspline case: class = %s\n",class_name));
+
+      Get_bspcurve_info();
+
+      u1 = 0.0;
+      u2 = 1.0;
+      numpts = 100;
+      bsp_poly.points = bsp_poly_points;
+
+      sts = MAbcpyeval(&msg, bsp_geom, &u1, &u2, &numpts, &bsp_poly);
+      if (sts)
+      {
+        point = 1;
+        dprintf((stderr,"Bsp_poly.num_points = %d\n",bsp_poly.num_points));
+
+        vec_data_ndx = 0;
+        char_info[char_ndx].num_vec_elems = vec_elem_ndx + 1;
+        if (vec_elem_ndx != 0)
+        {
+          dprintf((stderr,"REALLOC VEN=%d VE=%x\n",vec_elem_ndx,
+               char_info[char_ndx].vec_elem));
+
+          tmp_vec_elem = (struct vec_elem_info *)
+            realloc(char_info[char_ndx].vec_elem,
+                    sizeof(struct vec_elem_info) * (vec_elem_ndx+1));
+          char_info[char_ndx].vec_elem = tmp_vec_elem;
+          dprintf((stderr,"REALLOC tmp_vec_elem=%x\n",tmp_vec_elem));
+        }
+        else
+        {
+          dprintf((stderr,"MALLOC VEN=%d\n",vec_elem_ndx));
+          char_info[char_ndx].vec_elem = (struct vec_elem_info *)
+            malloc(sizeof(struct vec_elem_info));
+        }
+
+        if (char_info[char_ndx].vec_elem==0) {
+          fprintf(stderr,"GRCrFnFl - ERROR: BSP vec_elem malloc failed\n");
+          fprintf(log_file,"GRCrFnFl - ERROR: BSP vec_elem malloc failed\n");
+          return(1);
+        }
+
+        char_info[char_ndx].vec_elem[vec_elem_ndx].num_vecs = 0;
+
+        for( l=0 ; l < (bsp_poly.num_points)*3 ; l=l+3)
+        {
+          /* Subtract from the Char origin to determine the points */
+
+          norm = ftb_normX(bsp_poly.points[l],cell_origin[0]);
+          temp_char_info = norm * 127.0;
+
+          UN.tmp_char[0] = (unsigned char)temp_char_info;
+
+          norm = ftb_normY(bsp_poly.points[l+1],cell_origin[1]);
+          temp_char_info = norm * 127.0;
+
+          UN.tmp_char[1] = (unsigned char)temp_char_info;
+
+          dprintf((stderr,"VECTOR X=%d  Y=%d\n",UN.tmp_char[0],
+                    UN.tmp_char[1]));
+
+          if (vec_data_ndx != 0)
+          {
+            dprintf((stderr,"REALLOC VDN=%d VE=%d VD=%x\n",vec_data_ndx,
+               vec_elem_ndx,
+               char_info[char_ndx].vec_elem[vec_elem_ndx].vec_data));
+
+            tmp_vec_data = (unsigned short *)
+              realloc(char_info[char_ndx].vec_elem[vec_elem_ndx].vec_data,
+                      sizeof(unsigned short) * (vec_data_ndx+1));
+            char_info[char_ndx].vec_elem[vec_elem_ndx].vec_data =
+              tmp_vec_data;
+            dprintf((stderr,"REALLOC tmp_vec_data=%x\n",tmp_vec_data));
+          }
+          else
+          {
+            dprintf((stderr,"MALLOC VDN=%d\n",vec_data_ndx));
+            char_info[char_ndx].vec_elem[vec_elem_ndx].vec_data =
+              (unsigned short *)malloc(sizeof(unsigned short));
+          }
+
+          if (char_info[char_ndx].vec_elem[vec_elem_ndx].vec_data==0) {
+            fprintf(stderr,"GRCrFnFl - ERROR: BSP vec_data malloc failed\n");
+            fprintf(log_file,"GRCrFnFl - ERROR: BSP vec_data malloc failed\n");
+            return(1);
+          }
+          char_info[char_ndx].vec_elem[vec_elem_ndx].vec_data[vec_data_ndx]
+            = UN.tmp_short;
+
+          vec_data_ndx = vec_data_ndx + 1;
+          char_info[char_ndx].vec_elem[vec_elem_ndx].num_vecs =
+                vec_data_ndx;
+
+          point = point + 1;  /* increment points */
+        }
+      }
+      else
+      {
+        dprintf((stderr,"GRCrFnFl - ERROR: MAbcpyeval() failed,sts=%d\n",
+                 sts));
+        fprintf(log_file,"GRCrFnFl - ERROR:MAbcpyeval() failed,sts=%d.\n",
+                sts);
+        return (1);
+      }
+      fprintf(log_file,"    Vector Element %d has %d vectors.\n",
+              vec_elem_ndx+1,vec_data_ndx+1);
+    }
+    else
+    {
+      Unknown_ele=1;
+      dprintf((stderr,"......Ignoring %s\n",class_name));
+    }
+    i = i + 1;
+
+    if ((Is_fence == 0) && (Is_tile_box == 0) && (Unknown_ele == 0))
+      {
+         if (point_flag) {
+            point_flag = 0;
+         }
+         else {
+           vec_elem_ndx = vec_elem_ndx + 1;
+         }
+      }
+
+  } /* End of while ( obj_ids[i] != 0 ) */
+
+  return(0);
+} /* End of Get_ele_data() */
+
+/*====== Create Character Dimension Table ===============================*/
+#ifdef BIG_ENDIAN
+int XFTB_create_dimtbl( )
+{
+  unsigned char ABC_width,C_width;
+  int           dim_flag;
+  char 		*f_ptr;
+
+  ABC_width = 127;
+  dim_flag = 1;
+
+  /* Malloc space for the Dimension Table using the formula **
+  ** dim_tbl_size = (# of chars * dimension_flag ) + 3      */
+
+  dim_tbl_size = (number_of_chars * 2) + 6;
+  dprintf((stderr,"    dim_tbl_size = %d\n",dim_tbl_size));
+  dprintf((stderr,"BEFORE dim_tbl_buf MALLOC\n"));
+  Xdim_tbl_buf = (char *)malloc( dim_tbl_size );
+  f_ptr = Xdim_tbl_buf;
+
+  INCRconv_short(beg_char, &f_ptr);	/* first_char */
+  INCRconv_short(end_char, &f_ptr);	/* last_char  */
+  INCRconv_short(0, 	   &f_ptr);	/* next_node  */
+
+  for( i = 0 ; i < number_of_chars ; i=i+1)
+  {
+     C_width = 0;
+     for (jj=0; jj<char_info[i].num_vec_elems; jj=jj+1)
+     {
+        for (kk=0; kk<char_info[i].vec_elem[jj].num_vecs; kk=kk+1)
+        {
+           UN.tmp_short = char_info[i].vec_elem[jj].vec_data[kk];
+           if (UN.tmp_char[0] > C_width) C_width = UN.tmp_char[0];
+        }
+     }
+
+     UN.tmp_char[0] = ABC_width;
+     UN.tmp_char[1] = 127 - C_width;
+
+     INCRconv_char(UN.tmp_char[0], &f_ptr);	/* Unions byte ordered 	*/
+     INCRconv_char(UN.tmp_char[1], &f_ptr);	/* like struct. 	*/
+  }
+  return(0);
+}
+#else
+int FTB_create_dimtbl( )
+{
+  unsigned char ABC_width,C_width;
+  int           dim_flag;
+
+  ABC_width = 127;
+  dim_flag = 1;
+
+  /* Malloc space for the Dimension Table using the formula **
+  ** dim_tbl_size = (# of chars * dimension_flag ) + 3      */
+
+  dim_tbl_size = (number_of_chars * 2) + 6;
+  dprintf((stderr,"    dim_tbl_size = %d\n",dim_tbl_size));
+  dprintf((stderr,"BEFORE dim_tbl_buf MALLOC\n"));
+  dim_tbl_buf = (short *)malloc( dim_tbl_size );
+
+  dim_tbl_buf[0] = beg_char;
+  dim_tbl_buf[1] = end_char;
+  dim_tbl_buf[2] = 0;
+  for( i = 0 ; i < number_of_chars ; i=i+1)
+  {
+     C_width = 0;
+     for (jj=0; jj<char_info[i].num_vec_elems; jj=jj+1)
+     {
+        for (kk=0; kk<char_info[i].vec_elem[jj].num_vecs; kk=kk+1)
+        {
+           UN.tmp_short = char_info[i].vec_elem[jj].vec_data[kk];
+
+           if (UN.tmp_char[0] > C_width) C_width = UN.tmp_char[0];
+        }
+     }
+     UN.tmp_char[0] = ABC_width;
+     UN.tmp_char[1] = 127 - C_width;
+
+     dim_tbl_buf[i+3] = UN.tmp_short;
+  }
+  return(0);
+}
+#endif
+
+/*====== Create Character Code Offset Table ============================*/
+#ifdef BIG_ENDIAN
+int XFTB_create_ccot( )
+{
+  int location;
+  int nbytes, ii, jj;
+  char *f_ptr;
+
+  /* Calculate the starting locations for the first offset  **
+  ** Malloc space for the Character Code Offset Table using **
+  ** the formula, char_code_size = (# of chars + 3)         */
+
+  char_code_size = (number_of_chars * 2) + 6;
+  dprintf((stderr,"    char_code_size = %d\n",char_code_size));
+  dprintf((stderr,"BEFORE char_code_buf MALLOC\n"));
+  Xchar_code_buf = (char *)malloc( char_code_size );
+  f_ptr = Xchar_code_buf;
+
+  location = (char_code_size);
+
+  INCRconv_short(beg_char, &f_ptr);	/* first_char */
+  INCRconv_short(end_char, &f_ptr);	/* last_char  */
+  INCRconv_short(0, &f_ptr);		/* next_node  */
+  char_info_size   = 0;
+
+  for( ii = 0 ; ii < number_of_chars ; ii=ii+1)
+  {
+     INCRconv_short((short)location, &f_ptr);
+     dprintf((stderr,"   char_info[%d].num_vec_elems=%d\n",ii,
+              char_info[ii].num_vec_elems));
+
+     nbytes = 4;  /* char header */
+     for (jj=0; jj<char_info[ii].num_vec_elems; jj=jj+1)
+     {
+       nbytes = nbytes + 4;  /* vec elem header */
+
+       dprintf((stderr,"   char_info[%d].vec_elem[%d].num_vecs=%d\n",ii,jj,
+              char_info[ii].vec_elem[jj].num_vecs));
+
+       nbytes = nbytes + (char_info[ii].vec_elem[jj].num_vecs * 2);
+     }
+
+     dprintf((stderr," Char Code Offset char[%d] nbytes=%d\n",ii,nbytes));
+     location = location + nbytes;
+     dprintf((stderr,"   LOCATION =%d\n",location));
+     char_info_size = char_info_size + nbytes;
+  }
+
+  return(0);
+}
+#else
+int FTB_create_ccot( )
+{
+  int location;
+  int nbytes, ii, jj;
+
+  /* Calculate the starting locations for the first offset  **
+  ** Malloc space for the Character Code Offset Table using **
+  ** the formula, char_code_size = (# of chars + 3)         */
+
+  char_code_size = (number_of_chars * 2) + 6;
+  dprintf((stderr,"    char_code_size = %d\n",char_code_size));
+  dprintf((stderr,"BEFORE char_code_buf MALLOC\n"));
+  char_code_buf = (short *)malloc( char_code_size );
+
+  location = (char_code_size);
+
+  char_code_buf[0] = beg_char;
+  char_code_buf[1] = end_char;
+  char_code_buf[2] = 0;
+  char_info_size   = 0;
+
+  for( ii = 0 ; ii < number_of_chars ; ii=ii+1)
+  {
+     char_code_buf[ii+3] = location;
+
+
+     dprintf((stderr,"   char_info[%d].num_vec_elems=%d\n",ii,
+              char_info[ii].num_vec_elems));
+
+     nbytes = 4;  /* char header */
+     for (jj=0; jj<char_info[ii].num_vec_elems; jj=jj+1)
+     {
+       nbytes = nbytes + 4;  /* vec elem header */
+
+       dprintf((stderr,"   char_info[%d].vec_elem[%d].num_vecs=%d\n",ii,jj,
+              char_info[ii].vec_elem[jj].num_vecs));
+
+       nbytes = nbytes + (char_info[ii].vec_elem[jj].num_vecs * 2);
+     }
+
+     dprintf((stderr," Char Code Offset char[%d] nbytes=%d\n",ii,nbytes));
+     location = location + nbytes;
+     dprintf((stderr,"   LOCATION =%d\n",location));
+     char_info_size = char_info_size + nbytes;
+  }
+
+  return(0);
+}
+#endif
+
+/*=======================================================================*/
+int adjust_list_for_origin ()
+{
+   int n, temp_num;
+   GRobj  temp_id;
+
+/* start search for origin point at subscript 2. If this is a point object
+   then this is our new origin. Otherwise first point object found is the
+   new origin and rest of the point objects are ignored. If no point objects
+   are found the character will have default origin.                     */
+
+   for(n = 2; n < ele_count; n = n + 1) {
+     if ( om$get_classname ( objid = obj_ids[n],
+                            osnum = os_num,
+                            classname = class_name ) != OM_S_SUCCESS )
+    {
+      fprintf(stderr,"GRCrFnFl - ERROR: in om$get_classname.\n");
+      fprintf(log_file,"GRCrFnFl - ERROR: in om$get_classname.\n");
+      return (1);
+    }
+    if (!strcmp (class_name, "GR3dpoint"))
+       break;
+   } /* end for */
+
+/* Save the subscript to continue the search in the array to ignore other
+   point objects.
+*/
+
+   temp_num = n;
+
+   if (n < ele_count) { /* need to adjust list */
+      temp_id = obj_ids[n];
+      for (; n > 2; n = n - 1) {
+        obj_ids[n] = obj_ids [n -1];
+      }
+      obj_ids[n] = temp_id;
+      for (n = temp_num + 1; n < ele_count; n = n + 1) {
+         if ( om$get_classname ( objid = obj_ids[n],
+                            osnum = os_num,
+                            classname = class_name ) != OM_S_SUCCESS )
+         {
+           fprintf(stderr,"GRCrFnFl - ERROR: in om$get_classname.\n");
+           fprintf(log_file,"GRCrFnFl - ERROR: in om$get_classname.\n");
+           return (1);
+         }
+         if (!strcmp (class_name, "GR3dpoint")) {
+            obj_ids[n] = -1;  /* Set it to -1 to ignore this object */
+         }
+      }
+   }
+  return (1);
+}
+
+
+
+/*=======================================================================*/
+main()
+{
+  char app_path[ 256 + 1 ];
+  char abs_path[ 256 + 1 ];
+  char ftb_path[ 256 + 1 ];
+  char loc_buff[80];
+#ifdef BIG_ENDIAN
+  char *c_ptr;
+  short vecs_num, vec_elems_num;
+  short x_s;
+#endif
+
+
+  /*  init malloc area pointers to zero  */
+
+  poly.points = (double *)0;
+  bsp_geom    = (char *)0;
+  point_flag = 0;
+  set_up_easy();    /* to setup for the get$symbology call */
+
+  EX_getpath( 0, app_path, 1 + 256, EX_CONFIG_PATH );
+
+  for ( i = 0 ;; i = i + 1 )
+  {
+    *ftb_path=NULL;
+    *abs_path=NULL;
+    if( EX_getpath( i, abs_path, 1 + 256, EX_PRODUCT_PATH ))
+    {
+      strcpy( ftb_path, abs_path ) ;
+      strcat( ftb_path, "/bin/GRsend" ) ;
+      if( access( ftb_path, 5 ) == 0 )
+      {
+        dprintf((stderr,"Ftb Path in product_data file is:%s\n",abs_path));
+        break;
+      }
+    }
+    else
+    {
+      dprintf((stderr,"Can not find path for Ftb in product_data file."));
+      return NULL;
+    }
+  }
+
+  /*** Set the permanent object space number ***/
+  os_num = 2;
+
+  /*** Init the counter for number of characters ***/
+  number_of_chars = 0;
+
+  EOL_block = 0;
+  EOL_byte  = 0;
+
+  status( " " );
+  ex$message(field=MESSAGE_FIELD,msgnumb=GR_I_CrFLfl);
+  ex$message(msgnumb=GR_I_EntFlfl,buff=loc_buff);
+  ci$get(string = user_file , prompt = loc_buff);
+  if (access ( user_file,4) != 0 )
+    {
+    dprintf((stderr,"GRCrFnFl - FONTLIB file %s NOT found.\n",user_file));
+    /* sprintf(temp_str,"%s/bin/GRsend cp %s/config/font.flb %s",
+               abs_path,abs_path,user_file);
+    sh(temp_str); */
+    /*** Open New FONTLIB File ***/
+    font_file = fopen( user_file,"w" );
+    }
+  else
+    {
+    dprintf((stderr,"GRCrFnFl - Found FONTLIB file %s.\n",user_file));
+    dprintf((stderr,"GRCrFnFl - Will overwrite.\n"));
+    /*** Open Existing FONTLIB File ***/
+    font_file = fopen( user_file,"r+" );
+    }
+
+  /*  sprintf(temp_str,"%s/bin/GRsend ls -lst %s",abs_path,user_file);
+  sh(temp_str); */
+
+  /*** Open the Log file ***/
+    log_file = fopen( "/usr/tmp/FTB.log", "w" );
+
+  /*** Write Start Date/Time to log file ***/
+  time(&secs);
+  time_now = localtime(&secs);
+  fprintf(log_file,"Log File: /usr/tmp/FTB.log\n");
+  fprintf(log_file,"Date: %2d/%2d/%4d %2d:%2d:%2d.00\n",
+                          time_now->tm_mon+1,time_now->tm_mday,
+                          1900+time_now->tm_year,time_now->tm_hour,
+                          time_now->tm_min,time_now->tm_sec);
+
+  /*** SetUp the basic buffers with common info ***/
+  dprintf((stderr,"Calling SetUp_Ftlb_Hdr()\n"));
+#ifdef BIG_ENDIAN
+  XSetUp_Ftlb_Hdr();
+#else
+  SetUp_Ftlb_Hdr();
+#endif
+  dprintf((stderr,"Calling SetUp_Ft_Of_Tbl()\n"));
+#ifdef BIG_ENDIAN
+  XSetUp_Ft_Of_Tbl();
+#else
+  SetUp_Ft_Of_Tbl();
+#endif
+  dprintf((stderr,"Calling SetUp_Ft_Hdr()\n"));
+#ifdef BIG_ENDIAN
+  XSetUp_Ft_Hdr();
+#else
+  SetUp_Ft_Hdr();
+#endif
+
+  /*** Set accept point for file ***/
+  acc_pnt[0] = 1000;
+  acc_pnt[1] = 1000;
+  acc_pnt[2] = 0;
+
+  /*** Set Initial Fence Symbology ***/
+  ci$put(cmd_key= "GRSLy");
+  ci$put(string = "1000");        /** Layer is 1000 **/
+  ci$put(cmd_key= "GRSSt");
+  ci$put(string = "4");           /** Line Style is 4 **/
+  ci$put(cmd_key= "GRSWg");
+  ci$put(string = "0");           /** Line Weight is 0 **/
+  ci$put(cmd_key= "GRSCl");
+  ci$put(string = "red");         /** Color is RED **/
+
+  /*** Get Font Info for File ***/
+  /*** Set Position in File ***/
+  lower_left[0] = -1.0;
+  lower_left[1] = 1007.0;
+  lower_left[2] = 0;
+
+  win_pnt2[0] = 6.0;
+  win_pnt2[1] = 1003.0;
+  win_pnt2[2] = 0.0;
+
+  /*** Position the window to see the DEFAULT font info area ***/
+  begincmd_key("GRCVAr");
+  ci$put(point = lower_left);
+  ci$put(point = win_pnt2);
+  ci$put(point = win_pnt2);
+  ci$put(response = TERMINATE);
+  endcmd();
+
+  /***** Find the Font Name ****/
+  find_point[0] = 3.0;
+  find_point[1] = 1006.0;
+  find_point[2] = 0.0;
+
+  ci$put(point = find_point);
+  ci$put(point = find_point);
+
+  if ( !ci$locate ( obj = &set_id.objid,
+                    osnum = &set_id.osnum,
+                    accept_point = find_point) & 1 )
+  {
+    fprintf(stderr,"GRCrFnFl - ERROR: Font name not found.\n");
+    fprintf(log_file,"GRCrFnFl - ERROR: Font name not found.\n");
+  }
+  if ( om$get_classname ( objid = set_id.objid,
+                          osnum = set_id.osnum,
+                          classname = class_name ) != OM_S_SUCCESS )
+  {
+    fprintf(stderr,"GRCrFnFl - ERROR: in om$get_classname.\n");
+    fprintf(log_file,"GRCrFnFl - ERROR: in om$get_classname.\n");
+  }
+  if (!strcmp( "GR3dtext", class_name ))
+  {
+    ci$send(msg = message GRtext.GRgettxattr(
+                                     &msg, &text_attr, &text_len, &ptext),
+            targetid = set_id.objid,
+            targetos = set_id.osnum);
+
+    (void) GRstrip_esc_sequences(&msg, text_attr.font,
+                           text_attr.font, TXT_FLAG, ptext, &text_len);
+
+    for( i=0 ; i < text_len ; i=i+1)
+      text_string[i] = ptext[i];
+    text_string[text_len] = (char) 0;
+    dprintf((stderr,"Font Name length is %d\n",text_len));
+    dprintf((stderr,"Font Name text_string is %s\n",text_string));
+    fprintf(log_file,"Font Name is   \"%s\"\n",text_string);
+  }
+
+  /***** Verify Font Name ****/
+  if (text_len >= 40)
+  {
+    fprintf(stderr,"GRCrFnFl - ERROR: font name verification.\n");
+    fprintf(log_file,"GRCrFnFl - ERROR: font name verification.\n");
+  }
+  else
+  {
+    for( i=0 ; i < text_len ; i=i+1)
+      font_name[i] = text_string[i];
+    font_name[text_len] = (char) 0;
+    dprintf((stderr,"\nFont Name %s (length) has been verified.\n",
+                       font_name));
+  }
+
+  /***** Find the Font Number ****/
+  find_point[0] = 3.0;
+  find_point[1] = 1005.0;
+  find_point[2] = 0.0;
+
+  ci$put(point = find_point);
+  ci$put(point = find_point);
+
+  if ( !ci$locate ( obj = &set_id.objid,
+                    osnum = &set_id.osnum,
+                    accept_point = find_point) & 1 )
+  {
+    fprintf(stderr,"GRCrFnFl - ERROR: Font number not found.\n");
+    fprintf(log_file,"GRCrFnFl - ERROR: Font number not found.\n");
+  }
+  if ( om$get_classname ( objid = set_id.objid,
+                          osnum = set_id.osnum,
+                          classname = class_name ) != OM_S_SUCCESS )
+  {
+    fprintf(stderr,"GRCrFnFl - ERROR: in om$get_classname.\n");
+    fprintf(log_file,"GRCrFnFl - ERROR: in om$get_classname.\n");
+  }
+  if (!strcmp( "GR3dtext", class_name ))
+  {
+    ci$send(msg = message GRtext.GRgettxattr(
+                               &msg, &text_attr, &text_len, &ptext),
+            targetid = set_id.objid,
+            targetos = set_id.osnum);
+
+    (void) GRstrip_esc_sequences(&msg, text_attr.font,
+                  text_attr.font, TXT_FLAG, ptext, &text_len);
+
+    for( i=0 ; i < text_len ; i=i+1)
+      text_string[i] = ptext[i];
+    text_string[text_len] = (char) 0;
+    dprintf((stderr,"Font Number text_string is %s\n",text_string));
+    fprintf(log_file,"Font Number is \"%s\"\n",text_string);
+  }
+
+  /***** Verify Font Number ****/
+  font_number = atoi(text_string);
+  if (! ((font_number >= 0) || (font_number <= 127)) )
+  {
+    fprintf(stderr,"GRCrFnFl - ERROR: font number verification.\n");
+    fprintf(log_file,"GRCrFnFl - ERROR: font number verification.\n");
+  }
+  else
+  {
+    dprintf((stderr,"\nFont Number %s (0>N>127) has been verified.\n",
+                text_string));
+    /* Set the Font Number in the Font Offset Table buffer */
+#ifdef BIG_ENDIAN
+    c_ptr = Xft_of_tbl_buf;
+    INCRconv_short(atoi(text_string), &c_ptr); /* Begining Font # */
+    INCRconv_short(atoi(text_string), &c_ptr); /* Ending Font #   */
+#else
+    ft_of_tbl_buf[0] = atoi(text_string);    /* Begining Font # */
+    ft_of_tbl_buf[1] = atoi(text_string);    /* Ending Font #   */
+#endif
+  }
+
+  /***** Find the Font Class ****/
+  find_point[0] = 3.0;
+  find_point[1] = 1004.0;
+  find_point[2] = 0.0;
+
+  ci$put(point = find_point);
+  ci$put(point = find_point);
+
+  if ( !ci$locate ( obj = &set_id.objid,
+                    osnum = &set_id.osnum,
+                    accept_point = find_point) & 1 )
+  {
+    fprintf(stderr,"GRCrFnFl - ERROR: Font class not found.\n");
+    fprintf(log_file,"GRCrFnFl - ERROR: Font class not found.\n");
+  }
+  if ( om$get_classname ( objid = set_id.objid,
+                          osnum = set_id.osnum,
+                          classname = class_name ) != OM_S_SUCCESS )
+  {
+    fprintf(stderr,"GRCrFnFl - ERROR: in om$get_classname.\n");
+    fprintf(log_file,"GRCrFnFl - ERROR: in om$get_classname.\n");
+  }
+  if (!strcmp( "GR3dtext", class_name ))
+  {
+    ci$send(msg = message GRtext.GRgettxattr(
+                            &msg, &text_attr, &text_len, &ptext),
+            targetid = set_id.objid,
+            targetos = set_id.osnum);
+
+    (void) GRstrip_esc_sequences(&msg, text_attr.font,
+                         text_attr.font, TXT_FLAG, ptext, &text_len);
+
+    for( i=0 ; i < text_len ; i=i+1)
+      text_string[i] = ptext[i];
+    text_string[text_len] = (char) 0;
+    dprintf((stderr,"Font Class text_string is %s\n",text_string));
+    fprintf(log_file,"Font Class is  \"%s\"\n\n",text_string);
+  }
+
+  /***** Verify Font Class ****/
+  if (( (text_string[0] == "s") || (text_string[0] == "S") ||
+        (text_string[0] == "p") || (text_string[0] == "P") ) )
+  {
+    fprintf(stderr,"GRCrFnFl - ERROR: font class not supported.\n");
+    fprintf(log_file,"GRCrFnFl - ERROR: font class not supported.\n");
+  }
+  if (!( (text_string[0] == "c") || (text_string[0] == "C") ) )
+  {
+    fprintf(stderr,"GRCrFnFl - ERROR: font class verification.\n");
+    fprintf(log_file,"GRCrFnFl - ERROR: font class verification.\n");
+  }
+  else
+  {
+    for( i=0 ; i < text_len ; i=i+1)
+      font_class[i] = text_string[i];
+    font_class[text_len] = (char) 0;
+    dprintf((stderr,"\nFont Class %s (first char) has been verified.\n",
+                font_class));
+  }
+
+  /*** Set Initial Position in File ***/
+  lower_left[0] = 0;
+  lower_left[1] = 997;
+
+  /*** Set the Z coord. to 0 for cell_origin, cell_ll, ***
+  **** cell_ur & find_point ***/
+
+  cell_origin[2] = 0;
+  cell_ll[2] = 0;
+  cell_ur[2] = 0;
+  find_point[2] = 0;
+
+  /*** Set Initial value of the character counter ***/
+  char_number = 1;
+
+  /*** Set the cell_origin coord to 1 more than the lower_left X & Y ***/
+  cell_origin[0] = lower_left[0] + 1;
+  cell_origin[1] = lower_left[1] + 1;
+
+  /*** Set the coordinates of cell_ll relative to the lower_left X & Y ***/
+  cell_ll[0] = lower_left[0] + .2;
+  cell_ll[1] = lower_left[1] + .6;
+
+  /*** Set the coordinates of cell_ur relative to the lower_left X & Y ***/
+  cell_ur[0] = lower_left[0] + 5.8;
+  cell_ur[1] = lower_left[1] + 2.4;
+
+  /*** Set the coordinates of win_pnt relative to the lower_left X & Y ***/
+  win_pnt[0] = lower_left[0] - 1.0;
+  win_pnt[1] = lower_left[1] - 1.0;
+
+  /*** Set the coordinates of win_pnt2 relative to the lower_left X & Y **/
+  win_pnt2[0] = lower_left[0] + 7.0;
+  win_pnt2[1] = lower_left[1] + 4.0;
+
+  /*** Position the window to see the fenced area ***/
+  begincmd_key("GRCVAr");
+  ci$put(point = win_pnt);
+  ci$put(point = win_pnt2);
+  ci$put(point = win_pnt2);
+  ci$put(response = TERMINATE);
+  endcmd();
+
+  /*** Place a fence @ first cell_ll & cell_ur coordinates ***/
+  ci$put(cmd_key="GRPRcFn");
+  ci$put(point = cell_ll);
+  ci$put(point = cell_ur);
+  count = 512;
+
+  ele_count = Get_ele_count(count);
+  dprintf((stderr,"Before FIRST loop,Get_ele_count(),ele_count is %d\n",
+                   ele_count));
+
+  {
+  if( ele_count > 2 )
+  {
+    make_char = 1;	/** Set make_char to true **/
+  }
+  else
+  {
+    /* check to see if the CHAR NUMBER is 33 (SPACE) char */
+      /***** Find the Character Name ****/
+      find_point[0] = lower_left[0] + 3.0;
+      find_point[1] = lower_left[1] + 2.7;
+
+      ci$put(point = find_point);
+      ci$put(point = find_point);
+
+      if ( !ci$locate ( obj = &set_id.objid,
+                        osnum = &set_id.osnum,
+                        accept_point = find_point) & 1 )
+      {
+        fprintf(stderr,"GRCrFnFl - FIRST text element not found.\n");
+      }
+      /*** Get classname to check element found ***/
+      if ( om$get_classname ( objid = set_id.objid,
+                              osnum = set_id.osnum,
+                             classname = class_name ) != OM_S_SUCCESS )
+      {
+        fprintf(stderr,"GRCrFnFl - ERROR: in FIRST om$get_classname.\n");
+      }
+      /*** Check classname for Text ***/
+      if (!strcmp( "GR3dtext", class_name ))
+      {
+        ci$send(msg = message GRtext.GRgettxattr(
+                     &msg, &text_attr, &text_len, &ptext),
+                targetid = set_id.objid,
+                targetos = set_id.osnum);
+
+        (void) GRstrip_esc_sequences(&msg, text_attr.font,
+                      text_attr.font, TXT_FLAG, ptext, &text_len);
+
+        for( i=0 ; i < text_len ; i=i+1)
+          text_string[i] = ptext[i];
+        text_string[text_len] = (char) 0;
+        dprintf((stderr,"FIRST Character Name string = %s\n",text_string));
+        /**** Set name_desc to blank  ***/
+        for( i=0 ; i < 36 ; i=i+1)
+          name_desc[i] = " ";
+
+        /****  Character Name must be a decimal #  ***/
+        for( i=0 ; i < text_len ; i=i+1)
+          name_desc[i] = text_string[i];
+        name_desc[text_len] = (char) 0;
+        dprintf((stderr,"GRCrFnFl - FIRST name_desc = '%s'\n",name_desc));
+        char_num = atoi(name_desc);
+      }
+      else
+      {
+        dprintf((stderr,"FIRST Character # not found\n"));
+        fprintf(log_file,"ERROR: FIRST Character # not found\n");
+      }
+
+    if( char_num == 32 )
+    {
+      make_char = 1;	/** Set make_char to true **/
+    }
+    else
+    {
+      make_char = 0;	/** Set make_char to false **/
+    }
+  }
+  } /* END if( ele_count > 2 ) */
+
+  dprintf((stderr,"make_char = %d\n",make_char));
+
+  ex$message(msgnumb=GR_I_ProcCharFile,buff=temp_str);
+ /* sprintf(temp_str,"Processing Characters in file."); */
+  status(temp_str);
+
+/*************************************************************************/
+
+  /***  Enter FIRST while (make_char==TRUE(1)) loop to count
+  ****  characters + vectors  ***/
+
+  char_ndx = 0;
+
+  while (make_char)   /* FIRST while loop */
+  {
+
+    /***** Find the Character Name ****/
+    find_point[0] = lower_left[0] + 3.0;
+    find_point[1] = lower_left[1] + 2.7;
+
+    ci$put(point = find_point);
+    ci$put(point = find_point);
+
+    if ( !ci$locate ( obj = &set_id.objid,
+                      osnum = &set_id.osnum,
+                      accept_point = find_point) & 1 )
+    {
+      fprintf(stderr,"GRCrFnFl - text element not found.\n");
+      make_char=0;
+    }
+    if ( om$get_classname ( objid = set_id.objid,
+                            osnum = set_id.osnum,
+                            classname = class_name ) != OM_S_SUCCESS )
+    {
+      fprintf(stderr,"GRCrFnFl - ERROR: in om$get_classname.\n");
+    }
+    if (!strcmp( "GR3dtext", class_name ))
+    {
+      ci$send(msg = message GRtext.GRgettxattr(
+                   &msg, &text_attr, &text_len, &ptext),
+              targetid = set_id.objid,
+              targetos = set_id.osnum);
+
+      (void) GRstrip_esc_sequences(&msg, text_attr.font,
+                    text_attr.font, TXT_FLAG, ptext, &text_len);
+
+      for( i=0 ; i < text_len ; i=i+1)
+        text_string[i] = ptext[i];
+      text_string[text_len] = (char) 0;
+      dprintf((stderr,"Character Name text_string is %s\n",text_string));
+    }
+
+    /****	Set name_desc to blank  ***/
+    for( i=0 ; i < 36 ; i=i+1)
+      name_desc[i] = " ";
+
+    /****  Character Name must be a decimal #  ***/
+    for( i=0 ; i < text_len ; i=i+1)
+      name_desc[i] = text_string[i];
+    name_desc[text_len] = (char) 0;
+    dprintf((stderr,"GRCrFnFl - 2 name_desc = '%s'\n",name_desc));
+
+    if ( strlen(name_desc) > 3 )
+    {
+/*     sprintf(temp_str,"Character Name (%s) is too long.",name_desc);
+*/
+      ex$message(msgnumb=GR_E_CharNmTooLng,buff=temp_str,var=name_desc);
+      status(temp_str);
+      fprintf(log_file,"GRCrFnFl - Character Name \"%s\" is too long.\n",
+                        name_desc);
+    }
+    char_num = atoi(name_desc);
+
+ if ( char_num == 0 )
+  {
+   make_char=0;
+  }
+ else
+  {
+
+    char_info[char_ndx].char_num      = char_num;
+    char_info[char_ndx].num_vec_elems = 0;
+
+/*    sprintf(temp_str,"Character Name(number) is \"%d\"",char_num); */
+    ex$message(msgnumb=GR_I_CharName,buff=temp_str,var=char_num);
+    status(temp_str);
+    fprintf(log_file,"Character Name(number) is \"%d\"\n",char_num);
+
+    ele_count = Get_ele_count(count);
+
+    ret1 = adjust_list_for_origin ();
+    i = 0;
+    vec_elem_ndx = 0;
+
+    ele_data = Get_ele_data();
+    if (ele_data != 0)
+    {
+       return(ele_data);
+    }
+
+    /*** Increment the char_number ***/
+    char_number = char_number + 1;
+    char_ndx = char_ndx + 1;
+
+    /*** If char_number is at the end of a row reset lower_left point ***/
+    if ( (char_number % 10) == 1 )
+    {
+      lower_left[0] = 0;
+      lower_left[1] = lower_left[1] - 3;
+    }
+    else
+      lower_left[0] = lower_left[0] + 6;
+
+    /** Set the cell_origin coords to 1 more than the lower_left X & Y **/
+    cell_origin[0] = lower_left[0] + 1;
+    cell_origin[1] = lower_left[1] + 1;
+
+    /*** Set the coords of cell_ll relative to the lower_left X & Y ***/
+    cell_ll[0] = lower_left[0] + .2;
+    cell_ll[1] = lower_left[1] + .6;
+    /* dprintf((stderr,"cell_ll %g,%g,%g\n",cell_ll[0],cell_ll[1],
+                cell_ll[2]));    */
+
+    /*** Set the coords of cell_ur relative to the lower_left X & Y ***/
+    cell_ur[0] = lower_left[0] + 5.8;
+    cell_ur[1] = lower_left[1] + 2.4;
+    /* dprintf((stderr,"cell_ur %g,%g,%g\n",cell_ur[0],cell_ur[1],
+                cell_ur[2]));    */
+
+    /*** Set the coords of win_pnt relative to the lower_left X & Y ***/
+    win_pnt[0] = lower_left[0] - 1.0;
+    win_pnt[1] = lower_left[1] - 1.0;
+
+    /*** Set the coords of win_pnt2 relative to the lower_left X & Y ***/
+    win_pnt2[0] = lower_left[0] + 7.0;
+    win_pnt2[1] = lower_left[1] + 4.0;
+
+    /*** Position the window to see the fenced area ***/
+    begincmd_key("GRCVAr");
+    ci$put(point = win_pnt);
+    ci$put(point = win_pnt2);
+    ci$put(point = win_pnt2);
+    ci$put(response = TERMINATE);
+    endcmd();
+
+    /*** Place a fence @ cell_ll & cell_ur coordinates ***/
+    ci$put(cmd_key="GRPRcFn");
+    ci$put(point = cell_ll);
+    ci$put(point = cell_ur);
+    count = 512;
+
+    ele_count = Get_ele_count(count);
+    dprintf((stderr,"Inside FIRST loop,Get_ele_count(),ele_count is %d\n",
+                     ele_count));
+  if (ele_count > 1024)
+  {
+
+	fprintf(stderr,"Number of Elements exceeds limit.\n");
+        fprintf(log_file,"ERROR: NUmber of elements exceeds limit.\n");
+
+	ex$message(msgnumb=GR_E_ErrFlCrt,time = 3);
+	goto wrapup;
+  }
+
+  }
+
+  }  /*** END of FIRST while loop ***/
+
+  beg_char = char_info[0].char_num;
+
+  if ( char_ndx == 0 )
+     {
+     end_char = char_info[char_ndx].char_num;
+     number_of_chars = 1;
+     }
+  else
+     {
+     end_char = char_info[char_ndx-1].char_num;
+     number_of_chars = char_ndx;
+     }
+
+  dprintf((stderr,"\n            beg_char = %d\n",beg_char));
+  dprintf((stderr,"            end_char = %d\n",end_char));
+  dprintf((stderr,"     number_of_chars = %d\n",number_of_chars));
+
+  /** Insert the begining char #, ending char #,# of chars into the **
+   ** Font Header Buffer **/
+#ifdef BIG_ENDIAN
+   c_ptr = &Xft_hdr_buf[166];
+   INCRconv_short(beg_char, &c_ptr);
+   INCRconv_short(end_char, &c_ptr);
+   INCRconv_short((short)number_of_chars,&c_ptr);
+#else
+   ft_hdr_buf[83] = beg_char;        /* Begining Char # */
+   ft_hdr_buf[84] = end_char;        /* Ending Char #   */
+   ft_hdr_buf[85] = number_of_chars; /* # of Chars      */
+#endif
+
+   /*** Create Character Dimension Table ***/
+#ifdef BIG_ENDIAN
+   XFTB_create_dimtbl();
+#else
+   FTB_create_dimtbl();
+#endif
+
+   /*** Create Character Code Offset Table ***/
+#ifdef BIG_ENDIAN
+   XFTB_create_ccot();
+#else
+   FTB_create_ccot();
+#endif
+
+   /*  Store number of bytes in character definition */
+#ifdef BIG_ENDIAN
+   c_ptr = &Xft_hdr_buf[176];
+   INCRconv_int(char_info_size, &c_ptr);
+#else
+   ft_hdr_buf[88] = char_info_size;
+#endif
+
+   /* Determine the value for bytes_in_font */
+   bytes_in_font = (206 + dim_tbl_size + char_code_size + char_info_size);
+
+   dprintf((stderr,"         dim_tbl_size  = %d\n",dim_tbl_size));
+   dprintf((stderr,"       char_code_size  = %d\n",char_code_size));
+   dprintf((stderr,"       char_info_size  = %d\n",char_info_size));
+   dprintf((stderr,"        bytes_in_font  = %d\n",bytes_in_font));
+
+#ifdef BIG_ENDIAN
+   c_ptr = &Xft_hdr_buf[202]; 			/* fnt_len */
+   INCRconv_int(bytes_in_font, &c_ptr);
+
+   c_ptr = &Xft_hdr_buf[180];
+   INCRconv_int(206 + dim_tbl_size, &c_ptr);
+#else
+   ft_hdr_buf[101] = bytes_in_font; /* # of bytes in font */
+
+   ft_hdr_buf[90] = 206 + dim_tbl_size;  /*  Offset to Char Code table */
+#endif
+
+   /* Determine the value for EOL_block & EOL_byte */
+   EOL_block = (730 + dim_tbl_size + char_code_size + char_info_size)/512;
+   dprintf((stderr,"      EOL_block = %d\n",EOL_block));
+   EOL_byte = ((730 + dim_tbl_size + char_code_size + char_info_size)
+              % 512); /* modulo 512 */
+   dprintf((stderr,"      EOL_byte = %d\n",EOL_byte));
+#ifdef BIG_ENDIAN
+   c_ptr = &Xftlb_hdr_buf[180];
+   INCRconv_int(EOL_block, &c_ptr);
+   c_ptr = &Xftlb_hdr_buf[184];
+   INCRconv_short((short)EOL_byte, &c_ptr);
+#else
+   ftlb_hdr_buf[90] = EOL_block;         /* End-of-Library Block # */
+   ftlb_hdr_buf[92] = EOL_byte;          /* End-of-Library Byte # */
+#endif
+
+  if (char_number == 1 )
+  {
+    fprintf(stderr,"GRCrFnFl - Not enough elements in work area 1.\n");
+    fprintf(log_file,"GRCrFnFl - Not enough elements in work area 1.\n");
+    goto wrapup;
+  }
+
+  dprintf((stderr,"%s file has been created.\n",user_file));
+/*  sprintf(temp_str,"%s file has been created.",user_file); */
+  ex$message(msgnumb=GR_I_FntFleCre,var=user_file,time = 3);
+
+
+wrapup:
+
+  /******** Clean up *********/
+
+  /*** Write the buffers to the FONTLIB file ***/
+
+#ifdef BIG_ENDIAN
+     fwrite(Xftlb_hdr_buf,1,512,font_file);
+     fwrite(Xft_of_tbl_buf,1,12,font_file);
+     fwrite(Xft_hdr_buf,1,206,font_file);
+     fwrite(Xdim_tbl_buf,1,dim_tbl_size,font_file);
+     fwrite(Xchar_code_buf,1,char_code_size,font_file);
+#else
+     fwrite(ftlb_hdr_buf,1,512,font_file);
+     fwrite(ft_of_tbl_buf,1,12,font_file);
+     fwrite(ft_hdr_buf,1,206,font_file);
+     fwrite(dim_tbl_buf,1,dim_tbl_size,font_file);
+     fwrite(char_code_buf,1,char_code_size,font_file);
+#endif
+
+     options = 0;
+     etype   = 1;
+
+#ifdef BIG_ENDIAN
+     for( ii = 0 ; ii < number_of_chars ; ii=ii+1)
+     {
+	x_s = options;
+  	Xconv_short(&x_s);
+        fwrite(&x_s,1,2,font_file);
+
+	vec_elems_num = char_info[ii].num_vec_elems;
+	x_s = vec_elems_num;
+  	Xconv_short(&x_s);
+        fwrite(&x_s,1,2,font_file);
+
+        for (jj=0; jj<char_info[ii].num_vec_elems; jj=jj+1)
+        {
+           x_s = etype;
+           Xconv_short(&x_s);
+           fwrite(&x_s,1,2,font_file);
+
+  	   vecs_num = char_info[ii].vec_elem[jj].num_vecs;
+           x_s = vecs_num;
+           Xconv_short(&x_s);
+           fwrite(&x_s,1,2,font_file);
+
+           for (kk=0; kk<char_info[ii].vec_elem[jj].num_vecs; kk=kk+1)
+           {
+	    /* unigned short vec_data[kk] had been assigned a union. 	*/
+	    /* Unions are byte-ordered like structs and has been 	*/
+	    /* initialized in Little Endian format. No need to convert	*/
+	    /* on Sun. - Yvonne						*/
+
+            fwrite(&char_info[ii].vec_elem[jj].vec_data[kk],1,2,font_file);
+           }
+        }
+     }
+#else
+/*fprintf(stderr, "write font_file: clipper\n");*/
+     for( ii = 0 ; ii < number_of_chars ; ii=ii+1)
+     {
+        fwrite(&options,1,2,font_file);
+        fwrite(&char_info[ii].num_vec_elems,1,2,font_file);
+        for (jj=0; jj<char_info[ii].num_vec_elems; jj=jj+1)
+        {
+           fwrite(&etype,1,2,font_file);
+           fwrite(&char_info[ii].vec_elem[jj].num_vecs,1,2,font_file);
+           for (kk=0; kk<char_info[ii].vec_elem[jj].num_vecs; kk=kk+1)
+           {
+            fwrite(&char_info[ii].vec_elem[jj].vec_data[kk],1,2,font_file);
+           }
+        }
+     }
+#endif
+
+  /*** Write End time to log file ***/
+  time(&secs);
+  time_now = localtime(&secs);
+  dprintf((stderr,"Finish Time:"));
+  dprintf((stderr," Time: %2d:%2d:%2d.00\n",
+                    time_now->tm_hour,time_now->tm_min,time_now->tm_sec));
+  fprintf(log_file,"\nFinish Time: %2d:%2d:%2d.00\n",
+                    time_now->tm_hour,time_now->tm_min,time_now->tm_sec);
+
+  fclose( log_file );
+  fclose( font_file );
+
+  /*  free malloc buffers  */
+
+  if (poly.points != 0) free (poly.points);
+  if (bsp_geom    != 0) free (bsp_geom);
+
+#ifdef BIG_ENDIAN
+  free (Xdim_tbl_buf);
+  free (Xchar_code_buf);
+#else
+  free (dim_tbl_buf);
+  free (char_code_buf);
+#endif
+
+  for( ii = 0 ; ii < number_of_chars ; ii=ii+1)
+  {
+     for (jj=0; jj<char_info[ii].num_vec_elems; jj=jj+1)
+     {
+        if (char_info[ii].vec_elem[jj].vec_data)
+          free (char_info[ii].vec_elem[jj].vec_data);
+     }
+     if (char_info[ii].vec_elem)
+       free (char_info[ii].vec_elem);
+  }
+}

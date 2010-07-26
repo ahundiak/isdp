@@ -1,0 +1,196 @@
+#include "cieveryone.h"
+#include "cimacros.h"
+#include "OMminimum.h"
+#include "igetypedef.h"
+#include "igrtypedef.h"
+#include "igr.h"
+#include "igrdp.h"
+#include "dpdef.h"
+#include "dp.h"
+#include "dpstruct.h"
+#include "gr.h"
+#include "fontdef.h"
+#include "font.h"
+#include "gotextdef.h"
+#include "gotext.h"
+#include "grdpbdef.h"
+#include "grdpb.h"
+#include "grdpbmacros.h"
+
+#include "OMmacros.h"
+#include "dpmacros.h"
+
+#include "asdef.h"
+#include "asmacros.h"
+#include "parametric.h"
+
+#include "DIdef.h"
+#include "DItypedef.h"
+#include "DIglob.h"
+#include "DIprims.h"
+
+#include "ma.h"
+#include "bserr.h"
+
+#include "nddef.h"
+#include  "graph.h"
+#include "ndmacros.h"
+
+#include "dimdef.h"
+#include "dim.h"
+#include "dimplan.h"
+#include "dimglobal.h"
+#include "dimerror.h"
+#include "dimmacros.h"
+#include "dm_status.h"
+#include "dimdload.h"
+#include "dimdyn.h"
+#include "dimgraph.h"
+#include "dimcomplex.h"
+#include "dimmod.h"
+#include "dimsrc.h"
+#include "diminst.h"
+#include "msdef.h"
+#include "msmacros.h"
+#include "DMcmd.h"
+#include "DMmsg.h"
+
+extern printf();
+extern ASsuper_construct();
+extern int NDexec_batch();
+extern int MSmessage();
+IGRint sts, msg;
+struct GRevent event;
+IGRint response;
+struct GRmd_env md_env, dyn_env;
+struct GRid dim_grid;
+char locbuff[132];
+char msgbuff[132];
+
+main()
+{
+	STATE_loc_cpx:
+        ex$message(msgnumb = DM_P_LocDim, buff = locbuff);
+	do
+	{
+
+		ci$locate(prompt = locbuff,
+			classes = "DMroot",
+			owner_action = LC_READ |LC_NO_REF_HEADER |
+					LC_REF_OBJECTS |LC_HANDLES,
+			response = &response,
+			obj = &dim_grid.objid,
+			osnum = &dim_grid.osnum);
+	} while (response != DATA);
+
+	offset_dimension_text(dim_grid);
+
+	goto STATE_loc_cpx;
+}
+
+offset_dimension_text(dim_grid)
+struct GRid dim_grid;
+{
+	IGRint msg, i;
+	IGRboolean last_in_cpx;
+	struct GRid copy_dim, next[2];
+	prompt("Position Text");
+
+	ex$message(msgnumb = DM_P_Entepo, buff = locbuff);
+
+	STATE_1:
+
+	dm$invoke_dynamics(
+		msg = &msg,
+		preproc = SET_STATE,
+		prestate = DIM_NEEDS_UPDATE,
+		control = MOVE_TEXT_POS,
+		md_env = &dyn_env,
+		copy = TRUE,
+		cp_grid = &copy_dim,
+		dim_grid = &dim_grid);
+
+	ci$getevent(
+		prompt = locbuff,
+		event = &event,
+		response = &response,
+		stackable = TRUE,
+		mask = GRm_DATA | GRm_STRING | GRm_BACK_UP | GRm_RESET);
+
+	switch(response)
+	{
+		case DATA:
+
+		dm$invoke_dynamics(
+			msg = &msg,
+			dynamics = FALSE,
+			preproc = SET_STATE,
+			prestate = DIM_NEEDS_UPDATE,
+			postproc = SET_STATE | CHGDP,
+			poststate = 0,
+			control = MOVE_TEXT_POS,
+			md_env = &dyn_env,
+			event = &event,
+			dim_grid = &copy_dim);
+
+		break;
+
+		default:
+
+		DMdelete_dimension(&msg, TRUE, &dyn_env, &copy_dim);
+		nd$exec_batch();
+
+		if (response == RESET || response == D_RESET)
+			return(TRUE);
+		else	goto STATE_1;
+	}
+
+	sts =
+	ci$send(msg = message DMroot.copy_dim_attr(
+					&msg,
+					INST_OFFS_PT,
+					&copy_dim, 
+					&md_env),
+		targetid = dim_grid.objid,
+		targetos = dim_grid.osnum);
+	dm$status(sts = sts, action = RET_STATUS);
+
+	sts =
+	ci$send(msg = message DMroot.give_next(
+					&msg,
+					&last_in_cpx,
+					next),
+		targetid = copy_dim.objid,
+		targetos = copy_dim.osnum);
+	dm$status(sts = sts, action = RET_STATUS);
+
+	if (!last_in_cpx)
+	{
+		for (i=0; i<2; i=i+1)
+		{
+			if (next[i].objid == NULL_OBJID)
+			   continue;
+
+			DMdelete_dimension(&msg, TRUE, &dyn_env, &next[i]);
+		}
+	}
+
+	DMdelete_dimension(&msg, TRUE, &dyn_env, &copy_dim);
+	nd$exec_batch();
+}
+
+init()
+{
+
+	ASsuper_construct();
+	ci$get_module_info(md_env = &md_env);
+	ci$get_module_info(md_env = &dyn_env);
+	dyn_env.md_id.objid = NULL_OBJID;
+
+}
+
+wakeup()
+{
+	ex$message(msgnumb = DMC_M_DMOfDmTx, buff = msgbuff);
+	message(msgbuff);
+}

@@ -1,0 +1,66 @@
+/*
+** detach_fr_ci.u
+**
+** Remove the "link" between an object subclass of GRnotify and a CI object that
+** was established by "attach_to_ci.u".
+**
+** History
+**	GARDELLA D.	03/16/88:	creation
+**	E BEEKER	03/22/88:	modification for "executor"
+*/
+
+#include "OMprimindex.h"
+#include "cimacros.h"
+#include "cichannel.h"
+
+#define MAX_OBJ_CONNECTED	20
+short		osn,		/* monitored graphic object osnum */
+		OutOs[MAX_OBJ_CONNECTED];
+				/* list of connected objects osnum */
+GRobj		GR_EXECUTOR,	/* monitored graphic object id. */
+		EXECUTOR[MAX_OBJ_CONNECTED];
+				/* list of connected objects id. */
+int		count;		/* # of connected objects */
+int		sts, i;
+double		ap[3];
+
+main()
+{
+    message( "Detach CI file from graphic object" );
+
+    /* Locate the graphic object  */
+    while ( ci$locate(	obj = &GR_EXECUTOR, 
+			osnum = &osn,
+			prompt = "Locate object you want to disconnect",
+			acc_prompt = "accept with next object",
+			accept_point = ap ) )
+    {
+
+	/* Get the "listening" object */
+	sts = ci$get_channel_objects(
+		osnum		= (int)osn,
+ 		objid		= GR_EXECUTOR,
+		channname	= "GRnotify.notification",
+		obj_list	= EXECUTOR,
+		osn_list	= OutOs,
+		count		= &count );
+	if ( !sts )
+	    exit;
+
+	if ( count == 0 ){
+	    status("no CI objects connected to this graphic object");
+	    write("");
+	    continue;
+	}
+
+	/* Delete the associated CI objects as well 
+	   as the intermediate object. */
+	for(i=0; i<count; i=i+1 )
+		ci$send(msg = message ci_executor.delete(0),
+			targetid = EXECUTOR[i],
+			targetos = OutOs[i]	);
+
+        /* put the accept point on the stack */
+        ci$put( point = ap );
+    }
+}

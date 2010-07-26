@@ -1,0 +1,231 @@
+/************************************************************************/
+/*									*/
+/*  Program: placeslot.u	            Macro: ems$place_slot	*/
+/*									*/
+/*  Defined in: EMSascmacros.h						*/
+/*									*/
+/*  Comments  : Makes slots out of both profiles and composite_curves.  */
+/*		Depending on how the profile is drawn, it would become  */
+/*		either the area part or hole part (no control to user). */
+/*		For finite slot, need to indicate slot direction with   */
+/*		respect to the profile/composite_curve.			*/
+/*									*/
+/************************************************************************/
+#include <stdio.h>
+#include "ciminimum.h"
+#include "cimacros.h"
+#include "ci_easy.h"
+#include "go.h"
+#include "griodef.h"
+#include "grdpbmacros.h"
+#include "dpmacros.h"
+#include "lcdef.h"
+
+#include "EMSascmacros.h"
+#include "EMSasnuc.h"
+#include "EMSasopts.h"
+
+#define PROFILE		1
+#define SOLID		2
+#define DEPTH_TYPE	3
+#define PROCESS		4
+#define DEPTH_EVENT     5
+#define NORMAL_SIDE     6
+
+extern GRclassid OPP_GRcurve_class_id;
+extern GRclassid OPP_EMSsubbs_class_id;
+extern GRclassid OPP_EMSsurface_class_id;
+
+extern	int	GRdpb_get();
+
+main ()
+{
+     /* Declare variables here : */
+     struct GRvg_construct    const_list;
+     struct GRlc_info         surface_info[3];
+     struct GRevent	      depth;
+
+     struct IGRdisplay        disp_buffer;
+     IGRboolean               trimming_required;
+     IGRboolean               is_pro_nor_rev;
+     IGRshort                 disp_level;
+     IGRboolean               assoc_placement;
+     IGRushort                options;
+     IGRushort 		      depth_type;
+     struct GRid              res_obj;
+     IGRint                   tmp,sts, num_bytes;
+     IGRint		      res,state;
+     IGRlong                  msg_loc, nbytes_ret;
+     OM_S_CLASSLIST           elig_classes;
+     GRclassid                eli_classes[3];
+     IGRint		      surf_cnt;
+     IGRchar		      prompt[50];
+     IGRdouble                tmp_depth;
+
+  /* End of variable declarations */
+
+  message ("Place Slot") ;
+  state = DEPTH_TYPE;
+   
+  while( 1 )
+  {
+
+    if ( state == DEPTH_TYPE )
+    {
+      tmp=0;  
+      ci$get( value = tmp,
+	     prompt = "Depth ?(thru_all=0, thru_until=1, thru_next=2, finite=3)"
+  	     );  
+      depth_type = tmp; 
+      state = PROFILE;
+
+    }
+    if ( state == DEPTH_EVENT )
+    {
+      tmp_depth=0;  
+      ci$get( value = tmp_depth,
+	     prompt = "Slot Depth ?"
+  	     );
+      depth.subtype = GRst_v_REGULAR;
+      depth.event.value = tmp_depth; 		/* this should be double */
+      state = PROCESS;
+    }
+
+    if ( state == PROFILE ) 
+    {
+      /*Get the first object */
+      elig_classes.w_count = 1;
+      eli_classes[0] = OPP_GRcurve_class_id;
+      elig_classes.w_flags = OM_CLST_subclass;
+      elig_classes.p_classes = eli_classes;
+    
+      ci$locate ( obj=&surface_info[2].located_obj.objid,
+		lc_info=&surface_info[2],
+	        prompt="Identify Profile",
+	        acc_prompt="Accept/Reject",
+                response=&res,
+	        relocate_prompt="Profile not Found",
+		owner_action = LC_RIGID_COMP | LC_FLEX_COMP,
+                eligible_classes = &elig_classes
+	      );
+      if ( res == EX_DATA )
+      {
+        state = SOLID;
+        surf_cnt = 0;
+      }
+      else if (res == EX_BACK_UP)
+        state = DEPTH_TYPE;
+    }
+    if ( state == SOLID ) 
+    {
+      /*Get the first object */
+      if ( (depth_type == 0) || (depth_type == 3) )
+      {
+        elig_classes.w_count = 1;
+        eli_classes[0] = OPP_EMSsurface_class_id;
+        strcpy( prompt, "Identify solid" );
+      }
+      else if (depth_type == 2)
+      {
+        elig_classes.w_count = 1;
+        eli_classes[0] = OPP_EMSsubbs_class_id;
+        strcpy( prompt, "Identify surface" );
+      }
+      else 
+      {
+        elig_classes.w_count = 1;
+        eli_classes[0] = OPP_EMSsubbs_class_id;
+        if ( surf_cnt == 0 )
+          strcpy( prompt, "Identify Surface on solid (Slot from)" );
+        else 
+          strcpy( prompt, "Identify Surface on solid (Slot upto)" );
+      }
+      elig_classes.w_flags = OM_CLST_subclass;
+      elig_classes.p_classes = eli_classes;
+      is_pro_nor_rev = FALSE;    
+      ci$locate ( obj=&surface_info[surf_cnt].located_obj.objid,
+                lc_info=&surface_info[surf_cnt],
+	        prompt=prompt,
+	        acc_prompt="Accept/Reject",
+                response=&res,
+	        relocate_prompt="Surface not Found",
+		owner_action = LC_RIGID_COMP | LC_FLEX_COMP,
+                eligible_classes = &elig_classes
+	      );
+      if ( res == EX_DATA )
+      {
+        if ( (depth_type == 0) || (depth_type == 2) || (surf_cnt == 1) )
+          state = PROCESS;
+        else if ( depth_type == 3 )
+          state = NORMAL_SIDE;
+        else
+        {
+          state = SOLID;
+          surf_cnt = surf_cnt + 1;
+        }
+      }
+      else if (res == EX_BACK_UP)
+
+      {
+        if ( surf_cnt == 0 )
+          state = PROFILE;
+        else
+        {
+          state = SOLID;
+          surf_cnt = 0;
+        }
+      }
+    }
+    if ( state == NORMAL_SIDE )
+    {
+    ci$get ( value = is_pro_nor_rev,
+             prompt = "Which side to make slot? Normal=0:Reverse=1"
+           );
+    state = DEPTH_EVENT;
+    }
+    if ( state == PROCESS )
+    {
+      num_bytes = sizeof(struct IGRdisplay);
+      gr$get_active_display ( msg = &msg_loc, sizbuf = &num_bytes,
+			    nret= &nbytes_ret, buffer = &disp_buffer );
+      gr$get_active_level   ( buffer = &disp_level );
+    
+      const_list.msg        = &msg_loc;
+      const_list.env_info   = &surface_info[0].module_info;
+      const_list.display    = &disp_buffer;
+      const_list.properties = GRIS_LOCATABLE | GRIS_DISPLAYABLE;
+      const_list.newflag    = FALSE;
+      const_list.level      = disp_level;
+      const_list.class_attr = NULL;
+      const_list.name       = NULL;
+      const_list.geometry   = NULL;
+
+      gr$get_associative_flag ( buffer = &assoc_placement );
+    
+      if ( ! assoc_placement )
+           options = EMSasconst_notassociative;
+      else
+           options = NULL;
+
+      res_obj.osnum = surface_info[0].located_obj.osnum;
+      status( "Processing ..");
+
+      sts = ems$place_slot( msg = &msg_loc,
+                            is_pro_nor_rev = is_pro_nor_rev,
+                            surface = &surface_info[0],
+			    depth_type = &depth_type,
+			    depth = &depth,
+                            gen_opts = options,
+                            construction_list = &const_list,
+                            resultant_obj = &res_obj);
+
+      if (!(sts & msg_loc & 1)) goto wrapup;
+
+      state = PROFILE;
+      status( "Successfully created"); 
+    }
+  }  
+  exit;
+wrapup:
+            status(" Severe failure like construction failure ");
+}

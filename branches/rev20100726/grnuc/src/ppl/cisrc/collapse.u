@@ -1,0 +1,244 @@
+/*
+Name
+        collapse
+
+Description
+        This command collapses all of the EMS process into a single icon.
+
+History
+        mrm     08/02/91    creation
+                10/17/91    change icon to HIGH_PRIORITY to cover the stop sign
+                02/18/92    removed EnvironV dependencies
+                02/21/92    ifdef'ed out HIGH_PRIORITY for X; XFORMS doesn't
+                            support it
+        scw     03/17/92    Changed ci$getevent to co$getevent.  Left double
+                            tap would terminate the command in the collapsed
+                            mode in ci$getevent.  The use of co$getevent will
+                            keep this from happening.
+*/
+
+#include <tools.h>
+#include <FI.h>
+#include "ciminimum.h"
+#include "cimacros.h"
+#include "OMminimum.h"
+#include "OMprimitives.h"
+#include "igetypedef.h"
+#include "igrtypedef.h"
+#include "ex.h"
+#include "exmacros.h"
+#include "igr.h"
+#include "igewindef.h"
+#include "igewinmacros.h"
+#include "gr.h"
+#include "igrdp.h"
+#include "godef.h"
+#include "go.h"
+#include "griodef.h"
+#include "grio.h"
+#include "griomacros.h"
+#include "msdef.h"
+#include "msmacros.h"
+#include "dpdef.h"
+#include "dpmacros.h"
+#include "grdpbdef.h"
+#include "grdpbmacros.h"
+#include "DItypedef.h"
+#include "DIdef.h"
+#include "DIglob.h"
+#include "DIprims.h"
+#include "CIforms.h"
+#include "grmessage.h"
+
+#define DEBUG           0
+#define BUFSIZE         128
+#define ICON_FORM       100
+#define EMS_TEXT        11
+
+extern int ci_notification();
+
+struct CIform_st form_st;
+
+main()
+{
+    long           mask;
+    char           response_data;
+    struct GRevent event;
+
+    int sts, msg, i, j, total_num, nwindows, nforms, response, type, displayed;
+    char *name, win_names[MAX_WINDOW * BUFSIZE], buf[BUFSIZE];
+    Form *displayed_forms, *forms, icon;
+    struct GRmd_env mod;
+    struct GRid windows[MAX_WINDOW];
+
+    ex$message(msgnumb = GRC_M_Clps);
+
+    /* create the ems "icon" */
+
+    icon = NULL;
+    sts = FI_get_form_by_name("GRcollapse", &icon);
+    if ((sts != FI_SUCCESS) || (icon == NULL))
+    {
+        sts = FIf_new(ICON_FORM, "GRcollapse", ci_notification, &icon);
+        if ((sts != FI_SUCCESS) || (icon == NULL))
+        {
+            ex$message(msgnumb = GR_E_CantCreIcon);
+            exit;
+        }
+    }
+
+    /* make the icon cover the stop sign */
+#ifndef X11 
+    FIf_set_window_level(icon, FI_HIGH_PRIORITY);
+#endif
+
+    /* associate the icon with this command object */
+
+    FIf_set_cmd_oid_os(icon, MY_ID, OM_Gw_current_OS);
+
+    /* erase the menus */
+
+    MS_erase_menus();
+
+    /* find and erase all the forms */
+
+    FI_get_num_forms_menus(&nforms);
+    forms = (Form *)om$malloc(size = sizeof(Form) * nforms);
+    displayed_forms = (Form *)om$malloc(size = sizeof(Form) * nforms);
+    FI_get_forms_menus(forms, &nforms);
+    j = 0;
+    for (i = 0; i < nforms; i = i + 1)
+    {
+        FIf_is_displayed(forms[i], &displayed);
+        if (displayed)
+        {
+            FIf_erase(forms[i]);
+            displayed_forms[j] = forms[i];
+            j = j + 1;
+        }
+    }
+    nforms = j;
+
+    /* get all the graphic window ids */
+
+    gr$get_module_env(buffer = &mod);
+
+    sts = dp$get_gragad_id(msg = &msg,
+                           mod_GRid = &mod,
+                           name = "*",
+                           array_size = MAX_WINDOW,
+                           total_num = &total_num,
+                           numberofids = &nwindows,
+                           found_GRids = windows,
+                           type_gragad = ALL_GG_CLASSES | GG_WIN_ON);
+
+#if DEBUG
+    printf("dp$get_gragad_id: %#x, %#x, total_num = %d, nwindows = %d\n",
+           sts, msg, total_num, nwindows);
+#endif
+
+    /* get the names of each window */
+
+    for (i = 0; i < nwindows; i = i + 1)
+    {
+        name = &win_names[i * BUFSIZE];
+
+        sts = di$untranslate(objid = windows[i].objid,
+                             osnum = windows[i].osnum,
+                             objname = buf);
+        if (!(sts & 1))
+        {
+            di$report_error(sts = sts, comment = "di$untranslate");
+            continue;
+        }
+
+        sts = di$split(pathname = buf, name = name);
+        if (!(sts & 1))
+        {
+            di$report_error(sts = sts, comment = "di$split");
+            continue;
+        }
+#if DEBUG
+        printf("Graphic window %d: [%d, %d]: name = %s\n",
+               i, windows[i].osnum, windows[i].objid, name);
+#endif
+    }
+
+    /* use the "Window Off" command to turn off the windows */
+
+    begincmd("Window Off");
+    for (i = 0; i < nwindows; i = i + 1)
+    {
+        name = &win_names[i * BUFSIZE];
+        ci$put(string = name);
+    }
+    ci$put(response = TERMINATE);
+    endcmd();
+
+    /* display the icon/form */
+
+    FIf_display(icon);
+
+    /* stall for time */
+
+    while (1)
+    {
+        mask = GRm_DATA | 
+               GRm_RESET | 
+               GRm_STRING | 
+               GRm_BACK_UP |
+               GRm_MOVE_ON | 
+               GRm_SPECIFIED_OBJ | 
+               GRm_VALUE |
+               GRm_FORM_FINISHED ;
+
+        co$getevent ( msg = &msg,
+                      event_mask = mask,
+                      response = &response,
+                      response_data = &response_data,
+                      mode = EX_LINE_MODE,
+                      event = &event );
+
+        if (response == EX_FORM_FINISHED)
+        {
+            FIf_erase(icon);
+            break;
+        }
+    }
+
+    /* use the "Window On command to turn the windows back on */
+
+    begincmd("Window On");
+    for (i = 0; i < nwindows; i = i + 1)
+    {
+        name = &win_names[i * BUFSIZE];
+        ci$put(string = name);
+    }
+    ci$put(response = TERMINATE);
+    endcmd();
+
+    /* redisplay the forms */
+
+    for (i = 0; i < nforms; i = i + 1)
+    {
+        FIf_display(displayed_forms[i]);
+    }
+
+    /* redisplay the menus */
+
+    MS_display_menus();
+
+    /* free storage */
+
+    om$dealloc(ptr = forms);
+    om$dealloc(ptr = displayed_forms);
+}
+
+form_notification()
+{
+    switch (form_st.gadget_label)
+    {
+      default:
+        ci$put(response = EX_FORM_FINISHED);
+    }
+}
