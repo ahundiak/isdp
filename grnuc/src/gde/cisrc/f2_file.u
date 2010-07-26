@@ -1,0 +1,409 @@
+/*
+$Log: f2_file.u,v $
+Revision 1.1.1.1  2001/12/17 22:39:36  hans
+Initial import to CVS
+
+# Revision 340.0  1997/05/27  23:16:50  root
+# COMMENT : Initial checkin to 3.4.0 RCS from 3.3.0 src
+#
+# Revision 330.0  1996/01/11  21:31:10  root
+# COMMENT : Initial checkin to 3.3.0 RCS from 3.2.0 src
+#
+# Revision 320.0  1994/12/12  17:59:58  root
+# COMMENT : Initial checkin to 3.2 RCS from 3.1 src
+#
+# Revision 240.2  1993/08/11  22:02:45  doree
+# COMMENT : fixes for the solaris 5.2 sun build
+#
+# Revision 240.1  1993/01/06  13:47:50  grnuc20
+# COMMENT : incorporating release 2.2.0 fix
+#
+# Revision 220.2  1992/09/09  15:34:35  grnuc20
+# COMMENT : incorporating release 2.1.0, revision 201.8
+#
+Revision 201.7  1992/09/04  17:12:24  grnuc20
+COMMENT : work around time.h causing a syntax error in ppl
+
+Revision 201.6  1992/07/13  20:42:51  tim
+COMMENT : added Log variable
+
+*/
+
+#include "ex.h"
+#include "exmacros.h"
+#include <stdio.h>
+#include "OMprimitives.h"
+#include <sys/types.h>
+
+/*   ppl will syntax error if time.h is included   TGM 9/4/92 */
+#if defined( SUNOS ) || defined( SUNOS5 )
+#include <time.h>
+#endif
+
+#include <errno.h>
+
+/* TGM 5/5/92 modified to use message subsystem */
+
+#ifdef SUNOS 
+struct	stat {
+	dev_t	st_dev;
+	ino_t	st_ino;
+	mode_t 	st_mode;
+	short  	st_nlink;
+	uid_t 	st_uid;
+	gid_t 	st_gid;
+	dev_t	st_rdev;
+	off_t	st_size;
+	time_t	st_atime;
+	int     st_spare1;
+	time_t	st_mtime;
+        int     st_spare2;
+	time_t	st_ctime;
+        int     st_spare3;
+	long    st_blksize;
+	long    st_blocks;
+	long    st_spare4[2];
+	};
+#else 
+#include <sys/stat.h>
+#endif
+
+/**************************************
+
+	void display_file_info
+
+***************************************/
+
+/* 
+ * 	This functions UNIX attributes of the file 
+ */
+
+void display_file_info(fileptr, mode)
+FILE 		*fileptr;
+int		mode;
+{
+  struct EX_var_list 	ex_var[2], 
+			ex_var2[2];
+  IGRint 		var_size, 
+			bad_var;
+  IGRchar 		*ffend, 
+			filename[128], 
+			dirpath[128], 
+			entire_path[256], 
+			command[80];
+  int 			sts;
+  char 			ls_string[80];
+  char 			createday[10], 		
+			createmo[10], 
+			createtime[10], 	
+			owner[40];
+  int			size;
+  FILE			*fp;
+  int			print_to_screen;
+  int			mon, day, year, hour, min;
+
+  
+
+
+  short 		cur_os;
+  char			internal_name[256]  ;
+  int 			i;
+  char *		acctimestr;
+  struct stat		buffer;
+  char 			stat_msg[256];
+  char 			loc_buff[80];
+
+
+  extern 		EX_get_global();
+  extern 		FILE *fopen();
+  extern 		fclose(), 
+			sprintf();
+  extern 		sscanf(), 
+			fprintf();
+  extern int		stat();
+  extern char 		*ctime();
+#if !defined ( SUNOS ) && !defined ( SUNOS5 )
+/* define asctime since we cannot include time.h */
+  extern char   *asctime __((const struct tm *));
+#endif
+  extern struct tm *	localtime();
+  extern char *		asciitime();
+
+  print_to_screen = mode & SCREEN_OUTPUT;
+
+  /*
+   *  get name of file 
+   */
+
+  var_size = sizeof(filename);
+
+  ex_var[0].var = EX_CUR_FILENAME;
+  ex_var[0].var_value = filename;
+  ex_var[0].num_bytes = &var_size;
+  ex_var[1].var = NULL;
+  
+  sts = ex$global(mode = EX_INQ, var = &ex_var[0], which_error = &bad_var);
+  
+  /*
+   *  get directory path of file
+   */
+
+  var_size = sizeof(dirpath);
+  
+  ex_var2[0].var = EX_WORKING_DIR;
+  ex_var2[0].var_value = dirpath;
+  ex_var2[0].num_bytes = &var_size;
+  ex_var2[1].var = NULL;
+  
+  sts = ex$global(mode = EX_INQ, var = &ex_var2[0], which_error = &bad_var);
+  
+  /*
+   *  concatenate path and filename to get more info on file
+   */
+
+  strcpy(entire_path, dirpath);
+  strcat(entire_path, filename);
+
+  if (stat(entire_path, &buffer) == -1)
+  {
+    if (errno == ENOENT)
+    {
+      ex$message(msgnumb=GR_E_NotOnDsk,buff=stat_msg,var=filename);
+      status(stat_msg);
+
+      if (print_to_screen)
+      {
+        writestars();
+        ex$message(msgnumb=GR_I_UNIXAttr,buff=loc_buff);
+        write(loc_buff,"\n\n");
+        ex$message(msgnumb=GR_E_NotOnDsk,buff=loc_buff,var=filename);
+        printf("\t%s\n\n\n", loc_buff);
+	return;
+      }
+      filestars(fileptr);
+      ex$message(msgnumb=GR_I_UNIXAttr,buff=loc_buff);
+      fprintf(fileptr, "%s\n\n",loc_buff);
+      ex$message(msgnumb=GR_E_NotOnDsk,buff=loc_buff,var=filename);
+      fprintf(fileptr, "%s\n\n\n", loc_buff);
+      return;
+    }
+  }
+  /* get last access time */
+/*  stat(entire_path, &buffer); done above now 3-4-91 */
+
+  acctimestr = asctime(localtime(&(buffer.st_atime)));
+
+  /*
+   *  ls the file and store in file lstmp for later use
+   */
+
+  sprintf(command, "ls -l %s > lstmp", entire_path);
+  sh(command);
+  sh("chmod +rwx lstmp");
+
+
+  /*
+   *  get owner and access date of the file from info in lstmp
+   */
+
+  fp = fopen("lstmp", "r");
+  fgets(ls_string, 80, fp);
+#if !defined ( SUNOS ) && !defined ( SUNOS5 )
+  sscanf(&(ls_string[15]), "%s", owner);
+  sscanf(&(ls_string[29]), "%d", &size);
+  sscanf(&(ls_string[41]), "%s", createmo);
+  sscanf(&(ls_string[45]), "%s", createday);
+  sscanf(&(ls_string[48]), "%s", createtime);
+#else
+  sscanf(&(ls_string[19]), "%s", owner);
+  sscanf(&(ls_string[29]), "%d", &size);
+  sscanf(&(ls_string[37]), "%s", createmo);
+  sscanf(&(ls_string[41]), "%s", createday);
+  sscanf(&(ls_string[44]), "%s", createtime);
+#endif
+  fclose(fp);
+  sh("rm -f lstmp");
+
+
+  /*
+   *  get creation date from file's internal name
+   */
+
+  om$os_number_to_internal_name(osnum = cur_os, osname = internal_name);
+
+  for (i = 0; internal_name[i] != '~'; i = i+1)
+    ;
+
+  i = i+1;
+/*
+  write("internal name is ", internal_name, "\n");
+  write("creation date info is ", &(internal_name[i]), "\n");
+*/
+  sscanf(&(internal_name[i]), "%2d %2d %4d %2d %2d", &mon, &day, &year, &hour, 
+		&min);
+
+  
+  /*
+   *  output results
+   */
+
+  if (print_to_screen)
+  {
+    writestars();
+    ex$message(msgnumb=GR_I_UNIXAttr,buff=loc_buff);
+    write(loc_buff,"\n\n");
+    ex$message(msgnumb=GR_I_Filename,buff=loc_buff);
+    write("\t",loc_buff," .................... ", ex_var[0].var_value, "\n");
+    ex$message(msgnumb=GR_I_FilDirPath,buff=loc_buff);
+    write("\t",loc_buff," ......... ", dirpath, "\n");
+    ex$message(msgnumb=GR_I_Owner,buff=loc_buff);
+    write("\t",loc_buff," ....................... ", owner, "\n");
+    ex$message(msgnumb=GR_I_Size,buff=loc_buff);
+    write("\t",loc_buff," ........................ ", size, "\n");
+    ex$message(msgnumb=GR_I_CreDate,buff=loc_buff);
+    write("\t",loc_buff," ............... ", createmo, " ", createday, " ", createtime, "\n");
+    ex$message(msgnumb=GR_I_LastAccDte,buff=loc_buff);
+    write("\t",loc_buff," ............ ", acctimestr, "\n");
+    ex$message(msgnumb=GR_I_LastModDte,buff=loc_buff);
+    write("\t",loc_buff," ...... ");
+    switch (mon)
+    {
+      case 1: 
+        ex$message(msgnumb=GR_I_Jan,buff=loc_buff);
+        break;
+
+      case 2: 
+        ex$message(msgnumb=GR_I_Feb,buff=loc_buff);
+        break;
+
+      case 3: 
+        ex$message(msgnumb=GR_I_Mar,buff=loc_buff);
+        break;
+
+      case 4: 
+        ex$message(msgnumb=GR_I_Apr,buff=loc_buff);
+        break;
+
+      case 5: 
+        ex$message(msgnumb=GR_I_May,buff=loc_buff);
+        break;
+
+      case 6: 
+        ex$message(msgnumb=GR_I_Jun,buff=loc_buff);
+        break;
+
+      case 7: 
+        ex$message(msgnumb=GR_I_Jul,buff=loc_buff);
+        break;
+
+      case 8: 
+        ex$message(msgnumb=GR_I_Aug,buff=loc_buff);
+        break;
+
+      case 9: 
+        ex$message(msgnumb=GR_I_Sep,buff=loc_buff);
+        break;
+
+      case 10: 
+        ex$message(msgnumb=GR_I_Oct,buff=loc_buff);
+        break;
+
+      case 11: 
+        ex$message(msgnumb=GR_I_Nov,buff=loc_buff);
+        break;
+
+      case 12: 
+        ex$message(msgnumb=GR_I_Dec,buff=loc_buff);
+        break;
+    } /* end switch on numeric month */
+   
+    /* write month in loc_buff */
+    write(loc_buff," ");
+
+    write (day, "\b, ", year, " ", hour, "\b:");
+    if (min < 10)
+      write("0");
+    write(min, "\n");
+
+  }
+
+
+  filestars(fileptr);
+  ex$message(msgnumb=GR_I_UNIXAttr,buff=loc_buff);
+  fprintf(fileptr, "%s\n\n",loc_buff);
+  ex$message(msgnumb=GR_I_Filename,buff=loc_buff);
+  fprintf(fileptr, "\t%s .................... %s\n", loc_buff,
+     ex_var[0].var_value);
+  ex$message(msgnumb=GR_I_FilDirPath,buff=loc_buff);
+  fprintf(fileptr, "\t%s ......... %s\n", loc_buff, dirpath);
+  ex$message(msgnumb=GR_I_Owner,buff=loc_buff);
+  fprintf(fileptr, "\t%s ....................... %s\n", loc_buff, owner);
+  ex$message(msgnumb=GR_I_Size,buff=loc_buff);
+  fprintf(fileptr, "\t%s ........................ %d\n", loc_buff, size);
+  ex$message(msgnumb=GR_I_CreDate,buff=loc_buff);
+  fprintf(fileptr, "\t%s ............... %s %s %s\n", loc_buff,
+		createmo, createday, createtime);
+  ex$message(msgnumb=GR_I_LastAccDte,buff=loc_buff);
+  fprintf(fileptr, "\t%s ............ %s\n", loc_buff, acctimestr);
+  ex$message(msgnumb=GR_I_LastModDte,buff=loc_buff);
+  fprintf(fileptr, "\t%s ...... ");
+    switch (mon)
+    {
+      case 1: 
+        ex$message(msgnumb=GR_I_Jan,buff=loc_buff);
+        break;
+
+      case 2: 
+        ex$message(msgnumb=GR_I_Feb,buff=loc_buff);
+        break;
+
+      case 3: 
+        ex$message(msgnumb=GR_I_Mar,buff=loc_buff);
+        break;
+
+      case 4: 
+        ex$message(msgnumb=GR_I_Apr,buff=loc_buff);
+        break;
+
+      case 5: 
+        ex$message(msgnumb=GR_I_May,buff=loc_buff);
+        break;
+
+      case 6: 
+        ex$message(msgnumb=GR_I_Jun,buff=loc_buff);
+        break;
+
+      case 7: 
+        ex$message(msgnumb=GR_I_Jul,buff=loc_buff);
+        break;
+
+      case 8: 
+        ex$message(msgnumb=GR_I_Aug,buff=loc_buff);
+        break;
+
+      case 9: 
+        ex$message(msgnumb=GR_I_Sep,buff=loc_buff);
+        break;
+
+      case 10: 
+        ex$message(msgnumb=GR_I_Oct,buff=loc_buff);
+        break;
+
+      case 11: 
+        ex$message(msgnumb=GR_I_Nov,buff=loc_buff);
+        break;
+
+      case 12: 
+        ex$message(msgnumb=GR_I_Dec,buff=loc_buff);
+        break;
+  } /* end switch on numeric month */
+
+  /* print month in loc_buff */
+  fprintf(fileptr, "%s ", loc_buff);
+
+  fprintf(fileptr, "%d, %d %d:", day, year, hour);
+  if (min < 10)
+    fprintf(fileptr, "0");
+  fprintf(fileptr, "%d\n", min);
+
+}

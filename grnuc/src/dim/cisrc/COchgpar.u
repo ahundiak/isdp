@@ -1,0 +1,1066 @@
+/*
+$Author: hans $
+$Revision: 1.1.1.1 $
+$Date: 2001/12/17 22:39:29 $
+$Locker:  $
+$Log: COchgpar.u,v $
+Revision 1.1.1.1  2001/12/17 22:39:29  hans
+Initial import to CVS
+
+# Revision 340.1  1997/11/20  09:16:12  jbakthak
+# COMMENT : Changed for weld symbol so that it is not updated whem attach dimension is done
+#
+# Revision 340.0  1997/05/27  23:06:12  root
+# COMMENT : Initial checkin to 3.4.0 RCS from 3.3.0 src
+#
+# Revision 330.0  1996/01/11  21:20:05  root
+# COMMENT : Initial checkin to 3.3.0 RCS from 3.2.0 src
+#
+# Revision 320.2  1995/08/02  07:22:25  gvk
+# COMMENT : Reevaluate the dimension text during attach operation
+#
+# Revision 320.1  1995/06/27  12:02:29  gvk
+# COMMENT : Update dimension text during attach dimension command
+#
+# Revision 320.0  1994/12/12  17:49:42  root
+# COMMENT : Initial checkin to 3.2 RCS from 3.1 src
+#
+# Revision 240.3  1993/12/10  11:55:17  samuel
+# COMMENT : Fix for TR119314014 - Surf Texture Symb attaching to end pts only.
+#
+# Revision 240.2  1993/05/06  10:15:09  laxmi
+# COMMENT : DImensioning TR fixes checkin. -Laxmi.
+#
+# Revision 220.1  1992/12/18  22:06:49  gvk
+# COMMENT : Message Sub System Changes
+#
+Revision 201.7  1992/02/12  07:19:18  dimdp20
+COMMENT : Dimension Fixes Release - S. Poovannan - 12 Feb. 1992
+
+Revision 201.5  1992/01/20  07:58:52  dimdp20
+COMMENT : Dimension Fixes Release - S. Poovannan - Jan 20 1992
+
+Revision 201.4  92/01/13  05:59:53  dimdp20
+COMMENT : Dimensioning fixes release  - 13th Jan 92
+
+*/
+#include <stdio.h>
+#include "FI.h"
+#include "cieveryone.h"
+#include "cimacros.h"
+#include "OMminimum.h"
+#include "igetypedef.h"
+#include "igrtypedef.h"
+#include "igr.h"
+#include "igrdp.h"
+#include "dpdef.h"
+#include "dp.h"
+#include "dpstruct.h"
+#include "gr.h"
+#include "fontdef.h"
+#include "font.h"
+#include "gotextdef.h"
+#include "gotext.h"
+#include "grdpbdef.h"
+#include "grdpb.h"
+#include "grdpbmacros.h"
+
+#include "msdef.h"
+#include "msmacros.h"
+#include "OMmacros.h"
+#include "dpmacros.h"
+
+#include "asdef.h"
+#include "asmacros.h"
+#include "asbox.h"
+#include "parametric.h"
+
+#include "DIdef.h"
+#include "DItypedef.h"
+#include "DIglob.h"
+#include "DIprims.h"
+
+#include "ma.h"
+#include "bserr.h"
+
+#include "nddef.h"
+#include "GM.h"
+#include "ndmacros.h"
+
+#include "dimfiundef.h"
+#include "dimdef.h"
+#include "dim.h"
+#include "dimplan.h"
+#include "dimglobal.h"
+#include "dimerror.h"
+#include "dimlinear.h"
+#include "dimmacros.h"
+#include "dm_status.h"
+#include "dimdload.h"
+#include "dimdyn.h"
+#include "dimcomplex.h"
+#include "dimmod.h"
+#include "dimsrc.h"
+#include "diminst.h"
+#include "dimgraph.h"
+#include "dimco.h"
+#include "DMmsg.h"
+#include "DMcmd.h"
+
+extern ASmake_source();
+extern ASsuper_construct();
+extern GRfindcontext();
+extern NDexec_batch();
+extern NDwait_batch();
+extern printf();
+extern GRdpb_get();
+extern char *malloc();
+extern free();
+extern MSmessage();
+extern BSmkvec();
+extern BSnorvec();
+extern double BSdotp();
+
+OM_S_OBJECT_LINKAGE list[1];
+
+struct GRid copy_dim, src;
+struct GRmd_env md_env, dyn_env, located_env;
+int level, size;
+struct GRvg_construct go_cnst_list;
+int    index;
+IGRint sleep_flag;
+
+OM_S_CLASSLIST classlist;
+OMuword class;
+
+OM_S_CHANSELECT to_dimension;
+int count, comp_type, type;
+int sts, msg, rc, i, gt_annot, angdim;
+struct dim_ret_struct dim_rst;
+
+IGRshort dim_type, geom_type;
+
+extern GRclassid 
+	OPP_GR3dlineseg_class_id,
+	OPP_GR3dcirarc_class_id,
+	OPP_GRbspline_class_id,
+	OPP_GR3dtext_class_id,
+	OPP_DMannot_class_id,
+	OPP_DMroot_class_id,
+	OPP_GR3dpoint_class_id;
+
+IGRchar msgbuff[MS_MAX_MSG_LENGTH];
+IGRchar locbuff[MS_MAX_MSG_LENGTH];
+IGRchar accbuff[MS_MAX_MSG_LENGTH];
+IGRchar relbuff[MS_MAX_MSG_LENGTH];
+
+IGRint response, cross_section;
+IGRpoint locate_point;
+struct GRid dim_grid, located_obj;
+struct GRevent event;
+struct dim_attr dimension_attr;
+struct annot_attr annot_attr;
+char *dm_attr;
+
+main()
+{
+	STATE_loc_dim:
+
+	ex_message(DM_P_IdPrLi, locbuff);
+	ex_message(DM_P_Ac, accbuff);
+	ex_message(DM_E_EltNotFound, relbuff);
+	copy_dim.objid = NULL_OBJID;
+
+	do
+	{
+		ci$locate(
+			prompt = locbuff,
+			acc_prompt = accbuff,
+			relocate_prompt = relbuff,
+			eligible_classes = &classlist,
+			owner_action = LC_RIGID_COMP|LC_FLEX_OWNER,
+			response = &response,
+			md_env = &located_env,
+			data_point = locate_point,
+			obj = &located_obj.objid,
+			osnum = &located_obj.osnum);
+	} while (response != DATA);
+
+	list[0].S_objid = NULL_OBJID;
+
+	sts =
+	om$get_channel_objects(
+		objid = located_obj.objid,
+		osnum = located_obj.osnum,
+		p_chanselect = &to_dimension,
+		list = list,
+		size = sizeof(list),
+		count = &count);
+	dm$status(sts = sts, action = RET_STATUS);
+
+	dim_grid.objid = list[0].S_objid;
+	dim_grid.osnum = list[0].osnum;
+
+	if ((list[0].S_objid == NULL_OBJID)
+	|| (!DMancestry_valid(dim_grid, OPP_DMroot_class_id)))
+	{
+		ex_message(DM_E_Baoblo, NULL);
+		goto STATE_loc_dim;
+	}
+
+	gt_annot = DMancestry_valid(dim_grid, OPP_DMannot_class_id);
+
+        if (gt_annot)
+                dm_attr = (char *)&annot_attr;
+        else    dm_attr = (char *)&dimension_attr;
+
+        sts =
+        ci$send(msg = message DMroot.get_dim_attr((char *)dm_attr),
+                targetid = dim_grid.objid,
+                targetos = dim_grid.osnum);
+        dm$status(sts = sts, action = RET_STATUS);
+
+	if (gt_annot)
+	{
+		dim_type = annot_attr.dim_type;
+		geom_type = annot_attr.geom_type;
+		cross_section = annot_attr.leader;
+	}
+	else
+	{
+		dim_type = dimension_attr.dim_type;
+		geom_type = dimension_attr.geom_type;
+	}
+
+	if (geom_type & DIM_DRIVING)
+	{
+		ex$message(msgnumb = DM_I_CannotChngDrngDmPrnt);
+		goto STATE_loc_dim;
+	}
+
+	if (geom_type & DIM_IMPORTED)
+	{
+		ex$message(msgnumb = DM_I_CannotChngRtrPrnt);
+		goto STATE_loc_dim;
+	}
+
+	if ((dim_type == CENTER_LINE) ||
+	    (dim_type == WELD) ||
+	    (dim_type == SURF) ||
+	    (dim_type == TEXT_WITH_LEADER) ||
+	    (dim_type == TEXT_WITH_BALLOON) ||
+	    (dim_type == LEADER_LINE) ||
+	    (dim_type == FEATURE_CONTROL_FRAME) ||
+	    (dim_type == DATUM_FRAME) ||
+	    (dim_type == RADIAL) ||
+	    (dim_type == RADIAL_DIAMETER))
+	{
+		ex_message(DM_I_Swmeel, NULL);
+		change_dimension_parent(dim_grid);
+	}
+	else
+	{
+		if (dim_type == STACKED_ANGULAR
+		||  dim_type == STRINGED_ANGULAR)
+			angdim = TRUE;
+		else	angdim = FALSE;
+		
+		sts =
+		ci$send(msg = message DMroot.return_go_index(
+							&msg,
+							located_obj,
+							&comp_type),
+			targetid = dim_grid.objid,
+			targetos = dim_grid.osnum);
+		dm$status(sts = sts, action = RET_STATUS);
+
+		switch (comp_type)
+		{
+			case DIM_ORI_PROJ:
+
+			ex_message(DM_I_Swmeel, NULL);
+			change_dimension_origin(dim_grid);
+			break;
+
+			case DIM_MEA_PROJ:
+
+			ex_message(DM_I_Swmeel, NULL);
+			change_dimension_measurement(dim_grid);
+			break;
+
+			case DIM_TEXT:
+			case DIM_LEADER:
+			case DIM_ORI_TERM:
+			case DIM_MEA_TERM:
+			case DIM_LINE1:
+			case DIM_LINE2:
+			case DIM_LINE3:
+			case DIM_LINE4:
+
+			ex$message(msgnumb = DM_I_LocProjLnChngPrnt);
+			goto STATE_loc_dim;
+
+			default:
+
+			ex$message(msgnumb = DM_I_UnknownCmpType);
+			break;
+		}
+	}
+
+	goto STATE_loc_dim;
+}
+
+ex_message(msgnumb, buff)
+int msgnumb;
+char buff[];
+{
+	ex$message(msgnumb = msgnumb, buff = buff);
+}
+
+init()
+{
+	ASsuper_construct();
+	ci$get_module_info(md_env = &md_env);
+	ci$get_module_info(md_env = &dyn_env);
+	dyn_env.md_id.objid = NULL_OBJID;
+	copy_dim.objid = NULL_OBJID;
+
+	sts =
+	om$make_chanselect(channame = "GRconnector.to_owners",
+			p_chanselect = &to_dimension);
+	dm$status(sts = sts, action = RET_STATUS);
+
+	classlist.w_count = 1;
+	classlist.w_flags = OM_CLST_subclass;
+	classlist.p_classes = &class;
+
+	class = OPP_GRbspline_class_id;
+
+	sleep_flag = FALSE;
+
+	ex_message(DMC_M_DMAtDm, msgbuff);
+	message(msgbuff);
+}
+
+wakeup()
+{
+	if (sleep_flag)
+	{
+		ci$put(string = "");
+		sleep_flag = FALSE;
+	}
+
+	ex_message(DMC_M_DMAtDm, msgbuff);
+	message(msgbuff);
+}
+
+int get_parent_type()
+{
+	switch (dim_type)
+	{
+		case SINGLE_PARALLEL:
+		return(LINE_TYPE);
+
+		case SINGLE_ARC_LENGTH:
+		case SINGLE_ARC_ANGLE:
+
+		return(CIRC_ARC_TYPE);
+
+		case CIRCULAR_DIAMETER:
+
+		return(ARC_TYPE);
+
+		default:
+
+		return(POINT_TYPE);
+	}
+}
+
+create_root(root_type,dim_type, event, dim_grid, p_root)
+int root_type,dim_type;
+struct GRevent *event;
+struct GRid dim_grid, *p_root;
+{
+	IGRint sts, rc;
+	struct GRmd_env *lc_env;
+	struct GRid *lc_obj, context[2];
+	struct IGRbsp_curve *bsp_curve;
+	int src_type;
+	struct GRid list[2], cenobj;
+	int num_par;
+	int count;
+	struct GRevent event1;
+	IGRdouble attr[6];
+
+	lc_env = &event->located_object[0].module_info;
+	lc_obj = &event->located_object[0].located_obj;
+
+	if (root_type == CIRC_ARC_TYPE)
+	{
+		if (!DMancestry_valid(*lc_obj, OPP_GR3dcirarc_class_id))
+		{
+			ex$message(msgnumb = DM_I_LocCircArc);
+			return(FALSE);
+		}
+	}
+	else if (root_type == LINE_TYPE || root_type == ARC_TYPE)
+	{
+		sts =
+		ci$send(msg = message GRvg.GRgenabsg(
+						&rc,
+						&lc_env->md_env.matrix_type,
+						lc_env->md_env.matrix,
+						&bsp_curve),
+			targetid = lc_obj->objid,
+			targetos = lc_obj->osnum);
+		dm$status(sts = sts, action = RET_STATUS);
+	}
+
+	attr[0] = event->event.button.x;
+	attr[1] = event->event.button.y;
+	attr[2] = event->event.button.z;
+
+	if (root_type == LINE_TYPE)
+	{
+		if (bsp_curve->num_poles != 2)
+		{
+			ex$message(msgnumb = DM_I_LocLn);
+			return(FALSE);
+		}
+
+		if (angdim && DMancestry_valid(*lc_obj, OPP_GR3dpoint_class_id))
+		{
+			/*| locate the center point*/
+
+			do
+			{
+				ex$message(msgnumb = DM_P_LocCen, buff = locbuff);
+				ci$locate(prompt = locbuff,
+				owner_action = LC_READ|LC_NO_REF_HEADER|LC_REF_OBJECTS,
+				classes = "GRbspline",
+				response = &response,
+				window_id = &event1.event.button.objid,
+				window_osnum = &event1.event.button.osnum,
+				data_point = &event1.event.button.x,
+				md_env = &event1.located_object[0].module_info,
+				obj = &cenobj.objid,
+				osnum = &cenobj.osnum);
+
+				if (response == D_RESET || response == RESET)
+					return(FALSE);
+
+			} while (response != DATA);
+
+			num_par = 2;
+			list[0] = cenobj;
+			list[1] = *lc_obj;
+			src_type = DM2ptseg;
+			attr[0] = event1.event.button.x;
+			attr[1] = event1.event.button.y;
+			attr[2] = event1.event.button.z;
+			attr[3] = event->event.button.x;
+			attr[4] = event->event.button.y;
+			attr[5] = event->event.button.z;
+		}
+		else
+		{
+			num_par =1;
+			list[0] = *lc_obj;
+
+			if(gt_annot)
+			{
+				if (dim_type == WELD) 
+					 src_type = DMkeypt;
+				else src_type = DMptdist;
+			}
+			else	src_type = DMkeyseg;
+		}
+	}
+	else if (root_type == ARC_TYPE)
+	{
+		if (bsp_curve->num_poles < 3)
+		{
+			ex$message(msgnumb = DM_I_LocCrv);
+			return(FALSE);
+		}
+
+		num_par = 2;
+		list[0] = *lc_obj;
+
+		sts =
+		ci$send(msg = message NDnode.NDget_objects(
+						ND_ROOT,
+						&list[1],
+						1,
+						NULL,
+						DIM_ROOT_PLAN,
+						DIM_ROOT_PLAN,
+						&count),
+			targetid = dim_grid.objid,
+			targetos = dim_grid.osnum);
+		dm$status(sts = sts, action = RET_STATUS);
+
+		src_type = DMradcen;
+	}
+	else if (root_type == POINT_TYPE)
+	{
+		if (gt_annot)
+		{
+			num_par = 1;
+			list[0] = *lc_obj;
+			src_type = DMptdist;
+		}
+		else
+		{
+			num_par = 1;
+			list[0] = *lc_obj;
+			src_type = DMkeypt;
+		}
+	}
+	else if (root_type == CIRC_ARC_TYPE)
+	{
+		num_par = 1;
+		list[0] = *lc_obj;
+		src_type = DMarc;
+	}
+	else if (root_type == TEXT_TYPE)
+	{
+		num_par = 1;
+		list[0] = *lc_obj;
+		src_type = DMptdist;
+	}
+
+	context[0].objid = NULL_OBJID;
+	context[1].objid = NULL_OBJID;
+
+	sts =
+	GRfindcontext(
+		&rc,
+		&lc_env->md_env.matrix_type,
+		lc_env->md_env.matrix,
+		&lc_obj->osnum,
+		&context[0]);
+	if (sts != OM_S_SUCCESS || rc != MSSUCC)
+		context[0].objid = NULL_OBJID;
+
+	sts =
+	dm$create_root(
+		type = src_type,
+		construct = FALSE,
+		count = num_par,
+		list = list,
+		context = context,
+		attr = attr,
+		md_env = &md_env,
+		p_root = p_root);
+	dm$status(sts = sts, action = RET_STATUS);
+
+	return(TRUE);
+}
+
+
+change_dimension_origin(dim_grid)
+struct GRid dim_grid;
+{
+	IGRint sts, rc, count;
+	struct GRid src, first, prev_dim, list[MAX_DIM_ROOTS];
+	struct GRmd_env *lc_env;
+	int ori_type;
+	IGRmatrix matrix;
+	IGRdouble angle, v0[3];
+	struct ret_struct str1;
+	struct dim_ret_struct str2;
+	struct DMtrak_info trak_info;
+	ex_message(DM_P_Idnepoor, locbuff);
+
+	ori_type = get_parent_type();
+
+	locate_origin:
+
+	do
+	{
+		ci$locate(prompt = locbuff,
+			owner_action = LC_READ|LC_NO_REF_HEADER|LC_REF_OBJECTS,
+			classes = "GRbspline",
+			response = &response,
+			window_id = &event.event.button.objid,
+			window_osnum = &event.event.button.osnum,
+			data_point = &event.event.button.x,
+			md_env = &event.located_object[0].module_info,
+			obj = &event.located_object[0].located_obj.objid,
+			osnum = &event.located_object[0].located_obj.osnum);
+
+		if (response == D_RESET || response == RESET)
+			return(TRUE);
+
+	} while (response != DATA);
+
+	lc_env = &event.located_object[0].module_info;
+
+	sts =
+	ci$send(msg = message NDnode.NDget_objects(
+					ND_ROOT,
+					list,
+					MAX_DIM_ROOTS,
+					NULL,
+					NULL,
+					OM_K_MAXINT,
+					&count),
+		targetid = dim_grid.objid,
+		targetos = dim_grid.osnum);
+	dm$status(sts = sts, action = RET_STATUS);
+
+	if( DMancestry_valid(list[3], OPP_DMroot_class_id))
+	{
+		if (( dim_type == STRINGED_ANGULAR)
+		||  (dim_type == STRINGED_LINEAR)
+		||  (dim_type == COORDINATE))
+		{
+			prev_dim.objid = list[3].objid;
+			prev_dim.osnum = list[3].osnum;
+
+			sts =
+			ci$send(msg = message NDnode.NDget_objects(
+						ND_ROOT,
+						list,
+						MAX_DIM_ROOTS,
+						NULL,
+						NULL,
+						OM_K_MAXINT,
+						&count),
+				targetid = list[3].objid,
+				targetos = list[3].osnum);
+			dm$status(sts = sts, action = RET_STATUS);
+
+			src.objid = list[4].objid;
+			src.osnum = list[4].osnum;
+		}
+           	else
+		{
+		        sts =
+			ci$send(msg = message DMroot.get_first_in_cpx(&msg, &first),
+				targetid = list[3].objid,
+				targetos = list[3].osnum);
+			dm$status(sts = sts, action = RET_STATUS);
+            
+			sts =
+			ci$send(msg = message NDnode.NDget_objects(
+						ND_ROOT,
+						list,
+						MAX_DIM_ROOTS,
+						NULL,
+						NULL,
+						OM_K_MAXINT,
+						&count),
+				targetid = first.objid,
+				targetos = first.osnum);
+			dm$status(sts = sts, action = RET_STATUS);
+                  
+			src.objid = list[3].objid;
+			src.osnum = list[3].osnum;
+		}
+	}
+	else
+	{
+		src.objid = list[3].objid;
+		src.osnum = list[3].osnum;
+		prev_dim.objid = NULL_OBJID;
+		first.objid = dim_grid.objid;
+		first.osnum = dim_grid.osnum;
+	}
+
+	if (prev_dim.objid == NULL_OBJID && angdim)
+	{
+		ori_type = LINE_TYPE;
+
+		sts =
+		ci$send(msg = message NDnode.NDgive_structure(
+						&rc,
+						&str1,
+						lc_env),
+			targetid = src.objid,
+			targetos = src.osnum);
+		dm$status(sts = sts, action = RET_STATUS);
+	}
+	
+	if (!create_root(ori_type,dim_type, &event, dim_grid, &src))
+		goto locate_origin;
+
+	if (prev_dim.objid == NULL_OBJID && angdim)
+	{
+		/*"Update mea_trak for first dim\n"*/
+
+		sts =
+		ci$send(msg = message DMsrc.DMgive_structure(
+						&rc,
+						0,
+						FALSE,
+						&str2,
+						lc_env),
+			targetid = src.objid,
+			targetos = src.osnum);
+		dm$status(sts = sts, action = RET_STATUS);
+
+		sts =
+		ci$send(msg = message DMroot.get_trak_info(&trak_info),
+			targetid = dim_grid.objid,
+			targetos = dim_grid.osnum);
+		dm$status(sts = sts, action = RET_STATUS);
+
+		/*"old mea_trak = %d\n", trak_info.mea_trak*/
+
+		if (str2.type == DMkeyseg)
+		{
+			/*"DMsrc type : DMkeyseg\n"*/
+
+			for(i=0; i<3; i=i+1)
+			   v0[i] = str2.var.dm_keyseg.line[i] -
+					str2.var.dm_keyseg.line[i+3];
+			BSnorvec(&rc, v0);
+
+			if (BSdotp(&rc, str1.var.line_st.v0, v0) < 0.)
+			{
+				/*"Trak info needs to be toggled\n"*/
+
+				if (trak_info.mea_trak & ORIG_START)
+					trak_info.mea_trak = trak_info.mea_trak & (~ORIG_START);
+				else	trak_info.mea_trak = trak_info.mea_trak | ORIG_START;
+			}
+		}
+		else
+		{
+			/*"Trak info needs to be toggled\n"*/
+
+			if (trak_info.mea_trak & ORIG_START)
+				trak_info.mea_trak = trak_info.mea_trak & (~ORIG_START);
+		}
+
+		/*"mea_trak = %d\n", trak_info.mea_trak*/
+
+		sts =
+		ci$send(msg = message DMroot.set_trak_info(
+					REP_TRAK_DIST,
+					&trak_info),
+			targetid = dim_grid.objid,
+			targetos = dim_grid.osnum);
+		dm$status(sts = sts, action = RET_STATUS);
+	}
+
+	if(( dim_type == STRINGED_LINEAR
+	||   dim_type == STRINGED_ANGULAR
+	||   dim_type == COORDINATE)
+	&&   prev_dim.objid != NULL_OBJID)
+	{
+		sts =
+		ci$send(msg = message DMroot.change_dimension_measurement(&msg, src, &md_env),
+			targetid = prev_dim.objid,
+			targetos = prev_dim.osnum);
+		dm$status(sts = sts, action = RET_STATUS);
+	}
+	else
+	{
+		sts =
+		ci$send(msg = message DMroot.change_dimension_origin(&msg, src, &md_env),
+			targetid = first.objid,
+			targetos = first.osnum);
+		dm$status(sts = sts, action = RET_STATUS);
+	}
+
+   	sts =
+        ci$send(msg = message DMroot.set_dim_state(
+                                        BIT_OR,
+                                        DIM_TEXT_NEEDS_UPDATE),
+			targetid= dim_grid.objid,
+			targetos= dim_grid.osnum);
+	dm$status(sts=sts,action = RET_STATUS);
+	nd$exec_batch();
+}
+
+change_dimension_measurement(dim_grid)
+struct GRid dim_grid;
+{
+	IGRint sts, rc, count;
+	IGRboolean first_in_cpx;
+	struct GRid src, list[MAX_DIM_ROOTS], prev;
+	int mea_type;
+	IGRmatrix matrix;
+	IGRdouble angle,v0[3];
+	struct ret_struct str1;
+	struct dim_ret_struct str2;
+	struct GRmd_env *lc_env;
+	struct DMtrak_info trak_info;
+	if (dim_type == SINGLE_PARALLEL
+	||  dim_type == CIRCULAR_DIAMETER
+	||  dim_type == SINGLE_ARC_LENGTH
+	||  dim_type == SINGLE_ARC_ANGLE)
+	{
+		change_dimension_origin(dim_grid);
+		return(TRUE);
+	}
+
+	ex_message(DM_P_Idnepoor, locbuff);
+
+	mea_type = get_parent_type();
+
+	locate_measure:
+
+	do
+	{
+		ci$locate(prompt = locbuff,
+			owner_action = LC_READ|LC_NO_REF_HEADER|LC_REF_OBJECTS,
+			classes = "GRbspline",
+			response = &response,
+			window_id = &event.event.button.objid,
+			window_osnum = &event.event.button.osnum,
+			data_point = &event.event.button.x,
+			md_env = &event.located_object[0].module_info,
+			obj = &event.located_object[0].located_obj.objid,
+			osnum = &event.located_object[0].located_obj.osnum);
+
+		if (response == D_RESET || response == RESET)
+			return(TRUE);
+	} while (response != DATA);
+
+	lc_env = &event.located_object[0].module_info;
+
+	sts =
+	ci$send(msg = message NDnode.NDget_objects(
+					ND_ROOT,
+					list,
+					MAX_DIM_ROOTS,
+					NULL,
+					NULL,
+					OM_K_MAXINT,
+					&count),
+		targetid = dim_grid.objid,
+		targetos = dim_grid.osnum);
+	dm$status(sts = sts, action = RET_STATUS);
+
+	src.objid = list[4].objid;
+	src.osnum = list[4].osnum;
+
+        sts =
+	ci$send(msg = message DMroot.give_previous(&rc, &first_in_cpx,&prev ),
+		targetid = dim_grid.objid,
+		targetos = dim_grid.osnum);
+	dm$status(sts = sts, action = RET_STATUS);
+            
+	if (first_in_cpx && angdim)
+	{
+		mea_type = LINE_TYPE;
+
+		sts =
+		ci$send(msg = message NDnode.NDgive_structure(
+						&rc,
+						&str1,
+						lc_env),
+			targetid = src.objid,
+			targetos = src.osnum);
+		dm$status(sts = sts, action = RET_STATUS);
+	}
+	
+	if (!create_root(mea_type,dim_type, &event, dim_grid, &src))
+		goto locate_measure;
+
+	sts =
+	ci$send(msg = message DMroot.change_dimension_measurement(
+						&msg,
+						src,
+						&md_env),
+		targetid = dim_grid.objid,
+		targetos = dim_grid.osnum);
+	dm$status(sts = sts, action = RET_STATUS);
+
+	if (first_in_cpx && angdim)
+	{
+		/*"Update mea_trak for first dim\n"*/
+
+		sts =
+		ci$send(msg = message DMsrc.DMgive_structure(
+						&rc,
+						0,
+						FALSE,
+						&str2,
+						lc_env),
+			targetid = src.objid,
+			targetos = src.osnum);
+		dm$status(sts = sts, action = RET_STATUS);
+
+		sts =
+		ci$send(msg = message DMroot.get_trak_info(&trak_info),
+			targetid = dim_grid.objid,
+			targetos = dim_grid.osnum);
+		dm$status(sts = sts, action = RET_STATUS);
+
+		/*"old mea_trak = %d\n", trak_info.mea_trak*/
+
+		if (str2.type == DMkeyseg)
+		{
+			/*"DMsrc type : DMkeyseg\n"*/
+
+			for(i=0; i<3; i=i+1)
+			   v0[i] = str2.var.dm_keyseg.line[i] -
+					str2.var.dm_keyseg.line[i+3];
+			BSnorvec(&rc, v0);
+
+			if (BSdotp(&rc, str1.var.line_st.v0, v0) < 0.)
+			{
+				/*"Trak info needs to be toggled\n"*/
+
+				if (trak_info.mea_trak & MEAS_START)
+					trak_info.mea_trak = trak_info.mea_trak & (~MEAS_START);
+				else	trak_info.mea_trak = trak_info.mea_trak | MEAS_START;
+			}
+		}
+		else
+		{
+			/*"Trak info needs to be toggled\n"*/
+
+			if (trak_info.mea_trak & MEAS_START)
+				trak_info.mea_trak = trak_info.mea_trak & (~MEAS_START);
+		}
+
+		/*"mea_trak = %d\n", trak_info.mea_trak*/
+
+		sts =
+		ci$send(msg = message DMroot.set_trak_info(
+					REP_TRAK_DIST,
+					&trak_info),
+			targetid = dim_grid.objid,
+			targetos = dim_grid.osnum);
+		dm$status(sts = sts, action = RET_STATUS);
+	}
+
+   	sts =
+        ci$send(msg = message DMroot.set_dim_state(
+                                        BIT_OR,
+                                        DIM_TEXT_NEEDS_UPDATE),
+			targetid= dim_grid.objid,
+			targetos= dim_grid.osnum);
+	dm$status(sts=sts,action = RET_STATUS);
+
+	nd$exec_batch();
+
+	return(TRUE);
+}
+
+change_dimension_parent(dim_grid)
+struct GRid dim_grid;
+{
+	int ori_type, cn_type;
+	OM_S_CLASSLIST el_classlist;
+	struct GRid src, list[MAX_DIM_ROOTS];
+	OMuword class[2];
+	extern IGRboolean ASbroadcast_in_progress;
+
+	el_classlist.w_flags = OM_CLST_subclass;
+	el_classlist.p_classes = class;
+	ex_message(DM_P_Idnepoor, locbuff);
+
+	if (dim_type == CENTER_LINE
+	||  dim_type == RADIAL
+	||  dim_type == RADIAL_DIAMETER)
+	{
+		el_classlist.w_count = 1;
+		class[0] = OPP_GRbspline_class_id;
+		ori_type = ARC_TYPE;
+	}
+	else if(((dim_type == WELD) && cross_section) || 
+		(((dim_type == SURF) ||
+		  (dim_type == FEATURE_CONTROL_FRAME) || 
+		  (dim_type == DATUM_FRAME)) && !cross_section))
+	{
+		el_classlist.w_count = 1;
+		class[0] = OPP_GR3dlineseg_class_id;
+		ori_type =  LINE_TYPE;
+	}
+	else
+	{
+		el_classlist.w_count = 2;
+		class[0] = OPP_GRbspline_class_id;
+		class[1] = OPP_GR3dtext_class_id;
+		ori_type =  POINT_TYPE;
+	}
+
+	locate_origin:
+	do
+	{
+		ci$locate(prompt = locbuff,
+			owner_action = LC_READ|LC_NO_REF_HEADER|LC_REF_OBJECTS,
+			eligible_classes = &el_classlist,
+			response = &response,
+			window_id = &event.event.button.objid,
+			window_osnum = &event.event.button.osnum,
+			data_point = &event.event.button.x,
+			md_env = &event.located_object[0].module_info,
+			obj = &event.located_object[0].located_obj.objid,
+			osnum = &event.located_object[0].located_obj.osnum);
+
+		if (response == D_RESET || response == RESET)
+			return(TRUE);
+
+	} while (response != DATA);
+
+	src = event.located_object[0].located_obj;
+	
+	if(DMancestry_valid(src, OPP_GR3dtext_class_id))
+		ori_type = TEXT_TYPE;
+
+        sts =
+        ci$send(msg = message NDnode.NDget_objects(
+                                        ND_ROOT,
+                                        list,
+                                        MAX_DIM_ROOTS,
+                                        NULL,
+                                        NULL,
+                                        OM_K_MAXINT,
+                                        &count),
+                targetid = dim_grid.objid,
+                targetos = dim_grid.osnum);
+        dm$status(sts = sts, action = RET_STATUS);
+
+	src.objid = list[count-1].objid;
+	src.osnum = list[count-1].osnum;
+
+        if (!create_root(ori_type,dim_type, &event, dim_grid, &src))
+                goto locate_origin;
+
+	sts=
+	ci$send(msg = message DMroot.change_parent(
+					&rc,
+        				count-1,
+        				src,
+				        &md_env),
+			targetid= dim_grid.objid,
+			targetos= dim_grid.osnum);
+	dm$status(sts=sts,action = RET_STATUS);
+
+// jeff TR#119702021
+// do not update text when it is weld symbol  
+
+if(dim_type != WELD)
+{
+   	sts =
+        ci$send(msg = message DMroot.set_dim_state(
+                                        BIT_OR,
+                                        DIM_TEXT_NEEDS_UPDATE),
+			targetid= dim_grid.objid,
+			targetos= dim_grid.osnum);
+	dm$status(sts=sts,action = RET_STATUS);
+
+}
+	if (!ASbroadcast_in_progress)
+	{
+		cn_type = ND_COMP;
+
+		nd$wait_batch(
+			type = GR_GEOM_POSTED,
+			l_object = &dim_grid,
+			l_obj_info = &cn_type,
+			nb_obj   = 1);
+	}
+
+	nd$exec_batch();
+
+	return(TRUE);
+}

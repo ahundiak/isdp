@@ -1,0 +1,1069 @@
+/* THIS PPL ROUTINE WILL CREATE STRUCTURAL SHAPES */
+/* WRITTEN BY JIM HANSON 11-28-90 */
+#include "cieveryone.h"
+#include "cimacros.h"
+#include "cimath.h"
+#include "DItypedef.h"
+#include "DIdef.h"
+#include "DIglob.h"
+#include "DIprims.h"
+#include "grdpbdef.h"
+#include "grdpbmacros.h"
+#include "grmacros.h"
+#include "grwireframe.h"
+#include "jkfunc.h"
+#include "DIdef.h"
+#include "msdef.h"
+#include "msmacros.h"
+#include "DMmessages.h"
+
+extern int	DImain(),
+		GRproject_point(),
+		GRcreate_linestring(),
+		GRcreate_conic_by_center(),
+		GRcreate_conic_by_edge(),
+		GRcreate_graphic_group();
+
+#define	ANGLE 	0
+#define	CHANNEL 1
+#define	TEE	2
+#define	IBEAM 	3
+#define	TOP 	0
+#define	SIDE	1
+IGRchar	line_name[DI_PATH_MAX];
+
+main()
+{
+ double		height, width, fthick, wthick, pnt1[3], pnt2[3], angle,scale;
+ struct GRid	WINDOW, *BID;
+ int		mirx, miry, type, type1;
+ char           msgbuff[MS_MAX_MSG_LENGTH];
+
+ scale = 1;
+ while(1)
+ {
+        ex$message(msgnumb = DM_P_KeyinOpt, buff = msgbuff);
+	ci$get(value = type1, prompt = msgbuff);
+
+        ex$message(msgnumb = DM_P_KeyinHgt, buff = msgbuff);
+	ci$get(value = height, prompt = msgbuff);
+
+        ex$message(msgnumb = DM_P_KeyinWdLen);
+	ci$get(value = width, prompt = msgbuff);
+
+        ex$message(msgnumb = DM_P_KeyinWbThck, buff = msgbuff);
+	ci$get(value = wthick, prompt = msgbuff);
+
+        ex$message(msgnumb = DM_P_KeyinFlThck, buff = msgbuff);
+	ci$get(value = fthick, prompt = msgbuff);
+
+        ex$message(msgnumb = DM_P_KeyinAng, buff = msgbuff);
+	ci$get(value = angle, prompt = msgbuff);
+
+        ex$message(msgnumb = DM_P_KeyinMirx, buff = msgbuff);
+	ci$get(value = mirx, prompt = msgbuff);
+
+        ex$message(msgnumb = DM_P_KeyinMiry, buff = msgbuff);
+	ci$get(value = miry, prompt = msgbuff);
+
+        ex$message(msgnumb = DM_P_KeyinPrfLen, buff = msgbuff);
+	ci$get(value = type, prompt = msgbuff);
+
+        ex$message(msgnumb = DM_P_IdCorPnt, buff = msgbuff);
+	ci$get(	point = pnt1, 
+		prompt = msgbuff,
+	       	window_id = &WINDOW.objid, 
+		window_osnum = &WINDOW.osnum);
+
+  	if( type == 0)
+	{
+struct_profile(type1, height, width, wthick, fthick, pnt1, angle, WINDOW, mirx, miry,scale , BID);
+	}
+	else 
+	{
+struct_length(type1, height, width, fthick, pnt1, angle, WINDOW, mirx, miry, scale, BID);
+	}
+ }
+}
+
+
+
+/**************************************************************
+   THIS FUNCTION WILL CREATE A COMPOSITE CURVE OF THE 
+   PROFILE OF ANGLE STEEL
+**************************************************************/
+
+struct_profile( type, height, width, wthick, fthick, pnt1, angle,WINDOW, mirx, miry,scale , id)
+
+ int		type,	// 0=angle, 1=channel, 2=tee, 3=I-beam
+		mirx,   // mirror about x axis 1=yes
+		miry;   // mirror about y axis 1=yes
+ double		height,	// height of beam
+		width, 	// web width
+		wthick, // web thickness
+		fthick, // flange thickness
+		pnt1[3],// placement point
+		scale,  // scale the creation
+		angle;	// angle in degrees from window x axis
+ struct GRid	WINDOW,	// window id to get orientation from
+		*id;	// grid of the profile created
+{
+ int		msg, i;
+ double 	xvec[3], yvec[3], wxthk[3], wythk[3], fxthk[3],fythk[3], 
+		wth[3], hht[3], tmp[3], *pt, x45[3], y45[3];
+ struct GRid	LINE[30],COMPCURVE;
+
+ pt = ( double *) malloc ( 100 * sizeof(double));
+
+ get_xy_vec_from_window( WINDOW, angle, mirx, miry, xvec, yvec);
+ v_scale(xvec,scale,xvec);
+ v_scale(yvec,scale,yvec);
+// CALCULATE THE POINTS THAT MAKE UP THE ANGLE STEEL
+ 
+ v_scale(xvec,width,wth);	// width vector
+ v_scale(yvec,height,hht);	// height vector
+ v_scale(xvec,wthick,wxthk);	// web x thickness vector
+ v_scale(yvec,wthick,wythk);	// web y thickness vector
+ v_scale(xvec,fthick,fxthk);	// flange x thickness vector
+ v_scale(yvec,fthick,fythk);	// flange y thickness vector
+ v_scale(fxthk, .707, x45);
+ v_scale(fythk, .707, y45);
+  
+
+ switch(type)
+ {
+ case ANGLE:
+
+ 	v_add( pnt1, wth, &pt[0]);
+ 	v_sub( &pt[0], fxthk, &pt[3]);
+	v_add( &pt[3], fythk, &pt[6]);
+	v_add( &pt[3], x45, &pt[3]);
+	v_add( &pt[3], y45, &pt[3]);
+
+	v_add( pnt1, wxthk, tmp);
+	v_add( tmp, fxthk, tmp);
+	v_add( tmp, fythk, &pt[9]);
+	v_add( &pt[9], fythk, &pt[12]);
+	v_sub( &pt[12], fxthk, &pt[15]);
+	v_sub( &pt[12], x45, &pt[12]);
+	v_sub( &pt[12], y45, &pt[12]);
+
+
+
+ 	v_add( pnt1, hht, &pt[24]);
+	v_sub( &pt[24], wythk, &pt[21]);
+	v_add( &pt[21], wxthk, &pt[18]);
+	v_add( &pt[21], x45, &pt[21]);
+	v_add( &pt[21], y45, &pt[21]);
+
+ 	place_line( &pt[24], pnt1, &LINE[0]);
+ 	place_line( pnt1, &pt[0], &LINE[1]);
+ 	place_arc_edge(&pt[0], &pt[3],  &pt[6], &LINE[2]);
+ 	place_line( &pt[6], &pt[9], &LINE[3]);
+ 	place_arc_edge(  &pt[9],&pt[12], &pt[15], &LINE[4]);
+ 	place_line( &pt[15], &pt[18], &LINE[5]);
+ 	place_arc_edge( &pt[18], &pt[21], &pt[24], &LINE[6]);
+ 	make_comp( LINE, &COMPCURVE );
+	break;
+
+ case CHANNEL:
+	
+ 	v_add( pnt1, hht, &pt[36]);
+ 	v_add( pnt1, wth, &pt[0]);
+ 	v_sub( &pt[0], fxthk, &pt[3]);
+	v_add( &pt[3], fythk, &pt[6]);
+	v_add( &pt[3], x45, &pt[3]);
+	v_add( &pt[3], y45, &pt[3]);
+	
+	v_add( pnt1, wxthk, tmp);
+	v_add( tmp, fxthk, tmp);
+	v_add( tmp, fythk, &pt[9]);
+	v_add( &pt[9], fythk, &pt[12]);
+	v_sub( &pt[12], fxthk, &pt[15]);
+	v_sub( &pt[12], x45, &pt[12]);
+	v_sub( &pt[12], y45, &pt[12]);
+
+ 	v_add( &pt[36], wxthk, tmp);
+	v_add( tmp, fxthk, tmp);
+	v_sub( tmp, fythk, &pt[24]);
+	v_sub( &pt[24], fythk, &pt[21]);
+	v_sub( &pt[21], fxthk, &pt[18]);
+ 	v_sub( &pt[21], x45, &pt[21]);
+	v_add( &pt[21], y45, &pt[21]);
+
+	v_add( &pt[36], wth, &pt[33]);
+ 	v_sub( &pt[33], fxthk, &pt[30]);
+	v_sub( &pt[30], fythk, &pt[27]);
+	v_add( &pt[30], x45, &pt[30]);
+	v_sub( &pt[30], y45, &pt[30]);
+	
+ 	place_line( &pt[36], pnt1, &LINE[0]);
+ 	place_line( pnt1, &pt[0], &LINE[1]);
+ 	place_arc_edge( &pt[0], &pt[3], &pt[6], &LINE[2]);
+ 	place_line( &pt[6], &pt[9], &LINE[3]);
+ 	place_arc_edge( &pt[9], &pt[12], &pt[15], &LINE[4]);
+ 	place_line( &pt[15], &pt[18], &LINE[5]);
+ 	place_arc_edge( &pt[18], &pt[21], &pt[24], &LINE[6]);
+ 	place_line( &pt[24], &pt[27], &LINE[7]);
+ 	place_arc_edge( &pt[27], &pt[30], &pt[33], &LINE[8]);
+ 	place_line( &pt[33], &pt[36], &LINE[9]);
+ 	make_comp( LINE, &COMPCURVE );
+	break;
+
+ case TEE:
+	
+	v_scale( wxthk, 0.5, tmp);
+ 	v_add( pnt1, tmp, &pt[0]);
+ 	v_sub( pnt1, tmp, &pt[33]);
+ 	v_add( &pt[0], hht, tmp);
+ 	v_sub( tmp, fythk, tmp);
+ 	v_sub( tmp, fythk, &pt[3]);
+ 	v_add( &pt[3], fxthk, &pt[6]);
+ 	v_add( &pt[6], fythk, &pt[9]);
+ 	v_sub( &pt[6], x45, &pt[6]);
+ 	v_add( &pt[6], y45, &pt[6]);
+
+	v_scale( wth, 0.5, tmp);
+	v_add( pnt1, tmp, tmp);
+	v_add( tmp, hht, &pt[15]);
+	v_sub( &pt[15], fythk, &pt[12]);
+	v_sub( &pt[15], wth, &pt[18]);
+	v_sub( &pt[18], fythk, &pt[21]);
+ 	v_add( &pt[33], hht, tmp);
+ 	v_sub( tmp, fythk, tmp);
+ 	v_sub( tmp, fythk, &pt[30]);
+ 	v_sub( &pt[30], fxthk, &pt[27]);
+ 	v_add( &pt[27], fythk, &pt[24]);
+ 	v_add( &pt[27], x45, &pt[27]);
+ 	v_add( &pt[27], y45, &pt[27]);
+
+ 	place_line( &pt[30], &pt[33], &LINE[0]);
+ 	place_line( &pt[33], &pt[0], &LINE[1]);
+ 	place_line( &pt[0], &pt[3], &LINE[2]);
+ 	place_arc_edge(&pt[3], &pt[6],  &pt[9], &LINE[3]);
+ 	place_line( &pt[9], &pt[12], &LINE[4]);
+ 	place_line( &pt[12], &pt[15], &LINE[5]);
+ 	place_line( &pt[15], &pt[18], &LINE[6]);
+ 	place_line( &pt[18], &pt[21], &LINE[7]);
+ 	place_line( &pt[21], &pt[24], &LINE[8]);
+ 	place_arc_edge( &pt[30], &pt[27], &pt[24], &LINE[9]);
+ 	make_comp( LINE, &COMPCURVE );
+	break;
+
+ case IBEAM:
+
+	v_scale( wth, 0.5, tmp);
+ 	v_add( pnt1, tmp, &pt[0]);
+ 	v_sub( pnt1, tmp, &pt[57]);
+ 	v_add( &pt[0], fythk, &pt[3]);
+ 	v_add( &pt[57], fythk, &pt[54]);
+ 	v_add( &pt[0], hht, &pt[27]);
+ 	v_add( &pt[57], hht, &pt[30]);
+ 	v_sub( &pt[27], fythk, &pt[24]);
+ 	v_sub( &pt[30], fythk, &pt[33]);
+	v_scale( wxthk, 0.5, tmp);
+ 	v_add( pnt1, tmp, tmp);
+ 	v_add( tmp, fythk, tmp);
+	v_add( tmp, fxthk, &pt[6]);
+	v_add( &pt[6], fythk, &pt[9]);
+	v_sub( &pt[9], fxthk, &pt[12]);
+	v_sub( &pt[9], x45, &pt[9]);
+	v_sub( &pt[9], y45, &pt[9]);
+
+
+	v_scale( wxthk, 0.5, tmp);
+ 	v_sub( pnt1, tmp, tmp);
+ 	v_add( tmp, fythk, tmp);
+	v_sub( tmp, fxthk, &pt[51]);
+	v_add( &pt[51], fythk, &pt[48]);
+	v_add( &pt[48], fxthk, &pt[45]);
+	v_add( &pt[48], x45, &pt[48]);
+	v_sub( &pt[48], y45, &pt[48]);
+
+	v_scale( wxthk, 0.5, tmp);
+ 	v_sub( pnt1, tmp, tmp);
+	v_add( tmp, hht, tmp);
+	v_sub( tmp, fythk, tmp);
+	v_sub( tmp, fxthk, &pt[36]);
+	v_sub( &pt[36], fythk, &pt[39]);
+	v_add( &pt[39], fxthk, &pt[42]);
+	v_add( &pt[39], y45, &pt[39]);
+	v_add( &pt[39], x45, &pt[39]);
+
+	v_scale( wxthk, 0.5, tmp);
+ 	v_add( pnt1, tmp, tmp);
+	v_add( tmp, hht, tmp);
+	v_sub( tmp, fythk, tmp);
+	v_add( tmp, fxthk, &pt[21]);
+	v_sub( &pt[21], fythk, &pt[18]);
+	v_sub( &pt[18], fxthk, &pt[15]);
+	v_sub( &pt[18], x45, &pt[18]);
+	v_add( &pt[18], y45, &pt[18]);
+
+ 	place_line( &pt[51], &pt[54], &LINE[0]);
+ 	place_line( &pt[54], &pt[57], &LINE[1]);
+ 	place_line( &pt[57], &pt[0], &LINE[2]);
+ 	place_line( &pt[0], &pt[3], &LINE[3]);
+ 	place_line( &pt[3], &pt[6], &LINE[4]);
+ 	place_arc_edge( &pt[6], &pt[9], &pt[12], &LINE[5]);
+ 	place_line( &pt[12], &pt[15], &LINE[6]);
+ 	place_arc_edge( &pt[15], &pt[18], &pt[21], &LINE[7]);
+ 	place_line( &pt[21], &pt[24], &LINE[8]);
+ 	place_line( &pt[24], &pt[27], &LINE[9]);
+ 	place_line( &pt[27], &pt[30], &LINE[10]);
+ 	place_line( &pt[30], &pt[33], &LINE[11]);
+ 	place_line( &pt[33], &pt[36], &LINE[12]);
+ 	place_arc_edge( &pt[36], &pt[39], &pt[42], &LINE[13]);
+ 	place_line( &pt[42], &pt[45], &LINE[14]);
+ 	place_arc_edge( &pt[45], &pt[48], &pt[51], &LINE[15]);
+ 	make_comp( LINE, &COMPCURVE );
+	break;
+
+ }
+
+ id->objid = COMPCURVE.objid;
+ id->osnum = COMPCURVE.osnum;
+ free(pt);
+}
+
+
+
+
+
+/**************************************************************
+   THIS FUNCTION WILL CREATE A COMPOSITE CURVE OF THE 
+   LENGTH OF ANGLE STEEL
+***************************************************************/
+
+struct_length( type, height, length, thick, pnt1, angle, WINDOW, mirx, miry, scale, id )
+
+int		mirx,    // mirror the construction about x. 1=yes
+		miry,    // mirror the construction about y. 1=yes
+		type;    // type of profile 0=angle, 1=channel, 2=tee, 3=I-beam
+double		height,  // the height of the beam
+		length,  // the length of the beam
+		thick,   // the web thickness
+		pnt1[3], // the origin point of construction
+		scale,   // scale the construction
+		angle;	 // the rotation angle from the window x axis in degrees
+struct GRid	WINDOW,  // the window id to get the matrix from
+		*id;	 // the grid of the created graphic group
+{
+
+ int		msg, i, style;
+ double 	xvec[3], yvec[3], pnt2[3], pnt3[3], pnt4[3],
+		pnt5[3], pnt6[3], pnt7[3], pnt8[3], 
+		hthk[3], hght[3], lgth[3];
+ struct GRid	LINE[30],COMPCURVE;
+ char		txt[10];
+
+ get_xy_vec_from_window( WINDOW, angle, mirx, miry, xvec, yvec);
+ v_scale(xvec,scale,xvec);
+ v_scale(yvec,scale,yvec);
+
+// CALCULATE THE POINTS THAT MAKE UP THE ANGLE STEEL
+
+ v_scale( yvec, thick, hthk);
+ v_scale( xvec, length, lgth);
+ v_scale( yvec, height, hght);
+
+	// pnt1 is bottom left corner
+ v_add(pnt1, lgth, pnt2);	// bottom right corner
+ v_add(pnt2, hght, pnt3);	// top left corner
+ v_add(pnt1, hght, pnt4);	// top right corner
+
+ place_line( pnt1, pnt2, &LINE[0]);
+ place_line( pnt2, pnt3, &LINE[1]);
+ place_line( pnt3, pnt4, &LINE[2]);
+ place_line( pnt4, pnt1, &LINE[3]);
+
+ make_comp(LINE, &COMPCURVE);
+
+ v_add(pnt1, hthk, pnt5);	// bottom left flange corner
+ v_add(pnt2, hthk, pnt6);	// bottom right flange corner
+ v_sub(pnt3, hthk, pnt7);	// top left flange corner
+ v_sub(pnt4, hthk, pnt8);	// top right flange corner
+
+ if( type == 0 ) // ANGLE 
+ {
+	place_line( pnt5, pnt6, &LINE[0]);
+ 	LINE[1] = COMPCURVE;
+ 	LINE[2].objid = NULL_OBJID;
+ }
+
+ if( type == 2) // TEE
+ { 
+	place_line( pnt7, pnt8, &LINE[0]);
+ 	LINE[1] = COMPCURVE;
+ 	LINE[2].objid = NULL_OBJID;
+ }
+
+ if( type == 3 || type == 1) // I-BEAM OR CHANNEL
+ { 
+	place_line( pnt5, pnt6, &LINE[0]);
+	place_line( pnt7, pnt8, &LINE[1]);
+ 	LINE[2] = COMPCURVE;
+ 	LINE[3].objid = NULL_OBJID;
+ }
+ create_gg(LINE,&COMPCURVE);
+ id->objid = COMPCURVE.objid;
+ id->osnum = COMPCURVE.osnum;
+
+}
+
+
+
+
+/***************************************************************
+             THIS FUNCTION CREATES ORINGS
+***************************************************************/
+
+orings( type, id, od, pnt1, angle, WINDOW, mirx, scale, id1)
+
+int		mirx,    // mirror the construction about x. 1=yes
+		type;    // type of profile 0=angle, 1=channel, 2=tee, 3=I-beam
+double		id,  	 // inside diameter 
+		od,      // outside diameter
+		scale,   // scale the construction
+		pnt1[3], // the origin point of construction
+		angle;	 // the rotation angle from the window x axis in degrees
+struct GRid	WINDOW,  // the window id to get the matrix from
+		*id1;	 // grid of the oring graphic group
+{	
+
+ int		msg, i, style, miry;
+ double 	xvec[3], yvec[3], pnt2[3], pnt3[3], pnt4[3],
+		pnt5[3], pnt6[3], pnt7[3], pnt8[3],
+		tmp[3], srad, orad;
+ struct GRid	LINE[30],COMPCURVE;
+ char		txt[10];
+
+
+ get_xy_vec_from_window( WINDOW, angle, mirx, miry, xvec, yvec);
+ v_scale(xvec,scale,xvec);
+ v_scale(yvec,scale,yvec);
+
+ switch(type)
+ {
+ case TOP:
+	v_scale( xvec, id/2, tmp);
+	v_add(pnt1, tmp, pnt2);
+	v_scale( yvec, id/2, tmp);
+	v_add(pnt1, tmp, pnt3);
+	v_sub(pnt1, tmp, pnt4);
+	place_circle_edge( pnt4, pnt2, pnt3, &LINE[0]);
+
+	v_scale( xvec, od/2, tmp);
+	v_add(pnt1, tmp, pnt2);
+	v_sub(pnt1, tmp, pnt3);
+	v_scale( yvec, od/2, tmp);
+	v_sub(pnt1, tmp, pnt4);
+	place_circle_edge( pnt4, pnt2, pnt3, &LINE[1]);
+	LINE[2].objid = NULL_OBJID;
+
+ 	create_gg(LINE,&COMPCURVE);
+	break;
+
+ case SIDE:
+	srad= (od-id)/4.0;
+	v_scale( xvec, id/2, tmp);
+	v_add( pnt1, tmp, pnt2);
+	v_scale( yvec,srad,tmp);
+	v_add(pnt2, tmp, pnt2);
+	v_scale( xvec,srad,tmp);
+	v_add( pnt2, tmp, pnt3);
+	v_add( pnt3, tmp, pnt6);
+	v_scale( yvec, srad, tmp);
+	v_add( pnt3, tmp, pnt4);
+	v_sub( pnt3, tmp, pnt5);
+	place_arc_edge( pnt5, pnt6, pnt4, &LINE[0]);
+	style = dis.style; 
+
+	my_set_symbology( 2,-1,-1,-1);
+	place_arc_edge( pnt4,pnt2,pnt5, &LINE[1]);
+	my_set_symbology( style, -1, -1, -1);
+	v_scale( xvec, id/2, tmp);
+	v_sub( pnt1, tmp, pnt2);
+	v_scale( yvec,srad,tmp);
+	v_add(pnt2, tmp, pnt2);
+	v_scale( xvec,srad,tmp);
+	v_sub( pnt2, tmp, pnt3);
+	v_sub( pnt3, tmp, pnt6);
+	v_scale( yvec, srad, tmp);
+	v_add( pnt3, tmp, pnt7);
+	v_sub( pnt3, tmp, pnt8);
+	place_arc_edge( pnt7, pnt6, pnt8, &LINE[2]);
+	my_set_symbology( 2, -1, -1, -1);
+	place_arc_edge( pnt7,pnt2,pnt8, &LINE[3]);
+	my_set_symbology( style, -1, -1, -1);
+	place_line( pnt4, pnt7, &LINE[4]);
+	place_line( pnt5, pnt8, &LINE[5]);
+	LINE[6].objid = NULL_OBJID;
+ 	create_gg(LINE,&COMPCURVE);
+	break;
+ }
+ id1->objid = COMPCURVE.objid;
+ id1->osnum = COMPCURVE.osnum;
+
+}
+
+
+/**************************************************************
+   THIS FUNCTION WILL CREATE A  SPRING
+**************************************************************/
+
+spring( type, top_rad, bot_rad, mat_rad, pg, np, pnt1, angle, WINDOW, mirx, miry,scale, id )
+
+ int		type,	 // 0=angle, 1=channel, 2=tee, 3=I-beam
+		mirx,    // mirror about x axis 1=yes
+		miry,    // mirror about y axis 1=yes
+		np;      // number of pitches 
+ double		top_rad, // top radius
+		bot_rad, // bottom radius
+		mat_rad, // material radius
+		pg,	 // pitch gap
+		pnt1[3], // placement point
+		scale,   // scale the creation
+		angle;	 // angle in degrees from window x axis
+ struct GRid	WINDOW,	 // window id to get orientation from
+		*id;	 // grid of the spring
+{
+ int		msg, i, j;
+ double 	xvec[3], yvec[3], zvec[3], wythk[3], fxthk[3],fythk[3], 
+		tmp[3], tmp1[3], tmpx[3], tmpy[3], tmpxy[3], tmp2x[3],
+		deltax, deltX, deltxx[3], *pt, mat_xvec[3], mat_yvec[3],
+		mat_rtl[3], mat_ltr[3], pnt2[3],pnt3[3], sr, er;
+ IGRdouble	    u,v;
+ GRobj		helixobj[6];
+ struct GRid	LINE[20],GG;
+
+ pt = ( double *) malloc ( 100 * sizeof(double));
+
+ get_xy_vec_from_window( WINDOW, angle, mirx, miry, xvec, yvec);
+ v_cross(xvec,yvec,zvec);	// normal z vector
+ v_scale(xvec,scale,xvec);
+ v_scale(yvec,scale,yvec);
+
+// START DEVELOPING THE SPRING GEOMETRY
+
+ switch(type)
+ {
+ case TOP:
+
+	mat_rtl[0] = (top_rad + mat_rad)*scale;
+	mat_rtl[1] = (top_rad - mat_rad)*scale;
+	mat_ltr[0] = (bot_rad + mat_rad)*scale;
+	mat_ltr[1] = (bot_rad - mat_rad)*scale;
+	v_scale(xvec, top_rad, tmp);
+	v_sub(pnt1,tmp,&pt[0]);
+	v_add(pnt1,tmp,&pt[27]);
+	v_scale(xvec, mat_rad, tmp);
+	v_sub( &pt[0], tmp, &pt[3]); // top left od point
+	v_sub( &pt[27],tmp, &pt[30]);     // top right id point
+	v_add( &pt[27],tmp, &pt[27]);     // top right od point
+	v_add( &pt[0], tmp, &pt[6]); // top left id point
+	
+	v_scale(xvec, bot_rad, tmp);
+	v_sub(pnt1,tmp,&pt[18]);
+	v_scale(xvec, mat_rad, tmp);
+	v_sub( &pt[18], tmp, &pt[21]); // bottom left od point
+	v_add( &pt[18], tmp, &pt[24]); // bottom left id point
+	v_scale(yvec, top_rad, tmp);
+	v_sub(pnt1,tmp,&pt[9]);
+	v_scale(yvec, mat_rad, tmp);
+	v_add( &pt[9], tmp, &pt[12]); // top top od point
+	v_sub( &pt[9], tmp, &pt[15]); // top top id point
+
+	if( top_rad == bot_rad )
+	{		
+		place_line( &pt[3], &pt[6], &LINE[0]);
+		place_circle_edge( &pt[27], &pt[3], &pt[15], &LINE[2]);
+		place_circle_edge( &pt[30], &pt[6], &pt[12], &LINE[1]);
+		LINE[3].objid = NULL_OBJID;
+		create_gg(LINE,&GG);
+	}
+	v_cross( xvec, yvec, tmp);
+	v_add(pnt1,tmp, tmp1);  // point 2 for helix command, z value
+	if( top_rad != bot_rad )
+	{
+		deltax = (bot_rad - top_rad) / ( np * 2);
+
+		if( top_rad < bot_rad){ sr = mat_rtl[0];}
+		else {sr = mat_rtl[1];}
+
+		if( top_rad < bot_rad){er = mat_ltr[0];}
+		else { er = mat_ltr[1];}
+ 		gr$place_helix(	
+			point1 = pnt1,
+			point2 = tmp1,
+			point3 = &pt[3],
+			start_radius = sr,
+			end_radius = er,
+			pitch_gap= 0.0,
+			direction = 0,
+			num_pitches = np,
+			GRid_out = LINE[0],	       			
+			name = "0", 					
+			disp = DRAW);
+
+		if( fabs(deltax) < fabs(mat_rad)) // this is where only one rev for id curve
+		{
+			if( top_rad < bot_rad){ sr = mat_rtl[1];}
+			else { sr = mat_rtl[0];}
+			if( top_rad < bot_rad)
+			{	
+				mat_ltr[1] = mat_rtl[1] + (mat_rad*scale);
+				er = mat_ltr[1];
+			}else{
+				
+				mat_ltr[0] = mat_rtl[0] - (mat_rad*scale);
+				er = mat_ltr[0];
+			}
+
+	 		gr$place_helix(	
+			 	point1 = pnt1,
+			 	point2 = tmp1,
+			 	point3 = &pt[3],
+			 	start_radius = sr,
+			 	end_radius = er,
+			 	pitch_gap= 0.0,
+			 	direction = 0,
+			 	num_pitches = 1,
+			 	GRid_out = LINE[1],	       			
+			 	name = "0", 					
+			 	disp = DRAW);
+
+			v_scale(xvec, 2*deltax, tmp);
+			if( top_rad < bot_rad)
+			{	
+			   v_add( &pt[21], tmp, &pt[24]);
+			} else {
+			   v_add( &pt[24], tmp, &pt[21]);
+			} 
+			   place_line( &pt[21], &pt[24], &LINE[2]);
+		}
+		else
+		{
+			if( top_rad < bot_rad){ sr = mat_rtl[1];}
+			else { sr = mat_rtl[0];}
+
+			if( top_rad < bot_rad){ er = mat_ltr[1];}
+			else { er = mat_ltr[0];}
+
+	 		gr$place_helix(	
+			 	point1 = pnt1,
+			 	point2 = tmp1,
+			 	point3 = &pt[3],
+			 	start_radius = sr,
+			 	end_radius = er,
+			 	pitch_gap= 0.0,
+			 	direction = 0,
+			 	num_pitches = np,
+			 	GRid_out = LINE[1],	       			
+			 	name = "0", 					
+			 	disp = DRAW);
+
+			place_line( &pt[21], &pt[24], &LINE[2]);
+		}
+		place_line( &pt[3], &pt[6], &LINE[3]);
+		LINE[4].objid = NULL_OBJID;
+ 		create_gg(LINE, &GG);
+	}
+	break;
+
+ case SIDE:
+	deltax = (bot_rad - top_rad) / ( np * 2);
+	v_scale(xvec, mat_rad, mat_xvec);
+	v_scale(yvec, mat_rad, mat_yvec);
+	v_scale(yvec, 0.5*pg, tmpy);
+ 	v_scale(xvec, top_rad, tmpx);	
+ 	v_scale(xvec, 2*top_rad, tmp2x);
+	
+ 	v_sub( pnt1, tmpx, &pt[0]);
+	v_sub( &pt[0], mat_xvec, &pt[18]); // mid pt of left circle
+	v_sub(&pt[0], mat_yvec, &pt[12]);
+	v_add(&pt[0], mat_yvec, &pt[39]);
+	v_add(&pt[0], mat_yvec, &pt[6]);
+ 	v_add( pnt1, tmpx, &pt[3]);
+	v_sub(&pt[3], mat_yvec, &pt[15]);
+	v_add(&pt[3], mat_yvec, &pt[9]);
+	place_line( &pt[6], &pt[9], &LINE[0]); //top of top line
+	place_circle_edge( &pt[39], &pt[18], &pt[12], &LINE[1]); // left top circle
+	v_equal(&pt[15],&pt[39]);
+	v_equal(&pt[12],&pt[45]);
+	LINE[2].objid = NULL_OBJID;
+	create_gg(LINE,&GG);
+
+	deltX = deltax;
+        i=0;
+    	for( j=2; j<np*6+2; j=j+6)     // loop and create all the turns
+	{
+		v_sub( &pt[3], tmp2x, tmp);
+		v_scale( xvec, deltX, deltxx);
+		v_sub( tmp, deltxx, tmp);
+		deltX = deltX + 2*deltax;
+		v_sub( tmp, tmpy, &pt[6]);
+
+		// make a unit vector and get the perpendicular unit vector
+		v_sub(&pt[3], &pt[6], tmp);
+		v_scale(tmp, 1/v_len(tmp), tmp1); // unit vector of rtl line
+		v_cross(tmp1, zvec, tmp);
+		v_scale(tmp,scale*mat_rad/v_len(tmp),mat_rtl);//perp rtl mat vec
+		
+		v_add( &pt[3], mat_rtl, &pt[18]);
+		v_sub( &pt[3], mat_rtl, &pt[21]);
+		v_add( &pt[3], mat_xvec, &pt[36]);
+		v_add( &pt[6], mat_rtl, &pt[24]);
+		v_sub( &pt[6], mat_rtl, &pt[27]);
+		v_sub( &pt[6], mat_xvec, &pt[33]);
+	        place_line( &pt[18], &pt[24], &LINE[0]); // bottom of rtl
+	        place_line( &pt[21], &pt[27], &LINE[1]); // top of rtl 
+		v_equal(&pt[39], pnt2);
+		v_equal(&pt[45], pnt3);
+		
+ 		gr$project_point_along_vector(
+			msg = &msg,
+			object_id  = &LINE[1],	// top of rtl
+			vec_start = pnt2,		
+			vec_end = pnt3,
+			point = pnt2,
+			proj_pt = pnt2,
+			u_parm  = &u,
+	    		v_parm  = &v);
+
+	        place_line( pnt2, pnt3, &LINE[5]); // bottom of ltr
+
+		place_arc_edge( &pt[21],&pt[36],&pt[18], &LINE[2]);
+		place_arc_edge( &pt[24],&pt[33],&pt[27], &LINE[3]);
+	
+		v_add( &pt[6], tmp2x, tmp);
+		v_scale( xvec, deltX, deltxx);
+		v_add( tmp, deltxx, tmp);
+		deltX = deltX + 2*deltax;
+		v_sub( tmp, tmpy, &pt[30]);
+
+		// make a unit vector and get the perpendicular unit vector
+		v_sub(&pt[6], &pt[30], tmp);
+		v_scale(tmp, 1/v_len(tmp), tmp1); // unit vector of ltr line
+		v_cross(tmp1, zvec, tmp);
+		v_scale(tmp,scale*mat_rad/v_len(tmp),mat_ltr);//perp ltr mat vec
+		
+		v_sub( &pt[6], mat_ltr, &pt[42]);
+		v_add( &pt[6], mat_ltr, &pt[39]);
+		v_sub( &pt[30], mat_ltr, &pt[48]);
+		v_add( &pt[30], mat_ltr, &pt[45]); 
+
+		v_equal(&pt[39], pnt2);
+		v_equal(&pt[45], pnt3);
+
+ 		gr$project_point_along_vector(
+			msg = &msg,
+			object_id  = &LINE[0],	
+			vec_start = pnt2,		
+			vec_end = pnt3,
+			point = pnt2,
+			proj_pt = pnt2,
+			u_parm = &u,
+			v_parm = &v);
+
+	        place_line( pnt2, pnt3, &LINE[4]);
+		v_equal( &pt[30], &pt[3]);
+		v_equal( &pt[42], &pt[45]);
+		v_equal( &pt[48], &pt[39]);
+		LINE[6].objid = NULL_OBJID;
+		add_to_gg(LINE,&GG);
+	}
+	v_sub( &pt[30], tmp2x, tmp);
+	deltX = deltX - deltax;
+	v_scale( xvec, deltX, deltxx);
+	v_sub( tmp, deltxx, &pt[51]);
+	v_add( &pt[30],mat_yvec,&pt[54]);
+	v_add( &pt[51],mat_yvec,&pt[57]);
+	place_line( &pt[54] ,&pt[57] , &LINE[0]); // top of bottom line
+
+	v_sub( &pt[30],mat_yvec,&pt[66]);
+	v_sub( &pt[51],mat_yvec,&pt[63]);
+	v_sub( &pt[51],mat_xvec,&pt[60]);
+	v_add( &pt[30],mat_xvec,&pt[69]);
+	place_line( &pt[63] ,&pt[66] , &LINE[1]); // bottom of bottom line
+	place_arc_edge( &pt[66], &pt[69], &pt[54], &LINE[2]); // right bottom arc
+	place_arc_edge( &pt[57], &pt[60], &pt[63], &LINE[3]); // left bottom arc
+
+ 	gr$project_point_along_vector(
+		msg = &msg,
+		object_id  = &LINE[0],	// top of rtl
+		vec_start = &pt[39],		
+		vec_end = &pt[45],
+		point = &pt[39],
+		proj_pt = &pt[39],
+		u_parm = &u,
+		v_parm = &v);
+
+	place_line( &pt[39], &pt[45] , &LINE[4]); // bottom of ltr
+	LINE[5].objid = NULL_OBJID;
+	add_to_gg(LINE,&GG);
+	break;
+ }
+ free(pt);
+ id->objid = GG.objid;
+ id->osnum = GG.osnum;
+}
+/***************************************************************
+             THIS FUNCTION CREATES A COMPOSITE CURVE
+***************************************************************/
+
+make_comp(grids_in, grid_out)
+struct GRid	grids_in[30], grid_out[1];
+{
+
+ #ifdef DEBUG
+ write("going into gr$make_composite_curve\n");
+ #endif
+
+ gr$make_composite_curve(
+ 			GRids_in = grids_in,
+			GRid_out = grid_out[0],
+			name     = "composite");
+}
+
+
+/***************************************************************
+               THIS FUNCTION CREATES A LINE
+***************************************************************/
+
+place_line( p1, p2, line)
+double p1[3],p2[3];
+struct GRid line[1];
+
+{
+int		msg, i;
+double		points[6];
+struct GRid	LINE;
+
+ for(i=0;i<3;i=i+1)
+ {
+	points[i+0] = p1[i];
+	points[i+3] = p2[i];
+ }
+
+ #ifdef DEBUG
+ write("going into gr$place_linear_object ",'\n');
+ #endif
+ strcpy(line_name,"");
+
+ gr$place_linear_object( 
+		msg = &msg,
+		num_points = 2,
+		points = points,
+		name = line_name,
+		object_id = line);
+
+ di$rm_name ( regexp = line_name);
+
+ #ifdef DEBUG
+ write("gr$place_linear_object msg =",msg,'\n');
+ #endif
+
+}
+
+
+/***************************************************************
+   THIS FUNCTION CREATES AN CIRCLE BY EDGE
+***************************************************************/
+
+place_circle_edge( p1, p2, p3, arc)
+double p1[3],p2[3],p3[3];
+struct GRid arc[1];
+{
+  int	msg;
+
+ #ifdef DEBUG
+ write("going into gr$place_circle_by_edge_points msg=",msg,'\n');
+ #endif
+ strcpy(line_name,"circle");
+ gr$place_circle_by_edge_points(
+		msg = &msg,
+		start_point = p1,				    
+		dir_point = p2,	      					
+		end_point = p3,	       					
+		name = line_name,
+		object_id = arc);			
+
+ di$rm_name ( regexp = line_name);
+ #ifdef DEBUG
+ write("gr$place_circle_by_edge_points msg=",msg,'\n');
+ #endif
+}
+
+
+
+/***************************************************************
+   THIS FUNCTION CREATES AN ARC BY EDGE
+***************************************************************/
+
+place_arc_edge( p1, p2, p3, arc)
+double p1[3],p2[3],p3[3];
+struct GRid arc[1];
+{
+  int	msg;
+
+ #ifdef DEBUG
+ write("going into gr$place_arc_by_edge_points msg=",msg,'\n');
+ #endif
+ strcpy(line_name,"arc");
+ gr$place_arc_by_edge_points(
+		msg = &msg,
+		start_point = p1,				    
+		dir_point = p2,	      					
+		end_point = p3,	       					
+		name = line_name,
+		object_id = arc);			
+
+ di$rm_name ( regexp = line_name);
+
+ #ifdef DEBUG
+ write("gr$place_arc_by_edge_points msg=",msg,'\n');
+ #endif
+}
+
+
+/***************************************************************
+   THIS FUNCTION RETURNS THE X AND Y UNIT VECTORS GIVEN 
+   A WINDOW GRID AND THE ANGLE AND MIRROR OPTIONS
+***************************************************************/
+
+
+get_xy_vec_from_window( WINDOW, angle, mirx, miry, xvec, yvec)
+
+struct GRid WINDOW;
+double	angle,xvec[3],yvec[3];
+int	mirx,miry;
+{
+  int	msg,i;
+  double matrix[16], radian,tmpx1[3],tmpx2[3],tmpy1[3],tmpy2[3];
+
+// FIND THE ROTATION MATRIX OF THE VIEW
+
+  ci$send( msg = message IGEgragad.DPinrot(&msg,matrix),
+	   	targetid = WINDOW.objid, 
+		targetos = WINDOW.osnum );
+
+// EXTRACT THE X AND Y VECTORS FROM THE WINDOW MATRIX AND TRANFORM TO 
+// ANGLE AND THE MIRROR OPTION
+
+ radian = 57.2957795;
+ for(i=0; i<3; i=i+1){ xvec[i] = matrix[i]; yvec[i] = matrix[i+4]; }
+ v_scale(xvec, cos(angle/radian), tmpx1);
+ v_scale(yvec, sin(angle/radian), tmpx2);
+ v_scale(xvec, 0-sin(angle/radian), tmpy1);
+ v_scale(yvec, cos(angle/radian), tmpy2);
+ v_add(tmpx1,tmpx2, xvec);
+ v_add(tmpy1,tmpy2, yvec);
+ if(miry == 1){ v_scale(xvec, -1, xvec);}
+ if(mirx == 1){ v_scale(yvec, -1, yvec);}
+
+}
+
+
+
+
+
+
+/***************************************************************
+    THIS FUCTION CREATES A GRAPHIC GROUP OF THE INPUT OBJ'S
+***************************************************************/
+
+create_gg(grids_in,grid_out)
+struct GRid	grids_in[30], grid_out[1];
+{
+ int	msg, num;
+ for(num = 0; num<10000; num=num+1) if( grids_in[num].objid < 1) break;
+
+	#ifdef DEBUG
+	write("going into graphic group num=",num,'\n');
+	#endif
+
+	gr$create_graphic_group(
+			msg = &msg,
+			num_objects = num,
+			object_ids = grids_in,	
+			gg_id = grid_out);
+}
+
+/***************************************************************
+    THIS FUCTION ADDS TO A GRAPHIC GROUP OF THE INPUT OBJ'S
+***************************************************************/
+
+add_to_gg(grids_in,grid_out)
+struct GRid	grids_in[30], grid_out[1];
+{
+ int	msg, num;
+ for(num = 0; num<10000; num=num+1) if( grids_in[num].objid < 1) break;
+
+	gr$add_to_graphic_group(
+			msg = &msg,
+			num_objects = num,
+			object_ids = grids_in,	
+			gg_id = grid_out);
+}
+
+
+extern int  	GRdpb_put(),
+		GRdpb_get();
+
+my_set_symbology( st, wt, lv, co)
+int lv,st,wt,co;
+{
+
+ struct IGRdisplay	buffer;
+ IGRlong		sizebuf;
+ IGRshort		level;
+ IGRint			nret, msg;
+
+ sizebuf = sizeof( buffer );
+
+ gr$get_active_display(	 msg = &msg,
+			 sizbuf = &sizebuf,
+			 buffer = &buffer,
+			 nret	= &nret);
+
+ #ifdef DEBUG
+ write( "gr$get_active_display msg=",msg,'\n');
+ #endif
+ 
+ sizebuf = sizeof( level );
+
+ gr$get_active_level	(msg = &msg,
+			 sizbuf = &sizebuf,
+			 buffer = &level,
+			 nret = &nret);
+ #ifdef DEBUG
+ write( "gr$get_active_level msg=",msg,'\n');
+ #endif
+
+ sizebuf = sizeof( buffer );
+ if ( co != -1)buffer.color = co;
+ if ( wt != -1)buffer.weight = wt;
+ if ( st != -1)buffer.style = st;
+
+ gr$put_active_display(	 msg = &msg,
+			 sizbuf = &sizebuf,
+			 buffer = &buffer);
+
+ #ifdef DEBUG
+ write( "gr$put_active_display msg=",msg,'\n');
+ #endif
+ 
+ if( lv != -1)
+ {
+ 	sizebuf = sizeof( level );
+	level = lv;
+
+        gr$put_active_level	(msg = &msg,
+			 sizbuf = &sizebuf,
+			 buffer = &level);
+ 	#ifdef DEBUG
+ 	write( "gr$put_active_level msg=",msg,'\n');
+ 	#endif
+ }
+}

@@ -1,0 +1,159 @@
+/*
+$Log: f2_fonts.u,v $
+Revision 1.1.1.1  2001/12/17 22:39:36  hans
+Initial import to CVS
+
+# Revision 340.0  1997/05/27  23:16:51  root
+# COMMENT : Initial checkin to 3.4.0 RCS from 3.3.0 src
+#
+# Revision 330.0  1996/01/11  21:31:11  root
+# COMMENT : Initial checkin to 3.3.0 RCS from 3.2.0 src
+#
+# Revision 320.0  1994/12/12  17:59:59  root
+# COMMENT : Initial checkin to 3.2 RCS from 3.1 src
+#
+# Revision 240.0  1992/12/07  00:04:16  tim
+# COMMENT : Initial checkin to 2.4 RCS
+#
+# Revision 220.0  1992/08/29  06:40:26  root
+# COMMENT : Corresponds to Rel201.2 in 2.0.1 RCS
+#
+Revision 201.2  1992/07/13  20:42:53  tim
+COMMENT : added Log variable
+
+*/
+
+#include "ciminimum.h"
+#include "cimacros.h"
+#include "OMprimitives.h"
+
+#include "OMerrordef.h"
+#include "exmacros.h"
+#include "fontdef.h"
+#include "font.h"
+#include "exlocaledef.h"
+#include "exlocale.h"
+#include "godef.h"
+#include "igrdp.h"
+#include "igr.h"
+#include "ex.h"
+#include "go.h"
+#include "griodef.h"
+#include "grio.h"
+#include "griomacros.h"
+
+#include "msdef.h"
+#include "msmacros.h"
+#include "fontmacros.h"
+
+#define FONTS_IN_FILE    0
+#define AVAIL_FONTS      1
+#define EDITABLE         -1
+
+
+
+/* TGM 5/5/92 modified to work with message subsystem */
+
+
+display_font_info(mod_env, fileptr, mode)
+struct GRmd_env	mod_env;
+FILE 		*fileptr;
+int mode;
+{
+
+  struct GRid       fontmgr;                /* objid/osnum of fontmgr       */
+  IGRshort          num_entries;            /* number defined font entries  */
+  IGRshort          entries[MAXFONT];       /* list of defined font entries */
+  IGRlong              i,j;             /* index counters                   */
+  IGRint               status;          /* status return code               */
+
+  IGRlong              msg;             /* completion code                  */
+  struct vfont_entry   font_info;       /* information about specified font */
+  struct EX_fonts      font_parameters; /* locale font parameters           */
+  struct EX_locale_var var_list;        /* locale identifiers               */
+
+  int 			print_to_screen;
+  char 			loc_buff[80];
+
+
+  extern EXinq_locale();
+
+
+
+
+  print_to_screen = mode & SCREEN_OUTPUT;
+
+ 
+   ex$get_super(mod_id = mod_env.md_id.objid,
+                mod_osnum = mod_env.md_id.osnum,
+                super_name = FONTMGR_NO_NAME,
+                create = TRUE,
+                super_class = "GRfm",
+                super_id = &fontmgr.objid,
+                super_osnum = &fontmgr.osnum);
+
+
+   var_list.var = EX_font_parameters;
+   var_list.var_ptr = (IGRchar * )&font_parameters;
+
+   /*
+    * get the number of defined entries in the font manager
+    * and which entries they are
+    */
+
+   ci$send(msg = message GRfm.GRfm_get_entries(&msg,&num_entries,entries),
+              targetos = fontmgr.osnum,
+              targetid = fontmgr.objid);
+
+   /*
+    * for each defined entry, display the virtual and logical font names
+    */
+
+   ex$message(msgnumb=GR_I_Fonts,buff=loc_buff);
+   if (print_to_screen)
+   {
+     writestars();
+     write(loc_buff,"\n\n");
+   }
+   filestars(fileptr);
+   fprintf(fileptr, "%s\n\n",loc_buff);
+   for (i = 0; i < num_entries; i = i+1)
+   {
+
+	/*
+	 * get info on virtual and logical font names
+	 */
+
+	ci$send(msg = message GRfm.GRfm_retdata(&msg, &(entries[i]), 
+				&font_info), 
+		 targetid = fontmgr.objid, 
+		 targetos = fontmgr.osnum);
+
+         ex$inq_locale (msg = &msg,
+                        var = &var_list,
+                        flags = EX_Text | EX_Logical_Name,
+                        identifier = font_info.fontfile);
+
+         /*
+	  *  output virtual and logical font names 
+    	  */
+
+	 if (print_to_screen)
+	 {
+           ex$message(msgnumb=GR_I_VirNme,buff=loc_buff);
+     	   write("\t", loc_buff," ................. ", font_info.vfontname, 
+		"\n");
+           ex$message(msgnumb=GR_I_LogNme,buff=loc_buff);
+	   write("\t", loc_buff," ................. ", font_parameters.name, 
+		"\n\n");
+	 }
+         ex$message(msgnumb=GR_I_VirNme,buff=loc_buff);
+    	 fprintf(fileptr, "\t%s ................ %s\n", loc_buff,
+		font_info.vfontname);
+         ex$message(msgnumb=GR_I_LogNme,buff=loc_buff);
+	 fprintf(fileptr, "\t%s ................ %s\n\n", loc_buff,
+		font_parameters.name);
+      }
+
+
+}

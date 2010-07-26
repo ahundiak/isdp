@@ -1,0 +1,129 @@
+/************************************************************************/
+/*                                                                      */
+/*  Program: mergecurve.u          Macro: ems$place_merged_curve	*/
+/*                                                                      */
+/*  Defined in: EMSascmacros.h                                          */
+/*                                                                      */
+/*  Comments  : A curve must begin where the previous curve ended.	*/
+/*                                                                      */
+/************************************************************************/
+
+#include <stdio.h>
+#include "ciminimum.h"
+#include "cimacros.h"
+#include "ci_easy.h"
+#include "go.h"
+#include "grdpbmacros.h"
+#include "dpmacros.h"
+#include "lcdef.h"
+#include "exdef.h"
+
+#include "EMSascmacros.h"
+#include "EMSasnuc.h"
+#include "EMSasopts.h"
+
+extern memcpy();
+
+extern	int	GRdpb_get();
+extern	int	DPmacupdate();
+
+main ()
+{
+  /* Declare variables here : */
+     struct GRvg_construct    const_list;
+     struct IGRdisplay        disp_buffer;
+     struct GRlc_info         curve_info[30];
+     struct GRlc_info         tmp_obj_info;
+
+     IGRshort                 disp_level;
+     IGRboolean               assoc_placement;
+     IGRushort                options;
+     OM_S_OBJID               res_obj;
+     IGRint                   sts,num_bytes,curve_count,res;
+     IGRint                   num_curves;
+     IGRlong                  msg_loc, nbytes_ret;
+     IGRchar                  prompt_str[50];
+     GRobjid                  objid,tmp_objid;
+
+  /* End of variable declarations */
+    
+    message (" Merge Curves ") ;
+
+    /*Get the object */
+
+        ci$locate ( obj            = &objid,
+		    lc_info        = &curve_info[0],
+	            prompt         = "Identify curve",
+	            acc_prompt     = "Accept/Reject ",
+	            relocate_prompt= "Curve not Found",
+		    classes        = "GRcurve",
+		    owner_action   = LC_RIGID_COMP | LC_FLEX_COMP,
+                    response       = &res
+	          );
+        if (res == EX_RJT_MOVEON)
+            exit;
+        curve_count = 1;
+        while (1)
+        {
+           if ( curve_count == 1)
+                strcpy ( prompt_str,"Identify next curve/Reject");
+           else
+                strcpy ( prompt_str,"Identify next curve/Moveon");
+
+           ci$locate ( obj            = &tmp_objid,
+		       lc_info        = &tmp_obj_info,
+	               prompt         = prompt_str,
+	               acc_prompt     = "Accept/Reject ",
+	               relocate_prompt= "Identify curve",
+		       classes        = "GRcurve",
+		       owner_action   = LC_RIGID_COMP | LC_FLEX_COMP,
+                       response       = &res
+	             );
+           if( res == EX_DATA) 
+           {
+	       memcpy ( &curve_info[curve_count],&tmp_obj_info,sizeof(struct GRlc_info));
+               curve_count = curve_count + 1;
+           }
+	   else if ( res == EX_RJT_MOVEON )
+		break;
+        }
+	num_curves = curve_count;
+	if ( num_curves < 2 )
+	     exit;
+
+    num_bytes = sizeof(struct IGRdisplay);
+    gr$get_active_display ( msg = &msg_loc, sizbuf = &num_bytes,
+			    nret= &nbytes_ret, buffer = &disp_buffer );
+    gr$get_active_level   ( buffer = &disp_level );
+    
+    const_list.msg        = &msg_loc;
+    const_list.env_info   = &curve_info[0].module_info;
+    const_list.display    = &disp_buffer;
+    const_list.properties = GRIS_LOCATABLE | GRIS_DISPLAYABLE;
+    const_list.newflag    = FALSE;
+    const_list.level      = disp_level;
+    const_list.class_attr = NULL;
+    const_list.name       = NULL;
+    const_list.geometry   = NULL;
+
+    gr$get_associative_flag ( buffer = &assoc_placement );
+    
+    if ( ! assoc_placement )
+         options = EMSasconst_notassociative;
+    else
+         options = NULL;
+
+    sts = ems$place_merged_curve( msg               = &msg_loc,
+                                  num_curves        = num_curves,
+                                  curve_info        = &curve_info[0],
+		                  options           = options,
+                                  construction_list = &const_list,
+                                  resultant_obj     = &res_obj);
+    if (!(sts & msg_loc & 1)) goto wrapup;
+
+    dp$update ( msg   = &msg_loc);
+    exit;
+wrapup:
+       status (" Merge Curve Operation failed " );
+       exit;
+}

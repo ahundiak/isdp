@@ -1,0 +1,139 @@
+/****************************************************************/
+/*                                                              */
+/* Program: chgreftype.u   Macro: gr$chg_ref_type               */
+/* Defined in: refmacros.h                                      */
+/* Comments:  This PPL program demonstrates how to use the      */
+/*            macro gr$chreftype to change reference file       */
+/*            attachement types.                                */
+/*                                                              */
+/*            This command may be used to change a reference    */
+/*            file attachment type. The available types are     */
+/*            normal and background.                            */
+/*                                                              */
+/*            Background attachments that are directly          */
+/*            attached to the master file, will be retrieved.   */
+/*            Background attachments that are nested will       */
+/*            not be retrieved with the master file.            */
+/*                                                              */
+/****************************************************************/
+#include "cieveryone.h"
+#include "cimacros.h"
+#include "refdef.h"
+#include "ms.h"
+#include "refmacros.h"
+#include "msdef.h"
+#include "msmacros.h"
+
+#define GetTargetType           1
+#define IdentifyAttachment      2
+
+#define ClearProperty           0       /* used by GRchgrfprops */
+#define SetProperty             1
+#define ReplaceProperty         2
+
+int state;
+extern printf();
+extern GRchgreftype();
+extern MSmessage();
+
+init()
+{
+    state = GetTargetType;
+}
+
+main()
+{
+    short flag;
+    int looping, response, sts;
+    long msg;
+    unsigned long ref_properties;
+    char type_string[32], attach_name[1024];
+    char prompt_buff[50], acc_buff[50], reloc_buff[50];
+    OMuword osnum;
+    OM_S_OBJID objid;
+
+    
+    ex$message(field = MESSAGE_FIELD,
+		in_buff = "// Change reference file type //");
+
+    looping = TRUE;
+    ref_properties = GRRF_BACKGROUND;
+    while (looping)
+    {
+        switch (state)
+        {
+          case GetTargetType:
+            ci$get(prompt = "Enter new type [N]ormal or [B]ackground [B]",
+                   string = type_string);
+            if (type_string[0] == NULL ||
+                type_string[0] == 'B'  ||
+                type_string[0] == 'b')
+            {
+                flag = SetProperty;
+                state = IdentifyAttachment;
+            }
+            else if (type_string[0] == 'N' ||
+                     type_string[0] == 'n')
+            {
+                flag = ClearProperty;
+                state = IdentifyAttachment;
+            }
+            else
+            {
+                ex$message(in_buff = "** Invalid Input **",
+                           field = ERROR_FIELD);
+            }
+            break;
+
+          case IdentifyAttachment:
+		strcpy(prompt_buff, "Identify Reference file attachment");
+		strcpy(acc_buff, "Accept [data point] / Reject [Moveon]");
+		strcpy(reloc_buff, " Attachment not found, please retry");
+
+            ci$locate(response = &response,
+                      obj = &objid,
+                      osnum = &osnum,
+                      prompt = prompt_buff,
+                      acc_prompt = acc_buff,
+                      relocate_prompt = reloc_buff,
+                      classes = "GRreffile");
+            if (response == EX_BACK_UP || response == EX_RESTART)
+            {
+                state = GetTargetType;
+                break;
+            }
+
+	    msg = MSFAIL;
+	    if (response == RESET)
+	    {
+	        ci$get(prompt = "Enter attachment name",
+                   string = attach_name);
+
+		if (strlen(attach_name) > 0)
+		{
+			gr$chg_ref_type(
+				msg = &msg,
+				attachment_name = attach_name,
+				background = flag);
+		}
+	    }
+	    else
+	    {
+		gr$chg_ref_type(
+			msg = &msg,
+			ref_os = osnum,
+			ref_id = objid,
+			background = flag);
+	    }
+
+
+	    if (1 & msg)
+	    {
+	        ex$message(field = ERROR_FIELD,
+        		in_buff = "Attachment type changed");
+	    }
+
+            break;
+        }
+    }
+}

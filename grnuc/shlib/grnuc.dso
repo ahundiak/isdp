@@ -1,0 +1,213 @@
+
+#
+# This script will build DSO for GRNUC in $GRTARG/shlib/grnuc.so
+# It will also generate $GRTARG/grnucmakelib and $GRTARG/Makefile
+#
+
+if [ "$CPUTYPE" != "sgi" ]
+then
+  echo
+  echo "       This is an SGI issue only!"
+  echo
+  exit
+fi
+
+TMPFILE=/usr2/tmp/gredrules
+DOTOLIST=
+DOTALIST=
+
+function setup_for_dso
+{
+#
+# Get the latest so_locations that is available
+#
+  echo "\nMaking $GRTARG/shlib/grnuc.so"
+  cd $GRTARG/shlib
+  echo "\ncp /usr/lib/so_locations to $GRTARG/shlib"
+  cp /usr/lib//so_locations $GRTARG/shlib
+  chmod 666 $GRTARG/shlib/so_locations
+
+  if [ "$GRNUC" != "$GRTARG" ]
+  then
+    cp $GRNUC/shlib/grnuc.dso $GRTARG/shlib/grnuc.dso
+  fi
+}
+
+function from_grnucmakelib
+{
+#
+# get all entries from grnucmakelib
+# (except the big archives and the pplsrc stuff)
+#
+
+  if [ "$GRNUC" != "$GRTARG" ]
+  then
+    cp $GRNUC/grnucmakelib $GRTARG/grmakelib.orig
+  fi
+  GRMAKELIB=$GRTARG/grmakelib.orig
+
+  echo "\nGet libraries from $GRMAKELIB"
+  echo " ... NOT including pplsrc libraries"
+  for FILE in $(grep GRLIB $GRMAKELIB \
+   | grep -v libGRco \
+   | grep -v libGRgr \
+   | grep -v ci.o \
+   | grep -v ci_executor.o \
+   | grep -v ci_listener.o \
+   | grep -v cicom.o \
+   | grep -v ciexpr.o \
+   | grep -v cinotify.o \
+   | grep -v cisetup.o \
+   | grep -v user_data.o )
+  do
+    if [ "$FILE" != "\\" ]
+    then
+      SUFF=$(echo $FILE | cut -d"." -f2)
+      MYFILE=${GRTARG}$(echo ${FILE#\$\(GRLIB\)})
+      case $CPUTYPE in
+        sgi ) MYFILE=$(echo $MYFILE | sed 's/$(CPUTYPE)/sgi/')
+              ;;
+      esac
+      if [ "$SUFF" = "a" ]
+      then
+        DOTALIST="$DOTALIST $MYFILE"
+      else
+        DOTOLIST="$DOTOLIST $MYFILE"
+      fi
+    fi
+  done
+}
+
+function from_archives
+{
+#
+# get the libraries that are built into the big archives
+#
+  echo "\nGet libraries from $GRNUC/src/archlib/*src/Makefile"
+  for FILE in $(grep GRTARG $GRNUC/src/archlib/cosrc/Makefile | grep -v libGR | grep -v libcobdraft.o) $(grep GRTARG $GRNUC/src/archlib/grsrc/Makefile | grep -v libGR)
+  do
+    if [ "$FILE" != "\\" ]
+    then
+      SUFF=$(echo $FILE | cut -d"." -f2)
+      MYFILE=${GRTARG}$(echo ${FILE#\$\(GRTARG\)})
+      case $CPUTYPE in
+        sgi ) MYFILE=$(echo $MYFILE | sed 's/$(CPUTYPE)/sgi/')
+      esac
+      if [ "$SUFF" = "a" ]
+      then
+        DOTALIST="$DOTALIST $MYFILE"
+      else
+        DOTOLIST="$DOTOLIST $MYFILE"
+      fi
+    fi
+  done
+}
+
+function from_makefile
+{
+#
+# do not forget the GRSTUBS files in $GRNUC/Makefile
+#
+
+  if [ "$GRNUC" != "$GRTARG" ]
+  then
+    cp $GRNUC/Makefile $GRTARG/Makefile.orig
+  fi
+  GRMAKEFILE=$GRTARG/Makefile.orig
+
+  echo "\nGet the GRSTUBS files from $GRMAKEFILE"
+  for FILE in $(grep GRSTUBS $GRMAKEFILE | cut -d" " -f3-)
+  do
+    SUFF=$(echo $FILE | cut -d"." -f2)
+    MYFILE=${GRLIB}$(echo ${FILE#\$\(GRTARG\)})
+    case $CPUTYPE in
+      sgi ) MYFILE=$(echo $MYFILE | sed 's/$(CPUTYPE)/sgi/')
+            ;;
+    esac
+    if [ "$SUFF" = "a" ]
+    then
+      DOTALIST="$DOTALIST $MYFILE"
+    else
+      DOTOLIST="$DOTOLIST $MYFILE"
+    fi
+  done
+}
+
+function load_grnuc_dso
+{
+#
+# load $GRTARG/shlib/grnuc.so
+#
+  echo "\nNow loading $GRTARG/shlib/grnuc.so"
+  cd $GRTARG/shlib
+  ld -shared -o grnuc.so ${DOTOLIST} -all ${DOTALIST}
+}
+
+function modify_makefile
+{
+#
+# modify Makefile
+# put modified files in $GRTARG
+#
+  echo "\nModifing $GRTARG/Makefile"
+  cd $GRTARG
+
+cat <<- EOF > $TMPFILE
+/grnucmakelib
+d
+i
+include \$(GRTARG)/grnucmakelib
+.
+/GRSTUBS
+d
+w
+q
+EOF
+
+  ed Makefile < $TMPFILE
+
+  rm $TMPFILE
+}
+
+function modify_grnucmakelib
+{
+#
+# modify grnucmakelib
+# put modified files in $GRTARG
+#
+  echo "\nModifing $GRTARG/grnucmakelib"
+
+cat <<- EOF > $GRTARG/grnucmakelib
+GRNUCLIBRARIES = \\
+ 	\$(GRLIB)/shlib/grnuc.so \\
+ 	\$(GRLIB)/lib/\$(CPUTYPE)/ci.o \\
+ 	\$(GRLIB)/lib/\$(CPUTYPE)/ci_executor.o \\
+ 	\$(GRLIB)/lib/\$(CPUTYPE)/ci_listener.o \\
+ 	\$(GRLIB)/lib/\$(CPUTYPE)/cicom.o \\
+ 	\$(GRLIB)/lib/\$(CPUTYPE)/ciexpr.o \\
+ 	\$(GRLIB)/lib/\$(CPUTYPE)/cinotify.o \\
+ 	\$(GRLIB)/lib/\$(CPUTYPE)/cisetup.o \\
+ 	\$(GRLIB)/lib/\$(CPUTYPE)/user_data.o
+EOF
+}
+
+function debug_the_dso
+{
+  for file in $DOTOLIST $DOTALIST
+  do
+   echo $file
+  done
+}
+
+#
+# Let's build the DSO for grnuc
+#
+
+setup_for_dso
+from_grnucmakelib
+from_archives
+from_makefile
+load_grnuc_dso
+modify_makefile
+modify_grnucmakelib
+#debug_the_dso

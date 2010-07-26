@@ -1,0 +1,592 @@
+/******************************
+
+	file assoc.u
+
+******************************/
+
+/*
+$Log: assoc_data.u,v $
+Revision 1.1.1.1  2001/12/17 22:39:36  hans
+Initial import to CVS
+
+# Revision 340.0  1997/05/27  23:16:44  root
+# COMMENT : Initial checkin to 3.4.0 RCS from 3.3.0 src
+#
+# Revision 330.1  1996/09/10  17:53:45  grnuc33
+# COMMENT : Removed all references to OMprimindex.h
+#
+# Revision 330.0  1996/01/11  21:31:04  root
+# COMMENT : Initial checkin to 3.3.0 RCS from 3.2.0 src
+#
+# Revision 320.0  1994/12/12  17:59:54  root
+# COMMENT : Initial checkin to 3.2 RCS from 3.1 src
+#
+# Revision 240.0  1992/12/07  00:03:59  tim
+# COMMENT : Initial checkin to 2.4 RCS
+#
+# Revision 220.0  1992/08/29  06:40:12  root
+# COMMENT : Corresponds to Rel201.2 in 2.0.1 RCS
+#
+Revision 201.2  1992/07/13  20:43:32  tim
+COMMENT : added Log variable
+
+*/
+
+/*
+ * This program:
+ *	1.  Retrieves a user-specified set of objects (via a fence or
+ *	    graphic group).
+ *	2.  Reads SQL (or other db query) statements from an input file.
+ *   	3.  For each statement
+ *	    a. For each object in the set, 
+ *	         It substitutes tokens beginning with the dollar sign ($)
+ *	         with the attribute value for that object and writes
+ *		 that to an output file.
+ *
+ *		 For other tokens (non-dollar sign tokens), it simply
+ *		 passes the string to the output file.
+ */
+
+#include <stdio.h>
+
+#define MAX_LINE 256
+#define FENCE 1
+#define GRAPHIC_GRP 2
+
+#define MAX_SET_SIZE 1000
+
+
+#include "ciminimum.h"
+#include "cimacros.h"
+#include "cieveryone.h"
+#include "igrtypedef.h"
+#include "igr.h"
+#include "OMerrordef.h"
+#include "OMminimum.h"
+#include "OMprimitives.h"
+
+// XXX - MSSUC gets defined in exnuc/include/msdef.h, so undefine it here to prevent error.
+#undef  MSSUCC
+#define MSSUCC 1
+
+extern char *malloc();
+extern free();
+
+
+/*
+ * struct node is the type of each token in the input file string
+ */
+struct node
+{
+  char str[80];
+  struct node *next;
+} *rear, *front, *temptr;
+
+
+/*
+ * struct GRobj_env type is used by fence messages.
+ */
+struct GRobj_env
+{
+   struct GRid       obj_id;
+   struct GRmd_env   mod_env;
+}		COMP_ENV[10];
+
+/* 
+ * struct GRid type is used by graphic group messages.
+ */
+struct GRid	OBJ,
+		COMPONENTS[10];
+
+
+
+
+
+
+/***************************************
+
+	function insert_in_queue
+
+***************************************/
+
+/*
+ * This function inserts values in the queue of tokens.
+ */
+void insert_in_queue()
+{
+
+    if (rear == NULL)	    /* if an empty queue */
+    {
+      rear = temptr;
+      front = temptr;
+    }
+    else		/* if not-empty queue */
+    {
+      rear->next = temptr;
+      rear = temptr;
+    }
+  
+}
+
+
+
+
+
+
+/******************************************
+
+	function get_objects
+
+******************************************/
+
+/*
+ * This function asks the user to locate a fence or graphic group.
+ * If a fence, the objects are stored in the global COMP_ENV array.
+ * If a graphic group, the objects are stored in the global COMPONENTS array.
+ * 
+ * The two different arrays are needed because the fence message puts
+ * its values in a GRobj_info structure, while the graphic group message
+ * uses a GRid structure.
+ *
+ * 
+ */
+
+int get_objects(group_type, count)
+int *group_type;
+int *count;
+{
+
+int		msg, sts;	// statuses
+int		i;
+short		sender_class;	// Object class
+struct GRmd_env	md_env;
+
+
+
+
+
+
+  message( "PPL example - Fence and Graphic Group" ) ;
+
+  /*
+   * Locate the fence or graphic group.
+   */
+  if ( !ci$locate(obj = &OBJ.objid,
+		osnum = &OBJ.osnum,
+		prompt = "Identify a fence or a graphic group") )
+	 return(0);
+
+  /*
+   * Get class id of located object.
+   */
+  om$get_classid(	osnum = OBJ.osnum,
+		objid = OBJ.objid,
+		p_classid = &sender_class	);
+
+  if ( om$is_ancestry_valid(
+		subclassid = sender_class,
+		superclassname = "GRgrset" ) == OM_S_SUCCESS ) 
+  {
+
+    *group_type = FENCE;
+
+    /* 
+     * If fence inquire for count of objects contained.
+     */
+    *count = 0;
+    sts = ci$send( msg = message GRgrset.GSinqcount(&msg, count),
+		targetid = OBJ.objid,
+		targetos = OBJ.osnum );
+
+    if ( !( sts & OM_S_SUCCESS ) ) 
+    {
+      write( "fence.u -> GRgrset.GSinqcount error:\n" ) ;
+      om$report_error( sts = sts ) ;
+      return(0) ;
+    }
+
+    /* Get objects */
+
+    /*
+     * Inquire fence for content.
+     */
+    *count = 0;
+    sts = ci$send( msg = message GRgrset.GSget_object(&msg, COMP_ENV,
+			sizeof(COMP_ENV), count, 0, 100),
+		targetid = OBJ.objid,
+		targetos = OBJ.osnum );
+
+    if ( !( sts & OM_S_SUCCESS ) ) 
+    {
+      write( "fence.u -> GRgrset.GSget_object error:\n" ) ;
+      om$report_error( sts = sts ) ;
+      return(0) ;
+    }
+  }
+
+  else if ( om$is_ancestry_valid(
+		subclassid = sender_class,
+		superclassname = "GRgrgrp" ) == OM_S_SUCCESS )
+  {
+    *group_type = GRAPHIC_GRP;
+
+    /*
+     * If Graphic Group inquire for count of objects contained.
+     */
+    sts = ci$send( msg = message GRgrgrp.GRget_number_components(
+			&msg, count),
+		targetid = OBJ.objid,
+		targetos = OBJ.osnum );
+    if ( !( sts & OM_S_SUCCESS ) ) 
+    {
+      write( "fence.u -> GRgrset.GRget_number_components error:\n" ) ;
+      om$report_error( sts = sts ) ;
+      return(0) ;
+    }
+
+    /*
+     * Inquire Graphic Group for content.
+     */
+    sts = ci$send( msg = message GRgrgrp.GRget_components(
+			&msg, &md_env, COMPONENTS, 10, count, 0, 100),
+		targetid = OBJ.objid,
+		targetos = OBJ.osnum );
+
+    if ( !( sts & OM_S_SUCCESS ) ) 
+    {
+      write( "fence.u -> GRgrset.GRget_components error:\n" ) ;
+      om$report_error( sts = sts ) ;
+      return(0) ;
+    }
+
+  } /* end else if a graphic group */
+
+  else /* not a fence or graphic group */
+  {
+    status( "Located object not a Fence or Graphic Group" ) ;
+    return(0);
+  }
+
+  return(1);
+}
+
+
+
+
+
+
+
+main()
+{
+  FILE *inptr, *outptr, *errptr;
+  char inline[MAX_LINE], outline[MAX_LINE];
+
+  int i, j, len  , dollar_mode;
+  char infile[80], outfile[80];
+
+  int type, num;  
+  struct GRid in_grid, out_grid;
+
+
+  int msg, status;
+
+  struct ret_struct rst; 
+  struct GRmd_env mod_env;
+
+  extern ACreturn_diowner();
+
+
+
+
+  ci$get(prompt = "Enter input filename", string = infile);
+  ci$get(prompt = "Enter output filename", string = outfile);
+  inptr = fopen(infile, "r");
+  outptr = fopen(outfile, "w");
+  errptr = fopen("error_data", "w");
+
+  /*
+   *  Get objects, the type of set (fence or graphic group), and number
+   *  of objects.
+   */
+
+  if (!get_objects(&type, &num))
+  {
+    write("Exiting with errors . . . .\n");
+    fprintf(errptr, "No such group of objects found\n");
+    fclose(errptr);
+    fclose(inptr);
+    fclose(outptr);
+    exit;
+  }
+
+  /*
+   * Initialize the queue, counters, and dollar mode.
+   */
+  front = NULL;
+  rear = NULL;
+  temptr = (struct node *)malloc(sizeof(struct node));
+  temptr->next = NULL;
+  strcpy(temptr->str, "");
+
+  i = 0;
+  j = 0;
+  dollar_mode = 0;
+
+  /*
+   * Read db commands from file and fill in $-type variables .
+   */
+  while (fgets(inline, MAX_LINE, inptr) != NULL)
+  {
+    /*
+     * Break input line into tokens.
+     */
+
+    len = strlen(inline);
+
+    if (len <= 1)
+      continue;
+
+    while ( i < len)
+    {
+      if (!dollar_mode)  /* if working on normal text */
+      {
+        /*
+         *  If current character is $, close out current node and start
+         *  another.
+         */
+        if (inline[i] == '$')
+        {
+
+          dollar_mode = 1;
+  
+          temptr->str[j] = '\0';
+          insert_in_queue();
+
+          temptr = (struct node *)malloc(sizeof(struct node));
+          temptr->next = NULL;
+
+          j = 0;
+        }
+
+      }  /* end if not dollar_mode */
+
+      else    /* if it is dollar_mode, i.e., substitutable text */
+      {
+        /*
+         *  If current character is a space, close out current node and start
+         *  another.
+         */
+        if (isspace(inline[i]))
+        {
+          dollar_mode = 0;
+  
+          temptr->str[j] = '\0';
+          insert_in_queue();	    
+
+          temptr = (struct node *)malloc(sizeof(struct node));
+          temptr->next = NULL;
+ 
+          j = 0;
+        }
+
+      } /* end else if dollar_mode */
+
+      if (inline[i] != '\\')
+      {
+        temptr->str[j] = inline[i];
+        j = j+1;
+      }
+
+      i = i+1;
+
+    	  if (i == len)
+	  {
+	    temptr->str[j] = '\0';
+	    insert_in_queue();
+	  }
+
+
+    }  /* end while i < len */
+
+
+    /*
+     * If you have a backslash before the carriage return, get another
+     * line of input.
+     */
+    if (inline[len-2] == '\\')
+    {
+      i = 0;
+      continue;
+    }
+
+
+
+    /*
+     * for each object
+     */
+    for (i = 0; i < num; i = i+1)
+    {
+      temptr = front;
+      while (temptr != NULL)
+      {
+	if (type == GRAPHIC_GRP)
+        {
+          if (temptr->str[0] == '$')
+    	  {
+	    /*
+	     *  Get associated attribute for this graphic object.
+   	     */
+
+	    ACreturn_diowner(&(COMPONENTS[i]), &out_grid);
+	
+	    if (out_grid.objid != NULL_OBJID)
+	    {
+	      status = ci$send(msg = message NDmacro.ACgive_structure
+				 (&msg,     	    // return code  
+				  NULL,     	    // don't use it 
+				  &(temptr->str[1]), // name of attribute 
+				  &rst,     	    // returned value 
+				  &mod_env),	    // mod env (not used 
+		      targetid = out_grid.objid,
+		      targetos = out_grid.osnum);
+
+  	      if(!(status & 1))
+ 	      {
+	        printf("error in message send\n");
+	        fprintf(errptr, 
+		  "element %d, attribute %s:  ERROR IN MESSAGE SEND\n", 
+		  (int)COMPONENTS[i].objid, temptr->str);
+              }
+
+              else if(!(msg & 1))
+              {
+	        printf("the selected element does not have this attribute\n");
+	        fprintf(errptr, "element %d, attribute %s: NO SUCH ATTRIBUTE\n", 
+			(int)COMPONENTS[i].objid, temptr->str);
+              }
+
+     	      else if(rst.type == double_type)
+ 	      { 
+	        fprintf(outptr, "%.2f", rst.var.root_pm_st.value);
+              }
+              else if(rst.type == text_type)
+              {
+	        fprintf(outptr, "%s", rst.var.text_st.text_string);
+              }
+              else
+              {
+		;
+              }
+	    } /* end if out_grid != NULL_OBJID */
+	  } /* end if a $-token */
+
+          else
+	  {
+            fprintf(outptr, "%s", temptr->str);	
+	  }	
+	}
+
+
+	else if (type == FENCE)
+        {
+          if (temptr->str[0] == '$')
+    	  {
+	    /*
+	     *  Get associated attribute for this graphic object.
+   	     */
+
+	    in_grid.objid = COMP_ENV[i].obj_id.objid;
+	    in_grid.osnum = COMP_ENV[i].obj_id.osnum;
+	    ACreturn_diowner(&in_grid, &out_grid);
+	
+	    if (out_grid.objid != NULL_OBJID)
+	    {
+	      status = ci$send(msg = message NDmacro.ACgive_structure
+				 (&msg,     	    // return code  
+				  NULL,     	    // don't use it 
+				  &(temptr->str[1]), // name of attribute 
+				  &rst,     	    // returned value 
+				  &mod_env),	    // mod env (not used 
+		      targetid = out_grid.objid,
+		      targetos = out_grid.osnum);
+
+	      if(!(status & 1))
+ 	      {
+	        printf("error in message send\n");
+	        fprintf(errptr, 
+		  "element %d, attribute %s:  ERROR IN MESSAGE SEND\n", 
+		  (int)COMP_ENV[i].obj_id.objid, temptr->str);
+              }
+
+              else if(!(msg & 1))
+              {
+	        fprintf(errptr, "element %d, attribute %s: NO SUCH ATTRIBUTE\n", 
+			(int)COMP_ENV[i].obj_id.objid, temptr->str);
+              }
+ 
+   	      else if(rst.type == double_type)
+ 	      {
+	        fprintf(outptr, "%.2f", rst.var.root_pm_st.value);
+              }
+              else if(rst.type == text_type)
+              {
+	        fprintf(outptr, "%s", rst.var.text_st.text_string);
+              }
+              else
+              {
+		;
+              }
+	    } /* end if out_grid.objid != NULL_OBJID */
+	  }  /* end if a $-token */
+          else
+	  {
+            fprintf(outptr, "%s", temptr->str);	
+	  }	
+	}
+	
+	else 
+	{
+	  fprintf(errptr, "NO SUCH TYPE");
+	  printf("Exiting with errors . . . .\n");
+	  exit;
+	}
+        temptr = temptr->next;
+
+      }
+    }     /* end for each object */
+
+
+
+
+
+    /*
+     * Free up space used by queue.
+     */
+
+
+    temptr = front;
+    while (front != NULL)
+    {
+      front = front->next;
+      free(temptr);
+      temptr = front;
+    }
+
+  /*
+   *  Reset queue, counters, and dollar-mode for next read from file 
+   */
+  front = NULL;
+  rear = NULL;
+  temptr = (struct node *)malloc(sizeof(struct node));
+  temptr->next = NULL;
+  strcpy(temptr->str, "");
+
+  i = 0;
+  j = 0;
+  dollar_mode = 0;
+
+  }    /* end while not at end of input file */
+
+  fclose(inptr);
+  fclose(outptr);
+}

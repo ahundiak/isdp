@@ -1,0 +1,243 @@
+/************************************************************************/
+/*                                                                      */
+/*  Program: boolean.u              Macro: ems$boolean			*/
+/*                                                                      */
+/*  Defined in: EMSascmacros.h                                          */
+/*                                                                      */
+/*  Comments  : This macro is used to obtain Union, Intersection and 	*/
+/*	Difference of Solids, Surfaces and Curves.  Cannot combine 	*/
+/*	Solids, Surfaces and Curves.  While a Union is possible on many */
+/*	objects, Intersection is possible on any 2 objects only and 	*/
+/*	Difference allows several objects to be hole part while allowing*/
+/*	only one object as area part.					*/
+/*                                                                      */
+/************************************************************************/
+
+#include <stdio.h>
+#include "ciminimum.h"
+#include "cimacros.h"
+#include "ci_easy.h"
+#include "go.h"
+#include "grdpbmacros.h"
+#include "dpmacros.h"
+#include "lcdef.h"
+#include "exdef.h"
+
+#include "EMSascmacros.h"
+#include "EMSasnuc.h"
+#include "EMSasopts.h"
+#include "emsbool.h"
+
+#define  UNION 0
+#define  INTERSECTION 1
+#define  DIFFERENCE 2
+
+extern GRclassid OPP_GRcurve_class_id;
+extern GRclassid OPP_EMSsubbs_class_id;
+extern GRclassid OPP_EMSsurface_class_id;
+
+extern	int	GRdpb_get();
+
+main ()
+{
+    /*Declare variables here : */
+    struct GRvg_construct    const_list;
+    struct GRmd_env          obj_env;
+    struct IGRdisplay        disp_buffer;
+
+    GRobjid                  obj_ids[30];
+    GRobjid                  tmp_objid;
+    GRobjid                  res_obj;
+
+    IGRboolean                trimming_required;
+    IGRshort                 disp_level;
+    IGRboolean               assoc_placement;
+    IGRushort                options;
+    IGRpoint                 start_pt;
+    IGRpoint                 mid_pt;
+    IGRpoint                 end_pt;
+    IGRint                   bool_type,sts,num_bytes,opnd_count,res;
+    IGRint                   num_opnds;
+    IGRlong                  msg_loc, nbytes_ret;
+    IGRchar                  prompt_str[50];
+
+    enum EMSbooltype         boolean_type;
+    OM_S_CLASSLIST           elig_classes;
+    GRclassid                eli_classes[3];
+
+    elig_classes.w_count = 3;
+    eli_classes[0] = OPP_GRcurve_class_id;
+    eli_classes[1] = OPP_EMSsubbs_class_id;
+    eli_classes[2] = OPP_EMSsurface_class_id;
+    elig_classes.w_flags = OM_CLST_subclass;
+    elig_classes.p_classes = eli_classes;
+
+    /*End of variable declarations */
+    
+    message (" Boolean Opearation ") ;
+
+    ci$get ( value = bool_type,
+             prompt = "Union = 0; Intersection = 1; Difference = 2"
+           );
+
+    if (bool_type == UNION)
+    {
+        message (" Union of Curves/Surfaces/Solids ") ;
+        boolean_type = EMSbool_union;
+        ci$locate ( obj              =&obj_ids[0],
+		    md_env           = &obj_env,
+	            prompt           ="Identify curve/surface/solid",
+	            acc_prompt       ="Accept/Reject ",
+	            relocate_prompt  ="Element not Found",
+		    owner_action     = LC_RIGID_COMP | LC_FLEX_COMP,
+                    eligible_classes = &elig_classes,
+                    response         = &res
+	          );
+        if (res == EX_RJT_MOVEON)
+            exit;
+        opnd_count = 1;
+        while (1)
+        {
+           if ( opnd_count == 1)
+                strcpy ( prompt_str,"Identify next surface/solid/Reject");
+           else
+                strcpy ( prompt_str,"Identify next surface/solid/Moveon");
+
+           ci$locate ( obj            = &tmp_objid,
+	               prompt         = prompt_str,
+	               acc_prompt     = "Accept/Reject ",
+	               relocate_prompt= "Identify curve/surface/solid",
+		       owner_action   = LC_RIGID_COMP | LC_FLEX_COMP,
+                       eligible_classes = &elig_classes,
+                       response       = &res
+	             );
+           if( res == EX_DATA) 
+           {
+	       obj_ids[opnd_count]=tmp_objid;
+               opnd_count = opnd_count + 1;
+           }
+	   else if ( res == EX_RJT_MOVEON )
+		break;
+        }
+	num_opnds = opnd_count;
+	if ( num_opnds < 2 )
+	     exit;
+     }
+     else if (bool_type == INTERSECTION )
+     {
+        message (" Intersection of 2 Curves/Surfaces/Solids ") ;
+        boolean_type = EMSbool_intersect;
+        ci$locate ( obj              =&obj_ids[0],
+		    md_env           = &obj_env,
+	            prompt           ="Identify curve/surface/solid",
+	            acc_prompt       ="Accept/Reject ",
+	            relocate_prompt  ="Element not Found",
+		    owner_action     = LC_RIGID_COMP | LC_FLEX_COMP,
+                    eligible_classes = &elig_classes,
+                    response         = &res
+	          );
+        if (res == EX_RJT_MOVEON)
+            exit;
+
+           ci$locate ( obj              = &obj_ids[1],
+	               prompt           = "Identify next Element/Moveon",
+	               acc_prompt       = "Accept/Reject ",
+	               relocate_prompt  = "Identify curve/surface/solid",
+		       owner_action     = LC_RIGID_COMP | LC_FLEX_COMP,
+                       eligible_classes = &elig_classes,
+                       response         = &res
+	             );
+	num_opnds = 2;
+	if ( num_opnds < 2 )
+	     exit;
+     }
+     else if (bool_type == DIFFERENCE )
+     {
+        message (" Difference of Curves/Surfaces/Solids ") ;
+        boolean_type = EMSbool_difference;
+        ci$locate ( obj              =&obj_ids[0],
+		    md_env           = &obj_env,
+	            prompt           ="Identify curve/surface/solid(area part)",
+	            acc_prompt       ="Accept/Reject ",
+	            relocate_prompt  ="Element not Found",
+		    owner_action     = LC_RIGID_COMP | LC_FLEX_COMP,
+                    eligible_classes = &elig_classes,
+                    response         = &res
+	          );
+        if (res == EX_RJT_MOVEON)
+            exit;
+        opnd_count = 1;
+        while (1)
+        {
+           if ( opnd_count == 1)
+                strcpy ( prompt_str,"Identify next surface/solid(hole part)/Reject");
+           else
+                strcpy ( prompt_str,"Identify next surface/solid(hole part)/Moveon");
+
+           ci$locate ( obj            = &tmp_objid,
+	               prompt         = prompt_str,
+	               acc_prompt     = "Accept/Reject ",
+	               relocate_prompt= "Identify curve/surface/solid",
+		       owner_action   = LC_RIGID_COMP | LC_FLEX_COMP,
+                       eligible_classes = &elig_classes,
+                       response       = &res
+	             );
+           if( res == EX_DATA) 
+           {
+	       obj_ids[opnd_count]=tmp_objid;
+               opnd_count = opnd_count + 1;
+           }
+	   else if ( res == EX_RJT_MOVEON )
+		break;
+        }
+	num_opnds = opnd_count;
+	if ( num_opnds < 2 )
+	     exit;
+     }
+
+     num_bytes = sizeof(struct IGRdisplay);
+     gr$get_active_display ( msg = &msg_loc, sizbuf = &num_bytes,
+			     nret= &nbytes_ret, buffer = &disp_buffer );
+     gr$get_active_level   ( buffer = &disp_level );
+     
+     const_list.msg        = &msg_loc;
+     const_list.env_info   = &obj_env;
+     const_list.display    = &disp_buffer;
+     const_list.properties = GRIS_LOCATABLE | GRIS_DISPLAYABLE;
+     const_list.newflag    = FALSE;
+     const_list.level      = disp_level;
+     const_list.class_attr = NULL;
+     const_list.name       = NULL;
+     const_list.geometry   = NULL;
+
+     gr$get_associative_flag ( buffer = &assoc_placement );
+     
+     if ( ! assoc_placement )
+          options = EMSasconst_notassociative;
+     else
+          options = NULL;
+ 
+     sts = ems$boolean( msg               = &msg_loc,
+                        num_opnds         = num_opnds,
+                        opnd_info         = &obj_ids[0],
+                        bool_type         = boolean_type,
+		        options           = options,
+                        construction_list = &const_list,
+                        resultant_obj     = &res_obj);
+     if (!(sts & msg_loc & 1)) goto wrapup;
+/*
+     dp$update ( msg   = &msg_loc);
+*/
+     status(" ");
+     exit;
+wrapup:
+       if ( bool_type == UNION )
+            status(" Union Operation failed ");
+       else if ( bool_type == INTERSECTION )
+            status(" Intersection Operation failed ");
+       else if ( bool_type == DIFFERENCE )
+            status(" Difference Operation failed ");
+
+       status(" ");
+       exit;
+}

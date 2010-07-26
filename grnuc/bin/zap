@@ -1,0 +1,150 @@
+USAGE="usage: zap [-?][-f ?] [-f filelist]][-p pair] [-e exec]
+                  [-m] [-d] shlibpath
+
+ Zap the Grnuc shared library header information 
+   
+       -?           Display help for this command
+       -f ?         Display the default file list
+       -f filelist  Override the default file list to be modified with
+                    filelist. (Each entry in filelist must be seperated
+       -p pair      Override the path for a single file by specifiying
+                    a filename,path pair.
+       -e exec      The name of the executable to zap. The default executable
+                    name is $PWD/Grnuc
+       -m           The name of the shared libraries that are missing. If
+                    the executable fails to execute due to missing shared
+                    libraries,  this switch will indicate which library
+                    is missing.
+       -d           Dump the shared library section section. The same as
+                    the UNIX dump -L command.     
+       shlibpath    The new path for the shared libraries.
+
+       Example:
+
+         zap /usr/v1.2.0/shlib 
+                                    ;Direct the Grnuc executable to look for
+                                    ;all libraries in the default file list
+                                    ;in /usr/v1.2.0/shlib
+
+         zap -p libexnuc_s,/usr/shlib /usr/v1.2.0/shlib 
+                                    ;Direct the Grnuc executable to look for
+                                    ;all libraries in the default file list
+                                    ;in /usr/v1.2.0/shlib execpt for libexnuc_s
+                                    ;Look for libexnuc_s in /usr/shlib
+
+         zap -f libGRco_s,libGRgr_s /usr/v1.2.0/shlib
+                                    ;Direct the Grnuc executable to look for
+                                    ;libGRco_s and libGRgr_s 
+                                    ;in /usr/v1.2.0/shlib
+"
+
+deflist=" \
+ coraster_s \
+ libGRco_s \
+ libGRgr_s \
+ raster_s \
+ bssf_s \
+ bscv_s \
+ bsut_s \
+ bsma_s \
+ libexnuc_s \
+ "
+
+defexectozap=$PWD/Grnuc
+
+set -- `getopt f:p:e:dm $*`
+if [ $? != 0 ]
+then
+   echo "$USAGE"
+   exit 2
+fi
+
+echo "args are $*"
+
+flist="$deflist"
+exectozap="$defexectozap"
+ppairlist=""
+dswtch=""
+mswtch=""
+
+for i in $*
+do
+   case $i in
+    -f) :
+          if [ "$2" = "?" ]
+          then
+            echo "$deflist"
+          else
+           flist=`echo "$2" | sed 's/,/ /g'`
+          fi
+          shift 2
+        : ;;
+
+    -p) :
+          ppairlist="$ppairlist $2"
+          shift 2
+        : ;;
+
+    -e) :
+          exectozap="$2"
+          shift 2
+        : ;;
+
+    -d) :
+          dswtch="y"
+          shift 1
+        : ;;
+
+    -m) :
+          mswtch="y"
+          shift 1
+        : ;;
+
+    --) :
+          shift
+        : ;;
+   esac
+done
+
+if [ "$dswtch" != "" ]
+then
+  dump -L $exectozap
+fi
+
+if [ "$mswtch" != "" ]
+then
+  echo "Looking for missing shared libraries in $exectozap "
+  shliblist=`dump -L $exectozap | tail +5 | sed 'y/	/ /'`
+  for shlib in $shliblist
+  do
+    if [ -f "$shlib" ]
+    then
+      :
+    else
+      echo "ERROR: Missing $shlib"
+    fi
+  done
+fi
+
+fpath=$1
+
+if [ "$flist" != "" -a "$fpath" != "" ]
+then
+  echo "Modifying $exectozap"
+  for i in $flist
+  do
+    fname=`basename $i`
+    mls -q -l $fname:${fpath}/$fname $exectozap
+    dump -L $exectozap | grep "$fname"
+  done
+fi
+
+for pair in $ppairlist
+do
+  echo "Modifying $exectozap with $pair"
+  pname=`echo "$pair" | cut -d',' -f1 `
+  ppath=`echo "$pair" | cut -d',' -f2 `
+  fname=`basename $pname`
+  mls -q -l $fname:${ppath}/$fname $exectozap
+  dump -L $exectozap | grep "$fname"
+done
