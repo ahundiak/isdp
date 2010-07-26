@@ -1,4 +1,0 @@
-DATABASE training12
-
-FUNCTION VDSdummy ()
-END FUNCTION

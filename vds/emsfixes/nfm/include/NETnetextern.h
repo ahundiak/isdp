@@ -1,1 +1,0 @@
-extern NETnet_buf_status	net_buf_status;
