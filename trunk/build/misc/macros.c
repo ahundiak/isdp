@@ -6,6 +6,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <values.h>
 
 int main(int argc, char** argv)
 {
@@ -92,6 +93,8 @@ int main(int argc, char** argv)
 #else
   printf("X11 Not defined\n");
 #endif
+
+printf("MAXINT %ld %ld\n",HIBITI,MAXINT);
   
   /*
 
