@@ -1,9 +1,9 @@
 
 cd $MODEL
 
-#find ./src* -name '*.S' -exec ln {} spec \;
-#find ./ve -name '*.S' -exec ln {} spec \;
-#find ./hsurf -name '*.S' -exec ln {} spec \;
+find ./src* -name '*.S' -exec ln {} spec \;
+find ./ve -name '*.S' -exec ln {} spec \;
+find ./hsurf -name '*.S' -exec ln {} spec \;
 
 cd $MODEL/config/english/messages/src
 necho "\n------------------ config/english/messages/src ---------------------\n"
