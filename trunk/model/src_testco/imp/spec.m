@@ -14,7 +14,6 @@ $(EXNUC)/include
 $(GRNUC)/include
 $(BS)/include
 $(BS)/include/prototypes
-$(BS)/include/prototypes
 $(INGRHOME)/include/xc
 #if defined (XGL)
 $(XGLHOME)/include

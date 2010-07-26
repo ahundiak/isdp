@@ -1,6 +1,6 @@
 /* ###################   APOGEE COMPILED   ################## */
 class implementation ECshowSSI;
-
+#if 0
 /*
 
 HISTORY
@@ -15,6 +15,11 @@ HISTORY
 11/19/86 : jBk : Genesis.
 
 */
+#endif
+
+%safe
+#include <math.h>
+%endsafe
 
 #include "EMS.h"
 #include "EC_E.h"
@@ -22,10 +27,6 @@ HISTORY
 #include "EC_M.h"
 #include "EC_I.h"
 #include "EC_P.h"
-
-%safe
-#include <math.h>
-%endsafe
 
 #include <stdio.h>
 #include "EMSmsgdef.h"

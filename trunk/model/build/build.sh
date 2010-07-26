@@ -33,3 +33,5 @@ done
 
 # rm -f $WORKDIR/newdelfiles
 copyspecial.sh
+
+checkmk.sh

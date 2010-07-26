@@ -6,12 +6,12 @@ OMCPP
 $(EXTARG)/bin/omcpp
 INCLUDE
 $(INGRHOME)/include
-$(GRNUC)/unix_include/$(CPUTYPE)
 $(XINC)
 $(MODEL)/include
 $(MODEL)/src_path/include
 $(EXNUC)/include
 $(GRNUC)/include
+$(GRNUC)/unix_include/isl
 $(BS)/include
 $(BS)/include/prototypes
 SPEC

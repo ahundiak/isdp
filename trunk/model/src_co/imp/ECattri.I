@@ -19,7 +19,6 @@
  Sudha   06/02/93        modified to include for BSprototype headers
 
  */
-
 class implementation ECattr;
 
 
