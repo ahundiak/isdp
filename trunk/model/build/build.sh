@@ -21,3 +21,14 @@ do
   pwd
   grmake -rk > /tmp/bldlog 2>&1
 done
+
+# checkspec_all.sh > /tmp/bldlog 2>&1
+MAKELIST=$MODEL/build/makelist
+
+for file in `cat $MAKELIST` src_stub
+do
+  cd $MODEL/$file
+  checkspec.sh >> /tmp/bldlog 2>&1
+done
+
+# rm -f $WORKDIR/newdelfiles
