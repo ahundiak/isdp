@@ -32,3 +32,4 @@ do
 done
 
 # rm -f $WORKDIR/newdelfiles
+copyspecial.sh
