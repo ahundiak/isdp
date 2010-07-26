@@ -44,8 +44,13 @@ $(EXNUC)/include
 SOURCE=mkmk
 mkmk.c
 
+/* XXX - ah 
+ * The second define did not have SUNOS in it, 
+  * not sure how it worked unless CLIX or IRIX is getting defined somewhere
+*/
+
 #if defined(CLIX) || defined(SUNOS) || defined(IRIX)
-#if defined(CLIX) || defined(IRIX)
+#if defined(CLIX) || defined(SUNOS) || defined(IRIX)
 EXEC=mkmk
 $(TARGET)/bin/mkmk
 
@@ -56,8 +61,6 @@ DEPLIB=mkmk
 $(TARGET)/bin/mkmklib.a
 
 LINKLIB=mkmk
--lPW
--lmalloc
 #if defined(CLIX)
 -lg
 #endif
