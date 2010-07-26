@@ -1,0 +1,124 @@
+#!/bin/ksh
+
+# Name
+#	ocfiles	- Object Compiler for a set of files
+#
+# Synopsis
+#	ocfiles compiler compiler_options file [file...]
+#
+# Example
+#	$ ocfiles opp -l -I$BS/include -I$EXNUC/include -I$GRNUC/include \
+#		-I$EXNUC/spec -I$GRNUC/spec -DX11 -DINGR -DDEBUG=1 \
+#		file1.I file2.I file3.I
+#
+# Description
+#	This script uses the specified preprocessor or compiler on a set
+#	of files.  If the compiler fails on a particular file, then the
+#	script attempts to restart the compile with the next file in the
+#	set.
+#
+# Notes
+#	This script is primarily intended for use in conjunction with
+#	the FAST option available through makemake.
+#
+# History
+#	mrm	07/22/92	creation
+
+
+# make a stab a command line validation
+if [ $# -lt 2 -o $1 = "-?" ]
+then
+	echo "Usage: $0 compiler compiler_options file [file...]"
+	exit
+fi
+
+# pick off the compiler
+COMPILER=$1
+if [ ! $(whence "$COMPILER") ]
+then
+	echo $COMPILER not found
+	exit
+else
+	shift
+fi
+
+# pick off the compiler options
+for file in $*
+do
+	case $file in 
+		-*)	COMPILER_OPTIONS="$COMPILER_OPTIONS $1"; shift;;
+		*)	Files="$Files $file"; shift;;
+	esac
+done
+
+# check on which compiler is to be used - needed for error recovery
+if [ "$(basename $COMPILER)" = "opp" ]
+then
+	CurrentTag=I
+	TargetTag=c
+elif [ "$(basename $COMPILER)" = "cc" -o "$(basename $COMPILER)" = "acc" ]
+then
+	CurrentTag=c
+	TargetTag=o
+else
+	echo "Error figuring TargetTag"
+	exit
+fi
+
+# create a unique logfile
+Logfile=${TMPDIR:-/usr/tmp}/$(basename $0).$$
+touch $Logfile
+[ -n "$VERBOSE" ] && echo $Logfile
+
+# create a file to use as an error flag
+Flagfile=${Logfile}.e
+
+# loop until all files are processed
+while [ -z "$Finished" ]
+do
+	# invoke the compiler
+	[ -n "$VERBOSE" ] && echo $COMPILER $COMPILER_OPTIONS $Files
+	(
+		if $COMPILER $COMPILER_OPTIONS $Files 2>&1
+		then
+			true
+		else
+			touch $Flagfile
+		fi
+	) | tee -a $Logfile
+
+	# check the return code
+	if [ ! -f $Flagfile ]
+	then
+		Finished=True
+	else
+		# clear the error flag
+		rm -f $Flagfile
+
+		# figure out which file failed
+		ErrorFile=$(awk -F: <$Logfile '
+				/\\*.'$CurrentTag':$/ { ErrorFile = $1 } 
+				END {print ErrorFile}')
+
+		# build a list of files not yet processed
+		found="NotYet"
+		NewList=""
+		for file in $Files
+		do
+			[ "$file" = "$ErrorFile" ] && found="Yes"
+			[ "$found" = "PastIt" ] && NewList="$NewList $file"
+			[ "$found" = "Yes" ] && found="PastIt"
+		done
+
+		# check whether any files are left
+		if [ -z "$Files" ]
+		then
+			Finished=True
+		else
+			Files="$NewList"
+		fi
+	fi
+done
+
+# remove temporary files
+rm -f $Logfile $Flagfile

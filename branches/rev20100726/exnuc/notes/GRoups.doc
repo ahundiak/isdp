@@ -1,0 +1,607 @@
+from    : Henry BEQUET 
+          Jimmy DODD
+to      : Joyce HOWELL
+subject : The group sub-system.
+          Programmer Perception.
+date    : 5/13/1988 (revised : 00/00/1988)
+
+
+   This document describes the protection mechanism provided by the group
+sub-system.  The protections are handled on a group basis.  There are three
+kinds of groups : public, read only and private (no read, no write).  Objects
+that are instances of a sub-class of GRoups inherit the full power of the
+group protection mechanism.  Applications have the ability to create groups,
+to give a password to a group, to change the password of a group and to change
+the group of an object.  See the directory sub-system for an example of how
+the group sub-system may be used.
+
+   The user perception (commands and forms) of the groups is still under 
+discussion.
+
+
+0. Introduction
+                            
+1. Programmer Perception
+
+   1.1. The Class GRoups
+
+   1.2. Operations on GRoups
+
+        1.2.1. The messages
+
+               1.2.1.1. Find the group of an object
+               1.2.1.2. Change the group of an object
+               1.2.1.3. Validate an operation
+        
+        1.2.2. The Macros
+
+               1.2.2.1. Create a group
+               1.2.2.2. Change the password of group
+               1.2.2.3. Validate an operation
+               1.2.2.4. Change the current group
+               1.2.2.5. Display the current group
+               1.2.2.6. Miscellaneous
+
+        1.2.3. Error Codes
+
+
+
+2. Appendix
+
+   2.1. Programming examples
+
+        2.2.1. Create a group
+        2.2.2. Change the password of a group
+        2.2.3. Validate an operation
+        2.2.4. Change the group of an object
+
+
+0. Introduction
+   ------------
+
+   The groups are identified by name or by index.  The group names are
+stored in the directory :groups.  The group index is the position (starting
+at 0) of the name in that directory.  There are three kinds of groups :
+private, public and read/only.  Each object that is an instance of a
+sub-class of GRoups has a group index in its instance data.  This group
+index is the group of the object.
+   A current group is used to validate the operations depending on the
+granted permissions.  If an operation needs to be validated for an object,
+the message GRoups.validate is sent to the object.  The type of the opera-
+tion (read or write) is one of the arguments of the message validate.
+   The following procedure is used for the validation.
+
+
+        If the group of the object is the current group
+        then
+          the operation is valid
+        else
+          if the type of the operation is read
+          then
+            if the group of the object is a private group
+            then
+              the operation is NOT valid
+            else
+              the operation is valid
+          else
+            if the group of the object is public
+            then
+              the operation is valid
+            else
+              the operation is NOT valid
+
+
+   When the group of the object is the current group, the operation is 
+always valid.  To perform write operations on protected groups (read/only
+and private), the current group MUST be the group of the object.  It is
+possible for an application to change the current group.  But as soon as a
+password is attached to a group, it has to be specified to make that group
+the current one.
+
+
+1. Programmer perception
+   ---------------------
+
+   1.1. The Class GRoups
+        ----------------
+
+        In order to inherit the protection scheme offered by the group
+sub-system, a sub-class of GRoups must be created.  The groups are
+identified by name or by index.  The index of a group is its position
+in the directory :groups.  The group index is the only instance data
+of the class GRoups.
+
+        The specification file of the class GRoups looks like :
+
+
+class specification GRoups ( 0:0 ) of Root;
+
+  instance GRoups
+  {
+    GRchar index	/* Group index */;
+  };
+
+
+ message give_group ( GRint *status; GRint *group_ind );
+   /*
+      This message is used to return my group index.
+
+      Argument description :
+      --------------------
+
+        GRint *status          : the returned status			(OUT)
+                                   GR_S_SUCCESS : successful operation
+                                   GR_E_ABORT   : group error
+
+        GRint *group_ind       : the group index			(IN)
+   */
+
+
+ message change_group ( GRint *status; GRchar *passwd );
+   /*
+      This message is used to change the group to the current one.
+
+      Argument description :
+      --------------------
+
+        GRint  *status         : the returned status			(OUT)
+                                   GR_S_SUCCESS : successful operation
+				   GR_E_PASSWD  : the passwd is wrong
+                                   GR_E_ABORT   : group error
+
+        GRchar *passwd	       : the previous group passwd		(IN)
+   */
+
+
+ message validate ( GRint *status; GRchar type; GRint groupind );
+   /*
+      This message is used to validate an operation depending on my group
+      and the active group.
+
+      Argument description :
+      --------------------
+
+        GRint  *status         : the returned status			(OUT)
+                                   GR_S_SUCCESS   : valid operation
+				   GR_E_PRIVATE   : the group is private
+			           GR_E_READ_ONLY : the group is read only
+                                   GR_E_ABORT     : group error
+
+        GRchar type	       : the type of the operation (GRdef.h)	(IN)
+
+        GRint  groupind	       : the index of the group in which the
+				 operation will be validated (GRdef.h)	(IN)
+   */
+
+
+end specification GRoups;
+
+
+
+        1.2.1. The messages
+
+               1.2.1.1. Find the group of an object
+
+                        The group of an object may be retrieved by sending the
+message GRoups.give_group.  This message returns the group index (the position
+of the group name in the directory :groups).  The name of the group may be
+retrieved by the di$index macro.  See the directory sub-system for more
+information.
+
+               1.2.1.2. Change the group of an object
+
+                        The group of an object may be changed to the current
+one by sending the GRoups.change_group command.  However, if the group that
+contains the object has a password, this password must be provided.
+
+
+               1.2.1.3. Validate an operation
+
+                        An operation may be validated by sending the
+GRoups.validate command.  The validation will be done depending on the
+current group, the group of the object and the type of the operation.
+The valid types of operations are :
+
+                                   - GR_R_READ
+                                     if the operation is a read operation
+
+                                   - GR_R_WRITE
+                                     if the operation is a write operation
+
+
+
+        1.2.2. The Macros
+
+               The macros of the group sub-system are in the file
+GRprims.h :
+
+
+/*---------------------------------------------------------------------------*/
+
+
+/* This macro is used to display an error message corresponding to
+   the specified status.
+
+   return status :
+                  GR_S_SUCCESS : successful operation
+
+      Argument description :
+      --------------------
+
+        GRint  sts             : the status				(IN)
+        GRchar *comment        : a comment to be printed with  		(IN)
+                                 the error message
+*/
+
+#omdef gr$report_error ( sts, comment = NULL )
+       GRreport_error ( sts, comment )
+#endomdef
+
+
+/*---------------------------------------------------------------------------*/
+
+
+/* This macro is used to add a group name in the GRoup sub-system 
+
+   return status :
+                 GR_S_SUCCESS  : successful operation
+                 GR_E_NAME_DUP : name duplicated
+                 GR_E_OVFLOW   : overflow error
+                 GR_E_ABORT    : GRoup error
+
+      Argument description :
+      --------------------
+
+        GRchar *groupname      : the name of the group       		(IN)
+        
+        GRint  type            : the type of the group			(IN)
+
+        GRchar *passwd	       : the password of the group		(IN)
+*/
+
+#omdef gr$add_group ( groupname, 
+                      type,
+                      passwd )
+       GRadd_group ( (groupname), (type), (passwd)  )
+#endomdef
+
+
+/*---------------------------------------------------------------------------*/
+
+
+/* This macro is used to remove a group name from the GRoup sub-system 
+
+   return status :
+                  GR_S_SUCCESS : successful operation
+                  GR_E_OVFLOW  : overflow error
+                  GR_E_ABORT   : GRoup error
+
+      Argument description :
+      --------------------
+
+        GRchar *groupname      : the name of the group to be removed	(IN)
+*/
+
+#omdef gr$rm_group ( groupname )
+       DIR_W_NOT_IMPL
+#endomdef
+ 
+
+/*---------------------------------------------------------------------------*/
+
+
+/* This macro is used to validate an operation.
+
+   return status :
+                GR_S_SUCCESS   : operation is valid
+                GR_E_PRIVATE   : the group is private
+                GR_E_READ_ONLY : the group is read only
+                GR_E_ABORT     : GRoup error
+
+      Argument description :
+      --------------------
+
+	GRint type	       : the type of the operation		(IN)
+
+        GRint groupind         : the group index in which the
+	                         operation will be validated            (IN)
+*/
+
+#omdef gr$validate (  type,
+                      groupind = me->index )
+       GRvalidate ( (type), (groupind) )
+#endomdef
+ 
+
+/*---------------------------------------------------------------------------*/
+
+
+/* This macro returns the current GRoup.  The name is returned in 
+   groupname, the objid in p_groupid and the osnum in p_osnum.  Note that
+   each argument may be NULL if no value has to be returned.
+
+   return status :
+                  GR_S_SUCCESS : successful operation
+                  GR_E_ABORT   : GRoup error
+
+      Argument description :
+      --------------------
+
+        GRchar     *groupame   : the name of the current		(OUT)
+		                 GRoup
+
+        GRobjid    *p_groupid  : the current GRoup objid		(OUT)
+        
+        GRspacenum *p_osnum    : the current GRoup object		(OUT)
+                                 space number
+
+        GRint      *p_groupind : the current GRoup index		(OUT)
+        
+*/ 
+
+#omdef gr$pwg ( groupname  = NULL,
+                p_groupid  = NULL,
+                p_osnum    = NULL,
+                p_groupind = NULL )
+       GRpwg ( (groupname), (p_groupid), (p_osnum), (p_groupind) )
+#endomdef
+
+
+/*---------------------------------------------------------------------------*/
+
+
+/* This macro is used to change the current GRoup.  It may return the
+   osnum and objid of the new current GRoup.
+
+   return status :
+                  GR_S_SUCCESS : successful operation
+                  GR_E_OVFLOW  : overflow error
+                  GR_E_ABORT   : GRoup error
+
+      Argument description :
+      --------------------
+
+        GRchar     *groupname  : the name of the GRoup to be  		(IN)
+		                 the current one
+
+        GRchar     *passwd     : the passwd of the GRoup to be 		(IN)
+		                 the current one
+
+        GRspacenum *p_osnum    : the object space number of the   	(OUT)
+                                 new current GRoup
+
+        GRobjid    *p_groupid  : the new current GRoup objid		(OUT)
+        
+        GRint      *p_groupind : the new current GRoup index		(OUT)
+        
+*/
+
+#omdef gr$cg ( groupname,
+               passwd     = NULL,
+               p_osnum    = NULL,
+               p_groupid  = NULL,
+               p_groupind = NULL )
+       GRcg ( (groupname), (passwd), (p_osnum), (p_groupid), (p_groupind) )
+#endomdef
+
+
+/*---------------------------------------------------------------------------*/
+
+
+/* This macro is used to change the passwd of a group.
+
+   return status :
+                  GR_S_SUCCESS : successful operation
+                  GR_E_OVFLOW  : overflow error
+                  GR_E_ABORT   : GRoup error
+
+      Argument description :
+      --------------------
+
+        GRchar *groupname      : the name of the GRoup to be updated	(IN)
+
+        GRchar *old_passwd     : the name of the old group passwd	(IN)
+
+        GRchar *new_passwd     : the name of the new group passwd	(IN)
+
+*/
+
+#omdef gr$change_passwd ( groupname,
+                          oldpasswd,
+                          newpasswd );
+       GRchange_passwd ( (groupname), (oldpasswd), (newpasswd) )
+#endomdef
+
+
+/*---------------------------------------------------------------------------*/
+
+
+/* This macro is used to initialize the groups. 
+
+   return status :
+                   GR_S_SUCCESS - Always Successful
+
+
+      Argument description :
+      --------------------
+
+
+*/
+
+#omdef gr$init ()
+       GRinit  ()
+#endomdef
+
+
+/*---------------------------------------------------------------------------*/
+
+
+#endif
+
+
+               1.2.2.1. Create a group
+
+                        The gr$add_group macro can be used to create a new
+group.  The group name must be a non-hierarchical name, i.e. it cannot
+contain any directory separator character.  The type of the group must be
+public, read/only or private.  The specification of the password is
+optional.  A NULL pointer or a pointer to a NULL string is equivalent to
+no password.
+
+               1.2.2.2. Change the password of group
+
+                        The password of a group may be modified using the
+gr$change_passwd macro.  The group name must be specified.  The old pass-
+word or the new password may be NULL pointers or pointer to NULL strings.
+This means no password.
+
+
+               1.2.2.3. Validate an operation
+
+                        The macro gr$validate can be used to validate an
+operation.  The type of the operation must be either read or write.  The
+group index must be a valid group index.  See di$unindex (directory
+sub-system) to convert a group name into an index.
+
+
+               1.2.2.4. Change the current group
+
+                        The current group may be changed using the macro
+gr$cg.  A valid group name must be specified.  The password is required
+if the group has a password.  The group index may be inquired.  The group
+objid and object space number are for internal use only.
+
+
+               1.2.2.5. Display the current group
+
+                        The current group name and the current group index
+may be retrieved using the gr$pwg macro.  The group objid and object space
+number are for internal use only.
+
+
+               1.2.2.6. Miscellaneous
+
+                        The error codes returned by the group sub-system
+may be displayed using the gr$report_error macro.  The status returned by
+the group sub-system must be provided.  In addition, a comment may be
+printed.
+
+
+        1.2.3. Error Codes
+
+               The Error codes are defined in the file GRdef.h :
+
+#define GR_S_SUCCESS 	(SUCC)
+
+#define GR_E_ABORT      (ERRO | 0x210)
+#define GR_E_INVARG     (ERRO | 0x220)
+#define GR_E_OVFLOW     (ERRO | 0x230)
+#define GR_E_NAME_DUP   (ERRO | 0x240)
+
+#define GR_E_PERMISSION (ERRO | PERM)
+#define GR_E_PRIVATE	(ERRO | PERM | 0x210)
+#define GR_E_READ_ONLY	(ERRO | PERM | 0x220)
+#define GR_E_PASSWD	(ERRO | PERM | 0x230)
+
+#define GR_W_NAME_NOT_FOUND	(WARN | 0x200)
+#define GR_W_NOT_IMPL		(WARN | 0x220)
+
+/* Type of request */
+#define GR_R_READ	0
+#define GR_R_WRITE	1
+
+
+2. Appendix
+
+   2.1. Programming examples
+
+        2.2.1. Create a group
+
+               {
+		 GRint  type, status;
+		 GRchar name   [PATH_MAX],
+		        passwd [GR_passwd_max];
+
+		 /* initialize groupname, type, and passwd */
+		 ...
+
+                 status = gr$add_group ( groupname = name,
+			                 type      = type,
+			                 passwd    = passwd );
+                 if (status != GR_S_SUCCESS)
+                   gr$report_error ( sts = status,
+                                     comment = "gr$add_group is wrong" );
+	       }
+
+
+        2.2.2. Change the password of a group
+
+               {
+		 GRint  status;
+		 GRchar name [PATH_MAX],
+			old  [GR_passwd_max],
+			new  [GR_passwd_max];
+
+                 /* initialize groupname, old_passwd, and new_passwd */
+		 ...
+
+                 status = gr$change_passwd ( groupname  = name,
+			                     old_passwd = old,
+			                     new_passwd = new );
+                 if (status != GR_S_SUCCESS)
+                   gr$report_error ( sts = status,
+		                     comment = "gr$change_passwd is wrong" );
+               }
+
+
+        2.2.3. Validate an operation
+
+	       {
+                 GRint  type, groupind, status;
+		 GRchar name [PATH_MAX];
+
+                 /* initialize type and groupind */
+		 ...
+
+		 /* get the index number of the group */
+                 status = di$unindex ( dirname = GR_G_root, name = name,
+		                                         p_index = &groupind );
+                 if (status != DIR_S_SUCCESS)
+                   di$report_error ( sts = status,
+		                     comment = "di$unindex is wrong" );
+                 else
+		 {
+		   /* specify the type of operation to validate */
+                   status = gr$validate ( type = type, groupind = groupind );
+                   if (status != GR_S_SUCCESS)
+                     gr$report_error ( sts = status,
+		                       comment = "gr$validate is wrong" );
+		 }
+	       }
+
+
+        2.2.4. Change the group of an object
+
+	       {
+		 GRint      groupind, status;
+		 GRspacenum osnum;
+		 GRobjid    groupid;
+		 GRchar     name   [PATH_MAX],
+                            passwd [GR_passwd_max];
+
+		 /* initialize groupname and passwd */
+		 ...
+
+                 status = gr$cg ( groupname  = name,
+                                  passwd     = passwd,
+		                  p_groupid  = &groupid,
+                                  p_groupind = &groupind,
+		                  p_osnum    = &osnum );
+                 if (status != GR_S_SUCCESS)
+                   gr$report_error ( sts = status,
+		                     comment = "gr$cg is wrong" );
+	       }
+
+
+   2.2. Definitions
+
