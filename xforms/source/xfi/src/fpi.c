@@ -2,12 +2,17 @@
 /* fpi.c, $Revision: 1.27 $           */
 /***********************************************/
 
-#include "FImin.h"
-
+/* -------------------------
+ * 29 Jul 2010 - ah
+ * * Compile complaings about wchar_t
+ * Edited X11/Xlib.h per instruction in that file
+ */
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
 #include <sys/errno.h>
+
+#include "FImin.h"
 
 int errno; // 23 Mar 2010 - ah - guess we need this now
 

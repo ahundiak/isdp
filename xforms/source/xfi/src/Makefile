@@ -12,17 +12,18 @@
 
 
 #### Compiler and tool definitions shared by all build targets #####
-ISDP_C_CC	= cc
-ISDP_C_DEFINES	= -Di86pc -Di386 -DSYSV
-C_DEFINES	= $(ISDP_C_DEFINES) -DSHFONT -DNDEBUG
-ISDP_C_FLAGS	= -g -xCC -Xa -Kpic -m32
+# ISDP_C_CC	= cc
+# ISDP_C_DEFINES	= -Di86pc -Di386 -DSYSV
+# ISDP_C_FLAGS	= -Xc -xCC -xO1 -m32 -KPIC -features=no%conststrings -errfmt -w -g
+
 CC		= $(ISDP_C_CC)
+C_DEFINES	= $(ISDP_C_DEFINES) -DSHFONT -DNDEBUG
 CPPFLAGS	= -I../include -I../fs_include
-CFLAGS		= $(CPPFLAGS) $(ISDP_C_FLAGS) $(C_DEFINES)
+CFLAGS		= $(ISDP_C_FLAGS) -g $(C_DEFINES)
 
 
 # Define the target directories.
-ISDP_TARGET = $(HOME)/target
+ISDP_TARGET   = $(HOME)/target
 TARGETDIR     = $(ISDP_TARGET)/xforms/xfi
 TARGETDIR_OBJ = $(TARGETDIR)/obj
 TARGETDIR_LIB = $(TARGETDIR)/lib
