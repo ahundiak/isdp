@@ -35,3 +35,6 @@ done
 copyspecial.sh
 
 checkmk.sh
+
+maincompile.sh
+
