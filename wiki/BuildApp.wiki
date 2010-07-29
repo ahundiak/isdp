@@ -1,0 +1,139 @@
+#summary Building the application executable
+
+=== Background ===
+{{{
+We traditionally has a Model Executable which then dynamically loaded -p Vds
+Lot's of libraries linked to it.
+}}}
+
+=== Building ===
+{{{
+Made a directory under grnuc/app
+Copied in APP_main.C and compiled
+Then linked in libraries from /opt/ingr until got no unresolved symbols.
+Lot's of stubs were needed.
+Built new Makefile by hand just because existing one had way too many files and options.
+Still not quite right.  Changing APP_main.C does nt trigger a recompile.
+
+Brought in the opl generated files from grnuc.
+
+Needed to add _mcount, tried -xpg but -X11 would not link
+
+First attempt at starting up results in core dump in FI_enter (useing dbxtool);
+Rebuilt XFI and linked in.
+Splash screen started up.  Complained about
+/opt/ingr/grnucdp/config/dload/init/GRNUCver.so
+Redefining a global.  Only .so file for either exnucdp or grnucdp
+
+
+Took out GRNUCver.o but get unresolved symbols
+Added it back in and renamed grnuc/dload/init and got past it.
+
+Now we get:
+STUB hit for DLinitialize
+STUB hit for DPdlist_initialize
+%DLOAD-E-UNRESOLV, File not loaded due to 6 unresolved symbols.
+        pull_main
+        PALasfmwinevent
+        PALlist_notify_routine
+        OPP_EMSsurface_class_id
+        PALasfmbntevent
+        PALgetassocpos
+OM_construct_object_by_name <PDUstartup> error
+Error status = 2508072,
+OM-E-NOSUCHCLASS, No such class exists
+
+STUB hit for DLexit
+
+Trying to load some file but which one?
+
+Exnuc comes up clean
+Grnuc wants to load Pdu
+Pdu has an image and a bunch of patch files.  Too bad I don't have the source for it.
+
+It would appear that the startup stuff just reads in everything under dload/init then dload/patches
+
+Took pdu out of product_data.
+Exnuc starts up and allows creating a file.  No menus at all.
+Grnuc core dumps when creating a file
+
+Linked in dl.o, display list stuff, and no more core dump.
+Not getting any menus or palettes.
+
+Tried Model with linking anything
+Version read in ok
+crashed on xforms patch
+Still not getting any menus
+
+Emspp starts up menus and such
+
+Adjusted makefile to build Emspp directly with proper versioning.
+
+As soon as I click on a form field, crash.
+
+}}}
+=== Startup files ===
+{{{
+Looks like each executable (Exnuc/Grnuc/Model) has the same EXNUC_appl_version_id.
+Then each product get it's own: PROD_appl_version_id and PROD_class_definitions
+
+opl refapi.o generates
+}}}
+==== OMclassinit.C ====
+#define NULL 0
+#include "OMminimum.h"
+/* opl version 2.4.0 */
+OM_p_FUNCPTR OM_GA_class_definitions[]=
+ {
+  0
+ };
+int OM_Gi_number_of_defns=0;
+
+OMuword OPP_GRreffile_class_id = 65535;
+OMuword GRreffile_OPP_GRgetenvironment_method_index = 65535;
+}}}
+
+==== OMapplinit.C ====
+{{{
+opl -a makes a template
+grnuc and model have identical files as shown below
+exnuc builds one in the target directory
+again they all seem to be identical
+}}}
+{{{
+#define NULL 0
+#include "OMminimum.h"
+/* opl version 2.4.0 */
+#include "version.h"
+extern INGR_S_PRODUCT_DEF EXNUC_appl_version_id;
+
+INGR_p_PRODUCT_DEF OM_GA_appl_version[MAXNUMAPPVER]=
+ {
+  &EXNUC_appl_version_id,
+ };
+int OM_Gi_number_of_appl_ids=1;
+}}}
+
+==== OMprodinit.C ====
+{{{
+Similiar to OMapplinit but not quite the same.
+Struct has one but vds does not, has OMprodinit.C  STRUCTver.c
+{{{
+#define NULL 0
+#include "OMminimum.h"
+/* opl version 1.3.0 */
+#include "version.h"
+
+extern INGR_S_PRODUCT_DEF GRNUC_appl_version_id;
+
+INGR_p_PRODUCT_DEF Grnuc_appl_version[]=
+ {
+  &GRNUC_appl_version_id,
+  0
+ };
+OM_p_FUNCPTR Grnuc_class_definitions[]=
+ {
+  0,
+   0
+ };
+}}}
