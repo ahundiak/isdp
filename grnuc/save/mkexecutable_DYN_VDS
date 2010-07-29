@@ -1,0 +1,107 @@
+include $(PLATFORMMAKELIB)
+
+CC      = $(COMPILER)
+CFLAGS  = $(COMPOPT) -I$(EXNUC)/include -c
+
+#
+#   Standard target to link executable
+#
+$(EXECUTABLE): \
+$(LIBRARIES) \
+$(APP)/main.o \
+$(APP)/OMclass_init.o \
+$(APP)/OMprodinit.o \
+$(APP)/OMapplinit.o
+	@echo ""
+	@echo "#define exdatestr \"`date '+%d-%b-%Y %T %Z'`\"" > $(APP)/exdate.h
+	@echo "#define exverstr \"$(PRODUCT)\"" > $(APP)/exvers.h
+	@$(CC) $(CFLAGS) $(APP)/exvers.c
+	@echo "\n\n\n\t...link\n"
+	$(LD) $(ULIST) $(LDOPTS) -o $(EXECUTABLE) \
+		$(PLATFORMLIBS1) \
+		$(APP)/exvers.o \
+		$(APP)/OMclass_init.o \
+		$(APP)/MODELver.o \
+		$(VDS)/etc/dload/VDversion.o \
+		$(STRUCT)/etc/dload/STRUCTver.o \
+		$(ROUTE)/etc/dload/VRversion.o \
+		$(LOFT)/etc/dload/VLversion.o \
+		$(APP)/OMapplinit.o \
+		$(APP)/main.o \
+		$(LIBRARIES) \
+		$(NOTOPL) \
+		$(PLATFORMLIBS2) \
+                $(GRSTUBS)
+	@echo ""
+	@if test "${STRIP}" = "y"; \
+	then \
+	 make istrip; \
+	fi 
+	ls -ls $(EXECUTABLE)
+	@echo ""
+	@echo "$(EXECUTABLE) was linked with \n"
+	@banner $(LD)
+      
+
+#
+# KLUGED target to avoid opl
+#
+noopl:
+	$(APP_PRE_ACTION)
+	@touch -c $(APP)/OMclass_init.o
+	@touch -c $(APP)/OMapplinit.o
+	@make $(EXECUTABLE)
+	$(APP_POST_ACTION)
+
+#
+# Target to istrip the executable
+#
+istrip:
+	$(EXTARG)/bin/istrip -p $(EXNUC)/bin/ci.proto $(EXECUTABLE)
+
+#
+# Target to make main.o, on which the executable is dependent.
+#
+$(APP)/main.o:
+	make -f $(GRNUC)/makemain
+
+#
+# Target to make OMprodinit.o, on which the executable is dependent.
+#
+.PRECIOUS $(APP)/OMprodinit.o: $(LIBRARIES)
+	@echo "\n\n\n\t...make OMprodinit.o\n"
+	@$(EXTARG)/bin/omcpp -I$(EXNUC)/include $(APP)/OMprodinit.C > $(APP)/OMprodinit.c
+	@$(CC) $(CFLAGS) $(APP)/OMprodinit.c
+	@rm -f $(APP)/OMprodinit.c
+
+
+#
+# Target to make OMclass_init.o, on which the executable is dependent.
+#
+.PRECIOUS $(APP)/OMclass_init.o: $(LIBRARIES)
+	@echo "\n\n\n\t...opl\n"
+	@$(EXTARG)/bin/opl $(LIBRARIES)
+	@$(EXTARG)/bin/omcpp -I$(EXNUC)/include $(APP)/OMclass_init.C > $(APP)/OMclass_init.c
+	@if test "${SGI}" = "y"; \
+        then \
+  	  $(CC) -c -G 4 -I$(EXNUC)/include $(APP)/OMclass_init.c; \
+        else \
+	  $(CC) $(CFLAGS) $(APP)/OMclass_init.c; \
+        fi
+
+
+
+#
+# Target to make OMclass_init.o, on which the executable is dependent.
+#
+.PRECIOUS $(APP)/OMapplinit.o: $(LIBRARIES)
+	@echo "\n\n\n\t...opl -a\n"
+	@$(EXTARG)/bin/opl -a  $(LIBRARIES)
+	@$(EXTARG)/bin/omcpp -I$(EXNUC)/include $(APP)/OMapplinit.C > $(APP)/OMapplinit.c
+	@if test "${SGI}" = "y"; \
+        then \
+	  $(CC) -c -G 4 -I$(EXNUC)/include $(APP)/OMapplinit.c; \
+        else \
+          $(CC) $(CFLAGS)  $(APP)/OMapplinit.c; \
+        fi
+
