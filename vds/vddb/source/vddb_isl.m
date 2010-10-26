@@ -71,6 +71,8 @@ VDdbgFlags.c
 
 INCLUDE
 $BS/include
+$UMS/include
+$FORMS/include
 $EXNUC/include
 $GRNUC/include
 $NFMDP/include
