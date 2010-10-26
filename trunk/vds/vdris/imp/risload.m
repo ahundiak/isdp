@@ -90,6 +90,7 @@ $VDS/spec
 INCLUDE
 $FORMS/include
 $BS/include
+$FORMS/include
 $EXNUC/include
 $GRNUC/include
 $GRNUC/proto_priv
