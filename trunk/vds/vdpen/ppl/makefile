@@ -38,7 +38,7 @@
 target: pplmkfile \
 	mkfile
 	grmake -r -k -f mkfile
-	grmake -r -k -f pplmkfile
+#	grmake -r -k -f pplmkfile
 	@ldso   ${VDS_PATH}/lib/vdipen; \
 	if test ${ISDP_MAKE_SP} -eq 1; \
 	then \
