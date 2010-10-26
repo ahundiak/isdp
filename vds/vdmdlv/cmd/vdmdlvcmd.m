@@ -49,6 +49,8 @@ $(VDS)/lib/vdcmdlvcmd.o
 INCLUDE
 $(BS)/include
 $(BS)/include/prototypes
+$(FORMS)/include
+$(UMS)/include
 $(GRNUC)/src/assoc/include_priv
 $(EXNUC)/include
 $(GRNUC)/include
