@@ -206,6 +206,7 @@ IGRstat VDcvgWritePathArc(TVDcvgFileInfo *info, TGRbsp_curve *bsp)
   
   struct {
     IGRshort  flag;
+    IGRshort  quadx;
 
     Tptvec beg,mid,ene,cen,dir; // end is reserved
 
@@ -215,7 +216,6 @@ IGRstat VDcvgWritePathArc(TVDcvgFileInfo *info, TGRbsp_curve *bsp)
     IGRdouble bulge;
 
     IGRboolean opt;
-    IGRshort   quad;
     
     IGRint     large;  // True if > 180 degrees
     IGRint     sweep;  // 1 = Positive angle
@@ -250,7 +250,7 @@ IGRstat VDcvgWritePathArc(TVDcvgFileInfo *info, TGRbsp_curve *bsp)
   arc.opt = TRUE;
   BSangqdofpt(arc.opt,
 	      arc.cen.pt,arc.beg.pt,arc.mid.pt,NULL,
-	      arc.ene.pt,&arc.quad,&arc.angle,&rc);
+	      arc.ene.pt,&arc.quadx,&arc.angle,&rc);
 
   if (rc != BSSUCC) {
     printf("Problem with BSangqdofpt\n");
