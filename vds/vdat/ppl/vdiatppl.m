@@ -43,10 +43,10 @@ VDatNode.u
 VDatSets.u
 VDatLocate.u
 
-StagingTree.u
-StepTree.u
-PipeTree.u
-FabData.u
+/* SKIP PPL StagingTree.u */
+/* SKIP PPL StepTree.u */
+/* SKIP PPL PipeTree.u */
+/* SKIP PPL FabData.u  */
 
 FIstatus.u
 
