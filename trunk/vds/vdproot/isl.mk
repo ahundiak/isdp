@@ -59,4 +59,5 @@ EXdirent.h
 EXs5dir.h
 direct.h
 xgl/xgl.h
+bstring.h
 
