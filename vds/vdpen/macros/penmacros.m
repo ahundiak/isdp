@@ -32,6 +32,6 @@ pcgMacro.u
 penMacro.u
 #else
 COVDSpen.u
-penMacro.u
-pcgMacro.u
+/* SKIP PPL penMacro.u */
+/* SKIP PPL pcgMacro.u */
 #endif
