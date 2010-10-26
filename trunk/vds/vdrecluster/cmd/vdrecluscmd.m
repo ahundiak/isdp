@@ -53,6 +53,7 @@ $VDS/spec
 INCLUDE
 $BS/include
 $BS/include/prototypes
+$FORMS/include
 $EXNUC/include
 $GRNUC/include
 $GRNUC/src/assoc/include_priv
