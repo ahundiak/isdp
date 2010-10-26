@@ -53,6 +53,7 @@ $(VDS)/lib/vdimdlvfc.o
 INCLUDE
 $(BS)/include
 $(BS)/include/prototypes
+$(FORMS)/include
 $(GRNUC)/src/assoc/include_priv
 $(EXNUC)/include
 $(GRNUC)/include
