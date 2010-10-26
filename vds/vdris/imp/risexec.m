@@ -72,6 +72,7 @@ $MODEL/spec
 
 INCLUDE
 $BS/include
+$FORMS/include
 $EXNUC/include 
 $GRNUC/include
 $MODEL/include
