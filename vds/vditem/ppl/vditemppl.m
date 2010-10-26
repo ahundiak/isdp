@@ -46,7 +46,7 @@ VDit_vds.u
 
 VDit_attrs.u
 VDit_struct.u
-VDit_route.u
+/* SKIP PPL VDit_route.u */
 VDit_vds.u
 VDit_rem.u
 #endif
