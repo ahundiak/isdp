@@ -48,12 +48,12 @@ $GRNUC/spec
 $VDS/spec
 
 INCLUDE
-$INGRHOME/include
-$XINCL/include
-$EXNUC/include
 $BS/include
-$GRNUC/include
 $BS/include/prototypes
+$UMS/include
+$FORMS/include
+$EXNUC/include
+$GRNUC/include
 $GRNUC/proto_pub
 $GRNUC/proto_priv
 $VDS/include
