@@ -27,7 +27,7 @@
 # -------------------------------------------------------------------
 
 target: mkfile 
-	grmake -r -k -f mkfile
+#	grmake -r -k -f mkfile
 
 mkfile: vdloftppl.m
 	ksh ${VDS}/etc/bin/mkmkppl vdloftppl.m mkfile $(VDS)
