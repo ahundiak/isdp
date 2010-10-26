@@ -16,6 +16,8 @@ INCLUDE
 $EXNUC/include
 $GRNUC/include
 $BS/include
+$UMS/include
+$FORMS/include
 $MODEL/include
 $PDU/include
 $EMS/include
