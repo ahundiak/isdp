@@ -50,6 +50,7 @@ $VDS/spec
 INCLUDE
 $BS/include
 $BS/include/prototypes
+$UMS/include
 $EXNUC/include
 $GRNUC/include
 $MODEL/include
