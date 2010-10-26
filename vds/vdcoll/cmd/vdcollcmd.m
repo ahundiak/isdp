@@ -52,6 +52,8 @@ $(VDS)/lib/vdccollcmd.o
 INCLUDE
 $(BS)/include
 $(BS)/include/prototypes
+$(UMS)/include
+$(FORMS)/include
 $(GRNUC)/src/assoc/include_priv
 $(EXNUC)/include
 $(GRNUC)/include
