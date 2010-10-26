@@ -36,6 +36,7 @@ VDmeasOver.I
 
 INCLUDE
 $FORMS/include
+$UMS/include
 $BS/include
 $BS/include/prototypes
 $EXNUC/include
