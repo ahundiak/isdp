@@ -85,6 +85,7 @@ $VDS/include
 $VDS/vdinclude
 $(EXNUC)/include
 $(GRNUC)/include
+$(FORMS)/include
 $(BS)/include
 $(BS)/include/prototypes
 $(GRNUC)/proto_pub

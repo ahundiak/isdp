@@ -29,6 +29,6 @@ CCIOPT   -Xnoptrchk -Xnoargchk -m -q
 dim_forms.u
 toggle_term.u
 #else
-dim_forms.u
+/* PPL SKIP dim_forms.u */
 toggle_term.u
 #endif
