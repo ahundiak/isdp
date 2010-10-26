@@ -68,9 +68,9 @@ $PDU/spec
 $VDS/spec
 
 INCLUDE
-.
-/usr/include/sys
 $BS/include
+$FORMS/include
+$UMS/include
 $EXNUC/include
 $GRNUC/include
 $MODEL/include
