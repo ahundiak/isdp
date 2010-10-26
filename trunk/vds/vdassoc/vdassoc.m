@@ -254,6 +254,8 @@ $(SPXV)/vdinclude
 #endif
 $BS/include
 $BS/include/prototypes
+$UMS/include
+$FORMS/include
 $EXNUC/include
 $GRNUC/include
 $GRNUC/ingrsys
