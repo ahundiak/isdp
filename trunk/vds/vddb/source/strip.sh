@@ -43,6 +43,6 @@ if [ -f ${VDS}/vddb/bin/VDSloaddata ]
 then
 	echo "Stripping the VDSloaddata file."
 	mcs -d ${VDS}/vddb/bin/VDSloaddata
-	strip ${VDS}/vddb/bin/VDSloaddata
+#	strip ${VDS}/vddb/bin/VDSloaddata
 fi
 
