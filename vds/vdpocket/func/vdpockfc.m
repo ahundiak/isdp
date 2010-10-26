@@ -92,6 +92,7 @@ $SPXV/vdinclude
 .
 $(BS)/include
 $(BS)/include/prototypes
+$(FORMS)/include
 $(EXNUC)/include
 $(GRNUC)/include
 $(MODEL)/include
