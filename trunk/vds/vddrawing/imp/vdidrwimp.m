@@ -123,6 +123,7 @@ $(SPXV)/include/prototypes
 #endif
 
 $BS/include
+$FORMS/include
 $EXNUC/include
 $GRNUC/include
 $GRNUC/src/assoc/include_priv
