@@ -263,6 +263,8 @@ COz_badOcc.u
 COz_eqpDup.u
 COdmplan.u
 #else
+COz_fix01.u
+#if 0
 COmodfrm_iso.u
 COz_tblDbg.u
 COz_tblValid.u
@@ -454,4 +456,5 @@ COvalSpades2.u
 
 COz_risCache.u
 COtoDoList.u
+#endif
 #endif
