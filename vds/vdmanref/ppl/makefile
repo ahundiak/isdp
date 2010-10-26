@@ -22,7 +22,7 @@
 # -------------------------------------------------------------------
 
 target: mkfile 
-	grmake -r -k -f mkfile
+#	grmake -r -k -f mkfile
 
 mkfile: manref.m
 	ksh ${VDS}/etc/bin/mkmkppl manref.m mkfile $(VDS)
