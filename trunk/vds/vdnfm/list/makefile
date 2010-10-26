@@ -20,7 +20,7 @@
 TGT = list
 
 target: mkfile 
-	grmake -r -k -f mkfile
+#	grmake -r -k -f mkfile
 
 mkfile : ${TGT}.m
 	grmakemake ${TGT}.m mkfile
