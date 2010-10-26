@@ -24,10 +24,11 @@
 # * History:
 # * MM/DD/YY  AUTHOR DESCRIPTION
 # * 06/01/99  ah     Creation
+# SKIP PPL
 # ***************************************************************************/
 
 target: pplmkfile
-	grmake -r -k -f pplmkfile
+#	grmake -r -k -f pplmkfile
 
 pplmkfile: vdxppl.m
 	ksh ${VDS_PATH}/etc/bin/mkmkppl vdxppl.m pplmkfile $(VDS_PATH)
