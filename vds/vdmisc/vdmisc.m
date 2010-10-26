@@ -222,6 +222,7 @@ $SPXV/vdinclude
 #endif
 $(BS)/include
 $(BS)/include/prototypes
+$(FORMS)/include
 $(EXNUC)/include
 $(GRNUC)/include
 $(GRNUC)/proto_priv
