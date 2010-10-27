@@ -37,7 +37,7 @@
 # -------------------------------------------------------------------
 
 target: pplmkfile
-	grmake -r -k -f pplmkfile
+#	grmake -r -k -f pplmkfile
 
 pplmkfile: smppl.m
 	ksh ${VDS}/etc/bin/mkmkppl smppl.m pplmkfile ${VDS}
