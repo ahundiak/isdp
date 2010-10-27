@@ -79,6 +79,8 @@ $(SPXV)/include
 $(SPXV)/include/prototypes
 #endif
 $BS/include
+$UMS/include
+$FORMS/include
 $EXNUC/include
 $GRNUC/include
 $GRNUC/proto_priv
