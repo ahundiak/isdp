@@ -23,4 +23,7 @@
 # *************************************************************/
 TGT = vdtblppl
 
-include ${VDS_PATH}/etc/makefiles/ppl_only.h
+target:
+
+
+# include ${VDS_PATH}/etc/makefiles/ppl_only.h
