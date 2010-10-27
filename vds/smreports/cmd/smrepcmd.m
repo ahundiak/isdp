@@ -60,6 +60,8 @@ $VDS/spec
 INCLUDE
 .
 $BS/include
+$UMS/include
+$FORMS/include
 $EXNUC/include 
 $GRNUC/include
 $GRNUC/src/assoc/include_priv
