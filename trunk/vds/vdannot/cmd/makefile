@@ -1,4 +1,4 @@
-# $Id: makefile,v 1.2 2001/09/14 15:06:14 ylong Exp $
+# $Id: make_PLOAD,v 1.1 2001/09/14 15:06:09 ylong Exp $
 
 # -------------------------------------------------------------------
 # I/VDS
@@ -10,8 +10,8 @@
 # Dependencies:
 #
 # Revision History:
-#	$Log: makefile,v $
-#	Revision 1.2  2001/09/14 15:06:14  ylong
+#	$Log: make_PLOAD,v $
+#	Revision 1.1  2001/09/14 15:06:09  ylong
 #	highlight selected table
 #	
 #	Revision 1.1.1.1  2001/01/04 21:07:40  cvs
@@ -38,10 +38,55 @@
 #
 # -------------------------------------------------------------------
 
-target:
-	if test ${ISDP_MAKE_SP} -eq 1; \
-	then \
-		ksh grmake -r -k -f make_SP; \
-	else \
-		ksh grmake -r -k -f make_PLOAD; \
-	fi;
+target: sl\
+	mkfile
+	grmake -r -k -f mkfile
+
+sl:	VDCmdFtxt.S \
+	VDCmdRvItem.S \
+	VDCmdDeItPr.S \
+	${VDS}/config/commands/VDCrFrTx \
+	${VDS}/config/commands/VDRdFrmTxt \
+	${VDS}/config/commands/VDWrFrmTxt \
+	${VDS}/config/commands/VDDeItPrDf
+
+${VDS}/config/commands/VDWrFrmTxt : frmtxt_wrt.t \
+	${VDS}/include/SMmsg.h ${VDS}/include/SMcmd.h \
+	${VDS}/include/VDmsg.h ${VDS}/include/VDcmd.h
+	$(EXNUC)/bin/slic -p${VDS}/spec frmtxt_wrt.t
+
+${VDS}/config/commands/VDRdFrmTxt : frmtxt_read.t \
+	${VDS}/include/SMmsg.h ${VDS}/include/SMcmd.h \
+	${VDS}/include/VDmsg.h ${VDS}/include/VDcmd.h
+	$(EXNUC)/bin/slic -p${VDS}/spec frmtxt_read.t
+
+
+${VDS}/config/commands/VDCrFrTx : frmtxt_crt.t \
+	${VDS}/include/SMmsg.h ${VDS}/include/SMcmd.h \
+	${VDS}/include/VDmsg.h ${VDS}/include/VDcmd.h
+	$(EXNUC)/bin/slic -p${VDS}/spec frmtxt_crt.t
+
+${VDS}/config/commands/VDDeItPrDf : VDDeItmPre.t \
+	${VDS}/include/SMmsg.h ${VDS}/include/SMcmd.h \
+	${VDS}/include/VDmsg.h ${VDS}/include/VDcmd.h
+	$(EXNUC)/bin/slic -p${VDS}/spec VDDeItmPre.t
+
+VDCmdFtxt.S : VDCmdFtxt.sl \
+	frmtxt_crt.t frmtxt_read.t frmtxt_wrt.t \
+	${VDS}/include/SMmsg.h ${VDS}/include/SMcmd.h \
+        ${VDS}/include/VDmsg.h ${VDS}/include/VDcmd.h
+	$(EXNUC)/bin/slic -p${VDS}/spec VDCmdFtxt.sl
+
+VDCmdRvItem.S : VDCmdRvItem.sl \
+	${VDS}/include/SMmsg.h ${VDS}/include/SMcmd.h \
+        ${VDS}/include/VDmsg.h ${VDS}/include/VDcmd.h
+	slic -C -p${VDS}/spec VDCmdRvItem.sl
+
+VDCmdDeItPr.S : VDCmdDeItPr.sl \
+	${VDS}/include/SMmsg.h ${VDS}/include/SMcmd.h \
+	${VDS}/include/VDmsg.h ${VDS}/include/VDcmd.h
+	$(EXNUC)/bin/slic -C -p${VDS}/spec VDCmdDeItPr.sl
+
+mkfile : vdannotcmd.m
+	grmakemake vdannotcmd.m mkfile
+
