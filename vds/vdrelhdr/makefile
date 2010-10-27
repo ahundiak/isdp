@@ -23,7 +23,7 @@
 target: pplmkfile \
 	mkfile
 	grmake -r -k -f mkfile
-	grmake -r -k -f pplmkfile
+#	grmake -r -k -f pplmkfile
 
 mkfile:	vdrelhdr.m
 	grmakemake vdrelhdr.m mkfile
