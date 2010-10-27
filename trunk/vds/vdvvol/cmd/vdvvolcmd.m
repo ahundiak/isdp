@@ -48,6 +48,8 @@ $(VDS)/lib/vdcvvolcmd.o
 
 INCLUDE
 $(BS)/include
+$(UMS)/include
+$(FORMS)/include
 $(BS)/include/prototypes
 $(GRNUC)/src/assoc/include_priv
 $(EXNUC)/include
