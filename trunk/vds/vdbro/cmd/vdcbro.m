@@ -37,6 +37,8 @@ VDCbroChn.I
 INCLUDE
 .
 $BS/include
+$UMS/include
+$FORMS/include
 $EXNUC/include
 $GRNUC/include
 $GRNUC/ingrsys
