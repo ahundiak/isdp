@@ -33,7 +33,7 @@
 # -------------------------------------------------------------------
 
 target: mkfile
-	grmake -r -k -f mkfile
+#	grmake -r -k -f mkfile
 
 mkfile: commands.m
 	ksh ${VDS}/etc/bin/mkmkppl commands.m mkfile $(VDS)
