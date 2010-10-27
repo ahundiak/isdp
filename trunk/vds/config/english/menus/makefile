@@ -39,7 +39,9 @@ MENU= ${GENMENU}
 VDSSRC = $(VDS)/config/english/menus/src
 VDSLITE = $(VDS)/vdlite/bin/vdlite.sh
 
-target : BAR_VDS IMVDS 
+target :
+
+targetx : BAR_VDS IMVDS
 
 IMVDS : $(VDSSRC)/VDpan.otl
 	rm -f VD* SM* EM*
