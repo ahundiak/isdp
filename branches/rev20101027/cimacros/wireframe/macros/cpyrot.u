@@ -1,0 +1,288 @@
+/* $Id: cpyrot.u,v 1.1.1.1 2001/01/04 21:07:22 cvs Exp $  */
+
+/* --------------------------------------------------------------------
+ * I/VDS
+ *
+ * File:	vds/cimacros/wireframe/macros / cpyrot.u
+ *
+ * Description:
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ *	$Log: cpyrot.u,v $
+ *	Revision 1.1.1.1  2001/01/04 21:07:22  cvs
+ *	Initial import to CVS
+ *	
+# Revision 1.1  1998/04/29  16:27:20  pinnacle
+# VDS 2.5.1
+#
+# Revision 1.1  1997/05/08  13:20:44  pinnacle
+# New project VDS 250
+#
+# Revision 1.1  1996/07/19  20:33:52  pinnacle
+# Create VDS 241 project
+#
+# Revision 1.1  1994/11/14  22:42:32  pinnacle
+# Create vds.240 from vds.232
+#
+# Revision 1.1  1994/11/08  16:07:00  pinnacle
+# create vds.232
+#
+ *
+ * History:
+ *	MM/DD/YY	AUTHOR		DESCRIPTION
+ *
+ * -------------------------------------------------------------------*/
+
+/*
+	 VDS 2.1 - PPM macro library - alc
+	 Description : <Assoc> Copy and Rotate Element by 3 Points
+ */
+   
+/*
+   History :
+   -------
+	91/12/10	Use from_env in NDcopy_to_root()
+			(Macro occurrences in reference files)
+	92/02/10	Use ex$get_modid() just after NDmacro.ACreturn_foot()
+			(also : Macro occurrences in reference files )
+	92/07/30	Get rid of NDcopy_to_root() (no longer needed in 2.0) 
+	92/12/14	Use "" as footname instead of "." in ACreturn_foot()
+ */
+
+
+/**************************************************************************/
+/*
+/*
+/*   Associative copy and rotate
+/*
+/*
+/**************************************************************************/
+#include "cieveryone.h"
+#include "cimacros.h"
+#include "ci_mac_def.h"
+#include "cimath.h"
+#include "exmacros.h"
+
+
+struct ret_struct	temp1_rts, temp2_rts, temp3_rts;
+struct GRsymbology	symbology;
+struct GRid		CI_MACRO_ID;
+struct IGRdisplay 	dis;
+struct GRmd_env    	MOD_ENV, from_env;
+struct GRid	   	CUV, original_obj, miror_obj;
+IGRshort	        action, mask;
+IGRshort	        mat_type;
+IGRint			success;
+IGRint		   	msg, stat, i;
+IGRdouble 	        trans_matrix[16],angle,angle1;
+IGRdouble             	p1[3],p2[3],p3[3],p4[3],p5[3];
+IGRchar 		*temp_names[4], *feet_names[1];
+IGRint			temp_types[4];
+
+GRobj 	           	ci_mac_def1, dummy;
+
+OMuword	   		ass_cl, ft_cl ;
+
+extern int        	init_cnst_list();
+extern int        	MAgrotmx(),
+			MAtypemx(),
+			printf();
+extern			ASsuper_construct();
+extern 			EX_get_modid_given_osnum() ;
+
+
+/* ========================================================================= */
+/* the main function is the one implementing the definition creation
+/* ========================================================================= */
+
+main ()
+{
+  temp_names[0]  = "surf";  
+  temp_names[1]  = "pnt1";  
+  temp_names[2]  = "pnt2";
+  temp_names[3]  = "pnt3";
+
+  temp_types[0]  = ~0;
+  temp_types[1]  = point_generic;
+  temp_types[2]  = point_generic;
+  temp_types[3]  = point_generic;
+
+  feet_names[0] = "res_surf";
+  ci_mac_def1 = NULL_OBJID;
+
+  ac$cimacdef( 	cimacdef          =  ci_mac_def1,
+		status 	          = &stat, 	
+		name              = "cpyrot",
+              	temp_num          = 4, 		
+		temp_names        = temp_names,
+		temp_types        = temp_types,
+	      	extern_feet_num   = 1, 	
+		extern_feet_names = feet_names );
+}
+
+/* ========================================================================= */
+
+compute ()
+{
+  construct_comp();
+
+  if( miror_obj.objid == NULL_OBJID ) return(0);
+
+  ci$send( msg = message  ci_macro.set_all_extern_feet
+	 	( &stat, 1, &miror_obj, &MOD_ENV ),
+	   	targetid = CI_MACRO_ID.objid,
+	   	targetos = CI_MACRO_ID.osnum );
+  return(1);
+}
+
+/* ========================================================================= */
+
+place ()
+{
+
+  construct_comp();
+
+  if( miror_obj.objid == NULL_OBJID ) return(0);
+
+  ci$send( msg = message  ci_macro.set_all_extern_feet
+	 	( &stat, 1, &miror_obj, &MOD_ENV ),
+	   	targetid = CI_MACRO_ID.objid,
+	   	targetos = CI_MACRO_ID.osnum );
+  return(1);
+
+}
+
+/* ========================================================================= */
+
+construct_comp()
+{
+
+
+  miror_obj.objid = NULL_OBJID;  
+  miror_obj.osnum = MOD_ENV.md_id.osnum;
+
+  /* 
+	Retrieve object to rotate 
+   */
+
+  msg = ci$send( msg      = message  ACcpx.ACfind_exp_temp_obj(&stat,0,&CUV),
+           	 targetid = CI_MACRO_ID.objid,
+	   	 targetos = CI_MACRO_ID.osnum );
+
+  if( !(stat&msg&1) ) return;
+ 
+  msg = ci$send( msg      = message NDmacro.ACreturn_foot(	
+						&stat ,
+						"",
+						&original_obj, 
+						&from_env.md_env.matrix_type, 
+					        from_env.md_env.matrix ),
+	         targetid = CUV.objid,
+	         targetos = CUV.osnum );
+
+  if( !(stat&msg&1) ) return; 
+
+   from_env.md_id.osnum = original_obj.osnum ;
+   ex$get_modid(mod_osnum = from_env.md_id.osnum,
+	        mod_id    = &from_env.md_id.objid) ;
+
+  /* 
+	Retrieve points
+   */
+
+   stat = ci$send( msg = message  ACcpx.ACfind_exp_temp_struct
+		(&msg,1,(char *)&temp1_rts, &MOD_ENV ),
+	    	targetid = CI_MACRO_ID.objid,
+	    	targetos = CI_MACRO_ID.osnum );
+  if( !(stat&msg&1) ) return; 
+
+   stat = ci$send( msg = message  ACcpx.ACfind_exp_temp_struct
+		(&msg,2,(char *)&temp2_rts, &MOD_ENV ),
+	    	targetid = CI_MACRO_ID.objid,
+	    	targetos = CI_MACRO_ID.osnum );
+  if( !(stat&msg&1) ) return; 
+
+   stat = ci$send( msg = message  ACcpx.ACfind_exp_temp_struct
+		(&msg,3,(char *)&temp3_rts, &MOD_ENV ),
+	    	targetid = CI_MACRO_ID.objid,
+	    	targetos = CI_MACRO_ID.osnum );
+  if( !(stat&msg&1) ) return; 
+
+  /* Just copy it (in 2.0) ! */
+
+   stat = ci$send( msg	   = message GRgraphics.GRcopy(  
+						 &msg,
+						 &from_env,
+                                       	         &MOD_ENV,
+						 &miror_obj.objid ),
+               	targetid = original_obj.objid,
+          	targetos = original_obj.osnum  );
+   if( !( stat & msg & 1 ) ){
+		#ifdef DEBUG
+  		printf( "cpyrot.u -  GRgraphics.GRcopy error\n" ) ;
+		#endif
+		return OM_E_ABORT ;
+		}
+
+  /*-----------------------------------------------*/
+  /*| compute the new transformation matrix        */ 
+  /*-----------------------------------------------*/
+
+  v_sub(temp1_rts.var.point_st.pt,temp2_rts.var.point_st.pt,p1);
+  v_scale(p1,1/v_len(p1),p5);
+  v_equal(p5,p1);
+  v_sub(temp3_rts.var.point_st.pt,temp2_rts.var.point_st.pt,p2);
+  v_scale(p2,1/v_len(p2),p5);
+  v_equal(p5,p2);
+  v_cross(p1,p2,p3);
+  v_add(p3,temp2_rts.var.point_st.pt,p4);
+  angle1=v_dot(p1,p2);
+  angle=(90-asin(angle1)*57.2957804)/57.2957804;
+
+#ifdef DEBUG
+  write("angle=",angle1,angle*57.2957804,'\n');
+#endif
+
+  /* compute the new transformation matrix */ 
+
+  MAgrotmx (&msg,p3,p4,&angle,trans_matrix);
+
+  MAtypemx(&msg,trans_matrix,&mat_type);
+
+
+  /*-------------------------------------------------------*/
+  /*| Apply the transformation matrix to the copied object */
+  /*-------------------------------------------------------*/
+
+  dummy = NULL_OBJID ;
+
+  stat = ci$send(	msg	= message GRgraphics.GRxform(   &msg,
+								&MOD_ENV,
+								&mat_type,
+								trans_matrix,
+								&dummy ),
+		targetid = miror_obj.objid,
+	        targetos = miror_obj.osnum  );
+
+  if( !( stat & 1 ) ){
+  	printf( " GRgraphics.GRxform error\n" );
+
+     	ci$send(msg      = message GRgraphics.GRdelete(&msg,&MOD_ENV),
+             targetid = miror_obj.objid,
+             targetos = miror_obj.osnum );
+
+	miror_obj.objid = NULL_OBJID;
+	
+	return;
+  }
+	
+  miror_obj.objid = dummy;
+
+#ifdef DEBUG
+  printf( " [%d,%d]GRgraphics.GRxform \n", miror_obj.osnum, miror_obj.objid ) ;
+#endif
+
+
+}

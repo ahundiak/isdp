@@ -1,0 +1,124 @@
+/***************************************************************************
+ * I/VDS
+ *
+ * File:        api/equip/APIpe1.u
+ *
+ * Description:
+ *		
+ *
+ * Dependencies:
+ *
+ * History:
+ *      MM/DD/YY        AUTHOR          DESCRIPTION
+ *      10/29/96        i-paris         creation date
+ *
+ ***************************************************************************/
+
+#include	<stdio.h>
+#include	"OMprimitives.h"
+#include	"cieveryone.h"
+#include	"cimacros.h"
+#include	"AS_status.h"
+#include	"growner.h"
+
+#include	"vdAPIequips.h"
+
+main () {
+
+	IGRlong		sts, msg, cnt;
+	IGRint		i, rsp, nTpl, nDyn;
+struct	VDcollector	*Tpl, *Dyn;
+	IGRdouble	pnt[3], val;
+
+	/* Initialize */
+	Tpl = NULL;
+	Dyn = NULL;
+
+	/* Get <desk> collector */
+	sts = vd$getEqpDefCollector ( msg     = &msg,
+                                      CatName = "desk",
+                                      PartNum = "d1",
+                                      RevName = "1",
+				      TplNum  = &nTpl,
+				      TplCol  = &Tpl,
+				      DynNum  = &nDyn,
+				      DynCol  = &Dyn );
+	as$status ( sts	   = sts,
+		    msg	   = "vd$getEqpDefCollector(desk)",
+		    test   = (!(sts & 0x00000001 & msg)),
+		    action = GOTO_VALUE,
+		    value  = wrapup );
+	vd$collectorPrint ( Num = nTpl, Col = Tpl, msg = "Templates" );
+	vd$collectorPrint ( Num = nDyn, Col = Dyn, msg = "Attributes" );
+
+	/* Modify Txt 1 dynamic attributes */
+	sts = vd$collectorSetRow ( msg = &msg,
+				   idx = 1,
+				   Col = Dyn,
+				   Txt = "ABC" );
+	as$status ( sts	   = sts,
+		    msg	   = "vd$collectorSetRow(Txt 1)",
+		    test   = (!(sts & 0x00000001 & msg)),
+		    action = GOTO_VALUE,
+		    value  = wrapup );
+
+	/* Modify Val 7 dynamic attributes */
+	val = 12.0;
+	sts = vd$collectorSetRow ( msg = &msg,
+				   idx = 7,
+				   Col = Dyn,
+				   Val = &val );
+	as$status ( sts	   = sts,
+		    msg	   = "vd$collectorSetRow(Val 7)",
+		    test   = (!(sts & 0x00000001 & msg)),
+		    action = GOTO_VALUE,
+		    value  = wrapup );
+
+	/* Create CS */
+	pnt[0] = 100.0;
+	pnt[1] = -50.0;
+	pnt[2] =  80.0;
+	sts = vd$createCoordinateSystem ( msg	= &msg,
+					  Cpnt  = pnt,
+					  Wname = VD_WIN_TOP_NAM,
+					  name  = "CS1" );
+        as$status ( sts    = sts,
+                    msg    = "vd$createCoordinateSystem()",
+		    test   = (!(sts & 0x00000001 & msg)),
+                    action = GOTO_VALUE,
+                    value  = wrapup );
+
+	/* Fill templates collector with CS */
+	sts = vd$collectorSetRow ( msg = &msg,
+				   idx = 2,
+				   Col = Tpl,
+				   Txt = "CS1" );
+	as$status ( sts	   = sts,
+		    msg	   = "vd$collectorSetRow(Txt 0)",
+		    test   = (!(sts & 0x00000001 & msg)),
+		    action = GOTO_VALUE,
+		    value  = wrapup );
+
+	/* Place <desk> equipment */
+	vd$collectorPrint ( Num = 3, Col = Tpl, msg = "Templates" );
+	vd$collectorPrint ( Num = nDyn, Col = Dyn, msg = "Attributes" );
+	sts = vd$place_equip ( msg     = &msg,
+                               CatName = "desk",
+                               PartNum = "d1",
+                               RevName = "1",
+			       TplNum  = 3,
+			       TplCol  = Tpl,
+			       DynNum  = nDyn,
+			       DynCol  = Dyn,
+			       rep     = VD_DET_REP );
+	as$status ( sts	   = sts,
+		    msg	   = "vd$place_equip(desk)",
+		    test   = (!(sts & 0x00000001 & msg)),
+		    action = GOTO_VALUE,
+		    value  = wrapup );
+
+wrapup:
+	vd$collectorFree (Col = Tpl);
+	vd$collectorFree (Col = Dyn);
+	return (sts);
+}

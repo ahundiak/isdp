@@ -1,0 +1,501 @@
+/* $Id: COz_FixRT.u,v 1.2 2001/01/18 20:39:49 hans Exp $  */
+
+/* --------------------------------------------------------------------
+ * I/VDS
+ *
+ * File:	vds/vdppl/COz_FixRT.u
+ *
+ * Description: Empty the refill the range tree
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ *	$Log: COz_FixRT.u,v $
+ *	Revision 1.2  2001/01/18 20:39:49  hans
+ *	SP16 additions/modifications
+ *	
+# Revision 1.5  2000/11/11  23:56:42  pinnacle
+# Replaced: vds/vdppl/COz_FixRT.u for:  by jwfrosch for Service Pack
+#
+# Revision 1.4  2000/11/07  14:01:30  pinnacle
+# Replaced: vds/vdppl/COz_FixRT.u for:  by jvhanson for Service Pack
+#
+# Revision 1.3  2000/11/02  20:54:06  pinnacle
+# Replaced: vds/vdppl/COz_FixRT.u for:  by jvhanson for Service Pack
+#
+# Revision 1.2  2000/08/25  20:27:32  pinnacle
+# Replaced: vds/vdppl/COz_FixRT.u for:  by jwfrosch for Service Pack
+#
+# Revision 1.3  2000/03/31  21:55:14  pinnacle
+# Replaced: vdppl/COz_FixRT.u for:  by impd252 for vds
+#
+ *
+ * History:
+ * MM/DD/YY  AUTHOR  DESCRIPTION
+ * 01/18/00  ah      TR179900921 Another rtree problem
+ * 10/06/00  JVH     cleaned up
+ * 11/06/00  JVH     replaced static values for externed classids.
+ * -------------------------------------------------------------------*/
+
+#include "VDppl.h"
+#include "VDobj.h"
+
+#include "OMDB.h"
+#include "OMindex.h"
+#include "OMrtreedef.h"
+
+extern GRclassid OPP_ACcpx_defn_class_id;
+extern GRclassid OPP_ACmodel_class_id;
+extern GRclassid OPP_ACpretend_class_id;
+extern GRclassid OPP_ACpretendin_class_id;
+extern GRclassid OPP_ACrg_collect_class_id;
+extern GRclassid OPP_ACtmp_defn_class_id;
+extern GRclassid OPP_ASsourcein_class_id;
+extern GRclassid OPP_EMSbsedge_class_id;
+extern GRclassid OPP_EMSgensolid_class_id;
+extern GRclassid OPP_EMSgradata_class_id;
+extern GRclassid OPP_EMSlinedge_class_id;
+extern GRclassid OPP_EMSloop_class_id;
+extern GRclassid OPP_EMSloopset_class_id;
+extern GRclassid OPP_EMSnatedge_class_id;
+extern GRclassid OPP_EMSprjcompsf_class_id;
+extern GRclassid OPP_EMSsfsolid_class_id;
+extern GRclassid OPP_GRcompcurve_class_id;
+extern GRclassid OPP_GRgraphics_class_id;
+extern GRclassid OPP_GRgrgrp_class_id;
+extern GRclassid OPP_GRgsmgr_class_id;
+extern GRclassid OPP_GRmodule_class_id;
+extern GRclassid OPP_GRwindow_class_id;
+extern GRclassid OPP_Gexp_class_id;
+extern GRclassid OPP_Gtext_exp_class_id;
+extern GRclassid OPP_OMrtree_class_id;
+extern GRclassid OPP_VSselector_class_id;
+extern GRclassid OPP_VSsharedData_class_id;
+extern GRclassid OPP_dim_param_class_id;
+extern GRclassid OPP_expression_class_id;
+extern GRclassid OPP_text_exp_class_id;
+extern GRclassid OPP_GRrtree_class_id;
+extern GRclassid OPP_GRnb_class_id;
+
+extern int       VDcomment;
+extern VDpms_find_objects();
+extern VSrdbDelCachedDefs();
+extern GRdpb_get();
+extern IGRlong VDrtDelKeysInRTree();
+
+OM_S_CHANSELECT       my_chansel[1];
+
+TGRobj_env  objOE;
+TGRobj_env *objlist;
+IGRint      total, cnt, oms_cnt, zer_cnt, skip_cnt, rem_cnt, exp_cnt, gradata;
+IGRint      displaymsg;
+FILE       *logfile;
+
+#include "VDpplInfo.h"
+ppl_info()
+{
+  VDpplInitInfo( &PPL_INFO );
+
+  /* Define Command info structure */
+
+  strcpy( PPL_INFO.title, "Reload Rtree" );
+  strcpy( PPL_INFO.product, "ISDP I/VDS" );
+  strcpy( PPL_INFO.version, "02.06.01.15" );
+  strcpy( PPL_INFO.desc_short, "This command removes and replaces objects into the range tree." );
+
+  PPL_INFO.desc_count = 1;   /* maximum 10 */
+
+  PPL_INFO.desc[0]="This command could take some time to run. It has to scan through the file and remove and selectively replace element into the range tree.";
+  return 1;
+}
+
+/* --------------------------------------------
+ * Process each object
+ */
+IGRstat process()
+{
+
+#define MAX_OBJ		10
+
+  int       i0, chcnt, obj_count, add_to_RTree, f_defer_flag, stat;
+  GRclassid clid;
+  GRclassid tclid;
+  IGRstat   retFlag;
+  IGRint    grskip;
+  IGRstat   sts;
+  IGRstat   msg;
+  IGRchar   classname[40];
+  OM_S_OBJECT_LINKAGE   objet;
+  OM_S_OBJECT_LINKAGE   channel_objids[MAX_OBJ];
+
+  retFlag      = 0;
+  classname[0] = 0;
+  clid         = 0;
+  grskip       = FALSE;
+
+  om$get_classname ( osnum     = objOE.obj_id.osnum,
+                     objid     = objOE.obj_id.objid,
+                     classname = classname );
+
+  sts = om$get_classid ( osnum     = objOE.obj_id.osnum,
+                         objid     = objOE.obj_id.objid,
+                         p_classid = &clid );
+
+  if( displaymsg )
+  {
+    fprintf(logfile, "id[%d, %d] clid[%d] class[%s]\n",
+            objOE.obj_id.objid, objOE.obj_id.osnum, clid , classname );
+  }
+
+  // Skip, none of these should be in the range tree
+  if( clid < 50)
+  {
+    sts = ci$send(msg = message GRgraphics.GRremwrng( &msg,&objOE.mod_env),
+                  targetos = objOE.obj_id.osnum,
+                  targetid = objOE.obj_id.objid);
+
+    if( displaymsg ){ printf("[%d]c[%d]\n", objOE.obj_id.objid, clid );}
+    zer_cnt = zer_cnt + 1;
+    goto wrapup;
+  }
+  else if( clid == OPP_EMSnatedge_class_id ||
+           clid == OPP_EMSbsedge_class_id ||
+           clid == OPP_dim_param_class_id ||
+           clid == OPP_VSsharedData_class_id ||
+           clid == OPP_ACcpx_defn_class_id ||
+           clid == OPP_EMSloop_class_id ||
+           clid == OPP_EMSloopset_class_id ||
+           clid == OPP_EMSlinedge_class_id ||
+           clid == OPP_ACtmp_defn_class_id ||
+           clid == OPP_expression_class_id ||
+           clid == OPP_text_exp_class_id ||
+           clid == OPP_Gtext_exp_class_id ||
+           clid == OPP_Gexp_class_id ||
+           clid == OPP_GRmodule_class_id ||
+           clid == OPP_GRwindow_class_id ||
+           clid == OPP_ACrg_collect_class_id ||
+           clid == OPP_ACmodel_class_id ||
+           clid == OPP_VSselector_class_id ||
+           clid == OPP_EMSgradata_class_id ||
+           clid == OPP_GRcompcurve_class_id ||
+           clid == OPP_GRgrgrp_class_id ||
+//             clid == OPP_EMSprjcompsf_class_id ||
+//             clid == OPP_EMSgensolid_class_id ||
+//             clid == OPP_EMSsfsolid_class_id ||
+           clid == OPP_GRgsmgr_class_id )
+  {
+    if( displaymsg ){ printf("[%d]c[%d]\n", objOE.obj_id.objid, clid );}
+    gradata = gradata + 1;
+    goto wrapup;
+  }
+
+  if( displaymsg )
+  {
+    fprintf( logfile , "\tpast start checks id[%d, %d] clid[%d] class[%s]\n",
+             objOE.obj_id.objid, objOE.obj_id.osnum, clid, classname );
+  }
+
+  //these are ok but not subclassed from GRgraphics
+  //this is ACpretend & in & ASsource & in
+  if( clid == OPP_ACpretend_class_id ||
+      clid == OPP_ACpretendin_class_id ||
+      clid == OPP_ASsourcein_class_id )
+  {
+    grskip = TRUE;
+    goto ok;
+  }
+
+  if(  !(sts&1) )
+  {
+    if( displaymsg )
+    {
+      om$get_classname ( osnum     = objOE.obj_id.osnum,
+                         objid     = objOE.obj_id.objid,
+                         classname = classname );
+
+      printf("%s id[%d, %d], class[%s], clsid[%d], msg[%d], sts[%d]\n",
+             "getclassid failed", objOE.obj_id.objid, objOE.obj_id.osnum,
+             classname, clid , msg, sts );
+    }
+    skip_cnt = skip_cnt +1;
+    goto wrapup;
+  }
+
+ok:
+
+  // First, regardless, remove every object from GRrtree...
+  sts = ci$send(msg = message GRgraphics.GRremwrng(&msg,&objOE.mod_env),
+                targetos = objOE.obj_id.osnum,
+                targetid = objOE.obj_id.objid);
+
+  if( !(msg & 1 ))
+  {
+    rem_cnt = rem_cnt +1;
+    if( displaymsg )
+    {
+      om$get_classname (osnum     = objOE.obj_id.osnum,
+                        objid     = objOE.obj_id.objid,
+                        classname = classname );
+
+      printf("%s id[%d, %d], class[%s], clsid[%d], msg[%d], sts[%d]\n",
+             "GRgraphics.GRremwrng ", objOE.obj_id.objid, objOE.obj_id.osnum,
+             classname, clid , msg, sts );
+    }
+  }
+
+  if( grskip == TRUE){ goto jump;}
+
+  // Only Graphics
+  sts = vdobj$IsAncestryValid(objOE = &objOE, superClassID = OPP_GRgraphics_class_id);
+  if (!(sts & 1))
+  {
+    if( displaymsg )
+    {
+      om$get_classname (osnum     = objOE.obj_id.osnum,
+                        objid     = objOE.obj_id.objid,
+                        classname = classname );
+
+      printf("%s id[%d, %d], class[%s], clsid[%d], msg[%d], sts[%d]\n",
+             "skipping not GRgraphics ", objOE.obj_id.objid, objOE.obj_id.osnum,
+             classname, clid , msg, sts );
+    }
+    goto wrapup;
+  }
+
+  // Skip ACmodel
+  sts = vdobj$IsAncestryValid(objOE = &objOE, superClassID = OPP_ACmodel_class_id);
+  if (sts & 1)
+  {
+    if( displaymsg )
+    {
+      om$get_classname (osnum     = objOE.obj_id.osnum,
+                        objid     = objOE.obj_id.objid,
+                        classname = classname );
+
+      printf("%s id[%d, %d], class[%s], clsid[%d], msg[%d], sts[%d]\n",
+             "skipping ACmodel ", objOE.obj_id.objid, objOE.obj_id.osnum,
+             classname, clid , msg, sts );
+    }
+    goto wrapup;
+  }
+
+  // Skip ACrg_collect
+  sts = vdobj$IsAncestryValid(objOE = &objOE, superClassID = OPP_ACrg_collect_class_id);
+  if (sts & 1)
+  {
+    if( displaymsg )
+    {
+      om$get_classname (osnum     = objOE.obj_id.osnum,
+                        objid     = objOE.obj_id.objid,
+                        classname = classname );
+
+      printf("%s id[%d, %d], class[%s], clsid[%d], msg[%d], sts[%d]\n",
+             "skipping ACrg_collect ", objOE.obj_id.objid, objOE.obj_id.osnum,
+             classname, clid , msg, sts );
+    }
+    goto wrapup;
+  }
+
+jump:
+
+  objet.osnum    = objOE.obj_id.osnum;
+  objet.S_objid  = objOE.obj_id.objid;
+  add_to_RTree   = 1;
+
+  // Check to_owner channel
+  sts = om$get_channel_count ( osnum            =  objet.osnum,
+                               objid            =  objet.S_objid,
+                               p_chanselect     = &my_chansel[0],
+                               count            = &chcnt );
+  if ( chcnt > 0 && (sts & 1) )
+  {
+    // Get owners
+    sts = om$get_channel_objects( osnum        =  objet.osnum,
+                                  objid        =  objet.S_objid,
+                                  p_chanselect = &my_chansel[0],
+                                  list         =  channel_objids,
+                                  size         =  MAX_OBJ,
+                                  count        = &obj_count );
+
+    if ( obj_count > 0 && (sts & 1) )
+    {
+      if ( obj_count > MAX_OBJ )
+      {
+        if( displaymsg )
+        {
+          printf("obj_count[%d] > MAX_OBJ[%d] for objOE[%d,%d]\n",
+                 obj_count, MAX_OBJ, objOE.obj_id.objid, objOE.obj_id.osnum);
+        }
+        obj_count = MAX_OBJ;
+      }
+
+      for( i0=0; i0 < obj_count; i0=i0+1)
+      {
+        sts = om$get_classid ( osnum     = channel_objids[i0].osnum,
+                               objid     = channel_objids[i0].S_objid,
+                               p_classid = &tclid );
+
+        // Check if owner is of class ACmodel or ACrg_collect
+        if ( sts & 1 && (tclid == OPP_ACmodel_class_id ||
+                         tclid == OPP_ACrg_collect_class_id))
+        {
+          // DO NOT add to RangeTree
+          add_to_RTree = 0;
+
+          if (displaymsg)
+          {
+            printf("objOE = [%d,%d], owner[%d] = [%d,%d], chcnt = %d, obj_count = %d\n",
+                   objet.S_objid, objet.osnum, i0, channel_objids[i0].S_objid,
+                   channel_objids[i0].osnum, chcnt, obj_count);
+          }
+          break;
+        }
+      }
+    }
+  }
+
+  if (add_to_RTree)
+  {
+    sts = ci$send(msg = message GRgraphics.GRaddwrng(&msg,&objOE.mod_env),
+            targetos = objOE.obj_id.osnum,
+            targetid = objOE.obj_id.objid);
+
+    if( displaymsg )
+    {
+      fprintf( logfile , "\t\tGRaddwrng msg[%d] sts[%d] id[%d, %d] clid[%d] class[%s]\n",
+               msg, sts, objOE.obj_id.objid, objOE.obj_id.osnum, clid, classname );
+    }
+    if( !(msg&1) )
+    {
+      if( displaymsg )
+      {
+        om$get_classname (osnum     = objOE.obj_id.osnum,
+                          objid     = objOE.obj_id.objid,
+                          classname = classname );
+
+        printf("%s id[%d, %d], class[%s], clsid[%d], msg[%d], sts[%d]\n",
+               "GRgraphics.GRaddwrng ", objOE.obj_id.objid, objOE.obj_id.osnum,
+               classname, clid , msg, sts );
+      }
+    }
+  }
+  retFlag = 1;
+
+wrapup:
+  return retFlag;
+}
+
+/* ---------------------------------------------
+ * Cycles through os and process objects
+ */
+main(argc, argv)
+IGRint	  argc;
+IGRchar **argv;
+{
+  IGRstat sts, msg;
+  IGRuint i,max;
+
+  IGRchar buf[128];
+  GRclassid             class_id;
+  OM_S_OBJID           *list;
+  struct GRid		pplgrid;
+
+  oms_cnt  = 0;
+  zer_cnt  = 0;
+  skip_cnt = 0;
+  rem_cnt  = 0;
+  exp_cnt  = 0;
+  total    = 0;
+  logfile  = NULL;
+
+//  VDrtDelKeysInRTree();
+
+  message("Cleaning out LCcmd_iso's");
+  ci$load ( file_name = "VDclean_lcmd",
+	    load      = LOAD,
+	    file_id   = &pplgrid.objid,
+            stat      = &msg );
+
+  if( msg == CI_S_SUCCESS )
+  {
+    ci$run( file_id   = &pplgrid.objid,
+            entry     = "main" );
+  }
+
+  if( argc > 1 ){ displaymsg = TRUE;} else {displaymsg = FALSE;}
+
+  if( displaymsg )
+  {
+    if( logfile == NULL )
+    {
+      logfile = ( FILE * ) fopen( "rtree.txt" , "w");
+      if ( logfile == NULL)
+      {
+        printf("could not open the log file \n" );
+        fclose( logfile);
+        exit;
+      }
+    }
+  }
+
+  message("Reload Range tree");
+
+  // Cycle through current os
+  gr$get_module_env(buffer = &objOE.mod_env);
+
+  objOE.obj_id.osnum       = objOE.mod_env.md_id.osnum;
+
+  my_chansel[0].type       = OM_e_name;
+  my_chansel[0].u_sel.name = "to_owners";
+
+  UI_status("Filling Range Tree...");
+
+  max = OM_GA_OSDs[objOE.obj_id.osnum]->CurSpaceMapSize;
+
+  for(i = 0; i < max; i = i + 1)
+  {
+    if (!(i % 1000))
+    {
+      sprintf(buf,"Filling Range Tree %d of %d...",i,max);
+      UI_status(buf);
+    }
+
+    objOE.obj_id.objid = i;
+
+    process();
+  }
+
+  list     = NULL;
+  class_id = OPP_OMrtree_class_id;
+  sts      = VDpms_find_objects ( (OMuword)2, (OMuword)class_id, &cnt, list );
+
+  if (displaymsg)
+  {
+    printf ( "\nVDpms_find_objects() : sts = %d, Number of OMrtree objects = %d\n", sts, cnt );
+    fflush ( 0 );
+  }
+
+  /*
+   * Delete cached graphics and DB info in current model.
+   * (NOTE: this will not delete user-made composite profiles since they
+   * are stored in the active file when created and do not correspond to
+   * anything in the RDB).
+   */
+  VSrdbDelCachedDefs();
+
+wrapup:
+  if( displaymsg )
+  {
+    printf("zero's [%d], OMOSCO's [%d], skipped[%d], remove_err[%d], expr[%d], EMSgradata[%d]\n",
+           zer_cnt, oms_cnt, skip_cnt, rem_cnt, exp_cnt , gradata);
+  }
+  UI_status("Range Tree Rebuilt");
+
+  if( logfile != NULL )
+  {
+    fclose( logfile);
+    logfile = NULL;
+  }
+  om$dealloc ( ptr = objlist );
+  return 1;
+}

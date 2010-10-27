@@ -1,0 +1,441 @@
+#!/bin/ksh
+# $Id: vd_make,v 1.4 2002/04/18 21:46:02 hans Exp $
+#!/bin/ksh
+# -------------------------------------------------------------------
+# I/VDS
+#
+# File:	vds/etc/bin/vd_make
+#
+# Description:
+#
+# Dependencies:
+#
+# Revision History:
+#	$Log: vd_make,v $
+#	Revision 1.4  2002/04/18 21:46:02  hans
+#	keep config/dload/OMprodinit & version files
+#	
+#	Revision 1.3  2002/04/12 17:17:51  ylong
+#	*** empty log message ***
+#
+#	Revision 1.1.1.1  2001/01/04 21:07:29  cvs
+#	Initial import to CVS
+#
+# Revision 1.17  1996/03/23  17:43:44  pinnacle
+# Replaced: etc/bin/vd_make for:  by azuurhou for vds.240
+#
+# Revision 1.16  1996/02/05  18:03:26  pinnacle
+# Replaced: etc/bin/vd_make for:  by v240_int for vds.240
+#
+# Revision 1.15  1996/01/29  22:16:22  pinnacle
+# Replaced: etc/bin/vd_make for:  by azuurhou for vds.240
+#
+# Revision 1.14  1996/01/18  17:53:20  pinnacle
+# Replaced: etc/bin/vd_make for:  by v240_int for vds.240
+#
+# Revision 1.13  1995/12/21  17:15:10  pinnacle
+# Replaced: etc/bin/vd_make for:  by azuurhou for vds.240
+#
+# Revision 1.11  1995/12/21  17:01:34  pinnacle
+# Replaced: etc/bin/vd_make for:  by azuurhou for vds.240
+#
+# Revision 1.10  1995/12/21  15:52:46  pinnacle
+# Replaced: ./etc/bin/vd_make for:  by azuurhou for vds.240
+#
+# Revision 1.9  1995/08/24  14:04:00  pinnacle
+# Replaced: etc/bin/vd_make for:  by tdumbach for vds.240
+#
+# Revision 1.8  1995/07/06  21:52:32  pinnacle
+# Replaced: etc/bin/vd_make for:  by tdumbach for vds.240
+#
+# Revision 1.7  1995/07/03  19:47:42  pinnacle
+# Replaced: etc/bin/vd_make for:  by tdumbach for vds.240
+#
+# Revision 1.6  1995/03/20  19:32:22  pinnacle
+# Replaced: etc/bin/vd_make by tdumbach r#
+#
+# Revision 1.5  1994/12/22  22:20:32  pinnacle
+# Replaced: etc/bin/vd_make by azuurhou r#
+#
+# Revision 1.4  1994/11/28  20:54:12  pinnacle
+# added cd ${VDS}
+#
+# Revision 1.3  1994/11/22  16:59:32  pinnacle
+# need to make correction to script
+#
+# Revision 1.1  1994/11/08  16:07:00  pinnacle
+# create vds.232
+#
+#
+# History:
+#	MM/DD/YY	AUTHOR	DESCRIPTION
+#	01/15/98	ah	Use a faster way of chmod'ing files
+# -------------------------------------------------------------------
+
+#
+# Make procedure for I/VDS.
+#
+# Revision date : 93/04/10
+#
+# 7/20/93 ADZ:	Modification link protocol to prevent lower level
+#		product specifications files.
+#
+#
+
+export resp_all=$1
+TMP=/tmp/VD${RANDOM}
+#----------------------------------------------------------------------------
+function cleanup {
+	/bin/rm /tmp/VD* > /dev/null 2>&1 ;
+	return 0
+}
+#----------------------------------------------------------------------------
+function FileExec {
+	if [ ! -f "$*" ] ; then echo "Missing File  : $*" ; exit 2; fi
+	if [ ! -x "$*" ] ; then echo "Non Executable: $*" ; exit 3; fi
+	$*
+} # FileChecking
+#----------------------------------------------------------------------------
+function FileExist {
+	if [ ! -f "$*" ] ; then echo "Missing: $*" ; exit 2; fi
+} # FileExist
+#----------------------------------------------------------------------------
+function checkResult {
+
+	list="${VDS}/config/vds.cmp"
+	list="$list ${VDS}/config/sman.cmp"
+	list="$list ${VDS}/config/hrd.cmp"
+
+	for file in $list
+	do
+	  if [ ! -s $file ] ; then echo "Invalid Result: $file" ; exit 2; fi
+	done
+
+} # checkResult
+#----------------------------------------------------------------------------
+function checkFiles {
+
+	list="${VDS}/vddraw/drw/grmake"
+	list="$list ${VDS}/config/english/menus/gen_pantbl"
+	list="$list ${VDS}/config/english/menus/gen_getcmdpath"
+	list="$list ${VDS}/vddb/source/strip.sh"
+	list="$list ${VDS}/bin/cci.vds"
+	list="$list ${VDS}/vdlite/bin/vdlite.sh"
+
+	for file in $list
+	do
+		if [ ! -f $file ] ; then echo "Missing: $file" ; exit 2; fi
+		if [ ! -x $file ] ; then chmod a+x $file ; fi
+		if [ ! -x $file ] ; then echo "Change Mode: $file" ; exit 4 ; fi
+	done
+
+	list="${VDS}/config/vds.cmd"
+	list="$list ${VDS}/config/sman.cmd"
+
+	for file in $list
+	do
+	  if [ ! -w $file ] ; then echo "Write Protected: $file" ; exit 2; fi
+	done
+
+} # checkFiles
+#----------------------------------------------------------------------------
+#----------------------------------------------------------------------------
+trap "cleanup ; tput smso ; echo '- INTERRUPT -' ; tput rmso ; exit 2" 2 3
+
+#----------------------------------------------------------------------------
+# Set the automatic motor.
+if [ "${resp_all}" != "y" ]; then
+   export resp_all="n"
+fi
+
+#----------------------------------------------------------------------------
+# Checking the environment.
+if [ -z "${GRNUC}" -o -z "${VDS}" ] ; then
+	. startup.vds
+fi
+
+#----------------------------------------------------------------------------
+# Change of the release number
+
+# if [ "${resp_all}" != "y" ]; then
+#   echo "Change release number: ?         [n] : \c"
+#   read resp
+#   if [ -z "${resp}" ]; then resp="n" ; fi
+# else
+#   resp="n"
+# fi
+resp="n"
+
+if [ "${resp}" = "y" ] ; then
+  FileExist "${VDS}/etc/version/product.def"
+  chmod a+w ${VDS}/etc/version/product.def
+  FileExec "${VDS}/etc/bin/vd_updproddef"
+fi
+
+#----------------------------------------------------------------------------
+# Unprotect VDS
+# if [ "${resp_all}" != "y" ]; then
+#   echo "Undone I/VDS protection ?        [y] : \c"
+#  read resp
+#  if [ -z "$resp" ]; then resp="y" ; fi
+#else
+#  resp="y"
+#fi
+resp="n"
+
+if [ $resp = "y" ] ; then
+  cd ${VDS}
+# find . -exec chmod ugo+w {} \;
+# Thanks to Olivier to speeding this up
+  find . -print | xargs chmod a+wx
+fi
+
+#----------------------------------------------------------------------------
+# Clean all VDS executables
+# if [ "${resp_all}" != "y" ]; then
+#   echo "Clean all VDS executables ?      [n] : \c"
+#   read resp
+#   if [ -z "$resp" ]; then resp="n" ; fi
+# else
+#  resp="n"
+#fi
+
+resp="n"
+if [ $resp = "y" ] ; then FileExec "${VDS}/etc/bin/vd_clean" ; fi
+
+#----------------------------------------------------------------------------
+# Clean all VDS executables
+# if [ "${resp_all}" != "y" ]; then
+#   echo "Check against DEBUG options ?    [y] : \c"
+#   read resp
+#   if [ -z "$resp" ]; then resp="y" ; fi
+# else
+#  resp="y"
+#fi
+resp="n"
+if [ $resp = "y" ]; then FileExec "${VDS}/etc/bin/vd_debug" ; fi
+
+#----------------------------------------------------------------------------
+# First reconstruct message file if needed (vdmsgbuild test it)
+# Now that SMAN and VDS merge, make a smanmsgbuild too (Jean 3/3/93)
+#
+${VDS}/etc/bin/msgbuild
+
+#----------------------------------------------------------------------------
+# remove the spec files (will be linked)
+cd ${VDS}/spec
+rm -f *
+
+#----------------------------------------------------------------------------
+# Touch files for state table
+# touch="n"
+# if [ "${resp_all}" != "y" ]; then
+#   echo "Touch *.sl and *.t to compile ?  [n] : \c"
+#   read resp
+#  if [ -z "$resp" ]; then resp="n" ; fi
+#  if [ $resp = "y" ] ; then
+#    cd ${VDS}
+#    find . -name *.sl -exec touch {} \;
+#    find . -name *.t  -exec touch {} \;
+#    touch="y"
+#  fi
+#else
+#  touch="n"
+#fi
+touch="n"
+
+#----------------------------------------------------------------------------
+# Check files are set before any execution.
+checkFiles
+
+#----------------------------------------------------------------------------
+# Check files for state table.
+#if [ "${resp_all}" != "y" ]; then
+#  if [ $touch != "y" ]; then
+#    echo "Check spec files (sl) files to compile or link ?    [y] : \c"
+#    read resp
+#    if [ -z "$resp" ]; then resp="y" ; fi
+#  else
+#    resp="y"
+#  fi
+#else
+#  resp="y"
+#fi
+
+resp="y"
+if [ $resp = "y" ] ; then
+
+	FileExist "${VDS}/etc/bin/vd_reports"
+	${VDS}/etc/bin/vd_reports 1
+
+	ERROR=""
+	MAKE="${GRNUC}/bin/grmake"
+        sequence="vdlocate vdequip smglob/imp vdvvol/imp vdmdlv/imp vdpocket"
+	sequence="$sequence vdtbl/mgr vdtbl/imp vdtbl/set vdtbl"
+	sequence="$sequence smmgr vd* sm*"
+
+        cd ${VDS}
+        for dir in `find $sequence -type d -print | uniq`
+        do
+          cd ${VDS}/$dir
+          if /bin/ls *.S > /dev/null 2>&1 ; then
+           	echo "---------: $dir ------------- link"
+		ln ${VDS}/$dir/*.S ${VDS}/spec > /dev/null 2>&1
+          fi
+          if /bin/ls *.sl > /dev/null 2>&1 || /bin/ls *.t > /dev/null 2>&1 ;then
+
+	    TMP=/tmp/VD${RANDOM}
+            echo "---------: $dir ------------- grmake sl"
+	    if $MAKE sl | /bin/tee ${TMP} ; then
+
+	      if /bin/grep "Cannot find file" ${TMP} /dev/null ; then
+		ERROR=${ERROR}" \t--> Makemake failed in ${dir}\n"
+
+	      elif /bin/grep "Couldn't open" ${TMP} > /dev/null ; then
+		ERROR=${ERROR}" \t--> Make failed in ${dir}\n"
+
+	      elif /bin/grep "cannot execute" ${TMP} > /dev/null ; then
+		ERROR=${ERROR}" \t--> Make failed in ${dir}\n"
+
+	      elif /bin/grep "Cannot load" ${TMP} > /dev/null ; then
+		ERROR=${ERROR}" \t--> Make failed in ${dir}\n"
+
+	      elif /bin/grep "*** Error code" ${TMP} > /dev/null ; then
+		ERROR=${ERROR}" \t--> Make failed in ${dir}\n"
+
+	      elif /bin/grep "Don't know how to make" ${TMP} > /dev/null ; then
+		ERROR=${ERROR}" \t--> Make problem in ${dir}\n"
+
+	      else
+		ln ${VDS}/$dir/*.S ${VDS}/spec > /dev/null 2>&1
+	      fi
+
+	    else
+		ERROR=${ERROR}" \t--> Make failed in ${i}\n"
+	    fi
+	    cleanup
+          fi
+        done
+
+	${VDS}/etc/bin/vd_reports 0
+
+	if [ "blob${ERROR}" != "blob" ] ; then
+		/bin/echo "\n${ERROR}"
+		/usr/bin/tput bel
+		RC=1
+	fi
+fi
+
+#----------------------------------------------------------------------------
+# Link the specification files again for safety reasons.
+cd ${VDS}
+find vd* sm* -name \*.S -exec ln {} ${VDS}/spec/. > /dev/null 2>&1 \;
+
+echo "Ready to compile"
+exit 1
+
+#----------------------------------------------------------------------------
+# Compile the source files.
+if [ "${resp_all}" != "y" ]; then
+  echo "Compile I/VDS source files ?     [y] : \c"
+  read resp
+  if [ -z "$resp" ]; then resp="y" ; fi
+else
+  resp="y"
+fi
+
+if [ $resp = "y" ] ; then
+
+
+	cd ${VDS}
+
+	# Move the file "makefile" of the reports directory as comment,
+	# to avoid compilation.
+	FileExist "${VDS}/etc/bin/vd_reports"
+	${VDS}/etc/bin/vd_reports 1
+	cleanup
+	MAKE="${GRNUC}/bin/grmake -k"
+	ERROR=""
+
+	sequence="vd* sm* ems* cimacros config"
+        for dir in `find $sequence -type d -print`
+        do
+	  if [ -f ${VDS}/$dir/makefile ] ; then
+
+	    echo ""
+	    echo "---------: $dir "
+	    echo "------------------------------------------------------------"
+	    TMP=/tmp/VD${RANDOM}
+
+	    cd ${VDS}/$dir
+	    if $MAKE | /bin/tee ${TMP} ; then
+
+	      if /bin/grep "Cannot find file" ${TMP} /dev/null ; then
+		ERROR=${ERROR}" \t--> Makemake failed in ${dir}\n"
+
+	      elif /bin/grep "cannot execute" ${TMP} > /dev/null ; then
+		ERROR=${ERROR}" \t--> Make failed in ${dir}\n"
+
+	      elif /bin/grep "Cannot load" ${TMP} > /dev/null ; then
+		ERROR=${ERROR}" \t--> Make failed in ${dir}\n"
+
+	      elif /bin/grep "*** Error code" ${TMP} > /dev/null ; then
+		ERROR=${ERROR}" \t--> Make failed in ${dir}\n"
+
+	      elif /bin/grep "Don't know how to make" ${TMP} > /dev/null ; then
+		ERROR=${ERROR}" \t--> Make problem in ${dir}\n"
+
+	      elif /bin/grep "Don't know how to make target" ${TMP} > /dev/null ; then
+		ERROR=${ERROR}" \t--> Make problem in ${dir}\n"
+
+	      elif /bin/grep "because of errors" ${TMP} > /dev/null ; then
+		ERROR=${ERROR}" \t--> Make problem in ${dir}\n"
+	      fi
+	    else
+		ERROR=${ERROR}" \t--> Make failed in ${dir}\n"
+	    fi
+
+	    cleanup
+	  fi
+	done
+
+	# Reset the file "_makefile" of the reports directory to "makefile",
+	# to allow compilation for the costumers.
+
+	${VDS}/etc/bin/vd_reports 0
+
+	if [ "blob${ERROR}" != "blob" ] ; then
+		/bin/echo "\n${ERROR}"
+		/usr/bin/tput bel
+		RC=1
+	fi
+fi
+
+#----------------------------------------------------------------------------
+# check resulting files after compilation.
+
+checkResult
+
+#----------------------------------------------------------------------------
+# Link to one executable.
+if [ "${resp_all}" != "y" ]; then
+  echo "Creation of VDS.o and OMprodinit.o  ?  [y] \c"
+  read resp
+  if [ -z "$resp" ]; then resp="y" ; fi
+else
+  resp="y"
+fi
+
+if [ $resp = "y" ]; then FileExec "${VDS}/etc/bin/vd_dload" ; fi
+
+#----------------------------------------------------------------------------
+# Creation of the release
+if [ "${resp_all}" != "y" ]; then
+  echo "Creation of the release ?         [n] \c"
+  read resp
+  if [ -z "$resp" ]; then resp="n" ; fi
+else
+  resp="n"
+fi
+
+if [ $resp = "y" ]; then FileExec "${VDS}/etc/bin/vd_release" ; fi

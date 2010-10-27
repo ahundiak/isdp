@@ -1,0 +1,308 @@
+/* $Id: neat_plateBS.u,v 1.1 2001/03/10 19:27:37 ramarao Exp $  */
+/* --------------------------------------------------------------------
+ * I/VDS
+ *
+ * File:        vds/vdefp/neat_plateBS.u
+ *
+ * Description:
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ *      $Log: neat_plateBS.u,v $
+ *      Revision 1.1  2001/03/10 19:27:37  ramarao
+ *      Created Neat Edge Function for BSPmath.
+ *
+ *
+ * History:
+ *      MM/DD/YY        AUTHOR          DESCRIPTION
+ *      03/10/01        Rama Rao        File Creation.
+ * -------------------------------------------------------------------*/
+
+#include "VDppl.h"
+#include "VDgeom.h"
+#include "VDefp.h"
+#include "VDobj.h"
+
+#include "ci_mac_def.h"
+
+#define MACRO_NAME    "neat_plateBS"
+#define MAX_TEMP      1
+#define MAX_FEET     (VDEFP_NEAT_EDGES_MAX + 1)
+#define MAX_CHAR_FEET 10
+
+TGRid   CI_MACRO_ID;    
+
+extern IGRlong	VDefpGetSurfaceEdgeBspsBS();
+
+/* --------------------------------------
+ * Macro defination
+ */
+main ()
+{
+  IGRint  i;
+  IGRlong sts;
+  IGRchar *temp_names[MAX_TEMP] ;
+  IGRchar *feet_names[MAX_FEET] ;
+  IGRchar buffer[MAX_CHAR_FEET * MAX_FEET] ;
+  IGRint  temp_types [MAX_TEMP]  ;
+  GRobj   ci_mac_def1;
+
+  temp_names[0] = "plate"  ; 	    /* Need macro class?  */ 
+  temp_types[0] =  macro_generic | surface_generic ;   
+  feet_names[0] = "center";
+
+  /* Set feet names */
+  for (i = 0 ; i < VDEFP_NEAT_EDGES_MAX ; i = i + 1) {
+    sprintf(&buffer[i*MAX_CHAR_FEET], "edge%02d", i);
+    feet_names[i+1] = &buffer[i*MAX_CHAR_FEET];
+  }
+
+  ci_mac_def1 = NULL_OBJID ;
+
+  ac$cimacdef(cimacdef          = ci_mac_def1,
+	      status            = &sts, 	
+	      name              = MACRO_NAME,
+              temp_num          = MAX_TEMP, 		
+	      temp_names        = temp_names,
+	      temp_types        = temp_types,
+	      extern_feet_num   = MAX_FEET,
+	      extern_feet_names = feet_names);
+
+  return 1;
+
+} /* main() */
+
+IGRlong VDefpComputeNeatBSEdges( macOE, opFlag, edgeCnt, edgeIDs )
+TGRobj_env 	*macOE;
+IGRint      	opFlag;
+IGRint		*edgeCnt;
+TGRid		*edgeIDs;
+{
+  IGRstat    retFlag;
+  IGRstat    sts;
+
+  TGRobj_env parent1OE;
+ 
+  TGRobj_env srfOE;
+  TGRobj_env plateOE;
+
+  IGRint     isPlate;
+
+  IGRchar    plateSurfaceName[32];
+
+  IGRchar    macObjType[128];
+  IGRchar    macObjName[128];
+  IGRchar    macObjDesc[128];
+  IGRchar    buf[128];
+  IGRint     i;
+
+  IGRdouble  centerPT[3];
+  TGRid      centerID;
+
+  struct {
+    IGRint cnt;
+    IGRint max;
+    TGRbsp_curve *bsps[VDEFP_NEAT_EDGES_MAX];
+  } edge;
+
+  IGRdouble tol;
+
+  // Init
+  *edgeCnt = 0;
+  retFlag  = 0;
+  isPlate  = 0;
+  if (opFlag);
+
+  memset(&edge,0,sizeof(edge));
+  edge.max = VDEFP_NEAT_EDGES_MAX;
+
+  srfOE.obj_id.objid = NULL_OBJID;
+
+  // Arg check
+  if ((edgeCnt == NULL) || (edgeIDs == NULL)) goto wrapup2;
+
+  // Get 1st parent, either the surface or a plate
+  vdobj$GetTemplate(objOE      = macOE,
+                    nth        = 0,
+                    templateOE = &parent1OE);
+
+  if (parent1OE.obj_id.objid == NULL_OBJID) goto wrapup;
+
+  sts = vdobj$IsAncestryValid(objOE          = &parent1OE,
+                              superClassName = "VSplate");
+
+  if (!(sts & 1)) srfOE = parent1OE;
+  else {
+
+    isPlate = 1;
+    plateOE = parent1OE;
+
+    // Either base or offset based on macro name
+    strcpy(plateSurfaceName,VDEFP_PLATE_BASE_SURF_NAME);
+
+    vdobj$Get(objOE = macOE, macName = macObjType);
+
+    if (!strcmp(macObjType,VDEFP_NEAT_PLATEO_MACRO_NAME)) {
+      strcpy(plateSurfaceName,VDEFP_PLATE_OFFSET_SURF_NAME);
+    }
+
+    // Get the surface
+    vdobj$GetFoot(objOE    = &plateOE,
+                  footName =  plateSurfaceName,
+                  footOE   = &srfOE);
+  }
+  if (srfOE.obj_id.objid == NULL_OBJID) goto wrapup;
+
+  /* -------------------------------------
+   * Use 10 * basis tolerance
+   * Actually, use chord height tolerance since basically want to know when a
+   * curve is straight or not
+   */
+  vdgeom$GetTolerance(cht = &tol);
+
+  // Get the edge geometry
+  sts = VDefpGetSurfaceEdgeBspsBS(&srfOE,edge.max,tol,&edge.cnt,edge.bsps);
+  if (!(sts & 1)) goto wrapup;
+
+  // TR179901283 Warning
+  if (sts == 3) {
+    printf("*** The following plate may have invalid internal cutout geometry\n" );
+    if (isPlate) vdobj$Print(objOE = &plateOE);
+    else         vdobj$Print(objOE = &srfOE);
+  }
+
+  // Center point is useful
+  VDefpGetSurfaceCenter(&srfOE,centerPT);
+
+  VDdrawLinear(1,centerPT,&macOE->mod_env,&centerID);
+
+  if (centerID.objid == NULL_OBJID) {
+    printf("Problem making center point\n");
+    goto wrapup;
+  }
+  edgeIDs[0] = centerID;
+  *edgeCnt = 1;
+
+  // Make objects
+  for(i = 0; i < edge.cnt; i=i+1 ) {
+    VDdrawCurve(edge.bsps[i],
+                &macOE->mod_env,
+                &edgeIDs[*edgeCnt]);
+
+    if (edgeIDs[*edgeCnt].objid == NULL_OBJID) {
+      printf("*** Problem creating edge object\n");
+      if (edge.bsps[i] == NULL) printf("Edge is NULL\n");
+      else                   printf("Edge Poles %d\n",edge.bsps[i]->num_knots );
+    }
+    else *edgeCnt = *edgeCnt + 1;
+  }
+
+  // Check for lots of edges
+  if (*edgeCnt > 80) {
+    printf("--- Warning High Edge Count %2d For ---\n",*edgeCnt);
+    vdobj$Print(objOE = &parent1OE);
+  }
+
+  // Done
+  retFlag = 1;
+
+wrapup:
+
+  // Free up bsp geometry
+  for(i = 0; i < edge.cnt; i=i+1 ) {
+    if( edge.bsps[i] ) { free( edge.bsps[i] ); edge.bsps[i] = NULL; }
+  }
+
+  // delete any objects which may have been created
+  if ((!(retFlag & 1)) && (*edgeCnt > 0)) {
+
+    vdobj$Delete(objCNT = *edgeCnt,
+                 objID  =  edgeIDs,
+                 objENV = &srfOE.mod_env);
+
+    *edgeCnt = 0;
+  }
+
+wrapup2:
+  return retFlag;
+}
+
+/* -------------------------------------------------------
+ * Initial placement
+ */
+place()
+{
+  IGRstat    retFlag;
+  IGRstat    sts, msg ;
+  TGRobj_env macOE;
+  TGRid      edgeIDs[MAX_FEET];
+  IGRint     edgeCnt;
+
+  retFlag = 0;
+
+  macOE.obj_id  = CI_MACRO_ID;
+  macOE.mod_env = MOD_ENV;
+
+  sts = VDefpComputeNeatBSEdges(&macOE,0,&edgeCnt,edgeIDs);
+  if (!(sts & 1)) {
+    goto wrapup;
+  }
+
+  sts = ci$send(msg = message ci_macro.
+                set_all_extern_feet(&msg, 
+                                     edgeCnt, 
+                                     edgeIDs, 
+                                    &MOD_ENV),
+	targetid = CI_MACRO_ID.objid,
+	targetos = CI_MACRO_ID.osnum); 
+  if (!(sts & msg & 1)) {
+    goto wrapup;
+  }
+
+  retFlag = 1;
+
+wrapup:
+  return retFlag;
+}
+
+/* -------------------------------------------------------
+ * recompute
+ */
+compute()
+{
+  IGRstat    retFlag;
+  IGRstat    sts, msg ;
+  TGRobj_env macOE;
+  TGRid      edgeIDs[MAX_FEET];
+  IGRint     edgeCnt;
+
+  // Init
+  retFlag = 0;
+
+  macOE.obj_id  = CI_MACRO_ID;
+  macOE.mod_env = MOD_ENV;
+
+  // Process
+  sts = VDefpComputeNeatBSEdges(&macOE,1,&edgeCnt,edgeIDs);
+  if (!(sts & 1)) {
+    goto wrapup;
+  }
+
+  // Add feet
+  sts = ci$send(msg = message ci_macro.
+                set_all_extern_feet(&msg, 
+                                     edgeCnt, 
+                                     edgeIDs, 
+                                    &MOD_ENV),
+	targetid = CI_MACRO_ID.objid,
+	targetos = CI_MACRO_ID.osnum); 
+  if (!(sts & msg & 1)) {
+    goto wrapup;
+  }
+
+  retFlag = 1;
+
+wrapup:
+  return retFlag;
+}

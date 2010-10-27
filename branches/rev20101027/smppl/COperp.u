@@ -1,0 +1,207 @@
+/* $Id: COperp.u,v 1.1.1.1 2001/01/04 21:07:36 cvs Exp $  */
+
+/* --------------------------------------------------------------------
+ * I/VDS
+ *
+ * File:	vds/smppl / COperp.u
+ *
+ * Description:
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ *	$Log: COperp.u,v $
+ *	Revision 1.1.1.1  2001/01/04 21:07:36  cvs
+ *	Initial import to CVS
+ *	
+# Revision 1.1  1998/04/29  16:27:20  pinnacle
+# VDS 2.5.1
+#
+# Revision 1.1  1997/05/08  13:20:44  pinnacle
+# New project VDS 250
+#
+# Revision 1.1  1996/07/19  20:33:52  pinnacle
+# Create VDS 241 project
+#
+# Revision 1.1  1994/11/14  22:42:32  pinnacle
+# Create vds.240 from vds.232
+#
+# Revision 1.1  1994/11/08  16:07:00  pinnacle
+# create vds.232
+#
+ *
+ * History:
+ *	MM/DD/YY	AUTHOR		DESCRIPTION
+ *
+ * -------------------------------------------------------------------*/
+
+/* Co to place a SMPerp */
+
+#include "cieveryone.h"
+#include "cimacros.h"
+#include "asmacros.h"
+#include "string.h"
+#include "cievent.h"
+#include "exmacros.h"
+#include "griodef.h"
+#include "griomacros.h"
+
+#include "csmacros.h"
+
+#include "SMdef.h"
+
+extern OM_S_OBJID           NULL_OBJID;
+
+extern int printf();
+extern int GRfindcontext(), SMGetActCs(), GRcvt_imp_to_wrk();
+
+extern ASmake_source_from_env(), ASmake_source();
+
+main()
+{
+  struct GRid 		cs;
+  struct GRmd_env 	md_env;
+  char			loc_mes[40];
+  struct GRid 		new;
+  IGRlong 		sts, msg;
+  char 			name[80], tmp[80], type_pp[10];
+  char 			axis;
+  short 		finish;
+  IGRdouble 		dist, pt[3];
+  int 			rc, i;
+ 
+  strcpy(loc_mes,"Place Perpendicular");
+  message(loc_mes);
+
+  /* Get the active CS */
+  sts = SMGetActCs(&cs, NULL, &md_env);
+  if(!(sts&1)) 
+    {
+     printf("Error gettting the Active Coordinate System\n");
+     exit;
+    }
+  else if(cs.objid == NULL_OBJID) 
+    {
+     printf("No active Coordinate System defined\n");
+     exit;
+    }
+
+  /* make a return foot to get the garphic object */
+  sts = ci$send(msg = message NDmacro.ACreturn_foot(&msg, "", &cs,
+     			  &md_env.md_env.matrix_type, md_env.md_env.matrix),
+                        targetid = cs.objid,
+                        targetos = cs.osnum );
+   if(!(sts&msg&1)) 
+    {
+     printf("Error getting the active coordinate system\n");
+     exit;
+    }
+   ASmake_source_from_env(&cs, &md_env, &cs);	
+
+
+  /* Put it on the stack ... */
+//  for(i=0;i<3;i=i+1) pt[i] = 0;
+//  ci$put(obj = cs.objid, osnum = cs.osnum, data_point = pt, window_id = CI_NULL);
+//
+//  if(!ci$locate(prompt       = "Identify Cs",
+//		owner_action = LC_RIGID_COMP
+//		| LC_RIGID_OWNER | LC_FLEX_COMP
+//		| LC_FLEX_OWNER  | LC_REF_OBJECTS,
+//		classes      = "GRgencs",
+//		obj          = &cs.objid,
+//		osnum	     = &cs.osnum,
+//		md_env       = &md_env)) exit;
+//
+//  as$make_source(go_grid = cs,
+//		 mod_env = &md_env,
+//		 as_os   = 2,
+//		 as_grid = &cs);
+//
+
+  /* Enter the  type of perpendicular (AP or FP) */
+  do
+   {
+     finish = 0;
+     tmp[0] = '\0';
+     ci$get(prompt = "Type of perpendicular (AP or FP)",
+	    string = tmp);
+     if((strcmp(tmp,"AP") == 0 || strcmp(tmp,"FP") == 0))
+      {
+	finish = 1;
+	strcpy(type_pp,tmp);
+      }
+   }while(!finish);
+
+  /* Enter the axis */
+//  do
+//   {
+//     finish = 0;
+//     tmp[0] = '\0';
+//     ci$get(prompt = "Axis of the perpendicular",
+//	    string = tmp);
+//     if(!strcmp(tmp,"x"))
+//      { finish = 1; axis = 'x'; }
+//     if(!strcmp(tmp,"y"))
+//       { finish = 1; axis = 'y'; }
+//     if( !strcmp(tmp,"z"))
+//      { finish = 1; axis = 'z'; }
+//   } while(!finish);
+//
+  axis = 'x';
+
+  /* Enter the distance from the cs */
+  do
+   {
+     ci$get(prompt = "Key-in distance from active ship cs",
+	    value = dist,rc = rc);
+   } while(!rc);
+
+  ci$get_module_info(md_env = &md_env);
+
+  /* Convert to working units */
+  sts = co$cvt_imp_to_wrk(msg 		= &msg,
+			  unit_type 	= GRIO_DISTANCE,
+			  osnum 	= md_env.md_id.osnum,
+			  primary 	= dist,
+			  result 	= &dist);
+					
+  if(!(sts & msg&1)){printf("ERROR co$cvt_imp_to_wrk\n"); exit;}
+	
+  /* Enter the name */
+  do
+   {
+     finish = 0;
+     tmp[0] = '\0';
+     ci$get(prompt="Perpendicular name",
+	    string = tmp);
+     if(strcmp(tmp,""))
+      { strcpy(name,tmp); finish = 1; }
+   } while(!finish);
+
+//  printf("Cs : objid = %d osnum = %d\n",cs.objid, cs.osnum);
+//  printf("Nom %s Axis %c type_pp %s\n",name,axis,type_pp);
+  
+  new.objid = NULL_OBJID;
+  new.osnum = md_env.md_id.osnum;
+
+  sts = ci$send(msg = message SMPerp.SMcreate
+		(&msg,name,&cs,axis,dist,type_pp),    
+		construct = 1,
+		targetid = new.objid, 
+		targetos = new.osnum,
+		verbose = 1);
+  if( !(sts & msg &1) )
+       {
+	write("placement of the perpendiculaire failed \n");
+	status("placement of the perpendiculaire failed");
+	ci$send(msg = message Root.delete(0),
+	      		targetid = new.objid,
+	      		targetos = new.osnum );
+       }
+
+    if(!(sts & msg & 1))
+     { printf("SMPerp Pas pas cree\n"); exit;}
+}
+
+
+

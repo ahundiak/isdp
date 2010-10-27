@@ -1,0 +1,955 @@
+/* $Id: COmodfrm_iso.u,v 1.4 2002/05/29 19:17:24 anand Exp $  */
+
+/* --------------------------------------------------------------------
+ * I/VDS
+ *
+ * File:       COmodfrm_iso.u 
+ *
+ * Description:
+ *	A ppl command file which modifies frame systems and a single
+ *	frame in isometric view.
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ *      $Log: COmodfrm_iso.u,v $
+ *      Revision 1.4  2002/05/29 19:17:24  anand
+ *      *** empty log message ***
+ *
+ *      Revision 1.3  2001/06/27 20:54:31  jayadev
+ *      *** empty log message ***
+ *
+ *      Revision 1.2  2001/06/27 16:46:16  jayadev
+ *      prompt modified
+ *
+ *      Revision 1.1  2001/06/24 18:16:28  jayadev
+ *      modify iso frames command
+ *
+ *
+ * History:
+ *      MM/DD/YY        AUTHOR          DESCRIPTION
+ *      06/18/01        Jayadev         Creation
+ * -------------------------------------------------------------------*/
+
+#include<stdio.h>
+#include<string.h>
+
+#define VD_PPL
+
+#include "VDobj.h"
+#include "VDchn.h"
+
+#include "OMminimum.h"
+#include "OMprimitives.h"
+#include "OMerrordef.h"
+#include "OMmacros.h"
+#include "exproto.h"
+#include "DItypedef.h"
+#include "DIdef.h"
+#include "DIglob.h"
+#include "DIprims.h"
+#include "ciminimum.h"
+#include "cieveryone.h"
+#include "cimacros.h"
+#include "bserr.h"
+#include "nddef.h"
+#include "macro.h"
+#include "acdef.h"
+#include "acmacros.h"
+#include "grdpbdef.h"
+#include "grdpbmacros.h"
+#include "coparamac.h"
+#include "FI.h"
+#include "CIforms.h"
+#include "asmacros.h"
+#include "ACdb_info.h"
+#include "asbox.h"
+#include "ndmacros.h"
+#include "SMdef.h"
+#include "SMmacros.h"
+#include "detaildef.h"
+#include "dp.h"
+#include "ACcheckin.h"
+#include "VDmem_ppl.h"
+#include "v_dbgmacros.h"
+#include "VDCmdDrwFr.h"
+
+struct CIform_st     form_st;
+Form                 my_form;
+struct VDfrsys_oniso framesys;
+struct VDfrsys       *frmsys_vdfrsys;
+struct VDfrsys       *frmsys_vdsingleframe;
+
+extern int	ci_notification();
+extern int	FIfld_set_list_default_text(),
+		FIg_set_value(),
+		FIg_disable(),
+		FIf_set_cmd_oid_os(),
+		FIfld_get_list_num_rows(),
+		FIfld_get_list_select(),
+		FIf_display(),
+		FIf_delete(),
+		FIg_reset(),
+		FIf_new(),
+		FIfld_set_list_num_rows(),
+		FIg_get_state(),
+		FIfld_set_list_text(),
+		FIg_display(),
+		FIg_erase(),
+		FIf_erase(),
+		FIg_set_text(),
+		FIg_set_state(),
+		FIg_get_text(),
+		FIg_get_value();
+extern          ASmake_source_from_env();
+extern int	free(),
+		read_drawing_macro(),
+		GRdpb_get(),
+		get_frsys_list(),
+		sort_single_frame(),
+		get_singleframe_list(),
+                set_drwFramePara(),
+                VDfilterIsoFrames(),
+                VDisoChangeParent();
+
+
+
+/*-----------------------------------------------------------------*/
+init()
+{
+  IGRlong	msg;
+  IGRlong	NumberOfBytes;
+  IGRlong	BytesReceived;
+
+
+  NumberOfBytes = sizeof( framesys.ModuleInfo );
+  gr$get_module_env( msg    = &msg,
+                     sizbuf = &NumberOfBytes,
+                     buffer = &framesys.ModuleInfo,
+                     nret   = &BytesReceived );
+
+}/* init */
+
+/*------------------------------------------------------------------*/
+wakeup()
+{
+
+  if( framesys.form_displayed && (my_form != NULL) )
+  {
+    framesys.form_displayed = TRUE;
+    FIf_display( my_form );
+    UI_prompt( "" );
+    UI_prompt( "Fill in form paramters" );
+  }
+
+}/* wakeup */
+
+/*------------------------------------------------------------------*/
+delete()
+{
+  if( frmsys_vdfrsys  != NULL ) free( frmsys_vdfrsys );
+  if( frmsys_vdsingleframe  != NULL ) free( frmsys_vdsingleframe );
+  if( my_form != NULL         ) FIf_delete( my_form );
+
+}/* delete */
+
+/*------------------------------------------------------------------*/
+sleep()
+{
+  if( (my_form != NULL) && (framesys.form_displayed == TRUE))
+  {
+    FIf_erase( my_form );
+  }
+}/* sleep */
+
+/*-----------------------------------------------------------------*/
+int form_init()
+{
+  int 		status, status0, status1;
+  int 		i, ret_status;
+  double	val;
+
+
+  SetProc( form_init ); Begin
+
+  ret_status = 0;
+
+  framesys.form_displayed       = FALSE;
+  framesys.iso_flag             = TRUE;
+  framesys.frsys[0]             = '\0';
+  framesys.frname[0]            = '\0';
+  framesys.act_printe           = 1;
+  framesys.act_prfact           = 0;
+  framesys.act_txinte           = 1;
+  framesys.pr_flag              = 1;
+  framesys.tx_flag              = 1;
+  framesys.Nb_Max_Fra           = 0;
+  framesys.Nb_Max_Ref           = 0;
+  framesys.Nb_Max_Obj           = 0;
+  framesys.nb_framesys          = 0;
+  framesys.nb_singleframe       = 0;
+  framesys.md_flag              = 0;
+  framesys.orientation_flag     = 0;
+  framesys.singleframe_flag     = 0;
+  framesys.centerline_flag      = 0;
+  framesys.frmposition_flag     = 0;
+  framesys.labeltype            = 0;
+  framesys.offset               = 0.0;
+  framesys.text_offset          = 0.0;
+  framesys.labelprefix[0]       = '\0';
+  framesys.nameCase		= 0;  /* added fro CR179900942 by ylong */
+
+  frmsys_vdfrsys  = NULL;
+  frmsys_vdsingleframe  = NULL;
+  my_form  = NULL;
+
+  status = 
+  FIf_new( 0, "VDFrmIsoForm", ci_notification, &my_form );
+  if( my_form == NULL )
+  {
+    printf( "Could not create the form, Error code = %d\n", status );
+    goto wrapup;
+  }
+
+/*
+  status0 = get_frsys_list( &framesys, &frmsys_vdfrsys );
+  if( !(status0&1) )
+  {
+    UI_status("No frame systems found!");
+  }
+  status1 = get_singleframe_list( &framesys, &frmsys_vdsingleframe );
+  if( !(status1&1) )
+  {
+    UI_status("No single frame found!");
+  }
+
+  if( framesys.nb_singleframe > 1)
+  {
+    status = sort_single_frame( &framesys, frmsys_vdsingleframe );
+    if( !(status&1) )
+    {
+      UI_status("sorting single frame names failed");
+    }
+  }
+  if( !(status1&1) && !(status0&1) )
+  {
+    UI_status("No frame system or single frame found!");
+    goto wrapup;
+  }
+
+  FIfld_set_list_num_rows( my_form, VD_DrwIsoFr_SiFr_fd, 0, 0 );
+  for( i = 0 ; i < framesys.nb_singleframe ; i = i + 1 )
+  {
+    FIfld_set_list_default_text( my_form,
+				 VD_DrwIsoFr_SiFr_fd,
+				 i,
+				 0,
+                          	 frmsys_vdsingleframe[i].name,
+				 FALSE );
+  }
+
+  FIfld_set_list_num_rows( my_form, VD_DrwIsoFr_FrSy_fd, 0, 0 );
+  for( i = 0 ; i < framesys.nb_framesys ; i = i + 1 )
+  {
+    FIfld_set_list_default_text( my_form,
+				 VD_DrwIsoFr_FrSy_fd,
+				 i,
+				 0,
+                          	 frmsys_vdfrsys[i].name,
+				 FALSE );
+  }
+*/
+  FIg_disable(my_form,VD_DrwIsoFr_FrSy_fd);
+  FIg_disable(my_form,VD_DrwIsoFr_SiFr_fd);
+
+  FIg_set_state( my_form, VD_DrwIsoFr_Single_tg, 0 );
+  FIg_disable(my_form,VD_DrwIsoFr_Single_tg);
+
+
+  FIfld_set_list_num_rows( my_form, VD_DrwIsoFr_TxIn_fd, 0, 2 );
+  FIfld_set_list_default_text( my_form,
+			       VD_DrwIsoFr_TxIn_fd,
+			       0,
+			       0,
+                               "1",
+			       FALSE );
+  FIfld_set_list_default_text( my_form,
+			       VD_DrwIsoFr_TxIn_fd,
+			       1,
+			       0,
+                               "2",
+			       FALSE );
+  val = 1;
+  FIg_set_value( my_form, VD_DrwIsoFr_TxIn_fd, val );
+
+  ret_status = 1;
+
+  wrapup:
+  End
+  return ret_status;
+
+}/* form_init */
+
+/*-----------------------------------------------------------------*/
+int form_save()
+{
+  int 		flag;
+  double	val;
+  char          txinText[20];
+
+
+  SetProc( form_save ); Begin
+
+  FIg_set_text( my_form,
+                VD_DrwIsoFr_FrSy_fd,
+                framesys.frsys );
+
+  FIg_set_text( my_form,
+                VD_DrwIsoFr_SiFr_fd,
+                framesys.frname );
+
+  val = (double) framesys.act_printe;
+  FIg_set_value( my_form, VD_DrwIsoFr_PrIn_fd, val );
+
+  sprintf( txinText, "%d\n", framesys.act_prfact );
+  FIg_set_text( my_form,
+                VD_DrwIsoFr_PrFc_fd,
+                txinText );
+
+  val = (double) framesys.act_txinte;
+  FIg_set_value( my_form, VD_DrwIsoFr_TxIn_fd, val );
+
+  val = framesys.offset;
+  FIg_set_value( my_form, VD_DrwIsoFr_FrOff_fd, val );
+
+  val = framesys.text_offset;
+  FIg_set_value( my_form, VD_DrwIsoFr_TxOff_fd, val );
+
+  FIg_set_text( my_form, VD_DrwIsoFr_Msg_fd, "" );
+
+  flag = framesys.labeltype;
+  FIg_set_state( my_form, VD_DrwIsoFr_Label_tg, flag );
+
+  if( !flag )
+  {
+    FIg_display( my_form, VD_DrwIsoFr_Prefix_text );
+    FIg_display( my_form, VD_DrwIsoFr_Prefix_fd );
+    FIg_set_text( my_form,
+                  VD_DrwIsoFr_Prefix_fd,
+                  framesys.labelprefix );
+  }
+  else
+  {
+    FIg_erase( my_form, VD_DrwIsoFr_Prefix_text );
+    FIg_erase( my_form, VD_DrwIsoFr_Prefix_fd );
+    FIg_display( my_form, VD_DrwIsoFr_Caps_chck );
+    flag = framesys.nameCase;
+    FIg_set_state( my_form, VD_DrwIsoFr_Caps_chck, flag );
+  }
+
+  flag = framesys.orientation_flag;
+  FIg_set_state( my_form, VD_DrwIsoFr_TxtOri_tg, flag );
+
+  flag = framesys.singleframe_flag;
+  FIg_set_state( my_form, VD_DrwIsoFr_Single_tg, flag );
+
+  flag = framesys.centerline_flag;
+  FIg_set_state( my_form, VD_DrwIsoFr_Center_tg, flag );
+
+  flag = framesys.frmposition_flag;
+  FIg_set_state( my_form, VD_DrwIsoFr_FrPos_tg, flag );
+
+
+  wrapup:
+  End
+  return 1;
+
+}/* form_save */
+
+/*-----------------------------------------------------------------*/
+int form_reset()
+{
+  SetProc( form_reset ); Begin
+
+  FIg_reset( my_form, VD_DrwIsoFr_FrSy_fd );
+
+  FIg_reset( my_form, VD_DrwIsoFr_SiFr_fd );
+
+  FIg_reset( my_form, VD_DrwIsoFr_PrIn_fd );
+
+  FIg_reset( my_form, VD_DrwIsoFr_PrFc_fd );
+
+  FIg_reset( my_form, VD_DrwIsoFr_TxIn_fd );
+
+  FIg_reset( my_form, VD_DrwIsoFr_FrOff_fd );
+
+  FIg_reset( my_form, VD_DrwIsoFr_TxOff_fd );
+
+  FIg_reset( my_form, VD_DrwIsoFr_Msg_fd );
+
+  FIg_reset( my_form, VD_DrwIsoFr_Label_tg );
+
+  FIg_display( my_form, VD_DrwIsoFr_Prefix_text );
+  FIg_display( my_form, VD_DrwIsoFr_Prefix_fd );
+  FIg_reset( my_form, VD_DrwIsoFr_Prefix_fd );
+
+  FIg_reset( my_form, VD_DrwIsoFr_TxtOri_tg );
+
+  FIg_reset( my_form, VD_DrwIsoFr_Single_tg );
+
+  FIg_reset( my_form, VD_DrwIsoFr_Center_tg );
+
+  FIg_reset( my_form, VD_DrwIsoFr_FrPos_tg );
+
+
+  End
+  return 1;
+
+}/* form_reset */
+
+/*------------------------------------------------------------------*/
+form_notification()
+{
+  IGRint         status, resp, i, nb_vdfrsys, ret_status;
+  IGRlong        msg;
+  int            flag, row, prinVal;
+  double         val;
+  char           txinText[20];
+  IGRint         state_flag;
+  IGRint         chck_flag;
+
+
+  SetProc( form_notification ) ; Begin
+
+  ret_status = 0;
+  chck_flag = 0;
+
+  switch( form_st.gadget_label )
+  {
+    case VD_DrwIsoFr_FrPos_tg:
+
+         FIg_get_state( my_form, VD_DrwIsoFr_FrPos_tg, &flag );
+         __DBGpr_int( " frame position flag ", flag);
+
+         break;
+
+    case VD_DrwIsoFr_Center_tg:
+
+         FIg_get_state( my_form, VD_DrwIsoFr_Center_tg, &flag );
+         __DBGpr_int( " single frame flag ", flag);
+
+         break;
+
+    case VD_DrwIsoFr_Single_tg:
+
+         FIg_get_state( my_form, VD_DrwIsoFr_Single_tg, &flag );
+         __DBGpr_int( " single frame flag ", flag);
+
+         break;
+
+    case VD_DrwIsoFr_TxtOri_tg:
+
+         FIg_get_state( my_form, VD_DrwIsoFr_TxtOri_tg, &flag );
+         __DBGpr_int( " text orientation flag ", flag);
+
+         break;
+
+    case VD_DrwIsoFr_SiFr_fd:
+
+         /*
+         ** get relative single frame name
+         */
+         flag = FALSE;
+         nb_vdfrsys = 0;
+
+         status =
+         FIfld_get_list_num_rows( my_form,
+                                  VD_DrwIsoFr_SiFr_fd,
+                                  0,
+                                  &nb_vdfrsys );
+         if( status != FI_SUCCESS ) goto wrapup;
+         __DBGpr_int("# nb_vdfrsys ", nb_vdfrsys );
+
+         row = 0;
+         do
+         {
+           status =
+           FIfld_get_list_select( my_form,
+                                  VD_DrwIsoFr_SiFr_fd,
+                                  row,
+                                  0,
+                                  &flag );
+           if( status != FI_SUCCESS ) goto wrapup;
+           row = row + 1;
+         }
+         while( flag != TRUE && row <= nb_vdfrsys );
+         break;
+
+    case VD_DrwIsoFr_FrSy_fd:
+
+         /*
+         ** get relative frame names
+         */
+         flag = FALSE;
+         nb_vdfrsys = 0;
+
+         status =
+         FIfld_get_list_num_rows( my_form,
+                                  VD_DrwIsoFr_FrSy_fd,
+                                  0,
+                                  &nb_vdfrsys );
+         if( status != FI_SUCCESS ) goto wrapup;
+         __DBGpr_int("# nb_vdfrsys ", nb_vdfrsys );
+
+         row = 0;
+         do
+         {
+           status =
+           FIfld_get_list_select( my_form,
+                                  VD_DrwIsoFr_FrSy_fd,
+                                  row,
+                                  0,
+                                  &flag );
+           if( status != FI_SUCCESS ) goto wrapup;
+           row = row + 1;
+         }
+         while( flag != TRUE && row <= nb_vdfrsys );
+         break;
+
+    case VD_DrwIsoFr_PrIn_fd:
+
+         /*
+         ** set list VD_DrwIsoFr_TxIn_fd
+         */
+         FIg_get_value( my_form, VD_DrwIsoFr_PrIn_fd, &val );
+         prinVal = (int) val;
+         txinText[0] = '\0';
+         sprintf( txinText, "%d", prinVal );
+         FIfld_set_list_text( my_form,
+                              VD_DrwIsoFr_TxIn_fd,
+                              0,
+                              0,
+                              txinText,
+                              FALSE );
+         txinText[0] = '\0';
+         sprintf( txinText, "%d", 2*prinVal );
+         FIfld_set_list_text( my_form,
+                              VD_DrwIsoFr_TxIn_fd,
+                              1,
+                              0,
+                              txinText,
+                              FALSE );
+         FIg_set_value( my_form, VD_DrwIsoFr_TxIn_fd, val );
+         break;
+
+    case VD_DrwIsoFr_PrFc_fd:
+         break;
+
+    case VD_DrwIsoFr_TxIn_fd:
+         break;
+
+    case VD_DrwIsoFr_Label_tg:
+         FIg_get_state( my_form, VD_DrwIsoFr_Label_tg, &state_flag );
+         FIg_get_state( my_form, VD_DrwIsoFr_Caps_chck, &chck_flag );
+
+         if( state_flag )
+         {
+           FIg_erase( my_form, VD_DrwIsoFr_Prefix_text );
+           FIg_erase( my_form, VD_DrwIsoFr_Prefix_fd );
+
+           FIg_display( my_form, VD_DrwIsoFr_Caps_chck );//CR179900942 by ylong
+         }
+	 else
+	 {
+           FIg_erase( my_form, VD_DrwIsoFr_Caps_chck ); //CR179900942 by ylong
+
+           FIg_display( my_form, VD_DrwIsoFr_Prefix_text );
+           FIg_display( my_form, VD_DrwIsoFr_Prefix_fd );
+         }
+         break;
+
+    case VD_DrwIsoFr_Prefix_fd:
+         break;
+
+    case VD_DrwIsoFr_FrOff_fd:
+         break;
+
+    case VD_DrwIsoFr_TxOff_fd:
+         break;
+
+    case FI_RESET:
+         framesys.md_flag = 0;
+	 framesys.form_displayed = TRUE;
+
+ 	 form_reset();
+
+         resp = RESET;
+         ci$put( response = resp );
+         break;
+
+    case FI_CANCEL:
+         framesys.md_flag = 0;
+         framesys.form_displayed = FALSE;
+         status = FIf_erase( my_form );
+
+         resp = TERMINATE;
+         ci$put( response = resp );
+         break;
+
+    case FI_EXECUTE:
+         FIg_set_text( my_form, 10, "" );
+
+    case FI_ACCEPT:
+         framesys.md_flag = 1;
+
+         FIg_get_state( my_form, VD_DrwIsoFr_FrPos_tg, &flag );
+         if( flag )
+           framesys.frmposition_flag = 1;
+         else
+           framesys.frmposition_flag = 0;
+
+         FIg_get_state( my_form, VD_DrwIsoFr_TxtOri_tg, &flag );
+         if( flag )
+           framesys.orientation_flag = 1;
+         else
+           framesys.orientation_flag = 0;
+
+         FIg_get_state( my_form, VD_DrwIsoFr_Single_tg, &flag );
+         if( flag )
+           framesys.singleframe_flag = 1;
+         else
+           framesys.singleframe_flag = 0;
+
+	 flag = 0;
+         FIg_get_state( my_form, VD_DrwIsoFr_Center_tg, &flag );
+         if( flag )
+           framesys.centerline_flag = 1;
+         else
+           framesys.centerline_flag = 0;
+
+         FIg_get_text( my_form,
+                       VD_DrwIsoFr_FrSy_fd,
+                       framesys.frsys );
+         __DBGpr_str( "framesys.frsys", framesys.frsys );
+
+         FIg_get_text( my_form,
+                       VD_DrwIsoFr_SiFr_fd,
+                       framesys.frname );
+         __DBGpr_str( "framesys.frname", framesys.frname );
+
+	 if( framesys.singleframe_flag && (framesys.frname[0] == '\0') )
+         {
+           FIg_set_text( my_form,
+                         VD_DrwIsoFr_Msg_fd,
+                         "Select Single Frame Name!" );
+           break;
+         }
+
+	 if( !(framesys.singleframe_flag) && (framesys.frsys[0] == '\0') )
+         {
+           FIg_set_text( my_form,
+                         VD_DrwIsoFr_Msg_fd,
+                         "Select Frame System Name!" );
+           break;
+         }
+
+         FIg_get_value( my_form, VD_DrwIsoFr_PrIn_fd, &val );
+         framesys.act_printe = (int) val;
+         __DBGpr_int( "framesys.act_printe", framesys.act_printe );
+
+         FIg_get_text( my_form,
+                       VD_DrwIsoFr_PrFc_fd,
+                       txinText );
+         framesys.act_prfact = atoi( txinText );
+         txinText[0] = '\0';
+         __DBGpr_int( "framesys.act_prfact", framesys.act_prfact );
+
+         FIg_get_value( my_form, VD_DrwIsoFr_TxIn_fd, &val );
+         framesys.act_txinte = (int) val;
+         __DBGpr_int( "framesys.act_txinte", framesys.act_txinte );
+
+         FIg_get_value( my_form,
+                        VD_DrwIsoFr_TxOff_fd,
+                        &val );
+         framesys.text_offset = val;
+
+         FIg_get_value( my_form,
+                        VD_DrwIsoFr_FrOff_fd,
+                        &val );
+         framesys.offset = val;
+
+         FIg_get_state( my_form, VD_DrwIsoFr_Label_tg, &state_flag );
+         framesys.labeltype = state_flag;
+
+         if( !state_flag )
+         {
+           FIg_get_text( my_form,
+                         VD_DrwIsoFr_Prefix_fd,
+                         framesys.labelprefix );
+         }
+	 else {  // CR179900942 by ylong
+	   FIg_get_state( my_form,
+                          VD_DrwIsoFr_Caps_chck,
+                          &framesys.nameCase );
+	 }
+
+         if( form_st.gadget_label == FI_ACCEPT )
+         {
+           framesys.form_displayed = FALSE;
+           status = FIf_erase( my_form );
+
+           if( status != FI_SUCCESS ) goto wrapup;
+         }
+         else
+         {
+           framesys.form_displayed = TRUE;
+         }
+
+         resp = MOVE_ON;
+
+         ci$put( response = resp );
+         break;
+
+    default:
+         break;
+  }
+
+  ret_status = 1;
+
+
+  wrapup:
+  End
+  return ret_status;
+}/* form_notification */
+void main()
+ /* main */
+{
+  struct GRmd_env       mod_env;
+  struct GRmd_env       md_env;
+  char                  c_name[80];
+  int                   ii, status, response, *fr_number;
+  int                   isoCount, response_flag;
+  long                  sts;
+  struct GRid           refFrame, pretendID;
+  struct GRid           as_grid, *isoList;
+  GRname                macName;
+  struct VDdrwFrmPar    *drwFrmPar, refFrmPar;
+  struct GRobj_env      newRefOE;
+  IGRboolean            refline_located;
+
+  framesys.elementobj.objid = NULL_OBJID;
+  refFrame.objid  = NULL_OBJID;
+  pretendID.objid = NULL_OBJID;
+  as_grid.objid   = NULL_OBJID;
+  isoList         = NULL ;
+  fr_number       = NULL ;
+  drwFrmPar       = NULL ;
+  isoCount        = 0 ;
+  refline_located = TRUE;
+
+
+  status = form_init();
+  if( !(status&1) )
+  {
+    UI_status("Command failure!");
+  }
+  
+  if(FIf_set_cmd_oid_os( my_form, MY_ID, OM_Gw_current_OS ))
+  {
+    printf("something went wrong in FIf_set_cmd_oid_os\n");
+    framesys.form_displayed = FALSE;
+    UI_status("Command failure!");
+  }
+  
+  status = read_drawing_macro( &framesys );
+  if( !(status&1) )
+  {
+    UI_status("Command failure!");
+  }
+  
+  start_cmd:
+  
+  message( "Identify an iso_frame from a frame system" );
+    status = ci$locate(prompt      = "Identify iso frame",
+		       owner_action    = LC_RIGID_COMP |
+		       LC_RIGID_OWNER | LC_FLEX_COMP |
+		       LC_FLEX_OWNER,
+		       md_env          = &mod_env,
+		       obj             = &refFrame.objid,
+		       osnum           = &refFrame.osnum,
+		       window_id	   = &framesys.display_window.objid,
+		       window_osnum	   = &framesys.display_window.osnum,
+		       relocate_prompt = "iso frame not found",
+		       classes         = "VDdrawing");
+    if(!(status&1) || (refFrame.objid == NULL_OBJID))
+    {
+      UI_status( "Locating the iso_frame failed!" );
+      goto start_cmd;
+    }
+    
+    macName[0] = '\0';
+    vdobj$Get(objID = &refFrame, macName = macName);
+    __DBGpr_str(" MACRONAME for drawing_obj ",macName);
+    if(strcmp(macName,"drawing_frame"))
+    {
+      UI_status("Invalid selection : Please select an iso frame ");
+      goto start_cmd;
+    }
+    
+    vdchn$Get2(objID  = &refFrame,
+               chnIDx = VDCHN_IDX_PARENT,
+               nth    = 1,
+               outID  = &pretendID );
+    if(pretendID.objid == NULL_OBJID)
+    {
+      UI_status("Invalid selection : Please select an iso frame ");
+      goto start_cmd;
+    }
+    if( !ci$locate(prompt          = "Identify new reference line for iso_frames/Move On",
+		   owner_action    = LC_RIGID_COMP |
+		   LC_RIGID_OWNER | LC_FLEX_COMP |
+		   LC_FLEX_OWNER  | LC_REF_OBJECTS,
+		   md_env          = &md_env,
+		   obj             = &framesys.elementobj.objid,
+		   osnum           = &framesys.elementobj.osnum,
+		   relocate_prompt = "Element not found",
+		   classes         = "GR3dlineseg") )
+    {
+      UI_status( "New Reference line not located!!!!" );
+      refline_located = FALSE;
+    }
+    framesys.singleframe_flag = 0; //only allow framesystem selection
+    /*
+      if(framesys.singleframe_flag)
+      {
+      isoList = _MALLOC(1,struct GRid);
+      drwFrmPar = _MALLOC(1,struct VDdrwFrmPar);
+      isoCount = 1;
+      isoList[0] = refFrame;
+      }
+    */
+    sts = VDfilterIsoFrames(&refFrame,&isoList,&isoCount,&fr_number,&newRefOE,&refFrmPar);
+    if(!(sts&1))
+    {
+      UI_status("Failed to get frames in view ");
+      if( isoList  != NULL ) free( isoList );
+      if( isoList   != NULL ) free( isoList );
+      if( fr_number != NULL ) free( fr_number );
+      if( drwFrmPar != NULL ) free( drwFrmPar );
+      goto start_cmd;
+    }
+    drwFrmPar = _MALLOC(isoCount,struct VDdrwFrmPar);
+    if(refline_located)
+    {
+      as$make_source( go_grid         = framesys.elementobj,
+		      mod_env         = &md_env,
+		      as_grid         = &as_grid ) ;
+      framesys.element_env = md_env;
+    }
+    else
+    {
+      __DBGpr_obj(" EXISTING reference ",newRefOE.obj_id);
+      framesys.elementobj = newRefOE.obj_id;
+      framesys.element_env = newRefOE.mod_env;
+    }
+    __DBGpr_int("isoCount",isoCount);
+
+    strcpy(framesys.frsys,refFrmPar.frsys);
+    strcpy(framesys.labelprefix, refFrmPar.prefix);
+
+    framesys.act_prfact       = refFrmPar.prfact; 
+    framesys.nameCase         = refFrmPar.nameCase; 
+    framesys.offset           = refFrmPar.offset; 
+    framesys.text_offset      = refFrmPar.text_off; 
+    framesys.labeltype        = refFrmPar.labelText;
+    framesys.orientation_flag = refFrmPar.ori_flag; 
+    framesys.frmposition_flag = refFrmPar.frmp_flag;  
+
+    {
+      
+      while(1)
+      {
+        message( "Modify Frame System Or Single Frame" );
+	UI_status( "" );
+	
+        framesys.Nb_Max_Fra  = 0;
+        framesys.Nb_Max_Ref  = 0;
+        framesys.Nb_Max_Obj  = 0;
+        //framesys.element_env = md_env;
+	
+        if( !(form_st.gadget_label == FI_RESET) ) form_save();
+	
+        if( !framesys.form_displayed && (my_form != NULL) )
+        {
+          framesys.form_displayed = TRUE;
+          FIf_display( my_form );
+        }
+	
+        while(1)
+        {
+          ci$get( prompt   = "Process the form",
+                  response = &response );
+	  
+          if( response == EX_BACK_UP ||
+	      response == TERMINATE )
+          {
+	    response_flag = 1;
+            break;
+          }
+          else if( response == MOVE_ON || 
+		   form_st.gadget_label == FI_EXECUTE ||
+		   form_st.gadget_label == FI_ACCEPT )
+	  {
+ 	    response_flag = 0;
+   	    break;
+	  }
+  	  else if( form_st.gadget_label == FI_RESET )
+ 	  {
+ 	    response_flag = -1;
+	    break;
+	  }
+	}
+	
+        if( response_flag == 1 ) break;
+        if( response_flag == -1 ) goto start_cmd;
+	__DBGpr_obj("framesys.elementobj ",framesys.elementobj);
+
+	for(ii=0; ii<isoCount; ii=ii+1)
+	{
+	  sts = set_drwFramePara(fr_number[ii], &drwFrmPar[ii], &framesys);
+	  if(!(sts&1))
+	  {
+	    __DBGpr_com("set_drwFramePara failed ");
+	    if( isoList   != NULL ) free( isoList );
+	    if( fr_number != NULL ) free( fr_number );
+	    if( drwFrmPar != NULL ) free( drwFrmPar );
+	    goto start_cmd;
+	  }
+	}
+	
+	md_env.md_id.osnum = framesys.elementobj.osnum;
+	sts = ex$get_modid( mod_osnum = md_env.md_id.osnum,
+			    mod_id    = &md_env.md_id.objid );
+	
+	sts = VDisoChangeParent(&as_grid,&md_env,isoCount,isoList, drwFrmPar);
+	if(!(sts&1))
+	{
+	  UI_status("Change parent failed ");
+	  if( isoList   != NULL ) free( isoList );
+	  if( fr_number != NULL ) free( fr_number );
+	  if( drwFrmPar != NULL ) free( drwFrmPar );
+	  continue;
+	} 
+	
+	if( form_st.gadget_label == FI_ACCEPT ) break;
+      }
+    }
+    
+    UI_status("New reference successfully connected to frames ");
+    UI_status("Done");
+    
+   // Done
+    if( isoList   != NULL ) free( isoList );
+    if( fr_number != NULL ) free( fr_number );
+    if( drwFrmPar != NULL ) free( drwFrmPar );
+}

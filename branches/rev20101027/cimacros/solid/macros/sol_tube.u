@@ -1,0 +1,353 @@
+/* $Id: sol_tube.u,v 1.1.1.1 2001/01/04 21:07:21 cvs Exp $  */
+
+/* --------------------------------------------------------------------
+ * I/VDS
+ *
+ * File:	vds/cimacros/solid/macros / sol_tube.u
+ *
+ * Description:
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ *	$Log: sol_tube.u,v $
+ *	Revision 1.1.1.1  2001/01/04 21:07:21  cvs
+ *	Initial import to CVS
+ *	
+# Revision 1.1  1998/04/29  16:27:20  pinnacle
+# VDS 2.5.1
+#
+# Revision 1.1  1997/05/08  13:20:44  pinnacle
+# New project VDS 250
+#
+# Revision 1.1  1996/07/19  20:33:52  pinnacle
+# Create VDS 241 project
+#
+# Revision 1.1  1994/11/14  22:42:32  pinnacle
+# Create vds.240 from vds.232
+#
+# Revision 1.1  1994/11/08  16:07:00  pinnacle
+# create vds.232
+#
+ *
+ * History:
+ *	MM/DD/YY	AUTHOR		DESCRIPTION
+ *
+ * -------------------------------------------------------------------*/
+
+/*
+	 VDS 2.0 - PPM macro library - 92/07/09 (alc)
+ */
+   
+#include "cieveryone.h"
+#include "cimacros.h"
+#include "ci_mac_def.h"
+#include "EMSmsgdef.h"
+#include "bserr.h"
+#include "msdef.h"
+#include "AS_status.h"
+
+#define EPSILON		1.0E-10
+
+
+
+IGRlong 		EMSrtmsg;
+
+IGRboolean		is_scal, are_sec;
+
+IGRlong			rc, msg, stat;
+
+IGRint			i, k, j, ncros;
+
+IGRchar			*temp_names[2], *feet_names[1], txt[10];
+
+IGRint			temp_types[2];
+
+GRobj 			ci_mac_def1, SURF;
+
+IGRdouble		org[3], xvec[3], yvec[3], mat[16], radi;
+IGRdouble		vec[3],nvec[3],stpoint[3], bstab[68];
+IGRdouble		ptdv1[6], ptdv2[6], ptab[6];
+
+IGRboolean		enough_mem;
+IGRdouble		u;
+IGRint			mul;
+
+struct GRlc_info	cross[1], trace_inf[1];
+struct GRmd_env		MOD_ENV;
+struct GRid		CIRI, CUV, CI_MACRO_ID;
+struct GRid		SOL;
+struct GRvg_construct   cst;
+struct IGRdisplay	dis;
+struct IGRplane 	plane;
+struct IGRbsp_curve	*bspcurve,bsp_arc;
+struct ret_struct	diam;
+
+
+extern int 	BSnorvec(),
+		BSprepcircp(),
+		BScveval(),
+		init_cnst_list(),
+		BScrossp(),
+		BSadd_ktr(),
+		printf();
+
+extern double   BSdotp();
+extern			ASsuper_construct();
+/* ========================================================================= */
+
+main()
+{
+
+  temp_names[0]  = "st_rad";
+  temp_names[1]  = "crv0";
+
+  temp_types[0]  = parameter_generic | double_type;
+  temp_types[1] = curve_generic | conic_generic | line_generic;
+  
+  feet_names[0] = "solid";
+
+  ci_mac_def1   = NULL_OBJID;
+
+  ac$cimacdef(	cimacdef          = ci_mac_def1,
+		status	          = &stat,
+	  	name              = "sol_tube",
+		temp_num          = 2,      
+		temp_names        = temp_names,
+		temp_types	  = temp_types,
+		extern_feet_num   = 1,	  
+		extern_feet_names = feet_names );
+}
+
+/* ========================================================================= */
+
+place ()
+{
+
+  construct_comp();
+
+  if( SOL.objid == NULL_OBJID ) return(0);
+
+  ci$send( msg	    = message  ci_macro.set_all_extern_feet
+			( &stat, 1,&SOL, &MOD_ENV ),
+	   targetid = CI_MACRO_ID.objid,
+	   targetos = CI_MACRO_ID.osnum );
+  return(1);
+}
+
+/* ========================================================================= */
+
+compute ()
+{
+  construct_comp();
+
+  ci$send( msg	    = message  ci_macro.set_all_extern_feet
+			( &stat, 1, &SOL, &MOD_ENV ),
+	   targetid = CI_MACRO_ID.objid,
+	   targetos = CI_MACRO_ID.osnum );
+  return(1);
+}
+
+/* ========================================================================= */
+
+construct_comp()
+{
+
+
+  SOL.objid = NULL_OBJID;
+  SOL.osnum = MOD_ENV.md_id.osnum;
+
+/*--------------------------------------------------------------------------*/
+/*-----              retrieve the diameter expression                 ------*/
+/*--------------------------------------------------------------------------*/
+
+  msg = ci$send( msg      = message  ACcpx.ACfind_exp_temp_struct
+		           (&stat,0,(char *)&diam,&MOD_ENV),
+           targetid = CI_MACRO_ID.objid,
+           targetos = CI_MACRO_ID.osnum );
+  if( !(stat&msg&1) ){
+	status(" bad object for diamter " );
+	return;
+  }
+  radi = fabs(diam.var.root_pm_st.value);
+  if(  radi <= EPSILON  ) return; 
+
+  msg = ci$send( msg	= message  ACcpx.ACfind_exp_temp_obj(&stat,1,&CUV),
+	   targetid	= CI_MACRO_ID.objid,
+	   targetos	= CI_MACRO_ID.osnum );
+  if(!(stat&msg&1)) return;
+
+  msg = ci$send( msg      = message NDmacro.ACreturn_foot(
+				&stat ,
+				"",
+				&trace_inf[0].located_obj, 
+				&trace_inf[0].module_info.md_env.matrix_type, 
+				trace_inf[0].module_info.md_env.matrix ),
+	   targetid = CUV.objid,
+	   targetos = CUV.osnum );
+
+  if(!(stat&msg&1)){
+#ifdef DEBUG
+write( "NDmacro.ACreturn_foot=",NDmacro.ACreturn_foot,"\n");
+#endif
+  	as$status(sts=stat);
+	return;	
+  }
+
+  stat = ci$send( msg	    = message GRvg.GRgenabsg(
+				&msg,
+				&trace_inf[0].module_info.md_env.matrix_type, 
+				trace_inf[0].module_info.md_env.matrix,
+				&bspcurve),
+	   targetid = trace_inf[0].located_obj.objid,
+           targetos = trace_inf[0].located_obj.osnum  );
+
+  if(!(stat&msg&1)){
+	 as$status(sts=stat);
+	 return;
+  }
+
+   for(j=0;j<3;j=j+1)trace_inf[0].proj_pnt[j] = bspcurve->poles[j];
+   trace_inf[0].module_info.md_id.osnum = trace_inf[0].located_obj.osnum;
+
+   init_cnst_list();
+   get_symb();
+
+   dis.color		= cnst_list.color;
+   dis.weight		= cnst_list.weight;
+   dis.style		= cnst_list.style;
+
+   cst.msg		= &msg;
+   cst.properties	= GRIS_LOCATABLE | GRIS_DISPLAYABLE;
+   cst.display		= &dis;
+   cst.env_info		= &MOD_ENV;
+   cst.newflag		= FALSE;
+   cst.level		= cnst_list.level;
+   cst.geometry		= NULL;
+   cst.class_attr	= NULL;
+   cst.name		= NULL;
+
+
+/*--------------------------------------------------------------------------*/
+/*----   build the cross section as a circle object                     ----*/
+/*--------------------------------------------------------------------------*/
+
+    	bsp_arc.poles   = &bstab[0];
+    	bsp_arc.knots   = &bstab[39];
+   	bsp_arc.weights = &bsp_arc.knots[16];
+
+   	ncros = 1;
+
+        BScveval (bspcurve , 0.0, 1, ptdv1, &msg);
+        BSnorvec(&msg,&ptdv1[3]);
+        nvec[0] = -1.0*ptdv1[4];
+        nvec[1] = ptdv1[3];
+        nvec[2] = 0.0;
+
+        if( (nvec[0] == 0.0) && (nvec[1] == 0.0) ) nvec[0] = 1.0;
+
+	BScrossp(&msg,&ptdv1[3],nvec,vec);
+	BScrossp(&msg,&ptdv1[3],vec,nvec);
+        BSnorvec(&msg,nvec);
+
+    	if( radi < EPSILON ) radi = 1.0E-4; 
+    	for (j=0;j<3;j=j+1) stpoint[j] = ptdv1[j] + radi*nvec[j];
+
+        BSprepcircp(&rc,&ptdv1[0],stpoint,&ptdv1[3],&bsp_arc,nvec,&stat);
+	if( rc != BSSUCC ){
+		#ifdef DEBUG
+			write(" error in BSprepcircp \n");
+		#endif
+		return;
+	}
+/*--------------------------------------------------------------------------*/
+/*----	add knots to get a better representation of the surface		----*/
+/*--------------------------------------------------------------------------*/
+    	mul = 2;
+    	u = 1.0 / 6.0;
+    	enough_mem = TRUE;
+
+    	BSadd_ktr(&rc,&bsp_arc,&u,&mul,&enough_mem);
+    	if( rc != BSSUCC ){
+		#ifdef DEBUG
+ 			write( "erreur BSadd_ktr u = 0.1666 \n");
+		#endif
+        }
+
+    	u = 0.5;
+    	BSadd_ktr(&rc,&bsp_arc,&u,&mul,&enough_mem);
+    	if( rc != BSSUCC ){
+		#ifdef DEBUG
+		 	write( "erreur BSadd_ktr u = 0.5 \n");
+		#endif
+	}
+
+    	u = 5.0 / 6.0;
+    	BSadd_ktr(&rc,&bsp_arc,&u,&mul,&enough_mem);
+    	if( rc != BSSUCC ){
+		#ifdef DEBUG
+		 	write( "erreur BSadd_ktr u = 0.8333 \n");
+		#endif
+	}
+
+        cst.geometry   = (char *)&bsp_arc;
+        cross[0].located_obj.objid = NULL_OBJID;
+        cross[0].located_obj.osnum = MOD_ENV.md_id.osnum;
+
+        ci$send(msg      = message GRbcsubbc.GRconstruct(&cst),
+	        targetid = cross[0].located_obj.objid,
+	        targetos = cross[0].located_obj.osnum  );
+
+        for (j=0;j<3;j=j+1) cross[0].proj_pnt[j] = bsp_arc.poles[j];
+        cross[0].module_info = MOD_ENV;
+
+/*--------------------------------------------------------------------------*/
+/*----   do the movement of cross section                               ----*/
+/*--------------------------------------------------------------------------*/
+    
+
+    is_scal      = FALSE;
+    are_sec      = TRUE;
+    cst.geometry = NULL;
+
+    SURF = NULL_OBJID;
+
+    stat = ci$send(msg = message EMSgenbs.EMmove_cross_section
+				(&msg,&cst,ncros,cross,1,trace_inf,is_scal,
+				are_sec,org,mat,xvec,yvec ),
+	    	   targetid = SURF,
+	    	   targetos = MOD_ENV.md_id.osnum );
+
+
+    ci$send(msg      = message GRgraphics.GRdelete(&msg,&MOD_ENV), 
+            targetid = cross[0].located_obj.objid,
+            targetos = cross[0].located_obj.osnum);
+
+    
+    if ( !(stat&1) ){
+	write("EMSgenbs.EMmove_cross_section stat =",stat,"\n");
+	  return;
+    }
+
+/*--------------------------------------------------------------------------*/
+/*----   build the solid                                                ----*/
+/*--------------------------------------------------------------------------*/
+
+  stat = ci$send( msg = message EMSsfsolid.EMcap_thyself ( &EMSrtmsg, 
+                                                          &cst, &SURF ),
+           targetid = SOL.objid, targetos = SOL.osnum );
+
+  if( !( ( EMSrtmsg & MSSUCC ) | ( EMSrtmsg & EMS_S_Success  ) ) ) {
+	#ifdef DEBUG
+		write(" error EMcap_thyself \n");
+	#endif
+
+     	ci$send(msg      = message GRgraphics.GRdelete(&msg,&MOD_ENV), 
+                targetid = SURF,
+                targetos = MOD_ENV.md_id.osnum);
+  }
+
+}
+/* ========================================================================= */
+
+

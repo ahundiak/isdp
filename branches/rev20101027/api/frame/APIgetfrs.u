@@ -1,0 +1,111 @@
+/***************************************************************************
+ * I/VDS
+ *
+ * File:        api/APIgetfrs.u
+ *
+ * Description:
+ *	Gets list of frames in reinforce string.	
+ *
+ * Dependencies:
+ *
+ * History:
+ *      MM/DD/YY        AUTHOR          DESCRIPTION
+ *
+ ***************************************************************************/
+
+#include	<stdio.h>
+#include	"cieveryone.h"
+#include	"cimacros.h"
+#include	"growner.h"
+#include	"grmacros.h"
+
+#include	"smAPImacros.h"
+#define	MAX_FRM	200
+
+extern GRdisplay_object();
+extern UI_status();
+extern free();
+
+main() {
+
+	IGRlong			vld, sts,msg;
+	IGRint			num_elm, i;
+	IGRchar			inforce[200];
+	struct GRid 		frameSystem, *out_frames;
+	struct GRmd_env         mod_env;
+        IGRint                  response, stat;
+
+	printf( "sm$get_frs_from_frsys(simple example)\n" );
+
+	out_frames=NULL;
+	if (!ci$locate ( 	prompt        = "Locate a frame system",
+				classes       = "SMfrm_syst",
+				properties    = IGN_LC_BIT,
+				md_env        = &mod_env,
+				response      = &response,
+				obj           = &frameSystem.objid,
+				osnum         = &frameSystem.osnum )){
+		printf("Error locating Frame(s)\n");
+		goto finish ;
+	}
+
+	/*
+	printf ("Object id of frame system [%d,%d]\n", 
+			frameSystem.objid,frameSystem.osnum );
+	*/
+	
+	while (1){
+
+		ask_inforce :
+
+		inforce[0] = '\0'; 
+  		ci$get( string  = inforce,
+            		rc      = stat,
+            		prompt  = "Give inforce string / Move-on " );
+
+		if(inforce[0] == '\0') break;
+
+		if( ! (stat&1)){
+       			printf ("Error in getting the string\n"); 
+			goto finish ;
+		}
+		else{
+			sts =
+        		sm$validate_reinforce ( valid	= &vld,
+                                 		inforce = inforce);
+		
+			if ( !(sts&1) ){
+				printf ("Error in sm$validate_reinforce\n");
+				goto finish;
+			}
+
+			if ( vld == 0 ){
+				UI_status("Reinforce string is not valid");
+				printf ("REINFORCE STRING :%s\n", inforce);
+                		goto ask_inforce; 
+			}
+			else
+				break;
+        	}
+  	}
+
+	sts=sm$get_frs_from_frsys(	num_elm	= &num_elm,
+					fr_obj 	= frameSystem,
+					inforce = inforce,
+					frames 	= &out_frames);
+
+	if ( !(sts&1) ){
+		printf ("Error in sm$get_frs_from_frsys\n");
+		goto finish;
+	}
+	printf ("Number of Reinforced Frames=%d\n", num_elm);
+	for (i=0; i<num_elm; i=i+1){
+		printf ("Inf_frame[%d]=(%d,%d)\n", 
+				i, out_frames[i].objid, out_frames[i].osnum);
+		gr$display_object( object_id = &out_frames[i], mode = GRhd);
+	}
+
+
+	finish :
+	if ( out_frames != NULL ) free(out_frames);
+}

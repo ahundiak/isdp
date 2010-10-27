@@ -1,0 +1,398 @@
+/* $Id: VDsaReview.u,v 1.2 2001/11/09 15:08:39 ahundiak Exp $  */
+
+/***************************************************************************
+ * I/VDS
+ *
+ * File:        vdsa/VDsaReview.u
+ *
+ * Description: Review Smart Attributes
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ *      $Log: VDsaReview.u,v $
+ *      Revision 1.2  2001/11/09 15:08:39  ahundiak
+ *      ah
+ *
+ *      Revision 1.1  2001/08/14 19:16:29  ahundiak
+ *      ah
+ *
+ *      Revision 1.1.1.1  2001/01/04 21:09:12  cvs
+ *      Initial import to CVS
+ *
+# Revision 1.1  1998/04/29  16:27:20  pinnacle
+# VDS 2.5.1
+#
+# Revision 1.4  1998/04/24  14:34:04  pinnacle
+# ah
+#
+# Revision 1.3  1998/04/10  21:37:36  pinnacle
+# ah
+#
+ *
+ * History:
+ * MM/DD/YY  AUTHOR  DESCRIPTION
+ * 04/10/98  ah      Creation
+ * 08/04/01  ah      Added VDbufMacro to locate filter
+ ***************************************************************************/
+
+#include "VDppl.h"
+
+struct CIform_st form_st;
+
+struct 
+{
+  Form   form;
+  IGRint gadget;
+  IGRint displayForm;
+  
+  TGRobj_env objOE;
+
+} info;
+
+#define thePrompt "Review Smart Attributes"
+
+#define VDSA_FORM_TEST_B_OBJECT    19
+#define VDSA_FORM_TEST_G_OBJECT    12
+#define VDSA_FORM_TEST_G_ATTR_NAME 13
+#define VDSA_FORM_TEST_G_ATTR_TYPE 14
+#define VDSA_FORM_TEST_G_ATTR_VAL  15
+
+/* --------------------------------------
+ * The main routine
+ */
+int main()
+{
+  int sts,msg;
+  int response;
+  
+  TGRobj_env objOE;
+  IGRchar buf[1024];
+
+  IGRint      		i;
+  OM_S_CLASSLIST        eligibleClasses;
+  OMuword               classids[2];
+
+  // Fiil up filter
+  i = 0;
+  sts = om$get_classid( classname = "VDSroot",
+		        p_classid = &classids[i] );
+  if (sts & 1) i = i + 1;
+  sts = om$get_classid( classname = "VDbufMacro",
+		        p_classid = &classids[i] );
+  if (sts & 1) i = i + 1;
+  
+  if (i != 2) {
+    UI_status("Need to be running I/VDS");
+    return 0;
+  }
+  eligibleClasses.w_count   = i;
+  eligibleClasses.w_flags   = OM_CLST_subclass;
+  eligibleClasses.p_classes = classids ;
+
+  // Initialize
+  sts = init_form();
+  if (!(sts & 1)) goto wrapup;
+
+  response = 0;
+  
+  while(1) {
+
+    objOE.obj_id.objid = NULL_OBJID;
+    
+    form_st.gadget_label = 0;
+    response = 0;
+
+    UI_message(thePrompt);
+
+    sts = ci$locate(prompt  = "Select Object",
+		    eligible_classes= &eligibleClasses,
+		    owner_action = LC_RIGID_OWNER | 
+                                   LC_RIGID_COMP  |
+                                   LC_FLEX_COMP   | 
+                                   LC_FLEX_OWNER  |
+                                   LC_REF_OBJECTS,
+
+                    stackable    = 1,
+		    response     = &response,
+		    md_env       = &objOE.mod_env,
+		    obj          = &objOE.obj_id.objid,
+		    osnum	 = &objOE.obj_id.osnum);
+    if (!(sts & 1)) goto the_loop;
+
+    switch(response) {
+
+    case EX_OBJID:   // Object Set
+      goto the_loop;
+      
+    case EX_DATA: {  // Single Object
+      if (objOE.obj_id.objid != NULL_OBJID) {
+
+	VIf_display(info.form);
+	info.displayForm = 1;
+	
+	info.objOE = objOE;
+	vdbro$PrintObject(objOE= &objOE, str = buf);
+	VIg_set_text(info.form,10,buf);
+
+	VDahGetObjectDesc(&objOE.obj_id, buf);
+	VIg_set_text(info.form,VDSA_FORM_TEST_G_OBJECT,buf);
+
+	test_attr_name();
+	
+      }
+      goto the_loop;
+    }
+
+    } // Switch
+
+the_loop:
+    continue;
+  }
+
+wrapup:
+  return 1;
+}
+
+/* -----------------------------------------
+ * Tests a new attribute name
+ */
+int test_attr_name()
+{
+  IGRstat retFlag;
+  IGRint  sts,msg;
+  IGRint  notUsed;
+  
+  IGRchar attrName[128];
+  Tret_struct rs;
+  IGRchar buf[128];
+  
+  // Reset
+  retFlag = 0;
+  
+  VIg_set_text(info.form,VDSA_FORM_TEST_G_ATTR_TYPE,"");
+  VIg_set_text(info.form,VDSA_FORM_TEST_G_ATTR_VAL, "");
+  
+  // Need an object
+  if (info.objOE.obj_id.objid == NULL_OBJID) {
+    VIg_set_text(info.form,10,"Select an object first");
+    goto wrapup;
+  }
+  
+  // Need an attrName
+  *attrName = 0;
+  VIg_get_text(info.form,VDSA_FORM_TEST_G_ATTR_NAME,attrName);
+  if (*attrName == 0) {
+    //VIg_set_text(info.form,10,"Need an attribute name");
+    goto wrapup;
+  }
+  
+  // set up for the message
+  memset(&rs,0,sizeof(Tret_struct));
+  sts = ci$send(msg = message 
+		VDSroot.ACgive_db_structure(&msg,
+					    &notUsed,
+					    attrName,
+					    &rs,
+					    &info.objOE.mod_env),
+		targetid = info.objOE.obj_id.objid,
+		targetos = info.objOE.obj_id.osnum);
+  
+  if (!(sts & msg & 1)) {
+    VIg_set_text(info.form,10,"ACgive_structure failed");
+    goto wrapup;
+  }
+  VIg_set_text(info.form,10,"");
+ 
+  switch(rs.type) {
+
+  case text_type:
+    VIg_set_text(info.form,VDSA_FORM_TEST_G_ATTR_TYPE,"text");
+    VIg_set_text(info.form,VDSA_FORM_TEST_G_ATTR_VAL, rs.var.text_st.text_string);
+    break;
+    
+  case double_type:
+    VIg_set_text(info.form,VDSA_FORM_TEST_G_ATTR_TYPE,"double");
+    sprintf(buf,"%.6f",rs.var.root_pm_st.value);
+    VIg_set_text(info.form,VDSA_FORM_TEST_G_ATTR_VAL, buf);
+    break;
+    
+  default:
+    VIg_set_text(info.form,VDSA_FORM_TEST_G_ATTR_TYPE,"UNKNOWN");
+    break;
+    
+  }
+  
+  retFlag = 1;
+  
+  
+wrapup:
+  return retFlag;
+}
+
+/* -----------------------------------------
+ * Form stuff
+ */
+form_notification()
+{
+  int retFlag;
+  TGRobj_env objOE;
+
+  // Init
+  retFlag = 1;
+  info.gadget = form_st.gadget_label;
+ 
+  // A few always get's handled
+  switch (info.gadget) {
+
+  case FI_CANCEL: {
+    ci$put(response = TERMINATE);
+    goto wrapup;
+  }
+  } //switch
+
+  switch (info.gadget) {
+
+  case VDSA_FORM_TEST_G_ATTR_NAME:
+    retFlag = test_attr_name();
+    goto wrapup;
+    
+  } // Switch
+
+  // Accept will also terminate if completed sucessfully
+  if ((retFlag == 1) && (info.gadget == FI_ACCEPT)) {
+    ci$put(response = TERMINATE);
+    goto wrapup;
+  }
+
+wrapup:
+  return retFlag;
+
+}
+
+extern EX_getpath();
+
+/* ------------------------------------------------ */
+FILE *open_file(name)
+char *name;
+{
+  int i,sts;
+  char path[DI_PATH_MAX];
+  char try [DI_PATH_MAX];
+  FILE *file;
+
+  // Current directory
+  file = fopen(name,"rt");
+  if (file) return file;
+  
+  sts = 1;
+
+  for( i=0; sts ; i = i + 1 ) {
+
+    sts = ex$get_path(
+      index = i,
+      path  = path,
+      len   = DI_PATH_MAX,
+      type  = EX_CONFIG_PATH 
+    );
+                        
+    if(sts & 1) {
+      sts = 1;
+      sprintf(try,"%sconfig/%s",path,name);
+      file = fopen(try,"rt");
+      if (file) return file;
+    }
+  }
+
+  file = NULL;
+  return file;
+}
+
+/* --------------------------------------------------------
+ * Get the form started
+ */
+int init_form()
+{
+  int retFlag;
+  int sts;
+  Form existingForm;
+
+  FILE *file;
+  char buf[128];
+  char *p;
+  int row;
+  
+  memset(&info,0,sizeof(info));
+  retFlag = 0;
+
+  sts = VI_get_form_by_name("VDsaReview.F",&existingForm);
+  if (sts == FI_SUCCESS) {
+    UI_status("Review Smart Attributes Already Running");
+    return 0;
+  }
+
+  VIf_new(100, "VDsaReview.F", ci_notification, &info.form);
+
+  if (info.form == 0) {
+    printf("Could not init Review Smart Attributes form\n");
+    goto wrapup;
+  }
+  
+  VDahFrmLoadPositionFromFile(info.form);
+
+  // Fill in file
+  row = 0;
+  file = open_file("VDsaReview.lst");
+  if (file) {
+    while(fgets(buf,sizeof(buf),file)) {
+
+      for(p = buf + strlen(buf) - 1; (p >= buf) && (*p <= ' '); p = p - 1);
+      *(p+1) = 0;
+      if (*buf != 0) {
+	VIfld_set_list_text(info.form,VDSA_FORM_TEST_G_ATTR_NAME,row,0,buf,0);
+	row = row + 1;
+      }
+    }
+    fclose(file);
+  }
+
+  // Hook it up
+  VIf_set_cmd_oid_os(info.form, MY_ID, OM_Gw_current_OS );
+  retFlag = 1;
+
+wrapup:
+  return retFlag;
+}
+
+/* ------------------------------------------
+ * Usual command object messages
+ */
+init()
+{
+  info.form = NULL;
+  info.objOE.obj_id.objid = NULL_OBJID;
+}
+sleep() 
+{
+}
+wakeup()
+{
+  UI_message(thePrompt);
+  if (info.displayForm) {
+    if (info.form) VIf_display(info.form);
+  }
+  
+}
+delete()
+{
+  if (info.form) {
+    VDahFrmSavePositionInFile(info.form);
+    VDahFrmSavePositionInFile(info.form);
+    VIf_delete(info.form);
+  }
+  info.form = NULL;
+}
+
+
+
+

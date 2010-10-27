@@ -1,0 +1,163 @@
+/* $Id: COz_chkConst.u,v 1.1 2001/03/08 19:54:24 ramarao Exp $  */
+/*************************************************************************
+ * I/VDS
+ *
+ * File:        vds/vdppl/COz_chkConst.u
+ *
+ * Description: PPL to check if some Construction macros are outdated.
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ *      $Log: COz_chkConst.u,v $
+ *      Revision 1.1  2001/03/08 19:54:24  ramarao
+ *      Created COz_chkConst.u ppl to check if some construction macros are outdated.
+ *
+ *
+ * History:
+ *      MM/DD/YY   AUTHOR               DESCRIPTION
+ *      03/08/01   Rama Rao             File Creation
+ *************************************************************************/
+
+#include "nddef.h"
+#include "ndmacros.h"
+#include "VDppl.h"
+#include "VDmac.h"
+#include "VDobj.h"
+#include "VDchn.h"
+#include "parametric.h"
+#include "v_dbgmacros.h"
+
+extern GRclassid OPP_ACconst_class_id, OPP_ACpretend_class_id;
+
+extern VD_bulkDisplayByGRids(), VDpms_findall_ancestryobjects(), VDsetBitInInt(),
+       NDwait_batch(), NDget_mod_batch(), NDexec_batch(),
+       ACfind_macro_defn(), VD_is_ancestry_valid();
+
+main()
+{
+IGRlong                 sts, root_type;
+IGRint                  i, j, loc_cnt, nb_class, tot_temp, int_msg, parent_cnt;
+IGRchar			exp_txt[100], macName[100];
+IGRboolean		is_same, saveBroad;
+GRclassid               classid[1];
+OMuword                 osnum;
+OM_S_OBJID              *loc_list;
+struct GRid             obj_chk, defID, parentID;
+struct GRmd_env         loc_env;
+struct stemp            *dtemp;
+struct ret_struct       rs;
+FILE			*fp;
+
+   message( "Report Outdated Construction Macros" );
+
+   ci$get_module_info( md_env = &loc_env );
+
+   status( "Press Enter to output to unix window" );
+
+   ci$get( prompt = "Enter Reporting File Name",
+           string = exp_txt  );
+   if( exp_txt[0] == '\0' )	fp = stdout;
+   else 			
+   {
+      fp = fopen( exp_txt, "w" );
+      if( fp == NULL )
+      {
+         printf( "Can not open file <%s>\n", exp_txt );
+         fp = stdout;
+      }
+   }
+
+   loc_cnt  = 0;
+   nb_class = 1;
+   loc_list = NULL;
+
+   osnum = loc_env.md_id.osnum;
+
+   classid[0] = OPP_ACconst_class_id;
+
+   loc_cnt = 0;
+   VDpms_findall_ancestryobjects( osnum, nb_class, classid, &loc_cnt, NULL );
+   if( !loc_cnt ) goto wrapup;
+
+   loc_list  = ( OM_S_OBJID * ) malloc( sizeof(OM_S_OBJID)*loc_cnt );
+
+   VDpms_findall_ancestryobjects( osnum, nb_class, classid,
+                                  &loc_cnt, loc_list );
+
+   for( i=0; i<loc_cnt; i=i+1 )
+   {
+      obj_chk.objid = loc_list[i];
+      obj_chk.osnum = osnum;
+
+      macName[0] = '\0';
+
+      vdobj$Get( objID = &obj_chk, macName = macName );
+      if( macName[0] == '\0' )  continue;
+
+      ac$find_macro_defn( macro_name = macName,
+                          action     = ACfind_load,
+                          p_macro_defn_id = &defID );
+      __DBGpr_obj( "Macro Definition", defID );
+
+      sts = ci$send( msg = message ACcpx_defn.ACgive_temp_desc
+                                ( &tot_temp, &dtemp ),
+                     targetid = defID.objid,
+                     targetos = defID.osnum );
+      if( !(sts&1) ) continue;
+
+      is_same = TRUE;
+      vdchn$Get2( objID = &obj_chk, chnIDx = VDCHN_IDX_PARENT,
+		  cnt = &parent_cnt  );
+
+      if( tot_temp != parent_cnt && parent_cnt != 0 )	is_same = FALSE;
+      else
+      {
+        for( j=0; j<tot_temp; j=j+1 )
+        {
+	  vdobj$GetParent( objID = &obj_chk, idx = j, parentID = &parentID );
+	  if( parentID.objid == NULL_OBJID ) continue;
+
+          sts = ci$send( msg =  message ACcpx.ACfind_exp_temp_struct(
+                                  &int_msg, j, &rs, &loc_env ),
+                         targetid = obj_chk.objid,
+                         targetos = obj_chk.osnum );
+          if( !(sts&1&int_msg) )  break;
+
+          root_type = dtemp[j].type;
+          if(root_type&other_generic) VDsetBitInInt( &root_type, debug_type );
+          if(root_type&curve_generic)
+	     VDsetBitInInt( &root_type, line_generic|conic_generic );
+
+          if( !IS_SAME_GEOM( rs.type, root_type) ) break;
+        }
+        if( j != tot_temp ) is_same = FALSE;
+
+        sts = ci$send( msg =  message ACcpx.ACfind_exp_temp_struct(
+                                    &int_msg, j, &rs, &loc_env ),
+                     targetid = obj_chk.objid,
+                     targetos = obj_chk.osnum );
+        if( sts&1&int_msg ) // is_same = FALSE;
+        {
+  	   vdobj$GetParent( objID = &obj_chk, idx = j, parentID = &parentID );
+           if( parentID.objid != NULL_OBJID )	is_same = FALSE;
+        }
+      }
+
+      __DBGpr_int( "Is Same", is_same );
+
+      if( is_same == TRUE ) continue;
+
+      ci$send( msg =  message ACcpx.ACattach( &int_msg, macName ),
+               targetid = obj_chk.objid,
+               targetos = obj_chk.osnum );
+
+      vdobj$Print( objID = &obj_chk, file = fp );
+   }
+
+wrapup:
+   status( "Done" );
+   if( fp != stdout ) fclose( fp );
+   if( loc_list ) { free( loc_list ); loc_list = NULL; }
+   return 1;
+}

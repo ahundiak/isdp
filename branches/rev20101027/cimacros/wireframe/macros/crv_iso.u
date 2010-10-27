@@ -1,0 +1,335 @@
+/* $Id: crv_iso.u,v 1.1.1.1 2001/01/04 21:07:22 cvs Exp $  */
+
+/* --------------------------------------------------------------------
+ * I/VDS
+ *
+ * File:	vds/cimacros/wireframe/macros / crv_iso.u
+ *
+ * Description:
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ *	$Log: crv_iso.u,v $
+ *	Revision 1.1.1.1  2001/01/04 21:07:22  cvs
+ *	Initial import to CVS
+ *	
+# Revision 1.1  1998/04/29  16:27:20  pinnacle
+# VDS 2.5.1
+#
+# Revision 1.1  1997/05/08  13:20:44  pinnacle
+# New project VDS 250
+#
+# Revision 1.1  1996/07/19  20:33:52  pinnacle
+# Create VDS 241 project
+#
+# Revision 1.1  1994/11/14  22:42:32  pinnacle
+# Create vds.240 from vds.232
+#
+# Revision 1.1  1994/11/08  16:07:00  pinnacle
+# create vds.232
+#
+ *
+ * History:
+ *	MM/DD/YY	AUTHOR		DESCRIPTION
+ *
+ * -------------------------------------------------------------------*/
+
+/*
+	VDS 2.1 - PPM macro library
+	Description : Associative Extract Isoparametric Curves of Surface
+
+	History :
+
+ alc 	92/07/22 Get rid of internal data (not used)
+	93/01/27 TR 179300393
+ */
+   
+#include "cieveryone.h"
+#include "cimacros.h"
+#include "ci_mac_def.h"
+#include "macro.h"
+#include "nddef.h"
+
+#define MAX_FEET	22
+#define MAX_CHA_FEET	7
+ 
+
+IGRdouble		uv[MAX_FEET], delta, matrix[16];
+IGRdouble		proj_pt[3];
+IGRchar 		*temp_names[5], *feet_names[MAX_FEET];
+IGRint			temp_types[5], ind, num_temp;
+IGRchar 	 	buff[MAX_FEET*MAX_CHA_FEET];
+struct GRsymbology 	symb;
+IGRshort     	        props,set,set_props;
+
+IGRshort	 	mat_type;
+
+IGRint			stat, i, j, k, num_par, num_cst_ISOC;
+IGRlong			msg;
+GRobj 			ci_mac_def1, *ISOC;
+
+IGRboolean              uv_dir, trim_to_boundaries;
+
+struct GRid		CUV, GCV, GRid_list[MAX_FEET], CI_MACRO_ID;
+struct GRmd_env		MOD_ENV;
+struct GRvg_construct   cst;
+struct IGRdisplay	dis;
+struct ret_struct	expr;
+struct GRparms 		parms;
+
+extern int 	init_cnst_list(),
+		free(),
+		printf(), sprintf() ;
+extern		ASsuper_construct() ;
+
+
+/* ========================================================================= */
+/* the main function is the one implementing the definition creation
+/* ========================================================================= */
+
+main ()
+{
+
+  temp_names[0]  = "uv_dir"  ;  
+  temp_names[1]  = "num_iso" ;  
+  temp_names[2]  = "start_par" ;  
+  temp_names[3]  = "end_par" ;  
+  temp_names[4]  = "surface" ;
+
+  temp_types[0]  = parameter_generic | double_type ;
+  temp_types[1]  = parameter_generic | double_type ;
+  temp_types[2]  = parameter_generic | point_generic ;
+  temp_types[3]  = parameter_generic | point_generic ;
+  temp_types[4]  = other_generic ;
+
+  for (i=0; i<MAX_FEET; i=i+1) {
+	j = i * MAX_CHA_FEET;
+	sprintf(&buff[j],"crv%d",i);
+	feet_names[i] = &buff[j];
+
+  }
+
+
+  ci_mac_def1 = NULL_OBJID;
+
+  ac$cimacdef( 	cimacdef          = ci_mac_def1,
+		prop		  = ACvariable_template,
+		status 	          = &stat, 	    
+		name              = "crv_iso",
+              	temp_num          = 5, 		    
+		temp_names        = temp_names,
+		temp_types	  = temp_types,
+	      	extern_feet_num   = MAX_FEET, 
+		extern_feet_names = feet_names );
+}
+
+/* ========================================================================= */
+
+compute ()
+{
+
+
+  construct_isoc();
+
+  if( GRid_list[0].objid == NULL_OBJID ) return(0);
+
+  ci$send( msg = message  ci_macro.set_all_extern_feet
+	 ( &stat, num_cst_ISOC, GRid_list, &MOD_ENV ),
+	   targetid = CI_MACRO_ID.objid,
+	   targetos = CI_MACRO_ID.osnum );
+
+  return(1);
+}
+
+/* ========================================================================= */
+
+place ()
+{
+  construct_isoc();
+
+  if( GRid_list[0].objid == NULL_OBJID ) return(0);
+
+  ci$send( msg = message  ci_macro.set_all_extern_feet
+	 ( &stat, num_cst_ISOC, GRid_list, &MOD_ENV ),
+	   targetid = CI_MACRO_ID.objid,
+	   targetos = CI_MACRO_ID.osnum );
+
+  return(1);
+}
+
+/* ========================================================================= */
+
+construct_isoc()
+{
+
+  stat = ci$send(msg = message NDnode.NDget_objects(ND_ROOT,NULL,0,NULL,
+					     0,OM_K_MAXINT,&num_temp),
+	   	  targetid = CI_MACRO_ID.objid,
+	   	  targetos = CI_MACRO_ID.osnum);
+  if(!(stat&1)) return(0);
+
+#ifdef DEBUG
+	printf("Number of parents is %d \n", num_temp) ;
+#endif
+
+  for(k=0; k<MAX_FEET; k=k+1) GRid_list[k].objid = NULL_OBJID;
+
+  /*-----------------------------------------*/
+  /* ---    get the direction in u or v   ---*/
+  /*-----------------------------------------*/
+
+  msg = ci$send( msg = message ACcpx.ACfind_exp_temp_struct(&stat, 0,
+						 (char *) &expr,&MOD_ENV),
+	    targetid = CI_MACRO_ID.objid, targetos = CI_MACRO_ID.osnum );
+  if( !(msg&stat&1) ) return;
+  uv_dir = TRUE;
+  if( expr.var.root_pm_st.value == 0 ) uv_dir = FALSE;
+
+
+  /*--------------------------------------------*/
+  /* ---    get the number of requested iso --- */
+  /*--------------------------------------------*/
+
+
+  msg = ci$send( msg = message ACcpx.ACfind_exp_temp_struct(&stat, 1,
+						 (char *) &expr,&MOD_ENV),
+	    targetid = CI_MACRO_ID.objid, targetos = CI_MACRO_ID.osnum );
+  if( !(msg&stat&1) ) return;
+
+  num_par = expr.var.root_pm_st.value;
+  if( num_par == 0 ) return;
+
+  /*--------------------------------------------*/
+  /* ---    retrieve the surface            --- */
+  /*--------------------------------------------*/
+
+  if( num_temp == 4 ) ind = 3;
+  else                ind = 4;
+  msg = ci$send( msg = message  ACcpx.ACfind_exp_temp_obj(&stat,ind,&CUV),
+           targetid = CI_MACRO_ID.objid,
+           targetos = CI_MACRO_ID.osnum );
+  if( !(msg&stat&1) ) return;
+
+  msg = ci$send( msg      = message NDmacro.ACreturn_foot(	
+						&stat ,
+						"",
+						&GCV, 
+						&mat_type, 
+					        matrix ),
+	   targetid = CUV.objid,
+	   targetos = CUV.osnum );
+
+  if( !(msg&stat&1) ) return;
+
+
+  /*--------------------------------------------*/
+  /* ---    get the starting u or v param   --- */
+  /*--------------------------------------------*/
+
+
+  msg = ci$send( msg = message ACcpx.ACfind_exp_temp_struct(&stat, 2,
+						 (char *) &expr,&MOD_ENV),
+	    targetid = CI_MACRO_ID.objid, targetos = CI_MACRO_ID.osnum );
+  if( !(msg&stat&1) ) return;
+
+  if( expr.type == point_generic ){
+  	ci$send (msg = message GRgraphics.GRptproject(
+                            		 &msg,
+					 &mat_type,
+					 matrix,
+					 expr.var.point_st.pt,
+					 proj_pt,
+					 &parms ),
+                          	targetid = GCV.objid,
+                          	targetos = GCV.osnum );
+	
+	if( uv_dir == TRUE) uv[0] = parms.u;
+	else 		    uv[0] = parms.v;
+
+  }
+  else uv[0] = expr.var.root_pm_st.value;
+
+  /*--------------------------------------------*/
+  /* ---    get the end      u or v param   --- */
+  /*--------------------------------------------*/
+
+
+  if( (num_par > 1) && (num_temp == 5) ){
+     msg = ci$send( msg = message ACcpx.ACfind_exp_temp_struct(&stat, 3,
+						 (char *) &expr,&MOD_ENV),
+	    targetid = CI_MACRO_ID.objid, targetos = CI_MACRO_ID.osnum );
+     if( !(msg&stat&1) ) return;
+
+     if( expr.type == point_generic ){
+  		ci$send (msg = message GRgraphics.GRptproject(
+                            		 &msg,
+					 &mat_type,
+					 matrix,
+					 expr.var.point_st.pt,
+					 proj_pt,
+					 &parms),
+                          	targetid = GCV.objid,
+                          	targetos = GCV.osnum);
+	
+		if( uv_dir == TRUE) uv[num_par-1] = parms.u;
+		else 		    uv[num_par-1] = parms.v;
+
+  	}
+  	else  uv[num_par-1] = expr.var.root_pm_st.value;
+  }
+  else if( (num_par > 1) && (num_temp == 4 ) ) uv[num_par-1] = 1.0; 
+  
+
+
+
+   delta = ( uv[num_par-1] - uv[0]) / (num_par - 1);
+   if(num_par > 2 )
+      for(k=1; k<(num_par - 1); k=k+1) uv[k] = uv[0] + k * delta;
+   trim_to_boundaries = TRUE;
+
+  init_cnst_list();
+  get_symb();
+
+  dis.color		= cnst_list.color;
+  dis.weight		= cnst_list.weight;
+  dis.style		= cnst_list.style;
+
+  cst.msg		= &msg;
+  cst.properties	= GRIS_LOCATABLE | GRIS_NEW | GRIS_DISPLAYABLE;
+  cst.display		= &dis;
+  cst.env_info		= &MOD_ENV;
+  cst.newflag		= 0;
+  cst.level		= cnst_list.level;
+  cst.geometry		= NULL;
+  cst.class_attr	= 0;
+  cst.name		= 0;
+
+   ISOC = NULL;
+
+   stat = ci$send( msg      = message EMSsubbs.EMisoparcvs(
+						&msg,
+                           			&mat_type, 
+						matrix,
+						&cst,
+						trim_to_boundaries,
+						num_par,
+                                                uv,
+                                                uv_dir,
+  						&num_cst_ISOC,
+                              			&ISOC),
+            targetid = GCV.objid,
+            targetos = GCV.osnum );
+
+   if( !(stat&1) ) return;
+   
+   for(k=0; k<num_cst_ISOC; k=k+1) 
+   {
+     GRid_list[k].objid = ISOC[k];
+     GRid_list[k].osnum = MOD_ENV.md_id.osnum ;
+   }
+
+   if( ISOC != NULL ) free(ISOC);
+}
+/* ======================================================================== */
+

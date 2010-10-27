@@ -1,0 +1,195 @@
+/* $Id $  */
+
+/* --------------------------------------------------------------------
+ * I/VDS
+ *
+ * File:        vdppl/nodevolume.u
+ *
+ * Description: get node volume.
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ *      $Log $
+ *
+ * History:
+ *      MM/DD/YY        AUTHOR          DESCRIPTION
+ *      12/05/97        yzhu            creation date
+ *
+ * -------------------------------------------------------------------*/
+/* #include "math.h" */
+#include "ciminimum.h"
+#include "cieveryone.h"
+#include "cimacros.h"
+#include "igrdp.h"
+#include "dp.h"
+#include "go.h"
+#include "gr.h"
+#include "grmacros.h"
+#include "dpdef.h"
+#include "growner.h"
+#include "dpmacros.h"
+#include "v_slcdef.h"
+#include "v_pplslc.h"
+// #include "v_risproto.h"
+#include "vdprocinfo.h"
+
+#define VD_VLA_ID_MAX 4096
+/*#define VD_DEBUGn */
+
+extern int VDatGetLeafsVLA();
+extern int VDvlaID_GetAt();
+extern int VDatGetLeafObject();
+extern long VDvlaID_Construct();
+extern long VDvlaID_Empty();
+extern long VDvlaID_Delete();
+extern long GRaccumulate_range();
+
+extern int printf();
+extern double fabs();
+
+typedef struct {
+  struct  TVDvlaID *next;
+  IGRuint cnt;
+  struct GRid   list[VD_VLA_ID_MAX];
+} TVDvlaID;
+
+/*
+long VDget_node_side_len();
+long VDget_node_volume();
+long VDget_node_cog();
+long VDget_node_mass();
+*/
+
+main()
+{
+int                  status, i ;
+long                 msg ;
+double               sideLen[3];
+double               volume, mass ;
+double               cog[3] ;
+struct	GRobj_env    objenv;
+struct	GRid	     object;
+ 
+#ifdef  VD_DEBUGn
+        printf( "nodevolume--main\n");
+#endif 
+
+        mass = 0.0;
+        volume = 0.0;
+
+        /* get GRobj_env id */
+        vd$ppl_getarg_at_index(which_info = INPUT_INFO,
+                                index     = 0,
+                                value     = &objenv );
+        object = objenv.obj_id;
+
+#ifdef  VD_DEBUGn
+        printf( "Get object from INPUT_INFO [%d, %d]\n", 
+			object.objid, object.osnum); 
+#endif
+
+        /* get total volume */
+        status =
+        VDget_node_volume( &msg, object, &volume);
+
+#ifdef  VD_DEBUGn
+        printf( "Main--volume %f\n",volume);
+#endif
+     	/* set size for OUTPUT_INFO */
+	vd$ppl_set_size (which_info = OUTPUT_INFO,
+			 size	    = 1		  );	
+        /* set volume */
+        vd$ppl_setarg_at_index(which_info = OUTPUT_INFO,
+                                index     = 0,
+                                type      = VD_double,  
+                                value     = &volume   );       
+
+#ifdef  VD_DEBUGn
+        printf( "nodevolume--main end\n");
+#endif
+        return 1;
+}
+
+/*-------------------------------------------------------*/
+long VDget_node_volume ( msg, object, volume)
+IGRlong 		*msg;
+struct GRid             object;
+IGRdouble               *volume;
+{
+   int          leafI;
+   TVDvlaID     leafVLA;
+   long         status;
+   int     	range_found, j;
+   IGRboolean   world;
+   IGRshort     local_mx_type;
+   IGRmatrix    local_matrix;
+   IGRdouble    tmp_range[6], range[6], massL;
+   struct GRid  leafID;
+   struct GRobj_env 	objenv;
+ 
+#ifdef  VD_DEBUGn
+   printf( "nodevolume--VDget_node_volume \n");
+#endif
+
+   status = OM_S_SUCCESS;
+   range_found = 0;
+
+   // Init vla
+   VDvlaID_Construct(&leafVLA);
+
+   /* get leaf objects */
+   VDatGetLeafsVLA( &object, &leafVLA);
+
+   /* for leaf loop */
+   for ( leafI = 0; VDvlaID_GetAt( &leafVLA, &leafID, leafI); leafI = leafI +1)
+   {
+#ifdef  VD_DEBUGn
+      printf( " leaf [%d, %d]\n", leafID.objid, leafID.osnum);
+#endif
+
+      status = VDatGetLeafObject(&leafID, &objenv);
+
+#ifdef  VD_DEBUGn
+      printf( " model object [%d, %d]\n", objenv.obj_id.objid,
+                                         objenv.obj_id.osnum);
+#endif
+
+      /* Get the range of the object.  */
+      status =
+      vd$proc_attr( msg  	= msg,
+                    grid        = objenv.obj_id,
+                    md_env      = &(objenv.mod_env),
+                    range     	= tmp_range);
+      
+      if( range_found )
+                    GRaccumulate_range( msg, tmp_range, range );
+      else{
+             range_found = 1;
+             for( j=0; j<6; j = j + 1 ) range[j] = tmp_range[j];
+      }
+#ifdef  VD_DEBUGn
+      printf( "ind x %f \n", (range[3] - range[0]));
+      printf( "ind y %f \n", (range[4] - range[1]));
+      printf( "ind z %f \n", (range[5] - range[2]));
+#endif
+
+   } 
+
+   *volume = fabs( (range[5] - range[2])*
+                  (range[4] - range[1])*
+                  (range[3] - range[0]));
+
+#ifdef  VD_DEBUGn  
+   printf( "volume x %f \n", (range[3] - range[0]));
+   printf( "volume y %f \n", (range[4] - range[1]));
+   printf( "volume z %f \n", (range[5] - range[2]));
+   printf( "volume %f \n", *volume);
+
+   printf( "nodevolume--VDget_node_volume end \n");
+#endif
+
+   VDvlaID_Delete(&leafVLA);  
+   return TRUE;
+} /* VDget_node_volume */
+

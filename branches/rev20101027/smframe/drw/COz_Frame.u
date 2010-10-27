@@ -1,0 +1,518 @@
+/* $Id: COz_Frame.u,v 1.1.1.1 2001/01/04 21:07:34 cvs Exp $  */
+
+/* --------------------------------------------------------------------
+ * I/VDS
+ *
+ * File:	vds/smframe/drw / COz_Frame.u
+ *
+ * Description:
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ *	$Log: COz_Frame.u,v $
+ *	Revision 1.1.1.1  2001/01/04 21:07:34  cvs
+ *	Initial import to CVS
+ *	
+# Revision 1.1  1998/04/29  16:27:20  pinnacle
+# VDS 2.5.1
+#
+# Revision 1.1  1997/05/08  13:20:44  pinnacle
+# New project VDS 250
+#
+# Revision 1.1  1996/07/19  20:33:52  pinnacle
+# Create VDS 241 project
+#
+# Revision 1.2  1996/04/19  13:04:30  pinnacle
+# Replaced: smframe/drw/COz_Frame.u for:  by azuurhou for vds.240
+#
+# Revision 1.1  1994/11/14  22:42:32  pinnacle
+# Create vds.240 from vds.232
+#
+# Revision 1.1  1994/11/08  16:07:00  pinnacle
+# create vds.232
+#
+ *
+ * History:
+ *	MM/DD/YY	AUTHOR		DESCRIPTION
+ *
+ * -------------------------------------------------------------------*/
+
+/*
+ * I/VDS
+ * 
+ * Drawing Extract Frame system Pattern.
+ *
+ * The following patterns can be requested and generated, using the locate
+ * filter for all desired objects.
+ * 
+ * The following patterns are requested for output:
+ *
+ *	PATTERNS:		FACTOR(1)		Factor(2)
+ *
+ *                   				F10       F15       F20	
+ *      pattern 1      F10       F15       F20	 |                   | 
+ *                      |         |         |	 |         |         |
+ *                      | | | | | | | | | | |	 | | | | | | | | | | |
+ *
+ *
+ *                                              F10 F12 F14 F16 F18 F20
+ *      pattern 2      F10 F12 F14 F16 F18 F20   |   |   |   |   |   |
+ *                      |   |   |   |   |   |    |   |   |   |   |   |
+ *                      | | | | | | | | | | |    | | | | | | | | | | |
+ *
+ *
+ *      pattern 3                                |                   |
+ *                      |         |         |	 |         |         |
+ *                      | | | | | | | | | | |    | | | | | | | | | | |
+ *                     F10       F15       F20	F10       F15       F20
+ *
+ *
+ *      pattern 4                                |   |   |   |   |   |
+ *                      |   |   |   |   |   |    |   |   |   |   |   |
+ *                      | | | | | | | | | | |    | | | | | | | | | | |
+ *                     F10 F12 F14 F16 F18 F20  F10 F12 F14 F16 F18 F20
+ *
+ *	Remarks:
+ *		All pattern are having an otion in displaying the height of 
+ *		the symbolic representation of the frame object.
+ * 
+ *	Input Requests:
+ *
+ *		o Select list of drawing objects.
+ *		o pattern type	[1,2,3,4]	: default [1]
+ *		o Primiariy frame factor [5,10] : default [10]
+ *		o plane factor	[1,2]		: default [1]
+ *
+ *
+ * 	History:
+ *		adz.
+ */
+ 
+ 
+#include "cieveryone.h"
+#include "cimacros.h"
+#include "growner.h"
+#include "asbox.h"
+#include "coparadef.h"
+#include "coparamac.h"
+#include "dpdef.h"
+#include "dpmacros.h"
+
+#include "nddef.h"
+#include "ndmacros.h"
+
+extern	int	NDwait_batch();
+extern	int	NDget_mod_batch();
+extern	int	NDexec_batch();
+extern	int	ASstart_var_fence();
+extern	int	ASend_fence();
+extern	int	DPerase_hilite();
+
+extern	int	printf();
+extern	int	sprintf();
+extern	int	UI_status();
+
+#define drw_clear_state         65535   /* 1111 1111 xxxx xxxx */
+#define drw_scale_incr          32768   /* 1000 0000 xxxx xxxx */
+
+#define drw_scale_two           512   	/* 0000 0010 xxxx xxxx */
+#define drw_scale_three         1024    /* 0000 0100 xxxx xxxx */
+#define drw_scale_four          2048    /* 0000 1000 xxxx xxxx */
+/*
+ * No text display.
+ */
+#define drw_without_text        4096    /* 0001 0000 xxxx xxxx */
+
+/*
+ * Text on top of line.
+ */
+#define drw_just_top            8192    /* 0010 0000 xxxx xxxx */
+
+
+extern	GRclassid	OPP_GRgrset_class_id ;
+extern	GRclassid	OPP_VDdrawing_class_id ;
+extern	GRclassid	OPP_SMframe_class_id ;
+
+
+main()
+{
+  struct GRid 		obj;
+  struct GRmd_env 	mod_env;
+  struct GRobj_env      *drwlist;
+  struct GRid		par_obj;
+  GRclassid             cid;
+
+  char			loc_mes[40];
+  char			c_name[80];
+  long			msg;
+
+  int			sts;
+  int			response ;
+  int			pattern;
+  int			pattern_text ;
+  int			mask ;
+  int			state ;
+  int			cn_type;
+  int			wait_batch;
+  int			ind;
+  int			fr_number;
+  GRname		occurence;
+  GRname		info;
+  GRname		buffer;
+  IGRint		nblist, count, factor;
+  int                   dpmode;
+  int			chan_size;
+  struct GRid           display_info;
+  extern int            GRfindmod();
+  OM_S_OBJECT_LINKAGE   slist[10];
+  struct ret_struct	ret_str;
+
+  
+  /*
+   * initialisation
+   */
+
+  strcpy(loc_mes," Modify Drawing Frame ");
+  message(loc_mes);
+
+get_frame :
+
+  /*
+   * locate of the drawing frame objects.
+   */
+
+  if(!ci$locate(prompt       = "Locate Drawing Frame object(s)",
+		classes      = "VDdrawing",
+                owner_action = LC_RIGID_COMP
+                               | LC_RIGID_OWNER | LC_FLEX_COMP
+                               | LC_FLEX_OWNER  | LC_REF_OBJECTS,
+		md_env       = &mod_env,
+		response     = &response,
+                obj          = &obj.objid,
+		osnum	     = &obj.osnum )) {
+
+	printf("Error locate Drawing Frame(s)\n");
+	goto wrap_up;
+  }
+
+  if( response == MOVE_ON ){
+
+        goto finish ;
+  }
+
+#ifdef	DEBUG
+  printf(" Point object = [%d,%d]\n", obj.objid, obj.osnum);
+#endif
+
+  om$get_classid(	osnum = obj.osnum,
+			objid = obj.objid,
+			p_classid = &cid );
+
+  if( om$is_ancestry_valid(	subclassid = cid,
+				superclassid = OPP_GRgrset_class_id )
+		== OM_S_SUCCESS ){
+
+	mask = GRm_RJT_MOVEON | GRm_BACK_UP | GRm_DATA ;
+
+	dpmode = GRhd ;
+	GRfindmod( &display_info );
+
+	sts =
+	ci$send(msg = message GRgraphics.GRdisplay(
+					&msg,
+					&mod_env.md_env.matrix_type,
+					mod_env.md_env.matrix,
+					&dpmode,
+					&display_info ),
+		targetid = obj.objid,
+		targetos = obj.osnum );
+
+	if( !(sts & msg & 1 )) goto get_frame;
+
+	mask = GRm_DATA | GRm_RJT_MOVEON ;
+	ci$getevent(	response 	= &response,
+       		        prompt          = "Accept/Reject",
+			stackable 	= 1 );
+
+	if( response != DATA ){
+		sts =
+		dp$erase_hilite( msg = &msg );
+		goto get_frame;
+	}
+  }
+
+  sts =
+  dp$erase_hilite( msg = & msg );
+
+  as$start_fence(set= &obj,
+                 set_env = &mod_env,
+                 nb_obj = &count,
+                 p_obj_env = &drwlist );
+
+  if( count == 0 ) {
+	UI_status("No Object Located");
+	goto wrap_up;
+  }
+
+#ifdef	DEBUG
+  for ( ind = 0; ind < count; ind = ind + 1 ){
+    printf(" [%d]: %d,%d\n", ind, drwlist[ind].obj_id.objid, 
+				  drwlist[ind].obj_id.osnum );
+  }
+#endif
+
+  /*
+   * ask for pattern.
+   */
+
+ask_pattern:
+
+  pattern = 1;
+  ci$get(   value   = pattern,
+            rc      = sts,
+            prompt  = "Give pattern type (1,2,3,4)[1] / Move-on " );
+
+  if( ! (sts&1)){
+	/*
+	 * text stays
+	 */
+	pattern = 1;
+  }
+  else{
+	if( pattern < 1 || pattern > 4 ){
+		goto ask_pattern; 
+	}
+  }
+
+  sprintf(buffer, "Pattern : %d", pattern );
+  UI_status( buffer );
+
+  /*
+   * ask for text indication for pattern 1 and 3.
+   */
+
+  if( pattern != 1 && pattern != 3 )
+	goto ask_factor ;
+
+ask_pattern_text:
+
+  pattern_text = 5;
+  ci$get(   value   = pattern_text,
+            rc      = sts,
+            prompt  = "Give Primairy Frame Factor (5,10)[10] / Move-on " );
+
+  if( ! (sts&1)){
+	/*
+	 * text stays
+	 */
+	pattern_text = 10;
+  }
+  else{
+	if( pattern_text != 5 && pattern_text != 10 ){
+		goto ask_pattern_text; 
+	}
+  }
+
+  sprintf(buffer, "Pattern : %d; Primary Frame Factor :%d", pattern,pattern_text );
+  UI_status( buffer );
+
+ask_factor:
+
+  factor = 1;
+  ci$get(   value   = factor,
+            rc      = sts,
+            prompt  = "Give display factor (1,2)[1] / Move-on " );
+  if( ! (sts&1)){
+	/*
+	 * text stays
+	 */
+	factor = 1;
+  }
+  else{
+	if( factor < 1 || factor > 2 ){
+		goto ask_factor; 
+	}
+  }
+
+  if( pattern != 1 && pattern != 3 )
+  	sprintf(buffer, "Pattern : %d ; Height : %d ",
+					pattern, factor );
+  else 
+	sprintf(buffer, "Pattern : %d ; Factor : %d ; Height : %d ",
+					pattern, pattern_text, factor );
+
+  UI_status( buffer );
+
+  /*
+   * process object request.
+   */
+  mask = GRm_DATA | GRm_RJT_MOVEON ;
+  ci$getevent(	response 	= &response,
+       		prompt          = "Process Objects / Reject",
+		stackable 	= 1 );
+
+  if( response != DATA ){
+	sts =
+	dp$erase_hilite( msg = &msg );
+	goto get_frame;
+  }
+
+  /*
+   * process the objects ...
+   */
+
+  for ( ind = 0; ind < count; ind = ind + 1 )
+  {
+    sts = om$get_classid(osnum     = drwlist[ind].obj_id.osnum,
+	 		 objid     = drwlist[ind].obj_id.objid,
+			 p_classid = &cid );
+
+    if( om$is_ancestry_valid( subclassid   = cid,
+			      superclassid = OPP_VDdrawing_class_id )
+		!= OM_S_SUCCESS ) {
+
+        drwlist[ind].obj_id.objid = NULL_OBJID ;
+	continue;
+    }
+
+#ifdef	DEBUG
+    printf(" [%d]: %d,%d\n", ind, drwlist[ind].obj_id.objid, 
+				  drwlist[ind].obj_id.osnum );
+#endif
+
+    chan_size = 10;
+    sts =
+    om$get_channel_objects(
+                objid		= drwlist[ind].obj_id.objid,
+                osnum		= drwlist[ind].obj_id.osnum,
+                p_chanselect	= &ND_father,
+                list		= slist,
+                size		= chan_size ,
+                count		= &nblist );
+    if( (!(sts&1)) || ( nblist == 0 ) ){
+	drwlist[ind].obj_id.objid = NULL_OBJID ;
+	continue;
+	/* goto get_occurence ; */
+    }
+
+    sts =
+    ci$send(msg = message NDmacro.ACreturn_foot(&msg,"", &par_obj, NULL, NULL ),
+            targetid = slist[0].S_objid,
+            targetos = slist[0].osnum );
+
+    sts =
+    om$get_classid(osnum   = par_obj.osnum,
+ 		 objid     = par_obj.objid,
+		 p_classid = &cid );
+
+    if( om$is_ancestry_valid( subclassid   = cid,
+			      superclassid = OPP_SMframe_class_id )
+		!= OM_S_SUCCESS ) {
+
+	drwlist[ind].obj_id.objid = NULL_OBJID ;
+	continue;
+    }
+    
+    sts =
+    ci$send(msg = message SMframe.SMfind_frame_num( &msg, &fr_number),
+	   targetid = par_obj.objid,
+	   targetos = par_obj.osnum );
+
+    if( !( sts & msg & 1)){
+	drwlist[ind].obj_id.objid = NULL_OBJID ;
+	continue ;
+	/* goto get_occurence; */
+    }
+
+    sprintf( buffer, "Processing Drawing Frame : %d\n", fr_number );
+    UI_status( buffer );
+
+#ifdef	DEBUG
+    printf( "\nProcessing Drawing Frame : %d\n", fr_number );
+#endif
+
+
+    state = 0 ;
+    state = state | drw_scale_incr ;
+    switch( pattern ){
+    case	1:
+    case	3:
+
+		if( pattern == 1 ){
+			state = state | drw_just_top ;
+		}
+
+		if(!(fr_number % pattern_text == 0 )){
+			state = state | drw_without_text ; 
+		}
+		if(fr_number % 5 == 0 ){
+			state = state | drw_scale_two ;
+			if(( factor == 2 ) && ( fr_number % 10 == 0 ))
+				state = state | drw_scale_three ;
+		}
+
+		break;
+
+    case	2:
+    case	4:
+		if( pattern == 2 ){
+			state = state | drw_just_top ;
+		}
+
+		if(!(fr_number % 2 == 0 )){
+			state = state | drw_without_text ; 
+		}
+		else{
+			if( factor == 2 )
+				state = state | drw_scale_three ;
+			else
+				state = state | drw_scale_two ;
+		}
+		break;
+	default:
+
+		printf(" pattern not found ..\n");
+		break;
+    }
+
+    /*
+     * set the factor for the object relative the give input.
+     */
+
+    mask  = drw_clear_state ;
+    ci$send(msg = message ACncpx.ACchg_STATE( mask, state ),
+	    targetid = drwlist[ind].obj_id.objid,
+	    targetos = drwlist[ind].obj_id.osnum );
+
+    /*
+     * recompute the object.
+     */
+
+    cn_type    = ND_COMP; /* recompute the object */
+    nd$wait_batch(type       = GR_GEOM_POSTED,
+                  l_object   = &drwlist[ind].obj_id,
+                  l_obj_info = &cn_type,
+                  nb_obj     = 1 );
+
+    nd$mod_batch(request    = ND_INQ,
+		 p_ret_mode = &wait_batch);
+
+    nd$exec_batch(	mode = ND_DISP_ROOT|ND_DISP_BODY,
+			defer_flag	= ND_IMMEDIATE );
+
+  }
+   
+finish:
+
+	ASend_fence();
+	UI_status( "Finish Processing .. ");
+	return 1;
+
+wrap_up:
+
+	ASend_fence();
+	UI_status( "error in processing ");
+	return  1;
+
+}

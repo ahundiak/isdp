@@ -1,0 +1,1057 @@
+/* $Id: AddPart.rc,v 1.1.1.1 2001/01/04 21:08:13 cvs Exp $  */
+
+/* --------------------------------------------------------------------
+ * I/VDS
+ *
+ * File:	vds/vddb/source / AddPart.rc
+ *
+ * Description:
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ *	$Log: AddPart.rc,v $
+ *	Revision 1.1.1.1  2001/01/04 21:08:13  cvs
+ *	Initial import to CVS
+ *	
+# Revision 1.1  1998/04/29  16:27:20  pinnacle
+# VDS 2.5.1
+#
+# Revision 1.1  1997/05/08  13:20:44  pinnacle
+# New project VDS 250
+#
+# Revision 1.1  1996/07/19  20:33:52  pinnacle
+# Create VDS 241 project
+#
+# Revision 1.8  1996/06/07  16:07:46  pinnacle
+# Replaced: vddb/source/AddPart.rc for:  by sljenks for vds.240
+#
+# Revision 1.7  1996/05/29  19:09:28  pinnacle
+# Replaced: vddb/source/AddPart.rc for:  by tlbriggs for vds.240
+#
+# Revision 1.6  1996/05/28  20:06:46  pinnacle
+# Replaced: vddb/source/AddPart.rc for:  by v240_int for vds.240
+#
+# Revision 1.5  1996/05/23  23:52:06  pinnacle
+# Replaced: vddb/source/AddPart.rc for:  by tlbriggs for vds.240
+#
+# Revision 1.4  1996/05/20  15:05:04  pinnacle
+# Replaced: vddb/source/AddPart.rc for:  by tlbriggs for vds.240
+#
+# Revision 1.3  1996/04/22  15:12:30  pinnacle
+# Replaced: vddb/source/AddPart.rc for:  by v240_int for vds.240
+#
+# Revision 1.2  1996/04/21  23:49:12  pinnacle
+# Replaced: vddb/source/AddPart.rc for:  by v240_int for vds.240
+#
+# Revision 1.1  1994/11/14  22:42:32  pinnacle
+# Create vds.240 from vds.232
+#
+# Revision 1.1  1994/11/08  16:07:00  pinnacle
+# create vds.232
+#
+ *
+ * History:
+ *	04/11/96	tlb	Check string arguments in functions
+ *				Ensure strlen do use NULL ptr
+ *				Rename VDSdbstr.h constants 
+ *	04/22/96	tlb   	Fix nested comment in log message
+ *	05/01/96  	tlb	Simplify user debug messages
+ *				Add alloc tracing
+ *				Return 1 if AddPart fails - single exit 
+ *				close cursor after each open
+ *				malloc - length did not include null 
+ *	05/28/96	tlb	Initialize insert_string
+ *	05/29/96	tlb	Fix error messages, processing message
+ *				Continue processing in case of some errors,
+ *
+ *      06/07/96        slj     Added tolower for catalogname verification
+ *                              in ris5tables.  Was failing for catalogs
+ *                              with uppercase letters in the catalogname.
+ * -------------------------------------------------------------------*/
+
+#include	<stdio.h>
+#include	<string.h>
+#include	<stdlib.h>
+#include	"VDSdbstr.h"
+#include        "VDSdberrdef.h"
+#include	"v_risproto.h"
+
+
+int DebugFlag;
+#define 	QUIET 		0
+#define 	PARTIAL 	1
+#define 	FULL 		2
+#define 	ALLOC 		4
+#define 	TOTAL 		7
+/*
+#include 	"LibRis.h"
+*/
+
+#define		IN_FILE		"/tmp/part"
+#define		OPEN_BRA	"["
+#define		CLOSE_BRA	"]"
+
+#define		PARTNUM		"n_itemname"
+#define		REVISION	"n_itemrev"
+#define		CREATOR	        "n_creator"
+#define		DATE	        "n_creationdate"
+#define		TIME	        "p_creationtime"
+#define		PARTYPE		"p_parttype"
+#define		FILENAME	"n_cofilename"
+
+#define		DEF_CREATOR	"'nfmadmin'"
+#define		DEF_DATE	"'11/14/90'"
+#define		DEF_TIME	"'12:00:00'"
+#define		DEF_PARTYPE	"'P'"
+#define		DEF_FILENAME	"'tmp'"
+
+#define		ACLNO		"n_aclno"
+#define		STATE		"n_stateno"
+#define		LIMIT		"n_versionlimit"
+#define		LOCK		"n_itemlock"
+#define		EXPLODE		"p_explode"
+#define		LEVEL		"p_maxlevel"
+#define		CLASS		"n_fileclass"
+#define		VERSION		"n_fileversion"
+#define		CISANO		"n_cisano"
+
+#define		LIMIT_VAL	"1"
+#define		LOCK_VAL	"'N'"
+#define		EXPLODE_VAL	"'Y'"
+#define		LEVEL_VAL	"0"
+#define		CLASS_VAL	"'C'"
+#define		VERSION_VAL	"0"
+
+#define		CATALOG		"n_catalogname"
+#define		TABLE		"n_tablename"
+
+#define		VDS_MAX_PNLEN		50
+#define		VDS_MAX_PRLEN		17
+/*
+#define		LIST_INC		300
+*/
+#define		LIST_INC		50
+
+#define RIS_NULL	-1281
+#define RIS_STMT	1024
+
+/*-------------------------------------------------------------*/
+RisSuccess (string)
+char *string;
+  {
+   exec sql begin declare section;
+     char *p_sqlerror;
+   exec sql end declare section;
+
+   if (SQLCODE != RIS_SUCCESS)
+     {
+      exec sql report error into :p_sqlerror;
+      printf ("\nsqlerror in <%s>\n%s\n", string, p_sqlerror);
+      return (0);
+     }
+   else
+      return (1);
+  }
+
+/*-------------------------------------------------------------*/
+RisNullValue ()
+  {
+   if      (SQLCODE == RIS_NULL)		 		return 1;
+   else if (SQLCODE == END_OF_DATA) if (!RisSuccess ("fetch"))	exit (1);
+   else 					 		return 0;
+   return 0;
+  }
+
+/*-------------------------------------------------------------*/
+RisEndOfData ()
+  {
+   if      (SQLCODE == RIS_SUCCESS)	return 0;
+   else if (SQLCODE == END_OF_DATA)	return 1;
+   else if (!RisSuccess ("fetch"))	exit (1);
+   return 0;
+  }
+
+
+/*-------------------------------------------------------------*/
+int exec_sql_open_cursor1 (string, variable)
+char *string;
+char *variable;
+{
+   exec sql begin declare section;
+     char *StmtString;
+   exec sql end declare section;
+
+   int i,sts, len;
+
+   sts = 1;
+   StmtString = NULL;
+   len = (1 + (string ? strlen(string) : 0) + (variable ? strlen(variable) : 0))
+				   			* sizeof (char) ;
+   StmtString = (char *) malloc ( len);
+   if (DebugFlag & ALLOC)
+	printf ("malloc: exec_sql_open_cursor1: %d bytes\n", len);
+   if (!StmtString ) {
+      printf ("AddPart : Cannot allocate %d bytes of memory for %s buffer\n",
+					len, "exec_sql_open_cursor1 statment");
+      printf ("\tquery: ");
+      printf (string, variable);
+      putchar ('\n');
+      sts = 0;
+      goto quit;
+      }
+
+   for (i=0 ; string[i] != '%'; i= i+1)
+		/* empty */;
+   if (string[i+1] == 's')
+      sprintf (StmtString, string, variable);
+   else
+      sprintf (StmtString, string, *((int *)variable));
+   if (DebugFlag & FULL)
+      printf ("\n<%s>\n\n", StmtString);
+   exec sql prepare statement1 from :StmtString;
+   exec sql declare cursor1 cursor for statement1;
+   exec sql open cursor1;
+quit:
+   if (StmtString != NULL) free(StmtString);
+   return (sts);
+}
+
+
+/*-------------------------------------------------------------*/
+exec_sql_close_cursor1 ()
+  {
+   exec sql close cursor1;
+   exec sql clear statement1;
+  }
+
+
+/*-------------------------------------------------------------*/
+int exec_sql_execute (string, variable)
+
+char *string;
+char *variable;
+{
+   exec sql begin declare section;
+     char *StmtString;
+   exec sql end declare section;
+
+   int i,sts, len;
+
+   sts = 1;
+   StmtString = NULL;
+   len = (1 + (string ? strlen(string) : 0) + (variable ? strlen(variable) : 0))
+				   			* sizeof (char) ;
+   StmtString = (char *) malloc ( len);
+   if (DebugFlag & ALLOC)
+	printf ("malloc: exec_sql_execute: %d bytes\n", len);
+   if (!StmtString ) {
+      printf ("AddPart: Cannot allocate %d bytes of memory for %s buffer\n",
+					len, "exec_sql_execute buffer");
+      printf ("\tquery: ");
+      printf (string, variable);
+      putchar ('\n');
+      sts = 0;
+      goto quit;
+     }
+
+   if (variable != NULL)
+     {
+      for (i=0 ; string[i] != '%'; i= i+1);
+      if (string[i+1] == 's')
+         sprintf (StmtString, string, variable);
+      else
+         sprintf (StmtString, string, *((int *)variable));
+     }
+   else
+      strcpy (StmtString, string);
+   if (DebugFlag & FULL)
+         printf ("\n<%s>\n\n", StmtString);
+
+   exec sql prepare statement from :StmtString;
+   exec sql execute statement;
+
+   if (!RisSuccess (StmtString)) sts = 0;
+	/* just set sts, clear statement, return */
+
+   exec sql clear statement;
+quit:
+   if (StmtString != NULL) free(StmtString);
+   return (sts);
+}
+
+/********** END LibRis.h ************/
+
+/********** function used by qsort *********/
+int comp_str( char *a, char *b)
+{
+  /*printf("a=%s, b=%s\n",a, b);*/
+  return strcmp(a, b);
+}
+
+/*-------------------------------------------------------------*/
+main ( argc, argv)
+   int		 argc;
+   char		 *argv[];
+
+{
+   int		 n_string;
+   int		 n_part, len;
+   int		 i, j, k, l;
+   int		 sts;
+   char		 string[VDS_BUF_MAX_STRING];
+   char		 catalog[VDS_BUF_MAX_WORD];
+   char		 lower_catalog[VDS_BUF_MAX_WORD];
+   char		 table[VDS_BUF_MAX_WORD];
+   char		 partnum[VDS_BUF_MAX_WORD];
+   char		 revision[VDS_BUF_MAX_WORD];
+   struct MFlin  line;
+   struct MFpart part1;
+   struct MFpart part2;
+   short	 part1_alloc, part2_alloc;
+   int		 (*cmp)() = &comp_str;
+   char		 over_write;
+   char		 old_catalog[20], tmp_part[VDS_MAX_PNLEN];
+
+   int		 list_size = 0;
+   int		 PartNumLen = 0, PartRevLen = 0;
+   char		 (*l_partnum)[VDS_MAX_PNLEN]=NULL;
+   char		 (*l_partrev)[VDS_MAX_PRLEN]=NULL;
+   FILE		 *p_file=NULL;
+   char		 *p_part=NULL;
+
+   exec sql begin declare section;
+      char  schema[80];
+      char  *insert_string;
+      char  query[1024];
+      char  select[1024];
+      char  from[1024];
+      char  where[1024];
+      char  n_itemname[80];
+      char  n_itemrev[80];
+      char  catname[80];
+      int   n_itemno;
+      int   n_fileno;
+      int   db_parts;
+   exec sql end declare section;
+
+   insert_string = NULL;
+
+   /* Set debug flag */
+   if      ( argv[3][0] == 'q')
+      DebugFlag= QUIET;
+   else if ( argv[3][0] == 'p')
+      DebugFlag= PARTIAL;
+   else if ( argv[3][0] == 'd')
+      DebugFlag= FULL;
+   else if ( argv[3][0] == 'a')
+      DebugFlag= ALLOC;
+   else if ( argv[3][0] == 't')
+      DebugFlag= TOTAL;
+   else {
+      printf ( "AddPart: debug options : q (quiet), p (partial), d(total), a(alloc), t(total)\n");
+      sts = 0;
+      goto quit;
+      }
+
+   /* Set overwrite flag */
+   over_write = 0;
+   if ( argv[7][0] == 'y' || argv[7][0] == 'Y' )
+      over_write = 1;
+   else if ( argv[7][0] == 'n' || argv[7][0] == 'N' )
+      over_write = 0;
+   else
+      printf("AddPart: invalid overwrite option: '%c'. Assuming no overwrite\n",
+						argv[7][0]);
+
+   /* Set default schema */
+   sprintf (schema, "%s.%s", argv[1], argv[2]);
+   if (!exec_sql_execute ( "default schema %s", schema)) return (1);
+
+   /* Open parts file */
+   p_file = fopen ( IN_FILE, "r");
+   if ( p_file == NULL) {
+      printf ("\tError: cannot open parts file:  %s\n", IN_FILE);
+      return (1);
+      }
+
+   /* initialization */
+   n_string   = 0;
+   n_part     = 0;
+   catalog[0] = 0;
+   table[0]   = 0;
+   part1.parameter = NULL;
+   part2.parameter = NULL;
+   old_catalog[0] = 0;
+
+   part1_alloc = VDS_BUF_MEM_START;
+   len =  part1_alloc * sizeof (struct MFparam);
+   part1.parameter = (struct MFparam *) malloc ( len);
+   if (DebugFlag & ALLOC)
+	printf ("malloc: part1_alloc: %d bytes\n", len);
+   if (!part1.parameter ) {
+      printf ("AddPart : Cannot allocate %d bytes of memory for %s buffer\n",
+					len, "part1_alloc statement");
+      sts = 1;
+      goto quit;
+     }
+
+   part2_alloc = VDS_BUF_MEM_START;
+   len = part2_alloc * sizeof (struct MFparam) ;
+   part2.parameter = (struct MFparam *) malloc ( len);
+   if (DebugFlag & ALLOC)
+	printf ("malloc: part2_alloc: %d bytes\n", len);
+   if (!part2.parameter ) {
+      printf ("AddPart : Cannot allocate %d bytes of memory for %s buffer\n",
+				len, "part2_alloc statement");
+      sts = 1;
+      goto quit;
+     }
+
+   /* 
+    * Loop over lines in the IN_FILE 
+    */
+   while ( ( fgets ( string, VDS_BUF_MAX_STRING, p_file) != 0 )) {
+      n_string++;
+
+       /*-------------------- 
+	* Start of a new part
+   	*/
+      if      ( strncmp ( string, OPEN_BRA, strlen (OPEN_BRA) ) == 0 ) {
+         part1.number = 0;
+         part2.number = 0;
+         n_part++;
+
+          if ( DebugFlag & FULL )
+            printf ( "\tbegin part %d processing\n", n_part);
+         }
+
+      /*-------------------- 
+       * End of a part
+       */
+      else if ( strncmp ( string, CLOSE_BRA,  strlen (CLOSE_BRA) ) == 0 ) {
+
+	for ( j=0; j<part1.number; j++) {
+            if ( strcmp (part1.parameter[j].name, PARTNUM) == 0 )
+               strcpy ( partnum, part1.parameter[j].value);
+            if ( strcmp (part1.parameter[j].name, REVISION) == 0 )
+               strcpy ( revision, part1.parameter[j].value);
+
+	    /* if values not defined - continue, else using defaults */
+            if ( strcmp ( part1.parameter[j].value, "") != 0 ) 
+			continue;
+
+            if      ( strcmp ( part1.parameter[j].name, PARTNUM) == 0 ) {
+               printf ( "\tError: no partnum defined, cannot proceed\n");
+      	       sts = 1;
+               goto quit;
+               }
+            else if ( strcmp ( part1.parameter[j].name, REVISION ) == 0 ){
+               printf ( "\tError: no revision defined, cannot proceed\n");
+      	       sts = 1;
+               goto quit;
+                }
+            else if ( strcmp ( part1.parameter[j].name, CREATOR ) == 0 ){
+               printf ("\tError: no creator defined, using default: %s\n",
+								DEF_CREATOR);
+ 	             strcpy ( part1.parameter[j].value, DEF_CREATOR);
+               }
+            else if ( strcmp ( part1.parameter[j].name, DATE ) == 0 ) {
+               printf ("\tError: no creation date defined, using default: %s\n",
+								DEF_DATE);
+ 	             strcpy ( part1.parameter[j].value, DEF_DATE);
+               }
+            else if ( strcmp ( part1.parameter[j].name, TIME ) == 0 ) {
+               printf ("\tError: no creation time defined, using default: %s\n",								DEF_TIME);
+ 	             strcpy ( part1.parameter[j].value, DEF_TIME);
+               }
+            else if ( strcmp ( part1.parameter[j].name, PARTYPE ) == 0 ) {
+               printf("\tError: no part type defined, using default:%s\n",
+								DEF_PARTYPE);
+ 	             strcpy ( part1.parameter[j].value, DEF_PARTYPE);
+               }
+            } /* end of for loop */
+
+        /* complete with constant attributes in <catalog>
+         *	number = VDS_BUF_CAT_ATTR 
+	 */
+
+  	/*Realloc for +ve nonzero n_part and no.of attr > alloacted mem.*/
+      	if( n_part && part1.number >= part1_alloc-VDS_BUF_CAT_ATTR ) {
+            part1_alloc = part1_alloc + VDS_BUF_CAT_ATTR;
+	    len = part1_alloc * sizeof (struct MFparam);
+            part1.parameter = (struct MFparam *) realloc (part1.parameter, len);
+   	    if (DebugFlag & ALLOC)
+		printf ("realloc: part1.parameter: %d bytes\n", len);
+            if (!part1.parameter ) {
+      		printf ("%s: Cannot re-allocate %d bytes of memory for %s\n",
+				"AddPart", len, "part1.parameter buffer");
+      	       sts = 1;
+               goto quit;
+               }
+            }
+
+	strcpy ( part1.parameter[part1.number].name , STATE);
+	strcpy ( part1.parameter[part1.number].value, argv[4]);
+        part1.number++;
+
+	strcpy ( part1.parameter[part1.number].name , ACLNO);
+	strcpy ( part1.parameter[part1.number].value, argv[5]);
+        part1.number++;
+
+	strcpy ( part1.parameter[part1.number].name , LIMIT);
+	strcpy ( part1.parameter[part1.number].value, LIMIT_VAL);
+        part1.number++;
+
+	strcpy ( part1.parameter[part1.number].name , LOCK);
+	strcpy ( part1.parameter[part1.number].value, LOCK_VAL);
+        part1.number++;
+
+	strcpy ( part1.parameter[part1.number].name , EXPLODE);
+	strcpy ( part1.parameter[part1.number].value, EXPLODE_VAL);
+        part1.number++;
+
+	strcpy ( part1.parameter[part1.number].name , LEVEL);
+	strcpy ( part1.parameter[part1.number].value, LEVEL_VAL);
+        part1.number++;
+
+         if ( strcmp ( part2.parameter[0].name, FILENAME ) == 0 ) {
+            if ( strcmp ( part2.parameter[0].value, "" ) == 0 ) {
+                 printf ("\tno macro library defined, using default: %s\n",
+							DEF_FILENAME);
+ 	         strcpy ( part1.parameter[j].value, DEF_FILENAME);
+                 }
+            }
+
+       /* complete with constant attributes in f_<catalog>
+        * 	number = VDS_BUF_F_CAT_ATTR 
+	*/
+
+	/*realloc for +ve nonzero n_part and no.of attr > alloacted mem.*/
+	if( n_part && part2.number >= part2_alloc-VDS_BUF_F_CAT_ATTR ) {
+            part2_alloc = part2_alloc + VDS_BUF_F_CAT_ATTR;
+	    len =  part2_alloc * sizeof (struct MFparam);
+            part2.parameter = (struct MFparam *) realloc (part2.parameter, len);
+   	    if (DebugFlag & ALLOC)
+		printf ("malloc: part2.parameter: %d bytes\n", len);
+            if (!part2.parameter ) {
+      		printf ("%s: Cannot re-allocate %d bytes of memory for %s\n",
+				"AddPart", len, "part2.parameter buffer");
+      	        sts = 1;
+                goto quit;
+               }
+            }
+
+	 strcpy ( part2.parameter[part2.number].name , CLASS);
+	 strcpy ( part2.parameter[part2.number].value, CLASS_VAL);
+         part2.number++;
+
+	 strcpy ( part2.parameter[part2.number].name , VERSION);
+	 strcpy ( part2.parameter[part2.number].value, VERSION_VAL);
+         part2.number++;
+
+	 strcpy ( part2.parameter[part2.number].name , CISANO);
+	 strcpy ( part2.parameter[part2.number].value, argv[6]);
+         part2.number++;
+
+         /* Verify the existence of the part in the catalog */
+/**********************************************
+ *         sprintf ( from, "%s", catalog );
+ *         sprintf ( where,"n_itemname=%s and n_itemrev=%s",partnum,revision );
+ *         sprintf ( query, "select %s from %s where %s",select,from,where);
+ *
+ *         if (!exec_sql_open_cursor1( "%s", query )) goto quit;
+ *         CatCount = 0;
+ *         while (1) {
+ *             exec sql fetch cursor1 into :n_itemname, :n_itemrev;
+ *             if (RisEndOfData ()) break;
+ *             CatCount++;
+ *             }
+ *********************************************/
+
+	/* ---------------------------------
+ 	 * New catalog
+  	 */
+        if ( strcmp( old_catalog, catalog ) ) {
+           if ( DebugFlag & FULL )
+	         printf("\npreparing list for the catalog %s\n", catalog );
+           strcpy( old_catalog, catalog );
+
+	   /* Verify whether catalog exists in nfmcatalogs */
+	   sprintf( query,
+	     "select n_catalogname from nfmcatalogs where n_catalogname=\'%s\'",
+	      catalog );
+
+	   if( !exec_sql_open_cursor1("%s", query) ) {
+      	        sts = 1;
+	   	goto quit;
+		}
+
+	   *catname = '\0';
+           exec sql fetch cursor1 into :catname;
+	   if( strcmp(catname, "") == 0 ) {
+	       	fprintf( stdout, "\tError: catalog <%s> does not exist\n", 
+								catalog);
+		fflush( stdout );
+		sts = 1;
+	    	goto quit;
+	        }
+
+	    /* added close  - 5/23/96 */
+           exec_sql_close_cursor1 ();
+
+	   /* Verify whether catalog table exists */
+	   /* ris5tables uses all lower case catalog names */
+	   strcpy(lower_catalog, catalog);
+	   l = 0;
+	   while (lower_catalog[l] != '\0' ) { 
+		lower_catalog[l] = tolower(lower_catalog[l]); l++; }
+	   sprintf( query,
+	     "select table_name from ris5tables where schema_name=\'%s\' and table_name=\'%s\'",
+	      				argv[1], lower_catalog );
+
+	   if( !exec_sql_open_cursor1("%s", query) ) {
+      	        sts = 1;
+	   	goto quit;
+		}
+
+	   *catname = '\0';
+           exec sql fetch cursor1 into :catname;
+	   if( strcmp(catname, "") == 0 ) {
+	       	fprintf( stdout, "\tError: table <%s> does not exist\n", 
+								catalog);
+	       	fprintf( stdout, "\t\t -- Catalog <%s> should be deleted and then created\n",
+								catalog);
+		fflush( stdout );
+		sts = 1;
+	    	goto quit;
+	        }
+
+	    /* added close  - 5/23/96 */
+           exec_sql_close_cursor1 ();
+           /* get no. of parts (db_parts)*/
+	   sprintf( query, "select count(*) from %s ", catalog );
+           if ( !exec_sql_open_cursor1( "%s", query ) )  {
+      	        sts = 1;
+		goto quit;
+		}
+
+           while ( 1 ) {
+             exec sql fetch cursor1 into :db_parts;
+             if (RisEndOfData ()) break;
+             }
+
+	    /* added close  - 5/23/96 */
+            exec_sql_close_cursor1 ();
+
+	   /*
+	    * User message - starting processing for new catalog 
+	    *	also print number of parts in catalog 
+ 	    */
+	   printf("  catalog <%s>\t (%d parts)\n", catalog, db_parts);
+
+           /* allocate memory for partnum's and partrev's*/
+	   list_size = db_parts + LIST_INC;
+	   l_partnum=(char (*)[VDS_MAX_PNLEN]) calloc ( list_size,
+					sizeof(char) * VDS_MAX_PNLEN );
+   	   if (DebugFlag & ALLOC) 
+		printf ("calloc: l_partnum: %d bytes\n", 
+				list_size * sizeof(char) * VDS_MAX_PNLEN);
+	   if (!l_partnum) {
+      		printf ("%s: Cannot allocate %d bytes of memory for %s\n",
+			"AddPart", list_size * sizeof(char) * VDS_MAX_PNLEN, 
+			"partnum list");
+      	        sts = 1;
+	        goto quit;
+		}
+
+           l_partrev=(char (*)[VDS_MAX_PRLEN]) calloc ( list_size,
+					sizeof(char) * VDS_MAX_PRLEN  );
+   	   if (DebugFlag & ALLOC)
+		printf ("calloc: l_partrev: %d bytes\n", 
+				list_size * sizeof(char) * VDS_MAX_PRLEN);
+	   if (!l_partrev) {
+      		printf ("%s: Cannot allocate %d bytes of memory for %s\n",
+			"AddPart", list_size * sizeof(char) * VDS_MAX_PRLEN, 
+			"partrev list");
+      	        sts = 1;
+	        goto quit;
+		}
+
+
+           /* get existing parts */
+	   if( db_parts > 0 ) {
+             	sprintf ( select, "n_itemname, n_itemrev");
+             	sprintf ( from, "%s", catalog );
+             	sprintf ( query, "select %s from %s ",select,from);
+
+             	if (!exec_sql_open_cursor1( "%s", query )) {
+      			sts = 1;
+			goto quit;
+			}
+
+		i = 0;
+             	while (1) {
+                   exec sql fetch cursor1 into :n_itemname, :n_itemrev;
+                   if (RisEndOfData ()) break;
+	 	   strcpy( l_partnum[i], n_itemname );
+                   strcpy( l_partrev[i], n_itemrev );
+		   i++;
+             	   }
+
+		 /* added close  - 5/23/96 */
+                 exec_sql_close_cursor1 ();
+
+
+	        for( i=0; i<db_parts; i++) {
+		   PartNumLen = strlen( l_partnum[i] ) ;
+		   PartRevLen = strlen( l_partrev[i] );
+
+		   strcat( l_partnum[i], l_partrev[i] );
+
+		   PartNumLen = PartNumLen + PartRevLen;
+		   l_partnum[i][PartNumLen] = '\0';
+		   }
+
+                 qsort( l_partnum, db_parts, VDS_MAX_PNLEN, cmp );
+	      }
+           } /* end new catalog */
+
+	j=0;
+	for(i=1; i<strlen(partnum)-1; i++)
+            tmp_part[j++] = partnum[i];
+        while( isspace( tmp_part[j-1] ) )
+		j--;
+	for(i=1; i<strlen(revision)-1; i++)
+            tmp_part[j++] = revision[i];
+        while( isspace( tmp_part[j-1] ) )
+		j--;
+        tmp_part[j] = '\0';
+
+	p_part = bsearch( tmp_part, l_partnum, db_parts, VDS_MAX_PNLEN, cmp);
+
+	/* User message - part being processed */
+        if ( DebugFlag & FULL ) {
+	    printf ("\tpart: %s rev: %s\n", partnum, revision);
+            if ( p_part != NULL ) 
+		printf ( "\t\tpart exists\n");
+            else  
+		printf ( "\t\tpart doesn't exist\n"); 
+	    }
+	else {
+            if (p_part == NULL ) 
+		printf ( "\t... adding part %s rev %s\n", partnum, revision);
+            else if ( p_part && over_write ) 
+		printf ( "\t... replacing part %s rev %s\n", partnum, revision);
+            else 
+		printf ( "\t    part exists: %s rev %s\n", partnum, revision);
+	    }
+
+	/* New part - update list */
+	if ( p_part == NULL ) { 
+            if ( db_parts == list_size ) {
+	       list_size += LIST_INC;
+
+	       l_partnum=(char (*)[VDS_MAX_PNLEN]) realloc ( l_partnum, 
+				sizeof(char) * list_size * VDS_MAX_PNLEN );
+   	       if (DebugFlag & ALLOC)
+		   printf ("realloc: l_partnum: %d bytes\n", 
+				list_size * sizeof(char) * VDS_MAX_PNLEN);
+	       if (!l_partnum) {
+      		   printf ("%s: Cannot allocate %d bytes of memory for %s\n",
+			"AddPart", list_size * sizeof(char) * VDS_MAX_PNLEN,
+			"partnum list");
+	           sts = 1;
+	           goto quit;
+		   }
+	       }
+	    strcpy(l_partnum[db_parts], tmp_part);
+	    db_parts++;
+            qsort( l_partnum, db_parts, VDS_MAX_PNLEN, cmp );
+	    }
+
+	/*Delete old  part */
+         else if( over_write ) { 
+	     if (DebugFlag & FULL )
+	     	printf ("\t\t... deleting old part\n");
+             	sprintf ( where,"n_itemname=%s and n_itemrev=%s",partnum,
+								revision );
+             sprintf ( query,"delete from %s where %s", catalog, where );
+	     if (!exec_sql_execute ( "%s",query)) {
+	     	printf ("\t\tError: cannot delete part\n");
+		continue; 	/* process next part */
+		}
+             }
+
+	/* search if the part exists in the catalog */
+ /****************************************************************
+ *	first=0; last = no_parts-1; mid = (first+last)/2;
+ *         while ( first < last )
+ *         {  num_cmp = strcmp(partnum, l_partnum[mid]);
+ *	       if ( num_cmp > 0 )
+ *               first = mid+1;
+ *            else if ( num_cmp < 0 )
+ *		  last = mid-1;
+ *            else
+ *            {  rev_cmp = strcmp(revision, l_rev[mid];
+ *               if ( rev_cmp > 0 )
+ *                 first = mid+1;
+ *		  else if ( rev_cmp < 0 )
+ *                 last = mid-1;
+ *		  else
+ *		    break;
+ *	       }
+ *            mid = (first+last)/2;
+ *         }
+ *	    found = 0;
+ *	    if ( !(strcmp( partnum, l_partnum[mid] ) &&
+ *		 !(strcmp( revision, l_rev[mid] )  )
+ *		found = 1;
+ *
+ *	    if ( !found )
+ *	    {
+ *
+ *	      if ( num_cmp < 0 || ( num_cmp == 0 && rev_cmp < 0) )
+ *		    first--;
+ *
+ *	      for ( i=no_parts-1; i>first; i--)
+ *           { strcpy( l_partnum[i+1], l_partnum[i] );
+ *		strcpy( l_rev[i+1], l_rev[i] );
+ *           }
+ *	      strcpy( l_partnum[first+1], partnum );
+ *	      strcpy( l_rev[first+1], revision );
+ *         }
+ *         else if ( over_write )
+ *	    {   }
+ *
+ ************************************************************************/
+
+	/* insert the part    */
+        if ( p_part == NULL || ( p_part && over_write ) ) {
+           if ( DebugFlag & FULL ) {
+              	printf ( "  complete part %d processing\n", n_part);
+            	printf ( "   catalog :\n");
+            	for ( k=0; k<part1.number; k++) {
+               	    printf ( "\tname : <%s>\tvalue : <%s>\n",
+                        part1.parameter[k].name, part1.parameter[k].value );
+              	    }
+            	printf ( "   F_catalog :\n");
+            	for ( k=0; k<part2.number; k++) {
+               	    printf ( "\tname : <%s>\tvalue : <%s>\n",
+                        part2.parameter[k].name, part2.parameter[k].value );
+              	 	}
+           	}
+
+            if ( ( strcmp( catalog, "0000" ) != 0)
+            ||   ( strcmp( table, "0000" )   != 0) ) {
+
+	       /* Catalog name defined */
+	       if ( strcmp( catalog, "0000" ) != 0) {
+        	   if ( DebugFlag & FULL ) 
+               	   	printf ( "\t\tinserting part: %s rev: %s\n", 
+						partnum, revision);
+                   if (!exec_sql_open_cursor1 ( 
+				"select max(n_itemno) from %s", catalog)) {
+      			sts = 1;
+			goto quit;
+			}
+              	   }
+	       /* Table name defined */
+               else {
+        	   if ( DebugFlag & FULL ) 
+               	   	printf ( "\t... inserting row into table <%s>\n",table);
+                   if (!exec_sql_open_cursor1 ( 
+				"select max(n_itemno) from %s", table)) {
+      			sts = 1;
+			goto quit;
+			}
+              	   }
+
+            exec sql fetch cursor1 into :n_itemno;
+	    if (RisNullValue ())
+	          n_itemno= 0;
+	    n_itemno++;
+            exec_sql_close_cursor1 ();
+
+	    if ( strcmp( catalog, "0000" ) != 0) {
+/*******************************************
+ *              if (!exec_sql_open_cursor1
+ *                 ( "select max(n_fileno) from F_%s", catalog)) goto quit;
+ *************************************************/
+               if (!exec_sql_open_cursor1
+                  ( "select max(n_itemno) from %s", catalog)) {
+      			sts = 1;
+			goto quit;
+			}
+			
+                }
+            exec sql fetch cursor1 into :n_fileno;
+	    if (RisNullValue ())
+	          n_fileno= 0;
+	    n_fileno++;
+            exec_sql_close_cursor1 ();
+
+	    /* 
+	     * Prepare the insert string 
+	     */
+	    len = (2*part1.number * (VDS_BUF_MAX_WORD+2)+VDS_BUF_MAX_WORD+80) 
+								* sizeof (char);
+            insert_string = (char *) malloc ( len);
+   	    if (DebugFlag & ALLOC)
+		printf ("malloc: insert_string: %d bytes\n", len);
+            if (!insert_string ) {
+      		printf ("%s : Cannot allocate %d bytes of memory for %s\n",
+				"AddPart", len, "insert string buffer");
+      		sts = 1;
+                goto quit;
+                }
+	    if ( strcmp( catalog, "0000" ) != 0) {
+	          sprintf (insert_string, "insert into %s (n_itemno,", catalog);
+                  }
+            else {
+	          sprintf (insert_string, "insert into %s (n_itemno,", table);
+                 }
+
+	    /* 
+	     * create list of column names 
+	     */
+            for ( k=0; k<part1.number; k++) {
+			sprintf ( &insert_string[strlen(insert_string)], " %s,",
+                         part1.parameter[k].name);
+		  }
+	    /* overwrite last comma with right paraenthesis */
+            insert_string[strlen(insert_string)-1]= ')'; 
+
+	    /* 
+	     * create list of values 
+	     */
+            sprintf (&insert_string[strlen(insert_string)],
+		        " values (%d,", n_itemno);
+            for ( k=0; k<part1.number; k++) {
+	          sprintf ( &insert_string[strlen(insert_string)], " %s,",
+                         part1.parameter[k].value);
+		}
+	    /* overwrite last comma with right paraenthesis */
+	    insert_string[strlen(insert_string)-1]= ')';
+
+	    sts = exec_sql_execute (insert_string, (char *) NULL);
+            free(insert_string); insert_string=NULL;
+            if (!sts) {
+		printf ("\t\tError: cannot insert part\n");
+		continue; 	/* process next part */
+		}
+
+/* MALLIK *****************************************
+ *	       if ( strcmp( catalog, "0000" ) != 0)
+ *              {
+ *               insert_string = NULL;
+ *               insert_string = (char *) malloc (
+ *                 (2*part2.number*(VDS_BUF_MAX_WORD+2)+VDS_BUF_MAX_WORD+80) * sizeof (char));
+ *               if (insert_string == NULL)
+ *                 {
+ *                  printf ("AddPart : Cannot allocate memory for insert string buffer\n");
+ *                  goto quit;
+ *                 }
+ *	          sprintf
+ *                  ( insert_string,
+ *                    "insert into F_%s (n_itemnum, n_fileno,", catalog );
+ *               for ( k=0; k<part2.number; k++)
+ *	             sprintf ( &insert_string[strlen(insert_string)], " %s,",
+ *                            part2.parameter[k].name);
+ *               insert_string[strlen(insert_string)-1]= ')';
+ *
+ *               sprintf (&insert_string[strlen(insert_string)],
+ *		           " values (%d, %d,", n_itemno, n_fileno);
+ *               for ( k=0; k<part2.number; k++)
+ *	             sprintf ( &insert_string[strlen(insert_string)], " %s,",
+ *                            part2.parameter[k].value);
+ *               insert_string[strlen(insert_string)-1]= ')';
+ *
+ *	          sts = exec_sql_execute (insert_string, (char *) NULL);
+ *               free(insert_string);
+ *               if (!sts) goto quit;
+ *              }
+ ***************************************************************/
+           }
+	} /* end part insertion */
+      } /* end close bracket */
+
+      /*-------------------- 
+       *  part attributes
+       */
+      else { /* not a bracket */
+         if ( DebugFlag & FULL)
+            printf ( " \t\t%d : %s", n_string, string);
+
+         if(VDSdbsplit_line ( string, &line) != 1) {
+      		sts = 1;
+		goto quit;
+		}
+
+         if ( DebugFlag & FULL ) {
+            for ( i=0; i<line.seg_num; i++) {
+               printf ( "\ti=%d, text : <%s>, format : <%s>\n",
+                        i, line.name[i].text, line.name[i].unit );
+               }
+             }
+
+         if      ( strcmp ( line.name[0].text, CATALOG) == 0 ) 
+	       strcpy ( catalog, line.name[1].text);
+         else if ( strcmp ( line.name[0].text, TABLE) == 0 ) 
+	       strcpy ( table, line.name[1].text);
+         else if ( strcmp ( line.name[0].text, FILENAME) != 0 ) {
+	   /*realloc for +ve nonzero n_part and no.of attr > alloacted mem.*/
+	   if( n_part && part1.number >= part1_alloc ) {
+              part1_alloc = part1_alloc + VDS_BUF_MEM_STEP;
+              part1.parameter = (struct MFparam *) realloc ( part1.parameter,
+                                       part1_alloc * sizeof (struct MFparam) );
+   	      if (DebugFlag & ALLOC)
+		  printf ("realloc: part1.parameter: %d bytes\n", 
+					part1_alloc * sizeof (struct MFparam));
+              if (!part1.parameter ) {
+      		  printf ("%s : Cannot re-allocate %d bytes of memory for %s\n",
+			"AddPart",  part1_alloc * sizeof (struct MFparam),
+			"part1.parameter");
+      		  sts = 1;
+                  goto quit;
+                  }
+              }
+
+            strcpy ( part1.parameter[part1.number].name,  line.name[0].text);
+            strcpy ( part1.parameter[part1.number].value, line.name[1].text);
+            part1.number++;
+            }
+         else {
+	    /*realloc for +ve nonzero n_part and no.of attr > alloacted mem.*/
+	    if( n_part && part2.number >= part2_alloc ) {
+               part2_alloc = part2_alloc + VDS_BUF_MEM_STEP;
+               part2.parameter = (struct MFparam *) realloc ( part2.parameter,
+                                       part2_alloc * sizeof (struct MFparam) );
+   	      if (DebugFlag & ALLOC)
+		  printf ("realloc: part2.parameter: %d bytes\n", 
+					part2_alloc * sizeof (struct MFparam));
+              if (!part2.parameter ) {
+      		  printf ("%s : Cannot re-allocate %d bytes of memory for %s\n",
+			"AddPart",  part2_alloc * sizeof (struct MFparam),
+			"part2.parameter");
+      	          sts = 1;
+                  goto quit;
+                  }
+                }
+            strcpy ( part2.parameter[part2.number].name,  line.name[0].text);
+            strcpy ( part2.parameter[part2.number].value, line.name[1].text);
+            part2.number++;
+            }
+         }
+     } /* end of while */
+
+     sts = 0;
+quit :
+   if ( p_file != NULL ) 	fclose ( p_file);
+   if (part1.parameter != NULL) free( part1.parameter);
+   if (part2.parameter != NULL) free( part2.parameter);
+   if ( l_partnum != NULL ) 	free (l_partnum);
+   if ( l_partrev != NULL ) 	free (l_partrev);
+   if ( insert_string != NULL ) free (insert_string);
+   return sts;
+}

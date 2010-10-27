@@ -1,0 +1,480 @@
+/* $Id: nors.u,v 1.1.1.1 2001/01/04 21:07:22 cvs Exp $  */
+
+/* --------------------------------------------------------------------
+ * I/VDS
+ *
+ * File:	vds/cimacros/wireframe/macros / nors.u
+ *
+ * Description:
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ *	$Log: nors.u,v $
+ *	Revision 1.1.1.1  2001/01/04 21:07:22  cvs
+ *	Initial import to CVS
+ *	
+# Revision 1.1  1998/04/29  16:27:20  pinnacle
+# VDS 2.5.1
+#
+# Revision 1.1  1997/05/08  13:20:44  pinnacle
+# New project VDS 250
+#
+# Revision 1.1  1996/07/19  20:33:52  pinnacle
+# Create VDS 241 project
+#
+# Revision 1.1  1994/11/14  22:42:32  pinnacle
+# Create vds.240 from vds.232
+#
+# Revision 1.1  1994/11/08  16:07:00  pinnacle
+# create vds.232
+#
+ *
+ * History:
+ *	MM/DD/YY	AUTHOR		DESCRIPTION
+ *
+ * -------------------------------------------------------------------*/
+
+/*
+	------------------------------------------------------------------
+	
+	File name :		nors.uu
+	Revision date :		92/09/11
+	Authors :		Jean-Luc LOSCHUTZ
+	Product :		I/VDS - PPMmacro library
+
+	Description :
+	-----------
+
+		<Assoc> Place Normal and tangent to surface
+
+	History :
+	-------
+	88/?/?		JLL	Creation date
+	92/09/11	JLL	I had just an other possibilite to be more
+				flexible.
+				Usually a vector of projection is use to
+				define the direction of projection.
+				(  temp_names[2]  = "vect"; )
+				if this template is a point, then I will
+				project the point normal to surface.
+				to speed up the process if the surface is
+				planar then I just project the point onto
+				the plane directly using BS function.
+	----------------------------------------------------------------------
+ */
+#include "cieveryone.h"
+#include "cimacros.h"
+#include "ci_mac_def.h"
+#include "bserr.h"
+
+
+
+IGRchar			*temp_names[4], *feet_names[3];
+IGRint			temp_types[4];
+GRobj 			ci_mac_def1;
+struct GRid		CI_MACRO_ID;
+
+IGRshort 		mat_type;
+IGRlong			stat, msg, num_poles, size;
+
+IGRint			k, j,num_pts;
+ 
+IGRdouble 		matrix[16], no_len, vec[3], lvec, mp[3];
+IGRdouble		*proj_pts, *u_par, *v_par, dudv[12], tab[6], mpdvec;
+IGRdouble		min_dist, cou_dist;
+
+
+struct GRid		CUV, SF_ID, GRid_list[3];
+struct GRmd_env		MOD_ENV;
+struct IGRbsp_surface   *bsp_surf;
+struct GRvg_construct   cst;
+struct IGRdisplay	dis;
+struct IGRpolyline      geom;
+struct ret_struct	pt_rts, vec_rts, expr;
+struct GRparms 		parms;
+
+extern int	BSpj_pt_sf(),
+		BSsfeval(),
+		BScrossp(),
+		BSnorvec(),
+		BStst_plan(),
+		BSxlnpl(),
+		free(),
+		init_cnst_list();
+
+extern double   BSdotp(),
+		BSdistptpt();
+extern		ASsuper_construct();
+
+extern IGRboolean 	BSfreesf();
+
+/* ========================================================================= */
+/* the main function is the one implementing the definition creation
+/* ========================================================================= */
+
+main ()
+{
+
+  temp_names[0]  = "nlen";  
+  temp_names[1]  = "ptpj";  
+  temp_names[2]  = "vect";  
+  temp_names[3]  = "surf";
+
+  temp_types[0]  = parameter_generic | double_type;
+  temp_types[1]  = point_generic;
+  temp_types[2]  = line_generic;
+  temp_types[3]  = other_generic;
+
+  ci_mac_def1 = NULL_OBJID;
+
+  ac$cimacdef( 	cimacdef          = ci_mac_def1,
+		status 	          = &stat, 	   
+		name              = "nors",
+              	temp_num          = 4,              
+		temp_names        = temp_names,
+		temp_types        = temp_types,
+	      	extern_feet_num   = 3, 	   
+		extern_feet_names = feet_names );
+}
+
+/* ========================================================================= */
+
+place ()
+{
+  construct_pjs();
+  
+  if( GRid_list[0].objid == NULL_OBJID ) return(0);
+
+  ci$send( msg = message  ci_macro.set_all_extern_feet
+	 ( &stat, 3,GRid_list, &MOD_ENV ),
+	   targetid = CI_MACRO_ID.objid,
+	   targetos = CI_MACRO_ID.osnum );
+
+  return(1);
+
+}
+
+/* ========================================================================= */
+
+compute ()
+{
+
+  construct_pjs();
+
+  if( GRid_list[0].objid == NULL_OBJID ) return(0);
+
+  ci$send( msg = message  ci_macro.set_all_extern_feet
+	 ( &stat, 3,GRid_list, &MOD_ENV ),
+	   targetid = CI_MACRO_ID.objid,
+	   targetos = CI_MACRO_ID.osnum );
+  return(1);
+}
+
+/* ========================================================================= */
+
+construct_pjs()
+{
+  for(k=0;k<3;k=k+1) 
+	GRid_list[k].objid = NULL_OBJID;
+
+   proj_pts = NULL;
+   u_par    = NULL;
+   v_par    = NULL;
+   bsp_surf = NULL;
+
+   msg = ci$send( msg = message  ACcpx.ACfind_exp_temp_struct(&stat,0,
+						   (char *)&expr,&MOD_ENV ),
+	    targetid = CI_MACRO_ID.objid,
+	    targetos = CI_MACRO_ID.osnum );
+   if( !(stat&msg&1) ) return;
+
+  no_len = expr.var.root_pm_st.value;
+
+
+  msg = ci$send( msg = message  ACcpx.ACfind_exp_temp_struct(&stat,1,
+						  (char *)&pt_rts,&MOD_ENV ),
+	    targetid = CI_MACRO_ID.objid,
+	    targetos = CI_MACRO_ID.osnum );
+   if( !(stat&msg&1) ) return;
+
+
+  msg = ci$send( msg = message  ACcpx.ACfind_exp_temp_struct(&stat,2,
+					          (char *)&vec_rts,&MOD_ENV ),
+	    targetid = CI_MACRO_ID.objid,
+	    targetos = CI_MACRO_ID.osnum );
+   if( !(stat&msg&1) ) return;
+
+
+  msg = ci$send( msg = message  ACcpx.ACfind_exp_temp_obj(&stat,3,&CUV),
+           targetid = CI_MACRO_ID.objid,
+           targetos = CI_MACRO_ID.osnum );
+    if( !(stat&msg&1) ) return;
+
+
+  msg = ci$send( msg      = message NDmacro.ACreturn_foot(	
+						&stat ,
+						"",
+						&SF_ID, 
+						&mat_type, 
+					        matrix ),
+	   targetid = CUV.objid,
+	   targetos = CUV.osnum );
+    if( !(stat&msg&1) ) return;
+
+
+  stat = ci$send( msg = message GRvg.GRgetsize(&msg, &mat_type, matrix, &size),
+    	          targetid = SF_ID.objid,
+	  	  targetos = SF_ID.osnum ) ; 
+    if (!(stat & msg & 1)) {
+		#ifdef DEBUG
+		printf("Error in GRvg.GRgetsize() \n") ;
+		#endif
+		goto wrapup ;
+    }
+
+  bsp_surf = (struct IGRbsp_surface *) om$malloc( size = size );
+    if (bsp_surf == NULL) {
+		#ifdef DEBUG
+		printf("Unable to malloc %d bytes for crv \n", size) ;
+		#endif
+		goto wrapup ;
+    }
+
+  stat = ci$send( msg = message GRvg.GRgetgeom( &msg, &mat_type, matrix, 
+ 	     		        		bsp_surf ),
+    	          targetid = SF_ID.objid,
+	  	  targetos = SF_ID.osnum ) ; 
+   if (!(stat & msg & 1)) {
+		#ifdef DEBUG
+		printf("Error in GRvg.GRgetgeom() \n") ;
+		#endif
+		goto wrapup ;
+   }
+
+/*
+
+  stat = ci$send( msg = message GRvg.GRgenabsg( &msg,
+			                 &mat_type, 
+				         matrix, 
+					 &bsp_surf ),
+           targetid = SF_ID.objid,
+ 	   targetos = SF_ID.osnum );
+    if( !(stat&msg&1) ) return;
+*/
+
+  num_poles = bsp_surf->u_num_poles * bsp_surf->u_num_poles;
+  BStst_plan(num_poles,&bsp_surf->poles[0],
+	     bsp_surf->weights, &bsp_surf->planar,vec,&stat);
+
+  if(bsp_surf->planar == TRUE){
+
+          	if( vec_rts.type == line_generic ){
+			for(k=0;k<3;k=k+1) 
+				dudv[k] = pt_rts.var.point_st.pt[k] + 
+					  100.0 * vec_rts.var.line_st.v0[k];
+		}
+		else{
+			for(k=0;k<3;k=k+1) 
+				dudv[k] = pt_rts.var.point_st.pt[k] + 
+					  100.0 * vec[k];
+		}
+
+		BSxlnpl(&msg,vec,&bsp_surf->poles[0],
+			pt_rts.var.point_st.pt, dudv, mp );
+		if( msg != BSSUCC ) goto wrapup;
+
+  		BSsfeval( bsp_surf, 0.5, 0.5, 1, dudv, &msg );
+
+		for(k=0;k<3;k=k+1) dudv[k] = mp[k];
+	  
+  }
+  else{
+
+        if( vec_rts.type == line_generic ){
+
+  		BSpj_pt_sf(   bsp_surf, pt_rts.var.point_st.pt,
+	        	      vec_rts.var.line_st.v0, &num_pts,
+                	      &proj_pts, &u_par, &v_par, &msg );
+
+		#ifdef DEBUG
+		write("num_pts =",num_pts,"\n");
+		#endif
+
+		if( num_pts == 0 ) goto wrapup;
+        	j=0;
+        	min_dist = 1.0E10;
+
+
+		for( k=0; k<3*num_pts; k=k+3 ){
+	   		cou_dist = BSdistptpt(&msg, 
+					      &(pt_rts.var.point_st.pt[0]),
+                                      	      &(proj_pts[k]));
+
+           		if( cou_dist < min_dist ){
+	    			min_dist = cou_dist;
+				j = k;
+           		}
+		}
+
+       
+		#ifdef DEBUG
+		write( "j= ",j,"\n");
+		#endif
+
+  		BSsfeval( bsp_surf, u_par[j/3], v_par[j/3], 1, dudv, &msg );
+
+  		if( msg != BSSUCC )  goto wrapup;
+
+  		BScrossp(&msg,&dudv[3],&dudv[6],vec);
+  		if( msg != BSSUCC ) goto wrapup;
+
+  		BSnorvec(&msg,vec);
+  		if( msg != BSSUCC ) goto wrapup;
+
+	}
+	else{
+  		stat = ci$send (msg = message GRgraphics.GRptproject(
+                            		 &msg,
+					 &mat_type,
+					 matrix,
+					 pt_rts.var.point_st.pt,
+					 dudv,
+					 &parms ),
+                          	targetid = SF_ID.objid,
+                          	targetos = SF_ID.osnum );
+		if( !(stat&msg&1) ) goto wrapup;
+
+  		BSsfeval( bsp_surf, parms.u, parms.v, 1, dudv, &msg );
+
+  		if( msg != BSSUCC )  goto wrapup;
+
+  		BScrossp(&msg,&dudv[3],&dudv[6],vec);
+  		if( msg != BSSUCC ) goto wrapup;
+
+  		BSnorvec(&msg,vec);
+  		if( msg != BSSUCC ) goto wrapup;
+
+	}
+	
+  }
+
+
+
+
+  for(k=0; k<3; k=k+1) mp[k] = pt_rts.var.point_st.pt[k] - dudv[k];
+  mpdvec = BSdotp(&msg,mp,vec);
+  lvec = 1.0;
+  if( mpdvec < 0.0 ) lvec = -1.0;
+
+  geom.num_points = 2;
+  for(k=0; k<3; k=k+1)
+  {
+    tab[k]   = dudv[k];
+    tab[k+3] = tab[k] + lvec*no_len*vec[k];
+  }
+
+
+  init_cnst_list();
+  get_symb();
+
+  dis.color		= cnst_list.color;
+  dis.weight		= cnst_list.weight;
+  dis.style		= cnst_list.style;
+
+  cst.msg		= &msg;
+  cst.properties	= GRIS_LOCATABLE | GRIS_NEW | GRIS_DISPLAYABLE;
+  cst.display		= &dis;
+  cst.env_info		= &MOD_ENV;
+  cst.newflag		= 0;
+  cst.level		= cnst_list.level;
+  cst.geometry		= NULL;
+  cst.class_attr	= 0;
+  cst.name		= 0;
+
+
+  geom.points  = tab;
+  cst.geometry = (char *)&geom;
+
+  GRid_list[1].objid = NULL_OBJID;
+  GRid_list[1].osnum = MOD_ENV.md_id.osnum;
+  stat = ci$send( msg       = message GR3dlineseg.GRaltconstruct(&cst),
+                  targetid  = GRid_list[1].objid,
+ 	          targetos  = GRid_list[1].osnum,
+                  construct = 1 );
+  if( !(stat&1) ){
+	GRid_list[1].objid = NULL_OBJID;
+	goto wrapup;
+  }
+	
+  for(k=0; k<3; k=k+1) vec[k] = dudv[3+k];
+
+  BSnorvec(&msg,vec);
+
+
+  for(k=0; k<3; k=k+1)
+  {
+    tab[k]   = dudv[k];
+    tab[k+3] = tab[k] + no_len*vec[k];
+  }
+  geom.points  = tab;
+  cst.geometry = (char *)&geom;
+
+  GRid_list[2].osnum = MOD_ENV.md_id.osnum;
+
+  stat = ci$send( msg       = message GR3dlineseg.GRaltconstruct(&cst),
+                  targetid  = GRid_list[2].objid,
+ 	          targetos  = GRid_list[2].osnum,
+                  construct = 1 );
+  if( !(stat&1) ){
+     	ci$send(msg      = message GRgraphics.GRdelete(&msg,&MOD_ENV),
+             	targetid = GRid_list[1].objid,
+	        targetos = GRid_list[1].osnum);
+	GRid_list[1].objid = NULL_OBJID;
+	GRid_list[2].objid = NULL_OBJID;
+	goto wrapup;
+  }
+
+
+  for(k=0; k<3; k=k+1)tab[k+3] = tab[k];
+
+  dis.weight = 3; 
+  geom.num_points = 2;
+  geom.points  = tab;
+
+  GRid_list[0].osnum = MOD_ENV.md_id.osnum;
+
+  stat = ci$send( msg     = message GR3dpoint.GRaltconstruct(&cst),
+           	targetid  = GRid_list[0].objid,
+ 	   	targetos  = GRid_list[0].osnum,
+           	construct = 1 );
+
+  if( !(stat&1) ){
+     for(k=1;k<3;k=k+1){
+     	ci$send(msg      = message GRgraphics.GRdelete(&msg,&MOD_ENV),
+             	targetid = GRid_list[k].objid,
+	        targetos = GRid_list[k].osnum);
+	GRid_list[k].objid = NULL_OBJID;
+     }
+	GRid_list[0].objid = NULL_OBJID;
+	goto wrapup;
+  }
+
+wrapup:
+	if( proj_pts != NULL ) free(proj_pts);
+	if( u_par != NULL ) free(u_par);
+        if( v_par != NULL ) free(v_par);
+	if( bsp_surf != NULL) om$dealloc(ptr = bsp_surf); 
+}
+
+
+/*=========================================================================*/
+init()
+/* for initialization at loading time */
+{
+  feet_names[0] = "pj_pt";
+  feet_names[1] = "normal";
+  feet_names[2] = "du_lin";
+}
+/*=========================================================================*/
+

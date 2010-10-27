@@ -1,0 +1,710 @@
+ /* $Id: COz_risCache.u,v 1.2 2002/05/31 19:23:14 jdsauby Exp $  */
+/***************************************************************************
+ * I/VDS
+ *
+ * File:        vdpdm/cmd/VDpdmMain.c
+ *
+ * Description: Main form director for all VDS PDM utilities
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ *      $Log: COz_risCache.u,v $
+ *      Revision 1.2  2002/05/31 19:23:14  jdsauby
+ *      Changed Tinfo to TVDrisCacheInfo.  JDS
+ *
+ *      Revision 1.1  2002/05/31 16:16:21  jdsauby
+ *      Added COz_risCache for debug tool of VDrisCache.c, JDS
+ *
+ *
+ * History:
+ * MM/DD/YY  AUTHOR  DESCRIPTION
+ * 12/11/00  js      Creation
+ ***************************************************************************/
+  
+#include "VDppl.h"
+#include <FI.h>
+#include "VDrisc.h"
+#include "VDfile.h"
+#include "VDDbDef.h"
+#include "VDlog.h"
+#include "VDgbl.h"
+#include "VDctx.h"
+#include "VDfrmc.h"
+#include "VDfld.h"
+#include "VDxdom.h"
+
+
+
+/* Global Variables */
+int test_wakeup;
+
+int form_exists, form_displayed;
+
+#if 0
+typedef struct {
+  char    fdir[1023]; 
+  char    fname[80];
+  char    ftype[80];
+  char    sFile[1023];
+  char    lFile[1023];
+  int     ftog;
+  int     fbrowse;
+} TVDfileInfo;
+#endif
+
+TVDfileInfo in_fileinfo;
+TVDfileInfo out_fileinfo;
+
+FILE *in_cache_file;
+FILE *out_cache_file;
+
+Form my_form;
+
+struct CIform_st form_st;
+
+#if 0
+typedef struct 
+{
+  TGRid           findID;
+  TGRid           queryIDs;
+  TVDctxNodeList  queryList;
+} Tinfo;
+
+typedef struct
+{
+  IGRint cnt;
+  Tinfo *infos;
+} Tinfos;
+#endif
+
+TVDrisCacheInfo *info;
+TVDrisCacheInfos *infos;
+
+
+/* Contants */
+#define FORM_LABEL  777
+#define FORM_NAME   "VDrisCache.F"
+#define MCF         11
+#define WRITE_FILE  13
+#define DELETE      14
+#define LOAD_FILE   15
+#define STATUS      10
+#define EXP_CONT    0
+#define DESC        1
+#define NODEID      2
+#define LEVEL       3
+#define EXPAND      "-"
+#define CONTRACT    "+"
+
+
+/* Exits the PPL */
+return_error()
+{
+    status("");
+    message("");
+    exit;
+}
+
+/* -------------------------------------------
+ * set the nodeID on the form, given a row and nodeID
+ * **/
+void setNodeIDonForm(nodeID, row)
+   TGRid *nodeID;
+   int    row;
+{
+    int osnum, objid;
+    char theID[80];
+
+    // init
+    *theID = 0;
+
+    // arg check
+    if (nodeID == NULL) goto wrapup;
+    if (nodeID->objid == NULL_OBJID) goto wrapup;
+
+    osnum = nodeID->osnum;
+    objid = nodeID->objid;
+
+    sprintf(theID,"%d,%d",osnum,objid);
+
+    // set it on the form
+    VDfrmSetfText(my_form,MCF,row,NODEID,theID);
+
+wrapup:
+    return;
+
+}
+
+/* ---------------------------------------
+ * get the nodeID from the form, given a row.
+ * **/
+void getNodeIDfromForm(nodeID, row)
+   TGRid *nodeID;
+   int    row;
+{
+    int osnum, objid;
+    char theID[80];
+    char *p;
+
+    // init
+    *theID = 0;
+
+    // arg check
+    if (nodeID == NULL) goto wrapup;
+
+    // get from the form
+    VDfrmGetfText(my_form,MCF,row,2,theID);
+    if (*theID == 0) {
+	printf("### ERROR: nodeID not set on form");
+	goto wrapup;
+    }
+
+    // set it
+    p = strchr(theID,',');
+    if (p) {
+	*p = 0;
+	nodeID->osnum = atoi(theID);
+	nodeID->objid = atoi(p+1);
+    }
+
+    //printf("## got nodeID <%d,%d>\n",nodeID->osnum,nodeID->objid);
+
+wrapup:
+    return;
+
+}
+
+
+/* ----------------------------------------
+ * Display info on form
+ * **/
+void displayInfoOnForm()
+{
+    long sts;
+    int i,j;
+    char cache_num[80];
+    char timestamp[80];
+    char queryNode[162];
+    TGRid recordID;
+    TGRid recordIDs;
+    TGRid queryIDs;
+
+    // reset the form
+    VDfrmSetNumRows(my_form,MCF,0);
+
+    // get the infos
+    sts = VDrisGetCacheInfos(&infos);
+    if (!(sts & 1)) {
+	VDfrmSetgText(my_form, STATUS, "No Cache Found");
+	goto wrapup;
+    }
+
+    j = 0;
+    for (i = 0; i < infos->cnt; i=i+1) // infos.cnt = cache 0 - 4
+    {
+	queryIDs = infos->infos[i].queryIDs;  // cache_num, timestamp
+
+	if (VDctxGetNthTreeChild(&queryIDs,0,&recordIDs)) {
+
+	    // for each queryIDs, get the cache_num and timestamp attributes,
+	    // and display on form.
+	    VDctxGetTxtAtr(&queryIDs,"cache_num",cache_num);
+	    VDctxGetTxtAtr(&queryIDs,"timestamp",timestamp);
+
+	    sprintf(queryNode,"<%s> <%s>",cache_num,timestamp);
+	    VDfrmSetfText(my_form,MCF,j,DESC,queryNode);
+
+	    VDfrmSetfText(my_form,MCF,j,EXP_CONT,EXPAND);
+	    setNodeIDonForm(&queryIDs,j);
+
+	    VDfrmSetfText(my_form,MCF,j,LEVEL,"0");
+	    j = j + 1;
+	}
+    }
+    
+    FIg_set_text( my_form, STATUS, "View RIS Cache" );
+
+wrapup:
+    return;
+}
+
+
+/* -------------------------------------------
+ * Fill one row of the MCF gadget
+ * **/
+void fillTreeRow(nth, row, level, nodeID)
+  int    nth;
+  int    row;
+  int    level;
+  TGRid *nodeID;
+{
+    char key[2056];
+    char *buf;
+    char *p;
+    int  i;
+    char levelb[20];
+    char bufx[80];
+    TGRid myID;
+    IGRint  cnt;
+    TVDfld  flds[VDFLD_MAX_CNT];
+    char  atrName[80], atrValue[2056];
+
+
+    //printf("### fillTreeRow\n"); 
+    
+    // arg check
+    if (nodeID == NULL) goto wrapup;
+    if (nodeID->objid == NULL_OBJID) goto wrapup;
+    if (level < 1) goto wrapup;
+
+
+    // indent trick
+    p = key;
+    for (i = 0; i < level; i = i + 1) {
+	*p = ' ';
+	p = p + 1;
+    }
+    *p = 0;
+
+    //printf("### LEVEL %d\n",level);
+
+    // get the attribute, because I am not as cool as Art, the attribute we get
+    // solely depends on the level.  that should be good enough.
+    switch (level) {
+      case 1:  // these are the querys
+	  VDctxGetTxtAtrPtr(nodeID,"key",&buf);
+	  strcpy(p,buf);
+	  // fill the desc area
+	  VDfrmSetfText(my_form,MCF,row,DESC,key);
+	  // fill the EXP_CONT area
+	  VDfrmSetfText(my_form,MCF,row,EXP_CONT,EXPAND);
+	  // fill the NODEID
+	  setNodeIDonForm(nodeID,row);
+	  // set the level
+	  sprintf(levelb,"%d",level);
+	  VDfrmSetfText(my_form,MCF,row,LEVEL,levelb);
+	  break;
+
+      case 2:  // these are the result nodes
+	  sprintf(bufx,"RESULT %d",nth);
+	  strcpy(p,bufx);
+	  // fill the desc area
+	  VDfrmSetfText(my_form,MCF,row,DESC,key);
+	  // fill the EXP_CONT area
+	  VDfrmSetfText(my_form,MCF,row,EXP_CONT,EXPAND);
+	  // fill the NODEID
+	  setNodeIDonForm(nodeID,row);
+	  // set the level
+	  sprintf(levelb,"%d",level);
+	  VDfrmSetfText(my_form,MCF,row,LEVEL,levelb);
+	  break;
+
+      case 3:  // attributes of the result
+	  // get the attributes
+	  //printf("### getting attributes\n");
+	  VDctxGetFldAtrs(nodeID,&cnt,flds);
+	  //printf("### got %d attributes\n",cnt);
+	  for(i = 0; i < cnt; i=i+1) {
+	      //printf("Got an attribute\n");
+	      VDfldGetFldDesc(&flds[i],p);
+
+	      VDfrmInsertBlankRow(my_form,MCF,row);
+	      // fill the desc area
+	      VDfrmSetfText(my_form,MCF,row,DESC,key);
+	      // set the level
+	      sprintf(levelb,"%d",level);
+	      VDfrmSetfText(my_form,MCF,row,LEVEL,levelb);
+
+	      row = row + 1;
+	  }
+
+	  break;
+
+    } // end of switch(level)
+
+    
+wrapup:
+    return;
+}
+
+/* ----------------------------------------------------
+ * Contract a row
+ * **/
+void notifyContract(row, nodeID)
+  int row;
+  TGRid *nodeID;
+{
+
+    char buf[20];
+    int  levelX, level;
+    int  rowX, rowMax, rowCnt;
+
+    // Get level
+    VDfrmGetfText(my_form,MCF,row,LEVEL,buf);
+    level = atoi(buf);
+
+    // Set contract flag
+    VDfrmSetfText(my_form,MCF,row,EXP_CONT,EXPAND);
+
+    // Delete rows
+    VDfrmGetNumRows(my_form,MCF,&rowMax,NULL,NULL);
+    rowMax = rowMax + 1;
+
+    levelX = level + 1;
+    row = row + 1;
+
+    for(rowX = row; (rowX < rowMax) && (levelX > level); rowX = rowX + 1) {
+
+	// Find previous level
+	VDfrmGetfText(my_form,MCF,rowX,LEVEL,buf);
+	levelX = atoi(buf);
+    }
+    rowCnt = rowX - row - 1;
+    if (rowCnt > 0) {
+	VDfrmDeleteRows(my_form,MCF,row,rowCnt);
+    }
+
+    // Done
+
+wrapup:
+    return;
+}
+
+
+
+/* ------------------------------------------------
+ * Expand a row.
+ * **/
+void notifyExpand(row, nodeID)
+  int    row;
+  TGRid *nodeID;
+{
+    int level;
+    int i;
+    TGRid childID;
+    int rowx;
+    char levelb[20];
+
+    // arg check
+    if (nodeID == NULL) goto wrapup;
+    if (nodeID->objid == NULL_OBJID) goto wrapup;
+
+    // get the level of the row selected
+    VDfrmGetfText(my_form,MCF,row,LEVEL,levelb);
+    level = atoi(levelb) + 1;
+    //printf("### level + 1 = %d\n",level);
+
+    rowx = row + 1;
+
+    if (level == 3) fillTreeRow(0,rowx,level,nodeID);
+    else {
+    // do it
+	for (i = 0; VDctxGetNthTreeChild(nodeID,i,&childID); i = i + 1) {
+
+	    // insert a blank row
+	    //printf("### insert blank row [%d]\n",i);
+	    VDfrmInsertBlankRow(my_form,MCF,rowx);
+
+	    // fill in the new row
+	    fillTreeRow(i,rowx,level,&childID);
+
+	    //rowx = rowx + 1
+	}
+    }
+
+wrapup:
+    return;
+}
+
+/* -----------------------------------------------
+ * determine whether to expand or contract a row
+ * */
+void notifyTreeExpCont(row, nodeID) 
+  int    row;
+  TGRid *nodeID;
+{
+    char buf[80];
+
+    // unselect it
+    VDfrmSetSelect(my_form,MCF,row,EXP_CONT,0);
+    
+    // is it expand or contract
+    VDfrmGetfText(my_form,MCF,row,EXP_CONT,buf);
+
+    // expand
+    if (!strcmp(buf,EXPAND)) {
+	//printf("### need to expand\n");
+	notifyExpand(row,nodeID);
+
+	// set form to contract for next time
+	VDfrmSetfText(my_form,MCF,row,EXP_CONT,CONTRACT);
+	return;
+    }
+
+    // contract
+    if (!strcmp(buf,CONTRACT)) {
+	//printf("### need to contract\n");
+	notifyContract(row,nodeID);
+	return;
+    }
+
+    // done
+    return;
+}
+
+/* --------------------------------------------------
+ * MCF was selected
+ * */
+void notifyMCF()
+{
+    int row, col, sel;
+    TGRid nodeID;
+
+    // get the row and column selected
+    VDfrmGetActiveRow(my_form,MCF,&row,NULL);
+
+    // get the nodeID
+    getNodeIDfromForm(&nodeID,row);
+    if (nodeID.objid == NULL_OBJID) goto wrapup;
+
+    // Expansion Column
+    VDfrmGetSelect(my_form,MCF,row,EXP_CONT,&sel);
+
+    if (sel == 1) {
+	//printf("### about to expand or contract\n");
+	notifyTreeExpCont(row,&nodeID);
+	goto wrapup;
+    }
+
+wrapup:
+    return;
+
+}
+
+/* -------------------------------------------------
+ * Write out Cache to XML file was selected
+ * */
+void notifyWriteFile()
+{
+    int  i;
+    TGRid queryIDs, recordIDs;
+    char filename[256];
+    char msg[256];
+    char cache_num[80];
+
+    if (infos == NULL) {
+	VDfrmSetgText(my_form,STATUS,"No Cache to Write");
+	goto wrapup;
+    }
+
+    for (i = 0; i < infos->cnt; i=i+1) // infos.cnt = cache 0 - 4
+    {
+	queryIDs = infos->infos[i].queryIDs;  // cache_num, timestamp
+	
+	if (VDctxGetNthTreeChild(&queryIDs,0,&recordIDs)) {
+
+	    VDctxGetTxtAtr(&queryIDs,"cache_num",cache_num);
+
+	    sprintf(filename,"./risDump_%s.xml",cache_num);
+
+	    VDrisDumpCache(atoi(cache_num),filename);
+
+	    sprintf(msg,"%s written",filename);
+	    VDfrmSetgText(my_form, STATUS, msg);
+	    printf("### %s\n",msg);
+
+
+	    
+
+	}
+    }
+
+wrapup:
+    return;
+
+}
+
+/* ----------------------------------------------------
+ * Load a file into cache
+ * */
+void notifyLoadFile()
+{
+    int  i;
+    TGRid queryIDs, recordIDs;
+    char filename[256];
+    char msg[256];
+    char cache_num[80];
+
+    //printf("### in file <%s>\n",in_fileinfo.fname);
+
+    //printf("### loading into an ID\n");
+
+    VDrisLoadCacheFromXmlFile(in_fileinfo.fname);
+
+    // refresh the form
+    displayInfoOnForm();
+
+}
+
+
+/* initialize the form */
+void form_init()
+{
+    int error;
+    long sts;
+    Form existingForm;
+    
+    /* Create the form */
+    sts = VI_get_form_by_name(FORM_NAME,&existingForm);
+    if (sts == FI_SUCCESS) {
+	UI_status("Review RIS Cache Already Running");
+	exit;
+    }
+
+
+    error = VIf_new(FORM_LABEL, FORM_NAME, ci_notification, &my_form);
+    if (my_form == NULL) {
+	printf("could not create form. ERROR = %d\n", error);
+	return_error();
+    }
+
+    form_exists = TRUE;
+
+    /* link forms system to this command file */
+    error = FIf_set_cmd_oid_os( my_form, MY_ID, OM_Gw_current_OS );
+    if (error) {
+	printf("Could not link to forms system <%d>\n",error);
+	form_exists = FALSE;
+	return_error();
+    }
+
+    /* display the form */
+    error = FIf_display( my_form );
+    if (error) {
+	printf("Could not display form <%d>\n",error);
+	return_error();
+    }
+
+    form_displayed = TRUE;
+
+
+    // display the cache on the form
+    displayInfoOnForm();
+    FIg_set_text( my_form, STATUS, "View RIS Cache" );
+
+wrapup:
+    return;
+    
+}
+
+int form_notification()
+{
+    ci$put( response = MOVE_ON );
+}
+
+/* test if command is started, and when it is resumed */
+wakeup()
+{
+    if (test_wakeup == 1) {
+	FIf_display( my_form );
+	form_displayed = TRUE;
+    }
+}
+
+sleep()
+{
+    if (form_displayed == TRUE) {
+	FIf_erase( my_form );
+	form_displayed = FALSE;
+    }
+}
+
+delete()
+{
+    if (form_displayed == TRUE) {
+	FIf_erase( my_form );
+	form_displayed = FALSE;
+    }
+
+    if (form_exists) FIf_delete( my_form );
+
+}
+ 
+
+main()
+{
+    int not_done, response;
+    char *path;
+    int  localdir;
+    
+    /* init variables */
+    test_wakeup = 1;
+    form_exists = FALSE;
+    form_displayed = FALSE;
+    localdir = 1;
+
+    memset(in_fileinfo,0,sizeof(TVDfileInfo));
+    memset(out_fileinfo,0,sizeof(TVDfileInfo));
+
+    in_cache_file = NULL;
+    out_cache_file = NULL;
+
+    // set the initial path
+    strcpy(in_fileinfo.fdir,".");
+
+    form_init();
+
+        
+
+    /* loop through until FI_CANCEL */
+    not_done = TRUE;
+    while (not_done) {
+
+	/* suspend the command file */
+	ci$get( prompt = "REVIEW CACHE",
+		response = &response );
+
+	/* switch on gadgets */
+	switch(form_st.gadget_label) {
+
+	  case FI_CANCEL:
+	      not_done = 0;
+	      FIf_erase(my_form);
+	      break;
+
+	  case LOAD_FILE:
+	      vdfile$BrowseFiles(Dir      = in_fileinfo.fdir,
+			         Name     = in_fileinfo.fname,
+			         LocalDir = &localdir);
+	      if (*in_fileinfo.fname != 0) {
+		  notifyLoadFile();
+		  break;
+	      }
+	      else {
+		  FIg_set_text( my_form, STATUS, 
+			  "No File Selected for Loading.");
+	      }
+
+	      break;
+
+	  case MCF:
+	      notifyMCF();
+	      break;
+
+	  case WRITE_FILE:
+	      notifyWriteFile();
+	      break;
+
+	  case DELETE:
+	      VDrisDeleteCache();
+	      VDfrmSetgText(my_form,STATUS,"Cache Deleted");
+	      VDfrmSetNumRows(my_form,MCF,0);
+	      infos = NULL;
+	      break;
+	      
+	} /* end of switch */
+
+    } /* end of while */
+
+} /* end of main */

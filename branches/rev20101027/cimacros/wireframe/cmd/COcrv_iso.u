@@ -1,0 +1,255 @@
+/* $Id: COcrv_iso.u,v 1.1.1.1 2001/01/04 21:07:22 cvs Exp $  */
+
+/* --------------------------------------------------------------------
+ * I/VDS
+ *
+ * File:	vds/cimacros/wireframe/cmd / COcrv_iso.u
+ *
+ * Description:
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ *	$Log: COcrv_iso.u,v $
+ *	Revision 1.1.1.1  2001/01/04 21:07:22  cvs
+ *	Initial import to CVS
+ *	
+# Revision 1.1  1998/04/29  16:27:20  pinnacle
+# VDS 2.5.1
+#
+# Revision 1.1  1997/05/08  13:20:44  pinnacle
+# New project VDS 250
+#
+# Revision 1.2  1997/02/07  10:55:58  pinnacle
+# Replaced: cimacros/wireframe/cmd/COcrv_iso.u for:  by svkadamb for vds.241
+#
+# Revision 1.1  1996/07/19  20:33:52  pinnacle
+# Create VDS 241 project
+#
+# Revision 1.1  1994/11/14  22:42:32  pinnacle
+# Create vds.240 from vds.232
+#
+# Revision 1.1  1994/11/08  16:07:00  pinnacle
+# create vds.232
+#
+ *
+ * History:
+ *	MM/DD/YY	AUTHOR		DESCRIPTION
+ *
+ * -------------------------------------------------------------------*/
+
+/*
+	VDS 2.1 - PPM macro library
+	Description : Associative Extract Isoparametric Curves of Surface
+
+	History :
+
+ alc 	92/07/22 Get rid of internal data (not used)
+	93/01/27 TR 179300393 (should use expression.NDgive_value() instead
+			of NDnode.NDgive_value())
+ cvr    94/05/04 changed prompt for reset of expression
+ sk	97/02/07 check for the objid if it thru input generator
+ */
+
+   
+#include "ciminimum.h"
+#include "cimacros.h"
+#include "EMSmsgdef.h"
+#include "msdef.h"
+#include "ciexec.h"
+#include "cievent.h"
+#include "AS_status.h"
+#include "OMprimitives.h"
+
+GRobj 		ci_mac_bib_FileId;
+IGRint		resp_exp;
+
+
+char		loc_mes[80],loc_prompt[80], exp_prompt[80], exp_class[40];
+
+
+int 		suc, i, num_temp, niso;
+IGRdouble	fiso;
+	
+GRobj 		MAC1;
+struct GRid 	TEMP[5], SURF;
+struct GRmd_env MOD_ENV;
+
+struct exp_st 
+{ int    type; 
+  double value;
+} expr;
+
+double		exp_default;
+
+extern ASmake_source_from_env(), printf() ;
+
+
+main()
+{
+
+
+ while(1)
+ {
+
+
+
+step1:
+	resp_exp = 0;
+	niso     = 0;
+	num_temp = 0;
+	status("Reset to create expressions");
+exp1:
+
+        ci$locate(        prompt       = "Identify surface",
+                          properties   = LC_LC_ONLY | LC_DP_ONLY | LC_RW,
+                          owner_action = LC_RIGID_COMP  |
+                                         LC_RIGID_OWNER | LC_FLEX_COMP |
+                                         LC_FLEX_OWNER  | LC_REF_OBJECTS,
+			  classes      = "EMSsubbs",
+	                  obj          = &(SURF.objid),
+                          osnum        = &(SURF.osnum),
+		          response     = &M_response,
+			  md_env       = &MOD_ENV     );
+	status("");
+	if( (M_response == EX_RJT_MOVEON) && (resp_exp == 0) ){
+		resp_exp = 1;
+		ask_expressions();
+		goto exp1;
+	}
+	else if( (M_response == EX_DATA) || ( M_response == EX_OBJID )   ){
+		if(  resp_exp == 0 ) cre_default_expressions();
+	   	ASmake_source_from_env( &SURF,&MOD_ENV,&SURF);	
+	}
+	else exit;
+
+        while(1)
+        {
+
+step2:
+       	strcpy(loc_prompt,"Identify start point / enter start parameter");
+       	strcpy(exp_prompt,"Enter start parameter value");
+       	exp_default = 0;       
+       	strcpy(exp_class,"GRpoint");       
+       	push (char *)&suc,loc_mes,loc_prompt,exp_prompt,exp_default,
+            		exp_class,(char *)&TEMP[2] ;
+       	ci$run( file_id = &ci_mac_bib_FileId, entry  = "loc_obj_exp") ;
+       	if( suc == 0 ) goto step1;
+
+step3:
+	#ifdef DEBUG
+	printf("Number of iso curves is %d \n", niso) ;
+	#endif
+
+       	if( niso > 1 ){
+       		strcpy(loc_prompt, "Identify end point / Enter end parameter");
+       		strcpy(exp_prompt,"Enter end parameter value");
+       		exp_default = 1.0;
+       		push (char *)&suc,loc_mes,loc_prompt,exp_prompt,
+			   exp_default,exp_class,(char *)&TEMP[3];
+       		ci$run( file_id = &ci_mac_bib_FileId, entry = "loc_obj_exp");
+       		if( suc == 0 ) goto step2;
+		num_temp = 4 ;
+        	}
+        	else num_temp = 3 ;
+	
+		TEMP[num_temp] = SURF ;
+		
+   	   	ci$get_module_info(md_env = &MOD_ENV);
+
+	   	MAC1 = NULL_OBJID;
+	   	num_temp = num_temp + 1;
+           	ci$send(msg      = message nci_macro.init( &suc,
+						      0,
+						      "crv_iso",
+						      num_temp,
+						      TEMP,
+						      NULL,
+						      &MOD_ENV ),
+	                targetid = MAC1,
+	    	        targetos = MOD_ENV.md_id.osnum );
+	        if( suc == 0 ){
+			write("placement of nci_macro \"crv_iso\" failed\n");
+			status("placement of nci_macro \"crv_iso\" failed");
+      			ci$send(msg = message Root.delete(0),
+				targetid = MAC1,
+				targetos = MOD_ENV.md_id.osnum );
+	   	}
+
+	   	num_temp = num_temp - 1;
+        }
+
+ }
+}
+
+/*==========================================================================*/
+init(){
+
+ 	strcpy(loc_mes,"<Assoc> Extract Isoparametric Curves of Surface");
+
+ 	ci$load ( file_name = "ci_mac_bib.u",
+		  load      = LOAD,
+	  	  file_id   = &ci_mac_bib_FileId,
+		  stat      = &suc );
+	if( suc != CI_S_SUCCESS ) exit;
+}
+
+wakeup(){
+	message(loc_mes);
+}
+
+ask_expressions(){
+IGRlong sts ;
+
+ask0:
+       	 strcpy(loc_prompt,"Enter expression for u direction =0, v direction =1 ");
+       	 strcpy(exp_prompt,"Enter value 0 = isou ; 1 = isov");
+         exp_default = 0.0;
+         push (char *)&suc,loc_mes,loc_prompt,exp_prompt,exp_default,
+              (char *)&TEMP[0];
+         ci$run( file_id   = &ci_mac_bib_FileId,
+ 	         entry     = "loc_exp" );
+         if( suc != 1 ) exit;
+
+         strcpy(loc_prompt,"Enter expression for number of iso curves") ;
+         strcpy(exp_prompt,"Enter number of iso curves");
+         exp_default = 1.0;
+         push (char *)&suc,loc_mes,loc_prompt,exp_prompt,exp_default,
+             (char *)&TEMP[1];
+         ci$run(  file_id   = &ci_mac_bib_FileId, 
+	          entry     = "loc_exp" );
+         if( suc != 1 ) goto ask0;
+
+	 fiso = 0 ;
+       	 sts = ci$send(msg      = message expression.NDgive_value( &fiso ),
+	         targetid = TEMP[1].objid,
+	    	 targetos = TEMP[1].osnum ) ; as$status(sts = sts) ;
+
+	#ifdef DEBUG
+	printf("expression.NDgive_value() sent to object %d/%d \n", 
+			TEMP[1].objid, 
+			TEMP[1].osnum) ;
+	printf("ask_expressions() : fiso is %d \n", fiso) ;
+	#endif
+
+         niso = fiso;
+
+}
+
+cre_default_expressions(){
+
+         push (char *)&suc, (IGRdouble)0.0, (char *)&TEMP[0];
+         ci$run( file_id = &ci_mac_bib_FileId,
+ 	         entry   = "CreDefUnExp" );
+         if( suc != MSSUCC ) exit;
+
+         push (char *)&suc, (IGRdouble)1.0, (char *)&TEMP[1];
+         ci$run( file_id = &ci_mac_bib_FileId,
+ 	         entry   = "CreDefUnExp" );
+         if( suc != MSSUCC ) exit;
+	 niso = 1;
+}
+/*==========================================================================*/
+
+
+

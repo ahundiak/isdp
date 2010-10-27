@@ -1,0 +1,231 @@
+/* $Id: COcpymir.u,v 1.1.1.1 2001/01/04 21:07:21 cvs Exp $  */
+
+/* --------------------------------------------------------------------
+ * I/VDS
+ *
+ * File:	vds/cimacros/wireframe/cmd / COcpymir.u
+ *
+ * Description:
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ *	$Log: COcpymir.u,v $
+ *	Revision 1.1.1.1  2001/01/04 21:07:21  cvs
+ *	Initial import to CVS
+ *	
+# Revision 1.1  1998/04/29  16:27:20  pinnacle
+# VDS 2.5.1
+#
+# Revision 1.1  1997/05/08  13:20:44  pinnacle
+# New project VDS 250
+#
+# Revision 1.1  1996/07/19  20:33:52  pinnacle
+# Create VDS 241 project
+#
+# Revision 1.1  1994/11/14  22:42:32  pinnacle
+# Create vds.240 from vds.232
+#
+# Revision 1.1  1994/11/08  16:07:00  pinnacle
+# create vds.232
+#
+ *
+ * History:
+ *	MM/DD/YY	AUTHOR		DESCRIPTION
+ *
+ * -------------------------------------------------------------------*/
+
+/*
+	 VDS 2.0 - PPM macro library - 92/07/09 (alc)
+ */
+   
+/*
+	History :
+			JLL	Design
+	   92/05/11	ALC	Update command field 
+	   94/01/19     raju    Now accepts fence contents
+ */
+
+
+#include "ciminimum.h"
+#include "cimacros.h"
+#include "cieveryone.h"
+
+#include "dp.h"
+#include "gr.h"
+#include "dpmacros.h"
+#include "coparamac.h"
+#include "growner.h"
+
+
+#define  MACRO_NAME    "cpymir"      /* Name of the macro                      */
+#define  NB_TEMPLATE   2            /* Number of template of the macro        */
+#define  NB_FEET       1            /* Number of feet of the macro            */
+
+/* Definition of the names of the objects of the macro                        */
+
+#define  ORIGINAL   "original"     /* Original object                         */
+#define  COORD_SYS  "coord_sys"    /* Coordinate system                       */
+#define  MIROR_OBJ  "miror_obj"    /* Miror object                            */
+
+char *template_name[NB_TEMPLATE];/* Names of the templates of the macro     */
+char *feet_name[NB_FEET];        /* Names of the feet of the macro          */
+struct GRid temp_obj[NB_TEMPLATE];/* Template objects of the macro          */
+GRobj  macro_def_id;             /* Identifier of the macro definition      */
+struct GRmd_env		MOD_ENV;
+char			loc_mes[80],loc_prompt[80], exp_prompt[80];
+GRclassid		cid;
+extern OMuword		OPP_GRgrset_class_id;
+int			dpmode;
+struct GRid		display_info, locobj;
+long			sts, msg;
+int			mask, response, count, ind;
+struct GRevent		grevent;
+struct GRobj_env	*obj_list;
+
+ 
+
+
+
+  int    stat;                   /* Returned status of the definition       */
+
+
+extern		ASmake_source_from_env();
+extern		ASstart_var_fence();
+extern		ASend_fence();
+extern int	printf();
+extern int	DPerase_hilite();
+extern int 	GRfindmod();
+
+
+main()
+{
+
+
+step0:
+
+  if ( !ci$locate ( prompt       = "Identify coordinate system/Move on",
+                    properties   = LC_LC_ONLY | LC_DP_ONLY | LC_RW,
+                    owner_action = LC_RIGID_COMP
+                                      | LC_RIGID_OWNER | LC_FLEX_COMP
+                                      | LC_FLEX_OWNER  | LC_REF_OBJECTS,
+		    obj          = &(temp_obj[0].objid),
+		    osnum        = &(temp_obj[0].osnum),
+                    classes      = "GRlbsys",
+                    md_env       = &MOD_ENV  ) ) exit;
+
+  ASmake_source_from_env( &temp_obj[0],&MOD_ENV,&temp_obj[0] );	
+
+
+get_objects:
+
+
+   strcpy(loc_mes,"<Assoc> Copy and Mirror Element through X-Z plane") ;
+   message(loc_mes) ;
+
+   if ( !ci$locate ( prompt       = "Identify object(s) to mirror/Move on",
+                            properties   = LC_LC_ONLY | LC_DP_ONLY | LC_RW,
+			    owner_action = LC_RIGID_COMP
+                                           | LC_RIGID_OWNER | LC_FLEX_COMP
+                                           | LC_FLEX_OWNER  | LC_REF_OBJECTS,
+			    obj          = &(locobj.objid),
+			    osnum        = &(locobj.osnum),
+			    md_env       = &MOD_ENV,
+			    response     = &response ) ) goto step0;
+
+   om$get_classid(      osnum = locobj.osnum,
+                        objid = locobj.objid,
+                        p_classid = &cid );
+
+   if( om$is_ancestry_valid(    subclassid = cid,
+                                superclassid = OPP_GRgrset_class_id )
+                == OM_S_SUCCESS )
+   {
+      dpmode = GRhd ;
+      GRfindmod( &display_info );
+
+      sts = ci$send(msg = message GRgraphics.GRdisplay(
+                                        &msg,
+                                        &MOD_ENV.md_env.matrix_type,
+                                        MOD_ENV.md_env.matrix,
+                                        &dpmode,
+                                        &display_info ),
+                targetid = locobj.objid,
+                targetos = locobj.osnum );
+
+      if( !(sts & msg & 1 )) goto get_objects;
+
+      mask = GRm_DATA | GRm_RJT_MOVEON ;
+
+      ci$getevent( event           = &grevent,
+                response        = &response,
+                prompt          = "Accept/Reject",
+               //mask          = mask,
+                stackable       = 1 );
+
+      if ( response != DATA )
+      {  sts = dp$erase_hilite( msg = &msg );
+         goto get_objects;
+      }
+   }
+
+   sts = dp$erase_hilite( msg = & msg );
+
+   as$start_fence( set= &locobj,
+                 set_env = &MOD_ENV,
+                 nb_obj = &count,
+                 p_obj_env = &obj_list);
+
+/*
+printf("count : %d\n", count );
+*/
+
+   if( count == 0 )
+   {      status("No Object Located");
+          goto get_objects;
+   }
+
+   for ( ind = 0; ind < count; ind = ind + 1 )
+   {
+        temp_obj[1].objid = obj_list[ind].obj_id.objid;
+        temp_obj[1].osnum = obj_list[ind].obj_id.osnum;
+
+        ASmake_source_from_env( &temp_obj[1],&MOD_ENV,&temp_obj[1] );	
+
+	macro_def_id	= NULL_OBJID;
+
+   	ci$get_module_info(md_env = &MOD_ENV);
+
+	ci$send( msg	    = message nci_macro.init( &stat,
+						     0,
+						     MACRO_NAME,
+						     NB_TEMPLATE,
+						     temp_obj,
+						     NULL,
+						     &MOD_ENV ),
+		   targetid = macro_def_id,
+		   targetos = MOD_ENV.md_id.osnum,
+		   construct= TRUE ) ;
+
+   	if( stat == 0 ){
+		write("placement of nci_macro \"cpymir\" failed\n");
+		status("placement of nci_macro \"cpymir\" failed");
+      		ci$send(msg = message Root.delete(0),
+	      		targetid = macro_def_id,
+	      		targetos = MOD_ENV.md_id.osnum );
+   	  }
+   }
+
+   goto get_objects;
+
+}
+
+/*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
+init(){
+ strcpy(loc_mes,"<Assoc> Copy and Mirror Element through X-Z plane") ;
+}
+
+wakeup(){
+	message(loc_mes) ;
+}
+

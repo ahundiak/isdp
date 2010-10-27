@@ -1,0 +1,1034 @@
+/* $Id: CORevAttr.u,v 1.10 2002/01/08 14:08:54 ylong Exp $  */
+
+/***************************************************************************
+ * I/VDS
+ *
+ * File:        $VDS/vdppl/CORevAttr.u
+ *
+ * Description: Review Attributes
+ *	The command allows the user to review all the 
+ *	attribues of a VDS/ROUTE/STRUCT/LOFT object.
+ *	This file contains the routine to handle user's
+ *	request. The user is asked to select an object 
+ *	and the associated attributes are displayed in 3
+ *	column list box. The left most box contains the
+ *	name of the attribute. The middle column contains
+ *	the type of the attribute and the last column shows 
+ *	the value of the attribute.
+ *
+ * Revision History:
+ *      $Log: CORevAttr.u,v $
+ *      Revision 1.10  2002/01/08 14:08:54  ylong
+ *      *** empty log message ***
+ *
+ *      Revision 1.9  2002/01/08 00:46:54  ylong
+ *      *** empty log message ***
+ *
+ *      Revision 1.8  2001/11/09 15:36:17  ahundiak
+ *      ah
+ *
+ *      Revision 1.7  2001/11/09 14:39:39  ahundiak
+ *      ah
+ *
+ *      Revision 1.6  2001/10/18 20:29:45  ahundiak
+ *      ah
+ *
+ *      Revision 1.5  2001/03/23 21:42:33  ahundiak
+ *      ah
+ *
+ *      Revision 1.4  2001/03/09 15:03:13  ahundiak
+ *      ah
+ *
+ *      Revision 1.3  2001/02/11 17:26:41  ahundiak
+ *      Renamed VDris2 to VDrisc
+ *
+ *      Revision 1.2  2001/01/18 20:39:43  hans
+ *      SP16 additions/modifications
+ *
+# Revision 1.8  2000/09/04  14:40:02  pinnacle
+# js
+#
+# Revision 1.7  2000/08/16  14:02:10  pinnacle
+# js
+#
+# Revision 1.5  2000/06/04  17:03:54  pinnacle
+# ah
+#
+# Revision 1.3  2000/06/04  16:10:34  pinnacle
+# ah
+#
+# Revision 1.2  2000/06/03  17:31:04  pinnacle
+# ah
+#
+# Revision 1.1  2000/06/03  13:23:24  pinnacle
+# ah
+#
+# Revision 1.6  1999/01/27  17:10:42  pinnacle
+# Replaced: vdppl/CORevAttr.u for:  by vsrivast for vds
+#
+# Revision 1.5  1999/01/19  19:47:04  pinnacle
+# Replaced: vdppl/CORevAttr.u for:  by vsrivast for vds
+#
+# Revision 1.4  1999/01/12  15:04:08  pinnacle
+# Replaced: vdppl/CORevAttr.u for:  by vsrivast for vds
+#
+# Revision 1.3  1998/11/07  14:38:42  pinnacle
+# tr179802026
+#
+# Revision 1.1  1998/10/06  15:47:56  pinnacle
+# cr179800828
+#
+ *
+ * History:
+ * MM/DD/YY  AUTHOR          DESCRIPTION
+ * 07/15/98  Prabhat Biswas  Creation
+ * 11/07/98  vinit           TR179802026 Added posted attributes
+ * 01/12/99  vinit	     TR179802026 Added Staging tree attributes
+ * 01/19/99  vinit	     TR179802026 Added Extract for Review Attrs. 
+ * 06/03/00  ah              OPS Attributes
+ * 03/23/01  ah              TR4982 Unstaged pieces crash, needded to check
+ *                           if attribute storage was actually allocated
+ *                           Also fixed the get_attr code to fail when the
+ *                           attributes are not available
+ * 01/07/02  yl		     TR5915
+ ***************************************************************************/
+
+#include <string.h>
+#include "VDppl.h"
+#include "VDfrm.h"
+#include "VDobj.h"
+#include "VDbt.h"
+#include "VDsa.h"
+#include "VDsaProto.h"
+#include "VDatMaster.h"
+
+#include "vdparmacros.h"
+#include "VDatparmacros.h"
+#include "VDmem_ppl.h"
+#include "v_dbgmacros.h"
+
+#include "VDct1Part.h"
+#include "VDrisc.h"
+
+#include "coparamac.h"
+
+extern IGRstat VDatGetSetType();
+extern VDatGetObjectLeaf();
+extern VDatGetObjectLeafsVLA();
+extern VDatGetObjectLeafForSetType();
+extern FIfld_get_list_text();
+extern ASstart_var_fence();
+extern ASend_fence();
+
+struct CIform_st form_st;
+
+struct 
+{
+  Form   form;
+  IGRint gadget;
+  IGRint displayForm;
+  TGRobj_env objOE;
+
+} info;
+
+#define thePrompt "Review Attributes"
+#define FORM_NAME "CORevAttr.F"
+
+#define VDSA_FORM_TEST_G_OBJECT    10
+#define VDSA_FORM_TEST_G_ATTR      12
+#define VDSA_FORM_TEST_G_ATTR_TYPE 13
+
+#define VDREV_ATTR_FORM_G_TYPE      13
+#define VDREV_ATTR_FORM_L_ATTR      12
+#define VDREV_ATTR_FORM_L_ATTR_NAME  0
+#define VDREV_ATTR_FORM_L_ATTR_TYPE  1
+#define VDREV_ATTR_FORM_L_ATTR_VALUE 2
+
+/* --------------------------------------
+ * The main routine
+ */
+int main()
+{
+  int 		sts,msg;
+  int 		response;
+  IGRchar	buf[1024];
+  
+  TGRobj_env 	objOE;
+  TGRobj_env	*locOEs;
+  IGRint	locNum;
+  
+  sts = init_form();
+  if (!(sts & 1)) goto wrapup;
+
+  while(1) {
+
+    locNum = 0;
+    objOE.obj_id.objid = NULL_OBJID;
+
+    form_st.gadget_label = 0;
+
+    UI_message(thePrompt);
+
+    sts = ci$locate(prompt  = "Select Object",
+		    classes = "VDSroot",
+		    owner_action = LC_RIGID_OWNER | 
+                                   LC_RIGID_COMP  |
+                                   LC_FLEX_COMP   | 
+                                   LC_FLEX_OWNER  |
+                                   LC_REF_OBJECTS,
+                    stackable    = 1,
+		    response     = &response,
+		    md_env       = &objOE.mod_env,
+		    obj          = &objOE.obj_id.objid,
+		    osnum	 = &objOE.obj_id.osnum);
+
+    if (!(sts & 1)) goto the_loop;
+
+    vdobj$Print(objOE= &objOE, str = buf);
+    vdfrm$SetStatus(form = info.form, txt = buf);
+    UI_status(buf);
+    
+    switch(response) {
+
+    case EX_OBJID:   // Object Set
+      /* Grab Located Objects */
+      as$start_fence(	set		= &objOE.obj_id,
+			set_env		= &objOE.mod_env,
+			nb_obj		= &locNum,
+			p_obj_env	= &locOEs);
+
+      if( locNum == 1 ) objOE = locOEs[0];
+      ASend_fence();
+
+      if( locNum != 1 ) {
+	goto the_loop;
+      }
+      
+    case EX_DATA: {  // Single Object
+      if (objOE.obj_id.objid != NULL_OBJID) {
+
+	vdfrm$DisplayForm(form = info.form,
+			  flag = &info.displayForm);
+	
+	info.objOE = objOE;
+	sts = get_object_sets();
+	get_object_attributes();
+      }
+           				}
+      goto the_loop;
+
+    } // Switch
+
+the_loop:
+    continue;
+  }
+wrapup:
+  return 1;
+}
+
+/* -----------------------------------------
+ * Form stuff
+ */
+form_notification()
+{
+  int retFlag;
+  IGRchar text[64];
+
+  // Init
+  retFlag = 1;
+  info.gadget = form_st.gadget_label;
+  
+  // A few always get's handled
+  switch (info.gadget) {
+
+  case FI_CANCEL: {
+    ci$put(response = TERMINATE);
+    goto wrapup;
+  }
+  case VDSA_FORM_TEST_G_ATTR_TYPE:
+    get_object_attributes();
+    break;
+		
+  } //switch
+
+  // Accept will also terminate if completed sucessfully
+  if ((retFlag == 1) && (info.gadget == FI_ACCEPT)) {
+    ci$put(response = TERMINATE);
+    goto wrapup;
+  }
+
+wrapup:
+  return retFlag;
+
+}
+
+/* --------------------------------------------------------
+ * Resets the type pick list
+ */
+int reset_type()
+{
+  int gadget;
+  
+  if (info.form == NULL) return 0;
+  gadget = VDREV_ATTR_FORM_G_TYPE;
+
+  vdfrm$SetListNumRows(form   = info.form, 
+		       gadget = gadget,
+		       rows   = 0);
+  
+  vdfrm$SetListText(form = info.form,
+		    gadget = gadget,
+		    row    = 0,
+		    txt    = "INTERNAL");
+
+  vdfrm$SetListText(form = info.form,
+		    gadget = gadget,
+		    row    = 1,
+		    txt    = "POSTED");
+
+  vdfrm$SetListText(form = info.form,
+		    gadget = gadget,
+		    row    = 2,
+		    txt    = "OPS");
+
+  vdfrm$SetListText(form = info.form,
+		    gadget = gadget,
+		    row    = 3,
+		    txt    = "EXTR");
+
+  vdfrm$SetListText(form = info.form,
+		    gadget = gadget,
+		    row    = 4,
+		    txt    = "EXTERNAL STATIC");
+
+  vdfrm$SetListText(form = info.form,
+		    gadget = gadget,
+		    row    = 5,
+		    txt    = "SNAPSHOT");
+ 
+  return 1;
+}
+
+/* --------------------------------------------------------
+ * Get the form started
+ */
+int init_form()
+{
+  int retFlag;
+  int sts;
+  Form existingForm;
+
+  // Reset
+  memset(&info,0,sizeof(info));
+  retFlag = 0;
+
+  // Create it
+  sts = vdfrm$GetFormByName(name = FORM_NAME, form = &existingForm);
+  if (sts & 1) {
+    UI_status("Review Attributes Already Running");
+    return 0;
+  }
+  vdfrm$CreateForm(label  = 101,
+		   name   = FORM_NAME,
+		   notify = ci_notification,
+		   objid  = MY_ID,
+		   form   = &info.form);
+
+  if (info.form == NULL) {
+    printf("Could not init Review Attributes form\n");
+    goto wrapup;
+  }
+  
+  // Pick List
+  reset_type();
+  
+  // Done
+  retFlag = 1;
+
+wrapup:
+  return retFlag;
+}
+
+/* -----------------------------------------------
+ * Set 1 row in attr table
+ */
+int setAttrRow(row,name,type,value)
+  int   row;
+  char *name;
+  char *type;
+  char *value;
+{
+  IGRint gadget;
+
+  gadget = VDREV_ATTR_FORM_L_ATTR;
+  
+  vdfrm$SetText(form   = info.form,
+		gadget = gadget,
+		row    = row,
+		col    = VDREV_ATTR_FORM_L_ATTR_NAME,
+		txt    = name);
+
+  vdfrm$SetText(form   = info.form,
+		gadget = gadget,
+		row    = row,
+		col    = VDREV_ATTR_FORM_L_ATTR_TYPE,
+		txt    = type);
+
+  vdfrm$SetText(form   = info.form,
+		gadget = gadget,
+		row    = row,
+		col    = VDREV_ATTR_FORM_L_ATTR_VALUE,
+		txt    = value);
+  return 1;
+}
+
+/* ---------------------------------------------------------
+ * Decide which set of attributes to diaplay
+ */
+int get_object_attributes()
+{
+  int sts;
+  IGRchar text[64];
+  
+  vdfrm$GetText(form   = info.form,
+		gadget = VDREV_ATTR_FORM_G_TYPE,
+		txt    = text);
+  
+  if (!strcmp(text,"INTERNAL")) return get_object_internal_attributes();
+  if (!strcmp(text,"POSTED"))   return get_object_posted_attributes();
+  if (!strcmp(text,"EXTR"))     return get_object_extr4rvw_attributes();
+  if (!strcmp(text,"OPS"))      return get_object_ops_attributes();
+  if (!strcmp(text,"EXTERNAL STATIC"))     return get_object_misc_attributes();
+  if (!strcmp(text,"SNAPSHOT")) return get_object_snapshot_attributes();
+  
+  // Tree
+  sts = get_object_tree_attributes();
+  if (sts & 1) return sts;
+  
+  // Give Up
+  vdfrm$SetNumRows(form   = info.form,
+		   gadget = VDREV_ATTR_FORM_L_ATTR,
+		   rows   = 0);
+  return 0;
+}
+
+
+extern calloc();
+
+#include "VDctx.h"
+#include "VDvalConv.h"
+
+/* -------------------------------------
+ * The snapshot attributes
+ */
+int get_object_snapshot_attributes()
+{
+  TGRid nodeID;
+  TVDfld *flds;
+  IGRint i,cnt;
+
+  // Init
+  flds = NULL;
+  nodeID.objid = NULL_OBJID;
+
+  // Prep form
+  vdfrm$SetStatus(form = info.form, txt = "Snapshot");
+  vdfrm$SetNumRows(form   = info.form,
+		   gadget = VDREV_ATTR_FORM_L_ATTR,
+		   rows   = 0);
+  
+  // Generate the attributes
+  VDvalConvertPieceToDom(&info.objOE.obj_id,NULL,&nodeID,NULL,VDVAL_DOM_WANT_MED);
+  if (nodeID.objid == NULL_OBJID) goto wrapup;
+
+  // Get em
+  VDctxGetFldAtrs(&nodeID,&cnt,NULL);
+  if (cnt == 0) goto wrapup;
+  flds = calloc(cnt,sizeof(TVDfld));
+  if (flds == NULL) goto wrapup;
+  VDctxGetFldAtrs(&nodeID,&cnt,flds);
+  
+  // Cycle through
+  for(i = 0; i < cnt; i = i + 1) {
+    setAttrRow(i,flds[i].name,"",flds[i].val.txt);
+  }
+    
+ wrapup:
+
+  // Free up
+  if (flds) free(flds);
+  if (nodeID.objid != NULL_OBJID) VDctxDeleteNode(&nodeID);
+
+  return 1;
+}
+
+/* -------------------------------------
+ * The internal attributes
+ */
+int get_object_internal_attributes() 
+{
+  TACrg_coll *Attr;
+  IGRint      stat;
+  int	      nbAttr;
+  int 	      i;
+
+  IGRint  gadget;
+  IGRchar buf[64];
+  IGRchar *p;
+  
+  // Init
+  nbAttr = 0;
+  Attr   = NULL;
+
+  gadget = VDREV_ATTR_FORM_L_ATTR;
+  vdfrm$SetNumRows(form   = info.form,
+		   gadget = gadget,
+		   rows   = 0);
+
+  stat = vd$get_params( sts = &msg,
+			object = &info.objOE.obj_id,
+			md_env = &info.objOE.mod_env,
+			count  = &nbAttr,
+			plist  = &Attr);
+  
+  for( i=0; i<nbAttr; i=i+1 )
+  {
+    switch(Attr[i].desc.type) {
+
+      case AC_ATTRIB_TEXT:
+	setAttrRow(i,Attr[i].name,"txt",Attr[i].desc.value.att_txt);
+	break;
+    
+      case AC_ATTRIB_DOUBLE:
+	sprintf(buf,"%f", Attr[i].desc.value.att_exp);
+	p = strstr(buf,".000000");
+	if (p) *p = 0;
+    
+	setAttrRow(i,Attr[i].name,"txt",buf);
+	VIfld_set_text(info.form,VDSA_FORM_TEST_G_ATTR,i,1,"dbl",0);
+	VIfld_set_text(info.form,VDSA_FORM_TEST_G_ATTR,i,2,buf,0);
+	break;
+    
+      default:
+	setAttrRow(i,Attr[i].name,"unk","");
+	break;
+    
+    }
+    // CCC
+    // disp_internal_attr(Attr[i].name,i);
+  }
+
+  if (Attr) free(Attr);
+  
+  return 1;
+  
+}
+/* -----------------------------------------
+ * Display attribute name and its value
+ * Not positive why resending instead of using
+ * ACrg_coll 
+ *
+ * Save for now
+ */
+#if 0
+int disp_internal_attr(attrName,row)
+IGRchar *attrName;
+int	 row;
+{
+  IGRstat retFlag;
+  IGRint  sts,msg;
+  IGRint  notUsed;
+  
+  Tret_struct rs;
+  IGRchar buf[128];
+  IGRchar *p;
+  
+  IGRint gadget;
+  
+  // Reset
+  retFlag = 0;
+  gadget  = VDREV_ATTR_FORM_L_ATTR;
+  
+  // Get the value
+  sts = ci$send(msg = message VDSroot.
+		ACgive_db_structure(&msg,
+				    &notUsed,
+				    attrName,
+				    &rs,
+				    &info.objOE.mod_env),
+		targetid = info.objOE.obj_id.objid,
+		targetos = info.objOE.obj_id.osnum);
+  
+  if (!(sts & msg & 1)) {
+    goto wrapup;
+  }
+ 
+  switch(rs.type) {
+
+  case text_type:
+    setAttrRow(row,attrName,"txt",rs.var.text_st.text_string);
+    break;
+    
+  case double_type:
+    sprintf(buf,"%f",rs.var.root_pm_st.value);
+    p = strstr(buf,".000000");
+    if (p) *p = 0;
+    setAttrRow(row,attrName,"dbl",buf);    
+    break;
+    
+  default:
+    setAttrRow(row,attrName,"unk","");    
+    break;
+  }
+  
+  retFlag = 1;
+  
+wrapup:
+  return retFlag;
+}
+#endif
+
+/* --------------------------------------------
+ * The posted attributtes
+ */
+int get_object_posted_attributes()
+{
+  TGRid 	recID;
+  TVDflds  	flds;
+  IGRchar 	buf[1024];
+  IGRchar 	*p;
+  IGRchar 	table_name[64];
+  IGRint 	i;  
+  IGRint        gadget;
+  
+  // Init
+  gadget = VDREV_ATTR_FORM_L_ATTR;
+  vdfrm$SetNumRows(form   = info.form,
+		   gadget = gadget,
+		   rows   = 0);
+  
+  // Load the rcord
+  vdsa$GetStruct (objID = &info.objOE.obj_id, name = "SA_PDM:dyn_table", txt= table_name );
+  if (*table_name == 0) return 1;
+  
+  vdsa$GetTableRec(objID = &info.objOE.obj_id, tableName = table_name, recID = &recID);
+  if (recID.objid == NULL_OBJID) return 1;
+  
+  vdbt$GetAttrs(objID = &recID, flds = &flds);
+
+  // Fill it up
+  for( i=0; i< flds.cnt; i=i+1)
+  {
+    switch(flds.fld[i].type) {
+
+      case VDFLD_TYPE_CHAR: 
+	setAttrRow(i,flds.fld[i].name,"txt",flds.fld[i].val.txt);
+	break;
+			      
+      case VDFLD_TYPE_SMALLINT:
+      case VDFLD_TYPE_INT: 
+	sprintf(buf,"%ld",flds.fld[i].val.jnt);
+	setAttrRow(i,flds.fld[i].name,"int",buf);
+	break;
+			    
+      case VDFLD_TYPE_REAL:
+      case VDFLD_TYPE_DOUBLE: 
+	sprintf(buf,"%lf",flds.fld[i].val.dbl);
+	p = strstr(buf,".000000");
+	if (p) *p = 0;
+      
+	setAttrRow(i,flds.fld[i].name,"dbl",buf);
+	break;
+
+      default:
+	setAttrRow(i,flds.fld[i].name,"unk","");
+	break;
+	
+    }
+  }//for loop
+  return 1;
+}
+
+/* ------------------------------------------
+ * Usual command object messages
+ */
+init()
+{
+  info.form = NULL;
+  info.objOE.obj_id.objid = NULL_OBJID;
+}
+sleep() 
+{
+}
+wakeup()
+{
+  UI_message(thePrompt);
+  if (info.displayForm) {
+    if (info.form) VIf_display(info.form);
+  }
+  
+}
+delete()
+{
+  if (info.form) {
+    vdfrm$DeleteForm(form = info.form);
+  }
+  info.form = NULL;
+}
+/* Get the Sets to which the object 
+	belongs and display them on the form */
+
+int get_object_sets()
+{
+  TVDvlaID  	leafVLA;
+  IGRint 	i, num_rows;
+  TGRid  	setID,leafID;
+  TGRid	 	setsID;
+  IGRchar 	setName[128];
+  IGRchar 	setType[128];
+  IGRchar       buf    [256];
+  IGRint        gadget;
+  
+  // Reset the pick list
+  reset_type();
+  gadget = VDREV_ATTR_FORM_G_TYPE;
+  vdfrm$GetListNumRows(form = info.form,
+		       gadget = gadget,
+		       rows   = &num_rows);
+
+  // Init
+  VDvlaID_Construct(&leafVLA);
+  VDatGetObjectLeafsVLA(&info.objOE.obj_id,&leafVLA);
+
+  // Test if any leafs are in the set
+  for(i = 0; VDvlaID_GetAt(&leafVLA,&leafID,i); i=i+1) {
+
+    VDatGetSet(&leafID,&setID);
+    if (setID.objid != NULL_OBJID) 
+    {
+      /* Display the setName and setType on the form */
+      VDatGetSetName(&setID,setName);
+      VDatGetSetType(&setID,setType);
+      sprintf(buf,"%s %s",setType,setName);
+
+      vdfrm$SetListText(form   = info.form,
+			gadget = gadget,
+			row    = num_rows,
+			txt    = buf);
+      num_rows = num_rows + 1;
+    }
+  }
+  
+  // Done
+  VDvlaID_Delete(&leafVLA);
+  return 1;
+}
+
+
+/* Given a selected set get the tree attributes */
+
+int get_object_tree_attributes()
+{
+
+  IGRstat  retFlag;
+  
+  TGRid    leafID;
+  IGRchar  setName[128];
+  IGRchar  setname[128];
+  IGRchar  setType[128];
+  TVDatFld flds[VDAT_FLD_MAX];
+  IGRint   cnt,i,j;
+  IGRint   count;
+  IGRchar  buf[1024];
+  IGRchar  *p;
+  IGRlong  sts, stat;
+
+  TACrg_coll  *Attr;
+
+  // Init
+  retFlag = 0;
+  Attr = NULL;
+  vdfrm$SetNumRows(form   = info.form,
+		   gadget = VDREV_ATTR_FORM_L_ATTR,
+		   rows   = 0);
+  
+  /* Get the string selected on the form */
+  vdfrm$GetText(form   = info.form,
+		gadget = VDREV_ATTR_FORM_G_TYPE,
+		txt    = buf);
+  if (*buf == 0) goto wrapup;
+  
+  /* Get the Setname and Settype from the string */
+  p = strchr(buf,' ');
+  if (p == NULL) goto wrapup;
+  *p = 0;
+  strcpy(setType,buf);
+  strcpy(setName,p+1);
+  
+  VDatGetObjectLeafForSetType(&info.objOE, setType, &leafID);
+  if (leafID.objid == NULL_OBJID) goto wrapup;
+  retFlag = 1;
+  
+  /* Get the attributes and display on the form */
+  cnt =0;
+  VDatFldGetAllAttrs(&leafID,flds,&cnt);
+  for( i=0; i< cnt; i=i+1)
+  {
+    switch(flds[i].type) {
+
+      case VDFLD_TYPE_CHAR: 
+	setAttrRow(i,flds[i].name,"txt",flds[i].valueTxt);
+	break;
+			      
+      case VDFLD_TYPE_SMALLINT:
+      case VDFLD_TYPE_INT: 
+	sprintf(buf,"%ld",flds[i].valueInt);
+	setAttrRow(i,flds[i].name,"int",buf);
+	break;
+			    
+      case VDFLD_TYPE_REAL:
+      case VDFLD_TYPE_DOUBLE: 
+	sprintf(buf,"%lf",flds[i].valueDbl);
+	p = strstr(buf,".000000");
+	if (p) *p = 0;
+	setAttrRow(i,flds[i].name,"dbl",buf);
+	break;
+    
+      default:
+	setAttrRow(i,flds[i].name,"unk","");
+	break;
+	
+    }
+  }//for loop
+  // Specific Staging Tree Attributes.
+  count = 0;      
+
+  // Get the attributes
+  stat = vdat$get_params(
+    sts =    &sts,
+    object = &leafID,
+    count  = &count,
+    plist  = &Attr,
+    type  = VDAT_REVIEW_ATTRIBUTES);
+
+  
+  if(!(sts & 1))    goto wrapup;
+  if (Attr == NULL) goto wrapup;
+  
+  // Display attributes on the form
+  j = cnt;
+  for(i=0; i<count; i=i+1)
+  {
+    switch(Attr[i].desc.type) {
+
+      case AC_ATTRIB_TEXT:
+	setAttrRow(j,Attr[i].name,"txt",Attr[i].desc.value.att_txt);
+	break;
+    
+      case AC_ATTRIB_DOUBLE:
+	sprintf(buf,"%f", Attr[i].desc.value.att_exp);
+	p = strstr(buf,".000000");
+	if (p) *p = 0;    
+	setAttrRow(j,Attr[i].name,"dbl",buf);
+	break;
+    
+      default:
+	setAttrRow(j,Attr[i].name,"unk","");
+	break;
+    
+    }
+    j = j + 1;
+  
+  }  // for loop
+
+wrapup:
+  if (Attr) free(Attr);
+  return retFlag; 
+}
+
+/* -----------------------------------------------
+ * Show extract for review attributes
+ */
+int get_object_extr4rvw_attributes()
+{
+	
+  IGRint    cnt,i,j;
+  IGRint    pos;
+  IGRint    count;
+  IGRint    retFlag;
+  IGRchar   buf[1024];
+  IGRchar  *p;
+  IGRlong   sts, stat;
+  TACrg_coll  *Attr;
+  
+  // Init 
+  retFlag = 0;
+  Attr = NULL;
+  vdfrm$SetNumRows(form   = info.form,
+		   gadget = VDREV_ATTR_FORM_L_ATTR,
+		   rows   = 0);
+  
+  // Get the attributes
+  stat = vdat$get_params(
+    sts =    &sts,
+    object = &info.objOE.obj_id,
+    count  = &count,
+    plist  = &Attr,
+    type  = VDAT_EXTR_FOR_REVIEW );
+
+  if(!(sts & 1)) goto wrapup;
+ 
+  // Display attributes on the form
+  for(i=0; i<count; i=i+1)
+  {
+    switch(Attr[i].desc.type) {
+
+      case AC_ATTRIB_TEXT:
+	setAttrRow(i,Attr[i].name,"txt",Attr[i].desc.value.att_txt);
+	break;
+    
+      case AC_ATTRIB_DOUBLE:
+	sprintf(buf,"%f", Attr[i].desc.value.att_exp);
+	p = strstr(buf,".000000");
+	if (p) *p = 0;
+    
+	setAttrRow(i,Attr[i].name,"txt",buf);
+	VIfld_set_text(info.form,VDSA_FORM_TEST_G_ATTR,i,1,"dbl",0);
+	VIfld_set_text(info.form,VDSA_FORM_TEST_G_ATTR,i,2,buf,0);
+	break;
+    
+      default:
+	setAttrRow(i,Attr[i].name,"unk","");
+	break;
+    
+    }
+    
+  }  // for loop
+
+  // Done
+  retFlag =1;
+
+ wrapup:
+  if (Attr) free(Attr);
+  return retFlag;
+}
+
+/* -----------------------------------------------
+ * OPS Attributes
+ */
+int get_object_ops_attributes()
+{
+  IGRstat retFlag;
+  
+  TVDct1_part_fld_part_cage_num part_cage_num;
+  TVDct1_part_fld_part_id       part_id;
+
+  IGRchar msg[128];
+
+  TVDrisInfo ris;
+  
+  IGRint row;
+  
+  // Reset
+  retFlag = 0;
+  memset(&ris,0,sizeof(TVDrisInfo));
+  
+  vdfrm$SetNumRows(form   = info.form,
+		   gadget = VDREV_ATTR_FORM_L_ATTR,
+		   rows   = 0);
+
+  // Look it up in ops
+  VDct1GetPartCageNumForModelObject(&info.objOE,NULL,part_cage_num,part_id);
+
+  sprintf(msg,"OPS PART_CAGE_NUM %s, PART_ID %s",part_cage_num,part_id);
+  vdfrm$SetStatus(form = info.form, txt = msg);
+  if (*part_id == 0) goto wrapup;
+  
+  // Query
+  sprintf(ris.sql,
+	  "Select attr_name,attr_value,attr_sort from tm_item_attrs where item_id='%s' order by attr_sort;",
+	  part_id);
+
+  ris.buf = NULL;
+  ris.rows = ris.cols = 0;
+  VDSsql_query(ris.sql, &ris.cols, &ris.rows, &ris.buf);
+  
+  // Fill the form
+  row = 0;
+  for(ris.i = 0; ris.i < ris.rows; ris.i = ris.i + 1) {
+
+    ris.j = ris.i * ris.cols;
+
+    setAttrRow(row,ris.buf[ris.j+0],"",ris.buf[ris.j+1]);
+    
+    row = row + 1;
+    
+  }
+  
+  // Done
+  if (ris.buf) VdsRisFreeBuffer(ris.buf, ris.rows * ris.cols);
+  retFlag = 1;
+  
+ wrapup:
+  return retFlag;
+}
+
+/* -----------------------------------------------
+ * MISC STATIC Attributes
+ */
+int get_object_misc_attributes()
+{
+  IGRstat retFlag;
+  
+  TVDct1_part_fld_part_cage_num part_cage_num;
+  TVDct1_part_fld_part_id       part_id;
+
+  IGRchar msg[128];
+
+  TVDrisInfo ris;
+  
+  IGRint row;
+  
+  // Reset
+  retFlag = 0;
+  memset(&ris,0,sizeof(TVDrisInfo));
+  
+  vdfrm$SetNumRows(form   = info.form,
+		   gadget = VDREV_ATTR_FORM_L_ATTR,
+		   rows   = 0);
+
+  // Look it up in ops
+  VDct1GetPartCageNumForModelObject(&info.objOE,NULL,part_cage_num,part_id);
+
+  sprintf(msg,"MISC PART_CAGE_NUM %s",part_cage_num);
+  vdfrm$SetStatus(form = info.form, txt = msg);
+  if (*part_cage_num == 0) goto wrapup;
+  
+  // Query
+  sprintf(ris.sql,
+	  "Select attr_name,attr_value from misc_sattr where cage_mino='%s' order by attr_name;",
+	  part_cage_num);
+
+  ris.buf = NULL;
+  ris.rows = ris.cols = 0;
+  VDSsql_query(ris.sql, &ris.cols, &ris.rows, &ris.buf);
+  
+  // Fill the form
+  row = 0;
+  for(ris.i = 0; ris.i < ris.rows; ris.i = ris.i + 1) {
+
+    ris.j = ris.i * ris.cols;
+
+    setAttrRow(row,ris.buf[ris.j+0],"",ris.buf[ris.j+1]);
+    
+    row = row + 1;
+    
+  }
+  
+  // Done
+  if (ris.buf) VdsRisFreeBuffer(ris.buf, ris.rows * ris.cols);
+  retFlag = 1;
+  
+ wrapup:
+  return retFlag;
+}

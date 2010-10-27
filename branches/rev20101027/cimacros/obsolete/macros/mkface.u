@@ -1,0 +1,661 @@
+/* $Id: mkface.u,v 1.1.1.1 2001/01/04 21:07:20 cvs Exp $  */
+
+/* --------------------------------------------------------------------
+ * I/VDS
+ *
+ * File:	vds/cimacros/obsolete/macros / mkface.u
+ *
+ * Description:
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ *	$Log: mkface.u,v $
+ *	Revision 1.1.1.1  2001/01/04 21:07:20  cvs
+ *	Initial import to CVS
+ *	
+# Revision 1.1  1998/04/29  16:27:20  pinnacle
+# VDS 2.5.1
+#
+# Revision 1.1  1997/05/08  13:20:44  pinnacle
+# New project VDS 250
+#
+# Revision 1.1  1996/07/19  20:33:52  pinnacle
+# Create VDS 241 project
+#
+# Revision 1.1  1994/11/14  22:42:32  pinnacle
+# Create vds.240 from vds.232
+#
+# Revision 1.1  1994/11/08  16:07:00  pinnacle
+# create vds.232
+#
+ *
+ * History:
+ *	MM/DD/YY	AUTHOR		DESCRIPTION
+ *
+ * -------------------------------------------------------------------*/
+
+/*
+	 VDS 2.1 - PPM macro library - 92/08/26 (alc)
+ */
+   
+
+#include "EMS.h"
+#include <stdio.h>                      /* Needed for print statements */
+#include "cieveryone.h"
+#include "ciminimum.h"
+#include "cimacros.h"
+#include "ci_mac_def.h"
+#include "mkface.h"
+
+
+#include "EMSopt.h"
+#include "lcmacros.h"
+#include "AS_status.h"
+#include "EMSbnddef.h"
+#include "EMSlogic.h"
+#include "EMSmsgdef.h"
+#include "EMScmacros.h"
+#include "EMSlmdef.h"
+#include "EMSdpb.h"
+#include "asbox.h"
+#include "asdef.h"
+#include "asmacros.h"
+
+#include "ci_mac_bib.h"
+
+  extern init_cnst_list();
+  extern EMdpb_getinfo();
+extern			ASsuper_construct();
+
+/*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
+/*                               main function                                */
+/*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
+
+  int    status, sts, stat;       /* Returned status of the definition       */
+  struct GRmd_env  MOD_ENV, sav_ENV, sav1_ENV;        /* Environment for construction            */
+  struct GRid      base_surf;      /* basic  surface                          */
+  struct GRid      base_solid;     /* base solid of the solid            */
+  struct GRid      contour[MAX_TEMPLATE];  /* boundaries of the face to create          */
+  struct GRid      sl_made_face;           /* Made face                               */
+  struct GRid      feet_obj[1];    /* to be returned */
+  short		   add_option;
+  int		   i;
+  char		   bigchartab[MAX_TEMPLATE*6];
+
+extern int	GRfindmod();
+
+main()
+  {
+#ifdef DEBUG
+write("---> main() \n");
+#endif
+  /*
+  Description : Create the definition of the macro
+  Constraint  : none
+  */ 
+  /* Declare the template names */
+
+  template_name[0] =  &bigchartab[0];
+  strcpy(template_name[0], BASE_SURF );
+
+  for(i=1; i<MAX_TEMPLATE; i=i+1 ){
+	template_name[i] =  &bigchartab[i*6];
+	sprintf(template_name[i],"CTR%d", i );
+  }
+
+  /* Declare the feet names */
+  feet_names[0] = "SOL";
+
+  /* Construct the macro definition */
+
+  macro_def_id = NULL_OBJID;
+  ac$cimacdef
+    (cimacdef          = macro_def_id,
+     status            = &status,
+     name              = MACRO_NAME,
+     temp_num          = MAX_TEMPLATE,
+     temp_names        = template_name,
+     extern_feet_num   = NB_FEET,
+     extern_feet_names = feet_names);
+}/* end main */
+  
+/*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
+/*                               place function                               */
+/*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
+
+place()
+
+  /*
+  Description : Place an occurence of the macro definition
+  Constraint  : none
+  */ 
+  {
+  /* Construct the lifted solid */
+
+  feet_obj[0].objid = NULL_OBJID;
+  cons_face();
+
+  /* Connect the feet of the occurence */
+
+  status = ci$send
+    (msg      = message ci_macro.set_all_extern_feet
+                        (&status,NB_FEET,feet_obj,&MOD_ENV),
+     targetid = CI_MACRO_ID.objid,
+     targetos = CI_MACRO_ID.osnum);
+  as$status(action = RET_STATUS);
+  return(1);
+}/* end place */
+
+/*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
+/*                               compute function                               */
+/*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
+
+init()
+{
+  feet_names[0] = "SOL";		// MADE_FACE; for RP
+}
+
+compute()
+
+  /*
+  Description : recompute an occurence of the macro definition
+  Constraint  : none
+  */ 
+  {
+  /* Construct the lifted solid */
+  sav_ENV= MOD_ENV; 
+  ci$get_module_info ( md_env	= &MOD_ENV );
+
+  feet_obj[0].objid = NULL_OBJID;
+  cons_face();
+
+  /* Change the feet of the occurence */
+
+  status = ci$send
+    (msg      = message ci_macro.set_all_extern_feet
+                        (&status,NB_FEET,feet_obj,&sav_ENV),
+     targetid = CI_MACRO_ID.objid,
+     targetos = CI_MACRO_ID.osnum);
+  as$status(action = RET_STATUS);
+  return(1);
+}/* end compute */
+
+/*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
+/*                            cons_face function                              */
+/*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
+
+  int    num_sfs;                  /* Number of surfaces for the solid        */
+  int    msg;                      /* Returned code of messages               */
+  int    msg1;                     /* Returned code of messages               */
+  short  mat_type;                 /* Matrix type of the graphic object       */
+  IGRmatrix matrix;                /* Matrix of the graphic object            */
+  struct GRid temp_object;         /* Temporary object                        */
+  int    numcrv;                   /* Number of curves                        */
+  int    number_of_point ;         /* Number of points                        */
+  int    number_of_bad_curves;     /* Number of bad curves                    */
+  int    bad_curve_indices[100];   /* Indices of the bad curves               */
+  struct EMdpbinfo  dpb_info;      /* Dpb info                                */
+  struct GRlc_info  contour_info[MAX_TEMPLATE];  /* Contour information                     */
+  IGRpoint          points;        /* bad points                              */
+  struct GRvg_construct construct_list;
+  struct GRid           active_state_GRid;
+
+
+struct
+  {
+  IGRlong                 *EMmsg;
+  struct  GRid            srf_GRid;
+  struct  GRmd_env        *srf_env;
+  IGRlong                 num_of_objects;
+  struct  GRlc_info       *object_info;
+  struct  GRvg_construct  *construct_list;
+  IGRlong                 *num_of_bad_points;
+  IGRpoint                **bad_points;
+  IGRboolean              want_bad_curves;
+  IGRlong                 *num_of_bad_curves;
+  IGRlong                 *bad_curve_indices;
+  IGRboolean              want_status_message;
+  IGRlong			process_phase;
+  IGRchar			*grp_info;
+}KLUDGE;                           /* KLUDGE FOR CI                           */
+
+  OM_S_MESSAGE mess;               /* KLUDGE FOR CI                           */
+  struct IGRdisplay display;       /* KLUDGE FOR CI                           */
+  char/* struct EMSmkf_grouping_info     */ grp_info[100];
+  struct IGResbs                   class_attr;
+
+  extern  void           EMownercomp_free();
+  extern  void            EMsfintedpar_free();
+extern ASmake_source_from_env();
+
+ int	keyindex;
+ char classname[64];
+
+ struct GRid               object, tmp_obj;
+ int count;
+
+cons_face()
+  {
+/*********** borrowed from lift.u ********************/
+  /*-----------------*/
+  /* Get the surface */
+  /*-----------------*/
+
+  status = ci$send
+    (msg      = message ACcpx.ACfind_temp_obj(&sts,BASE_SURF,&temp_object),
+     targetid = CI_MACRO_ID.objid,
+     targetos = CI_MACRO_ID.osnum);
+  as$status();
+
+  ci$send( msg      = message NDmacro.ACreturn_foot(	
+						&msg ,
+						"",
+						&base_surf, 
+						&sav_ENV.md_env.matrix_type, 
+					        sav_ENV.md_env.matrix ),
+	   targetid = temp_object.objid,
+	   targetos = temp_object.osnum );
+  if(!msg) return;
+
+
+  sav_ENV.md_id.osnum = base_surf.osnum;
+
+  /*---------------*/
+  /* Get the solid */
+  /*---------------*/
+  status = ci$get_channel_objects(
+		osnum		= base_surf.osnum,
+ 		objid		= base_surf.objid,
+		channname	= "GRconnector.to_owners",
+		obj_list	= &tmp_obj.objid,
+		osn_list	= &tmp_obj.osnum,
+		count		= &count );
+
+#ifdef DEBUG
+write("ci$get_channel_objects: count = ", count, '\n' );
+#endif
+
+  if ( !status ) {
+	write("pbs in ci$get_channel_objects\n");
+	return 0;
+  }
+
+  if(count) {
+
+	    /* if tmp_obj is not a solid, go one more level */
+	om$get_classname ( objid= tmp_obj.objid,
+		  	   osnum = tmp_obj.osnum,
+                  	   classname = classname  );
+
+#ifdef DEBUG
+write("classname for tmp_obj:",classname, '\n' );
+#endif
+
+    	if( !om$is_ancestry_valid( subclassname     = classname,
+			       superclassname = "EMSsolid" ) ){
+#ifdef DEBUG
+write("NOT subclass of EMSsolid", '\n' );
+#endif
+	  	status = ci$get_channel_objects(
+				osnum		= tmp_obj.osnum,
+ 				objid		= tmp_obj.objid,
+				channname	= "GRconnector.to_owners",
+				obj_list	= &base_solid.objid,
+				osn_list	= &base_solid.osnum,
+				count		= &count );
+	  	if ( !status || count <= 0 ) {
+			write("pbs in ci$get_channel_objects\n");
+			return 0;
+	  	}
+    	} 
+    	else {
+
+#ifdef DEBUG
+write("subclass of EMSsolid", '\n' );
+#endif
+	 	base_solid = tmp_obj;
+    	}
+
+#ifdef DEBUG
+write("base_solid:", base_solid.objid,base_solid.osnum,'\n' );
+#endif
+
+    	ASmake_source_from_env( &base_solid,&sav_ENV,&temp_object);	
+
+    	status=ci$send	(msg = message  NDmacro.ACconsume(      &msg,
+								"",
+								1,
+								&object,
+								&MOD_ENV ),
+       		 	targetid = temp_object.objid,
+       		 	targetos = temp_object.osnum);
+     	as$status(  );
+
+
+#ifdef DEBUG
+write("object:", object.objid,object.osnum, '\n' );
+#endif
+
+      if( base_solid.objid != object.objid ){
+	  /* the object has been copied, the surface changes !!.. */
+
+	  /* 1: get the index of the old surface in the old solid */
+	  get_index_of_surf(base_solid, &keyindex, base_surf );
+	  if( keyindex == -1 ){
+		write("pbs in retrieving index of the old surface in the old solid \n");
+		return 0;
+	  }
+#ifdef DEBUG
+write("base_surf:", base_surf.objid,base_surf.osnum, '\n' );
+write("index:", keyindex, '\n' );
+#endif
+
+	  /* 2: retrieve the new surface in the new solid at this index */
+	  get_surf_at_index(object, keyindex,  &base_surf );
+	  if( base_surf.objid == NULL_OBJID ){
+		write("pbs in retrieving the new surface in the new solid\n");
+		return 0;
+	  }
+#ifdef DEBUG
+write("object:", object.objid,object.osnum, '\n' );
+write("base_surf:", base_surf.objid,base_surf.osnum, '\n' );
+#endif
+
+	  base_solid = object;
+       }
+
+    }
+    else {
+    	status = ci$send
+    	(msg = message  NDmacro.ACconsume(&msg,"",1,&object,&MOD_ENV),
+     	targetid = base_surf.objid,
+     	targetos = base_surf.osnum);
+     	as$status(  );
+
+    	base_solid.objid = NULL_OBJID;
+    	base_solid.osnum = 0;
+    }
+
+/***** end borrowed from lift.u ************/
+
+  ci$get_module_info(md_env = &MOD_ENV);
+  status = EMdpb_getinfo (&msg, &dpb_info);
+
+  for(i=1; i<MAX_TEMPLATE; i=i+1 ){
+/*
+     template_name[i] =  &bigchartab[i*6];
+     sprintf(template_name[i],"CTR%d", i ); // to be sure
+*/
+     temp_object.objid = NULL_OBJID;
+     status = ci$send
+       (msg      = message ACcpx.ACfind_exp_temp_obj(	&status,
+							i,
+							&temp_object ),
+        targetid = CI_MACRO_ID.objid,
+        targetos = CI_MACRO_ID.osnum);
+
+     as$status(action = RET_STATUS);
+
+     if( temp_object.objid != NULL_OBJID ){
+	numcrv=i;
+
+  	ci$send( msg      = message NDmacro.ACreturn_foot(	
+			&status,
+			"",
+			&contour[i-1], 
+			&contour_info[i-1].module_info.md_env.matrix_type, 
+			contour_info[i-1].module_info.md_env.matrix ),
+	   	targetid = temp_object.objid,
+	   	targetos = temp_object.osnum );
+
+        as$status(action = RET_STATUS);
+
+	contour_info[i-1].located_obj = contour[i-1];
+	contour_info[i-1].module_info.md_id.osnum = contour[i-1].osnum;
+    } else
+	break;	
+  }
+
+#ifdef DEBUG
+		write("numcrv:", numcrv, '\n' );
+		for( i=0; i<numcrv; i=i+1){
+    			om$get_classname ( objid= contour[i].objid,
+		  		osnum = contour[i].osnum,
+                  		classname = classname  );
+    			write(i,  contour[i].objid," classname ",  
+				classname, '\n' );
+		}
+#endif
+
+  /*
+   * get the active solid id from the state tree
+   */
+  status = ci$send (msg = message EMSsurface.EMgetactiveid(&msg,
+                        &active_state_GRid, NULL),
+                    targetid = base_surf.objid,
+                    targetos = base_surf.osnum);
+  as$status(action = RET_STATUS);
+
+  /*
+   * make a new face using imposed boundaries
+   */
+  number_of_point = 0;
+  init_cnst_list();
+  display.weight = cnst_list.weight;
+  display.style  = cnst_list.style;
+  display.color  = cnst_list.color;
+
+  construct_list.display    = &display;
+  construct_list.newflag = FALSE;
+  construct_list.geometry = NULL;
+  class_attr.u_rules = (IGRlong) dpb_info.u_rules;
+  class_attr.v_rules = (IGRlong) dpb_info.v_rules;
+  class_attr.is_polydis = dpb_info.props & EMDPB_POLYGON_DISPLAY_ON; 
+  class_attr.is_surfdis = TRUE; 
+  class_attr.is_slowdis = FALSE;
+
+  construct_list.class_attr = (IGRchar *) &class_attr;
+  construct_list.msg = &msg;
+  construct_list.env_info = &MOD_ENV;
+  construct_list.level = cnst_list.level;
+  construct_list.properties = GRIS_LOCATABLE | GRIS_DISPLAYABLE;
+  construct_list.name = NULL;
+
+  KLUDGE.EMmsg = &msg;
+  KLUDGE.srf_GRid = base_surf;
+  KLUDGE.srf_env = &MOD_ENV;
+  KLUDGE.num_of_objects = numcrv;
+  KLUDGE.object_info = contour_info;
+  KLUDGE.construct_list = &construct_list;
+  KLUDGE.num_of_bad_points = &number_of_point;
+  KLUDGE.bad_points = NULL;
+  KLUDGE.want_bad_curves = TRUE;
+  KLUDGE.num_of_bad_curves = &number_of_bad_curves;
+  KLUDGE.bad_curve_indices = bad_curve_indices;
+  KLUDGE.want_status_message = TRUE;
+  KLUDGE.process_phase = EMS_PROCESS_PHASE1;
+  KLUDGE.grp_info = grp_info;
+
+  om$make_message
+    (classname  = "EMSsfmkface",
+     methodname = "EMmake_face_execute",
+     size       = sizeof(KLUDGE),
+     p_arglist  = &KLUDGE,
+     p_msg      = &mess);
+                 
+  status = ci$send(msg = message EMSsurface.EMmake_face(&msg, 
+                             &mess,&sl_made_face),
+                   targetid = active_state_GRid.objid,
+                   targetos = active_state_GRid.osnum);
+
+#ifdef DEBUG
+    	om$get_classname ( objid= sl_made_face.objid,
+		  osnum = sl_made_face.osnum,
+                  classname = classname  );
+
+	write("classname for sl_made_face created ",
+				sl_made_face.objid,  classname, '\n' );
+#endif
+
+   as$status(/*test = !(1&status&msg),*/ action = RET_STATUS);
+
+   /* adding the created face to DPR */
+   add_option = EMS_DO_DISPLAY;
+   status = ci$send(msg = message EMSsfdpr.EMadd(&msg, 
+                         &active_state_GRid, NULL,
+                         &MOD_ENV, &add_option),
+                  targetid = sl_made_face.objid,
+                  targetos = sl_made_face.osnum);
+  if((status&1)!=1){
+	write( "mkface: EMSsfdpr.EMadd error\n" );
+	feet_obj[0].objid = NULL_OBJID;
+	return;
+  }
+
+   /* compressing the tree */
+   sav1_ENV=MOD_ENV;
+   sav1_ENV.md_id.objid=NULL_OBJID;
+   ci$send(msg = message EMSdpr.EMmake_primitive1(
+				&msg,
+				&sav1_ENV,
+                                feet_obj ),
+	        targetid = sl_made_face.objid,
+		targetos = sl_made_face.osnum);
+
+#define SUC_SOL			2654217
+
+    if( msg != SUC_SOL )
+	feet_obj[0].objid = NULL_OBJID;
+
+#ifdef DEBUG
+write("exiting construct func,  feet_obj ", feet_obj[0].objid,"\n");
+#endif
+
+
+  return(status);
+}
+
+/*=======================================================================*/
+NDdelete(md_env)
+  struct GRmd_env *md_env;
+  {
+	IGRint		 sts, GRdpmode;  
+	struct GRid	display_info;
+  	extern int	GRfindmod();
+	struct GRmd_env	from_env;
+
+        GRfindmod(&display_info);
+        GRdpmode = 0;
+
+  sts = ci$send
+    (msg      = message ACcpx.ACfind_temp_obj(&status,BASE_SURF,&temp_object),
+     targetid = CI_MACRO_ID.objid,
+     targetos = CI_MACRO_ID.osnum);
+  as$status( action = RET_STATUS );
+  if(!status) goto wrapup;
+
+  ci$send( msg      = message NDmacro.ACreturn_foot(	
+						&stat ,
+						"",
+						&base_surf, 
+						&from_env.md_env.matrix_type, 
+					        from_env.md_env.matrix ),
+	   targetid = temp_object.objid,
+	   targetos = temp_object.osnum );
+
+  if(!stat) goto wrapup;
+
+/*
+  ci$send
+    (msg      = message NDnode.ASreturn_go(
+			&base_surf,
+			&from_env.md_env.matrix_type,
+			from_env.md_env.matrix),
+     targetid = temp_object.objid,
+     targetos = temp_object.osnum);
+*/
+  from_env.md_id.osnum = base_surf.osnum;
+
+  /*---------------*/
+  /* Get the solid */
+  /*---------------*/
+  status = ci$get_channel_objects(
+		osnum		= base_surf.osnum,
+ 		objid		= base_surf.objid,
+		channname	= "GRconnector.to_owners",
+		obj_list	= &tmp_obj.objid,
+		osn_list	= &tmp_obj.osnum,
+		count		= &count );
+
+#ifdef DEBUG
+write("NDdelete ci$get_channel_objects: count = ", count, '\n' );
+#endif
+
+  if ( !status ) {
+	write("pbs in ci$get_channel_objects\n");
+	return 0;
+  }
+
+  if(count)
+    {
+    /* if tmp_obj is not a solid, go one more level */
+    om$get_classname ( objid= tmp_obj.objid,
+		  osnum = tmp_obj.osnum,
+                  classname = classname  );
+
+#ifdef DEBUG
+write("NDdelete classname for tmp_obj:",classname, '\n' );
+#endif
+
+    if( !om$is_ancestry_valid( subclassname     = classname,
+			       superclassname = "EMSsolid" ) ){
+#ifdef DEBUG
+write("NDdelete NOT subclass of EMSsolid", '\n' );
+#endif
+	  status = ci$get_channel_objects(
+		osnum		= tmp_obj.osnum,
+ 		objid		= tmp_obj.objid,
+		channname	= "GRconnector.to_owners",
+		obj_list	= &base_solid.objid,
+		osn_list	= &base_solid.osnum,
+		count		= &count );
+	  if ( !status || count <= 0 ) {
+		write("pbs in ci$get_channel_objects\n");
+		return 0;
+	  }
+    } else {
+#ifdef DEBUG
+write("NDdelete subclass of EMSsolid", '\n' );
+#endif
+	 base_solid = tmp_obj;
+    }
+  } else
+	 base_solid = base_surf;
+
+  status = ASmake_source_from_env( &base_solid,&sav_ENV,&object);	
+
+  as$status(  );
+
+  status = ci$send( msg = message  NDmacro.ACunconsume(&msg,""),
+           targetid =  object.objid,
+           targetos =  object.osnum );
+  as$status();
+
+	   ci$send(msg      = message GRgraphics.GRdisplay(
+					&msg,
+					&from_env.md_env.matrix_type,
+                                	from_env.md_env.matrix,
+	                        	&GRdpmode,
+					&display_info),
+	           targetid = base_solid.objid,
+		   targetos = base_solid.osnum);
+
+wrapup:
+  status = ci$send( msg      = message ov_ci_mac.NDdelete(md_env),
+           targetid = CI_MACRO_ID.objid,
+           targetos = CI_MACRO_ID.osnum,
+           mode     = WRT_message );
+  as$status();
+  return 1;
+}

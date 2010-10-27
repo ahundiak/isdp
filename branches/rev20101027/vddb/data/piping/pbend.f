@@ -1,0 +1,33 @@
+[
+n_catalogname(char[20])=pbend
+n_catalogdesc(char[40])=Pipe bend, 5x nom dia bend radius 
+n_cofilename(char[14])=VRmacro
+p_level1(char[40])=PIPING
+p_s1|units_set(smallint)=units_set
+p_o2|cp0(macro)=cp0
+p_o3|cp1(macro)=cp1
+p_d1|ref(referential)=ref
+p_s2|dim_1(double)=dim_1
+p_s3|br(double)=br
+p_c4|bend_sweep(double)=bend_sweep
+p_c5|npd_g(double)=npd_g
+p_c6|prep_g(double)=prep_g
+p_c7|rating_g(double)=rating_g
+p_c8|gask_sep(double)=gask_sep
+p_c9|insul_thk(double)=insul_thk
+p_s10|pod1(double)=pod1
+p_s11|pod2(double)=pod2
+p_u0|n_itemname(char[32])=Part Number
+p_u0|n_itemrev(char[15])=Part Revision
+p_u0|n_itemdesc(char[40])=Part Description
+p_u0|n_creator(char[14])=Creator
+p_u0|n_creationdate(char[10])=Part Creation Date
+p_u0|p_parttype(char[1])=Part Type
+p_u0|heat_disp(double)=heat dissipation
+p_u0|dry_weight(double)=dry weight
+p_u0|wet_weight(double)=real weight
+p_u0|cogl_x(double)=x coord of local cog
+p_u0|cogl_y(double)=y coord of local cog
+p_u0|cogl_z(double)=z coord of local cog
+p_f0|n_cofilename(char[14])=Local File Name
+]
