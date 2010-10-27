@@ -77,6 +77,8 @@ $VDS/spec
 INCLUDE
 $BS/include
 $BS/include/prototypes
+$UMS/include
+$FORMS/include
 $EXNUC/include
 $GRNUC/include
 $MODEL/include
