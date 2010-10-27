@@ -56,5 +56,5 @@
 
 CCIOPT        -Xnoargchk -m -q
 mng_dsp.u
-topdown.u
-get_atr_val.u
+/* topdown.u */
+/* get_atr_val.u */
