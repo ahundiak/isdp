@@ -29,7 +29,9 @@
 #
 # -------------------------------------------------------------------
 
-target: $(VDS)/ppl/bin/Rebldlib.e
+target: $(VDS)/ppl/bin/Rebldlib.ex
+
+$(VDS)/ppl/bin/Rebldlib.ex :
 
 $(VDS)/ppl/bin/Rebldlib.e : Rebldlib.u
 	@/bin/echo "\t remaking Rebldlib.e\n"
