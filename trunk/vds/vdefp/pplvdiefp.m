@@ -51,7 +51,7 @@ crv_tran2.u
 datum_mark.u
 efp_beam.u
 efp_beam2d.u
-ext_bound2.u
+/* SKIP PPL ext_bound2.u */
 nat_edge.u
 neat_plate.u
 neat_plateo.u
