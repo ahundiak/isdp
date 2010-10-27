@@ -57,9 +57,9 @@ INCLUDE
 $SPXV/include
 $SPXV/vdinclude
 #endif
-/usr/ip32/forms/include
 $BS/include
 $BS/include/prototypes
+$FORMS/include
 $EXNUC/include
 $GRNUC/include
 $GRNUC/ingrsys
