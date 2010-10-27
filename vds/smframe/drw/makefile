@@ -32,7 +32,7 @@
 #
 # -------------------------------------------------------------------
 
-target: $(VDS_PATH)/ppl/bin/COz_Frame.e \
+target: $(VDS_PATH)/ppl/bin/COz_Frame.e2 \
 	mkfile
 	grmake -r -k -f mkfile
 	@if test ${ISDP_MAKE_SP} -eq 1; \
@@ -43,6 +43,8 @@ target: $(VDS_PATH)/ppl/bin/COz_Frame.e \
 
 mkfile: smfrdrw.m
 	grmakemake smfrdrw.m mkfile
+
+$(VDS_PATH)/ppl/bin/COz_Frame.e2 :
 
 $(VDS_PATH)/ppl/bin/COz_Frame.e : COz_Frame.u
 	@/bin/echo "\t remaking COz_Frame.e\n"
