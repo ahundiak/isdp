@@ -41,11 +41,11 @@ $(GRNUC)/spec
 $(VDS)/spec
 
 INCLUDE
-$(INGRHOME)/include
 $(EXNUC)/include
 $(GRNUC)/include
 $(BS)/include
 $(BS)/include/prototypes
+$(FORMS)/include
 $(GRNUC)/proto_pub
 $(GRNUC)/proto_priv
 $(VDS)/include
