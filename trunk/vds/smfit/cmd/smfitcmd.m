@@ -61,6 +61,8 @@ $EXNUC/include
 $GRNUC/include
 $GRNUC/src/assoc/include_priv
 $BS/include
+$UMS/include
+$FORMS/include
 $VDS/include
 $VDS/vdinclude
 $GRNUC/ingrsys
