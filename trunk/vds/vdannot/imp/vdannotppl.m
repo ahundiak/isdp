@@ -37,5 +37,5 @@ format_text.u
 
 #else
 format_text.u   
-forms_annot.u
+/* PPL SKIP forms_annot.u */
 #endif
