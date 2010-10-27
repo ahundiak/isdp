@@ -1,4 +1,4 @@
-# $Id: makefile,v 1.13 2002/05/15 17:47:50 ylong Exp $
+# $Id: make_PLOAD,v 1.1 2002/04/12 16:47:31 ylong Exp $
 
 # -------------------------------------------------------------------
 # I/VDS
@@ -7,18 +7,166 @@
 #
 # Description:
 #
+#   makefile for vdtbl commands directory
+#
 # Dependencies:
 #
 # Revision History:
+#	$Log: make_PLOAD,v $
+#	Revision 1.1  2002/04/12 16:47:31  ylong
+#	*** empty log message ***
+#	
 #
 # History:
 #	MM/DD/YY	AUTHOR		DESCRIPTION
+#	04/04/01	ylong		Created for 263 pload
 # -------------------------------------------------------------------
+# 
+# TGT = vdctblcmd
+#include ${VDS_PATH}/etc/makefiles/lib_only.h
+#
 
-target:
-	@if test ${ISDP_MAKE_SP} -eq 1; \
-	then \
-		ksh grmake -r -k -f make_SP; \
-	else \
-		ksh grmake -r -k -f make_PLOAD; \
-	fi;
+target: sl\
+	mkfile
+	grmake -r -k -f mkfile
+
+sl:	VDCmdEdTbRw.S \
+	${VDS}/config/commands/VDDloEd \
+	${VDS}/config/commands/VDDloRv \
+	${VDS}/config/commands/VDPlHdr \
+	${VDS}/config/commands/VDCrTbl \
+	${VDS}/config/commands/VDMdTbl \
+	${VDS}/config/commands/VDPlITbl \
+	${VDS}/config/commands/VDSscDl \
+	${VDS}/config/commands/VDSscPs \
+	${VDS}/config/commands/VDDloSrEd \
+	${VDS}/config/commands/VDDloSmEd \
+	${VDS}/config/commands/VDDloAdEd \
+	${VDS}/config/commands/VDDloSrRv \
+	${VDS}/config/commands/VDDloSmRv \
+	${VDS}/config/commands/VDDloAdRv \
+        ${VDS}/config/commands/VDSpTbl \
+	${VDS}/config/commands/VDTblExpt \
+	${VDS}/config/commands/VDEdRow \
+	${VDS}/config/commands/VDLoRow \
+	${VDS}/config/commands/VDRmLnO \
+	${VDS}/config/commands/VDRcmpTbl 
+
+
+VDCmdEdTbRw.S : VDCmdEdTbRw.sl \
+	${VDS}/include/SMmsg.h ${VDS}/include/SMcmd.h \
+	${VDS}/include/VDmsg.h ${VDS}/include/VDcmd.h
+	$(EXNUC)/bin/slic -C -p${VDS}/spec VDCmdEdTbRw.sl
+
+${VDS}/config/commands/VDSpTbl : VDCmdSpTbl.t \
+	${VDS}/include/SMmsg.h ${VDS}/include/SMcmd.h \
+	${VDS}/include/VDmsg.h ${VDS}/include/VDcmd.h
+	$(EXNUC)/bin/slic -p${VDS}/spec VDCmdSpTbl.t
+
+${VDS}/config/commands/VDDloEd : VDCmdDLO.t \
+	${VDS}/include/SMmsg.h ${VDS}/include/SMcmd.h \
+	${VDS}/include/VDmsg.h ${VDS}/include/VDcmd.h
+	$(EXNUC)/bin/slic -p${VDS}/spec VDCmdDLO.t
+
+${VDS}/config/commands/VDDloRv : VDCmdDLO.t \
+	${VDS}/include/SMmsg.h ${VDS}/include/SMcmd.h \
+	${VDS}/include/VDmsg.h ${VDS}/include/VDcmd.h
+	$(EXNUC)/bin/slic -p${VDS}/spec VDCmdDLO.t
+
+${VDS}/config/commands/VDPlHdr : VDCmdPlHdr.t \
+	${VDS}/include/SMmsg.h ${VDS}/include/SMcmd.h \
+	${VDS}/include/VDmsg.h ${VDS}/include/VDcmd.h
+	$(EXNUC)/bin/slic -p${VDS}/spec VDCmdPlHdr.t
+
+${VDS}/config/commands/VDPlITbl : VDCmdPlHdr.t \
+	${VDS}/include/SMmsg.h ${VDS}/include/SMcmd.h \
+	${VDS}/include/VDmsg.h ${VDS}/include/VDcmd.h
+	$(EXNUC)/bin/slic -p${VDS}/spec VDCmdPlHdr.t
+
+${VDS}/config/commands/VDCrTbl : VDCmdCrTbl.t \
+	${VDS}/include/SMmsg.h ${VDS}/include/SMcmd.h \
+	${VDS}/include/VDmsg.h ${VDS}/include/VDcmd.h
+	$(EXNUC)/bin/slic -p${VDS}/spec VDCmdCrTbl.t
+
+${VDS}/config/commands/VDMdTbl : VDCmdMdTbl.t \
+	${VDS}/include/SMmsg.h ${VDS}/include/SMcmd.h \
+	${VDS}/include/VDmsg.h ${VDS}/include/VDcmd.h
+	$(EXNUC)/bin/slic -p${VDS}/spec VDCmdMdTbl.t
+
+${VDS}/config/commands/VDSscDl : VDCmdDLU.t \
+	${VDS}/include/SMmsg.h ${VDS}/include/SMcmd.h \
+	${VDS}/vdinclude/VDCmdDLU.h \
+	${VDS}/include/VDmsg.h ${VDS}/include/VDcmd.h
+	$(EXNUC)/bin/slic -p${VDS}/spec VDCmdDLU.t
+
+${VDS}/config/commands/VDSscPs : VDCmdDLU.t \
+	${VDS}/include/SMmsg.h ${VDS}/include/SMcmd.h \
+	${VDS}/vdinclude/VDCmdDLU.h \
+	${VDS}/include/VDmsg.h ${VDS}/include/VDcmd.h
+	$(EXNUC)/bin/slic -p${VDS}/spec VDCmdDLU.t
+
+${VDS}/config/commands/VDDloSrEd : VDCmdSSC.t \
+	${VDS}/include/SMmsg.h ${VDS}/include/SMcmd.h \
+	${VDS}/vdinclude/VDCmdSSC.h \
+	${VDS}/include/VDmsg.h ${VDS}/include/VDcmd.h
+	$(EXNUC)/bin/slic -p${VDS}/spec VDCmdSSC.t
+
+${VDS}/config/commands/VDDloSmEd : VDCmdSSC.t \
+	${VDS}/include/SMmsg.h ${VDS}/include/SMcmd.h \
+	${VDS}/vdinclude/VDCmdSSC.h \
+	${VDS}/include/VDmsg.h ${VDS}/include/VDcmd.h
+	$(EXNUC)/bin/slic -p${VDS}/spec VDCmdSSC.t
+
+${VDS}/config/commands/VDDloSrRv : VDCmdSSC.t \
+	${VDS}/include/SMmsg.h ${VDS}/include/SMcmd.h \
+	${VDS}/vdinclude/VDCmdSSC.h \
+	${VDS}/include/VDmsg.h ${VDS}/include/VDcmd.h
+	$(EXNUC)/bin/slic -p${VDS}/spec VDCmdSSC.t
+
+${VDS}/config/commands/VDDloSmRv : VDCmdSSC.t \
+	${VDS}/include/SMmsg.h ${VDS}/include/SMcmd.h \
+	${VDS}/vdinclude/VDCmdSSC.h \
+	${VDS}/include/VDmsg.h ${VDS}/include/VDcmd.h
+	$(EXNUC)/bin/slic -p${VDS}/spec VDCmdSSC.t
+
+${VDS}/config/commands/VDEdRow : VDEdTbRw.t \
+	${VDS}/include/SMmsg.h ${VDS}/include/SMcmd.h \
+	${VDS}/vdinclude/VDCmdSSC.h \
+	${VDS}/include/VDmsg.h ${VDS}/include/VDcmd.h
+	$(EXNUC)/bin/slic -p${VDS}/spec VDEdTbRw.t
+
+${VDS}/config/commands/VDDloAdEd : VDCmdADS.t \
+	${VDS}/include/SMmsg.h ${VDS}/include/SMcmd.h \
+	${VDS}/vdinclude/VDCmdADS.h \
+	${VDS}/include/VDmsg.h ${VDS}/include/VDcmd.h
+	$(EXNUC)/bin/slic -p${VDS}/spec VDCmdADS.t
+
+${VDS}/config/commands/VDDloAdRv : VDCmdADS.t \
+	${VDS}/include/SMmsg.h ${VDS}/include/SMcmd.h \
+	${VDS}/vdinclude/VDCmdADS.h \
+	${VDS}/include/VDmsg.h ${VDS}/include/VDcmd.h
+	$(EXNUC)/bin/slic -p${VDS}/spec VDCmdADS.t
+
+${VDS}/config/commands/VDTblExpt : VDCmdTBX.t \
+	${VDS}/include/SMmsg.h ${VDS}/include/SMcmd.h \
+	${VDS}/vdinclude/VDCmdTBX.h \
+	${VDS}/include/VDmsg.h ${VDS}/include/VDcmd.h
+	$(EXNUC)/bin/slic -p${VDS}/spec VDCmdTBX.t
+
+${VDS}/config/commands/VDLoRow : VDCmdLineOut.t \
+	${VDS}/include/SMmsg.h ${VDS}/include/SMcmd.h \
+	${VDS}/include/VDmsg.h ${VDS}/include/VDcmd.h
+	$(EXNUC)/bin/slic -p${VDS}/spec VDCmdLineOut.t
+
+${VDS}/config/commands/VDRmLnO : VDCmdRmLnOut.t \
+	${VDS}/include/SMmsg.h ${VDS}/include/SMcmd.h \
+	${VDS}/include/VDmsg.h ${VDS}/include/VDcmd.h
+	$(EXNUC)/bin/slic -p${VDS}/spec VDCmdRmLnOut.t
+
+${VDS}/config/commands/VDRcmpTbl : VDCmdRcmpTbl.t \
+	${VDS}/include/SMmsg.h ${VDS}/include/SMcmd.h \
+	${VDS}/include/VDmsg.h ${VDS}/include/VDcmd.h
+	$(EXNUC)/bin/slic -p${VDS}/spec VDCmdRcmpTbl.t
+
+mkfile : vdctblcmd.m
+	grmakemake vdctblcmd.m mkfile
