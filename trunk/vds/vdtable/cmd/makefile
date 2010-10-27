@@ -23,7 +23,7 @@
 target: pplmkfile \
 	mkfile
 	grmake -r -k -f mkfile
-	grmake -r -k -f pplmkfile
+#	grmake -r -k -f pplmkfile
 
 mkfile:	vdtable.m
 	grmakemake vdtable.m mkfile
