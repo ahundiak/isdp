@@ -1,0 +1,149 @@
+/* $Id: COSolInt.u,v 1.1.1.1 2001/01/04 21:07:36 cvs Exp $  */
+
+/* --------------------------------------------------------------------
+ * I/VDS
+ *
+ * File:	vds/smppl / COSolInt.u
+ *
+ * Description:
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ *	$Log: COSolInt.u,v $
+ *	Revision 1.1.1.1  2001/01/04 21:07:36  cvs
+ *	Initial import to CVS
+ *	
+# Revision 1.1  1998/04/29  16:27:20  pinnacle
+# VDS 2.5.1
+#
+# Revision 1.1  1997/05/08  13:20:44  pinnacle
+# New project VDS 250
+#
+# Revision 1.1  1996/07/19  20:33:52  pinnacle
+# Create VDS 241 project
+#
+# Revision 1.1  1994/11/14  22:42:32  pinnacle
+# Create vds.240 from vds.232
+#
+# Revision 1.1  1994/11/08  16:07:00  pinnacle
+# create vds.232
+#
+ *
+ * History:
+ *	MM/DD/YY	AUTHOR		DESCRIPTION
+ *
+ * -------------------------------------------------------------------*/
+
+#include "ciminimum.h"
+#include "cimacros.h"
+
+
+struct GRid 	TEMP[30];
+GRobj 		MAC1; 
+short           num_solid;
+int 		suc;
+char            txt[40], op[80];
+struct GRmd_env	MOD_ENV;
+IGRchar		mes_f[80];
+
+enum EMSbooltype
+{
+ EMSbool_intersect,  /* Boolean intersection */
+ EMSbool_union,      /* Boolean union */
+ EMSbool_difference, /* Boolean difference */
+ EMSbool_saveside,   /* Intersect with infinite plane saving 1 side */
+ EMSbool_disjointU,  /* Boolean disjoint union (disjoint outside) */
+ EMSbool_hollowDif   /* Boolean hollow difference or disjoint inside */
+} ;
+
+#define MAX_TEMP		33
+
+struct
+ {
+  int               num_solid; /* number of solid to do operation 		  */
+  enum EMSbooltype  booltype;  /* type de l'operation (union, inter, ...)    */	
+  int  max_pot;		/* this is the maxium number of potential surfaces*/
+  short rl_to_pot[MAX_TEMP * 20];/* map a physical sur to a potential sur */
+ } var;
+ 
+
+extern ASmake_source_from_env();
+
+main()
+{
+ strcpy(mes_f,"<Assoc> Intersect Solids"); 
+ message(mes_f);
+ while(1)
+  {
+
+      var.booltype = EMSbool_intersect;
+
+  strcpy(txt,"Identify first solid");
+  if(var.booltype == EMSbool_difference) strcat(txt," (area part)");
+
+  if( !ci$locate ( prompt       = txt,
+                   properties   = LC_LC_ONLY | LC_DP_ONLY | LC_RW,
+//                   properties   = LC_DP_ONLY | LC_RW,
+		   classes	= "EMSsolid",
+                   owner_action = LC_RIGID_COMP
+                                    | LC_RIGID_OWNER | LC_FLEX_COMP
+                                    | LC_FLEX_OWNER  | LC_REF_OBJECTS,
+		   obj          = &(TEMP[0].objid),
+		   osnum        = &(TEMP[0].osnum),
+		   md_env       = &MOD_ENV   )) exit;
+
+     ASmake_source_from_env( &TEMP[0],&MOD_ENV,&TEMP[0] );	
+
+  num_solid = 1;
+
+  while(1)
+  {
+     strcpy(txt,"Identify solid ");
+     strcat(txt,itoa(num_solid+1));
+
+     if(var.booltype == EMSbool_difference) strcat(txt," (hole part)");
+     if(num_solid >= 2)                     strcat(txt," / Move on");
+
+     if(!ci$locate( prompt       = txt,
+//                    properties   = LC_LC_ONLY | LC_DP_ONLY | LC_RW,
+                    properties   = LC_DP_ONLY | LC_RW,
+                    owner_action = LC_RIGID_COMP
+                                    | LC_RIGID_OWNER | LC_FLEX_COMP
+                                    | LC_FLEX_OWNER  | LC_REF_OBJECTS,
+		    classes	 = "EMSsolid",
+	            obj          = &(TEMP[num_solid].objid),
+                    osnum        = &(TEMP[num_solid].osnum),
+		    md_env  = &MOD_ENV )) break;
+
+     ASmake_source_from_env( &TEMP[num_solid],&MOD_ENV,&TEMP[num_solid] );	
+
+     num_solid = num_solid + 1;
+     if(var.booltype == EMSbool_intersect && num_solid == 2) break;
+  }
+
+  if( num_solid < 2 ) exit;
+
+  MAC1		= NULL_OBJID;
+  var.num_solid = num_solid;
+  ci$get_module_info(md_env = &MOD_ENV);
+
+  status("processing");
+  ci$send( msg = message nci_macro.init
+		( &suc,0, "SMBoolean", num_solid, TEMP, &var,&MOD_ENV),  
+		targetid = MAC1);
+  if( suc == 0 ){
+	write("placement of nci_macro \"SMBoolean\" failed\n");
+	status("placement of nci_macro \"SMBoolean\" failed");
+	ci$send(msg = message Root.delete(0),
+	     		targetid = MAC1,
+	      		targetos = MOD_ENV.md_id.osnum );
+  }
+  else status("");
+
+  }
+}
+
+wakeup(){
+	message(mes_f);
+}

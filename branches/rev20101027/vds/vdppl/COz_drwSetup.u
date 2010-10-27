@@ -1,0 +1,235 @@
+/* $Id: COz_drwSetup.u,v 1.3 2002/01/07 22:29:17 ylong Exp $  */
+/* --------------------------------------------------------------------
+ * I/VDS
+ *
+ * File:        vds/vdppl/COz_drwSetup.u
+ *
+ * Description: PPL to find a drawing setup file name.
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ *      $Log: COz_drwSetup.u,v $
+ *      Revision 1.3  2002/01/07 22:29:17  ylong
+ *      *** empty log message ***
+ *
+ *      Revision 1.2  2002/01/04 22:00:03  ylong
+ *      *** empty log message ***
+ *
+ *      Revision 1.1  2001/02/22 18:30:37  ramarao
+ *      Created COz_drwSetup ppl to know the drawing setup file name.
+ *
+ *
+ * History:
+ *      MM/DD/YY        AUTHOR          DESCRIPTION
+ *      02/21/00        Rama Rao        File Creation.
+ *	01/04/02	ylong		CR5637
+ * -------------------------------------------------------------------*/
+
+#include "VDppl.h"
+#include "VDobj.h"
+#include "VDchn.h"
+#include "v_drwcmd.h"
+#include "vddrwattr.h"
+#include "VDmem_ppl.h"
+#include "ndmacros.h"
+
+extern	VDget_ctx_ref2(), 
+	NDwait_batch(),
+	NDget_mod_batch(),
+	NDexec_batch(),
+	GRconfirm_box(),
+	VDdrw_GetChannelObjects(),
+	VD_findFileInDirOrProductPaths(), 
+	VDdrw_GetChannelOwner(),
+	VD_drwExecConfigAddFunctions(),
+	VD_drwExecConfigRmFunctions(),
+	VD_drw_init_from_drawing_setup(),
+	VD_drwFreeExtractMacInfo(),
+	VD_bulkDisplayByGRids(),
+	UI_error();
+
+extern GRclassid	OPP_VDdrawing_class_id, OPP_VDdrw2d_class_id,
+			OPP_VDdrw3d_class_id;
+main()
+{
+IGRlong			sts, msg;
+IGRint			i, response;
+IGRint			count, cnType, wtBatch;
+IGRboolean		saveBroad;
+IGRchar			setupName[100], absPathName[1024], stsMessBuf[1024];
+IGRchar			newFile[100], newPathName[1024], tmpStr[1024];
+OM_S_CLASSLIST		eligibleClasses;
+OMuword			classids[3];
+struct GRid		source, context, viewId, *drwObjs;
+struct GRobj_env	drawOE;
+VDpartAttr              attr ;
+VD_drwMacInfo           *drwMacInfo ;
+
+   message( "Get Drawing Setup filename" );
+
+   count = 0;
+   newFile[0] = '\0';
+   newPathName[0] = '\0';
+   setupName[0] = '\0';
+   drwObjs = NULL;
+   drwMacInfo = NULL ;
+
+   classids[0] = OPP_VDdrawing_class_id ;
+   classids[1] = OPP_VDdrw2d_class_id ;
+   classids[2] = OPP_VDdrw3d_class_id ;
+
+   eligibleClasses.w_count   = 3 ;
+   eligibleClasses.w_flags   = OM_CLST_subclass ;
+   eligibleClasses.p_classes = classids ;
+
+   if( ! ci$locate( prompt  = "Locate a Drawing object",
+		    eligible_classes= &eligibleClasses,
+                    owner_action = LC_RIGID_OWNER |
+                                   LC_RIGID_COMP  |
+                                   LC_FLEX_COMP   |
+                                   LC_FLEX_OWNER  |
+                                   LC_REF_OBJECTS,
+                    stackable    = 1,
+                    response     = &response,
+                    md_env       = &drawOE.mod_env,
+                    obj          = &drawOE.obj_id.objid,
+                    osnum        = &drawOE.obj_id.osnum) ) return 1;
+
+   if( vdobj$IsAncestryValid( 	objOE = &drawOE, 
+				superClassID = OPP_VDdrawing_class_id ) )
+   {
+      vdchn$Get2( objOE  = &drawOE,
+		  chnIDx = VDCHN_IDX_PARENT,
+		  nth    = 0,
+		  outID  = &source );
+      if( source.objid == NULL_OBJID ) return 1;
+
+      VDget_ctx_ref2( &source, &context, (struct GRid *)NULL );
+
+      ci$send( msg = message VDcontext.VDget_setup_name( setupName ),
+            	   targetid = context.objid,
+            	   targetos = context.osnum );
+   }
+   else
+   {
+        attr.Iwant = VD_I_drwVisual ;
+
+	if( vdobj$IsAncestryValid( objOE = &drawOE,
+			   	   superClassID = OPP_VDdrw2d_class_id ) )
+	{
+	   VDdrw_GetChannelOwner( &msg, &drawOE.obj_id, VD_O_drw2d, &viewId );
+        }
+        else
+	{
+	   VDdrw_GetChannelOwner( &msg, &drawOE.obj_id, VD_O_drw3d, &viewId );
+	}
+
+	ci$send( msg = message GRvg.GRgetattr( &msg, (char *)&attr ),
+		 targetid = viewId.objid,
+		 targetos = viewId.osnum  );
+
+	strcpy( setupName, attr.aString );
+
+   }
+
+   VD_findFileInDirOrProductPaths( &msg, setupName, ".", "config/drawing",
+				   absPathName ) ;
+
+   printf( "Setup File Name = <%s>\n", absPathName ) ;
+   UI_status( absPathName ) ;
+
+
+   /*-------------------------------------------------------------
+    * update drawings if a new setup file applied, CR5637 by ylong
+    *-------------------------------------------------------------*/
+   if( !vdobj$IsAncestryValid(	objOE	= &drawOE,
+		   	   superClassID = OPP_VDdrw2d_class_id ) ) goto wrapup;
+
+   VDdrw_GetChannelObjects( &msg, &viewId, NULL,
+                                VD_O_drw2dObj, &count, &drwObjs,NULL);
+   if((count == 0) || (drwObjs == NULL)) {
+        UI_status("Failed to get all drawings");
+        goto wrapup;
+   }
+
+   VD_bulkDisplayByGRids( &drawOE.mod_env, GRhhd, count, drwObjs );
+
+   if( !GRconfirm_box( "Update Drawing View with a new setup file?") ) {
+	goto wrapup;
+   }
+
+   while( newFile[0] == '\0' ) {
+     ci$get(	prompt	= "Input Visualization Support File",
+		string	= newFile );
+   }
+
+   if( !strcmp( setupName, newFile ) ) {
+	UI_status("New file is the same as old one");
+	goto wrapup;
+   }
+
+   sts = VD_findFileInDirOrProductPaths(&msg, 
+					newFile, 
+					".", 
+					"config/drawing",
+					newPathName ) ;
+   if( !(sts&1) || newPathName[0] == '\0' ) {
+	sprintf( tmpStr, "File [%s] not found", newFile );
+	UI_status( tmpStr );
+	goto wrapup;
+   }
+
+   /* 
+    * Test if the setup file is proper format
+    */
+   sts = VD_drwExecConfigAddFunctions();
+   if ( !(1&sts)) {
+        VD_drwExecConfigRmFunctions();
+        goto wrapup;
+   }
+
+   if( !VD_drw_init_from_drawing_setup( newFile, &drwMacInfo ))
+   {
+       sprintf(stsMessBuf, "Syntax error in setup file: '%s'", newFile );
+       UI_error (stsMessBuf);
+       VD_drwExecConfigRmFunctions();
+       goto wrapup;
+   }
+   VD_drwFreeExtractMacInfo( drwMacInfo );
+   VD_drwExecConfigRmFunctions();
+
+   strcpy( attr.aString, newFile );
+   sts =  ci$send (	msg	= message GRvg.GRputattr( &msg, (char *)&attr ),
+			targetid = viewId.objid,
+			targetos = viewId.osnum  );
+   if( !(sts&msg&1) ) {
+	UI_status( "Failed to update attibutes" );
+	goto wrapup;
+   }
+
+   cnType = ND_COMP ;
+   for( i = 0; i < count; i = i+1 ) {
+
+	nd$wait_batch (	type		= GR_GEOM_POSTED,
+			l_object	= &drwObjs[i],
+			l_obj_info	= &cnType,
+			nb_obj		= 1);
+
+	nd$mod_batch(	request    = ND_INQ,
+			p_ret_mode = &wtBatch);
+
+	saveBroad = ASbroadcast_in_progress ;
+	ASbroadcast_in_progress = FALSE ;
+
+	if( wtBatch != ND_DEFER ) {
+	   nd$exec_batch(mode = ND_DISP_ROOT|ND_DISP_BODY);
+	}
+
+	ASbroadcast_in_progress = saveBroad ;
+   }
+
+wrapup:
+   _FREE( drwObjs );
+   return 1;
+}

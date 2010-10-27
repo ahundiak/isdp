@@ -1,0 +1,4357 @@
+/* $Id: OutfitTree.u,v 1.2 2001/01/12 14:47:05 art Exp $  */
+/***************************************************************************
+ * I/VDS
+ *
+ * File:        vdct1/ppl/OutfitTree.u
+ *
+ * Description: PPL for definition of OutfitTree Assemblies
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ *      $Log: OutfitTree.u,v $
+ *      Revision 1.2  2001/01/12 14:47:05  art
+ *      sp merge
+ *
+# Revision 1.38  2000/07/14  19:08:42  pinnacle
+# pn
+#
+# Revision 1.37  2000/07/12  11:17:22  pinnacle
+# pn
+#
+# Revision 1.36  2000/07/06  18:06:06  pinnacle
+# pn
+#
+# Revision 1.34  2000/06/30  18:52:04  pinnacle
+# pn
+#
+# Revision 1.33  2000/06/19  13:17:16  pinnacle
+# ah
+#
+# Revision 1.32  2000/06/09  16:06:10  pinnacle
+# ah
+#
+# Revision 1.31  2000/06/08  17:19:06  pinnacle
+# pn
+#
+# Revision 1.30  2000/06/08  17:07:22  pinnacle
+# pn
+#
+# Revision 1.29  2000/06/06  14:57:16  pinnacle
+# ah
+#
+# Revision 1.28  2000/06/05  21:00:28  pinnacle
+# ah
+#
+# Revision 1.27  2000/06/05  15:15:16  pinnacle
+# ah
+#
+# Revision 1.26  2000/06/04  17:04:56  pinnacle
+# ah
+#
+# Revision 1.25  2000/06/03  17:34:30  pinnacle
+# ah
+#
+# Revision 1.24  2000/06/02  14:00:52  pinnacle
+# Replaced: vds/vdct1/ppl/OutfitTree.u for:  by pnoel for Service Pack
+#
+# Revision 1.21  2000/05/31  19:57:38  pinnacle
+# Replaced: vds/vdct1/ppl/OutfitTree.u for:  by pnoel for Service Pack
+#
+# Revision 1.20  2000/05/31  15:21:08  pinnacle
+# Replaced: vds/vdct1/ppl/OutfitTree.u for:  by pnoel for Service Pack
+#
+# Revision 1.19  2000/05/31  13:26:10  pinnacle
+# Replaced: vds/vdct1/ppl/OutfitTree.u for:  by pnoel for Service Pack
+#
+# Revision 1.18  2000/05/26  13:26:38  pinnacle
+# Replaced: vds/vdct1/ppl/OutfitTree.u for:  by pnoel for Service Pack
+#
+# Revision 1.3  2000/04/04  20:18:04  pinnacle
+# pn.
+#
+ *
+ * History:
+ * MM/DD/YY  AUTHOR  DESCRIPTION
+ * 03/16/00  pn      Creation
+ * 03/28/00  pn      Refine and develop to handle data definitions
+ *                   Automatic generation of some data
+ *                   Database selection of some data
+ * 04/04/00  pn      Some tweeking
+ * 05/16/00  pn      major alterations related to posting and attribute management
+ * 05/23/00  pn      alterations regarding Freeze/Revise
+ * 05/26/00  pn      Freeze/Revise fix in
+ * 05/31/00  pn      View Control for Tree/Lib forms in
+ *                   lock out 'NON' attribute occurances
+ * 06/30/00  pn      Fix details and customer requests
+ ***************************************************************************/
+
+#include "header.h"
+#include "VDct1Attrs.h"
+#include "VDfrm.h"
+#include "VDct1Cmd.h"
+#include "vdprocinfo.h"
+
+#include "VDct1Part.h"
+#include "VDris2.h"
+
+/* --------------------------------------------------
+ * Activity Rules control
+ * 
+ * IGRstat          O -  ACTION_OK (0 or 1) 
+ * TVDctBaseInfo    I/O  BASE_INFO
+ * TVDctBaseInfo    I/O  BASE_INFO_PARENT
+ * IGRchar          I -  LOCATION       The calling location or action sets rules 
+ *
+ */
+
+/* --------------------------------------------------
+ * I - NODE_PARENT_ID  (of ParentID)
+ * I - PIECE_OE   (of *modelOE) 
+ * O - NODE_TYPE  (of *nodeType)
+ */
+IGRstat getTypeForModelObject()
+ {
+   IGRint retFlag;           
+   retFlag = 0;
+
+   strcpy(NODE_TYPE,VDCT1_ENG_NODE_TYPE_PART);
+   
+   retFlag = 1;
+  
+wrapup:
+   
+   return retFlag;
+}
+
+/* -------------------------------------------------
+ * Sets Status of Frozen Node from Deleted to Active 
+ * if it is Deleted
+ * I - NODE_ID used to find attribute only
+ */
+IGRstat setStatusActive()
+{
+  IGRint  retFlag;
+  IGRint  sts;
+  TVDfld  frzFld, partRemFld, assyRemFld;
+  IGRchar buf[128];
+  
+  // init  
+  retFlag = 0;
+
+  // args check
+  if(NODE_ID.objid == NULL_OBJID) goto wrapup;
+  
+  // get the frozen attribute 
+  sts = vdcol$GetAttr(objID = &NODE_ID, 
+		      name  = VDCT1_ATTR_FROZEN, 
+		      fld   = &frzFld);
+
+  // check to see if the attribute exists
+  if(*frzFld.name == 0) goto wrapup;
+
+  // if deleted restore
+  if(!strcmp(frzFld.val.txt,"DELETED")) {
+
+    // copy it up
+    strcpy(frzFld.val.txt,"ACTIVE");
+
+    // apply the result
+    vdcol$UpdAttrs(objID = &NODE_ID,
+		   cnt   = 1,
+		   fld   = &frzFld);
+
+    // get the assyRemFld attributes
+    vdcol$GetAttr(objID = &NODE_ID, 
+		  name  = VDCT1_ATTR_ASSY_REMARKS, 
+		  fld   = &assyRemFld);
+
+    if(*assyRemFld.name != 0) {
+      // copy up blank
+      strcpy(assyRemFld.val.txt,"");
+
+      // apply the result
+      vdcol$UpdAttrs(objID = &NODE_ID,
+		     cnt   = 1,
+		     fld   = &assyRemFld);
+    }
+    
+
+    // get the partRemFld attributes
+    vdcol$GetAttr(objID = &NODE_ID, 
+		  name  = VDCT1_ATTR_PART_REMARKS, 
+		  fld   = &partRemFld);
+
+    if(*partRemFld.name != 0) {
+      // copy up blank
+      strcpy(partRemFld.val.txt,"");
+
+      // apply the result
+      vdcol$UpdAttrs(objID = &NODE_ID,
+		     cnt   = 1,
+		     fld   = &partRemFld);
+    }
+
+    // success
+    retFlag = 1;
+  }
+
+  // go home
+wrapup:
+  return retFlag;
+}
+
+
+/* -------------------------------------------------
+ * pdmFldData Purpose: to get field data from Attributes and 
+ * other sources to provide data for pdm posting.
+ * Takes the list of fields and fills in based upon FLDS.fld.name info
+ * input list
+ * NODE_PARENT_ID, NODE_ID, PARENT_BASE_INFO, BASE_INFO, LIST_IND, FLDS
+ * LIST_IND is the count of fld in FLDS
+ */
+IGRstat pdmFldsData()
+{
+  IGRstat   retFlag, i, sts, ntype;
+  IGRstat   traceFlag;
+  TVDatFld  *fld;
+  IGRchar   fldName[128], tree[128], node[128], rev[128], revParent[128];
+  TVDfld    tmpFld;
+  
+  
+  // say hi
+  traceFlag = 0;
+  retFlag = 0;
+  if (traceFlag) printf(">>> pdmFldsData (in PPL)\n");
+ 
+  sts = 0;
+
+  // go get the fields to fill in
+  for(i = 0; i < LIST_IND; i = i + 1) {
+    // get the individual field
+    fld = &FLDS[i];
+    // get the fieldName
+    strcpy(fldName,fld->name);
+    // get the attributes for that field
+    sts = vdcol$GetAttr(objID = &NODE_ID, name = fldName, fld = &tmpFld);
+    // if there is a field with this name load it up
+    if (sts & 1){   
+      switch(fld->type) {
+      case VDAT_FLD_TYPE_CHAR: {
+	strcpy(fld->valueTxt,tmpFld.val.txt);
+	break;
+      } 
+      case VDAT_FLD_TYPE_SMALLINT:
+      case VDAT_FLD_TYPE_INT: {
+	fld->valueInt = atoi(tmpFld.val.txt);
+	break;
+      } 
+      case VDAT_FLD_TYPE_REAL:
+      case VDAT_FLD_TYPE_DOUBLE: {
+	fld->valueDbl = atof(tmpFld.val.txt);
+	break;
+      } 
+      default: {
+	printf("Unknown field type\n");
+	goto wrapup;
+      }}
+      //printf("field name  = [%s] tmpFld.val.txt = [%s]\n",fldName,tmpFld.val.txt);
+       FLDS[i] = *fld;
+    }
+  }
+  // don't post any node which is not active
+  // vdcol$GetAttr(objID = &NODE_ID, name = VDCT1_ATTR_FROZEN, fld = &tmpFld); 
+  // if (strcmp(tmpFld.val.txt,"ACTIVE")) {
+  //  retFlag = 0;
+  //  goto wrapup;
+  // }
+  
+    // put any special field data here!
+  // set the parent_tree_index
+  vdcol$GetAttr(objID = &NODE_PARENT_ID, name = VDCT1_ATTR_ASSY_REV, fld = &tmpFld);
+  strcpy(revParent,tmpFld.val.txt);
+  vdcol$GetAttr(objID    = &NODE_PARENT_ID, 
+		name     = VDCT1_ATTR_TREE_NUM,
+		fld      = &tmpFld);
+  strcpy(tree,tmpFld.val.txt);
+  vdcol$GetAttr(objID    = &NODE_PARENT_ID, 
+		name     = VDCT1_ATTR_NODE_NUM,
+		fld      = &tmpFld);
+  strcpy(node,tmpFld.val.txt);
+
+  if(!strcmp(revParent,"")) strcpy(revParent,"000");
+  
+  sprintf(fldName,"%s-%s-%s",tree,node,revParent);
+  VDatFldSetTxtByName(FLDS,LIST_IND,"parent_tree_index",fldName);
+
+  // set the tree_index
+  vdcol$GetAttr(objID = &NODE_ID, 
+		name  = VDCT1_ATTR_ASSY_REV, 
+		fld   = &tmpFld);
+  strcpy(rev,tmpFld.val.txt);
+  vdcol$GetAttr(objID    = &NODE_ID, 
+		name     = VDCT1_ATTR_TREE_NUM,
+		fld      = &tmpFld);
+  strcpy(tree,tmpFld.val.txt);
+  vdcol$GetAttr(objID    = &NODE_ID, 
+		name     = VDCT1_ATTR_NODE_NUM,
+		fld      = &tmpFld);
+  strcpy(node,tmpFld.val.txt);
+
+  if(!strcmp(rev,"")) strcpy(rev,revParent);
+  sprintf(fldName,"%s-%s-%s",tree,node,rev);
+  VDatFldSetTxtByName(FLDS,LIST_IND,"tree_index",fldName);
+
+  // set the node name
+  strcpy(fldName,BASE_INFO.nodeName);
+  VDatFldSetTxtByName(FLDS,LIST_IND,"node_name",fldName);
+
+  ntype = 0;
+    // assign the numeric relationship to the nodeType
+  if (!strcmp(BASE_INFO.nodeType,VDCT1_ENG_NODE_TYPE_PART))     ntype = 4;
+  if (!strcmp(BASE_INFO.nodeType,VDCT1_ENG_NODE_TYPE_ENGASSY6)) ntype = 6; 
+  if (!strcmp(BASE_INFO.nodeType,VDCT1_ENG_NODE_TYPE_ENGASSY2)) ntype = 2;
+  if (!strcmp(BASE_INFO.nodeType,VDCT1_ENG_NODE_TYPE_ASSY2))    ntype = 8;
+  if (!strcmp(BASE_INFO.nodeType,VDCT1_ENG_NODE_TYPE_PARTS))    ntype = 6; 
+  if (!strcmp(BASE_INFO.nodeType,VDCT1_ENG_NODE_TYPE_PALLET))   ntype = 2; 
+  if (!strcmp(BASE_INFO.nodeType,VDCT1_ENG_NODE_TYPE_GROUP))    ntype = 1; 
+  if (!strcmp(BASE_INFO.nodeType,VDCT1_ENG_NODE_TYPE_PALGROUP)) ntype = 1; 
+
+  VDatFldSetIntByName(FLDS,LIST_IND,"node_type",ntype);
+
+  // update IN_COPICS
+  vdcol$GetAttr(objID = &NODE_ID, 
+		name = VDCT1_ATTR_IN_COPICS, 
+		fld = &tmpFld);
+ 
+  if (*tmpFld.name != 0) { 
+  strcpy(tmpFld.val.txt,"NO");
+
+    vdcol$UpdAttrs(objID = &NODE_ID,
+		   cnt = 1,
+		   fld = &tmpFld);
+  
+  
+  }
+  
+  
+  // success
+  retFlag = 1;  
+wrapup:
+  // say bye
+  if (traceFlag) printf("<<< pdmFldsData(%d) (in PPL)\n",retFlag);
+  return retFlag;
+}
+
+/* -------------------------------------------------
+ * gives pdm the tableName
+ */
+IGRstat pdmGetTableName()
+{
+  IGRstat retFlag;
+  
+  strcpy(TABLE_NAME,"tm_outfit_dynamic");
+  retFlag = 1;
+  
+  return retFlag;
+  
+}
+/* --------------------------------------------------
+ * make a nodeType and nodeName or both based upon location
+ * I   = NODE_ID
+ * I   = LOCATION
+ * I/O = BASE_INFO
+ * 0   = ACTION_OK
+ */
+IGRstat treeMakeAName()
+{
+  IGRstat        retFlag;
+  IGRstat        traceFlag;
+  IGRint         sts, num;
+  IGRchar        buf[128], zone[128], comCode[128], nodeNum[128];
+  TVDfld         tmpFld;
+    TVDctBaseInfo baseInfo;
+  // init 
+  retFlag = 0;
+  
+  // check the location 
+  // -----------------------------------------------------------------------------------
+  // rule for changing names and types location
+  if (!strcmp(LOCATION,VDCT1_ACTION_CHANGE_NT))
+  {
+    // RULE: do this for an ENGASSY2
+    if (!strcmp(BASE_INFO.nodeType,VDCT1_ENG_NODE_TYPE_ENGASSY2)) {
+
+      // get the ZONE
+      vdcol$GetAttr(objID = &NODE_ID, name = VDCT1_ATTR_ZONE, fld = &tmpFld);
+      // no ZONE no action
+      if (!strcmp(tmpFld.val.txt,"")) {
+	retFlag = 0;
+	goto wrapup;
+      }
+      // copy it over
+      strcpy(zone,tmpFld.val.txt);
+ 
+      // get the COM_CODE
+      vdcol$GetAttr(objID = &NODE_ID, name = VDCT1_ATTR_COM_CODE, fld = &tmpFld);
+      // no COM_CODE no action
+      if (!strcmp(tmpFld.val.txt,"")) {
+	goto wrapup;
+      }
+      // copy it over
+      strcpy(comCode,tmpFld.val.txt);
+
+      // get the NODE_NUM
+      sts = vdcol$GetAttr(objID = &NODE_ID, name = VDCT1_ATTR_NODE_NUM, fld = &tmpFld);
+      // no NODE_NUM no action
+      if (!strcmp(tmpFld.val.txt,"")) {
+	goto wrapup;
+      }
+      // change the nodeType to ENGASSY6
+      strcpy(BASE_INFO.nodeType,VDCT1_ENG_NODE_TYPE_ENGASSY6);
+      // copy it over
+      num = atoi(tmpFld.val.txt);
+      sprintf(nodeNum,"%04d",num);
+
+      // create the name
+      sprintf(buf,"%s-%s-%s",zone,comCode,nodeNum);
+
+      // change the nodeName to the new name
+      strcpy(BASE_INFO.nodeName,buf);
+      
+    }
+    // RULE: place any other rules here
+  }
+  
+  //success
+  retFlag = 1;
+  
+wrapup:
+  // say bye
+  ACTION_OK = retFlag;
+  return retFlag;
+}
+
+
+/* --------------------------------------------------
+ * Validate child type
+ * I - NODE_PARENT_ID (of the parent)
+ * I - BASE_INFO (of the parent)
+ * I - NODE_TYPE (of child)
+ */
+IGRstat isChildTypeValid()
+{
+  
+  IGRstat retFlag;
+  IGRstat traceFlag;
+  
+  IGRint sts;
+  
+  IGRchar        *parentType,*childType;
+  IGRchar        *buf;
+  
+  // Init
+  retFlag   = 1;
+  traceFlag = 0;
+  
+  // set up data types to same type
+  parentType = BASE_INFO.nodeType;
+  childType  = NODE_TYPE;
+  
+  /*
+   * Rules management for valid Child types 
+   * Tells if making a certain type of node is acceptable
+   * This logically says no except for exceptions which are sent to wrapup
+   * Built this way to be easy to understand and alter quickly.
+   */
+
+   if (traceFlag) 
+     printf(">>> isChildTypeValid\nParent Node Type %s \nChild Node Type %s\n",
+	  parentType,childType);
+
+   // Test for valid childType for GROUP parentType
+   if(!strcmp(parentType,VDCT1_ENG_NODE_TYPE_OUTFIT)){
+     // OK ASSY2, ENGASSY2, ENGASSY6, PARTS, GROUP
+     if(!strcmp(childType,VDCT1_ENG_NODE_TYPE_GROUP))    goto wrapup;
+     //if(!strcmp(childType,VDCT1_ENG_NODE_TYPE_ENGASSY2)) goto wrapup;
+     //if(!strcmp(childType,VDCT1_ENG_NODE_TYPE_ENGASSY6)) goto wrapup;
+     //if(!strcmp(childType,VDCT1_ENG_NODE_TYPE_PARTS))    goto wrapup;
+   }
+      
+   // Test for valid childType for GROUP parentType
+   if(!strcmp(parentType,VDCT1_ENG_NODE_TYPE_GROUP)){
+     // OK ASSY2, ENGASSY2, ENGASSY6, PARTS,GROUP
+     if(!strcmp(childType,VDCT1_ENG_NODE_TYPE_GROUP))    goto wrapup;
+     if(!strcmp(childType,VDCT1_ENG_NODE_TYPE_ENGASSY2)) goto wrapup;
+     if(!strcmp(childType,VDCT1_ENG_NODE_TYPE_ENGASSY6)) goto wrapup;
+     if(!strcmp(childType,VDCT1_ENG_NODE_TYPE_PARTS))    goto wrapup;
+     if(!strcmp(childType,VDCT1_ENG_NODE_TYPE_ASSY2))    goto wrapup;
+   }
+   
+   // Test for valid childType for ENGASSY2 parentType
+   if(!strcmp(parentType,VDCT1_ENG_NODE_TYPE_ENGASSY2)){
+     // OK ASSY2, ENGASSY2, PART
+     if(!strcmp(childType,VDCT1_ENG_NODE_TYPE_ASSY2))    goto wrapup;
+     if(!strcmp(childType,VDCT1_ENG_NODE_TYPE_ENGASSY2)) goto wrapup;
+     if(!strcmp(childType,VDCT1_ENG_NODE_TYPE_PART))     goto wrapup;
+   }
+
+   // Test for valid childType for ENGASSY6 parentType
+   if(!strcmp(parentType,VDCT1_ENG_NODE_TYPE_ENGASSY6)){
+     // OK ASSY2, ENGASSY2, PARTS, PART
+     if(!strcmp(childType,VDCT1_ENG_NODE_TYPE_ASSY2))    goto wrapup;
+     if(!strcmp(childType,VDCT1_ENG_NODE_TYPE_ENGASSY2)) goto wrapup;
+     if(!strcmp(childType,VDCT1_ENG_NODE_TYPE_PARTS))    goto wrapup;
+     if(!strcmp(childType,VDCT1_ENG_NODE_TYPE_PART))     goto wrapup;
+   }
+   
+   // Test for valid childType for ASSY2 parentType
+   if(!strcmp(parentType,VDCT1_ENG_NODE_TYPE_ASSY2)){
+     // OK PART
+     if(!strcmp(childType,VDCT1_ENG_NODE_TYPE_PART))     goto wrapup;
+   }
+
+   // Test for valid childType for PARTS parentType
+   if(!strcmp(parentType,VDCT1_ENG_NODE_TYPE_PARTS)){
+     // OK ASSY2, PART
+     if(!strcmp(childType,VDCT1_ENG_NODE_TYPE_ASSY2))   goto wrapup;
+     if(!strcmp(childType,VDCT1_ENG_NODE_TYPE_PART))    goto wrapup;
+   }
+
+   //Test for valid childType for PART parentType (no valid types)
+
+    // no acceptable conditions found!
+  retFlag = 0;
+  
+// oh well  
+wrapup:
+  if (traceFlag)printf("<<< isChildTypeValid ,%d \n\n",retFlag);
+  return retFlag;
+}
+/* --------------------------------------------------
+ * Initialize the count to 1
+ */
+IGRstat computeNodePartCount()
+{
+  IGRstat retFlag;
+  IGRstat sts;
+  
+  TVDfld        qtyFld;
+  IGRdouble     cutLen;
+  TVDctBaseInfo baseInfo;
+  // Init
+  retFlag = 0;
+  
+  // Get it
+  vdcol$GetAttr(objID = &NODE_ID, name = VDCT1_ATTR_QTY, fld = &qtyFld);
+  if (*qtyFld.name == 0) goto wrapup;
+  strcpy(qtyFld.val.txt,"1");
+
+  // Make sure have model object
+  if (PIECE_OE.obj_id.objid == NULL_OBJID) goto wrapup;
+  
+  // Based on type
+  sts = vdobj$IsAncestryValid(objOE = &PIECE_OE,
+			      superClassName = "VSbeam");
+  if (sts & 1) {
+    cutLen = 0.0;
+    vdsa$GetStruct(objOE = &PIECE_OE,
+		   name  = VDCT1_ISDP_ATTR_CUT_LENGTH,
+		   dbl   = &cutLen);
+    sprintf(qtyFld.val.txt,"%.2f",cutLen / 1000.0);
+    if(*qtyFld.name != 0) {
+      vdcol$UpdAttrs(objID = &NODE_ID, cnt = 1, fld = &qtyFld);
+    }
+    
+    retFlag = 1;
+    goto wrapup;
+  }
+
+  
+      
+  // Update
+    if(*qtyFld.name != 0) {
+      vdcol$UpdAttrs(objID = &NODE_ID, cnt = 1, fld = &qtyFld);
+    }
+    
+  
+  // Done
+  retFlag = 1;
+  
+wrapup:
+  return retFlag;
+}
+
+extern VDstrupr();
+
+
+
+/*********************************************************************
+ *  Compute the mino_isdp
+ */
+IGRstat computeNodePartMinoISDP()
+{
+  IGRstat     retFlag;
+  IGRstat     sts;
+  
+  TVDfld      fld;
+  IGRchar     partNum[128];     //beam pat_num
+  IGRchar     matlGrade[128];   //plate or beam grade
+  IGRchar     equipPartNum[128];    //equipment eqp_partnum
+  IGRdouble   plateThk;    //plate thickness
+  
+  IGRchar     minoISDP[256]; 
+  
+  //init
+  retFlag = 0;
+  *partNum = 0;
+  *matlGrade = 0;
+  *minoISDP = 0;
+  plateThk = 0.0;
+  
+
+  //check to see if we have an object
+  if (PIECE_OE.obj_id.objid == NULL_OBJID) {
+    retFlag = 1;
+    goto wrapup;
+  }
+ 
+
+    // compute for Equipment
+  sts = vdobj$IsAncestryValid(objOE = &PIECE_OE,
+			      superClassName = "VDequipment");
+  
+  if (sts & 1) {
+    //printf("We are doing VDequipment class\n");
+    // get the eqp_partno
+    vdsa$GetStruct(objOE = &PIECE_OE,
+		   name  = VDCT1_ISDP_ATTR_EQP_PARTNO,
+		   txt   = equipPartNum);
+
+    // set equipment minoISDP
+    strcat(minoISDP,equipPartNum);
+    
+
+    // update on tree // isdp
+        vdcol$GetAttr(objID = &NODE_ID,
+		      name  = VDCT1_ATTR_MINO,
+		      fld   = &fld);
+
+    if (*fld.name) {
+      strcpy(fld.val.txt,minoISDP);
+      //printf("fld.val.txt(%s)\n\n",fld.val.txt);
+      // if(*fld.name != 0) {
+	    vdcol$UpdAttrs(objID = &NODE_ID,
+			   cnt   = 1,
+			   fld   = &fld);
+	    // }
+	  
+    }
+    }
+  
+  //compute for a beam
+  sts = vdobj$IsAncestryValid(objOE          = &PIECE_OE,
+			      superClassName = "VSbeam");
+
+  if (sts & 1) {
+    //printf("We are doing VSbeam class\n");
+  
+    strcpy(minoISDP,"BM ");
+    vdsa$GetStruct(objOE = &PIECE_OE,
+		   name  = VDCT1_ISDP_ATTR_GRADE,
+		   txt   = matlGrade);
+    strcat(minoISDP,matlGrade);
+    strcat(minoISDP," ");
+    //printf("MINO ISDP [%s]\n",minoISDP);
+    
+    // minoISDP should now equal BM GRADE
+    vdsa$GetStruct(objOE = &PIECE_OE,
+		   name  = VDCT1_ISDP_ATTR_PART_NUM,
+		   txt   = partNum);
+    printf("partNum[%s]\n",partNum);
+    
+    strcat(minoISDP,partNum);
+    //printf("minoISDP [%s]\n\n",minoISDP);
+    
+    // minoISDP is complete for beam
+
+    // update on tree
+    vdcol$GetAttr(objID = &NODE_ID,
+		  name  = VDCT1_ATTR_MINO_ISDP,
+		  fld   = &fld);
+    if(*fld.name == 0) {
+      
+      //printf("fld [%s] \n\n",fld.val.txt);
+      strcpy(fld.val.txt,minoISDP);
+      //printf("fld.val.txt(%s)\n\n",fld.val.txt);
+      //if(*fld.name != 0) {
+	vdcol$UpdAttrs(objID = &NODE_ID,
+		       cnt   = 1,
+		       fld   = &fld);
+	}
+	  
+    
+    retFlag = 1;
+    goto wrapup;
+  }
+  // compute for a plate
+  
+  sts = vdobj$IsAncestryValid(objOE = &PIECE_OE,
+			      superClassName = "VSplate");
+  if (sts & 1) {
+    //strcpy(minoISDP,"PL ");
+    
+    vdsa$GetStruct(objOE = &PIECE_OE,
+		   name = VDCT1_ISDP_ATTR_GRADE,
+		   txt = matlGrade);
+    //strcat(minoISDP,matlGrade);
+    //strcat(minoISDP," ");
+    // minoISDP should now equal PL GRADE
+    vdsa$GetStruct(objOE = &PIECE_OE,
+		   name = VDCT1_ISDP_ATTR_PLATE_THK,
+		   dbl = &plateThk);
+    
+    //strcat(minoISDP,plateThk);
+    sprintf(minoISDP,"PL %s %.1f",matlGrade,plateThk);
+    
+
+    // minoISDP is complete for plate
+
+    // update on tree
+    vdcol$GetAttr(objID = &NODE_ID,
+		  name  = VDCT1_ATTR_MINO_ISDP,
+		  fld   = &fld);
+    if (*fld.name) {
+      strcpy(fld.val.txt,minoISDP);
+      // if(*fld.name != 0) {
+	vdcol$UpdAttrs(objID = &NODE_ID,
+		       cnt    = 1,
+		       fld    = &fld);
+	// }
+    }
+  
+  
+    retFlag = 1;
+    goto wrapup;
+  }
+
+wrapup:
+  return retFlag;
+  
+}
+
+/* -------------------------------------------
+ * compute qty attribute and unit of measure attribute
+ * for beams, plates, and equipment.
+ */
+IGRstat setPartAttrQty(pvolume)
+  IGRdouble pvolume;
+
+{
+  IGRstat     retFlag, traceFlag;
+  IGRstat     sts, update;
+  
+  TVDfld      qtyFld, umFld;
+  
+  IGRchar     unitMeasure[64]; 
+  IGRchar     partQty[64];
+
+  IGRdouble   cutLength;
+  IGRdouble   plVolume;
+  
+  
+  
+  //init
+  traceFlag = 0;
+  retFlag = 0;
+  *partQty = 0;
+  *unitMeasure = 0;
+  update = 0;
+  plVolume = pvolume;
+  
+ 
+  // say hi
+  if (traceFlag) {
+    printf("<<Entering setPartAttrQty\n");
+    printf("volume = %f\n",plVolume);
+  }
+  
+  //check to see if we have an object
+  if (PIECE_OE.obj_id.objid == NULL_OBJID) {
+    retFlag = 1;
+    goto wrapup;
+  }
+ 
+
+    // compute for Equipment
+  sts = vdobj$IsAncestryValid(objOE = &PIECE_OE,
+			      superClassName = "VDequipment");
+  
+  if (sts & 1) {
+    // set the qty attribute for equipment = 1
+    strcpy(partQty,"1");
+    
+
+    // set the unit of measure = EA
+    strcpy(unitMeasure,"EA");
+    update = 1;
+    
+  } // end VDequipment
+
+
+  // ------------------------------------------
+  // compute for beam
+  
+  sts = vdobj$IsAncestryValid(objOE          = &PIECE_OE,
+			      superClassName = "VSbeam");
+  if (sts & 1) {
+    // set the qty attribute for beam
+    vdsa$GetStruct(objOE = &PIECE_OE,
+		   name = VDCT1_ISDP_ATTR_CUT_LENGTH,
+		   dbl = &cutLength);
+    sprintf(partQty,"%.1f",cutLength);
+
+    // set the unitMeasure = mm
+    strcpy(unitMeasure,"MM");
+    update = 1;
+    
+  }  // end of beam
+  
+  // ------------------------------------------
+  // compute for plate
+
+  sts = vdobj$IsAncestryValid(objOE          = &PIECE_OE,
+			      superClassName = "VSplate");
+  if (sts & 1) {
+    // set the qty attribute for beam get volume in mm^3, 
+    // convert to m^3
+   
+    plVolume = plVolume * 0.000000001;
+    sprintf(partQty,"%.3f",plVolume);
+    
+    // set unitMeasure = m3 for m^3
+
+    strcpy(unitMeasure,"M3");
+    update = 1;
+  }
+  
+
+    // update on tree
+  if (update) { 
+    vdcol$GetAttr(objID = &NODE_ID,
+		  name  = VDCT1_ATTR_QTY,
+		  fld   = &qtyFld);
+
+    vdcol$GetAttr(objID = &NODE_ID,
+		  name  = VDCT1_ATTR_UNIT_MEASURE,
+		  fld   = &umFld);
+
+    if (*qtyFld.name)
+      strcpy(qtyFld.val.txt,partQty);
+    //if(*qtyFld.name != 0) {
+      vdcol$UpdAttrs(objID = &NODE_ID,
+		     cnt   = 1,
+		     fld   = &qtyFld);
+      // } // end qtyFld
+ 
+    if (*umFld.name) {
+      strcpy(umFld.val.txt,unitMeasure);
+      ///if(*umFld.name != 0) {
+	vdcol$UpdAttrs(objID = &NODE_ID,
+		       cnt   = 1,
+		       fld   = &umFld);
+	// }
+      
+    } // end umFld
+    
+    retFlag = 1;
+    goto wrapup;
+    
+  }
+
+wrapup:
+  if (traceFlag) printf(">>Leaving setPartAttrQty\n");
+  
+  return retFlag;
+  
+}
+
+
+/* -------------------------------------------------
+ * Compute a part node
+ */
+IGRstat computeNodePart()
+{
+  IGRstat retFlag;
+  IGRstat sts;
+  IGRchar buf[256],tmp[256],unit[256],zone[256],compt[256];
+  IGRchar partEquipNo[256],cage[128],mino[128];
+  IGRchar unitEquipNo[256];
+  IGRchar endTreatment0[128],endTreatment1[128];
+  IGRchar endTreatInfo0[128],endTreatInfo1[128];
+
+  IGRdouble  plThk;
+  
+  TGRid   parentID, nodeID;
+  TGRobj_env  parentOE;
+  TVDctBaseInfo baseInfo;
+  
+  TVDfld  fld,treatFld,thkFld,cageFld,minoFld;
+  
+  // Init
+  retFlag = 0;
+  *cage = 0;
+  *mino = 0;
+  
+
+  // Make sure got a model object
+  if (PIECE_OE.obj_id.objid == NULL_OBJID) {
+    retFlag = 1;
+    goto wrapup;
+  }
+
+  
+#if 0    
+ //compute for a beam the Unit Number OK, CS
+  sts = vdobj$IsAncestryValid(objOE = &PIECE_OE,
+			      superClassName = "VSbeam");  
+  if (sts & 1){ 
+    // Do it
+  sts = vdct1$CSGetNodeMatrix(nodeID = &NODE_ID,
+			      csOE   = &PIECE_OE);
+  }
+  
+  // compute for Equipment
+  sts = vdobj$IsAncestryValid(objOE = &PIECE_OE,
+			      superClassName = "VDequipment");
+  if (sts & 1) {
+    // Do it
+  sts = vdct1$CSGetNodeMatrix(nodeID = &NODE_ID,
+			      csOE   = &PIECE_OE);
+  }
+  
+  // compute for Plate
+  sts = vdobj$IsAncestryValid(objOE = &PIECE_OE,
+			      superClassName = "VSplate");
+  if (sts & 1) {
+    // Do it
+  sts = vdct1$CSGetNodeMatrix(nodeID = &NODE_ID,
+			      csOE   = &PIECE_OE);
+  }
+#endif 
+
+ 
+
+  // Build the isdp_name
+  *buf = 0;
+  vdsa$GetStruct(objOE = &PIECE_OE, name = VDCT1_ISDP_ATTR_EQP_FAMILY,  txt = tmp);
+  strcpy(buf,tmp);
+  strcat(buf,":");
+  vdsa$GetStruct(objOE = &PIECE_OE, name = VDCT1_ISDP_ATTR_EQP_PARTNO,  txt = tmp);
+  strcat(buf,tmp);
+  strcat(buf,":");
+  vdsa$GetStruct(objOE = &PIECE_OE, name = VDCT1_ISDP_ATTR_EQP_PARTREV, txt = tmp);
+  strcat(buf,tmp);
+  strcat(buf,":");
+  vdobj$Get(objOE = &PIECE_OE, objName = tmp);
+  strcat(buf,tmp);
+  
+  vdcol$GetAttr(objID = &NODE_ID, name = VDCT1_ATTR_ISDP_NAME, fld = &fld);
+  if (*fld.name) {
+    VDstrupr(buf);
+    strcpy(fld.val.txt,buf);
+    // if(*fld.name != 0) {
+      vdcol$UpdAttrs(objID = &NODE_ID, cnt = 1, fld = &fld);
+      // }
+	
+  }
+  
+  // Add the path
+  vdobj$Get(objOE = &PIECE_OE, objPath = tmp);
+  
+  vdcol$GetAttr(objID = &NODE_ID, name = VDCT1_ATTR_ISDP_PATH, fld = &fld);
+  if (*fld.name) {
+    VDstrupr(tmp);
+    strcpy(fld.val.txt,tmp);
+    vdcol$UpdAttrs(objID = &NODE_ID, cnt = 1, fld = &fld);
+  }
+
+
+  // get and store the attributes carefully
+  vdcol$GetAttr(objID = &NODE_ID, name = VDCT1_ATTR_ZONE, fld = &fld);
+  strcpy(zone,"");
+  if (*fld.name)  strcpy(zone,fld.val.txt);
+
+  vdcol$GetAttr(objID = &NODE_ID, name = VDCT1_ATTR_UNIT, fld = &fld);
+  strcpy(unit,"");
+  if (*fld.name) strcpy(unit,fld.val.txt);
+
+  vdcol$GetAttr(objID = &NODE_ID, name = VDCT1_ATTR_COMPARTMENT, fld = &fld);
+  strcpy(compt,"");
+  if (*fld.name) strcpy(compt,fld.val.txt); 
+
+
+  // Other attributes
+  VDct1CopyAttributeFromModelToNode(&NODE_ID,
+				    VDCT1_ATTR_ZONE,
+				    &PIECE_OE,
+				    "zone_number");  
+  
+  VDct1CopyAttributeFromModelToNode(&NODE_ID,
+				    VDCT1_ATTR_UNIT,
+				    &PIECE_OE,
+				    VDCT1_ISDP_ATTR_UNIT);
+
+  VDct1CopyAttributeFromModelToNode(&NODE_ID,
+				    VDCT1_ATTR_COMPARTMENT,
+				    &PIECE_OE,
+				    VDCT1_ISDP_ATTR_COMPARTMENT);
+  // check the zone
+  vdcol$GetAttr(objID = &NODE_ID, name = VDCT1_ATTR_ZONE, fld = &fld);
+
+  // if it is here
+  if (*fld.name) {
+
+    // if it is blank
+    if (!strcmp(fld.val.txt,"")) {
+      // bring back the old zone
+      strcpy(fld.val.txt,zone);
+      vdcol$UpdAttrs(objID = &NODE_ID, cnt = 1, fld = &fld);
+    }
+  }
+  
+  // check the unit
+  vdcol$GetAttr(objID = &NODE_ID, name = VDCT1_ATTR_UNIT, fld = &fld);
+
+  // if it is here 
+  if (*fld.name) {
+
+    // if it is blank
+    if (!strcmp(fld.val.txt,"")) {
+      // bring back the old unit
+      strcpy(fld.val.txt,unit);
+      vdcol$UpdAttrs(objID = &NODE_ID, cnt = 1, fld = &fld);
+    }
+  }
+  
+
+  // check the compartment
+  vdcol$GetAttr(objID = &NODE_ID, name = VDCT1_ATTR_COMPARTMENT, fld = &fld);
+
+  // if it is here
+  if (*fld.name) {
+
+    // if it is blank
+    if (!strcmp(fld.val.txt,"")) {
+      // bring back the old compartment
+      strcpy(fld.val.txt,compt);
+      vdcol$UpdAttrs(objID = &NODE_ID, cnt = 1, fld = &fld);
+    }
+  }
+  
+
+  //QTY and Unit of measure are computed in setPartAttrQty called in
+  //the computeWeight function.
+
+  /* -------------------------------------------------------------
+   * Attributes for different model types come from different model
+   * attributes, set various attributes on Node based on Model
+   * ancestry.
+   */
+
+  // various attributes for beams
+  sts = vdobj$IsAncestryValid(objOE = &PIECE_OE,
+			      superClassName = "VSbeam");  
+  if (sts & 1){
+    // VDCT1_ATTR_SIZE, use part_num
+    VDct1CopyAttributeFromModelToNode(&NODE_ID,
+				      VDCT1_ATTR_SIZE,
+				      &PIECE_OE,
+				      VDCT1_ISDP_ATTR_PART_NUM);
+    
+    // VDCT1_ATTR_MATERIAL, use material
+    VDct1CopyAttributeFromModelToNode(&NODE_ID,
+				      VDCT1_ATTR_MATERIAL,
+				      &PIECE_OE,
+				      VDCT1_ATTR_MATERIAL);
+
+    // VDCT1_ATTR_GRADE, use grade
+    VDct1CopyAttributeFromModelToNode(&NODE_ID,
+				      VDCT1_ISDP_ATTR_GRADE,
+				      &PIECE_OE,
+				      VDCT1_ISDP_ATTR_GRADE);
+
+    // VDCT1_ATTR_TREATMENT, this will be a concantination of
+    // end0 treatment;info and end1 treatment;info
+    
+    //get treatments and infos.
+    vdsa$GetStruct( objOE = &PIECE_OE,
+		    name  = "end_treatment0",
+		    txt   = endTreatment0);
+    vdsa$GetStruct( objOE = &PIECE_OE,
+		    name  = "end_treatment1",
+		    txt   = endTreatment1);
+    vdsa$GetStruct( objOE = &PIECE_OE,
+		    name  = "end_treatinfo0",
+		    txt   = endTreatInfo0);
+    vdsa$GetStruct( objOE = &PIECE_OE,
+		    name  = "end_treatinfo1",
+		    txt   = endTreatInfo1);
+    // get it, set it, update it
+    vdcol$GetAttr( objID = &NODE_ID,
+		   name  = VDCT1_ISDP_ATTR_TREATMENT,
+		   fld   = &treatFld);
+
+    if (*treatFld.name) {
+      
+      VDstrupr(endTreatment0);
+      VDstrupr(endTreatInfo0);
+      VDstrupr(endTreatment1);
+      VDstrupr(endTreatInfo1);
+      sprintf(treatFld.val.txt,"%s:%s:%s:%s",
+	      endTreatment0,endTreatInfo0,endTreatment1,endTreatInfo1);
+      //if (*treatFld.name) {
+	vdcol$UpdAttrs( objID = &NODE_ID,
+			cnt   = 1,
+			fld   = &treatFld);
+	//}
+    } // end of treatment
+      
+    // VDCT1_ATTR_PART_DESCR, use family_name
+    VDct1CopyAttributeFromModelToNode(&NODE_ID,
+				      VDCT1_ATTR_PART_DESCR,
+				      &PIECE_OE,
+				      "family_name");
+
+    // VDCT1_ATTR_PART_NO, use part_num
+    VDct1CopyAttributeFromModelToNode(&NODE_ID,
+				      VDCT1_ATTR_PART_NO,
+				      &PIECE_OE,
+				      VDCT1_ISDP_ATTR_PART_NUM);
+
+    
+  } // end of various beam attributes
+  
+  // -----------------------------------------
+  // various attributes for plates
+  // -----
+  sts = vdobj$IsAncestryValid(objOE = &PIECE_OE,
+			      superClassName = "VSplate");  
+  if (sts & 1){
+    // VDCT1_ATTR_SIZE, use part_num
+    VDct1CopyAttributeFromModelToNode(&NODE_ID,
+				      VDCT1_ATTR_SIZE,
+				      &PIECE_OE,
+				      VDCT1_ISDP_ATTR_PART_NUM);
+    
+    // VDCT1_ATTR_MATERIAL, use material
+    VDct1CopyAttributeFromModelToNode(&NODE_ID,
+				      VDCT1_ATTR_MATERIAL,
+				      &PIECE_OE,
+				      VDCT1_ATTR_MATERIAL);
+
+    // VDCT1_ATTR_GRADE, use grade
+    VDct1CopyAttributeFromModelToNode(&NODE_ID,
+				      VDCT1_ISDP_ATTR_GRADE,
+				      &PIECE_OE,
+				      VDCT1_ISDP_ATTR_GRADE);
+
+    // VDCT1_ATTR_PART_NO, use part_num
+    VDct1CopyAttributeFromModelToNode(&NODE_ID,
+				      VDCT1_ATTR_PART_NO,
+				      &PIECE_OE,
+				      VDCT1_ISDP_ATTR_PART_NUM);
+
+    // VDCT1_ATTR_THICKNESS, use plate_thk
+    //get plate_thk
+    vdsa$GetStruct( objOE = &PIECE_OE,
+		    name  = VDCT1_ISDP_ATTR_PLATE_THK,
+		    dbl   = &plThk);
+    
+
+    // get it, set it, update it   
+    vdcol$GetAttr( objID = &NODE_ID,
+		   name  = VDCT1_ISDP_ATTR_PLATE_THK,
+		   fld   = &thkFld);
+
+    if (*thkFld.name) {
+     
+      
+      sprintf(thkFld.val.txt,"%.1f",plThk);
+      //if (*thkFld.name) {
+	vdcol$UpdAttrs( objID = &NODE_ID,
+			cnt   = 1,
+			fld   = &thkFld);
+	//}
+    } // end of plate_thk
+
+    // VDCT1_ATTR_PART_DESCR, use family_name
+    VDct1CopyAttributeFromModelToNode(&NODE_ID,
+				      VDCT1_ATTR_PART_DESCR,
+				      &PIECE_OE,
+				      "family_name");
+
+  }  // end of plate
+  
+  // ----------------------------------------
+  // various attributes for equipment
+  // -------
+  sts = vdobj$IsAncestryValid(objOE = &PIECE_OE,
+			      superClassName = "VDequipment");  
+  if (sts & 1){
+    // VDCT1_ATTR_NOMENCLATURE, use nomeclature
+    VDct1CopyAttributeFromModelToNode(&NODE_ID,
+				      VDCT1_ATTR_NOMENCLATURE,
+				      &PIECE_OE,
+				      VDCT1_ATTR_NOMENCLATURE);
+    
+    // VDCT1_ATTR_PART_DESCR, use eqp_descr
+    VDct1CopyAttributeFromModelToNode(&NODE_ID,
+				      VDCT1_ATTR_PART_DESCR,
+				      &PIECE_OE,
+				      "eqp_descr");
+
+    // VDCT1_ATTR_PART_REV, use eqp_partrev
+    VDct1CopyAttributeFromModelToNode(&NODE_ID,
+				      VDCT1_ATTR_PART_REV,
+				      &PIECE_OE,
+				      VDCT1_ISDP_ATTR_EQP_PARTREV);
+
+    // VDCT1_ATTR_PART_NO, use eqp_partno
+    VDct1CopyAttributeFromModelToNode(&NODE_ID,
+				      VDCT1_ATTR_PART_NO,
+				      &PIECE_OE,
+				      VDCT1_ISDP_ATTR_EQP_PARTNO);
+
+    // VDCT1_ATTR_CAGE and VDCT1_ATTR_MINO
+    // these two attributes can be read from eqp_partno
+    // where eqp_partno = cage-mino
+    vdsa$GetStruct( objOE = &PIECE_OE,
+		    name  = VDCT1_ISDP_ATTR_EQP_PARTNO,
+		    txt   = partEquipNo);
+
+    //set cage
+    strcpy ( cage, strtok(partEquipNo,"-") );
+    
+    //set mino
+    strcpy ( mino, strtok(NULL,"") );
+    
+    //get it, set it, update it.
+    vdcol$GetAttr( objID = &NODE_ID,
+		   name  = VDCT1_ATTR_CAGE,
+		   fld   = &cageFld);
+    
+    if (*cageFld.name) {
+      VDstrupr(cage);
+      strcpy(cageFld.val.txt,cage);
+      //if (*cageFld.name) {
+	vdcol$UpdAttrs( objID = &NODE_ID,
+			cnt   = 1,
+			fld   = &cageFld);
+	//}
+    }
+    
+    vdcol$GetAttr( objID = &NODE_ID,
+		   name  = VDCT1_ATTR_MINO,
+		   fld   = &minoFld);
+
+    if (*minoFld.name) {
+      VDstrupr(mino);
+      strcpy(minoFld.val.txt,mino);
+      //if (*minoFld.name) {
+	vdcol$UpdAttrs( objID = &NODE_ID,
+			cnt   = 1,
+			fld   = &minoFld);
+	//}	
+    }
+    
+ 
+  }  // end of equipment
+  
+
+
+  // Pull zone from 
+  /// sprintf(buf,"%s:%s:%s:%s:",
+  // BASE_INFO.setType,
+  //BASE_INFO.setName,
+  //BASE_INFO.nodeType,
+  //BASE_INFO.nodeName);
+
+  //vdcol$GetAttr(objID = &NODE_ID, name = VDCT1_ATTR_ZONE, fld = &fld);
+  //if (*fld.name) {
+  //  VDstrupr(buf);
+  // strcpy(fld.val.txt,buf);
+  // vdcol$UpdAttrs(objID = &NODE_ID, cnt = 1, fld = &fld);
+  //}
+
+  // qty is based on object type
+  // computeNodePartCount();
+
+  // MINO ISDP is based on grade and part_num for beams
+  //                       grade and plate_thk for plates
+  computeNodePartMinoISDP();
+ 
+
+  // Done
+  retFlag = 1;
+  
+wrapup:
+  return retFlag;
+}
+
+/* -------------------------------------------------
+ * Compute the node
+ */
+IGRstat computeNode()
+{
+  IGRstat retFlag;
+  
+  // Init
+  retFlag = 1;
+  
+  // Frozen nodes do not get recomputed
+
+  // Is it a part?
+  if (!strcmp(BASE_INFO.nodeType,VDCT1_ENG_NODE_TYPE_PART)) {
+    retFlag = computeNodePart();
+  
+    goto wrapup;
+  }
+  
+  // Failed
+  retFlag = 0;
+
+  // oh well
+wrapup:
+  return retFlag;
+  
+}
+
+/* -------------------------------------------------
+ * Returns the value for mbom assembly identifier
+ */
+IGRstat getAttributeValue_tmbom_assy()
+{
+  TGRid parentID;
+  TGRid childID;
+  
+  TVDctBaseInfo baseInfo;
+
+  // For assemblies (ENG) the mino
+  if (!strcmp(BASE_INFO.nodeType,VDCT1_ENG_NODE_TYPE_ENGASSY2)) {
+    vdcol$GetAttr(objID = &NODE_ID, name = VDCT1_ATTR_MINO, fld = &FLD);
+    strcpy(FLD.name,VDCT1_ATTR_MBOM_ASSY);
+    return 1;
+  }
+
+  // For assemblies (2) the mino
+  if (!strcmp(BASE_INFO.nodeType,VDCT1_ENG_NODE_TYPE_ASSY2)) {
+    vdcol$GetAttr(objID = &NODE_ID, name = VDCT1_ATTR_MINO, fld = &FLD);
+    strcpy(FLD.name,VDCT1_ATTR_MBOM_ASSY);
+    return 1;
+  }
+
+  // Not a part then not defined
+  if (strcmp(BASE_INFO.nodeType,VDCT1_ENG_NODE_TYPE_PART)) {
+    strcpy(FLD.val.txt,"");
+    FLD.type = VDFLD_TYPE_TXT;
+    return 1;
+  }
+
+  // Look up until an ASSY is found
+  parentID = NODE_ID;
+  
+parent_loop:
+
+  childID = parentID;
+  
+  vdct1$GetTree1Parent(objID = &childID, nth = 0, outID = &parentID);
+  if (parentID.objid == NULL_OBJID) {
+    parentID = NODE_ID; // Part has no assy parent
+    goto got_it;
+  }
+  vdct1$GetBaseInfo(objID = &parentID, baseInfo = &baseInfo);
+
+  if(strcmp(baseInfo.nodeType,VDCT1_ENG_NODE_TYPE_ENGASSY2)) {
+    if(strcmp(baseInfo.nodeType,VDCT1_ENG_NODE_TYPE_ASSY2)) goto parent_loop; 
+  }
+
+got_it:
+
+  vdcol$GetAttr(objID = &parentID, name = VDCT1_ATTR_MINO, fld = &FLD);
+  strcpy(FLD.name,VDCT1_ATTR_MBOM_ASSY);
+  return 1;
+
+}
+
+/* -------------------------------------------------
+ * Tree specific attribute processing
+ */
+IGRstat getAttributeValue()
+{
+  if (!strcmp(FLD.name,VDCT1_ATTR_MBOM_ASSY)) {
+    return getAttributeValue_tmbom_assy();
+  }
+  return 0;
+}
+
+/* -------------------------------------------------
+ * Individual stage information for NODE_INDEX
+ */
+IGRstat getNodeTypeInfo()
+{
+  NODE_CNT = 7;
+  // This sets the DO-IT box content in the Node Form selection
+  switch(NODE_INDEX) {
+
+  case 4:
+    strcpy(NODE_TYPE_INFO.type, VDCT1_ENG_NODE_TYPE_PART);
+    strcpy(NODE_TYPE_INFO.desc, "PART");
+    strcpy(NODE_TYPE_INFO.level,"U00");
+    strcpy(NODE_TYPE_INFO.table,"vdct1_outfit");
+    return 1;
+
+  case 5:
+    strcpy(NODE_TYPE_INFO.type, VDCT1_ENG_NODE_TYPE_PARTS);
+    strcpy(NODE_TYPE_INFO.desc, "PARTS_ASSY");
+    strcpy(NODE_TYPE_INFO.level,"U00");
+    strcpy(NODE_TYPE_INFO.table,"vdct1_outfit");
+    return 1;
+
+  case 1:
+    strcpy(NODE_TYPE_INFO.type, VDCT1_ENG_NODE_TYPE_ENGASSY2);
+    strcpy(NODE_TYPE_INFO.desc, "ENGASSY[2]");
+    strcpy(NODE_TYPE_INFO.level,"U00");
+    strcpy(NODE_TYPE_INFO.table,"vdct1_outfit");
+    return 1;
+
+  case 2:
+    strcpy(NODE_TYPE_INFO.type, VDCT1_ENG_NODE_TYPE_ENGASSY6);
+    strcpy(NODE_TYPE_INFO.desc, "ENGASSY[6]");
+    strcpy(NODE_TYPE_INFO.level,"U00");
+    strcpy(NODE_TYPE_INFO.table,"vdct1_outfit");
+    return 1;
+
+  case 0:
+    strcpy(NODE_TYPE_INFO.type, VDCT1_ENG_NODE_TYPE_ASSY2);
+    strcpy(NODE_TYPE_INFO.desc, "ASSY2");
+    strcpy(NODE_TYPE_INFO.level,"000");
+    strcpy(NODE_TYPE_INFO.table,"vdct1_outfit");
+    return 1;
+
+  case 3:
+    strcpy(NODE_TYPE_INFO.type, VDCT1_ENG_NODE_TYPE_GROUP);
+    strcpy(NODE_TYPE_INFO.desc, "GROUP");
+    strcpy(NODE_TYPE_INFO.level,"U01");
+    strcpy(NODE_TYPE_INFO.table,"vdct1_outfit");
+    return 1;
+
+  case 6:
+    strcpy(NODE_TYPE_INFO.type, VDCT1_ENG_NODE_TYPE_OUTFIT);
+    strcpy(NODE_TYPE_INFO.desc, "OUTFIT_TREE");
+    strcpy(NODE_TYPE_INFO.level,"002");
+    strcpy(NODE_TYPE_INFO.table,"vdct1_outfit");
+    return 1;
+  }
+
+  memset(&NODE_TYPE_INFO,0,sizeof(TVDctNodeTypeInfo));
+
+  return 0;
+}
+
+/* -------------------------------------------------
+ * Class filters, all root
+ */
+IGRstar getFilter()
+{
+ 
+#if 0  
+  om$get_classid(classname = "GRvg",
+		 p_classid = &CLASS_LIST.p_classes[0]);
+  CLASS_LIST.w_count = 1;
+#endif
+#if 1
+  om$get_classid(classname = "VSplate",
+		 p_classid = &CLASS_LIST.p_classes[0]);  
+  om$get_classid(classname = "VSbeam",
+		 p_classid = &CLASS_LIST.p_classes[1]);  
+  om$get_classid(classname = "VDequipment",
+		 p_classid = &CLASS_LIST.p_classes[2]);  
+  om$get_classid(classname = "GRgencs",
+		 p_classid = &CLASS_LIST.p_classes[3]);
+  CLASS_LIST.w_count = 4;
+#endif
+  return 1;
+}
+
+/* -------------------------------------------------
+ * Assorted information about the set type
+ */
+IGRstar getSetTypeInfo()
+{
+  strcpy(SET_TYPE_INFO.type,"OutfitTree");
+  strcpy(SET_TYPE_INFO.rev, "000");
+  strcpy(SET_TYPE_INFO.desc,"OutfitTree");
+  
+  strcpy(SET_TYPE_INFO.nodeTable,"vdct1_outfit");
+  strcpy(SET_TYPE_INFO.leafTable,"vdct1_outfit");
+
+  return 1;
+}
+
+/* -------------------------------------------------
+ * Say something if ppl is run by user
+ */
+main()
+{
+  getSetTypeInfo();
+
+  printf("%s %s %s\n",
+    SET_TYPE_INFO.type,
+    SET_TYPE_INFO.rev,
+    SET_TYPE_INFO.desc);
+
+  return 1;
+}
+
+/* --------------------------------------------------
+ * Used to retrieve attribute information
+ */
+IGRint        ATTR_INDEX; // Attribute Index
+TVDctAttrName ATTR_NAMEX; // Attribute Name
+TVDctAttrInfo ATTR_INFO;  // Attribute Information
+
+/* --------------------------------------------------
+ * For a given set wide attribute name, fill in the info
+ * I - ATTR_NAMEX
+ * O - ATTR_INFO
+ */
+IGRstat getAttrInfo()
+{ 
+  IGRstat retFlag;
+  
+  // Init 
+  retFlag = 1;
+  memset(&ATTR_INFO,0,sizeof(TVDctAttrInfo));
+
+  // Trick to allow sharing standard attributes
+#include "attribute.h"
+
+  // Not found
+  retFlag = 0;
+  
+wrapup:
+  return retFlag;
+}
+
+/* -------------------------------------------
+ * Computes the setName for Trees
+ */
+IGRstat computeSetName()
+{
+  IGRstat       retFlag, seqNo;
+  IGRint       *a_minoIndex;
+  TVDctBaseInfo parentBaseInfo;
+  IGRchar       buf[256];
+
+
+  // init
+  retFlag = 0;
+
+  if (strcmp(BASE_INFO.nodeType,VDCT1_ENG_NODE_TYPE_OUTFIT)) goto wrapup;
+  
+  seqNo = seqNo +1;
+  sprintf(buf,"%d",seqNo);
+     
+  // Rule: ENG_ASSY_TREE  get named by the number
+  if (!strcmp(NODE_TYPE,VDCT1_ENG_NODE_TYPE_OUTFIT)) {
+
+    //look up unique number from ost_mino_index (database lookup)
+    vdct1$PostGetNextMinoIndex(hullNum     = "LPD17",
+			       unitNum     = "C60000",
+			       groupCode   = buf,
+			       a_minoIndex = &a_minoIndex);  
+    //generate buf
+    sprintf(buf,"%6s%04d","LPD17.",a_minoIndex);
+    strcpy(BASE_INFO.setName,buf);
+
+    retFlag = 1;
+    goto wrapup; 
+  }
+
+ 
+  
+  // oh well
+  
+
+  // say bye
+wrapup:
+
+    return retFlag;
+}
+
+
+/* --------------------------------------------
+ * Computes the BASE_INFO.nodeName for certain nodes
+ */
+IGRstat computeNodeName()
+{
+  IGRstat       retFlag, index, nextNum, sts, sts1;
+  TVDfld        outFld;
+  TVDfld        comFld;  
+  TVDfld        nodeNumFld;
+  TVDfld        zoneFld;
+  TGRid         parentID, treeID;
+  IGRint        rows,cols,len;
+  IGRchar     **buf;
+  IGRchar       nodeName[128], comTxt[128], zone[128], buff[128], buf1[128], buf2[128], sql[256];
+  TVDctBaseInfo parentBaseInfo;
+ 
+  // init
+  retFlag = 0;
+ rows = cols = 0; buf = NULL;
+// go home for these
+  if ((!strcmp(BASE_INFO.nodeType,VDCT1_ENG_NODE_TYPE_PART))  ||
+      (!strcmp(BASE_INFO.nodeType,VDCT1_ENG_NODE_TYPE_PARTS)) ||
+      (!strcmp(BASE_INFO.nodeType,VDCT1_ENG_NODE_TYPE_GROUP))) {
+    retFlag = 1;
+    goto wrapup;
+  }
+
+// Make sure logged in
+  sts = VDSverify_login();
+  if (!(sts & 1)) {
+    strcpy(BASE_INFO.nodeName,"");
+    strcpy(buff,"Database Error - No Log-in\n\nOpen Database is Required\n\n"); 
+    sts = vdct1$CmdNodeMsgBox(msg = buff);
+    goto wrapup;
+  }
+
+  // Get  the com code
+  vdcol$GetAttr(objID = &NODE_PARENT_ID, name = VDCT1_ATTR_COM_CODE, fld = &comFld);
+  vdct1$GetBaseInfo(objID = &NODE_PARENT_ID, baseInfo = &parentBaseInfo);
+  strcpy(comTxt,comFld.val.txt);
+  strcpy(buff,BASE_INFO.nodeName);
+  len = strlen(buff);
+  if ((len < 1) || (len > 10)) strcpy(buff,"");
+  sts1 = 0;
+  sts = 0;
+
+  // if the parent or the node is ENG_ASSY[6]
+  if ((!strcmp(BASE_INFO.nodeType,VDCT1_ENG_NODE_TYPE_ENGASSY6)) ||
+      (!strcmp(parentBaseInfo.nodeType,VDCT1_ENG_NODE_TYPE_ENGASSY6))) {
+    // get the zone
+    vdcol$GetAttr(objID = &NODE_PARENT_ID, name = VDCT1_ATTR_ZONE, fld = &zoneFld);
+    strcpy(zone,zoneFld.val.txt);
+    // validate the Com_Code for the parent
+    sprintf(sql,"select sequence_no from tm_code_list where comm_code = '%s';\n",comTxt);
+    sts = VDSsql_query(sql, &cols, &rows, &buf);
+
+    if (*buf == 0) sts = 0;
+    // validate the Com_Code for the kid
+    sprintf(sql,"select sequence_no from tm_code_list where comm_code = '%s';\n",buff);
+    sts1 = VDSsql_query(sql, &cols, &rows, &buf);
+    if (*buf == 0) sts1 = 0;
+    // if neither is valid go home
+    if (!(sts || sts1)) {
+	strcpy(BASE_INFO.nodeName,"");
+	strcpy(buff,"Data Error\n\nInvalid or Absent\n\nCommodity Codes"); 
+	sts = vdct1$CmdNodeMsgBox(msg = buff);
+	goto wrapup;
+      }
+    if (sts1) strcpy(comTxt,buff);
+    // get the Tree ID
+    vdct1$GetTreeForNode(nodeID = &NODE_PARENT_ID,
+			 treeID = &treeID);
+    // get the node_num attribute and reset it
+    vdcol$GetAttr(objID = &treeID, name = VDCT1_ATTR_NUM_NEXT, fld = &nodeNumFld);
+    strcpy(buff,nodeNumFld.val.txt);
+    index = atoi(buff);
+    // make the name
+    if ((!strcmp(BASE_INFO.nodeType,VDCT1_ENG_NODE_TYPE_ASSY2)) ||
+	(!strcmp(BASE_INFO.nodeType,VDCT1_ENG_NODE_TYPE_ENGASSY2))) {
+      goto oldway;
+      
+    }
+    sprintf(buff,"%s-%s-%04d",zone,comTxt,index);
+    strcpy(BASE_INFO.nodeName,buff);
+    // go to wrapup with success
+    retFlag = 1;
+    goto wrapup;
+  }
+ 
+  if(!strcmp(comTxt,"")) {
+    strcpy(BASE_INFO.nodeName,"");
+    // warn the user why
+    strcpy(buff,"Data Error\n\nInvalid or Absent\n\nCommodity Code\n\n"); 
+    sts = vdct1$CmdNodeMsgBox(msg = buff);
+    goto wrapup;
+  }
+oldway:
+  sprintf(sql,"select sequence_no from tm_code_list where comm_code = '%s';\n",comTxt);
+
+  sts = VDSsql_query(sql, &cols, &rows, &buf);
+
+    if (sts) {
+      strcpy(buff,buf[0]);
+      index = atoi(buff);
+      nextNum = index + 1;
+      sprintf(sql,"update tm_code_list set sequence_no = %d where comm_code = '%s';\n",
+	      nextNum, comTxt); 
+      sts = VDSexecute_sql_stmt(sql);
+    }
+    else {
+      strcpy(BASE_INFO.nodeName,"");
+      strcpy(buff,"Database Error\n\nSequence Number Not Found\n\n"); 
+      sts = vdct1$CmdNodeMsgBox(msg = buff);
+      goto wrapup;
+    }
+
+  // generate buf
+  sprintf(buff,"LPOFA.%s-%04d",comTxt,index);
+
+  strcpy(BASE_INFO.nodeName,buff);
+  					      
+  retFlag = 1;
+  
+  // say bye
+wrapup: 
+ 
+  // clean up everything
+  if (buf) VdsRisFreeBuffer(buf, rows * cols);
+  // replace the nodeName for these 
+    return retFlag;
+
+}
+
+/* --------------------------------------------------
+ * Pull in standard helper functions
+ */
+#include "compute.h"
+
+// node - attribute mapping
+#include "node_attrs.h"
+
+/* -------------------------------------------------
+ * check to see if the part is in ops
+ */
+IGRstat isPartInOPS()
+{
+  TVDct1_part_fld_part_id part_id;
+  IGRstat retFlag;
+  
+  // init 
+  retFlag = 1;
+  if((!strcmp(BASE_INFO.nodeType,VDCT1_ENG_NODE_TYPE_PART)) ||
+     (!strcmp(BASE_INFO.nodeType,VDCT1_ENG_NODE_TYPE_ENGASSY2)) ||
+     (!strcmp(BASE_INFO.nodeType,VDCT1_ENG_NODE_TYPE_ASSY2)) ||
+     (!strcmp(BASE_INFO.nodeType,VDCT1_ENG_NODE_TYPE_PARTS)) ||
+     (!strcmp(BASE_INFO.nodeType,VDCT1_ENG_NODE_TYPE_ENGASSY6)))
+  {
+    // validate for this
+    retFlag = 0;
+    
+    // See if have a valid part
+    VDct1ReadPartIdForPartCageNum(BASE_INFO.nodeName,part_id);
+    if (*part_id == 0) goto wrapup;  
+    retFlag = 1;
+  }
+  
+  
+wrapup:
+  ACTION_OK = retFlag;
+  return retFlag;
+  
+}
+
+
+/* --------------------------------------------------
+ * Load up static attributes from ops
+ */
+IGRstat computePartAttrs()
+{
+  TVDct1_part_fld_part_id part_id;
+  TVDct1PartInfo          part;
+
+  TVDfld fld;
+  IGRchar buf[256];
+  
+  // See if have a valid part
+  VDct1ReadPartIdForPartCageNum(BASE_INFO.nodeName,part_id);
+  if (*part_id == 0) goto wrapup;
+  
+  // Get the part information
+  VDct1ReadPartFromAttrsTable(part_id,&part);
+  
+  // Just a bunch of copies
+
+  // Lot's of names for mino
+
+  setAttribute(VDCT1_ATTR_MINO_ISDP,    part.part_cage_num);  
+  setAttribute(VDCT1_ATTR_MINO,         part.part_num);  
+  setAttribute(VDCT1_ATTR_COPICS_NUM,   part.part_cage_num);  
+  setAttribute(VDCT1_ATTR_PART_NO,      part.part_cage_num);
+  setAttribute(VDCT1_ISDP_ATTR_PART_NUM,part.part_cage_num);
+  setAttribute(VDCT1_ATTR_PART_REV,     part.part_rev);
+  
+  setAttribute(VDCT1_ATTR_CAGE,         part.part_cage_code);  
+  setAttribute(VDCT1_ATTR_UNIT_MEASURE, part.unit_of_measure);  
+  setAttribute(VDCT1_ATTR_UM,           part.unit_of_measure);  
+  setAttribute(VDCT1_ATTR_MATERIAL,     part.material);  
+  setAttribute(VDCT1_ISDP_ATTR_GRADE,   part.grade);  
+  setAttribute(VDCT1_ATTR_SIZE,         part.part_size);  
+  setAttribute(VDCT1_ATTR_PART_DATE,    part.updatedate);  
+  setAttribute(VDCT1_ATTR_PART_DESCR,   part.copics_short_description);
+ 
+  // Build a nomenclature
+  strcpy(buf,part.noun_name);
+  if (*part.noun_name) strcat(buf,", ");
+  strcat(buf,part.type);
+  if (*part.type) strcat(buf,", ");
+  strcat(buf,part.modifier);
+  *(buf+72) = 0;
+  setAttribute(VDCT1_ATTR_NOMENCLATURE,buf);
+  
+  // Go ahead and default QTY to 1 for now
+  setAttribute(VDCT1_ATTR_QTY,"1");
+  
+  // Done
+ wrapup:
+  return 1;
+}
+
+/* --------------------------------------------------
+ * Traffic director for computing the mino number
+ */
+IGRstat computeMino()
+{
+  IGRstat retFlag;
+  IGRstat sts;
+  IGRchar buf[128];
+  
+  TVDfld minoFld,cageFld;
+  TVDfld commodityFld;
+  TVDfld shortFld;
+  TVDfld hullFld;
+  TVDfld unitFld;
+  
+  // Init
+  retFlag = 0;
+ 
+ // And build it
+  vdcol$GetAttr(objID = &NODE_ID, name = VDCT1_ATTR_MINO_ISDP, fld = &minoFld); 
+  if (*minoFld.name != 0) {
+    
+    if (!strcmp(minoFld.val.txt,"")) sprintf(minoFld.val.txt,"2311");
+    // name of EA2 is MINO
+    if (!strcmp(BASE_INFO.nodeType,VDCT1_ENG_NODE_TYPE_ENGASSY2)) {
+      strcpy(minoFld.val.txt,BASE_INFO.nodeName);
+    }
+
+    // setup MINO
+    vdcol$UpdAttrs(objID = &NODE_ID, cnt = 1, fld = &minoFld); 
+  }
+  
+  // get the cage and build it
+  vdcol$GetAttr(objID = &NODE_ID, name = VDCT1_ATTR_CAGE, fld = &cageFld); 
+  if (*cageFld.name == 0) goto wrapup;
+
+  // name of cage is 
+  strcpy(cageFld.val.txt,"1CC97");
+
+  // setup cage
+  vdcol$UpdAttrs(objID = &NODE_ID, cnt = 1, fld = &cageFld);      
+  
+  // Done
+  retFlag = 1;
+  
+wrapup:
+  return retFlag;
+}
+
+/* --------------------------------------------------
+ * Set the REVISION attribute
+ */
+IGRstat setAttributeRevision()
+{
+  IGRstat retFlag;
+  IGRstat sts;
+  IGRchar buf[128];
+  TVDfld revFld;
+
+  // init
+  retFlag = 0;
+
+  // start anybody this way
+    vdcol$GetAttr(objID = &NODE_ID, name = VDCT1_ATTR_ASSY_REV, fld = &revFld);
+    if (*revFld.name == 0) goto wrapup;
+    // fill in any blank field with value
+    if (!strcmp(revFld.val.txt,"")) strcpy(revFld.val.txt,"000");
+    if (*revFld.name) {
+      vdcol$UpdAttrs(objID = &NODE_ID, cnt = 1, fld = &revFld); 
+    }    
+ 
+  // Done
+  retFlag = 1;
+  
+wrapup:
+  return retFlag;
+}
+
+/* --------------------------------------------------
+ * Set the FROZEN attribute
+ */
+IGRstat setAttributeFrozen()
+{
+  IGRstat retFlag;
+  IGRstat sts;
+  IGRchar buf[128];
+  TVDfld  frzFld;
+
+  // init
+  retFlag = 0;
+
+
+    vdcol$GetAttr(objID = &NODE_ID, name = VDCT1_ATTR_FROZEN, fld = &frzFld);
+    if(*frzFld.name == 0) goto wrapup;
+    
+    
+    // Update default value
+    if(strcmp(frzFld.val.txt,"FROZEN")) strcpy(frzFld.val.txt,"ACTIVE");
+    if (*frzFld.name) {
+      vdcol$UpdAttrs(objID = &NODE_ID, cnt = 1, fld = &frzFld); 
+    }
+   
+  // Done
+  retFlag = 1;
+  
+wrapup:
+  return retFlag;
+}
+
+/* --------------------------------------------------
+ * Set the AV_HULL attribute
+ * Preset definition "LPD"
+ */
+IGRstat setAttributeHull()
+{
+  IGRstat retFlag;
+  IGRstat sts;
+  IGRchar buf[128];
+  TVDfld hullFld;
+
+  // init
+  retFlag = 0;
+
+  // for the tree top only // all others pull down value
+  if (!strcmp(BASE_INFO.nodeType,VDCT1_ENG_NODE_TYPE_OUTFIT)) { 
+    vdcol$GetAttr(objID = &NODE_ID, name = VDCT1_ATTR_AV_HULL, fld = &hullFld);
+    // Update default value
+    strcpy(hullFld.val.txt,"LPD");
+    if (*hullFld.name) {
+      vdcol$UpdAttrs(objID = &NODE_ID, cnt = 1, fld = &hullFld); 
+    }
+  }
+ 
+
+  // Done
+  retFlag = 1;
+  
+wrapup:
+  return retFlag;
+}
+
+/* --------------------------------------------------
+ * Set the CONT_HULL attribute
+ * Preset Definition "C6017"
+ */
+IGRstat setAttributeContractHull()
+{
+  IGRstat retFlag;
+  IGRstat sts;
+  IGRchar buf[128];
+  TVDfld hullFld;
+
+  // init
+  retFlag = 0;
+
+  // for the tree top only // all others pull down value
+  if (!strcmp(BASE_INFO.nodeType,VDCT1_ENG_NODE_TYPE_OUTFIT)) { 
+    vdcol$GetAttr(objID = &NODE_ID, name = VDCT1_ATTR_CONT_HULL, fld = &hullFld);
+    // Update default value
+    strcpy(hullFld.val.txt,"C6017");
+    if (*hullFld.name) {
+      vdcol$UpdAttrs(objID = &NODE_ID, cnt = 1, fld = &hullFld); 
+    }
+  }
+ 
+
+  // Done
+  retFlag = 1;
+  
+wrapup:
+  return retFlag;
+}
+
+/* -------------------------------------------------
+ * Check if the unit number is valid to make
+ * also checks valid zone and compt number
+ */
+IGRstat checkValidUnit()
+{
+  IGRstat   retFlag;
+  IGRchar   equipTxt[128],unitTxt[128],comptTxt[128],zoneTxt[128],blank[128];
+  TVDfld    unitFld, comptFld;
+  IGRint    sts;
+  TGRid     childID,parentID;
+  
+ 
+  retFlag = 0;
+  strcpy(blank,"");
+  
+  if(strcmp(BASE_INFO.nodeType,VDCT1_ENG_NODE_TYPE_PART)) {
+    retFlag = 1;
+    goto wrapup;
+  }
+  
+ // Go up the tree looking for a value
+  parentID = NODE_PARENT_ID;
+  // get the parent
+ 
+  if (parentID.objid == NULL_OBJID) goto wrapup; 
+
+  // get the attribute value from unit_number
+  vdsa$GetStruct(objOE = &PIECE_OE,
+		 name  = VDCT1_ISDP_ATTR_UNIT,
+		 txt   = unitTxt);
+    
+  // get the parent attribute
+  vdcol$GetAttr(objID = &parentID, name = VDCT1_ATTR_UNIT, fld = &unitFld);
+  // if it is blank or null OK
+  if ((!strcmp(unitTxt,blank)) || 
+      (!strcmp(unitFld.val.txt,blank)) ||
+      (!strcmp(unitTxt,"NULL"))) {
+    retFlag = 1;
+    // printf("OK it was blank somewhere unit\n");
+    
+    goto wrapup;
+    
+  }
+  // if it does not match forget it
+  if(strcmp(unitFld.val.txt,unitTxt)){
+    //printf("Failed because of  unit mismatch\n");
+    //printf("unitFld.val.txt [%s] unitTxt [%s]\n",unitFld.val.txt,unitTxt);
+    
+    
+    goto wrapup;
+  }
+
+  // get the attribute value from compartment
+  vdsa$GetStruct(objOE = &PIECE_OE,
+		 name  = VDCT1_ISDP_ATTR_COMPARTMENT,
+		 txt   = comptTxt);
+
+  // get the parent attribute
+  vdcol$GetAttr(objID = &parentID, name = VDCT1_ATTR_COMPARTMENT, fld = &comptFld); 
+
+  // if it is blank or null OK
+  if ((!strcmp(comptTxt,blank)) || 
+      (!strcmp(comptFld.val.txt,blank)) ||
+      (!strcmp(comptTxt,"NULL"))) {
+    retFlag = 1;
+    //printf("OK it was blank somewhere compt\n");
+    goto wrapup;
+  }
+
+  // if it does not match forget it
+  if(strcmp(comptFld.val.txt,comptTxt)){
+    //printf("Failed because compt mismatch\n");
+    
+    goto wrapup;
+  }  
+
+  retFlag = 1;
+wrapup:
+  return retFlag;
+  
+}
+
+/* -------------------------------------------------
+ * Check if part number is valid and is in ops
+ */
+IGRstat checkValidItemCageNum()
+{
+  IGRstat   retFlag;
+  TVDct1_part_fld_part_id part_id;
+  
+  // Init
+  retFlag = 1;
+  
+  // For Parts
+  if(!strcmp(BASE_INFO.nodeType,VDCT1_ENG_NODE_TYPE_PART)) {
+
+    // Look it up
+    VDct1ReadPartIdForPartCageNum(BASE_INFO.nodeName,part_id);
+    if (*part_id == 0) {
+      printf("*** Part Cage Number '%s' is not in ops\n",BASE_INFO.nodeName);
+      retFlag = 0;  // Allow all for now
+      goto wrapup;
+    }
+    goto wrapup;
+  }
+  
+  // Done
+  
+ wrapup:
+  return retFlag;
+}
+
+/* --------------------------------------------------
+ * Returns the part_num (unique mino) in FLD
+ * Different nodes will have different internal attributes
+ * In this tree, the node name is the part number
+ */
+IGRstat getPartNum()
+{
+  // Only for parts for now
+  if(!strcmp(BASE_INFO.nodeType,VDCT1_ENG_NODE_TYPE_PART)) {
+    strcpy(FLD.val.txt,BASE_INFO.nodeName);
+    goto wrapup;
+  }
+  
+  // None
+  *FLD.val.txt = 0;
+
+ wrapup:
+  return 1;
+}
+IGRstat getPartCageNum()
+{
+  // Only for parts for now
+  if(!strcmp(BASE_INFO.nodeType,VDCT1_ENG_NODE_TYPE_PART)) {
+    strcpy(FLD.val.txt,BASE_INFO.nodeName);
+    goto wrapup;
+  }
+  
+  // None
+  *FLD.val.txt = 0;
+
+ wrapup:
+  return 1;
+}
+
+/* --------------------------------------------------
+ * Initialize the count to 1
+ */
+IGRstat setAttributeCount()
+{
+  IGRstat         retFlag;
+  IGRint          i;
+  IGRint          childQty, parentQty;
+  TVDfld          qtyFld, parentQtyFld;
+  TVDctBaseInfo   parentBaseInfo, baseInfo;
+  IGRchar         parentNodeType[256], nodeType[256], qty[256];
+  TGRid           childID;
+  
+  // Init
+  retFlag = 0;
+  
+    // get the baseInfo of the node and its parent
+  vdct1$GetBaseInfo(objID = &NODE_ID, baseInfo = &baseInfo);
+  vdct1$GetBaseInfo(objID = &NODE_PARENT_ID, baseInfo = &parentBaseInfo);
+  strcpy(nodeType,baseInfo.nodeType);
+  strcpy(parentNodeType,parentBaseInfo.nodeType);
+
+  // non part nodes get a default value of 0
+  if (strcmp(nodeType,VDCT1_ENG_NODE_TYPE_PART)) {  
+    // Get it
+    vdcol$GetAttr(objID = &NODE_ID, name = VDCT1_ATTR_COUNT, fld = &qtyFld);
+    if (*qtyFld.name == 0) goto wrapup;
+
+    // load up a default "1" for all not included in the rules below
+    strcpy(qtyFld.val.txt,"001");
+    if (*qtyFld.name) {
+      vdcol$UpdAttrs(objID = &NODE_ID, cnt = 1, fld = &qtyFld);
+    }
+  }
+  
+  // Rule: PART nodes get a default value of 1
+  if (!strcmp(nodeType,VDCT1_ENG_NODE_TYPE_PART)) {  
+    vdcol$GetAttr(objID = &NODE_ID, name = VDCT1_ATTR_COUNT, fld = &qtyFld);
+    // Update default value
+    strcpy(qtyFld.val.txt,"001");
+    if (*qtyFld.name) {
+      vdcol$UpdAttrs(objID = &NODE_ID, cnt = 1, fld = &qtyFld);
+    }
+    
+    }
+  
+  // Done
+  retFlag = 1;
+  
+wrapup:
+  return retFlag;
+}
+
+/* --------------------------------------------
+ * Computes the BASE_INFO.nodeName for trees
+ */
+IGRstat setAttributeTreeNum()
+{
+  IGRstat       retFlag, sts, index;
+  IGRint       *a_minoIndex;
+  TVDfld        treeNumFld; 
+  TVDctBaseInfo parentBaseInfo;
+  IGRchar       buf[128];
+  
+  // init
+  retFlag = 1;
+  // only tree
+  if (!strcmp(NODE_TYPE,VDCT1_ENG_NODE_TYPE_OUTFIT)) {
+    
+    sts = vdct1$GetNextTreeNumber(Index = &index);
+  
+    if (sts & 1) {
+      // generate buf
+      sprintf(buf,"%04d",index);
+
+      // get the node NODE_NUM and put the tree top NODE_NUM in it
+      vdcol$GetAttr(objID = &NODE_ID, 
+		    name  = VDCT1_ATTR_TREE_NUM,
+		    fld   = &treeNumFld);
+      if (*treeNumFld.name == 0) {
+	//printf("Going home from SetAttributeTreeNum()\n");
+	
+	goto wrapup;
+      }
+      
+
+      // set the value and update the fields 
+      strcpy(treeNumFld.val.txt,buf);
+      if (*treeNumFld.name) {
+	vdcol$UpdAttrs(objID = &NODE_ID,
+		       cnt   = 1, 
+		       fld   = &treeNumFld); 
+      }
+      vdcol$GetAttr(objID  = &NODE_ID, 
+		   name    = VDCT1_ATTR_TREE_NUM,
+		   fld     = &treeNumFld);
+     // printf("###### Tree Num = [%s] ######\n",treeNumFld.val.txt);
+     
+      goto wrapup;
+    }
+  }
+  
+  retFlag = 0;
+      
+ 
+  // say bye
+wrapup:
+  return retFlag;
+}
+
+/* --------------------------------------------------
+ * Set the NODE_NUM attribute// and NUM_NEXT on the tree
+ */
+IGRstat setAttributeNodeNum()
+{
+  IGRstat retFlag, nextNum;
+  TVDfld  nodeNumFld, nodeNumNextFld;
+  TGRid   treeID;
+  IGRchar buf[128], buff[128];
+  IGRint  nextNode;
+  
+  // init
+  retFlag = 0;
+
+  // if it is a Tree start with "0001" for next available
+  if(!strcmp(BASE_INFO.nodeType,VDCT1_ENG_NODE_TYPE_OUTFIT)) {
+    strcpy(buf,"0001");
+  // now update the next node
+    vdcol$GetAttr(objID  = &NODE_ID, 
+		  name   = VDCT1_ATTR_NUM_NEXT,
+		  fld    = &nodeNumNextFld);
+    if (*nodeNumNextFld.name == 0) goto wrapup;
+    strcpy(buf,"0001");   // set the value and update the fields 
+    sprintf(nodeNumNextFld.val.txt,buf);
+    if (*nodeNumNextFld.name) {
+      vdcol$UpdAttrs(objID = &NODE_ID,
+		     cnt = 1, 
+		     fld = &nodeNumNextFld); 
+    }
+    
+
+    // now update the node num set to "0000"
+    vdcol$GetAttr(objID  = &NODE_ID, 
+		  name   = VDCT1_ATTR_NODE_NUM,
+		  fld    = &nodeNumFld);
+    if (*nodeNumFld.name == 0) goto wrapup;
+    // set the value and update the fields 
+    strcpy(buf,"0000");
+    sprintf(nodeNumFld.val.txt,buf);
+    if (*nodeNumFld.name) {
+      vdcol$UpdAttrs(objID = &NODE_ID, 
+		     cnt = 1,
+		     fld = &nodeNumFld); 
+    }
+
+    retFlag = 1;
+    goto wrapup;
+  }
+  // get the the treeID
+  vdct1$GetTreeForNode(nodeID = &NODE_ID,
+		       treeID = &treeID);
+  // get the attribute from the tree and update it
+  vdcol$GetAttr(objID = &treeID, 
+		name  = VDCT1_ATTR_NUM_NEXT,
+		fld   = &nodeNumNextFld);
+  if (*nodeNumNextFld.name == 0) goto wrapup;
+  strcpy(buff,nodeNumNextFld.val.txt);
+  nextNum = atoi(buff);
+  nextNum = nextNum + 1;
+  sprintf(nodeNumNextFld.val.txt,"%04d",nextNum);
+    if (*nodeNumNextFld.name) {
+      vdcol$UpdAttrs(objID = &treeID,	
+		     cnt   = 1, 
+		     fld   = &nodeNumNextFld); 
+    }
+    
+
+  // update the field for this NODE_ID
+   vdcol$GetAttr(objID = &NODE_ID, 
+		 name  = VDCT1_ATTR_NODE_NUM,
+		 fld   = &nodeNumFld);
+  if (*nodeNumFld.name == 0) goto wrapup; 
+  strcpy(nodeNumFld.val.txt,buff);
+  if (*nodeNumFld.name) {
+    vdcol$UpdAttrs(objID = &NODE_ID,
+		   cnt   = 1, 
+		   fld   = &nodeNumFld);
+    }
+    
+
+wrapup:
+  // go home
+  return retFlag;
+  
+}
+/*************************************
+ * set the attribute to start
+ */
+IGRstat setAttributeInCopics()
+{
+  IGRstat retFlag;
+  IGRstat traceFlag;
+  TVDfld  copicsFld;
+
+  // init
+  retFlag = 0;
+  traceFlag = 0;
+
+  
+  //say hi
+  if (traceFlag) printf ("Entering setAttributeInCopics\n");
+  
+    vdcol$GetAttr(objID = &NODE_ID, name = VDCT1_ATTR_IN_COPICS, fld = &copicsFld);
+    if (*copicsFld.name != 0) { 
+    strcpy(copicsFld.val.txt,"NO");
+    if (*copicsFld.name) {
+      vdcol$UpdAttrs(objID = &NODE_ID, cnt = 1, fld = &copicsFld); 
+    }
+    
+    }
+    retFlag = 1;
+  
+wrapup:
+    if (traceFlag) printf ("Leaving setAttributeInCopics\n");
+    return retFlag;
+}
+/* ----------------------------------------------------
+ * computeWeight
+ */
+IGRstat computeWeight()
+{
+  IGRstat       retFlag;
+  IGRdouble     childWeight, parentWeight, cfactor;
+  IGRint        i, sts, flag;
+  TVDfld        weightFld;
+  TVDctBaseInfo baseInfo, parentBaseInfo;
+  IGRchar       weight[256], nodeType[256], unitWt[256], buf[256];
+  TGRid         childID;
+  IGRstat       traceFlag;
+  TGRobj_env    objOE;
+  VDprcAttr     mp;
+  IGRlong       suc;
+  IGRdouble     volume;
+  
+
+  // init
+  traceFlag = 0;
+  retFlag = 0;
+  i = 0;
+  volume = 0;
+  
+
+  // Hello
+  if (traceFlag) printf(">>> computeWeight()\n");
+  
+
+  // arg check
+  if(NODE_ID.objid == NULL_OBJID) goto wrapup;
+
+  // set the memory available
+  memset(&mp,0,sizeof(VDprcAttr));
+  if (strcmp(BASE_INFO.nodeType,VDCT1_ENG_NODE_TYPE_PART)) goto wrapup;
+  
+  // get the objOE of the node
+
+  vdct1$GetNodeModelObject(nodeID  = &NODE_ID,
+			   modelOE = &objOE);
+ if(traceFlag) {
+   vdobj$Print(objOE = &objOE);
+ }
+
+ // Get the objects name
+  vdobj$Get(objOE = &objOE, objName = baseInfo.nodeName);
+  //VDstrupr(baseInfo.nodeName);
+      // Get PART node weight attribute
+    // send a message to get the data from model
+    flag = 0xFF;
+    
+    sts = ci$send( msg      = message VDSroot.VDprocAttr(&suc,&objOE.mod_env,flag,&mp),
+		   targetid = objOE.obj_id.objid,
+		   targetos = objOE.obj_id.osnum );
+
+      vdcol$GetAttr(objID = &NODE_ID, name = VDCT1_ATTR_WEIGHT, fld = &weightFld);
+      strcpy(weight,weightFld.val.txt);
+      
+      // write the weight attribute for the  PART
+      if (mp.mass == 0) { 
+	sprintf(buf,"0.0");
+      }
+      else {
+	sprintf(buf,"%f",mp.mass);
+      }
+      
+      sprintf(weightFld.val.txt,"%s",buf);
+      
+      
+      // setting volume = qty if plate
+      sts = vdobj$IsAncestryValid(objOE = &PIECE_OE,
+				  superClassName = "VSplate");
+  
+      if (sts & 1) {
+	    
+	if (mp.volume == 0) {
+	  volume = 0.0;
+	}
+	else {
+	  volume = mp.volume;  
+	}
+      } // end of plate trick 
+      if (*weightFld.name) {
+	vdcol$UpdAttrs(objID = &NODE_ID, cnt = 1, fld = &weightFld);
+      }
+      
+      
+    goto wrapup;
+  
+
+    retFlag = 1;
+  
+wrapup:
+    if (traceFlag) printf("<<< computeWeight(%d)\n",retFlag);
+    sts = setPartAttrQty(volume);
+    return retFlag;
+  
+}
+
+// --------------------------------------
+IGRstat updateNodeAttributes()
+{
+  IGRstat retFlag, sts, traceFlag, sqlok;
+  TVDfld  comFld, costFld, commodityFld;
+  IGRchar buffcode[128], buffcomm[128], comTxt[128];
+  IGRchar **buf; 
+  IGRint  num, nextNum;
+  IGRint  rows,cols;
+  IGRchar sql[256]; 
+
+  // init
+
+
+  retFlag = 0;
+  sqlok = 0;
+  
+  sts = 1;
+  traceFlag = 0;
+  
+  if (NODE_ID.objid == NULL_OBJID)  goto wrapup;
+ 
+  // get the COM_CODE
+  vdcol$GetAttr(objID = &NODE_ID, name = VDCT1_ATTR_COM_CODE, fld = &comFld);
+ 
+  // Make sure logged in
+  sts = VDSverify_login();
+
+  if (!(sts & 1)) goto wrapup;
+  sqlok = 1;
+  strcpy(comTxt,comFld.val.txt);
+  // strcpy(buff,"");
+  
+  if(!strcmp(comTxt,"")) sqlok = 0;
+  sprintf(sql,"select cost_code, commodity from tm_code_list where comm_code = '%s';\n",
+	  comTxt);
+  rows = cols = 0; buf = NULL;
+
+  if (sqlok) sts = VDSsql_query(sql, &cols, &rows, &buf);
+ 
+  // pull up and put out the COST_CODE, COMMODITY to the Attribute
+  vdcol$GetAttr(objID = &NODE_ID, name = VDCT1_ATTR_COST_CODE, fld = &costFld);
+  vdcol$GetAttr(objID = &NODE_ID, name = VDCT1_ATTR_COMMODITY, fld = &commodityFld);
+  
+  strcpy(buffcode," ");
+  strcpy(buffcomm," ");
+  
+  if (sqlok) {
+    if (*buf != 0) {
+      if (sqlok) {
+	strcpy(buffcode,buf[0]);
+	strcpy(buffcomm,buf[1]);
+      }
+    }
+    else {
+      sprintf(buffcode,"DB_NO_DATA(%s)",comTxt);
+      sprintf(buffcomm,"DB_NO_DATA(%s)",comTxt);
+
+  if (*comFld.name) {
+    strcpy(comFld.val.txt,"");
+    vdcol$UpdAttrs(objID = &NODE_ID, cnt = 1, fld = &comFld);
+  }
+
+    }
+  }
+  strcpy(costFld.val.txt,buffcode);
+  strcpy(commodityFld.val.txt,buffcomm);
+  
+  // if (!strcmp(costFld.val.txt,"")) strcpy(costFld.val.txt,buff);
+  if (*costFld.name) {
+    vdcol$UpdAttrs(objID = &NODE_ID, cnt = 1, fld = &costFld);
+  }
+  if (*commodityFld.name) {
+    vdcol$UpdAttrs(objID = &NODE_ID, cnt = 1, fld = &commodityFld);
+  }
+	
+  // success
+  retFlag = 1;
+  // oh well
+wrapup:
+  return retFlag;
+}
+// ------------------------------------
+IGRstat summaryNode()
+{
+  IGRstat       retFlag;
+  TGRid         parentID, childID, subID;
+  IGRdouble     wt, wtChild;
+  IGRint        i, cnt;
+  IGRint        count;
+  IGRstat       countChild;
+  TVDfld        wtFld, countFld;
+  IGRchar       weight[256], ccnt[256], buf[256], null[256];
+  IGRchar       c;
+  TVDctBaseInfo parentBaseInfo, baseInfo;
+  IGRstat       traceFlag;
+  //#if 0  
+  // init
+  retFlag = 0;
+  sprintf(null,"");
+  wt = 0.0;
+  count = 0;
+  countChild = 0;
+  traceFlag = 0;
+  
+  if (traceFlag) printf(">>> summaryNode(ppl)\n");
+  
+  //#if 0   
+  // arg check
+  if (NODE_PARENT_ID.objid == NULL_OBJID) {
+    if (traceFlag) printf("(NODE_PARENT_ID.objid == NULL_OBJID) was true\n");
+    goto wrapup;
+  }
+  vdct1$GetBaseInfo(objID = &NODE_PARENT_ID, baseInfo = &parentBaseInfo);
+    if (traceFlag) {
+      printf("doing the parent now!\n");
+      printf("NODE_PARENT_ID is [%d] [%d]\n",NODE_PARENT_ID.osnum,NODE_PARENT_ID.objid);
+      printf("parentBaseInfo [%s] [%s]\n",parentBaseInfo.nodeType,parentBaseInfo.nodeName);
+    }
+    
+  // get all the children 
+  for (i = 0; (vdct1$GetTree1Child(objID = &NODE_PARENT_ID,       
+				   nth   = i,    
+				   outID = &childID)); i = i + 1) {
+   vdct1$GetBaseInfo(objID = &childID, baseInfo = &baseInfo);
+  
+    if (traceFlag) {
+      printf("doing the kids now!\n");
+      printf("childID is [%d] [%d]\n",childID.osnum,childID.objid);
+      printf("child baseInfo [%s] [%s]\n",baseInfo.nodeType,baseInfo.nodeName);
+    }
+    
+    
+    // with each child get the attribute data to be processed
+    vdcol$GetAttr(objID = &childID, name = VDCT1_ATTR_WEIGHT, fld = &wtFld);  
+    strcpy(weight,wtFld.val.txt);
+    // this tests to see if there is a value here corrects for attribute absent 
+    // and for data which is corrupted.   may need improved
+    if (!isdigit(weight[0])) strcpy(weight,"0.0");
+    
+    wtChild = atof(weight);
+
+    
+      // get the totals  
+      wt = wt + wtChild;
+      if(traceFlag) {
+	 printf("count [%d]\n",count);
+	 vdct1$GetBaseInfo(objID = &childID, baseInfo = &baseInfo);
+	 printf("%s %s\n",baseInfo.nodeType,baseInfo.nodeName);
+        }
+    
+  
+  
+  //#endif
+  // send the totals where they belong
+  vdct1$GetBaseInfo(objID = &NODE_PARENT_ID, baseInfo = &parentBaseInfo);
+
+    // if not Tree
+    if(strcmp(parentBaseInfo.nodeType,VDCT1_ENG_NODE_TYPE_OUTFIT)){
+      // post the weight
+      vdcol$GetAttr(objID = &NODE_PARENT_ID, name = VDCT1_ATTR_WEIGHT, fld = &wtFld); 
+      sprintf(buf,"%f",wt);
+      strcpy(wtFld.val.txt,buf);   
+      if (*wtFld.name != 0) { 
+	vdcol$UpdAttrs(objID = &NODE_PARENT_ID, cnt = 1, fld = &wtFld);
+      }
+	
+    } 
+  }
+  
+  // get the next parent up the tree
+    vdct1$GetTree1Parent(objID = &NODE_PARENT_ID, outID = &parentID);  
+ 
+      if(traceFlag) {
+	printf("baseInfo check for next run of summaryNode\n");
+	printf("parentID [%d] [%d]\n",parentID.osnum,parentID.objid);
+	vdct1$GetBaseInfo(objID = &parentID, baseInfo = &baseInfo);
+	printf("baseInfo [%s] [%s]\n",baseInfo.nodeType,baseInfo.nodeName);
+        }
+
+    NODE_PARENT_ID.objid = parentID.objid;
+    NODE_PARENT_ID.osnum = parentID.osnum;
+    retFlag = 1;
+    
+    //#endif
+wrapup:
+    if (traceFlag) printf("<<<< summaryNode(%d)\n",retFlag);
+    
+  return retFlag;
+  //#endif  
+}
+
+/* --------------------------------------------------
+ * Set the Commodity code and related attributes
+ */
+IGRstat setAttributeCommodity()
+{
+  IGRstat        retFlag, traceFlag;
+  IGRstat        sts, i, bufLen;
+  IGRchar        buf[128], comBuf[128];
+  IGRchar        c;
+  TVDfld         comFld;
+  TVDctBaseInfo  baseInfo, parentBaseInfo;
+  
+
+  // init
+  retFlag = 0;
+
+  // get baseInfo NODE_PARENT_ID
+  vdct1$GetBaseInfo(objID = &NODE_PARENT_ID, baseInfo = &parentBaseInfo);
+  
+  // is the parent not an ENG_ASSY[6]?
+  if(strcmp(parentBaseInfo.nodeType,VDCT1_ENG_NODE_TYPE_ENGASSY6)) goto wrapup;
+
+  // get the node name and parse it for commodity code
+  // get the baseInfo NODE_ID
+  vdct1$GetBaseInfo(objID = &NODE_ID, baseInfo = &baseInfo); 
+
+  // copy it up 
+  strcpy(buf,baseInfo.nodeName);
+  //printf("baseInfo.nodeName[%s]\n",baseInfo.nodeName);
+  
+  // on the off chance there is no name
+  if(!strcmp(buf,"")) goto wrapup;
+  strcpy(comBuf,"");
+  
+  // get the length of the string
+  bufLen = strlen(buf);
+ 
+  // flag to start string
+  sts = 0;
+  
+  // loop through to get the comm_code
+  for (i = 0; i < bufLen; i = i + 1)
+  {
+    c = buf[i];
+    //printf("c[%d] = %c\n",i,c);
+    
+    // set the copy flag
+    if(c ==".") sts = 1;  // start copy
+    if(c == "-") break;   // stop copy
+    if(c != ".") // actually copy
+    {
+      // copy the code up
+      if(sts == 1) {
+	sprintf(buf,"%c",c);
+	//printf("buf [%s]\n",buf);
+
+	strcat(comBuf,buf);
+	//printf("comBuf[%s]\n",comBuf);
+	
+      }
+    }
+    
+  }// end for loop looking for the comm_code
+
+  // get the attribute
+    vdcol$GetAttr(objID = &NODE_ID, name = VDCT1_ATTR_COM_CODE, fld = &comFld); 
+    if(*comFld.name) {
+      strcpy(comFld.val.txt,comBuf);
+
+      //printf("comFld.val.txt[%s]\n",comFld.val.txt);
+      
+      vdcol$UpdAttrs(objID = &NODE_ID, cnt = 1, fld = &comFld); 
+      updateNodeAttributes();
+      
+    }
+
+
+    
+  // if we did not get one go home
+  if(!strcmp(comBuf,"")) goto wrapup;
+  
+  // 
+  // success
+  retFlag = 1;
+
+  // oh well
+wrapup:
+
+  // go home
+  return retFlag;
+}
+/* --------------------------------------------------
+ * Copies attributes across from one node to another
+ * I - NODE_PARENT_ID  Source of Data
+ * I - NODE_ID         Location to place Data /source of attribute list
+ */
+IGRstat copyAttrsAcross()
+{
+  IGRstat retFlag, cnt;
+  IGRstat traceFlag;
+ 
+  // init
+  retFlag = 0;
+  traceFlag = 0;
+  ATTR_INDEX = 1;
+
+  // say hi
+  if(traceFlag) printf(">>> copyAttrsAcross[ppl]\n");
+  
+  // args check
+  if(NODE_ID.objid == NULL_OBJID) goto wrapup;
+  if(NODE_PARENT_ID.objid == NULL_OBJID) goto wrapup;
+    
+  // get the NODE_TYPE
+  vdct1$GetBaseInfo(objID = &NODE_ID, baseInfo = &BASE_INFO); 
+  strcpy(NODE_TYPE,BASE_INFO.nodeType);
+  
+  // get the attributes
+  while(getNodeAttrName())
+  {
+    pullAttribute(ATTR_NAMEX);
+    ATTR_INDEX = ATTR_INDEX + 1;
+  }
+  retFlag = 1;
+ 
+wrapup: 
+  // say bye
+  if(traceFlag) printf("<<< copyAttrsAcross[%d]\n",retFlag);
+  return retFlag;
+  
+}
+/* ------------------------------------------
+ *Sets Status to deleted from Active
+ * I - NODE_ID used for finding attributes addresses
+ */
+IGRstat setStatusDeleted()
+{
+  IGRstat retFlag;
+  IGRstat traceFlag;
+  TVDfld  delFld, assyRemFld, partRemFld, cntFld;
+  IGRchar buf[128];
+  IGRchar username[80],environ[80],project[80];
+  IGRint  sts;
+ 
+  // init
+  retFlag = 0;
+  traceFlag = 0;
+
+  // say hi
+  if(traceFlag) printf(">>> setStatusDeleted[ppl]\n");  
+
+  // args check
+  if(NODE_ID.objid == NULL_OBJID) goto wrapup;  
+
+  // get a set of attributes
+  vdcol$GetAttr(objID = &NODE_ID, 
+		name  = VDCT1_ATTR_FROZEN, 
+		fld   = &delFld);  
+
+  vdcol$GetAttr(objID = &NODE_ID, 
+		name  = VDCT1_ATTR_PART_REMARKS, 
+		fld   = &partRemFld);  
+
+  vdcol$GetAttr(objID = &NODE_ID, 
+		name  = VDCT1_ATTR_ASSY_REMARKS, 
+		fld   = &assyRemFld);  
+
+  vdcol$GetAttr(objID = &NODE_ID, 
+		name  = VDCT1_ATTR_COUNT, 
+		fld   = &cntFld); 
+ 
+  // set up the frozen field
+  strcpy(delFld.val.txt,"DELETED");
+  if(*delFld.name != 0) {
+  vdcol$UpdAttrs(objID = &NODE_ID, 
+		 cnt   = 1, 
+		 fld   = &delFld); 
+  }
+  sts = 0;
+  
+  //sts = VDSget_login_defaults(username,environ,project);
+
+  if (traceFlag){
+    if(sts & 1) {
+      printf("STS returned 1\n");
+      printf("VDSget_login_defaults [%s] [%s] [%s]\n",username,environ,project);
+    }
+  }
+  
+  
+  
+  strcpy(buf,"");
+
+  // set up the assyRem field
+  sprintf(assyRemFld.val.txt,"CONVERTED BY: %s",buf);
+  if(*assyRemFld.name != 0) {
+    vdcol$UpdAttrs(objID = &NODE_ID, 
+		   cnt   = 1, 
+		   fld   = &assyRemFld); 
+  }
+
+  // set up the partRem field
+  sprintf(partRemFld.val.txt,"CONVERTED BY: %s",buf);
+  if(*partRemFld.name != 0) {
+    vdcol$UpdAttrs(objID = &NODE_ID, 
+		   cnt   = 1, 
+		   fld   = &partRemFld); 
+  }  
+
+  // set up the cnt field
+  strcpy(cntFld.val.txt,"001");
+  if(*cntFld.name != 0) {
+    vdcol$UpdAttrs(objID = &NODE_ID, 
+		   cnt   = 1, 
+		   fld   = &cntFld); 
+  }  
+  // success
+  retFlag = 1;
+
+wrapup:
+  // say bye
+  if(traceFlag) printf("<<< convertAttrSet[%d]\n",retFlag);  
+  return retFlag;
+
+
+}
+
+
+/* -------------------------------------------------
+ * Sets attributes for node conversion / deleted mark
+ */
+IGRstat convertAttrSet()
+{
+  IGRstat retFlag;
+  IGRstat traceFlag;
+  TVDfld  treeNumFld, nodeNumFld, delFld, cntFld, assyRemFld, partRemFld;
+
+  // init
+  retFlag = 0;
+  traceFlag = 0;
+
+  // say hi
+  if(traceFlag) printf(">>> convertAttrSet[ppl]\n");  
+
+  // args check
+  if(NODE_PARENT_ID.objid == NULL_OBJID) goto wrapup;
+  if(NODE_ID.objid == NULL_OBJID) goto wrapup;  
+  
+  // get a set of protected attributes
+  vdcol$GetAttr(objID = &NODE_ID, 
+		name  = VDCT1_ATTR_TREE_NUM, 
+		fld   = &treeNumFld);
+
+  vdcol$GetAttr(objID = &NODE_ID, 
+		name  = VDCT1_ATTR_NODE_NUM, 
+		fld   = &nodeNumFld);
+
+  vdcol$GetAttr(objID = &NODE_ID, 
+		name  = VDCT1_ATTR_FROZEN, 
+		fld   = &delFld);  
+
+  vdcol$GetAttr(objID = &NODE_ID, 
+		name  = VDCT1_ATTR_COUNT, 
+		fld   = &cntFld);  
+
+  vdcol$GetAttr(objID = &NODE_ID, 
+		name  = VDCT1_ATTR_PART_REMARKS, 
+		fld   = &partRemFld);  
+
+  vdcol$GetAttr(objID = &NODE_ID, 
+		name  = VDCT1_ATTR_ASSY_REMARKS, 
+		fld   = &assyRemFld);  
+
+  // copy the attribute set across from NODE_PARENT_ID to NODE_ID
+  copyAttrsAcross();
+  
+  // replace the attributes that were protected
+  vdcol$UpdAttrs(objID = &NODE_ID, 
+		 cnt   = 1, 
+		 fld   = &treeNumFld); 
+
+  vdcol$UpdAttrs(objID = &NODE_ID, 
+		 cnt   = 1, 
+		 fld   = &nodeNumFld); 
+
+  // set up the frozen field
+  strcpy(delFld.val.txt,"DELETED");
+  vdcol$UpdAttrs(objID = &NODE_ID, 
+		 cnt   = 1, 
+		 fld   = &delFld); 
+
+  // set up the assyRem field
+  strcpy(assyRemFld.val.txt,"CONVERTED BY:");
+  if(*assyRemFld.name != 0) {
+    vdcol$UpdAttrs(objID = &NODE_ID, 
+		   cnt   = 1, 
+		   fld   = &assyRemFld); 
+  }
+
+  // set up the partRem field
+  strcpy(partRemFld.val.txt,"CONVERTED BY:");
+  if(*partRemFld.name != 0) {
+    vdcol$UpdAttrs(objID = &NODE_ID, 
+		   cnt   = 1, 
+		   fld   = &partRemFld); 
+  }  
+  
+  // set up the cnt field
+  strcpy(cntFld.val.txt,"001");
+  if(*cntFld.name != 0) {
+    vdcol$UpdAttrs(objID = &NODE_ID, 
+		   cnt   = 1, 
+		   fld   = &cntFld); 
+  }  
+wrapup:
+  // say bye
+  if(traceFlag) printf("<<< convertAttrSet[%d]\n",retFlag);  
+  return retFlag;
+}
+
+
+/* --------------------------------------------------
+ * Called when node is created
+ * I - NODE_PARENT_ID       If NULL_OBJID, top node, use SET_ID
+ * I - SET_ID               Used for top node in tree
+ * I - NODE_TYPE
+ * I - NODE_NAME
+ * O - NODE_ID
+ *
+ * Not alot of error checking here, rely on the
+ * calling program to do things right    
+ */
+IGRstat createNodex()
+{
+  IGRstat       retFlag,sts;
+  TVDfld        fld;
+  IGRchar       buf[128];
+  IGRint       *a_minoIndex;
+  
+  TVDfld        groupFld;
+  TVDfld        hullFld;
+  TVDfld        unitFld;  
+  TVDctBaseInfo parentBaseInfo;
+  
+
+  // Init
+  retFlag = 0;
+  
+  NODE_ID.objid = NULL_OBJID;
+
+  if (NODE_PARENT_ID.objid == NULL_OBJID) NODE_ID.osnum = SET_ID.osnum;
+  else                                    NODE_ID.osnum = NODE_PARENT_ID.osnum;
+  
+  // Make the set object
+  vdct1$CreateBaseObject(osnum     = NODE_ID.osnum,
+                         classType = VDCT1_CLASS_TYPE_NODE,
+                         objID     = &NODE_ID);
+  if (NODE_ID.objid == NULL_OBJID) goto wrapup;
+
+  // Connect to parent or the set
+  if (NODE_PARENT_ID.objid == NULL_OBJID) {
+    
+    vdct1$ConnectMgrChild(mgrID   = &SET_ID,
+			  childID = &NODE_ID);
+
+    vdct1$GetBaseInfo(objID = &SET_ID, baseInfo = &BASE_INFO);
+
+  vdct1$SetBaseInfo(objID = &NODE_ID, baseInfo = &BASE_INFO);
+  }
+  else {
+    vdct1$ConnectTree1Child(treeID  = &NODE_PARENT_ID,
+			    childID = &NODE_ID);
+
+    vdct1$GetBaseInfo(objID = &NODE_PARENT_ID, baseInfo = &BASE_INFO);
+  }
+
+  // Set info
+  strcpy(BASE_INFO.nodeName,NODE_NAME);
+  strcpy(BASE_INFO.nodeType,NODE_TYPE);
+  vdct1$SetBaseInfo(objID = &NODE_ID, baseInfo = &BASE_INFO);
+
+  // Sets ATTR_NAMEX for each available attribute
+  for(ATTR_INDEX = 0; getNodeAttrName(); ATTR_INDEX = ATTR_INDEX + 1) {
+     
+    // Get the full info
+    getAttrInfo();
+
+    // Check for setup error
+    if (*ATTR_INFO.name != 0) {
+	
+      vdfld$Set(fld  = &fld, 
+		name = ATTR_INFO.name, 
+		type = ATTR_INFO.type);
+      if (*fld.name != 0) { 
+	vdcol$UpdAttrs(objID = &NODE_ID, 
+		       fld   = &fld, 
+		       cnt   = 1);
+      }
+    }
+  }
+ 
+  // Pull down some values and set them
+  // GROUP, ENG_ASSY[2], ENG_ASSY{6], ASSY[2] and some to PARTS
+  pullDownAttribute(VDCT1_ATTR_AV_HULL);
+  pullDownAttribute(VDCT1_ATTR_CONT_HULL);
+  pullDownAttribute(VDCT1_ATTR_COST_CODE);
+  pullDownAttribute(VDCT1_ATTR_COM_CODE);
+  pullDownAttribute(VDCT1_ATTR_COMMODITY);
+  pullDownAttribute(VDCT1_ATTR_ZONE);
+  pullDownAttribute(VDCT1_ATTR_UNIT);
+  pullDownAttribute(VDCT1_ATTR_COMPARTMENT);
+  pullDownAttribute(VDCT1_ATTR_DWG_NUM);
+  pullDownAttribute(VDCT1_ATTR_TREE_NUM);
+
+ 
+
+  // Some initial setting
+  setAttributeHull();
+  setAttributeContractHull();
+  setAttributeRevision();
+  setAttributeFrozen();
+  setAttributeCommodity();
+  setAttributeTreeNum(); 
+  setAttributeNodeNum();
+  setAttributeCount();
+  setAttributeInCopics();
+  computeDate(VDCT1_ATTR_ASSY_DATE);
+  computeDate(VDCT1_ATTR_PART_DATE);
+  
+  
+  // if (!sts) goto wrapup;
+  
+  // Do some computing
+  computeMino();
+  computePartAttrs();
+  computeDate(VDCT1_ATTR_ASSY_DATE);
+  
+  //computeVersion(VDCT1_ATTR_ASSY_REV);
+  
+  
+  // Done
+  retFlag = 1;
+  
+wrapup:
+  return retFlag;
+}
+/* ------------------------------------------------
+ * Controls
+ * createNodex() operation
+ * I - NODE_PARENT_ID       If NULL_OBJID, top node, use SET_ID
+ * I - SET_ID               Used for top node in tree
+ * I - NODE_TYPE
+ * I - NODE_NAME
+ * O - NODE_ID
+ */ 
+IGRstat createNode()
+{
+  IGRint        retFlag;
+  IGRint        sts, I;
+  TGRid         fndNodeID, partNodeID, nodeID, parentID, parentNodeID;
+  IGRchar       parentName[128], buf[256];
+  TVDctNodeType a_nodeType;
+  IGRchar       partEquipNo[256], unitEquipNo[256], nullString[256];
+  TVDctBaseInfo baseInfo;
+  IGRstat       traceFlag;
+  
+  traceFlag = 0;
+  
+  retFlag   = 0;
+  sts = 0;
+  sprintf(nullString,"");
+
+  // Init
+  if (traceFlag) printf(">>> createNode\n");
+  
+  // check if the dataBase is closed
+  sts =  VDSverify_login();
+
+  // check the rules if the dataBase is closed
+  if(!(sts & 1)){
+  
+  // Rule: if the dataBase is closed no making ENGASSY
+    //if (!strcmp(NODE_TYPE,VDCT1_ENG_NODE_TYPE_ENGASSY)) {
+    printf("Error: Database Closed\nThis action requires an open Database\n\n");
+    //goto wrapup;
+     //}
+    
+  }
+  
+  // check if the unit is a valid unit to make
+  // ah This improperly assumes always have PIECE_OE setwhen creating a node
+  sts = checkValidUnit();
+  if (!(sts & 1)) {
+    NODE_ID.objid = NULL_OBJID;
+    printf("*** Unit not valid\n");
+    // goto wrapup;
+  }
+  // check if a part is valid
+  sts = checkValidItemCageNum();
+  if (!(sts & 1)) {
+    NODE_ID.objid = NULL_OBJID;
+    printf("*** Cage Num not valid\n");
+    goto wrapup;
+  }
+  
+  // save existing name
+  vdct1$GetBaseInfo(objID = &NODE_PARENT_ID, baseInfo = &BASE_INFO); 
+  strcpy(parentName,BASE_INFO.nodeName);
+
+  // make the first node
+  sts = createNodex(); 
+  vdct1$SummaryNode(parentID = &NODE_PARENT_ID);
+  
+  // all tests done
+  retFlag = 1  ;
+
+  // oh well
+wrapup:
+  if (traceFlag) printf("<<< createNode %d\n",retFlag);
+  
+  return retFlag;
+}
+
+/* --------------------------------------------------
+ * Called when set is created
+ * I - MGR_ID       set is linked to it, created using mgr osnum
+ * I - SET_TYPE     Little bit redundant, keep for now
+ * I - SET_TYPE_REV Use unless blank then use default
+ * I = SET_NAME
+ * O - SET_ID       NULL_OBJID if fails
+ *
+ * Not alot of error checking here, rely on the
+ * calling program to check things
+ */
+
+IGRstat createSet()
+{
+  IGRstat       retFlag;
+  TVDctBaseInfo baseInfo;
+  
+  // Init
+  retFlag = 0;
+  SET_ID.objid = NULL_OBJID;
+ 
+  // Make the set object
+  vdct1$CreateBaseObject(osnum     = MGR_ID.osnum,
+                         classType = VDCT1_CLASS_TYPE_SET,
+                         objID     = &SET_ID);
+
+  if (SET_ID.objid == NULL_OBJID) goto wrapup;
+
+  // Connect to manager
+  vdct1$ConnectMgrChild(mgrID   = &MGR_ID,
+   		        childID = &SET_ID);
+
+  // Set info
+  memset(&baseInfo,0,sizeof(TVDctBaseInfo));
+  strcpy(baseInfo.setName,SET_NAME);
+  strcpy(baseInfo.setType,SET_TYPE);
+
+  if (*SET_TYPE_REV) strcpy(baseInfo.setTypeRev,SET_TYPE_REV);
+  else {
+    getSetTypeInfo();
+    strcpy(baseInfo.setTypeRev,SET_TYPE_INFO.rev);
+  }
+  
+  vdct1$SetBaseInfo(objID = &SET_ID, baseInfo = &baseInfo);
+
+  // Create Top Level Node
+  strcpy(NODE_TYPE,VDCT1_ENG_NODE_TYPE_OUTFIT);
+  strcpy(NODE_NAME,SET_NAME);
+  NODE_PARENT_ID.objid = NULL_OBJID; 
+
+  createNode();
+
+  // Done
+  retFlag = 1;
+  
+wrapup:
+  return retFlag;
+}
+// ------------------------------------
+// used to compute attributes after the modelOE is attached
+IGRstat computeNodeAttr()
+{
+  IGRstat retFlag;
+  IGRstat traceFlag;
+  
+  //init
+  retFlag = 0;
+  traceFlag = 0;
+  
+
+  if (traceFlag) printf(">>> computeNodeAttr\n"); 
+  // add the computations locations here for modelOE dB access!
+  computeWeight();
+
+  // success
+  retFlag = 1;
+  // go home
+wrapup:
+  if (traceFlag) printf("<<< computeNodeAttr(%d)\n",retFlag);
+  
+  return retFlag;
+  
+}
+
+// ------------------------------------
+
+IGRstat pplNodeRulesOK()
+{ 
+  IGRstat         retFlag, sts, sts1;
+  IGRstat         traceFlag;
+  TVDctBaseInfo   baseInfo;
+  TGRid           childID, parentID;
+  TVDfld          frozenFld,frzFld;
+  IGRchar         frz1[128], frz2[128],buf[128];
+  
+  retFlag = 1;
+  traceFlag = 0;
+  
+  if(traceFlag) printf(">>> pplNodeRulesOK\n");
+  
+  // get the attributes for the FROZEN field
+  vdcol$GetAttr(objID = &NODE_PARENT_ID, name = VDCT1_ATTR_FROZEN, fld = &frozenFld);
+  strcpy(frz2,frozenFld.val.txt);
+
+  // set retFlag = 0; to prevent action
+
+  // location checks
+  // -------------------  Rename Rules -----------------------------------
+  // is renaming allowed for this item?
+  if (!strcmp(LOCATION,VDCT1_ACTION_RENAME_NODE)) {
+
+    // Rule: no frozen node can be renamed 
+    if(!strcmp(frz2,"FROZEN")) retFlag = 0;
+    
+    // Rule: no deleted node can be renamed
+    if(!strcmp(frz2,"DELETED")) retFlag = 0;
+
+    // Rule: PART node gets no renaming
+    if (strcmp(BASE_INFO.nodeType,VDCT1_ENG_NODE_TYPE_PART))     retFlag = 0;
+
+   // Rule: This node gets no action
+    if (!strcmp(BASE_INFO.nodeType,VDCT1_ENG_NODE_TYPE_ENGASSY2)) {
+      retFlag = 0;
+    }
+
+  }
+  
+  // ------------------- Duplicate Rename Rules --------------------------
+  // duplicate Rename names prevented?
+  if (!strcmp(LOCATION,VDCT1_ACTION_R_NODE_DUP)) {
+
+    // Rule: YES to All
+    
+    goto wrapup;
+  }
+
+  // ---------------- Deletion Marking Rules ----------------------------
+  if (!strcmp(LOCATION,VDCT1_ACTION_MARK_DEL)) {
+
+    // Rule if it is not an ENG_ASSY[2] don't allow it to be Marked
+    if(strcmp(BASE_INFO.nodeType,VDCT1_ENG_NODE_TYPE_ENGASSY2)) retFlag = 0;
+    
+    goto wrapup;
+  }
+
+  // ------------------ Deletion Rules -----------------------------------
+  // do we delete?  uses BASE_INFO_PARENT only 
+  if (!strcmp(LOCATION,VDCT1_ACTION_DELETE_NODE)) {
+
+   // Rule: This node gets no action NO ENG_ASSY[2] deletion
+    if (!strcmp(BASE_INFO.nodeType,VDCT1_ENG_NODE_TYPE_ENGASSY2)) {
+      retFlag = 0;
+    }
+
+    // Rule: No Node with an ENG_ASSY[2] child can be deleted.
+    sts1 = vdct1$CmdNodeNameTypePresent(nodeID     = &NODE_PARENT_ID,
+					a_nodeType = VDCT1_ENG_NODE_TYPE_ENGASSY2);
+    if(sts1 & 1) retFlag = 0;
+    
+    // Rule: no deleted node can be deleted for real
+    if(!strcmp(frz2,"DELETED")) retFlag = 0;
+
+    // Rule: no frozen node can be deleted 
+    if(!strcmp(frz2,"FROZEN")) {
+      // get the next parent up the tree
+      vdct1$GetTree1Parent(objID = &NODE_PARENT_ID, outID = &parentID);  
+      vdcol$GetAttr(objID = &parentID, name = VDCT1_ATTR_FROZEN, fld = &frzFld);
+      strcpy(buf,frzFld.val.txt);
+      // if the parent node is active
+      if(!strcmp(buf,"ACTIVE")) {
+	retFlag = 1;
+	goto wrapup;
+      }
+      retFlag = 0;
+    }
+    
+
+    // Rule: no node with a child which is frozen can be deleted who is not 
+    //       "active"  himself unless he has a "active" parent
+
+    strcpy(frz1,"frozen");
+    strcpy(frz2,"FROZEN");
+    
+    sts = 0;
+    // get the next parent up the tree
+    vdct1$GetTree1Parent(objID = &NODE_PARENT_ID, outID = &parentID);  
+    sts = VDct1CmdChildAttrPresent(&NODE_PARENT_ID,
+				   frz1,
+				   frz2);  
+
+    if (sts & 1) {
+
+      // if the node is active
+      strcpy(buf,frozenFld.val.txt);
+    
+      if(!strcmp(buf,"ACTIVE")) {
+	retFlag = 1;
+	goto wrapup;
+      }
+  
+      vdcol$GetAttr(objID = &parentID, name = VDCT1_ATTR_FROZEN, fld = &frzFld);
+      strcpy(buf,frzFld.val.txt);
+      // if the parent node is active
+      if(!strcmp(buf,"ACTIVE")) {
+	retFlag = 1;
+	goto wrapup;
+      }
+      
+
+      retFlag = 0;
+    }
+    
+    // Rule: YES to All other conditions
+
+    goto wrapup;
+
+  }  
+
+  // ----------------- Creation of Duplicate Node Rules ------------------
+  // do we test for duplicates in Create Node?
+  if (!strcmp(LOCATION,VDCT1_ACTION_C_NODE_DUP)) {
+
+    // Rule: no deleted node can be dup
+    if(!strcmp(frz2,"DELETED")) retFlag = 0;
+
+    // Rule: no frozen node can be created under this parent ~treated as a duplicate
+    if(!strcmp(frz2,"FROZEN")) retFlag = 0;
+
+    // Rule: For parts, do not check for duplicates
+    if (!strcmp(BASE_INFO.nodeType,VDCT1_ENG_NODE_TYPE_PART)) retFlag = 0;
+    
+    // Rule: Yes to All other conditions
+
+    goto wrapup;
+  } 
+
+  // ----------------- Model Node Creation Rules ------------------------
+  // do we test for duplicates in CreateModelNode?
+  if (!strcmp(LOCATION,VDCT1_ACTION_C_MODEL_NODE)) {
+
+    // Rule:Any Item selected from a model has to be a part
+    // this may change but for now it is a part
+    strcpy(BASE_INFO.nodeType,VDCT1_ENG_NODE_TYPE_PART);
+    // There is no reset of the retFlag it is OK to continue
+ 
+    goto wrapup;
+  }
+  //----------------- Model Node Creation OK? ------------------------
+  // do we create this node at all?
+  if (!strcmp(LOCATION,VDCT1_ACTION_CMN_OK)) {
+
+   // Rule: no frozen node can be created under this parent ~treated as a duplicate
+    if(!strcmp(frz2,"FROZEN")) retFlag = 0;
+
+    // Rule: no deleted node can be created under this parent
+    if(!strcmp(frz2,"DELETED")) retFlag = 0;
+
+    // Rule:  All others ok
+    goto wrapup;
+  }
+  
+  // ----------------- Model Node Creation Attr Rules -----------------
+  // do we create this node?
+  if (!strcmp(LOCATION,VDCT1_ACTION_C_MODEL_ATTRS)) { 
+
+    // Rule no frozen node can be created under this parent ~treated as a duplicate
+    if(!strcmp(frz2,"FROZEN")) retFlag = 0;
+
+    // Rule: everybody is a part
+    strcpy(BASE_INFO.nodeType,VDCT1_ENG_NODE_TYPE_PART);
+    goto wrapup;
+  }
+ 
+  // ----------------- Model Node Creation Attr Rules -----------------
+  // do we go compute the attribute values?
+  if (!strcmp(LOCATION,VDCT1_ACTION_C_MODEL_ATTR)) { 
+    
+    // Rule: Yes to All
+    goto wrapup;
+    }
+  // ----------------- Node Conversion Rules -----------------
+  // do convert this node?
+  if (!strcmp(LOCATION,VDCT1_ACTION_CONVERT)) { 
+
+       // Rule: no frozen node can be converted
+    if(!strcmp(frz2,"FROZEN")) retFlag = 0;
+
+    // Rule: no deleted node can be converted
+    if(!strcmp(frz2,"DELETED")) retFlag = 0;
+
+    // Rule: Yes to All
+    goto wrapup;
+    }
+  //----------------- Node Duplicate Pasting Rules -----------------------
+  // do we allow duplicate here?
+  if(!strcmp(LOCATION,VDCT1_ACTION_PASTE_DUPS)) {
+    vdct1$GetBaseInfo(objID = &childID, baseInfo = &baseInfo);
+    
+    if ((!strcmp(BASE_INFO.nodeType,VDCT1_ENG_NODE_TYPE_ASSY2)) || 
+	(!strcmp(BASE_INFO_PARENT.nodeType,VDCT1_ENG_NODE_TYPE_ASSY2)))
+      {
+      // paste this node regardless of duplicates * the node is ...
+	retFlag = 0;
+	goto wrapup;
+      }
+
+    // Rule: For parts, do not check for duplicates
+    if (!strcmp(BASE_INFO.nodeType,VDCT1_ENG_NODE_TYPE_PART)) {
+      retFlag = 0;
+      goto wrapup;
+    }
+    
+    childID = NODE_PARENT_ID;
+    vdct1$GetBaseInfo(objID = &childID, baseInfo = &baseInfo);
+
+    if (!strcmp(baseInfo.nodeType,VDCT1_ENG_NODE_TYPE_ASSY2)) {
+      // paste this node regardless of duplicates * its parent is ...
+      retFlag = 0;
+      goto wrapup;
+    }
+    
+    // get the parents and check them too!
+    do {
+      // get the next parent
+      vdct1$GetTree1Parent(objID = &childID, nth = 0, outID = &parentID);
+      if (parentID.objid == NULL_OBJID) break;
+      // get the baseInfo of the parent
+      vdct1$GetBaseInfo(objID = &parentID, baseInfo = &baseInfo);
+ 
+      if(!strcmp(baseInfo.nodeType, VDCT1_ENG_NODE_TYPE_ASSY2)) {
+      // paste this node regardless of duplicates * its parent is ...
+	retFlag = 0;
+	goto wrapup;
+      }
+      childID = parentID;
+    } while (strcmp(baseInfo.nodeType,VDCT1_ENG_NODE_TYPE_ASSY2));
+    
+  }
+  // ------------------ Node Pasting Rules RE: Paste Node ops --------
+  // uses the parentID from the location to be pasted
+  // uses the BASE_INFO from the node to be copied
+  if(!strcmp(LOCATION,VDCT1_ACTION_PASTE_NODE)) {
+     // Rule: no node can be created under this parent it is frozen
+    if(!strcmp(frz2,"FROZEN")) retFlag = 0;
+    
+    // Rule: all others OK
+    goto wrapup;
+    
+  }
+  
+
+  // ---------------- Node Pasting Rules RE: modelOE -------------------
+  // do we allow the connection of the modelOE here?
+  if(!strcmp(LOCATION,VDCT1_ACTION_PASTE_CONNECT)) {
+    // all types of nodes connect except those with parents of ASSY2
+    vdct1$GetBaseInfo(objID = &childID, baseInfo = &baseInfo);
+    
+    if ((!strcmp(BASE_INFO.nodeType,VDCT1_ENG_NODE_TYPE_ASSY2)) || 
+	(!strcmp(BASE_INFO_PARENT.nodeType,VDCT1_ENG_NODE_TYPE_ASSY2)))
+    {
+      // don't connect this node * the node is ...
+	retFlag = 0;
+	goto wrapup;
+      }
+    childID = NODE_PARENT_ID;
+    vdct1$GetBaseInfo(objID = &childID, baseInfo = &baseInfo);
+
+    if (!strcmp(baseInfo.nodeType,VDCT1_ENG_NODE_TYPE_ASSY2)) {
+      // don't connect this node * its parent is ...
+      retFlag = 0;
+      goto wrapup;
+    }
+    
+    // get the parents and check them too!
+    do {
+      // get the next parent
+      vdct1$GetTree1Parent(objID = &childID, nth = 0, outID = &parentID);
+      if (parentID.objid == NULL_OBJID) break;
+      // get the baseInfo of the parent
+      vdct1$GetBaseInfo(objID = &parentID, baseInfo = &baseInfo);
+ 
+      if(!strcmp(baseInfo.nodeType, VDCT1_ENG_NODE_TYPE_ASSY2)) {
+      // don't attach this node * its parent is ...
+	retFlag = 0;
+	goto wrapup;
+      }
+      childID = parentID;
+    } while (strcmp(baseInfo.nodeType,VDCT1_ENG_NODE_TYPE_ASSY2));
+    
+}
+  
+wrapup:
+  // lets send back the baseInfo 
+  ACTION_OK = retFlag;
+  if (traceFlag) printf("<<< pplNodeRulesOK(%d)\n",retFlag);
+  
+  return retFlag;
+}
+
+/* -----------------------------
+ * isPartConValid
+ * routine to determine if the attachment of a part to a tree is valid
+ * generally this should be done when the part matches the connection attempt
+ * Requires deterimining the ancestry of the part class then obtaining its attribute
+ * data from the model and then matching that to the attributes of the part to be
+ * connected to the model
+ * Data ACCESS
+ * I - O  ACTION_OK used to indicate validity
+ * I - O  NODE_ID   nodeID of the part to be attached
+ * I - O  BASE_INFO baseInfo of the part to be attached
+ * I - O  PIECE_OE  The modelOE of the part to be matched to
+ */
+
+// construction zone //
+IGRstat isPartConValid()
+{
+  IGRstat                        retFlag;
+  IGRstat                        traceFlag;
+  IGRstat                        sts;
+  TVDfld                         attrFld;
+  TVDct1_part_fld_part_cage_num  part_cage_num;
+  IGRchar                        attrTxt[128],buf[128],testTxt[128];
+  IGRchar                        endTreatment0[128],endTreatment1[128];
+  IGRchar                        endTreatInfo0[128],endTreatInfo1[128];
+  VDprcAttr                      mp;
+  IGRlong                        suc;
+  IGRdouble                      volume; 
+  IGRint                         flag, stringLen,i;
+  IGRchar                       *p;
+  
+  
+  // init
+  retFlag   = 1;
+  traceFlag = 1;
+  ACTION_OK = 0;
+  
+  if(traceFlag) printf(">>> isPartConValid\n");
+
+    // send a message to get the data from model
+    flag = 0xFF;
+    
+    sts = ci$send( msg      = message VDSroot.VDprocAttr(&suc,&PIECE_OE.mod_env,flag,&mp),
+		   targetid = PIECE_OE.obj_id.objid,
+		   targetos = PIECE_OE.obj_id.osnum );
+
+  // get anything that is not a part out of here
+  if(strcmp(BASE_INFO.nodeType,VDCT1_ENG_NODE_TYPE_PART)) {
+    retFlag = 1;
+    goto wrapup;
+  }
+
+  // The cage_num needs to match
+  VDct1GetPartCageNumForModelObject(&PIECE_OE,NULL,part_cage_num,NULL);
+  if (strcmp(BASE_INFO.nodeName,part_cage_num)) goto wrapup;
+  
+  // begin tests of ancestry of the Model
+  // Based on type
+
+  // **************** VSbeam Check ***********************
+  sts = vdobj$IsAncestryValid(objOE           = &PIECE_OE,
+			      superClassName  = "VSbeam");
+  if(traceFlag) printf("VSbeam\n");
+  // if it is a beam do this
+  if (sts & 1) {
+    // check for part_num, grade, memb_cut_len, treatment, weight,
+    // get the attribute PART_NUM
+    vdcol$GetAttr(objID = &NODE_ID, name = VDCT1_ATTR_PART_NO, fld = &attrFld);
+
+    vdsa$GetStruct( objOE = &PIECE_OE,
+		    name  = VDCT1_ISDP_ATTR_PART_NUM,
+		    txt   = attrTxt);
+    // do the check
+    VDstrupr(attrTxt);
+    VDstrupr(attrFld.val.txt);
+    if(traceFlag) printf("[1]attrTxt [%s], attrFld.val.txt[%s]\n",
+			 attrTxt,
+			 attrFld.val.txt );
+    if(strcmp(attrTxt,attrFld.val.txt)) goto wrapup;
+    
+
+    // get the attribute GRADE
+    vdcol$GetAttr(objID = &NODE_ID, name = VDCT1_ISDP_ATTR_GRADE, fld = &attrFld);
+
+    vdsa$GetStruct( objOE = &PIECE_OE,
+		    name  = VDCT1_ISDP_ATTR_GRADE,
+		    txt   = attrTxt);
+    // do the check
+    VDstrupr(attrTxt);
+    VDstrupr(attrFld.val.txt);
+    if(traceFlag) printf("[2]attrTxt [%s], attrFld.val.txt[%s]\n",
+			 attrTxt,
+			 attrFld.val.txt );
+    if(strcmp(attrTxt,attrFld.val.txt)) goto wrapup;
+
+    // get the attribute memb_cut_len
+    vdcol$GetAttr(objID = &NODE_ID, name = VDCT1_ATTR_QTY, fld = &attrFld);
+
+    vdsa$GetStruct( objOE = &PIECE_OE,
+		    name  = VDCT1_ISDP_ATTR_CUT_LENGTH,
+		    txt   = attrTxt);
+    // do the check
+    VDstrupr(attrTxt);
+    VDstrupr(attrFld.val.txt);
+    if(traceFlag) printf("[3]attrTxt [%s], attrFld.val.txt[%s]\n",
+			 attrTxt,
+			 attrFld.val.txt );
+    if(strcmp(attrTxt,attrFld.val.txt)) goto wrapup;
+
+    // get the attribute treatment
+    vdcol$GetAttr( objID = &NODE_ID,
+		   name  = VDCT1_ISDP_ATTR_TREATMENT,
+		   fld   = &attrFld);
+
+    vdsa$GetStruct( objOE = &PIECE_OE,
+		    name  = "end_treatment0",
+		    txt   = endTreatment0);
+    vdsa$GetStruct( objOE = &PIECE_OE,
+		    name  = "end_treatment1",
+		    txt   = endTreatment1);
+    vdsa$GetStruct( objOE = &PIECE_OE,
+		    name  = "end_treatinfo0",
+		    txt   = endTreatInfo0);
+    vdsa$GetStruct( objOE = &PIECE_OE,
+		    name  = "end_treatinfo1",
+		    txt   = endTreatInfo1);
+
+    if (*attrFld.name) {
+      
+      VDstrupr(endTreatment0);
+      VDstrupr(endTreatInfo0);
+      VDstrupr(endTreatment1);
+      VDstrupr(endTreatInfo1);
+      sprintf(attrTxt,"%s:%s:%s:%s",
+	      endTreatment0,endTreatInfo0,endTreatment1,endTreatInfo1);
+
+    // do the check
+      VDstrupr(attrTxt);
+      VDstrupr(attrFld.val.txt);
+    if(traceFlag) printf("[4]attrTxt [%s], attrFld.val.txt[%s]\n",
+			 attrTxt,
+			 attrFld.val.txt );
+      if(strcmp(attrTxt,attrFld.val.txt)) goto wrapup;
+    }
+    
+    // get the attribute weight
+    vdcol$GetAttr(objID = &NODE_ID, name = VDCT1_ATTR_WEIGHT, fld = &attrFld);
+
+    if (mp.mass == 0) { 
+      sprintf(attrTxt,"0.0");
+    }
+    else {
+      sprintf(attrTxt,"%f",mp.mass);
+    }
+    // do the check
+    VDstrupr(attrTxt);
+    VDstrupr(attrFld.val.txt);
+    if(traceFlag) printf("[5]attrTxt [%s], attrFld.val.txt[%s]\n",
+			 attrTxt,
+			 attrFld.val.txt );
+    if(strcmp(attrTxt,attrFld.val.txt)) goto wrapup;
+
+    ACTION_OK = 1;
+    goto wrapup;
+  } // end of beam checking
+  
+  // ***************  VSplate check ********************
+  sts = vdobj$IsAncestryValid(objOE           = &PIECE_OE,
+			      superClassName  = "VSplate");
+  if(traceFlag) printf("VSplate\n");  
+  // if it is a plate do this
+  if (sts & 1) {
+    // check for part_num, grade, thickness, weight
+    // get the attribute PART_NUM
+    vdcol$GetAttr(objID = &NODE_ID, name = VDCT1_ATTR_PART_NO, fld = &attrFld);
+
+    vdsa$GetStruct( objOE = &PIECE_OE,
+		    name  = VDCT1_ISDP_ATTR_PART_NUM,
+		    txt   = attrTxt);
+    // do the check
+    VDstrupr(attrTxt);
+    VDstrupr(attrFld.val.txt);
+    if(traceFlag) printf("[1]attrTxt [%s], attrFld.val.txt[%s]\n",
+			 attrTxt,
+			 attrFld.val.txt );
+    if(strcmp(attrTxt,attrFld.val.txt)) goto wrapup;
+    
+
+    // get the attribute GRADE
+    vdcol$GetAttr(objID = &NODE_ID, name = VDCT1_ISDP_ATTR_GRADE, fld = &attrFld);
+
+    vdsa$GetStruct( objOE = &PIECE_OE,
+		    name  = VDCT1_ISDP_ATTR_GRADE,
+		    txt   = attrTxt);
+    // do the check
+    VDstrupr(attrTxt);
+    VDstrupr(attrFld.val.txt);
+    if(traceFlag) printf("[2]attrTxt [%s], attrFld.val.txt[%s]\n",
+			 attrTxt,
+			 attrFld.val.txt );
+    if(strcmp(attrTxt,attrFld.val.txt)) goto wrapup;
+
+    // get the attribute thickness
+    vdcol$GetAttr(objID = &NODE_ID, name = VDCT1_ISDP_ATTR_PLATE_THK, fld = &attrFld);
+    
+    vdsa$GetStruct( objOE = &PIECE_OE,
+		    name  = VDCT1_ISDP_ATTR_PLATE_THK,
+		    dbl   = attrTxt);
+
+    // do the check
+    VDstrupr(attrTxt);
+    VDstrupr(attrFld.val.txt);
+    if(traceFlag) printf("[3]attrTxt [%s], attrFld.val.txt[%s]\n",
+			 attrTxt,
+			 attrFld.val.txt );
+    if(strcmp(attrTxt,attrFld.val.txt)) goto wrapup;
+
+    // get the attribute weight
+    vdcol$GetAttr(objID = &NODE_ID, name = VDCT1_ATTR_WEIGHT, fld = &attrFld);
+
+    if (mp.mass == 0) { 
+      sprintf(attrTxt,"0.0");
+    }
+    else {
+      sprintf(attrTxt,"%f",mp.mass);
+    }
+    // do the check
+    VDstrupr(attrTxt);
+    VDstrupr(attrFld.val.txt);
+    if(traceFlag) printf("[4]attrTxt [%s], attrFld.val.txt[%s]\n",
+			 attrTxt,
+			 attrFld.val.txt );
+    if(strcmp(attrTxt,attrFld.val.txt)) goto wrapup;
+
+    ACTION_OK = 1;
+    goto wrapup;
+  }
+  
+  // *************** VDequipment Check **************************
+  sts = vdobj$IsAncestryValid(objOE            = &PIECE_OE,
+			      superClassName   = "VDequipment");
+  if(traceFlag) printf("VDequipment!\n");
+  // if it is equipment do this
+  if (sts & 1) {
+    // check for eqp_family, eqp_partno, eqp_partrev
+    // get the attribute eqp_family
+    strcpy(testTxt,"");
+    vdcol$GetAttr(objID = &NODE_ID, name = VDCT1_ATTR_ISDP_NAME, fld = &attrFld); 
+    
+    // trim the attrFld.val.txt to show only eqp_family
+    if(*attrFld.name != 0){
+      strcpy(buf,attrFld.val.txt);
+      for(p = buf; *p != ':'; p = p + 1)
+      {
+	sprintf(testTxt,"%s%c",testTxt,*p);
+      }
+      strcpy(attrFld.val.txt,testTxt);    
+    }
+    
+    vdsa$GetStruct( objOE = &PIECE_OE,
+		    name  = VDCT1_ISDP_ATTR_EQP_FAMILY,
+		    txt   = attrTxt);
+
+    // do the check
+    VDstrupr(attrTxt);
+    VDstrupr(attrFld.val.txt);
+    if(traceFlag) printf("[1]attrTxt [%s], attrFld.val.txt[%s]\n",
+			 attrTxt,
+			 attrFld.val.txt );
+    if(strcmp(attrTxt,attrFld.val.txt)) goto wrapup;
+
+    // get the attribute PART_NUM
+    vdcol$GetAttr(objID = &NODE_ID, name = VDCT1_ATTR_PART_NO, fld = &attrFld);
+
+    vdsa$GetStruct( objOE = &PIECE_OE,
+		    name  = VDCT1_ISDP_ATTR_EQP_PARTNO,
+		    txt   = attrTxt);
+    // do the check
+    VDstrupr(attrTxt);
+    VDstrupr(attrFld.val.txt);
+    if(traceFlag) printf("[2]attrTxt [%s], attrFld.val.txt[%s]\n",
+			 attrTxt,
+			 attrFld.val.txt );
+    if(strcmp(attrTxt,attrFld.val.txt)) goto wrapup;
+    
+    // get the attribute PART_REV
+    vdcol$GetAttr(objID = &NODE_ID, name = VDCT1_ATTR_PART_REV, fld = &attrFld);
+
+    vdsa$GetStruct( objOE = &PIECE_OE,
+		    name  = VDCT1_ISDP_ATTR_EQP_PARTREV,
+		    txt   = attrTxt);
+    // do the check
+    VDstrupr(attrTxt);
+    VDstrupr(attrFld.val.txt);
+    if(traceFlag) printf("[3]attrTxt [%s], attrFld.val.txt[%s]\n",
+			 attrTxt,
+			 attrFld.val.txt );
+    if(strcmp(attrTxt,attrFld.val.txt)) goto wrapup;
+
+    ACTION_OK = 1;
+    goto wrapup;
+  }
+
+  // Got It
+  // ACTION_OK = 1;
+  
+wrapup:
+  if(traceFlag) printf("<<< isPartConValid(%d)\n",retFlag);
+  return retFlag;
+}
+
+/* ----------------------------------------------------------------------
+ * Validate if the Freeze type of the node is ok
+ * Based on Parent Node Type
+ * Currently as of 05/21/00 is only GROUP for Parent
+ * I - NODE_PARENT_ID
+ * I - BASE_INFO
+ * these types could be altered in the PPL
+ * This PPL has lots of possiblities for Alteration
+ */
+
+IGRstat isFreezeOK()
+{
+  IGRstat        traceFlag;
+  TVDctBaseInfo  parBaseInfo;
+  TGRid          parNodeID;
+  
+  traceFlag = 0; 
+  ACTION_OK = 0;
+
+  if (traceFlag) printf(">>> isFreezeOK(ppl)\n");
+
+  // args check
+  if (NODE_PARENT_ID.objid == NULL_OBJID) goto wrapup;
+
+  // no treetops
+  if (!strcmp(BASE_INFO.nodeType,BASE_INFO.setType)) goto wrapup;
+
+  // get the parents NodeID and parBaseInfo
+  vdct1$GetTree1Parent(objID = &NODE_PARENT_ID, nth = 0, outID = &parNodeID);
+  if (parNodeID.objid == NULL_OBJID) goto wrapup;
+  vdct1$GetBaseInfo(objID = &parNodeID, baseInfo = &parBaseInfo);
+
+  // if this is the top of the tree
+  if (!strcmp(parBaseInfo.nodeType,parBaseInfo.setType)) goto wrapup;
+  
+  // if it is a GROUP it is OK
+  if (!strcmp(parBaseInfo.nodeType,VDCT1_ENG_NODE_TYPE_GROUP)) ACTION_OK = 1;
+
+wrapup:
+  if (traceFlag) printf("<<< isFrezeOK(%d)\n",ACTION_OK);
+  return ACTION_OK;
+  
+}
+
+/* ----------------------------------------------------------------------
+ * Validate if the Revise type of Parent node is ok
+ * based on Parent Node Type
+ * O - ACTION_OK
+ * I - NODE_PARENT_ID
+ * I - BASE_INFO
+ * I - LIST_IND
+ * these types could be altered in the PPL
+ * This PPL has lots of possiblities for Alteration
+ */
+
+IGRstat isReviseOK()
+{
+  IGRstat        traceFlag;
+  TVDctBaseInfo  parBaseInfo, childBaseInfo;
+  TGRid          parNodeID, childID;
+  TVDfld         childFrzFld, childRevFld, parRevFld, parFrzFld;
+  IGRchar        buf[128], frozen[128], revision[128];
+  IGRint         i, mrRevNum, childRevNum;
+    
+  traceFlag = 0;
+  ACTION_OK = 0;
+
+  // set up to check to see if the revision is active already
+  mrRevNum = LIST_IND;
+
+  if (traceFlag) printf(">>> isReviseOK(ppl)\n");
+ if (traceFlag) printf("The mrRevNum is entering the ppl[%d]\n",LIST_IND);
+  // args check
+  if (NODE_PARENT_ID.objid == NULL_OBJID) goto wrapup;
+  
+  // no treetops
+  if (!strcmp(BASE_INFO.nodeType,BASE_INFO.setType)) goto wrapup;
+
+  // get the parents NodeID and parBaseInfo
+  vdct1$GetTree1Parent(objID = &NODE_PARENT_ID, nth = 0, outID = &parNodeID);
+  if (parNodeID.objid == NULL_OBJID) goto wrapup;
+  vdct1$GetBaseInfo(objID = &parNodeID, baseInfo = &parBaseInfo);
+
+  // if this is the top of the tree
+  if (!strcmp(parBaseInfo.nodeType,parBaseInfo.setType)) goto wrapup;
+
+  // if it is a GROUP it is OK
+  if (!strcmp(parBaseInfo.nodeType,VDCT1_ENG_NODE_TYPE_GROUP)) {
+
+    // check all the kids to see if the node has matching nodes which are under revision
+    for (i = 0; (vdct1$GetTree1Child(objID = &parNodeID,       
+				     nth   = i,    
+				     outID = &childID)); i = i + 1) {  
+      // get the baseInfo stuff
+      vdct1$GetBaseInfo(objID = &childID, baseInfo = &childBaseInfo);
+
+      // get the assy_rev of the kid (same level as the parent might even be the parent)
+      vdcol$GetAttr(objID = &childID, name = VDCT1_ATTR_ASSY_REV, fld = &childRevFld);
+      if(traceFlag) {
+	printf("BASE_INFO [%s] [%s]  childBaseInfo [%s] [%s]\n",
+	       BASE_INFO.nodeType,BASE_INFO.nodeName,
+	       childBaseInfo.nodeType,childBaseInfo.nodeName);
+      }
+      
+      // if it has the same type and name
+      if((!strcmp(BASE_INFO.nodeType,childBaseInfo.nodeType)) && 
+	 (!strcmp(BASE_INFO.nodeName,childBaseInfo.nodeName))){
+ 
+	if (traceFlag) printf("The node is the same name and type\n");
+
+	// convert the childRevFld.val.txt to an int
+	childRevNum = atoi(childRevFld.val.txt);
+	
+	if (traceFlag) printf("childRevNum [%d] mrRevNum[%d]\n",childRevNum,mrRevNum);
+
+	// test to see if the revNum is too high
+	if (childRevNum > mrRevNum){
+	  if (traceFlag) {
+	    printf("The childRevNum was greater than the mrRevNum\n");
+	    printf("ACTION_OK is [%d]\n",ACTION_OK);
+
+	  }
+	  goto wrapup;
+	}
+      }
+    }
+    // it is ok to Revise
+    ACTION_OK = 1;
+  }
+  
+
+wrapup:
+  if (traceFlag) printf("<<< isReviseOK(%d)\n\n",ACTION_OK);
+  return ACTION_OK ;
+  
+}
+
+
+/* ----------------------------------------------------------------------
+ * Validate if the freeze status of the particular node should be changed
+ * this applies to the unconditional copy process applied to revisions
+ * O - ACTION_OK
+ * I - NODE_ID
+ * these types could be altered in the PPL
+ * This PPL has lots of possiblities for Alteration
+ */
+
+IGRstat isNodeActivateOK()
+{
+  IGRstat        traceFlag, sts;
+  TVDctBaseInfo  baseInfo;
+  IGRchar        buf[128];
+  TGRid          nodeID;
+
+  traceFlag = 0;
+  
+  // default to do the action 
+  ACTION_OK = 1;
+  if (traceFlag) printf(">>> isNodeActivateOK(%d)[in ppl]\n",ACTION_OK);
+  
+  // args check
+  if (NODE_ID.objid == NULL_OBJID) goto wrapup;
+
+  // copy it up
+  nodeID = NODE_ID;
+
+  // set buf to ASSY[2]
+  strcpy(buf,VDCT1_ENG_NODE_TYPE_ASSY2);
+
+  // scan to see if this item has a parent of this type
+  sts = vdct1$CmdParentTypePresent(nodeID     = &nodeID,
+				   a_nodeType = buf);
+  
+  // Rule: if the parent type is ASSY[2] don't unfreeze or revision delta when you copy
+  if (sts & 1) {
+    ACTION_OK = 0;
+    goto wrapup;
+  }
+  
+  // get the baseInfo of the node in question
+   vdct1$GetBaseInfo(objID = &nodeID, baseInfo = &baseInfo);
+
+   // if the node is an ASSY[2] don't unfreeze or revision delta when you copy
+   if(!strcmp(baseInfo.nodeType,VDCT1_ENG_NODE_TYPE_ASSY2)) {
+     ACTION_OK = 0;
+     goto wrapup;
+   }
+   
+  
+
+wrapup:
+  if (traceFlag) printf("<<< isNodeActivateOK(%d)\n",ACTION_OK);
+  return ACTION_OK;
+  
+}
+
+/* ---------------------------------------------------------------
+ * isDisplayOK()
+ * I   - NODE_ID
+ * I   - LIST_IND
+ * I/O - ACTION_OK
+ * O - pplRet in wrapper '1' ok '0' not
+ * used to tell if the tree.form or lib.form should see the data
+ * 3 options base on LIST_IND 
+ * 1 - display all not a filter everybody is OK
+ * 2 - active nodes   filters based on "frozen" 
+ *     only the "ACTIVE" status is OK
+ * 3 - Most Recent Frozen displays based upon
+ *     the "FROZEN" status and if 'assy_rev' is highest
+ */
+IGRstat isDisplayOK()
+{
+  IGRstat        retFlag;
+  IGRstat        traceFlag;
+  TVDfld         frzFld, assyFld, parFrzFld, childAssyFld, childFrzFld;
+  IGRstat        sts;
+  IGRint         i, childRev, assyRev, testRev;
+  IGRchar        frzBuf[128], assyBuf[128], parFrzBuf[128];
+  IGRchar        childBuf[128];
+  TGRid          parID, childID;
+  TVDctBaseInfo  baseInfo, childBaseInfo;
+  
+  
+  // init
+  traceFlag = 0;
+  retFlag = 0;
+  assyRev = -1;
+  
+  // say hi
+  if(traceFlag) printf(">>> isDisplayOK(in ppl)\n");
+
+  // args check
+  if (NODE_ID.objid == NULL_OBJID) goto wrapup;
+
+  // everybody goes if the filters work
+  retFlag = 1;
+  
+  // display all if somehow the choice is out of range
+  if ((LIST_IND < 1) || (LIST_IND > 4)) goto wrapup;
+  
+  // get the  attributes
+  vdcol$GetAttr(objID = &NODE_ID, name = VDCT1_ATTR_FROZEN,   fld = &frzFld);
+  vdcol$GetAttr(objID = &NODE_ID, name = VDCT1_ATTR_ASSY_REV, fld = &assyFld);
+
+  // if the "frozen" field is not present display ok
+  if (*frzFld.name == 0) goto wrapup;
+
+  // copy it up
+  strcpy(frzBuf,frzFld.val.txt);
+  
+  // option: "all nodes" everyone is ok!
+  if (LIST_IND == 1) { 
+    goto wrapup;
+  }
+  // option: "deleted nodes" just "DELETED" ok
+  if (LIST_IND == 4) {
+    // if it is deleted ...
+    printf("Frozen = [%s]\n",frzBuf);
+    
+    if (!strcmp(frzBuf,"DELETED")) goto wrapup;
+  }  // deleted loop  
+
+  // option: "active nodes" just "ACTIVE" ok
+  if (LIST_IND == 2) {
+    // if it is active ...
+    if (!strcmp(frzBuf,"ACTIVE")) goto wrapup;
+  }  // active loop
+  
+  // option: "most recent frozen" just these are ok
+  if (LIST_IND == 3) {
+    // it must be frozen
+    if(!strcmp(frzBuf,"FROZEN")) {
+
+      // frozen without a rev gets display
+      if(*assyFld.name == 0) goto wrapup;
+      
+      // get the parID;
+      vdct1$GetTree1Parent(objID = &NODE_ID, nth = 0, outID = &parID);
+
+      // get its "frozen" attribute
+      vdcol$GetAttr(objID = &parID, name = VDCT1_ATTR_FROZEN,   fld = &parFrzFld);
+      
+      
+      // if it has no frozen attribute we check the kids 
+      if (*parFrzFld.name == 0) {
+
+	// get the assyRev
+	if (*assyFld.name != 0) {
+
+	  // copy it up
+	  strcpy(assyBuf,assyFld.val.txt);
+	  assyRev = atoi(assyBuf);    
+	}
+
+	// get the baseInfo
+	vdct1$GetBaseInfo(objID = &NODE_ID, baseInfo = &baseInfo);
+	
+	// we check the kids for highest assy rev matching nodeType and nodeName
+	childRev = 0;
+	testRev = 0;
+	for (i = 0; (vdct1$GetTree1Child(objID = &parID,       
+					 nth   = i,    
+					 outID = &childID)); i = i + 1) {  	
+	  // get the baseInfo
+	  vdct1$GetBaseInfo(objID = &childID, baseInfo = &childBaseInfo);
+	  // if it is the same name and type
+	  if((!strcmp(baseInfo.nodeType,childBaseInfo.nodeType)) 
+	     && (!strcmp(baseInfo.nodeName,childBaseInfo.nodeName))) {
+
+	    // get the assy_rev attribute
+	    vdcol$GetAttr(objID = &childID, name = VDCT1_ATTR_FROZEN, fld = &childFrzFld);	    
+	    // get the assy_rev attribute
+	    vdcol$GetAttr(objID = &childID, name = VDCT1_ATTR_ASSY_REV, fld = &childAssyFld);
+	    // if we have an assy_rev
+	    if((*childAssyFld.name != 0) && (!strcmp(childFrzFld.val.txt,"FROZEN"))) {
+
+	      // set it up
+	      strcpy(childBuf,childAssyFld.val.txt);
+	      testRev = atoi(childAssyFld.val.txt);
+ 
+	      // exchange if higher
+	      if (testRev > childRev) childRev = testRev;
+	    }
+	  }
+	}
+  
+	// if it matches OK!	  
+	if(assyRev == childRev) {
+	  goto wrapup;
+	}
+	
+      }
+      else  // the attribute is present we do it 
+      {
+	strcpy(parFrzBuf,parFrzFld.val.txt);
+
+	// the displayed parent is frozen ok
+	if(!strcmp(parFrzBuf,"FROZEN")) goto wrapup;
+      }      
+    } // the node is frozen loop
+  }  // most recent frozen loop
+
+  
+  // passed the filters nobody goes
+  retFlag = 0;
+wrapup:
+  // say bye
+  if (traceFlag) {
+    printf("<<< isDisplayOK(%d)\n",retFlag);
+  }
+  ACTION_OK = retFlag;
+  return retFlag;
+  
+}
+
+/* -----------------------------------------------
+ * Determine type of node to create duing copy operation
+ *
+ * I - NODE_ID BASE_INFO               Node being copied
+ * I - NODE_PARENT_ID BASE_INFO_PARENT Parent where node is to be copied
+ *
+ * O - NODE_TYPE_INFO - Node Type to create
+ *
+ * This is really only for transformations, calling routine will
+ * ensure that if this fails then a valid node type does exists
+ */
+IGRstat getPasteNodeType()
+{
+  // Init
+  *NODE_TYPE_INFO.type = 0;
+  
+  // Just some checks
+  if (!strcmp(BASE_INFO.nodeType,VDCT1_NODE_TYPE_STD_PART)) {
+    strcpy(NODE_TYPE_INFO.type,VDCT1_ENG_NODE_TYPE_PART);
+    goto wrapup;
+  }
+  if (!strcmp(BASE_INFO.nodeType,VDCT1_NODE_TYPE_STD_PART4)) {
+    strcpy(NODE_TYPE_INFO.type,VDCT1_ENG_NODE_TYPE_PART);
+    goto wrapup;
+  }
+  if (!strcmp(BASE_INFO.nodeType,VDCT1_NODE_TYPE_STD_ASSY2)) {
+    strcpy(NODE_TYPE_INFO.type,VDCT1_ENG_NODE_TYPE_ASSY2);
+    goto wrapup;
+  }
+  
+  // Done
+ wrapup:
+  return 1;
+}
+
+/* ---------------------------------------------------------------------------------
+ * get the Parent Attributes (some) and copy them to the node
+ * I - NODE_PARENT_ID
+ * I - NODE_ID  
+ */
+IGRstat getParentAttributes()
+{
+  IGRstat retFlag;
+  IGRchar buf[128];
+
+  // init 
+  retFlag = 1;
+
+  // args check
+  if(NODE_ID.objid        == NULL_OBJID) goto wrapup;
+  if(NODE_PARENT_ID.objid == NULL_OBJID) goto wrapup; 
+  
+  // set up and get data
+  // AV_HULL
+  strcpy(buf,VDCT1_ATTR_AV_HULL);
+  pullAttribute(buf);
+
+  // CONT_HULL
+  strcpy(buf,VDCT1_ATTR_CONT_HULL);
+  pullAttribute(buf);  
+
+  // ZONE
+  strcpy(buf,VDCT1_ATTR_ZONE);
+  pullAttribute(buf);  
+ 
+  // UNIT
+  strcpy(buf,VDCT1_ATTR_UNIT);
+  pullAttribute(buf);  
+
+  // COMPARTMENT
+  strcpy(buf,VDCT1_ATTR_COMPARTMENT);
+  pullAttribute(buf);
+
+  // DWG_NUM
+  strcpy(buf,VDCT1_ATTR_DWG_NUM);
+  pullAttribute(buf);
+
+  // DWG_REV
+  strcpy(buf,VDCT1_ATTR_DWG_REV);
+  pullAttribute(buf);
+
+  // Done
+ wrapup:
+  return retFlag;
+  
+}
+
+/* -------------------------------------------
+ * limit tree creation to file parameters
+ * add this to any PPL that you wish to limit the creation
+ * of files in
+ * corresponding file is vds/config/sets/tm_access.tbl
+ * this text file sets limits
+ * this routine merely allows the limits to operate.
+ */
+IGRstat isTreeLimitOK()
+{
+  // yes is 1 no is 0
+  ACTION_OK = 1;
+  return ACTION_OK;
+}
+// -------------
+// forces check of OPS for part creation
+IGRstat mustPartBeInOPS()
+{
+  // yes is 1 no is 0
+  ACTION_OK = 1;
+  return ACTION_OK;
+}

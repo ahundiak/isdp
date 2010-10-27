@@ -1,0 +1,339 @@
+# $Id: vd_ver,v 1.1.1.1 2001/01/04 21:07:29 cvs Exp $
+
+# -------------------------------------------------------------------
+# I/VDS
+#
+# File:	vds/etc/bin/vd_ver
+#
+# Description:
+#
+# Dependencies:
+#
+# Revision History:
+#	$Log: vd_ver,v $
+#	Revision 1.1.1.1  2001/01/04 21:07:29  cvs
+#	Initial import to CVS
+#	
+#
+# History:
+#
+# -------------------------------------------------------------------
+
+#	I/VDS
+#	Procedure to create OMprodinit.C needed by a dloadable .o
+#	This procedure tries to automate every step. Generating OMprofinit.C
+#	the version file, modifying OMprodinit.C, compiling OMprodinit.C and
+#	the version version file and linking them into prod's .o.
+#
+#-------------------------------------------------------------------------------
+function Tput {
+	/usr/bin/tput $1
+} # Tput
+#-------------------------------------------------------------------------------
+function Info {
+	echo "$*"
+	return 0
+} # Info
+#-------------------------------------------------------------------------------
+function getDirs {
+
+	#
+	# Initialize file names and directoies names
+	#
+	integer nC
+
+		if [ -z "${TMPDIR}" ] ; then
+			TMPDIR="/usr/tmp"
+		fi
+
+			RC=0
+			OPL="${EXNUC}/bin/opl" ;
+#			OPLCLEAN="${EXNUC}/bin/oplclean" ;
+			OPLCLEAN=${VDS}/etc/bin/oplclean
+			OMCPP="${EXNUC}/bin/omcpp"
+			if [ ! -x ${OPL} ] ; then
+				Info "** Cannot execute ${OPL}."
+				RC=1
+			fi
+			if [ ! -x ${OPLCLEAN} ] ; then
+				Info "** Cannot execute ${OPLCLEAN}."
+				RC=1
+			fi
+			if [ ! -x ${OMCPP} ] ; then
+				Info "** Cannot execute ${OMCPP}."
+				RC=1
+			fi
+			VDprodDir="${VDS}/etc/dload"
+			if [ ! -d ${VDprodDir} -o ! -w ${VDprodDir} ] ; then
+				Info "** Cannot access directory ${VDprodDir}"
+				RC=1
+			else
+				VDversFile="${VDprodDir}/VDversion.c"
+				TMPprodInit="${TMPDIR}/VD${RANDOM}.C"
+				OMprodInit="OMprodinit.C"
+				VDprodInit="${VDprodDir}/${OMprodInit}"
+			fi
+			pDef="${VDS}/etc/version/product.def"
+			if [ ! -r ${pDef} ] ; then
+				Info "** Cannot access file ${pDef}"
+				RC=1
+			fi
+			VDdloadProd="${VDS}/config/dload/init"
+			if [ ! -d ${VDdloadProd} -o ! -w ${VDdloadProd} ] ; then
+				Info "** Cannot access directory ${VDdloadProd}"
+				RC=1
+			else
+#
+#				We have to put the object file in dload/cmds
+#
+				SUN=`uname -s`
+				if [ $SUN = "SunOS" ] ; 
+				then
+					LD="/usr/ccs/bin/ld"
+					LDOPT=" -z text -G "
+					CC="/opt/SUNWspro/bin/cc"
+				else
+					LD="/bin/ld"
+					LDOPT=" -r -M "
+					CC="/bin/acc"
+				fi
+			fi
+		
+	return ${RC}
+
+} # getDirs
+
+#-------------------------------------------------------------------------------
+function oplMinusD {
+	integer RC 
+	typeset libDir name toCC
+
+	if [ ! -x ${EXNUC}/bin/opl ] ; then
+		Info "** Cannot execute ${EXNUC}/bin/opl."
+		RC=1
+	else
+		Info "\tProcessing:\n"
+		if ${OPL} -o ${TMPprodInit} -d ${VDSname} \
+                       `find ${VDS}/lib -name \*.o -print`; then
+#
+#			Strip opl output of non-VD references.
+#
+			echo "\n\tKeep Vds, VD  symbols\n"
+
+			${OPLCLEAN} "Vds"   ${TMPprodInit} /usr/tmp/prodVds ;
+			${OPLCLEAN} "SM"    ${TMPprodInit} /usr/tmp/prodSM ;	
+
+			if ${OPLCLEAN} "VD" ${TMPprodInit} ${VDprodInit} ; then
+				\cd ${VDprodDir}
+
+				cat /usr/tmp/prodVds   >> ${VDprodInit}
+				cat /usr/tmp/prodSM    >> ${VDprodInit}
+
+				toCC=${VDprodInit%.C}.c
+
+				echo "\n\t\tCompiling OMprodinit.C\n"
+
+#
+#				Preprocess file, get rid of class_init
+#				info as well, and the array containing them.
+#				Delete OM_p_APPL_VERSION array (generated
+#				empty by opl), replace it afterwards with
+#				one containing I/VDS's version.
+#				NOTE that this is done on the .c file, not
+#				the .C file.
+#
+				arrayName="${VDSname}_class_definitions"
+				
+				/bin/grep -v "_OM_class_init" ${VDprodInit} \
+				| /bin/sed -e "/${arrayName}/,/};/d"	\
+					   -e "/INGR_p_PRODUCT_DEF/,/};/d" \
+				| ${OMCPP}	-I${EXNUC}/include	\
+				> ${toCC}
+#
+#				Put I/VDS's version stamp in list.
+#
+				/bin/cat >> ${toCC} <<!
+				extern INGR_S_PRODUCT_DEF VDS_appl_version_id ;
+				INGR_p_PRODUCT_DEF ${VDSname}_appl_version[] =
+				{	
+					&VDS_appl_version_id,
+					0	
+				} ;
+!
+
+
+				if ${CC} ${VDSaccOpt} -I${EXNUC}/include -c ${toCC}; then
+					RC=0
+				else
+					RC=$?
+					Info "** Compilation failed."
+				fi
+				\cd -
+			else
+				RC=$?
+				Info "** oplclean failed."
+			fi
+		else
+			RC=$?
+			Info "** opl failed."
+		fi
+	fi
+	return ${RC}
+
+} # oplMinusD
+#------------------------------------------------------------------------------
+function getVersion {
+
+	integer RC
+
+	if [ ! -r ${pDef} ] ; then
+		Info "** Cannot read ${pDef}."
+		RC=1
+	else
+		VDSvers=`/usr/bin/awk -F= \
+				'\
+					/IDversion/ { print $2 ; }
+				' ${pDef}`
+		RC=$?
+		if [ ${RC} -ne 0 ] ; then
+			Info "** Cannot get version from ${pDef}."
+		fi
+	fi
+
+	return ${RC}
+
+} # getVersion
+
+#-------------------------------------------------------------------------------
+function mkApplVersion {
+
+	integer RC
+	typeset STRING
+
+	set +x
+
+	echo "\n\t\tCreating application version\n"
+
+	STRING="\"I/VDS ${VDSvers} `/bin/date '+%d-%b-%y'`\""
+
+	Info "\t\tVersion stamp : ${STRING}"
+
+	if /bin/cat > ${VDversFile} <<-%
+		#include "OMversion.h"
+		INGR_S_PRODUCT_DEF VDS_appl_version_id = { ${STRING}, 0 } ;
+%
+		then
+
+		echo "\n\t\tCompiling version file\n"
+
+		\cd ${VDprodDir}
+
+
+		if ${CC} ${VDSaccOpt} -I${EXNUC}/include -c ${VDversFile} ; then
+			RC=0
+		else
+			RC=$?
+			Info "** Compilation error."
+		fi
+		\cd -
+	else
+		RC=$?
+	fi
+	return ${RC}
+
+} # mkApplVersion
+#-------------------------------------------------------------------------------
+function cleanup {
+	/bin/rm ${TMPprodInit} >/dev/null 2>&1
+	return 0
+
+} #cleanup
+#-------------------------------------------------------------------------------
+function moveprod {
+mv ${VDversFile%c}o ${VDdloadProd}  
+mv ${VDprodInit%C}o ${VDdloadProd}  
+rm `find ${VDprodDir} -type f -print`
+}
+#-------------------------------------------------------------------------------
+integer rc
+
+#
+#	Init globals.
+#
+OMCPP=""		# Omcpp executable
+OPL=""			# Opl executable
+OPLCLEAN=""		# Oplclean executable
+VDSname="Vds"		# Name of I/VDS in "product_data"
+VDSvers=""		# Version of I/VDS in product.def
+TMPprodInit=""		# .C generated by "opl -d"
+VDprodInit=""		# OMprodinit.C with VD symbols only
+VDprodDir=""		# Directory where OMprodinit.C and version file are kept
+pDef=""			# Path to product.def
+VDdloadProd=""		# Dload directory in release version
+VDversFile=""		# Version file
+VDSaccOpt="${COMPOPT}"
+
+echo "\n\t\tCreation of new version files for I/VDS\n"
+
+trap "cleanup ; Tput smso ; Info '- INTERRUPT -' ; Tput rmso ; exit 2" 2 3
+
+
+if [ -d "${VDS}" ] ; then
+ 	if getDirs ; then
+			rm `find ${VDS}/config/dload  -type f -print`
+			if oplMinusD ; then
+				if getVersion ; then
+					if mkApplVersion ; then
+						    moveprod
+					else
+						echo "FAILURE !!!"
+					fi
+				fi
+			fi
+	fi
+fi
+
+cleanup
+
+if [ -d $VDS/etc/needed_dload ]
+then
+  echo "Copy the fixes from $VDS/etc/needed_dload (dynamically loaded)"
+  ls -l $VDS/etc/needed_dload
+  cp $VDS/etc/needed_dload/*.o $VDS/config/dload/init
+
+  if [ $SUN = "SunOS" ] ; then
+	dot=`ls -1 $VDS/config/dload/init/*.o`
+	for i in $dot
+	do 
+		name=${i%.*}
+		${LD} -z text -G -o ${name}.so ${name}.o
+		rm ${name}.o
+	done
+  fi
+  if [ $SUN = "SunOS" ] ; then
+    cp $VDS/etc/needed_dload/*.so $VDS/config/dload/init
+  fi
+
+fi
+
+if [ -d $VDS/etc/draw_dload ] ; then
+  echo "Copy the drawing correction file"
+  ls -l $VDS/etc/draw_dload
+  if [ ! -d $VDS/config/dload/prod ] ; then
+        echo "Create Directory $VDS/config/dload/prod "
+        mkdir -p $VDS/config/dload/prod
+  fi
+  cp $VDS/etc/draw_dload/*.o $VDS/config/dload/prod
+
+  if [ $SUN = "SunOS" ] ; then
+        dot=`ls -1 $VDS/config/dload/prod/*.o`
+        for i in $dot
+        do
+                name=${i%.*}
+                ${LD} -z text -G -o ${name}.so ${name}.o
+                rm ${name}.o
+        done
+  fi
+fi
+
+exit ${rc}

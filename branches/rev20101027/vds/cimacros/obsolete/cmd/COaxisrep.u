@@ -1,0 +1,473 @@
+/* $Id: COaxisrep.u,v 1.1.1.1 2001/01/04 21:07:20 cvs Exp $  */
+
+/* --------------------------------------------------------------------
+ * I/VDS
+ *
+ * File:	vds/cimacros/obsolete/cmd / COaxisrep.u
+ *
+ * Description:
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ *	$Log: COaxisrep.u,v $
+ *	Revision 1.1.1.1  2001/01/04 21:07:20  cvs
+ *	Initial import to CVS
+ *	
+# Revision 1.1  1998/04/29  16:27:20  pinnacle
+# VDS 2.5.1
+#
+# Revision 1.1  1997/05/08  13:20:44  pinnacle
+# New project VDS 250
+#
+# Revision 1.1  1996/07/19  20:33:52  pinnacle
+# Create VDS 241 project
+#
+# Revision 1.1  1994/11/14  22:42:32  pinnacle
+# Create vds.240 from vds.232
+#
+# Revision 1.1  1994/11/08  16:07:00  pinnacle
+# create vds.232
+#
+ *
+ * History:
+ *	MM/DD/YY	AUTHOR		DESCRIPTION
+ *
+ * -------------------------------------------------------------------*/
+
+#include "ciminimum.h"
+#include "cieveryone.h"
+#include "cimacros.h"
+#include "cilocate.h"
+#include "cievent.h"
+#include "msdef.h"
+#include "igetypedef.h"
+#include "gr.h"
+#include "dpdef.h"
+#include "dpmacros.h"
+#include "igewindef.h"
+#include "igewindow.h"
+#include "igewinmacros.h"
+#include "parametric.h"
+#include "asmacros.h"
+
+#include "IGRdirdef.h"
+#include "DIprims.h"
+
+#include "AS_status.h"
+
+extern int printf();
+extern DPsetinqgragad();
+
+
+main()
+{
+	IGRchar		exp_name[80], path_name[80], *chpos, window_name[80],
+			FstWindow[30], SecWindow[30], ref_objid[20],
+			ref_osnum[20];
+	IGRint 		i, j, index1, index2, bsretcode, status;
+	IGRlong 	msg, num_bytes, which_error;
+	struct GRid	FstWinId, SecWinId, ExpId, module_id, RefId;
+        GRobj		window_objid;
+       	IGRdouble	vw_vol[6], New_vw[6], pt[3], RefOrig[3], matrix[16],
+       			NormV1, V1[3], NormV2, V2[3], RefAxis[3], display_depths[6];
+	struct var_list var_list[3];
+  	struct	ret_struct	ExpStr, RefStr;
+	struct	GRsymbology	RefSymb;
+
+        extern 			BSmkvec();
+        extern          	BSnorvec();
+	extern 			GRfindmod();
+        extern 			IGEwin_const();
+        extern 			ASany_give_struct();
+	extern 			strcat();
+	extern 			strcpy();
+	extern 			DIrename();
+	extern 			DIadd_name();
+	extern 			DImain();
+	extern 			DIgive_pathname();
+	extern 			DIfast_trans();
+	extern 			strchr();
+    	extern 			DPviewvol();
+        extern IGRdouble 	sqrt();
+        extern IGRdouble 	BSdotp();
+
+
+        /* get the current module id */
+	GRfindmod( &module_id );
+
+        #ifdef DEBUG 
+        printf("module_id = %d %d\n", module_id.objid, module_id.osnum ); 
+        #endif
+
+        /* get current os name */
+  	status = di$give_pathname( osnum = module_id.osnum,
+			     	   pathname = path_name );
+
+        /* get needed expressions from ActRefDir directory */
+      	strcat( path_name, ":usr:ActRefDir" );
+        #ifdef DEBUG 
+        printf("obj name = %s\n", path_name ); 
+        #endif
+
+        /* First expression : referential expression */
+        strcpy( exp_name, path_name );
+        strcat( exp_name, ":RefName" );
+        #ifdef DEBUG
+        printf("exp_name = %s\n", exp_name ); 
+        #endif
+
+        di$translate( objname = exp_name,
+                      p_objid = &ExpId.objid,
+                      p_osnum = &ExpId.osnum );
+
+	#ifdef DEBUG
+        printf("ExpId = %d %d\n", ExpId.objid, ExpId.osnum ); 
+        #endif
+
+        /* get referential id ==> the value of expression is XXX.Y ( XXX is 
+        /* the objid and Y the osnum 
+        /**/
+        as$any_give_structure( go_grid = ExpId,
+                               inst    = &ExpStr );
+
+        strcpy( ref_objid, ExpStr.var.text_st.text_string );
+        #ifdef DEBUG
+        printf("ref_name = %s\n", ref_objid ); 
+	#endif
+
+        if( chpos = strchr( ref_objid, '.' ) )
+        {
+          strcpy( ref_osnum, chpos+1 );
+          *chpos = '\0';
+        }
+
+        #ifdef DEBUG 
+	printf("ref_objid = %s\n", ref_objid ); 
+	printf("ref_osnum = %s\n", ref_osnum ); 
+	#endif
+
+        RefId.objid = atoi( ref_objid );        
+        RefId.osnum = atoi( ref_osnum );        
+	#ifdef DEBUG
+	printf("RefId = %d %d\n", RefId.objid, RefId.osnum ); 
+	#endif
+
+        /* get referential symbology to get referential level */        
+        status = ci$send( msg      = message GRvg.GRgetsymb( &msg, &RefSymb ),
+                          targetid = RefId.objid,
+                          targetos = RefId.osnum );
+
+	#ifdef DEBUG 
+	printf("Level = %d\n", RefSymb.level ); 
+	#endif
+
+        /* get referentail matrix */
+        as$any_give_structure( go_grid = RefId,
+                               inst    = &RefStr );
+
+        RefOrig[0] = RefStr.var.ref_st.t[3];
+        RefOrig[1] = RefStr.var.ref_st.t[7];
+        RefOrig[2] = RefStr.var.ref_st.t[11];
+  
+        /* get axis and window name and id */
+
+        /* first axis */
+        strcpy( exp_name, path_name );
+        strcat( exp_name, ":FirstAxis" );
+
+        #ifdef DEBUG 
+	printf("exp_name = %s\n", exp_name ); 
+	#endif
+
+        di$translate( objname = exp_name,
+                      p_objid = &ExpId.objid,
+                      p_osnum = &ExpId.osnum );
+
+	#ifdef DEBUG 
+	printf("ExpId = %d %d\n", ExpId.objid, ExpId.osnum ); 
+	#endif
+
+        as$any_give_structure( go_grid = ExpId,
+                               inst    = &ExpStr );
+
+        #ifdef DEBUG 
+	printf("firstaxis = %s\n", ExpStr.var.text_st.text_string ); 
+	#endif
+
+        if( !strcmp( ExpStr.var.text_st.text_string, "x" ) ) index1 = 0;
+        else if( !strcmp( ExpStr.var.text_st.text_string, "y" ) ) index1 = 1;
+        else if( !strcmp( ExpStr.var.text_st.text_string, "z" ) ) index1 = 2;
+
+        /* second axis */
+        strcpy( exp_name, path_name );
+        strcat( exp_name, ":SecAxis" );
+
+        #ifdef DEBUG 
+	printf("exp_name = %s\n", exp_name ); 
+	#endif
+
+        di$translate( objname = exp_name,
+                      p_objid = &ExpId.objid,
+                      p_osnum = &ExpId.osnum );
+
+	#ifdef DEBUG 
+	printf("ExpId = %d %d\n", ExpId.objid, ExpId.osnum ); 
+	#endif
+
+        as$any_give_structure( go_grid = ExpId,
+                               inst    = &ExpStr );
+
+        #ifdef DEBUG 
+	printf("SecAxis = %s\n", ExpStr.var.text_st.text_string ); 
+	#endif
+
+        if( !strcmp( ExpStr.var.text_st.text_string, "x" ) ) index2 = 0;
+        else if( !strcmp( ExpStr.var.text_st.text_string, "y" ) ) index2 = 1;
+        else if( !strcmp( ExpStr.var.text_st.text_string, "z" ) ) index2 = 2;
+
+	/* first window */
+        strcpy( exp_name, path_name );
+        strcat( exp_name, ":FirstWindow" );
+
+        #ifdef DEBUG 
+	printf("exp_name = %s\n", exp_name ); 
+	#endif
+
+        di$translate( objname = exp_name,
+                      p_objid = &ExpId.objid,
+                      p_osnum = &ExpId.osnum );
+
+	#ifdef DEBUG 
+	printf("ExpId = %d %d\n", ExpId.objid, ExpId.osnum ); 
+	#endif
+
+        as$any_give_structure( go_grid = ExpId,
+                               inst    = &ExpStr );
+
+        strcpy( FstWindow, ExpStr.var.text_st.text_string );
+
+        #ifdef DEBUG 
+	printf("FstWindow = %s\n", ExpStr.var.text_st.text_string ); 
+	#endif
+
+        /* get first window id */        
+  	di$give_pathname( osnum    = module_id.osnum,
+		     	  pathname = window_name );
+        strcat( window_name, ":views:regviews:GRviews:" );
+        strcat( window_name, FstWindow );
+
+        #ifdef DEBUG 
+	printf("window_name = %s\n", window_name ); 
+	#endif
+       
+        di$translate( objname = window_name,
+                      p_objid = &FstWinId.objid,
+                      p_osnum = &FstWinId.osnum );
+
+        #ifdef DEBUG 
+	printf("FstWinId = %d %d\n", FstWinId.objid, FstWinId.osnum ); 
+	#endif
+
+	/* second window */
+        strcpy( exp_name, path_name );
+        strcat( exp_name, ":SecWindow" );
+
+        #ifdef DEBUG 
+	printf("exp_name = %s\n", exp_name ); 
+	#endif
+
+        di$translate( objname = exp_name,
+                      p_objid = &ExpId.objid,
+                      p_osnum = &ExpId.osnum );
+
+	#ifdef DEBUG 
+	printf("ExpId = %d %d\n", ExpId.objid, ExpId.osnum ); 
+	#endif
+
+        as$any_give_structure( go_grid = ExpId,
+                               inst    = &ExpStr );
+
+        strcpy( SecWindow, ExpStr.var.text_st.text_string );
+
+        #ifdef DEBUG 
+	printf("SecWindow = %s\n", ExpStr.var.text_st.text_string ); 
+	#endif
+
+        /* second window id */
+  	di$give_pathname( osnum    = module_id.osnum,
+		     	  pathname = window_name );
+        strcat( window_name, ":views:regviews:GRviews:" );
+        strcat( window_name, SecWindow );
+
+        #ifdef DEBUG 
+	printf("window_name = %s\n", window_name ); 
+	#endif
+       
+        di$translate( objname = window_name,
+                      p_objid = &SecWinId.objid,
+                      p_osnum = &SecWinId.osnum );
+
+        #ifdef DEBUG 
+	printf("SecWinId = %d %d\n", SecWinId.objid, SecWinId.osnum ); 
+	#endif
+
+        /* get working window to get its world volume */
+        ci$get( prompt = "get window",
+                point  = pt,
+                window_id = &window_objid );
+
+        #ifdef DEBUG 
+	printf("window_objid = %d\n", window_objid ); 
+	#endif
+
+        /* put all window layers off */
+	docmd( "layers off" ) {
+				ci$put( string   = "all" ) ;
+				ci$put (response = TERMINATE) ;
+			}
+
+        /* get working window rotation */
+        status = ci$send( msg      = message IGEgragad.DPinrot( &msg, matrix ),
+                          targetid = window_objid );
+
+
+        /* set first and second windows rotation */
+        status = ci$send( msg      = message IGEgragad.DProtate
+                                     ( &msg, REPLACE_MTX, NULL, matrix, FALSE ),
+                          targetid = FstWinId.objid,
+                          targetos = FstWinId.osnum );
+
+        status = ci$send( msg      = message IGEgragad.DProtate
+                                     ( &msg, REPLACE_MTX, NULL, matrix, FALSE ),
+                          targetid = SecWinId.objid,
+                          targetos = SecWinId.osnum );
+
+        /* get working window world volume */
+	var_list[0].var			= WLD_VOLUME;
+	var_list[0].var_ptr		= (IGRchar *)vw_vol;
+	var_list[0].num_bytes		= sizeof( IGRdouble ) * 6;
+	var_list[0].bytes_returned	= &num_bytes;
+	var_list[1].var 		= END_PARAM ;
+
+	status = dp$inq_set_gragad ( msg	  = &msg,
+				     inq0_set1	  = 0,
+			   	     osnum	  = EX_active_OS_num,
+			   	     gragad_objid = window_objid,
+			   	     which_error  = &which_error,
+			   	     var_list	  = var_list );
+
+        #ifdef DEBUG
+	write (" vw_volume 0 : ", vw_vol[0] , "\n");
+	write (" vw_volume 1 : ", vw_vol[1] , "\n");
+	write (" vw_volume 2 : ", vw_vol[2] , "\n");
+	write (" vw_volume 3 : ", vw_vol[3] , "\n");
+	write (" vw_volume 4 : ", vw_vol[4] , "\n");
+	write (" vw_volume 5 : ", vw_vol[5] , "\n");
+        #endif
+
+        /* project working world volume on the first axis to get the vw_volume
+        /* of the corresponding window ( first window ) 
+        /**/
+
+      	BSmkvec( &bsretcode, V1, RefOrig, vw_vol );
+        NormV1 = sqrt( BSdotp( &bsretcode, V1, V1 ) );
+        BSnorvec( &bsretcode, V1 );
+
+        RefAxis[0] = RefStr.var.ref_st.t[index1];
+        RefAxis[1] = RefStr.var.ref_st.t[index1+4];
+        RefAxis[2] = RefStr.var.ref_st.t[index1+8];
+
+        #ifdef DEBUG 
+	printf("FirstAxis = %f %f %f\n", RefAxis[0], RefAxis[1], RefAxis[2] ); 
+	#endif
+
+        NormV2 = NormV1 * BSdotp( &bsretcode, RefAxis, V1 );
+
+        New_vw[0] = RefOrig[0] + NormV2 * RefAxis[0];
+        New_vw[1] = RefOrig[1] + NormV2 * RefAxis[1];
+        New_vw[2] = RefOrig[2] + NormV2 * RefAxis[2];
+
+        #ifdef DEBUG 
+	printf("New_vw = %f %f %f\n", New_vw[0], New_vw[1], New_vw[2] ); 
+	#endif        
+
+        /* project working world volume on the second axis to get the vw_volume
+        /* of the corresponding window ( second window ) 
+        /**/
+
+      	BSmkvec( &bsretcode, V1, RefOrig, &vw_vol[3] );
+        NormV1 = sqrt( BSdotp( &bsretcode, V1, V1 ) );
+        BSnorvec( &bsretcode, V1 );
+        NormV2 = NormV1 * BSdotp( &bsretcode, RefAxis, V1 );
+       
+        New_vw[3] = RefOrig[0] + NormV2 * RefAxis[0];
+        New_vw[4] = RefOrig[1] + NormV2 * RefAxis[1];
+        New_vw[5] = RefOrig[2] + NormV2 * RefAxis[2];
+
+        #ifdef DEBUG 
+	printf("New_vw = %f %f %f\n", New_vw[3], New_vw[4], New_vw[5] ); 
+	#endif        
+
+        display_depths[2] = -1000000;
+        display_depths[5] =  1000000;
+      
+        dp$view_vol( msg            = &msg, 
+		     in_flags       = FRONT_CLIP | BACK_CLIP | ACTIVE_Z_EDGE | 
+                                      WORLD_COOR | SETIN,
+		     gg_id          = &FstWinId, 
+		     vw_vol         = New_vw,
+                     display_depths = display_depths,
+		     update         = TRUE );
+
+      	BSmkvec( &bsretcode, V1, RefOrig, vw_vol );
+        NormV1 = sqrt( BSdotp( &bsretcode, V1, V1 ) );
+        BSnorvec( &bsretcode, V1 );
+
+        RefAxis[0] = RefStr.var.ref_st.t[index2];
+        RefAxis[1] = RefStr.var.ref_st.t[index2+4];
+        RefAxis[2] = RefStr.var.ref_st.t[index2+8];
+
+        #ifdef DEBUG 
+	printf("SecAxis = %f %f %f\n", RefAxis[0], RefAxis[1], RefAxis[2] ); 
+	#endif
+
+        NormV2 = NormV1 * BSdotp( &bsretcode, RefAxis, V1 );
+       
+        New_vw[0] = RefOrig[0] + NormV2 * RefAxis[0];
+        New_vw[1] = RefOrig[1] + NormV2 * RefAxis[1];
+        New_vw[2] = RefOrig[2] + NormV2 * RefAxis[2];
+
+        #ifdef DEBUG 
+	printf("New_vw = %f %f %f\n", New_vw[0], New_vw[1], New_vw[2] ); 
+	#endif        
+
+      	BSmkvec( &bsretcode, V1, RefOrig, &vw_vol[3] );
+        NormV1 = sqrt( BSdotp( &bsretcode, V1, V1 ) );
+        BSnorvec( &bsretcode, V1 );
+        NormV2 = NormV1 * BSdotp( &bsretcode, RefAxis, V1 );
+       
+        New_vw[3] = RefOrig[0] + NormV2 * RefAxis[0];
+        New_vw[4] = RefOrig[1] + NormV2 * RefAxis[1];
+        New_vw[5] = RefOrig[2] + NormV2 * RefAxis[2];
+
+        #ifdef DEBUG 
+	printf("New_vw = %f %f %f\n", New_vw[3], New_vw[4], New_vw[5] ); 
+	#endif        
+
+        dp$view_vol( msg            = &msg, 
+		     in_flags       = FRONT_CLIP | BACK_CLIP | ACTIVE_Z_EDGE | 
+                                      WORLD_COOR | SETIN,
+		     gg_id          = &SecWinId, 
+		     vw_vol         = New_vw,
+                     display_depths = display_depths,
+		     update         = TRUE );
+
+        /* put referential layer on */
+	docmd( "layers on" ) {
+				ci$put( value    = RefSymb.level ) ;
+				ci$put( string   = FstWindow ) ;
+				ci$put( string   = SecWindow ) ;
+				ci$put (response = TERMINATE) ;
+			}
+}

@@ -1,0 +1,599 @@
+/* $Id: VDPlSt.u,v 1.1.1.1 2001/01/04 21:09:23 cvs Exp $  */
+
+/* --------------------------------------------------------------------
+ * I/VDS
+ *
+ * File:	vdspace/ppl / VDPlSt.u
+ *
+ * Description:
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ *	$Log: VDPlSt.u,v $
+ *	Revision 1.1.1.1  2001/01/04 21:09:23  cvs
+ *	Initial import to CVS
+ *	
+# Revision 1.1  1998/04/29  16:27:20  pinnacle
+# VDS 2.5.1
+#
+# Revision 1.1  1997/05/08  13:20:44  pinnacle
+# New project VDS 250
+#
+# Revision 1.1  1996/07/19  20:33:52  pinnacle
+# Create VDS 241 project
+#
+# Revision 1.1  1994/11/14  22:42:32  pinnacle
+# Create vds.240 from vds.232
+#
+# Revision 1.1  1994/11/08  16:07:00  pinnacle
+# create vds.232
+#
+ *
+ * History:
+ *	MM/DD/YY	AUTHOR		DESCRIPTION
+ *
+ * -------------------------------------------------------------------*/
+
+/*	--------------------------------------------------------------- */
+/*	VDS spae management system					*/
+/*	--------------------------------------------------------------- */
+
+
+/*	VDPlSt.u	macro to create set of planes from selected axis
+			of a coordinate system, with each plan a common
+			incrementatal distance along axis. 
+		
+			VDPlSt macro can be used as template for 
+			SMgrid macro to define grid system		*/
+
+/*	--------------------------------------------------------------- */
+/*	CH	20.09.91 ISDC	Initial Design & implementation 	*/
+/*	--------------------------------------------------------------- */
+
+
+#ifndef	 PATH_MAX 
+#define PATH_MAX	256
+#endif
+
+#include "cieveryone.h"
+#include "cimacros.h"
+#include "ci_mac_def.h"
+#include "bstypes.h"
+#include "bserr.h"
+#include "bsconic.h"
+#include "emsedgedef.h"
+#include "COmdef.h"
+#include "acmacros.h"
+#include "vdsmacros.h"
+#include "AS_status.h"
+
+#define   MAX_CHA_FEET	8
+
+#define   MAX_TEMP	11 	/* number of templates 	*/
+#define   MAX_FEET	400 	/* number of feet 	*/
+
+/*#define   DEBUG	1 */
+#define   VERBOSE	1
+
+char 	 buff[MAX_FEET*MAX_CHA_FEET], buff_d[80]; 
+
+/* Different kind of intersections, the first word is for the support */
+
+struct GRid		CI_MACRO_ID;
+GRobj 			ci_mac_def1;
+IGRchar			*temp_names[MAX_TEMP], *feet_names[MAX_FEET];
+IGRint			temp_types[MAX_TEMP];
+
+/* #include "ACgive_bib.h" /* to be included after definition of feet_names */
+		        /* and CI_MACRO_ID */
+
+struct GRmd_env         MOD_ENV;
+struct GRid		GRid_list[MAX_FEET];
+IGRint			stat, msg, i, j, k, l;
+
+int			no_of_feet, no_of_planes;
+
+extern int 		init_cnst_list(), strcpy(),
+			ACcreate_def_temp(), sprintf(), printf(),
+			ASsuper_construct(), VDget_mat();
+
+
+
+/* ========================================================================= */
+/* the main function is the one implementing the definition creation         */
+/* ========================================================================= */
+
+main ()
+{
+
+  struct GRid mac, def_temp;
+  struct ret_struct ret_str[MAX_TEMP];
+
+  ASsuper_construct();
+
+
+  temp_names[0] = "cs/plane";  
+  temp_names[1] = "axis";
+  temp_names[2] = "plane_size";  
+  temp_names[3] = "init_offset";
+  temp_names[4] = "dis_increment";  
+  temp_names[5] = "justif";  
+  temp_names[6] = "no_of_planes";  
+  temp_names[7] = "name_seed";
+  temp_names[8] = "start_value";
+  temp_names[9] = "increment";
+  temp_names[10] = "display_int";
+
+  temp_types[0] = ref_generic | other_generic;
+  temp_types[1] = text_type;
+  temp_types[2] = double_type;
+  temp_types[3] = double_type;
+  temp_types[4] = double_type;
+  temp_types[5] = text_type;
+  temp_types[6] = double_type;
+  temp_types[7] = text_type;
+  temp_types[8] = double_type;
+  temp_types[9] = double_type;
+  temp_types[10] = double_type;
+
+  l = 0;
+
+  for ( i = 0; i < MAX_FEET; i = i + 2 )
+
+  {	j = i * MAX_CHA_FEET;
+	sprintf(&buff[j],"name%d",l);
+	feet_names[i] = &buff[j];
+
+ 	j = ( i+1 ) * MAX_CHA_FEET;
+	sprintf(&buff[j],"elem%d",l);
+	feet_names[i+1] = &buff[j];
+ 
+	l = l + 1;
+
+# ifdef DEBUG
+
+	printf("feet:%s \n",feet_names[i]);
+	printf("feet:%s \n",feet_names[i+1]);
+# endif
+
+   }
+
+# ifdef DEBUG
+ 
+ printf("go for cimacde \n");
+
+# endif
+
+  ci_mac_def1 = NULL_OBJID;
+
+  ac$cimacdef( 	cimacdef  		= ci_mac_def1,
+		status 	  		= &stat, 
+		name 			= "VDPlSt",
+             	temp_num  		= MAX_TEMP,
+ 		temp_names 		= temp_names,
+                temp_types 		= temp_types,
+	      	extern_feet_num 	= MAX_FEET, 
+		extern_feet_names 	= feet_names);
+
+ /* Put the default value */
+ ret_str[0].type = ref_generic;
+ ret_str[1].type = text_type;
+ ret_str[2].type = double_type;
+ ret_str[3].type = double_type;
+ ret_str[4].type = double_type;
+ ret_str[5].type = text_type;
+ ret_str[6].type = double_type;
+ ret_str[7].type = double_type;
+ ret_str[8].type = text_type;
+ ret_str[9].type = double_type;
+ ret_str[10].type = double_type;
+
+ strcpy(ret_str[1].var.text_st.text_string, "x");
+ ret_str[2].var.root_pm_st.value = 0;
+ ret_str[3].var.root_pm_st.value = 0;
+ ret_str[4].var.root_pm_st.value = 10;
+ strcpy(ret_str[5].var.text_st.text_string, "CC");
+ ret_str[6].var.root_pm_st.value = 10;
+ strcpy(ret_str[7].var.text_st.text_string, "Px");
+ ret_str[8].var.root_pm_st.value = 1;
+ ret_str[9].var.root_pm_st.value = 1;
+ ret_str[10].var.root_pm_st.value = 2;
+
+ mac.objid = ci_mac_def1;
+ mac.osnum = AC_construct_id.osnum;
+
+# ifdef DEBUG
+ 
+ printf("go for create_def_temp \n");
+
+# endif
+
+#if 0
+ ac$create_def_temp( search_option = IN_MACRO_LIB, /* USER_SPECIFIED */
+/* 		     search_path   = ".", */
+		     symbology     = CHG_LAYER | CHG_COLOR | CHG_WEIGHT | CHG_STYLE,
+		     macro 	   = &mac,
+		     def_temp	   = &def_temp,
+		     value	   = ret_str);
+#endif
+
+/* Change for 2.0 */
+  ac$create_def_temp( search_option =  IN_MACRO_LIB, /* USER_SPECIFIED */
+		     symbology     = CHG_LAYER | CHG_COLOR | CHG_WEIGHT | CHG_STYLE,
+		     macro 	   = &mac,
+		     def_col       = &def_temp,
+		     temp_val	   = ret_str);
+
+}
+
+/* ========================================================================= */
+
+place ()
+{
+    no_of_feet = 0;
+    if(VD_cr_pl_set() == 0 || no_of_feet == 0) return 0;
+    for(i = no_of_feet;i<MAX_FEET;i=i+1) GRid_list[i].objid = NULL_OBJID;
+
+    ci$send( msg = message  ci_macro.set_all_extern_feet
+		(&stat,no_of_feet, GRid_list, &MOD_ENV ),
+	   targetid = CI_MACRO_ID.objid,
+	   targetos = CI_MACRO_ID.osnum );
+ if (stat!=OM_S_SUCCESS) 
+  {
+   printf("VDPlSet2: failure in set_all_extern feet\n");
+   return(0);
+  }
+
+ return(1);
+}
+
+
+/* ========================================================================= */
+
+compute ()
+{
+    no_of_feet = 0;
+    if(VD_cr_pl_set() == 0 || no_of_feet == 0) return 0;
+
+    for(i= no_of_feet ;i<MAX_FEET;i=i+1) GRid_list[i].objid = NULL_OBJID;
+
+
+    ci$send( msg = message  ci_macro.set_all_extern_feet
+		(&stat,no_of_feet, GRid_list, &MOD_ENV ),
+	   targetid = CI_MACRO_ID.objid,
+	   targetos = CI_MACRO_ID.osnum );
+ if (stat!=OM_S_SUCCESS) 
+  {
+   printf("VDPlSet2: failure in set_all_extern feet\n");
+   return(0);
+  }
+  return(1);
+}
+
+/* ========================================================================= */
+
+VD_cr_pl_set()
+{
+  struct GRvg_construct cst_pl;
+  struct IGRdisplay	dis;
+  struct ret_struct	temp1_rts;
+  struct GRid		obj;
+
+  IGRdouble 	        matrix[16],dis_increment,plane_size,init_offset,
+			 actual_dist;
+  char	 		axis,name_seed[80],justif[3], *pt_name;
+  IGRint		start_value, value, increment, status;
+  IGRint                display_int;
+  BSrc			rc;
+  IGRshort		mat_type;
+  IGRdouble		axis2_o, axis3_o, cs_mat[16];
+  unsigned IGRchar	props;
+  short			cs_pl;
+
+  /* CREATE THE GRAPHIC PLAN */
+
+  
+  init_cnst_list();
+  get_symb();
+
+  dis.color		= cnst_list.color;
+  dis.weight		= cnst_list.weight;
+  dis.style		= cnst_list.style;
+
+  cst_pl.msg		= &msg;
+  cst_pl.display	= &dis;
+  cst_pl.env_info	= &MOD_ENV;
+  cst_pl.newflag	= 0;
+  cst_pl.class_attr	= NULL;
+  cst_pl.name		= NULL;
+  cst_pl.geometry	= NULL;
+  cst_pl.level		= cnst_list.level;
+  cst_pl.properties	= GRIS_LOCATABLE | GRIS_DISPLAYABLE;
+
+
+  /*  Extract the matrix (from the cs or a plane) */
+  status = ci$send( msg = message  ACcpx.ACfind_exp_temp_obj(&msg, 0, &obj),
+                       verbose  = VERBOSE,
+                       targetid = CI_MACRO_ID.objid,
+                       targetos = CI_MACRO_ID.osnum );
+  as$status(action = RET_STATUS);
+
+
+  status = ci$send( msg      = message NDmacro.ACreturn_foot(
+                                                &msg ,
+                                                "",
+                                                &obj,
+                                                &mat_type,
+                                                matrix ),
+                        verbose  = VERBOSE,
+                        targetid = obj.objid,
+                        targetos = obj.osnum );
+  if(!msg) return 0;
+
+  if(VDget_mat(&obj, mat_type, matrix, cs_mat, &props, &cs_pl) != 1) return 0;
+
+
+  status = ci$send(msg = message ACcpx.ACfind_temp_struct(&msg,
+                                                  "axis",
+                                                  &temp1_rts,
+                                                  &MOD_ENV),
+                       verbose = VERBOSE,
+           	       targetid = CI_MACRO_ID.objid,
+           	       targetos = CI_MACRO_ID.osnum );
+  as$status();
+
+ if(temp1_rts.var.text_st.text_string[0] != 'x' &&
+    temp1_rts.var.text_st.text_string[0] != 'y' &&
+    temp1_rts.var.text_st.text_string[0] != 'z') axis = 'x';
+ else axis = temp1_rts.var.text_st.text_string[0];
+ if(cs_pl == 1) axis = 'z';
+
+#ifdef DEBUG
+ printf("axis: %c\n",axis);
+#endif
+
+   status = ci$send(msg = message ACcpx.ACfind_temp_struct(&msg,
+                                                  "dis_increment",
+                                                  &temp1_rts,
+                                                  &MOD_ENV),
+                       verbose = VERBOSE,
+           	       targetid = CI_MACRO_ID.objid,
+           	       targetos = CI_MACRO_ID.osnum );
+   as$status();
+   
+   dis_increment = temp1_rts.var.root_pm_st.value;
+
+   axis2_o = 0;
+   axis3_o = 0;
+
+#  ifdef DEBUG
+   printf("dis_increment: %lf\n",dis_increment);
+#  endif
+
+   status = ci$send(msg = message ACcpx.ACfind_temp_struct(&msg,
+                                                  "plane_size",
+                                                  &temp1_rts,
+                                                  &MOD_ENV),
+                       verbose = VERBOSE,
+           	       targetid = CI_MACRO_ID.objid,
+           	       targetos = CI_MACRO_ID.osnum );
+   as$status();
+   
+   plane_size = temp1_rts.var.root_pm_st.value;
+
+#  ifdef DEBUG
+   printf("plane_size: %lf\n",plane_size);
+#  endif
+
+   status = ci$send(msg = message ACcpx.ACfind_temp_struct(&msg,
+                                                  "init_offset",
+                                                  &temp1_rts,
+                                                  &MOD_ENV),
+                       verbose = VERBOSE,
+           	       targetid = CI_MACRO_ID.objid,
+           	       targetos = CI_MACRO_ID.osnum );
+   as$status();
+   
+  init_offset = temp1_rts.var.root_pm_st.value;
+
+# ifdef DEBUG
+  printf("init_offset: %lf\n",init_offset);
+# endif
+
+  status = ci$send(msg = message ACcpx.ACfind_temp_struct(&msg,
+                                                  "justif",
+                                                  &temp1_rts,
+                                                  &MOD_ENV),
+                       verbose = VERBOSE,
+           	       targetid = CI_MACRO_ID.objid,
+           	       targetos = CI_MACRO_ID.osnum );
+  as$status();
+  temp1_rts.var.text_st.text_string[2] = '\0';
+  strcpy(justif, temp1_rts.var.text_st.text_string);
+
+  status = ci$send(msg = message ACcpx.ACfind_temp_struct(&msg,
+                                                  "no_of_planes",
+                                                  &temp1_rts,
+                                                  &MOD_ENV),
+                       verbose = VERBOSE,
+           	       targetid = CI_MACRO_ID.objid,
+           	       targetos = CI_MACRO_ID.osnum );
+  as$status();
+   
+  no_of_planes = (int) temp1_rts.var.root_pm_st.value;
+
+# ifdef DEBUG
+  printf("no_of_planes: %d\n",no_of_planes);
+# endif
+
+  if( no_of_planes > MAX_FEET /2 )  no_of_planes = MAX_FEET / 2;
+
+
+# ifdef DEBUG
+  printf("corrected no_of_planes: %d\n",no_of_planes);
+# endif
+
+  status = ci$send(msg = message ACcpx.ACfind_temp_struct(&msg,
+                                                  "name_seed",
+                                                  &temp1_rts,
+                                                  &MOD_ENV),
+                       verbose = VERBOSE,
+           	       targetid = CI_MACRO_ID.objid,
+           	       targetos = CI_MACRO_ID.osnum );
+  as$status();
+
+  strcpy ( name_seed, temp1_rts.var.text_st.text_string);
+
+#ifdef DEBUG
+ printf("name_seed: %s \n",name_seed);
+#endif
+
+   status = ci$send(msg = message ACcpx.ACfind_temp_struct(&msg,
+                                                  "start_value",
+                                                  &temp1_rts,
+                                                  &MOD_ENV),
+                       verbose = VERBOSE,
+           	       targetid = CI_MACRO_ID.objid,
+           	       targetos = CI_MACRO_ID.osnum );
+   as$status();
+   
+  start_value = (int) temp1_rts.var.root_pm_st.value ;
+
+# ifdef DEBUG
+  printf("start_value: %lf\n",start_value);
+# endif
+
+
+   status = ci$send(msg = message ACcpx.ACfind_temp_struct(&msg,
+                                                  "increment",
+                                                  &temp1_rts,
+                                                  &MOD_ENV),
+                       verbose = VERBOSE,
+           	       targetid = CI_MACRO_ID.objid,
+           	       targetos = CI_MACRO_ID.osnum );
+   as$status();
+   
+  increment = (int) temp1_rts.var.root_pm_st.value ;
+
+# ifdef DEBUG
+  printf("increment: %d\n",increment);
+# endif
+
+
+  status = ci$send(msg = message ACcpx.ACfind_temp_struct(&msg,
+                                                  "display_int",
+                                                  &temp1_rts,
+                                                  &MOD_ENV),
+                       verbose = VERBOSE,
+           	       targetid = CI_MACRO_ID.objid,
+           	       targetos = CI_MACRO_ID.osnum );
+   as$status();
+   
+# ifdef DEBUG
+  printf("display_int: %f\n",temp1_rts.var.root_pm_st.value);
+# endif
+
+  display_int = (int) temp1_rts.var.root_pm_st.value ;
+
+  if ( display_int <= 0 ) display_int = -1;
+
+# ifdef DEBUG
+  printf("corrected display_int: %d\n",display_int);
+# endif
+
+
+  for ( i = 0; i < MAX_FEET ; i = i +1 )
+
+	{
+		GRid_list[i].osnum = MOD_ENV.md_id.osnum;
+  		GRid_list[i].objid = NULL_OBJID;
+	}
+
+  value = start_value;
+
+  no_of_feet = 0;
+
+
+  for ( i = 0; i < no_of_planes; i = i +1 )
+
+	{
+
+		sprintf(buff_d,"%s%d",name_seed,value);
+#ifdef DEBUG		
+		printf("%s \n",buff_d);
+#endif
+		status = ci$send(msg = message Gtext_exp.create(NULL,buff_d,&rc),
+                  		targetid =GRid_list[no_of_feet].objid,
+                  		targetos =GRid_list[no_of_feet].osnum);
+	
+		no_of_feet = no_of_feet + 1;					
+
+		value = value + increment;
+
+		actual_dist = (  dis_increment * i ) + init_offset;
+
+#ifdef DEBUG	
+		printf (" distance = %f \n", actual_dist);
+#endif
+		
+  		if((display_int <=  0) || (i%display_int != 0)) pt_name = NULL;
+		else						pt_name = buff_d;
+
+		vd$const_plane (  msg     = &msg,
+		       		  matrix  = cs_mat,
+		       		  axe     = axis,
+		       		  dist    = actual_dist,
+		       		  size    = plane_size,
+                        	  name    = pt_name,
+		        	  justif  = justif,
+		        	  offset1 = axis2_o,
+		        	  offset2 = axis3_o,
+		       		  props   = props,
+		        	  cst     = &cst_pl,
+		        	  obj     = &GRid_list[no_of_feet]);
+		if (msg!=1)
+		{
+     			printf("VDPlSet2: error in vdconst_pla\n");
+     			GRid_list[no_of_feet].objid = NULL_OBJID;
+     		        return 0;
+    		}
+	
+		no_of_feet = no_of_feet + 1;					
+
+		if ( no_of_feet == MAX_FEET - 1 )
+
+		{
+		   printf
+		   (" VDPlSet2: reached MAX_FEET \n");
+
+
+		   goto wrapup;
+		}
+	}
+#ifdef DEBUG
+	for ( i = 0; i<no_of_feet; i=i+1 )
+
+	{
+ 		printf("feet: %d, %d\n",GRid_list[i].objid, GRid_list[i].osnum);
+	}
+
+#endif
+
+wrapup:	
+
+#ifdef DEBUG
+
+	write("wrapup\n");
+#endif
+
+return 1;
+}
+
+
+/*	--------------------------------------------------------------- */
+/*	end VDPlSet2.u							*/
+/*	--------------------------------------------------------------- */
+
+
+

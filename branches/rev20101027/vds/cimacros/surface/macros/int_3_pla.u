@@ -1,0 +1,297 @@
+/* $Id: int_3_pla.u,v 1.2 2001/01/23 17:13:48 ahundiak Exp $  */
+
+/* --------------------------------------------------------------------
+ * I/VDS
+ *
+ * File:	vds/cimacros/surface/macros / int_3_pla.u
+ *
+ * Description:
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ *	$Log: int_3_pla.u,v $
+ *	Revision 1.2  2001/01/23 17:13:48  ahundiak
+ *	bs prototypes problems
+ *	
+ *	Revision 1.1.1.1  2001/01/04 21:07:21  cvs
+ *	Initial import to CVS
+ *	
+# Revision 1.1  1998/04/29  16:27:20  pinnacle
+# VDS 2.5.1
+#
+# Revision 1.1  1997/05/08  13:20:44  pinnacle
+# New project VDS 250
+#
+# Revision 1.2  1997/03/18  00:34:46  pinnacle
+# Replaced: cimacros/surface/macros/int_3_pla.u for:  by v241_int for vds.241
+#
+# Revision 1.1  1996/07/19  20:33:52  pinnacle
+# Create VDS 241 project
+#
+# Revision 1.1  1994/11/14  22:42:32  pinnacle
+# Create vds.240 from vds.232
+#
+# Revision 1.1  1994/11/08  16:07:00  pinnacle
+# create vds.232
+#
+ *
+ * History:
+ *	MM/DD/YY	AUTHOR		DESCRIPTION
+ *      01/23/01        ah              bs include files no longer works
+ * -------------------------------------------------------------------*/
+
+/*
+	 VDS 2.0 - PPM macro library - 92/07/09 (alc)
+ */
+
+#include <stdio.h>
+#include "cieveryone.h"
+#include "cimacros.h"
+#include "ci_mac_def.h"
+#include "bserr.h"
+
+IGRchar 		*temp_names[3], *feet_names[1];
+IGRint			temp_types[3];
+
+GRobj 			ci_mac_def1;
+struct GRid		CI_MACRO_ID;
+
+
+IGRshort		mat_type;
+
+IGRint			i;
+IGRlong			stat, msg, rc;
+
+IGRdouble 	        matrix[16];
+
+
+struct IGRplane         plane[3];
+
+struct GRid		SPROJ, SUR[4] ,GRid_list;
+struct GRmd_env         MOD_ENV;
+struct GRvg_construct   cst;
+struct IGRdisplay	dis;
+struct IGRpolyline      geom;
+
+IGRdouble               t_plan[18];
+IGRint 			flag;        
+IGRpoint 		q, r;
+IGRvector 		u, v;
+
+
+extern int 	init_cnst_list();
+
+extern void	BSpl_pl_pl();
+extern		ASsuper_construct();
+
+
+/* ========================================================================= */
+/* the main function is the one implementing the definition creation
+/* ========================================================================= */
+
+main ()
+{
+
+  temp_names[0] = "plan1";  
+  temp_names[1] = "plan2";  
+  temp_names[2] = "plan3";
+
+  temp_types[0] = other_generic;
+  temp_types[1] = other_generic;
+  temp_types[2] = other_generic;
+
+  ci_mac_def1 = NULL_OBJID;
+
+  ac$cimacdef( 	cimacdef          = ci_mac_def1,
+		status 	 	  = &stat, 	
+		name 		  = "int_3_pla",
+              	temp_num 	  = 3, 		
+		temp_names 	  = temp_names,
+		temp_types        = temp_types,
+	      	extern_feet_num   = 1, 	
+		extern_feet_names = feet_names );
+
+
+  return(1);
+}
+
+/* ========================================================================= */
+place ()
+{
+
+  intersect();
+
+  if( GRid_list.objid == NULL_OBJID ) return(0);
+
+  ci$send( msg = message  ci_macro.set_all_extern_feet
+		(&stat, 1, &GRid_list, &MOD_ENV ),
+	   targetid = CI_MACRO_ID.objid,
+	   targetos = CI_MACRO_ID.osnum );
+
+  return(1);
+
+}
+
+
+/* ========================================================================= */
+
+compute ()
+{
+  intersect();
+
+  if( GRid_list.objid == NULL_OBJID ) return(0);
+
+  ci$send( msg = message  ci_macro.set_all_extern_feet
+		(&stat, 1, &GRid_list, &MOD_ENV ),
+	   targetid = CI_MACRO_ID.objid,
+	   targetos = CI_MACRO_ID.osnum );
+  return(1);
+}
+
+/* ========================================================================= */
+
+
+intersect()
+{
+IGRdouble       	pt1[6];    /* right point defining the segment     */
+IGRpoint 		pnt;
+
+   GRid_list.objid = NULL_OBJID;
+
+  for(i=0;i<3;i=i+1)
+  {
+
+  	msg = ci$send( msg = message  ACcpx.ACfind_exp_temp_obj(&stat,i,&SPROJ),
+           	       targetid = CI_MACRO_ID.objid,
+           	       targetos = CI_MACRO_ID.osnum );
+        if(!(msg&stat&1) )  return;
+
+  	msg = ci$send( msg      = message NDmacro.ACreturn_foot(	
+						&stat ,
+						"",
+						&SUR[i], 
+						&mat_type, 
+					        matrix ),
+	   	 targetid = SPROJ.objid,
+	   	 targetos = SPROJ.osnum );
+        if(!(msg&stat&1) )  return;
+
+
+	plane[i].point  = &t_plan[6*i];
+	plane[i].normal = &t_plan[6*i+3];
+
+  	msg = ci$send( msg = message  GRvg.GRdetplane( 
+						 &stat,
+			       		         &mat_type,
+			       		         matrix,
+                                                 &plane[i] ),
+	  	 targetid = SUR[i].objid,
+	  	 targetos = SUR[i].osnum );
+        if(!(msg&stat&1) )  return;
+
+  }
+
+  pnt[0] = pnt[1] = pnt[2] = pt1[0] = pt1[1] = pt1[2] = pt1[3] = pt1[4] = pt1[5] = 0;
+
+#ifdef DEBUG
+	printf ( "plane[0].point  = %lg %lg %lg\n", plane[0].point [0], plane[0].point [1], plane[0].point [2] );
+	printf ( "plane[0].normal = %lg %lg %lg\n", plane[0].normal[0], plane[0].normal[1], plane[0].normal[2] );
+	printf ( "plane[1].point  = %lg %lg %lg\n", plane[1].point [0], plane[1].point [1], plane[1].point [2] );
+	printf ( "plane[1].normal = %lg %lg %lg\n", plane[1].normal[0], plane[1].normal[1], plane[1].normal[2] );
+	printf ( "plane[2].point  = %lg %lg %lg\n", plane[2].point [0], plane[2].point [1], plane[2].point [2] );
+	printf ( "plane[2].normal = %lg %lg %lg\n", plane[2].normal[0], plane[2].normal[1], plane[2].normal[2] );
+#endif
+
+	BSpl_pl_pl( plane[0].point,
+		    plane[0].normal,
+		    plane[1].point,
+		    plane[1].normal,
+		    plane[2].point,
+		    plane[2].normal,
+		    &flag,
+		    pnt,
+                    q,
+		    u,
+                    r,
+		    v,
+		    &rc );
+
+	BSpl_pl_pl( plane[0].point,
+		    plane[0].normal,
+		    plane[1].point,
+		    plane[1].normal,
+		    plane[2].point,
+		    plane[2].normal,
+		    &flag,
+		    pnt,
+                    q,
+		    u,
+                    r,
+		    v,
+		    &rc );
+
+   	if( rc != BSSUCC ) return;
+
+	pt1[0] = pnt[0];
+	pt1[1] = pnt[1];
+	pt1[2] = pnt[2];
+	pt1[3] = pnt[0];
+	pt1[4] = pnt[1];
+	pt1[5] = pnt[2];
+
+  	geom.num_points = 1;
+	geom.points = pt1;
+#ifdef DEBUG
+	printf ( "flag = %d, rc = %d\n", flag, rc );
+	printf ( "pt1[0] = %lg %lg %lg\n", pt1[0], pt1[1], pt1[2] );
+	printf ( "pt1[1] = %lg %lg %lg\n", pt1[3], pt1[4], pt1[5] );
+	printf ( "q = %lg %lg %lg\n", q[0], q[1], q[2] );
+	printf ( "u = %lg %lg %lg\n", u[0], u[1], u[2] );
+	printf ( "r = %lg %lg %lg\n", r[0], r[1], r[2] );
+	printf ( "v = %lg %lg %lg\n", v[0], v[1], v[2] );
+#endif
+  	init_cnst_list();
+  	get_symb();
+
+  	dis.color		= cnst_list.color;
+  	dis.weight		= cnst_list.weight;
+
+        if( dis.weight < 3 ) dis.weight = 3; 
+
+  	dis.style		= cnst_list.style;
+
+  	cst.msg			= &msg;
+  	cst.properties		= GRIS_LOCATABLE | GRIS_NEW | GRIS_DISPLAYABLE;
+  	cst.display		= &dis;
+  	cst.env_info		= &MOD_ENV;
+  	cst.newflag		= 0;
+  	cst.level		= cnst_list.level;
+  	cst.geometry		= NULL;
+  	cst.class_attr		= 0;
+  	cst.name		= 0;
+
+  	cst.geometry = (char *)&geom;
+
+  	GRid_list.osnum = MOD_ENV.md_id.osnum;
+
+
+  	stat = ci$send( msg       = message GR3dpoint.GRaltconstruct(&cst),
+        	        targetid  = GRid_list.objid,
+ 	                targetos  = GRid_list.osnum,
+                        construct = 1 );
+	if( !(stat&1) ) GRid_list.objid = NULL_OBJID;
+#ifdef DEBUG
+write("GRconstruct stat =",stat,"GRid_list =",GRid_list.objid,
+                                              GRid_list.osnum, "\n");
+#endif
+
+}
+/*=========================================================================*/
+init()
+/* for initialization at loading time */
+{
+  feet_names[0] = "int_pnt";
+}
+/*=========================================================================*/
+

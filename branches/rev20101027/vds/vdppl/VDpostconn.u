@@ -1,0 +1,341 @@
+/* $Id: VDpostconn.u,v 1.1.1.1 2001/01/04 21:09:02 cvs Exp $ */
+/* --------------------------------------------------------------------
+ * I/VDS
+ *
+ * File:        vds/vdppl / VDpostconn.u
+ *
+ * Description:
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ *      MM/DD/YY        AUTHOR          DESCRIPTION
+ *      04/29/00	Shailesh	TR # MP 90 Added FI_get_form_by_name()
+ *      01/13/99	Shailesh	TR#179900019 changed msg for parts 
+ *      				retrieved for review
+ *      10/12/98        Shailesh        TR # 179801814
+ *      09/24/98        Shailesh        TR # 179801686 Connection to AIM not allowed 
+ *                                      for READ ONLY files.
+ *      09/24/98        Shailesh        TR # 179801685 Connection to AIM not allowed 
+ *                                      for files not managed by PDM.
+ *
+ *      09/01/98        Shailesh        TR # 179801481 Added some UI_status
+ *      08/21/98        Shailesh        TR # 179801451 Disconnect every time before connecting.
+ *      08/19/98        Shailesh        TR # 179801466 
+ *                                      Added warning message for wrong server name.
+ *		08/06/98		Shailesh		Modified GUI, added form, set the defult
+ *										AIM server to SIR
+ *      12/1/95         msm             Creation
+ *	10/23/96	msm		removed putenv PROXY_CLIENT_ADDRESS
+ *					instead pass the server address as
+ *					inbuf.
+ *
+ * -------------------------------------------------------------------*/
+
+#include "VDppl.h"
+#include "VDobj.h"
+#include "msmacros.h"
+#include "msdef.h"
+#include "execmsg.h"
+#include "FI.h"
+#include "cimacros.h"
+#include "ciminimum.h"
+#include "v_dbgmacros.h"
+#include "PDUstr.h"
+#include "PDUuser.h"
+#define PME	0
+#define SIR	1
+
+extern  printf() ;
+extern  int POSTMAN_REQUEST_ON_CLIX ();
+extern  int VDPSetTemplateData ();
+extern  UI_status ();
+extern	sprintf(), MS_out_msg(), MSmessage();
+extern  putenv(), inet_ntoa();
+extern struct hostent *gethostbyname();
+extern  EnablePME();
+extern  int IsPmeEnabled();
+extern FIf_new();
+extern FIfld_get_text();
+extern FIfld_set_text();
+extern FIf_display();
+extern FIf_erase();
+extern FIf_set_cmd_oid_os();
+extern ConnectAIM();
+extern struct PDUrefresh	*refresh;
+extern struct PDUuser		*user;
+extern VdsRetrievePartAttributes();
+
+struct CIform_st form_st;
+
+struct  hostent {
+       char    *h_name;        /* official name of host */
+        char    **h_aliases;    /* alias list */
+        int     h_addrtype;     /* host address type */
+        int     h_length;       /* length of address */
+        char    **h_addr_list;  /* list of addresses from name server */
+#define h_addr  h_addr_list[0]  /* address, for backward compatiblity */
+};
+
+
+/*
+ * Internet address (a structure for historical reasons)
+ */
+struct in_addr {
+        unsigned long s_addr;
+};
+
+
+#define CLIX_CONNECT	-1
+#define CLIX_DISCONNECT -2
+
+Form	my_form, old_form;
+
+int form_notification()
+{
+  ci$put ( response = MOVE_ON );
+
+}
+
+main ()
+{
+  int			status, response;
+  char			*errmsg;
+  char			server_name[25],envstring[50];
+  struct MS_sd_msg 	MS_msg;
+  struct hostent	*h;
+  long			msg;
+  int			stat_flag;
+  char			cr_flag[2], srerrmsg[80]; 
+  char			text[80];
+  int			sel, pos, not_done ;
+  char			err_msg[100], io_status[3], checkin_user[15], 
+  			checkout_user[15], checkout_node[31], checkout_dir[81];
+
+  int			state;
+  SetProc(main ); Begin 
+  message ("Connection to AIM server");
+ 
+
+  stat_flag = 0;
+  not_done = 1;
+  io_status[0] = '\0';
+
+  stat_flag = IsPmeEnabled();
+
+  if(refresh->act_catalog[0] == '\0' || 
+     refresh->act_partid[0] == '\0' || 
+     refresh->act_revision[0] == '\0' )
+  {
+    UI_status ( "File not managed by PDM; Can not connect to AIM" );
+    return 0;
+  }
+
+  if ( VdsRetrievePartAttributes (refresh->act_catalog,
+ 				refresh->act_partid,
+ 				refresh->act_revision,
+ 				io_status,
+ 				checkin_user,
+ 				checkout_user,
+ 				checkout_node,
+ 				checkout_dir,
+ 				err_msg) != SUCCESS )
+
+  if ( io_status[0] != NULL )
+   {
+    // O = checked out can be another user!
+    // I = review
+    // TS = ??
+    // S = checked out
+    __DBGpr_str( " io_stat ", io_status );
+
+    if (!(strcmp( io_status, "I"))) // added for TR#179900019 Shailesh 13jan99
+    { // retireved for REVIEW
+      sprintf ( err_msg, 
+	  "Part is not Retrieved for Design; Can not connect to AIM.");
+      UI_status ( err_msg );
+      return 0;
+    }
+
+    if ( strcmp ( io_status, "O" ) &&  strcmp ( io_status, "S" ) )
+    {// check if file is checked out
+      sprintf ( err_msg, "Part %s rev %s is not checked out",
+		refresh->act_partid, refresh->act_revision );
+      UI_status ( err_msg );
+      return 0;
+    } //  end if io_status is not O S
+
+    else if ( strcmp ( checkout_node, user->wrkst_node )
+		|| strcmp ( checkout_dir, user->wrkst_cwd ) )
+    {//If file is checked out; check user
+      sprintf ( err_msg, "Part %s rev %s is checked out by %s to node %s",
+	       refresh->act_partid, refresh->act_revision,
+	       checkout_user, checkout_node );
+      UI_status ( err_msg );
+      return 0;
+    } // end else if checkd out by another user.  
+   
+   } // end if io_status[0] != NUL
+
+  if( stat_flag == 0 )
+  {
+    //TR # MP 90
+    old_form = NULL;
+    status = FI_get_form_by_name("AIMlogin", &old_form);
+    if (status == FI_SUCCESS)
+    {
+      UI_status("Connection to Aim Server Already Running");
+      return 0;
+    }
+      status = FIf_new ( 101, "AIMlogin", ci_notification, &my_form);
+      status = FIf_set_cmd_oid_os( my_form, MY_ID, OM_Gw_current_OS );
+      status = FIf_display( my_form );
+      FIfld_set_text( my_form, 9, 0, 0, "Enter the server name", FALSE );
+
+      while(not_done)
+      {
+	ci$get(prompt = " Process Form ",
+	    	response = &response);
+	
+	switch ( form_st.gadget_label )
+	{ 
+	 case FI_CANCEL :
+	     ci$put(response = TERMINATE);
+	     FIf_erase ( my_form);
+	     not_done = 0;
+	     break; 
+	 
+	 case FI_ACCEPT: 
+	     FIfld_get_text (my_form, 16, 0, 0, 30, server_name, &sel, &pos);
+	     server_name[24] = '\0'; 
+	     if ((h=gethostbyname(server_name)) == NULL) 
+	     {  /* get the host info */
+	       sprintf ( srerrmsg, "%s", 
+		   "Server not recognised. Could not connect");
+	       if (MS_init ( (&MS_msg), EX_F_Var1, NULL, NULL, 0, -1 ) )
+	       {
+		 MS_fix_type( &MS_msg, "%s" );
+		 sprintf( (MS_msg.variables), (MS_msg.for_type), srerrmsg );
+		 MS_out_msg ( &MS_msg, NULL, 0,
+		     	-1, MS_IMMEDIATE, MS_IMMEDIATE, 0);
+	       }
+	       ci$put(response = TERMINATE);
+	       FIf_erase ( my_form); 
+	       return(1);
+	     } 
+	     
+	     status = POSTMAN_REQUEST_ON_CLIX( CLIX_DISCONNECT,
+		 				NULL, 
+						NULL, 
+						NULL, 
+						NULL, 
+						&errmsg);
+	     if ( !status)
+	       EnablePME(0); 
+	     
+	     UI_status("Connecting to AIM server....");
+	     status = POSTMAN_REQUEST_ON_CLIX( CLIX_CONNECT,
+		 	(char *)inet_ntoa(*((struct in_addr *)h->h_addr)),
+		 	NULL,
+			NULL,
+			NULL,
+			&errmsg);
+	     
+	     if ( !status)
+	     {
+	       EnablePME(1);
+	       UI_status(" Connected to AIM server");
+	     } 
+	     else
+	     {
+	       EnablePME(0);
+	       UI_status( " Failed to Connect to AIM server" );
+	     } 
+	     
+	     FIg_get_state (my_form, 12, &state);
+	     
+	     if(state == 1) ConnectAIM(PME) ;
+	     if(state == 0) ConnectAIM(SIR);
+	     
+	     ci$put(response = TERMINATE);
+	     FIf_erase ( my_form );
+	     not_done = 0;
+	     break; 
+	}   // end switch
+      }
+  } // end if stat_flag == 0 
+  
+  else if( stat_flag == 1 )
+  {
+    UI_status("Already connected to AIM server"); 
+    ci$get ( prompt = "Want to Disconnect (Y/N) ?",
+		string = cr_flag, rc = status ); 
+    
+    if(!strcmp(cr_flag,"Y") || !strcmp(cr_flag,"y")) 
+    {
+      status = POSTMAN_REQUEST_ON_CLIX( CLIX_DISCONNECT, 
+					NULL, 
+					NULL, 
+					NULL, 
+					NULL, 
+					&errmsg);
+      if ( !status)
+	EnablePME(0);
+      UI_status("Disconnected From AIM server");
+    } 
+    
+    else
+      UI_status(" "); 
+  }  // end else if 
+  
+  else
+  {
+    UI_status( "Invalid Option selected" );
+  } 
+  
+  if (status != 0 )
+  {
+    if ( errmsg )
+    {
+      if( strlen(errmsg) > 63 )
+	errmsg[63] = '\0'; 
+      UI_status ( errmsg ); 
+      
+      if (MS_init ( (&MS_msg), EX_F_Var1, NULL, NULL, 0, -1 ) )
+      {
+	MS_fix_type( &MS_msg, "%s" );
+	sprintf( (MS_msg.variables), (MS_msg.for_type), errmsg );
+	MS_out_msg ( &MS_msg, NULL, 0, -1, MS_IMMEDIATE, MS_IMMEDIATE, 0);
+      }
+    }
+  }
+  /*UI_status(" ");*/
+
+  End;
+  return 1;
+}
+
+/* Added for TR # 179801814 */
+delete()
+{
+ if ( my_form )
+  {
+    VDahFrmSavePositionInFile(my_form);
+    FIf_delete ( my_form );
+  }
+ my_form = NULL;
+}
+
+//TR # MP 90
+sleep()
+{
+if (my_form)
+  FIf_erase (my_form);
+}
+
+wakeup()
+{
+  UI_message( "Connection to AIM server" );
+  if(my_form)
+    FIf_display(my_form);
+}

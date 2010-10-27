@@ -1,0 +1,123 @@
+/* $Id: COz_rprDisp.u,v 1.1 2001/08/24 16:06:13 ramarao Exp $  */
+/***************************************************************************
+ * I/VDS
+ *
+ * File:        isdp/vds/vdppl/COz_rprDisp.u
+ *
+ * Description: PPL to repair the file having display problem in 
+ *		nested reference files.
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ *      $Log: COz_rprDisp.u,v $
+ *      Revision 1.1  2001/08/24 16:06:13  ramarao
+ *      Fixed TR# 5500.
+ *
+ *
+ * History:
+ *      MM/DD/YY        AUTHOR          DESCRIPTION
+ *      08/24/01        Rama Rao        File Creation.
+ ***************************************************************************/
+
+#include "VDppl.h"
+#include "nddef.h"
+#include "ndmacros.h"
+
+extern GRrevreffiles(), EX_get_super(), GRconsmodctx();
+
+main()
+{
+IGRint		i, num_ref;
+IGRchar		sure[10], full_name[DI_PATH_MAX], short_name[DI_PATH_MAX];
+struct GRid	ref_super, *ref_grid;
+struct GRmd_env	loc_env;
+OM_S_CHANSELECT to_chan,fr_chan;
+
+  message( "Repair Nested Reference File Display" );
+  status( "Warning: Detaches all reference files and reattaches" );
+
+  ci$get ( prompt = "Are you sure (Y/N) ?", string = sure );
+
+  if( strcmp(sure,"Y") && strcmp(sure,"y") )
+  {
+     status( "" );
+     return 1;
+  }
+
+  num_ref = 0;
+  ref_grid= NULL;
+
+  ci$get_module_info( md_env = &loc_env);
+
+  to_chan.type = OM_e_name;
+  to_chan.u_sel.name = "Super_rfmgr.mgr";
+
+  fr_chan.type = OM_e_name;
+  fr_chan.u_sel.name = "GRreffile.to_mgr" ;
+
+  ex$get_super( mod_id = loc_env.md_id.objid,
+                mod_osnum = loc_env.md_id.osnum,
+                super_name = "Ref Mgr",
+                create = 0,
+                super_class = "GRreffile",
+                super_id = &ref_super.objid,
+                super_osnum = &ref_super.osnum );
+
+  GRrevreffiles( &msg, NULL, NULL, &num_ref, &ref_grid, NULL );
+
+  ci$send( msg  = message Root.delete( 0 ),
+                 targetid = ref_super.objid,
+                 targetos = ref_super.osnum  );
+
+  ref_super.objid = NULL_OBJID;
+
+  ex$get_super( mod_id = loc_env.md_id.objid,
+                mod_osnum = loc_env.md_id.osnum,
+                super_name = "Ref Mgr",
+                create = 1,
+                super_class = "Super_rfmgr",
+                super_id = &ref_super.objid,
+                super_osnum = &ref_super.osnum );
+
+  GRconsmodctx( &loc_env );
+
+  for( i=0; i<num_ref; i=i+1 )
+  {
+     di$untranslate( objname = full_name,
+                     objid   = ref_grid[i].objid,
+                     osnum   = ref_grid[i].osnum   );
+
+     di$split( pathname = full_name,
+               name     = short_name );
+
+     ci$send( msg = message GRreffile.GRrfunload( &msg ),
+              targetid = ref_grid[i].objid,
+              targetos = ref_grid[i].osnum   );
+
+     ci$send( msg = message Super_rfmgr.remove_file_name(
+                                     &msg, short_name ),
+              targetid = ref_grid[i].objid,
+              targetos = ref_grid[i].osnum   );
+
+     di$rm_name ( regexp = full_name );
+  }
+
+  for( i=0; i<num_ref; i=i+1 )
+  {
+     ci$send( msg = message GRreffile.GRrfload( &msg ),
+              targetid = ref_grid[i].objid,
+              targetos = ref_grid[i].osnum   );
+
+     ci$send ( msg = message Root.connect(
+                     to_chan, OM_K_MAXINT, ref_grid[i].objid,
+		     ref_grid[i].osnum, fr_chan, OM_K_MAXINT ),
+                targetid = ref_super.objid,
+                targetos = ref_super.osnum  );
+  }
+
+wrapup:
+  status( "Run ci=VDclean_ctx1 to clean the contexts" );
+  if( ref_grid ) { free( ref_grid ); ref_grid = NULL; }
+  return 1;
+}

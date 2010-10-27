@@ -1,0 +1,163 @@
+/* $Id: VDclean_exp.u,v 1.1.1.1 2001/01/04 21:09:02 cvs Exp $  */
+
+/* --------------------------------------------------------------------
+ * I/VDS
+ *
+ * File:	VDclean_exp.u
+ *
+ * Description:
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ *	$Log: VDclean_exp.u,v $
+ *	Revision 1.1.1.1  2001/01/04 21:09:02  cvs
+ *	Initial import to CVS
+ *	
+# Revision 1.1  1999/09/13  15:23:56  pinnacle
+# Created: vdppl/VDclean_exp.u by impd251 for vds
+#
+ *
+ * History:
+ *	MM/DD/YY	AUTHOR		DESCRIPTION
+ *	08/12/99	HF		Creation date
+ *
+ * -------------------------------------------------------------------*/
+
+/*
+ * PPL VDclean_exp.u
+ *
+ * This PPL provides a very fast function to find ALL objects of a particular CLASSID
+ * in the specified object space (no locate required !!!).
+ *
+ * Usage: "ci=VDclean_exp"
+ *
+ * Following is an example of how to find & list ALL OPP_nci_macro_class_id's in OS 2
+ */
+
+#include <stdio.h>
+#include <cieveryone.h>
+#include <cimacros.h>
+#include "OMindex.h"
+#include <grmacros.h>
+#include "DItypedef.h"
+#include "DIdef.h"
+#include "DIglob.h"
+#include "DIprims.h"
+
+extern			VDpms_find_objects();
+extern			GRdelete_object();
+extern			DIuntranslate();
+
+extern GRclassid	OPP_nci_macro_class_id;
+extern GRclassid	OPP_expression_class_id;
+
+main()
+{
+  char                  name[1024];
+  int		        i0, j0, k0, m0, cnt, sts, chcnt[5], f_defer_flag;
+  long     		msg;
+
+  struct GRid	        obj_id;
+  struct GRmd_env       ModuleInfo;
+
+  OM_S_OBJID	       *list;
+  GRclassid	        class_id;
+  OM_S_CHANSELECT       my_chansel[5];
+  OM_S_OBJECT_LINKAGE	objet;
+
+  my_chansel[0].type       = OM_e_name;
+  my_chansel[1].type       = OM_e_name;
+  my_chansel[2].type       = OM_e_name;
+  my_chansel[3].type       = OM_e_name;
+  my_chansel[4].type       = OM_e_name;
+  my_chansel[0].u_sel.name = "children";
+  my_chansel[1].u_sel.name = "father";
+  my_chansel[2].u_sel.name = "notification";
+  my_chansel[3].u_sel.name = "to_owners";
+  my_chansel[4].u_sel.name = "to_components";
+
+  class_id = OPP_nci_macro_class_id;
+  class_id = OPP_expression_class_id;
+
+  message ( "Delete all obsolete expression objects" );
+  printf  ( "Delete all obsolete expression objects\n" );
+  fflush  ( 0 );
+
+  list = NULL;
+  sts = VDpms_find_objects ( (OMuword)2, (OMuword)class_id, &cnt, list );
+
+  printf ( "\nVDpms_find_objects() : sts = %d, Number of objects = %d\n", sts, cnt );
+  fflush ( 0 );
+
+  if ( cnt > 0 )
+  {
+    list = ( OM_S_OBJID * ) om$malloc ( size = cnt * sizeof ( OM_S_OBJID ) );
+  }
+  else
+  {
+    return;
+  }
+
+  ci$get_module_info ( md_env = &ModuleInfo );
+
+  if ( list )
+  {
+    sts = VDpms_find_objects ( (OMuword)2, (OMuword)class_id, &cnt, list );
+
+    m0 = 0;
+    obj_id.osnum  = 2;
+    objet.osnum   = 2;
+
+    for ( i0=0; i0 < cnt; i0=i0+1)
+    {
+      objet.S_objid = list[i0];
+      obj_id.objid  = list[i0];
+
+      {
+        for ( k0=0; k0 < 4; k0=k0+1)
+        {
+          sts = om$get_channel_count ( osnum		= objet.osnum,
+                                       objid		= objet.S_objid,
+                                       p_chanselect	= &my_chansel[k0],
+                                       count		= &chcnt[k0] );
+        }
+        if ( chcnt[0] == 0 && chcnt[1] == 0 && chcnt[2] == 0 && chcnt[3] == 0 )
+        {
+//            gr$delete_object ( msg	  = &msg,
+//                               object_id    = &obj_id,
+//                               md_env       = &ModuleInfo,
+//                               display_flag = 0 );
+          name[0] = '\0';
+          sts = di$untranslate ( objname = name, objid = list[i0], osnum = objet.osnum );
+
+          if ( name[0] == '\0' )
+          {
+            m0 = m0+1;
+            sts = ci$send ( msg      = message NDnode.NDdelete ( &ModuleInfo ),
+                            targetid = list[i0]);
+
+            sts = ci$send ( mode     = OM_e_wrt_message,
+                            msg      = message Root.delete ( f_defer_flag ),
+                            targetid = list[i0]);
+          }
+          else
+          {
+            printf ( "%8d name = %s\n", list[i0], name );           
+          }
+        }
+        else
+        {
+          printf ( "%8d %d, %d, %d, %d\n", list[i0], chcnt[0], chcnt[1], chcnt[2], chcnt[3] );
+        }
+      }
+    }
+    printf ( "\nNumber of expression's = %d, # of deleted(obsolete) expression's = %d\n", cnt, m0 );
+
+    if (list)
+    {
+      om$dealloc ( ptr = list );
+      list = NULL;
+    }
+  }
+}

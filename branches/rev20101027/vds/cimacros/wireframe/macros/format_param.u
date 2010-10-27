@@ -1,0 +1,262 @@
+/* $Id: format_param.u,v 1.1.1.1 2001/01/04 21:07:22 cvs Exp $  */
+
+/* --------------------------------------------------------------------
+ * I/VDS
+ *
+ * File:	vds/cimacros/wireframe/macros / format_param.u
+ *
+ * Description:
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ *	$Log: format_param.u,v $
+ *	Revision 1.1.1.1  2001/01/04 21:07:22  cvs
+ *	Initial import to CVS
+ *	
+# Revision 1.1  1998/04/29  16:27:20  pinnacle
+# VDS 2.5.1
+#
+# Revision 1.1  1997/05/08  13:20:44  pinnacle
+# New project VDS 250
+#
+# Revision 1.1  1996/07/19  20:33:52  pinnacle
+# Create VDS 241 project
+#
+# Revision 1.1  1994/11/14  22:42:32  pinnacle
+# Create vds.240 from vds.232
+#
+# Revision 1.1  1994/11/08  16:07:00  pinnacle
+# create vds.232
+#
+ *
+ * History:
+ *	MM/DD/YY	AUTHOR		DESCRIPTION
+ *
+ * -------------------------------------------------------------------*/
+
+/*
+	 VDS 2.0 - PPM macro library - 92/07/09 (alc)
+
+    History :
+    92/07/21    Ignore returned status for macro definition
+ */
+   
+/******************************************************************************
+/*									      *
+/*			ci_macro to process an input expression		      *
+/*			using a the control string (format) form given in     *
+/*			a text expression.				      *
+/*									      *
+/*			The input expression can be formatted 5 (MAX_percent  *
+/*			ways in the control string.			      *
+/*									      *
+/*			macro_defn name :	format_param		      *
+/*				  input :	0 = expression to format      *
+/*				  input :      1 = control expression (format)*
+/*				 output :      none except via 		      *
+/*					       NDgive_struct method so as to  *
+/*					       appear like a text expression  *
+/*									      *
+/*****************************************************************************/
+
+
+#include "OMmacros.h"
+#include "nddef.h"
+#include "exmacros.h"
+#include "macro.h"
+#include "msmacros.h"
+#include "ASmessages.h"
+#include "expmacros.h"
+
+#include "cieveryone.h"
+#include "cimacros.h"
+
+#include "ci_mac_def.h"
+#include "AS_status.h"
+#include "AS_debug.h"
+
+/* #define  AS_DEBUG 	 0	 debug statements on or off */
+#define  macro_MAX 	40
+#define  MAX_percent     5	/* number of % formats allowed in input */
+#define  MAX_chars	80	/* number of char allowed in expr text */
+#define  MSG0		"Too Many % in Format Expression"
+
+IGRchar			*temp_names[2], *feet_names[1]; 
+IGRint			temp_types[2];
+
+GRobj 			ci_mac_def1; 
+
+IGRlong			status;
+
+struct GRid		CI_MACRO_ID; /* filled in automatically at placement */
+
+IGRchar			text_output[MAX_chars];/* return at NDgive_structure */
+
+extern int 	ASsuper_construct();
+extern int 	printf();
+extern int 	sprintf();
+extern int 	DB_debug();
+extern int 	strcpy();
+extern char *	strchr();
+extern  	UI_message();       /* Function to display the message field*/
+
+
+/* ========================================================================= */
+
+main()
+{
+
+  temp_names[0]  = "in_expressn";
+  temp_names[1]  = "format_expr";
+
+  temp_types[0] =   parameter_generic;
+  temp_types[1]  =  text_type;
+  
+  ci_mac_def1   = NULL_OBJID;
+
+  ac$cimacdef(	cimacdef          = ci_mac_def1,
+		status	          = &status,
+	  	name              = "format_param",
+		temp_num          = 2,      
+		temp_names        = temp_names,
+		temp_types	  = temp_types,
+		extern_feet_num   = 0,	  
+		extern_feet_names = NULL );
+  /* as$status(action = RET_STATUS);  92/07/21 */
+
+  /*"definition created with status %d\n", status */
+}
+
+/* ========================================================================= */
+
+place ()
+{
+ /*  status = calculate_text();  
+     as$status(action = RET_STATUS);
+ */
+  return(OM_S_SUCCESS);
+}
+
+/* ========================================================================= */
+
+compute ()
+{
+  return( OM_S_SUCCESS );
+}
+
+/* ========================================================================= */
+
+calculate_text()
+{
+ struct ret_struct 		rst;
+ struct GRid	   		Format_Expr;
+ struct GRid	   		Input_Expr;
+ IGRchar			format_text[MAX_chars];
+ IGRchar			* ft;  /* ptr for moving thru format text */
+ IGRint				i, num_percent;
+ IGRlong			ret;
+ char *				pposn;	/* percent posn in string */
+ struct GRmd_env         	mod_env;
+
+  ci$get_module_info( md_env = &mod_env ); 
+  status = ci$send( msg = message  ACcpx.ACfind_exp_temp_obj(&ret,
+							      1,
+							     &Format_Expr ),
+               targetid = CI_MACRO_ID.objid,
+               targetos = CI_MACRO_ID.osnum );
+  /*"ACfind with status %d\n", status */
+  as$status(action = RET_STATUS);
+  /*"mod_env os is %d\n", mod_env.md_id.osnum */
+  status = ci$send( msg = message NDnode.NDgive_structure(&ret,
+                                        		 &rst,
+							 &mod_env),
+                         targetid = Format_Expr.objid,
+                         targetos = Format_Expr.osnum );
+  /*"NDgive with status %d\n", status */
+  as$status(action = RET_STATUS);
+
+  strcpy( format_text, rst.var.text_st.text_string);
+  /*" format_text is %s\n", format_text */
+  ft = format_text;
+  num_percent = 0;
+  for ( i=0; i< macro_MAX; i=i+1 )
+  {
+/*    pposn = VRlocate_pattern( "%", ft )   ; */
+      pposn = strchr( ft, '%' );
+    if ( pposn == NULL )
+        break;
+    else if ( *(pposn+1) != '%' &&  
+    	      *(pposn+1) != ' ' &&  
+    	      *(pposn+1) != '\0'   ) 
+     {
+	num_percent = num_percent + 1;
+	/*" Number of %% is now %d form is %s\n", num_percent, (pposn+1) */
+	if ( num_percent > MAX_percent ) 
+         {
+	   UI_message( MSG0 );
+	   break;
+         }
+	ft = pposn+1;
+     }
+    else
+        ft = pposn+2;
+  }
+  status = ci$send( msg = message  ACcpx.ACfind_exp_temp_obj(&ret,
+							      0,
+							     &Input_Expr ),
+               targetid = CI_MACRO_ID.objid,
+               targetos = CI_MACRO_ID.osnum );
+  /*"ACfind with status %d\n", status */
+  as$status(action = RET_STATUS);
+
+  status = ci$send( msg = message NDnode.NDgive_structure(&ret,
+                                        		 &rst,
+							 &mod_env),
+                         targetid = Input_Expr.objid,
+                         targetos = Input_Expr.osnum );
+  /*"NDgive with status %d\n", status */
+  as$status(action = RET_STATUS);
+
+    /*" type = %d\n", rst.type */
+     if(rst.type == double_type)
+	{
+	  /*"rst %f \n",  rst.var.root_pm_st.value */
+          sprintf( text_output, format_text, rst.var.root_pm_st.value, 
+          					 rst.var.root_pm_st.value, 
+          					 rst.var.root_pm_st.value, 
+          					 rst.var.root_pm_st.value, 
+          					 rst.var.root_pm_st.value );
+        }
+     else if(rst.type == text_type)
+	{
+          sprintf( text_output, format_text, rst.var.text_st.text_string,
+          					rst.var.text_st.text_string,
+          					rst.var.text_st.text_string,
+          					rst.var.text_st.text_string,
+          					rst.var.text_st.text_string,
+          					rst.var.text_st.text_string );
+        }
+
+  return( OM_S_SUCCESS ); 
+}
+
+
+NDgive_structure( ret, ptr_rst, md_env )
+IGRlong *ret;
+struct  ret_struct *ptr_rst;
+struct  GRmd_env   *md_env;
+{
+  /*|In NDgive_structure  */
+  if ( ret==NULL  || ptr_rst==NULL )  return( OM_E_INVARG );
+  status = calculate_text(); 
+  as$status(action = RET_STATUS);
+  ptr_rst->type = text_type;
+  strcpy(ptr_rst->var.text_st.text_string, text_output);
+
+  /*"text_type : %d, type : %d\n", text_type, ptr_rst->type */
+  /*"text_output: '%s', string : '%s'\n", text_output, ptr_rst->var.text_st.text_string */
+
+  *ret = OM_S_SUCCESS;
+  return(OM_S_SUCCESS);
+}

@@ -1,0 +1,200 @@
+/* $Id: COz_CompObj.u,v 1.3 2001/03/22 00:26:29 ramarao Exp $  */
+
+/***************************************************************************
+ * I/VDS
+ *
+ * File:        vds/vdppl/COz_CompObj.u
+ *
+ * Description: Recomputes objects, supports input generators
+ *
+ * Dependencies: 
+ *
+ * Revision History:
+ *      $Log: COz_CompObj.u,v $
+ *      Revision 1.3  2001/03/22 00:26:29  ramarao
+ *      Changed the command name and prompts.
+ *
+ *      Revision 1.2  2001/01/18 20:39:46  hans
+ *      SP16 additions/modifications
+ *
+# Revision 1.2  2000/12/08  15:46:20  pinnacle
+# ylong
+#
+# Revision 1.1  2000/05/19  18:08:18  pinnacle
+# ah
+#
+# Revision 1.2  2000/02/23  20:30:56  pinnacle
+# ah
+#
+ *
+ * History:
+ * MM/DD/YY  AUTHOR  DESCRIPTION
+ * 02/23/00  ah      Rewrote to support input generators, Added pinnacle header
+ * 05/19/00  ah      Allows specifying class filter as command line argument
+ * 12/08/00  ylong   Changed theFilter from "VDSroot" to "ACncpx"
+ ***************************************************************************/
+#include "VDppl.h"
+#include "VDobj.h"
+#include "nddef.h"
+#include "ndmacros.h"
+
+#include "coparamac.h"
+
+extern ASstart_var_fence();
+extern ASend_fence();
+
+extern	NDmod_batch();
+extern	NDexec_batch();
+extern	NDget_mod_batch();
+extern	NDwait_batch();
+
+#define thePrompt  "Locate Object"
+#define theCommand "Recompute Object"
+#define theFilter  "ACncpx"
+
+/* -------------------------------------
+ * Process the selected object
+ */
+int process(objOE)
+TGRobj_env *objOE;
+{
+  IGRint		wtBatch;
+  IGRint		cnType;
+  struct GRid		myGRid ;
+  extern IGRboolean	ASbroadcast_in_progress ;
+  IGRboolean		saveBroad;
+
+  cnType = ND_COMP;
+
+  nd$wait_batch(type       = GR_GEOM_POSTED,
+		l_object   = &objOE->obj_id,
+		l_obj_info = &cnType,
+		nb_obj     = 1);
+
+   nd$mod_batch(request    = ND_INQ,
+		p_ret_mode = &wtBatch);
+
+   saveBroad = ASbroadcast_in_progress ;
+   ASbroadcast_in_progress = FALSE ;
+
+   if( wtBatch != ND_DEFER ) { /* else nothing to do */
+     nd$exec_batch(mode = ND_DISP_ROOT|ND_DISP_BODY);
+   }
+   
+   ASbroadcast_in_progress = saveBroad ;
+
+wrapup:
+  return 1;
+}
+
+/* --------------------------------------
+ * The main routine
+ */
+int main(argc,argv)
+int   argc;
+char *argv[];
+
+{
+  int sts,msg;
+  int response;
+  
+  TGRobj_env  objOE;
+  TGRobj_env *locOEs;
+  IGRint      locNum;
+  IGRint      i;
+    
+  IGRchar filter [64];
+  IGRchar prompt [64];
+  IGRchar command[64];
+  
+  if (argc > 1) 
+  {
+     strcpy(filter,argv[1]);
+     sprintf(command,"Recompute %s",filter);
+     sprintf(prompt, "Select %s object to compute", filter );
+  }
+  else          
+  {
+     strcpy(filter,theFilter);
+     sprintf( command, "Z Compute Object" );
+     strcpy(prompt, "Select object to compute");
+  }
+  
+  while(1) {
+
+    objOE.obj_id.objid = NULL_OBJID;
+    
+    response = 0;
+
+    UI_message(command);
+
+    sts = ci$locate(prompt  = prompt,
+                    classes = filter,
+		    owner_action = LC_RIGID_OWNER | 
+                                   LC_RIGID_COMP  |
+                                   LC_FLEX_COMP   | 
+                                   LC_FLEX_OWNER  |
+                                   LC_REF_OBJECTS,
+                    stackable    = 1,
+		    response     = &response,
+		    md_env       = &objOE.mod_env,
+		    obj          = &objOE.obj_id.objid,
+		    osnum	 = &objOE.obj_id.osnum);
+
+    if (!(sts & 1)) response = 0;
+
+    switch(response) {
+
+    case EX_OBJID:   // Object Set
+
+      /* Grab Located Objects */
+      as$start_fence(
+      set       = &objOE.obj_id,
+      set_env   = &objOE.mod_env,
+      nb_obj    = &locNum,
+      p_obj_env = &locOEs);
+
+      for(i = 0; i < locNum; i = i + 1) {
+        process(&locOEs[i]);
+      }
+
+      ASend_fence();
+      break;
+      
+    case EX_DATA:    // Single Object
+      process(&objOE);
+      break;
+
+    } // Switch
+  }
+
+wrapup:
+  return 1;
+}
+
+/* ------------------------------------------
+ * Usual command object messages
+ */
+init()
+{
+}
+sleep() 
+{
+}
+wakeup()
+{
+  UI_message(theCommand); 
+}
+delete()
+{
+}
+
+
+
+
+
+
+
+
+
+

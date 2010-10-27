@@ -1,0 +1,440 @@
+/* $Id: pcmk.u,v 1.2 2001/02/11 17:40:52 ahundiak Exp $  */
+
+/***************************************************************************
+ * I/VDS
+ *
+ * File:        vdat/ppl/pcmk.u
+ *
+ * Description: Implements standard piece mark attribute
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ *      $Log: pcmk.u,v $
+ *      Revision 1.2  2001/02/11 17:40:52  ahundiak
+ *      Renamed VDris2 to VDrisc
+ *
+ *      Revision 1.1  2001/01/11 20:54:47  art
+ *      sp merge
+ *
+# Revision 1.5  2000/11/27  19:22:20  pinnacle
+# ah
+#
+# Revision 1.4  2000/10/15  13:48:36  pinnacle
+# ah
+#
+# Revision 1.3  2000/09/25  17:44:54  pinnacle
+# ah
+#
+# Revision 1.2  2000/08/05  15:14:14  pinnacle
+# ah
+#
+# Revision 1.1  2000/01/10  17:12:28  pinnacle
+# ah
+#
+ *
+ * History:
+ * MM/DD/YY  AUTHOR  DESCRIPTION
+ * 01/10/00  ah      Created
+ * 08/02/00  ah      Need to distingush between collars and clips
+ *                   And to use the actual collar/clip plate thickness
+ * 09/25/00  ah      Penetrated element bulb or it_t, flush macros
+ * 10/04/00  ah      Problem comparing pointers in ppl!
+ * 10/05/00  ah      Filter sh (shell) macros
+ ***************************************************************************/
+
+/* -------------------------------------------------------------------
+ * Returns a standard piece mark for either a plate or beam
+ *
+ * Example:
+ * SA_PPL:pcmk:std_pcmk
+ */
+
+/* ---------------------------------------------------------------
+ * This include file pulls in many other useful files including
+ * all of the usual ci files
+ */
+#include "VDppl.h"
+#include "VDobj.h"
+#include "VDmac.h"
+#include "VDsa.h"
+#include "VDrisc.h"
+
+extern VDstrlwr();
+
+/* ---------------------------------------------------------------
+ * These two variables will be set with the object being processed
+ */
+TGRid     OBJECT_ID;
+TGRmd_env OBJECT_ENV;
+
+/* ---------------------------------------------------------------
+ * Object data is the argument portion of the smart attribute
+ * That is 'xxx' in the example above
+ */
+IGRchar     OBJECT_DATA[128];
+
+/* ---------------------------------------------------------------
+ * This is the return structure where the ppl stores it's results
+ * It is cleared before the ppl is called
+ * you will generally return either a string or double
+ * though other data types are supported
+ *
+ * OBJECT_RS.type = text_type;
+ * OBJECT_RS.var.text_st.text_string
+ *
+ * OBJECT_RS.type = double_type;
+ * OBJECT_RS.var.root_pm_st.value
+ * 
+ */
+Tret_struct OBJECT_RS;
+
+/* ---------------------------------------------------------------
+ * Main routine is not required but putting in some print statements
+ * will allow you to document what the ppl is for.
+ * ESCci=VDsaAttr will cause main to execute
+ */ 
+main()
+{
+  printf("pcmk\n");
+}
+
+#define NEXT_PCMK "ZNEXT_STD_PCMK"
+
+/* ------------------------------------------------------------------------
+ * Return the piece mark for the key, update the std_pcmk table if required
+ */
+IGRstat getPcmkByKey(key,pcmk)
+IGRchar *key;
+IGRint  *pcmk;
+
+{
+  IGRstat retFlag;
+  IGRstat sts;
+  IGRint  cols,rows;
+  IGRchar **buf;
+  IGRchar sql[256];
+  
+  // Init
+  retFlag = 0;
+  buf  = NULL;
+  rows = 0;
+  cols = 0;
+
+  // printf("Entered pcmk:getPcmkByKey\n");
+  
+  // Arg check
+  if (pcmk == NULL) goto wrapup;
+  *pcmk = 0;
+  if ( key == NULL) goto wrapup;
+  if (*key == 0)    goto wrapup;
+
+  // Make sure logged in
+  sts = VDSverify_login();
+  if (!(sts & 1)) goto wrapup;
+    
+  // Look it up
+  sprintf(sql,"Select pcmk from std_pcmk where std_key = '%s';",key);
+  sts = VDSsql_query(sql, &cols, &rows, &buf);
+  //printf("SQL %s,%d\n",sql,rows);
+  
+  if (rows > 0) {
+    *pcmk = atoi(buf[0]);
+    retFlag = 1;
+    goto wrapup;
+  }
+
+  if (buf) VdsRisFreeBuffer(buf, rows * cols);
+  buf  = NULL;
+  rows = 0;
+  cols = 0;
+  
+  // Update the table
+  sprintf(sql,"Select pcmk from std_pcmk where std_key = '%s';",NEXT_PCMK);
+  sts = VDSsql_query(sql, &cols, &rows, &buf);
+  if (rows > 0) {
+
+    *pcmk = atoi(buf[0]);
+    if (buf) VdsRisFreeBuffer(buf, rows * cols);
+    buf = 0;
+    
+    sprintf(sql,
+	    "Update std_pcmk set pcmk = %d where std_key = '%s';",
+	    *pcmk + 1,
+	    NEXT_PCMK);
+    sts = VDSexecute_sql_stmt(sql);
+
+    sprintf(sql,
+	    "Insert into std_pcmk values ('%s',%d);",
+	    key,
+	    *pcmk);
+    sts = VDSexecute_sql_stmt(sql);
+    
+    retFlag = 1;
+    goto wrapup;
+  }
+
+  // Very first row
+  *pcmk = 9000;
+  sprintf(sql,
+	  "Insert into std_pcmk values ('%s',%d);",
+	  NEXT_PCMK,
+	  *pcmk+1);
+  sts = VDSexecute_sql_stmt(sql);
+
+  sprintf(sql,
+	  "Insert into std_pcmk values ('%s',%d);",
+	  key,
+	  *pcmk);
+  sts = VDSexecute_sql_stmt(sql);
+
+  // Done
+  retFlag = 1;
+  
+wrapup:
+  if (buf) VdsRisFreeBuffer(buf, rows * cols);
+  return retFlag;
+}
+
+/* -----------------------------------------------------------------
+ * Finds the standard piece mark for the object
+ */
+IGRstat std_pcmk()
+{
+  IGRstat retFlag;
+  IGRstat sts;
+  
+  TGRobj_env pieceOE;
+  TGRobj_env macOE;
+  TGRobj_env surfOE;
+  TGRobj_env parent1OE,parent2OE;
+  
+  IGRchar className[64];
+  IGRchar idPcmk[64];
+  
+  IGRchar type;
+  
+  TGRid idID,macID;
+  TGRid pretendID;
+  
+  IGRchar macName[64];
+  
+  IGRchar   family[64];
+  IGRchar   grade [64],partNum[64];
+  IGRdouble thickness;
+  
+  IGRchar key[128];
+  IGRchar *out;
+  
+  IGRint  pcmk;
+  IGRchar *p;
+  IGRint  cmp;
+  
+  IGRint  wt_nt;
+
+  // printf("Entered pcmk:std_test\n");
+  
+  // Init
+  retFlag = 1;
+  OBJECT_RS.type = text_type;
+  out = OBJECT_RS.var.text_st.text_string;
+  sprintf(out,"NOT STANDARD");
+
+  pieceOE.obj_id  = OBJECT_ID;
+  pieceOE.mod_env = OBJECT_ENV;
+  
+  // Only source plates will be handled
+  vdobj$Get(objOE = &pieceOE, className = className);
+  if (strcmp(className,"VSsrcPlate")) {
+    goto wrapup;
+  }
+
+  // Get the macro it is placed on
+  vdobj$GetParent(objOE = &pieceOE, idx = 0, parentID = &macID, pretendID = &pretendID);
+  
+  // Make sure connected through pretend
+  if (pretendID.objid == NULL_OBJID) goto wrapup;
+  
+  // Make sure got the parent macro
+  if (macID.objid == NULL_OBJID) goto wrapup;
+
+  // Get a foot named ID
+  vdmac$Get(objID = &macID, footName = "ID", footID = &idID);
+  if (idID.objid == NULL_OBJID) {
+
+    // Consistency is all
+    vdmac$Get(objID = &macID, footName = "id", footID = &idID);
+
+  }
+  if (idID.objid == NULL_OBJID) {
+
+    // Consistency is all
+    vdmac$Get(objID = &macID, footName = "Id", footID = &idID);
+
+  }
+  if (idID.objid == NULL_OBJID) goto wrapup;
+  //vdobj$Print(objID = &macID);
+  //vdobj$Print(objID = &idID);
+  
+  // Get the pcmk attribute
+  vdsa$GetStruct(objID = &idID, name = "pcmk",txt = idPcmk);
+  if (*idPcmk == 0) {
+    vdsa$GetStruct(objID = &idID, name = "pcmk ",txt = idPcmk);
+  }
+  if (*idPcmk == 0) {
+
+    /* -------------------------------------------
+     * Found one case where this happened
+     * Code around it because it's still a usef quality check
+     */
+    vdobj$Get(objID = &macID, macName = macName);
+    if (!strcmp(macName,"wt_col_sm")) goto wrapup;
+    
+    // Warn for rest
+    printf("*** Have an id macro with no pcmk attribute\n");
+    vdobj$Print(objID = &idID);
+    vdobj$Print(objID = &macID);
+    vdobj$Print(objOE = &pieceOE);
+    printf("---\n");
+    goto wrapup;
+  } 
+  //printf("PCMK '%s'\n",idPcmk);
+  p = strstr(idPcmk,"SIM");
+  if (p) goto wrapup;
+
+  // Filter by macro name
+  vdobj$Get(objID = &macID, macName = macName);
+  p = strstr(macName,"_id");
+  if (p) goto wrapup;
+  
+  // Get rid of shell collars as well
+  p = strstr(macName,"_sh");
+  if (p) {
+    // printf("Shell %s\n",macName);
+    goto wrapup;
+  }
+  
+  type = ' ';
+  
+  p = strstr(macName,"_col_");
+  if (p) {
+    type = '0';
+    goto got_it;
+  }
+  
+  p = strstr(macName,"_clip_");
+  if (p) {
+    type = '1';
+    goto got_it;
+  }
+  
+  p = strstr(macName,"flush");
+  if (p) {
+    type = '5';
+    goto got_it;
+  }
+
+  if (!strcmp(macName,"clip_tee")) {
+    type = '1';
+    goto got_it;
+  }
+  
+  goto wrapup;
+  
+got_it:  
+
+  // Tweak for wt collars
+  if ((type == '0') || (type == '5')) {
+
+    /* -------------------------------------------
+     * ah - 04 Oct 2000
+     * Real mystery here.  Used to use strstr to determine
+     * if has wt_ or nt_ but it stopped working
+     */
+    wt_nt = 0;
+    cmp = strncmp(macName,"wt_",3);
+    if (cmp == 0) wt_nt = 1;
+    cmp = strncmp(macName,"nt_",3);
+    if (cmp == 0) wt_nt = 2;
+        
+    if (wt_nt == 2) { 
+      if (type == '0') type = '2';
+      if (type == '5') type = '6';
+    }
+
+    if (wt_nt == 0) {      
+      printf("*** Collar With ID but not a wt_ or nt_ '%s'\n",macName);
+      vdobj$Print(objOE = &pieceOE);
+      goto wrapup;
+    }
+  }
+  
+  //printf("Macro Name %s\n",macName);
+
+  // Get the parents
+  vdobj$GetTemplate(objOE = &pieceOE, nth = 0, templateOE = &surfOE);
+  if (surfOE.obj_id.objid == NULL_OBJID) goto wrapup;
+  macOE.mod_env = surfOE.mod_env;
+  macOE.obj_id  = macID;
+
+  vdobj$GetTemplate(objOE = &macOE, nth = 0, templateOE = &parent1OE);
+  vdobj$GetTemplate(objOE = &macOE, nth = 1, templateOE = &parent2OE);
+
+  //vdobj$Print(objOE = &parent1OE);
+  //vdobj$Print(objOE = &parent2OE);
+  
+  // Family of penetrated element is also
+  vdsa$GetStruct(objOE = &parent1OE, name = "family_name", txt = family);
+  if (*family == 0) {
+    printf("*** No family for first parent\n");
+    vdobj$Print(objOE = &parent1OE);
+    vdobj$Print(objOE = &macOE);
+    vdobj$Print(objOE = &pieceOE);
+    printf("---\n");
+    goto wrapup;
+  }
+  
+  VDstrlwr(family);
+  cmp = strncmp(family,"i_t_",4);
+  if (cmp) cmp = strncmp(family,"bulb_",5);
+  if (cmp == 0) {
+    //printf("Family %s is i_t_ or bulb_\n",family);
+    if (type == '0') type = '3';
+    if (type == '2') type = '4';
+  }
+  //else printf("Family %s is NOT i_t_ or bulb_\n",family);
+  
+  // Only makes sense to use grade from the clip or collar
+  vdsa$GetStruct(objOE = &pieceOE, name = "grade", txt = grade);
+  if (*grade == 0) {
+    printf("No grade for plate\n");
+    goto wrapup;
+  }
+
+  // Use the thickness of the actual clip or collar itself
+  vdsa$GetStruct(objOE = &pieceOE, name = "plate_thk", dbl = &thickness);
+  
+  // Use the part number from the second parent
+  vdsa$GetStruct(objOE = &parent2OE, name = "part_num", txt = partNum);
+  if (*partNum == 0) goto wrapup;
+
+  // Put it all together
+  sprintf(key,"%c %-10s %6.2f %s",type,grade,thickness,partNum);
+  //printf("KEY %s %s\n",key,macName);
+  
+  sprintf(OBJECT_RS.var.text_st.text_string,"STANDARD");
+  sts = getPcmkByKey(key,&pcmk);
+  if (sts & 1) {
+    sprintf(OBJECT_RS.var.text_st.text_string,"%d",pcmk);
+  }
+  
+  // Done
+  retFlag = 1;
+  
+wrapup:
+  return retFlag;
+}
+
+
+
+

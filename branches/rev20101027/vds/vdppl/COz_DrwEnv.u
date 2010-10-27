@@ -1,0 +1,246 @@
+/* $Id: COz_DrwEnv.u,v 1.1.1.1 2001/01/04 21:09:02 cvs Exp $  */
+
+/***************************************************************************
+ * I/VDS
+ *
+ * File:	vdppl/COz_DrwEnv.u
+ *
+ * Description:
+ *		Support command to hilight the graphical object which
+ *		are part of the envelope process and which are not.
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ *	$Log: COz_DrwEnv.u,v $
+ *	Revision 1.1.1.1  2001/01/04 21:09:02  cvs
+ *	Initial import to CVS
+ *	
+# Revision 1.1  1998/04/29  16:27:20  pinnacle
+# VDS 2.5.1
+#
+# Revision 1.1  1997/05/08  13:20:44  pinnacle
+# New project VDS 250
+#
+# Revision 1.1  1996/07/19  20:33:52  pinnacle
+# Create VDS 241 project
+#
+# Revision 1.1  1995/09/26  16:52:32  pinnacle
+# Created: ./vdppl/COz_DrwEnv.u by azuurhou for vds.240
+#
+ *
+ * History:
+ *	MM/DD/YY	AUTHOR		DESCRIPTION
+ *	09/26/95	adz		creation date
+ *
+ ***************************************************************************/
+
+#include "cieveryone.h"
+#include "cimacros.h"
+#include "acrepdef.h"
+#include "acrepmacros.h"
+#include "parametric.h"
+#include "growner.h"
+#include "ACrg_collect.h"
+#include "vddlodef.h"
+#include "vddlomacros.h"
+#include "v_edgedef.h"
+#include "v_edgemacros.h"
+#include "vd_ve.h"
+#include "ci_easy.h"
+
+#define	VD_NB_REP	30
+
+extern	int	printf();
+extern	int	free();
+extern	int	pr_mat();
+extern		UI_status();
+extern	int	GRdisplay_object();
+extern	int	ACcreate_possible_rep_col();
+extern	int	VD_drwLO_cvrtToString();
+extern	long	VD_getMacroInformation();
+extern	long	VD_findMatchFtNameSlSfInMacro();
+extern	long	VD_SelectCompsObj();
+
+main()
+{
+  struct GRid 		obj;
+  struct GRmd_env 	mod_env;
+  int			M_response ;
+  int			index ;
+  int			suc ;
+  char			loc_mes[40];
+  char			c_name[80];
+  int			i, intRep ;
+  int			nbRep ;
+  int			option ;
+  int			ftCount;
+  struct GRobj_env	*ftList ;
+  unsigned char		objRep ;
+  long			msg, sts;
+  struct GRid		coll ;
+  struct ACrg_coll	coll_str[VD_NB_REP];
+  VD_drwLoInfo		drwInfo ;
+  struct VDve_elem_buf	buf ;
+  IGRchar		totalName[1000], lName[100];
+  
+  extern int G_active_para_type; // share parameter
+
+  // initialisation
+
+  strcpy(loc_mes," Hilight Object versus Envelope Part");
+
+
+  while(1)
+  {
+    // locate of the first line
+    option = 0 ;
+    message(loc_mes);
+
+    UI_status(" 0: Object , 1: Envelope ");
+
+    ci$get(	prompt	= "Give Type (1/0)",
+		value	= option );
+
+    if( option ){
+	UI_status(" Showing the Envelopes" );
+	option = 1 ;
+    }
+    else{
+	UI_status( "Showing the Object " );
+    }
+
+    message(loc_mes);
+    if(!ci$locate(prompt       = "Locate object",
+                  owner_action = LC_RIGID_COMP
+                               | LC_RIGID_OWNER | LC_FLEX_COMP
+                               | LC_FLEX_OWNER  | LC_REF_OBJECTS,
+		  classes      = "ACncpx",
+		  md_env       = &mod_env,
+		  response     = &M_response,
+                  obj          = &obj.objid,
+		  osnum	       = &obj.osnum)) break;
+	
+   sts = om$get_classname(	objid = obj.objid,
+   				osnum = obj.osnum,
+                                classname = c_name );
+   
+   printf("Identified object: %d, %d [%s]\n", obj.objid, obj.osnum, c_name);
+   sts =
+   ac$get_rep_col( col = & coll );
+
+   index = -1 ;
+   sts =
+   ci$send(msg     = message ACrg_collect.AClist_attribute(&msg,
+							VD_NB_REP,
+							coll_str,
+							&nbRep ),
+	   targetid = coll.objid ,
+	   targetos = coll.osnum );
+
+#ifdef	vdsDEBUG
+   for( i=0 ; i<nbRep ; i=i+1 ){
+     printf(" REP[%d] : %s\t%d\n", i, coll_str[i].name ,
+			(int)coll_str[i].desc.value.att_exp );
+   }
+#endif
+
+   sts =
+   ci$send(msg      = message ACncpx.ACget_rep( &intRep ),
+	   targetid = obj.objid,
+	   targetos = obj.osnum );
+   if( !( sts & 1 ) || ( intRep&AC_DEP_REP ) || !intRep ){
+	printf(" NEXT ONE PLEASE \n");
+   }
+
+   sts =
+   ci$send(msg      = message ACncpx.ACget_NV_rep( &objRep ),
+	   targetid = obj.objid,
+	   targetos = obj.osnum );
+
+   totalName[0] = '\0';
+
+   for( i=0 ; i<nbRep ; i=i+1 ){
+     if( objRep == coll_str[i].desc.value.att_exp ){
+
+#ifdef	vdsDEBUG
+       printf(" FOUND[%d] : %s\t%d\n", i, coll_str[i].name ,
+			(int)coll_str[i].desc.value.att_exp );
+#endif
+
+	lName[0] = '\0';
+	drwInfo.val.sString[0] = '\0';
+	sts =
+	vd$drw_layout_info(	msg	= &msg,
+				type	= VD_K_drwLO_objRep,
+				rep	= coll_str[i].name,
+				info	= &drwInfo );
+
+	if( !(sts&msg&1)) continue ;
+
+	VD_drwLO_cvrtToString( &drwInfo, 0, lName );
+
+#ifdef	vdsDEBUG
+	printf(" NAME : %s \n", lName );
+#endif
+
+	if( strlen( lName ) != 0 ){
+	  strcat( totalName, lName );
+	  strcat( totalName, "|" );
+	}
+      }
+    }
+
+    printf(" Matching String : %s \n", totalName );
+
+    /*
+     * Find the macro feets
+     */
+
+    ftList = NULL ;
+    ftCount = 0 ;
+
+    sts = VD_findMatchFtNameSlSfInMacro(	&msg,
+						&obj,
+						&mod_env,
+						totalName,
+						option,
+						&ftList,
+						&ftCount );
+
+#ifdef	vdsDEBUG
+    for( i=0 ; i< ftCount ; i=i+1 ){
+	printf(" Feet[%d]: %d,%d\n", i,	ftList[i].obj_id.objid,
+					ftList[i].obj_id.osnum );
+    }
+#endif
+
+    if( ftCount ){
+
+      buf.count	= 0 ;
+      buf.buf_siz = 0 ;
+      buf.obj_info_p = NULL ;
+
+      sts =
+      vd_$select_obj_comps(	msg     = &msg,
+                                option  = VD_K_gm_SdSfWf,
+                                count   = ftCount,
+                                objEnvs = ftList,
+                                elmList = &buf );
+	
+      for( i=0 ; i<buf.count ; i=i+1 ){
+#ifdef	vdsDEBUG
+	printf(" Feet[%d]: %d,%d\n", i,	buf.obj_info_p[i].obj_id.objid,
+					buf.obj_info_p[i].obj_id.osnum );
+#endif
+	hilite$object(	GRid_in	= buf.obj_info_p[i].obj_id );
+      }
+    }
+
+    /*
+     * Free the memory.
+     */
+    if( ftList )	 free( ftList );
+    if( buf.obj_info_p ) free( buf.obj_info_p );
+ }
+}

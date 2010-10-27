@@ -1,0 +1,441 @@
+/* $Id: COqryPDM.u,v 1.1.1.1 2001/01/04 21:09:02 cvs Exp $  */
+
+/***************************************************************************
+ * I/VDS
+ *
+ * File:        vds/vdppl/COqryPDM.u
+ *
+ * Description: Query a PDM Environment Command Object
+ *		- writes a database environment's catalog, part and part file 
+ *		  info to an .xml ascii file ( an Internet eXtended Markup
+ *		  Language format); file name starts with environment name.
+ *		- may be run alone (ci=qryPDM) or called by ci=srchPDM.
+ *		- if a part or part file is not found, continue reading
+ *
+ * Dependencies: vds/config/english/forms/VDsrchPDM.frm, if run with srchPDM.
+ *               need a database login
+ *
+ * Revision History:
+ *      $Log: COqryPDM.u,v $
+ *      Revision 1.1.1.1  2001/01/04 21:09:02  cvs
+ *      Initial import to CVS
+ *
+# Revision 1.1  1999/02/18  16:20:12  pinnacle
+# TR_179802487: creation
+#
+ *
+ * History:
+ * MM/DD/YY  AUTHOR  DESCRIPTION
+ * 02/12/99  ejm     Created
+ *
+ ***************************************************************************/
+
+#include "VDppl.h"
+//#define vdsDEBUG
+#include "v_dbgmacros.h"
+
+/* Global structure */
+typedef struct {
+  IGRchar filename[128];
+  FILE *file;
+  IGRint indent;
+} TVDxmlFile;
+
+extern VDatVerifyLogin();
+extern VDSsql_query();
+extern VdsRisFreeBuffer();	/* Checks if buffer = NULL */
+extern char   VDSenvir_name[];
+
+/* ---------------------------------------------------------------------------- 
+   Open xml file and return structure info
+*/ 
+IGRint VDxmlFileOpen( xmlFile, filename )
+TVDxmlFile  *xmlFile;
+IGRchar *filename;
+{
+
+  /* "w" creates file if it doesn't exist, writes over previous contents */
+  if( xmlFile->file = fopen( filename, "w" ) )
+  {
+	__DBGpr_str("Successfully opened file", filename);
+	strcpy( xmlFile->filename, filename );
+	return 1;
+  }
+  else
+  {
+	__DBGpr_str("Unable to open file", filename);
+	return 0;
+  }
+} /* VDxmlFileOpen */
+
+/* ---------------------------------------------------------------------------- 
+   Close xml file, flush (finish writing out) buffer.
+*/ 
+IGRint VDxmlFileClose( xmlFile )
+TVDxmlFile  xmlFile;
+{
+  IGRint  sts;
+
+  if (xmlFile.file)  
+  {
+	sts = fclose(xmlFile.file);
+	if( sts == 0 ) 
+		return 1; 
+	else
+		return 0;
+  }
+  else  
+	return 0;
+
+} /* VDxmlFileClose */
+
+/* ---------------------------------------------------------------------------- 
+   Write xml file header;  NULL file ptr checked for in VDxmlFileOpen
+*/ 
+IGRint VDxmlFileHdr( xmlFile )
+TVDxmlFile  xmlFile;
+{
+  IGRchar buf[51];
+
+  strcpy( buf, "<?xml version=\"1.0\"?>" );
+  fprintf( xmlFile.file, "%s\n", buf );
+  
+  strcpy( buf, "<!DOCTYPE ingro_pdm_root SYSTEM \"ingr_pdm.dtd\">" );
+  fprintf( xmlFile.file, "%s\n\n", buf );
+
+  return 1;
+
+} /* VDxmlFileHdr */
+
+/* ---------------------------------------------------------------------------- 
+   Write object separator
+*/ 
+IGRint VDxmlWriteObj( xmlFile, obj_hdr )
+TVDxmlFile  xmlFile;
+IGRchar	   *obj_hdr;
+{
+  IGRint  k;
+  IGRchar buf[51];
+
+  memset( buf, 0, sizeof(char) * 51);
+
+  for( k=0; k < xmlFile.indent; k=k+1 )
+     buf[k]=' ';
+  strcat( buf, obj_hdr );
+/*
+  strcat( buf, "<" );
+  strcat( buf, obj_hdr );
+  strcat( buf, "\n" );
+
+  for( k=0; k < xmlFile.indent + 1; k=k+1 )
+     strcat( buf, " " );
+  strcat( buf, ">" );
+*/
+  fprintf( xmlFile.file, "%s\n", buf );
+
+/*
+  printf("%s\n", buf );
+*/
+  
+
+  return 1;
+
+} /* VDxmlWriteObj */
+
+/* ---------------------------------------------------------------------------- 
+   Write attribute name and it's value
+*/ 
+IGRint VDxmlWriteAtrTxt( xmlFile, attr_name, value )
+TVDxmlFile  xmlFile;
+IGRchar	   *attr_name;
+IGRchar	   *value;
+{
+  IGRint  k;
+  IGRchar buf[256];
+
+  memset( buf, 0, sizeof(char) * 255);
+  for( k=0; k < xmlFile.indent; k=k+1 )
+     buf[k]=' ';
+  strcat( buf, attr_name );
+  if( *value == '\0' )
+    strcat( buf, "=\"NULL\"");
+  else{
+    strcat( buf, "=\"" );
+    strcat( buf, value );
+    strcat( buf, "\"" );
+  }
+  fprintf( xmlFile.file, "%s\n", buf );
+
+/*
+  printf("%s\n", buf );
+*/
+
+  
+  return 1;
+
+} /* VDxmlWriteAtrTxt */
+
+/* -------------------------------------------------------------------------- 
+  Retrieve all the parts and their files for a single catalog.
+*/
+
+IGRint getParts_Files( xmlFile, catalog_name )
+TVDxmlFile  xmlFile;
+IGRchar *catalog_name;
+{
+  IGRstat retFlag;
+  
+  IGRstat sts;
+  IGRint  rows,cols,i;
+  IGRchar **pbuf;
+  
+  IGRchar qry[256],
+          UIstmt[71],
+	  f_catalogname[26],
+	  prev_part_name[21];
+
+
+  retFlag = 0;
+  prev_part_name[0]='\0';
+
+  // Get the list; "f_" catalogs contain part file names
+  strcpy(f_catalogname, "f_");
+  strcat(f_catalogname, catalog_name);
+  sprintf(qry,
+	  "Select n_itemno,n_itemname,n_itemrev,n_itemdesc,n_itemnum,n_fileno,n_cofilename,p_filedesc from %s, %s where n_itemno = n_itemnum order by n_itemname;",
+	  catalog_name, f_catalogname);
+
+  rows = cols = 0; pbuf = NULL;
+  sts = VDSsql_query(qry, &cols, &rows, &pbuf);
+
+
+#ifdef vdsDEBUG
+  // Verify got part
+  if (!(sts & 1) || (rows < 1) || (cols != 6) || (pbuf[0] == NULL)) {
+    strcpy(UIstmt, "Query failed or no parts in catalog,  "); 
+    strcat(UIstmt, catalog_name); 
+    UI_status( UIstmt );
+  }
+#endif
+
+  if (!(sts & 1) || (rows < 1))
+    goto wrapup;
+
+#ifdef vdsDEBUG
+  printf("  catalog: %-20s, rows(parts): %d\n", catalog_name,rows);
+#endif
+
+  // Cycle through
+  for(i = 0; i < rows; i = i + 1) {
+/*
+    printf(" Part %3d %3s %-20s %1s %-30s %2s %2s %-18s %-25s\n",i,
+	   pbuf[(i*8)+0],
+	   pbuf[(i*8)+1],
+	   pbuf[(i*8)+2],
+	   pbuf[(i*8)+3],
+	   pbuf[(i*8)+4],
+	   pbuf[(i*8)+5],
+	   pbuf[(i*8)+6],
+	   pbuf[(i*8)+7]);
+*/
+    if( i>0 )
+    {
+      if( strcmp( prev_part_name, pbuf[(i*8)+1] ) != 0 )
+      {
+        xmlFile.indent = xmlFile.indent - 1;
+        VDxmlWriteObj( xmlFile, "</ingro_pdm_file>" );
+        xmlFile.indent = xmlFile.indent - 1;
+        VDxmlWriteObj( xmlFile, "</ingro_pdm_part>" );
+      }
+    }
+
+    if( strcmp( prev_part_name, pbuf[(i*8)+1] ) != 0 )
+    {
+      VDxmlWriteObj( xmlFile, "<ingro_pdm_part" );
+      xmlFile.indent = xmlFile.indent + 1;
+      VDxmlWriteAtrTxt( xmlFile, "ingra_pdm_part_no",   pbuf[(i*8)+0] );
+      VDxmlWriteAtrTxt( xmlFile, "ingra_pdm_part_name", pbuf[(i*8)+1] );
+      VDxmlWriteAtrTxt( xmlFile, "ingra_pdm_part_rev",  pbuf[(i*8)+2] );
+      VDxmlWriteAtrTxt( xmlFile, "ingra_pdm_part_desc", pbuf[(i*8)+3] );
+      VDxmlWriteObj( xmlFile, ">" );
+      VDxmlWriteObj( xmlFile, "<ingro_pdm_file" );
+      xmlFile.indent = xmlFile.indent + 1;
+      VDxmlWriteAtrTxt( xmlFile, "ingra_pdm_file_no",   pbuf[(i*8)+5] );
+      VDxmlWriteAtrTxt( xmlFile, "ingra_pdm_file_name", pbuf[(i*8)+6] );
+      VDxmlWriteAtrTxt( xmlFile, "ingra_pdm_file_desc", pbuf[(i*8)+7] );
+      VDxmlWriteObj( xmlFile, ">" );
+    }
+    else
+    {
+      xmlFile.indent = xmlFile.indent - 1;
+      VDxmlWriteObj( xmlFile, "<ingro_pdm_file" );
+      xmlFile.indent = xmlFile.indent + 1;
+      VDxmlWriteAtrTxt( xmlFile, "ingra_pdm_file_no",   pbuf[(i*8)+5] );
+      VDxmlWriteAtrTxt( xmlFile, "ingra_pdm_file_name", pbuf[(i*8)+6] );
+      VDxmlWriteAtrTxt( xmlFile, "ingra_pdm_file_desc", pbuf[(i*8)+7] );
+      VDxmlWriteObj( xmlFile, ">" );
+    }
+
+    strcpy( prev_part_name, pbuf[(i*8)+1] );
+
+    if( i == rows-1 )
+    {
+      xmlFile.indent = xmlFile.indent - 1;
+      VDxmlWriteObj( xmlFile, "</ingro_pdm_file>" );
+      xmlFile.indent = xmlFile.indent - 1;
+      VDxmlWriteObj( xmlFile, "</ingro_pdm_part>" );
+    }
+  }
+
+  // Free the buffer
+  VdsRisFreeBuffer(pbuf, rows * cols);
+
+  // Done
+  retFlag = 1;
+  
+wrapup:
+  return retFlag;
+
+} /* getParts_Files */
+
+
+/* -------------------------------------------------------------------------- 
+   Initiate execution.
+   Open eXtended Markup Language (.xml) file
+   Write header to xml file.
+   Cycle through all nfmcatalogs, retrieving their parts and part files, and
+     outputting the attribute data to the xml file. This file will be used
+     as input to interactively search for catalogs based upon a keyword search.
+*/
+
+main()
+{
+  IGRstat retFlag;
+  
+  IGRstat sts;
+  IGRint  rows,cols,i;
+  IGRchar **cbuf,
+	  *sptr;
+  IGRchar qry[256],
+	  stsinfo[31],
+	  stscnt[11],
+	  fileName[51];
+
+  TVDxmlFile  xmlFile;
+
+  
+  retFlag = 0;
+
+  // Make sure logged in
+  sts = VDatVerifyLogin();
+  if (!(sts & 1)) {
+    UI_status("Need to log in to a database");
+    goto wrapup;
+  }
+
+  // Initialize global structure
+  //   Must use xmlFile as an argument, can't set struct to static in ppl
+  //   (therefore, won't keep member values as a global variable).
+  xmlFile.file = NULL;
+  xmlFile.filename[0] = '\0';
+  xmlFile.indent = 0;
+
+  //  Create filename
+  //  VDSenvir_name's start with "pdme_"; external filled at login
+  sptr=strchr(VDSenvir_name,'_');
+  if( sptr == NULL ){
+    status("Expected an underbar, '_', in envir_name, didn't get it");
+    goto wrapup;
+  }
+  sptr=sptr+1;
+  strcat( sptr, ".xml");
+  __DBGpr_str("Filename to create", sptr);
+
+  // Open eXtended Markup Language file
+  sts = VDxmlFileOpen( &xmlFile, sptr);
+  if( sts != 1 )  goto wrapup;
+
+  // Write file header
+  VDxmlFileHdr( xmlFile );
+
+  // Write root object begin
+  VDxmlWriteObj( xmlFile, "<ingro_pdm_root" );
+  xmlFile.indent = xmlFile.indent + 1;
+  VDxmlWriteObj( xmlFile, ">" );
+
+  // Write catalog object begin
+  VDxmlWriteObj( xmlFile, "<ingro_pdm_catalogs" );
+  xmlFile.indent = xmlFile.indent + 1;
+  VDxmlWriteObj( xmlFile, ">" );
+
+  // Get the list; 'C' = parts catalogs
+  sprintf(qry,
+	  "Select n_catalogno,n_catalogname,n_catalogdesc from %s where n_type = 'C' order by n_catalogname;",
+	  "nfmcatalogs");
+  
+  rows = cols = 0; cbuf = NULL;
+  sts = VDSsql_query(qry, &cols, &rows, &cbuf);
+
+  // Verify got something
+  if (!(sts & 1) || (rows < 1) || (cols != 3) || (cbuf == NULL)) {
+    UI_status("Query for catalogs failed");
+    goto wrapup;
+  }
+
+  __DBGpr_int("Number of catalogs (rows)", rows);
+
+  // Cycle through
+  for(i = 0; i < rows; i = i + 1) {
+/*
+    printf("Cat %3d %3s %-20s %s\n",i,
+	   cbuf[(i*3)+0],
+	   cbuf[(i*3)+1],
+	   cbuf[(i*3)+2]);
+*/
+    // Give user feedback on progress
+    if( i % 20 == 0 ){
+	strcpy(stsinfo, "Processing catalog #");
+	sprintf(stscnt, "%d", i+1);
+	strcat(stsinfo, stscnt);
+	UI_status( stsinfo );
+    }
+
+    VDxmlWriteObj( xmlFile, "<ingro_pdm_catalog" );
+    xmlFile.indent = xmlFile.indent + 1;
+    VDxmlWriteAtrTxt( xmlFile, "ingra_pdm_catalog_no",   cbuf[(i*3)+0] );
+    VDxmlWriteAtrTxt( xmlFile, "ingra_pdm_catalog_name", cbuf[(i*3)+1] );
+    VDxmlWriteAtrTxt( xmlFile, "ingra_pdm_catalog_desc", cbuf[(i*3)+2] );
+    VDxmlWriteObj( xmlFile, ">" );
+
+    sts = getParts_Files( xmlFile, cbuf[(i*3)+1]);
+    // if (!(sts & 1)), continue with other catalogs
+
+    xmlFile.indent = xmlFile.indent - 1;
+    VDxmlWriteObj( xmlFile, "</ingro_pdm_catalog>" );
+
+  } /* for */
+
+  xmlFile.indent = xmlFile.indent - 1;
+  VDxmlWriteObj( xmlFile, "</ingro_pdm_catalogs>" );
+  xmlFile.indent = xmlFile.indent - 1;
+  VDxmlWriteObj( xmlFile, "</ingro_pdm_root>" );
+
+  // Close eXtended Markup Language file
+  sts = VDxmlFileClose( xmlFile );
+  if( sts != 1 ){
+    UI_status("Could not close file");
+    goto wrapup;
+  }
+
+
+  // Done
+  retFlag = 1;
+  
+wrapup:
+  
+  // Free the buffer (checks for null ptr)
+  VdsRisFreeBuffer(cbuf, rows * cols);
+
+  return retFlag;
+
+} /* main */

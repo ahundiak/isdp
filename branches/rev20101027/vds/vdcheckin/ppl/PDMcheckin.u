@@ -1,0 +1,151 @@
+/* $Id: PDMcheckin.u,v 1.1.1.1 2001/01/04 21:07:58 cvs Exp $  */
+
+/* --------------------------------------------------------------------
+ * I/VDS
+ *
+ * File:	vds/vdcheckin/ppl / PDMcheckin.u
+ *
+ * Description:
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ *	$Log: PDMcheckin.u,v $
+ *	Revision 1.1.1.1  2001/01/04 21:07:58  cvs
+ *	Initial import to CVS
+ *	
+# Revision 1.1  1998/04/29  16:27:20  pinnacle
+# VDS 2.5.1
+#
+# Revision 1.1  1997/05/08  13:20:44  pinnacle
+# New project VDS 250
+#
+# Revision 1.1  1996/07/19  20:33:52  pinnacle
+# Create VDS 241 project
+#
+# Revision 1.1  1994/11/14  22:42:32  pinnacle
+# Create vds.240 from vds.232
+#
+# Revision 1.1  1994/11/08  16:07:00  pinnacle
+# create vds.232
+#
+ *
+ * History:
+ *	MM/DD/YY	AUTHOR		DESCRIPTION
+ *
+ * -------------------------------------------------------------------*/
+
+#include	"cieveryone.h"
+#include	"cimacros.h"
+#include	"PDUerror.h"
+#include	"PDUstr.h"
+#include	"PDUcommand.h"
+/******************************************************************************/
+
+extern	int	PDMcheckin_part ();
+extern  int     PDMcheckout_part();
+extern  int	PDUwork_controller();
+extern  int     PDUmessage_trans();
+extern  int     VDSverify_login();
+extern  struct  PDUrefresh    *refresh;
+extern  MEMptr  PDU_storage_area;
+extern printf(),MEMclose();
+
+#define MAXWORD 81
+/******************************************************************************/
+main ()
+{
+ 	char 				current_cat[MAXWORD];
+ 	char 				current_nam[MAXWORD];
+ 	char 				current_rev[MAXWORD];
+	char				filename[MAXWORD];
+        MEMptr             		files_bufr;
+        MEMptr             		attach_info_bufr;     
+	int				PDUstatus;
+  	if (VDSverify_login() != PDM_S_SUCCESS)
+   	{
+		status("User Not Logged into PDM");
+    		return 0;
+   	}
+
+        files_bufr=(MEMptr)0;
+	attach_info_bufr=(MEMptr)0;
+
+	/* So let's check in file to server... */
+
+        refresh->command = PDC_M_CHECKIN;
+
+        PDUstatus = PDUwork_controller("Check In Part");
+
+	if( PDUstatus != PDM_S_SUCCESS) {
+	   printf("\n\n\t\t Error PDUwork_controller  sts = %x\n\n",
+                        PDUstatus);
+	   printf("\t\t<%s> not sent to the PDMserver\n\n", filename);
+           return (0);
+	  }
+
+	ci$get(string=current_cat,prompt="Key in catalog");
+	ci$get(string=current_nam,prompt="Key in part");
+	ci$get(string=current_rev,prompt="Key in revision");
+	ci$get(string=filename,prompt="Key in filename");
+        PDUstatus = PDMcheckin_part ( current_cat,
+                                      current_nam,
+                                      current_rev,
+                                      filename,
+                                      NULL,
+                                      NULL,
+                                      NULL,
+				      PDU_storage_area,
+                                      NULL,
+                                      NULL );
+
+
+	if (PDUstatus != PDM_S_SUCCESS) {
+		printf("\n\n\t\tError PDMcheckin_part  sts = %x PDM_S_SUCCESS= %x\n",PDUstatus,PDM_S_SUCCESS);
+		printf("\t\t<%s> not sent to the PDMserver\n\n", filename);
+                exit;
+	} else {
+		printf ("\n\n\t\t<%s> sent to the PDMserver\n\n", filename);
+	}
+
+	PDUstatus = PDUmessage_trans( PDUstatus, 's');
+
+	if( PDUstatus != PDM_S_SUCCESS) {
+		printf(	"\n\n\t\t Error PDUmessage_trans: <%x>\n\n",PDUstatus);
+		exit;
+	}
+
+        /*  .... and check it back out again */
+        refresh->command = PDC_M_CHECKOUT;
+
+        PDUstatus = PDUwork_controller("Check Out Part");
+
+	if( PDUstatus != PDM_S_SUCCESS) {
+		printf("\n\n\t\t Error PDUwork_controller\n\n");
+		exit;
+	  }
+
+        PDUstatus = PDMcheckout_part ( current_cat,
+                                       current_nam,
+                                       current_rev,
+                                       filename,
+                                       PDU_storage_area,
+                                       &files_bufr,
+                                       &attach_info_bufr);
+
+	if (PDUstatus != PDM_S_SUCCESS) {
+		printf("\n\n\t\tError PDMcheckout_part  sts = %x\n",PDUstatus);
+		printf("\t\t<%s> not retrieved from the PDMserver\n\n", filename);
+		exit;
+	}
+
+	PDUstatus = PDUmessage_trans( PDUstatus, 's');
+
+	if( PDUstatus != PDM_S_SUCCESS) {
+		printf("\n\n\t\t Error PDUmessage_trans: <%x>\n\n",PDUstatus);
+		exit;
+	}
+        if ( files_bufr != NULL) MEMclose (&files_bufr);
+        if ( attach_info_bufr != NULL ) MEMclose (&attach_info_bufr);
+
+}

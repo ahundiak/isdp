@@ -1,0 +1,128 @@
+/* $Id: COcrv_merge.u,v 1.1.1.1 2001/01/04 21:07:22 cvs Exp $  */
+
+/* --------------------------------------------------------------------
+ * I/VDS
+ *
+ * File:	vds/cimacros/wireframe/cmd / COcrv_merge.u
+ *
+ * Description:
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ *	$Log: COcrv_merge.u,v $
+ *	Revision 1.1.1.1  2001/01/04 21:07:22  cvs
+ *	Initial import to CVS
+ *	
+# Revision 1.1  1998/04/29  16:27:20  pinnacle
+# VDS 2.5.1
+#
+# Revision 1.1  1997/05/08  13:20:44  pinnacle
+# New project VDS 250
+#
+# Revision 1.1  1996/07/19  20:33:52  pinnacle
+# Create VDS 241 project
+#
+# Revision 1.1  1994/11/14  22:42:32  pinnacle
+# Create vds.240 from vds.232
+#
+# Revision 1.1  1994/11/08  16:07:00  pinnacle
+# create vds.232
+#
+ *
+ * History:
+ *	MM/DD/YY	AUTHOR		DESCRIPTION
+ *
+ * -------------------------------------------------------------------*/
+
+/*
+	 VDS 2.0 - PPM macro library - 92/07/09 (alc)
+	 92/07/22 Get rid of internal data (not used)
+ */
+   
+#include "ciminimum.h"
+#include "cimacros.h"
+#include "cieveryone.h"
+
+#define		MAX_TEMP 33
+
+struct GRid 	TEMP[MAX_TEMP];
+GRobj 		MAC1;
+IGRshort        num_ent;
+IGRint 		suc;
+IGRchar         txt[40];
+struct GRmd_env	MOD_ENV;
+IGRchar		mes_f[80];
+
+extern ASmake_source_from_env();
+
+main()
+{
+ strcpy(mes_f,"<Assoc> Merge Curves");
+ message(mes_f);
+
+while(1)
+  {
+   num_ent = 0;
+   message(mes_f);
+
+step0:
+
+   while(1)
+   {
+     strcpy(txt,"Identify curve ");
+     strcat(txt,itoa(num_ent + 1));
+     if( num_ent ) strcat(txt," / Move-on");  
+
+     if(!ci$locate( prompt       = txt,
+		    classes      = "GRcurve",
+                    properties   = LC_LC_ONLY | LC_DP_ONLY | LC_RW,
+                    owner_action = LC_RIGID_COMP
+                                    | LC_RIGID_OWNER | LC_FLEX_COMP
+                                    | LC_FLEX_OWNER  | LC_REF_OBJECTS,
+	            obj          = &(TEMP[num_ent].objid),
+                    osnum        = &(TEMP[num_ent].osnum),
+		    md_env       = &MOD_ENV ) ) break;
+
+     ASmake_source_from_env( &TEMP[num_ent],&MOD_ENV,&TEMP[num_ent] );	
+
+     num_ent = num_ent + 1;
+     if( num_ent > MAX_TEMP )
+     {
+	status("macro crv_merge : number of located objects exceeds 33");
+        goto step0;
+     }
+   }
+
+   if( num_ent == 0 ) exit;
+
+   ci$get_module_info(md_env = &MOD_ENV);
+
+   MAC1 = NULL_OBJID;
+
+   ci$send(msg      = message nci_macro.init( 	&suc,
+						0, 
+						"crv_merge", 
+						num_ent, 
+						TEMP, 
+						NULL,
+						&MOD_ENV   ),
+	   targetid = MAC1,
+	   targetos = MOD_ENV.md_id.osnum );
+
+   if( suc == 0 ){
+		write("placement of nci_macro \"crv_merge\" failed\n");
+		status("placement of nci_macro \"crv_merge\" failed");
+      		ci$send(msg = message Root.delete(0),
+	      		targetid = MAC1,
+	      		targetos = MOD_ENV.md_id.osnum );
+   }
+ }
+
+}
+
+
+wakeup(){
+	message(mes_f);
+}
+

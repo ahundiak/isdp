@@ -1,0 +1,292 @@
+/* $Id: lstn2cvs.u,v 1.1.1.1 2001/01/04 21:07:22 cvs Exp $  */
+
+/* --------------------------------------------------------------------
+ * I/VDS
+ *
+ * File:	vds/cimacros/wireframe/macros / lstn2cvs.u
+ *
+ * Description:
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ *	$Log: lstn2cvs.u,v $
+ *	Revision 1.1.1.1  2001/01/04 21:07:22  cvs
+ *	Initial import to CVS
+ *	
+# Revision 1.1  1998/04/29  16:27:20  pinnacle
+# VDS 2.5.1
+#
+# Revision 1.1  1997/05/08  13:20:44  pinnacle
+# New project VDS 250
+#
+# Revision 1.1  1996/07/19  20:33:52  pinnacle
+# Create VDS 241 project
+#
+# Revision 1.1  1994/11/14  22:42:32  pinnacle
+# Create vds.240 from vds.232
+#
+# Revision 1.1  1994/11/08  16:07:00  pinnacle
+# create vds.232
+#
+ *
+ * History:
+ *	MM/DD/YY	AUTHOR		DESCRIPTION
+ *
+ * -------------------------------------------------------------------*/
+
+/*
+	VDS 2.1 - PPM macro library - wireframe
+	Description : <Assoc> Place Line Segment Tangent to 2 Curves
+
+   	History :
+
+	 1 Oct 1993  - Raju  - creation
+
+ */
+
+#include <stdio.h>
+#include "cieveryone.h"
+#include "cimacros.h"
+#include "ci_mac_def.h"
+#include "cimath.h"
+#include "macro.h"
+#include "nddef.h"
+#include "msdef.h"
+#include "bserr.h"
+#include "growner.h"
+#include "bsparameters.h"
+
+extern int		sprintf();
+extern int        	init_cnst_list();
+
+struct   GRid		COMP, CI_MACRO_ID;
+struct	 GRid		object;
+struct   GRmd_env       MOD_ENV;      
+struct   GRvg_construct cst;
+struct   IGRdisplay	dis;
+struct	 IGRbsp_curve	*geom, *crv_geom[2], line_geom;
+
+struct   GRid		crvobj, expobj[2];
+double			point[6], upar;
+double			poles[6], knots[4], par1, par2;
+int			dpmode;
+
+GRobj 	 		ci_mac_def1;
+
+IGRshort	 	rc1, at_type;
+
+IGRint			stat, ii;
+IGRlong			sts, msg, rc;
+
+IGRchar 	 	*temp_names[4], *feet_names[1];
+IGRint			temp_types[4], cvno;
+char			tmpstr[60];
+
+
+extern IGRint 		BSlntn2cvs();
+extern IGRboolean	BScv_copy();
+extern void 		BSalloccv();
+extern IGRboolean  	BSfreecv();
+extern void		BScveval();
+
+
+/* ========================================================================= */
+/* the main function is the one implementing the definition creation
+/* ========================================================================= */
+
+main ()
+{
+
+  temp_names[0] = "crv1";
+  temp_names[1] = "crv2"; 
+  temp_names[2] = "par1";
+  temp_names[3] = "par2";
+
+  temp_types[0] = curve_generic | conic_generic | line_generic;
+  temp_types[1] = curve_generic | conic_generic | line_generic;  
+  temp_types[2] = double_type;
+  temp_types[3] = double_type;
+
+
+  feet_names[0] = "line";
+  ci_mac_def1 = NULL_OBJID;
+
+  ac$cimacdef( 	cimacdef          = ci_mac_def1,
+		prop 		  = 0,
+		status 	          = &stat,
+		name              = "lstn2cvs",
+		int_size          = sizeof(int),
+              	temp_num          = 4, 	
+		temp_names        = temp_names,
+		temp_types        = temp_types,
+	      	extern_feet_num   = 1, 	
+		extern_feet_names = feet_names );
+}
+
+/* ========================================================================= */
+
+compute ()
+{
+
+  construct_comp();
+
+  if( COMP.objid == NULL_OBJID ) return(0);
+
+  ci$send( msg = message  ci_macro.set_all_extern_feet
+		(&msg, 1, &COMP, &MOD_ENV ),
+	   	targetid = CI_MACRO_ID.objid,
+	   	targetos = CI_MACRO_ID.osnum );
+  return(1);
+
+}
+
+/* ========================================================================= */
+
+place ()
+{
+  construct_comp();
+
+  if( COMP.objid == NULL_OBJID ) return(0);
+
+  ci$send( msg = message  ci_macro.set_all_extern_feet
+		(&stat, 1, &COMP, &MOD_ENV ),
+	   	targetid = CI_MACRO_ID.objid,
+	   	targetos = CI_MACRO_ID.osnum );
+  return(1);
+
+}
+
+
+/* ========================================================================= */
+
+construct_comp()
+{
+
+
+  COMP.objid = NULL_OBJID;
+  COMP.osnum = MOD_ENV.md_id.osnum;
+
+  /* get the geometry and the points of the curve */
+
+  cvno = 0;
+  for( ii=0; ii<2; ii=ii+1 )
+  {
+     sts = ci$send ( msg = message  ACcpx.ACfind_exp_temp_obj(&msg,ii,&crvobj),
+ 		     targetid = CI_MACRO_ID.objid,
+		     targetos = CI_MACRO_ID.osnum );
+     if( !(sts&msg&1) ) goto wrapup;
+
+     sts = ci$send ( msg = message NDnode.ASreturn_go( &object, NULL, NULL ),
+		     targetid = crvobj.objid,
+		     targetos = crvobj.osnum );
+     if( !(sts&1) ) goto wrapup;
+
+     sts = ci$send ( msg = message GRvg.GRgenabsg(&msg,
+					&MOD_ENV.md_env.matrix_type,
+					&MOD_ENV.md_env.matrix,
+					(char **) &geom),
+		targetid = object.objid,
+		targetos = object.osnum );
+     if( !(sts&msg&1) ) goto wrapup;
+
+     BSalloccv( geom[0].order, geom[0].num_poles, geom[0].rational,
+		geom[0].num_boundaries, &crv_geom[ii] , &rc);
+     if ( rc != BSSUCC ) goto wrapup;
+     cvno = cvno + 1;
+
+     BScv_copy( &rc, geom, crv_geom[ii] );
+     if ( rc != BSSUCC ) goto wrapup;
+
+     sts = ci$send( msg = message  ACcpx.ACfind_exp_temp_obj(
+						&stat,ii+2,&expobj[ii]),
+ 	      targetid = CI_MACRO_ID.objid,
+	      targetos = CI_MACRO_ID.osnum );
+     if( !(sts&1) ) goto wrapup;
+
+     sts = ci$send(msg = message expression.NDgive_value(&upar),
+                   targetid = expobj[ii].objid,
+                   targetos = expobj[ii].osnum);
+     if(!(sts&1)) goto wrapup;
+
+     if ( upar < 0.0 || upar > 1.0 )
+     {	sprintf(tmpstr,"Invalid u-parameter %lf for the curve %d",
+		upar, ii+1);
+	status( tmpstr );
+	goto wrapup;
+     }
+
+
+     BScveval ( crv_geom[ii], upar, 0, &(point[ii*3]), &rc );
+     if ( rc != BSSUCC ) goto wrapup;
+
+  }
+
+  line_geom.poles = poles;
+  line_geom.knots = knots;
+  BSlntn2cvs(	&rc,
+		crv_geom[0],
+		crv_geom[1],
+		&point[0],
+		&point[3],
+		&line_geom,
+		&par1,
+		&par2 );
+
+  if ( rc != BSSUCC )
+  { status ( "Cannot generate tangent line segment" ); 
+     goto wrapup;
+  }
+
+  init_cnst_list();
+  get_symb();
+
+  dis.color		= cnst_list.color;
+  dis.weight		= cnst_list.weight;
+  dis.style		= cnst_list.style;
+  cst.msg		= &msg;
+  cst.properties	= GRIS_LOCATABLE | GRIS_DISPLAYABLE;
+  cst.display		= &dis;
+  cst.env_info		= &MOD_ENV;
+  cst.newflag		= FALSE;
+  cst.level		= cnst_list.level;
+  cst.class_attr	= NULL;
+  cst.name		= NULL;
+  cst.geometry		= (char *)&line_geom;
+
+  COMP.objid = NULL_OBJID;
+  COMP.osnum = MOD_ENV.md_id.osnum;  
+  sts = ci$send(msg      = message GR3dlineseg.GRconstruct(&cst),
+		targetid = COMP.objid,
+	        targetos = COMP.osnum );
+
+  if ( !(sts&1) ) goto wrapup;
+
+  dpmode = GRbd ;
+
+  sts = ci$send(msg = message GRgraphics.GRdisplay(
+					&msg,
+					&MOD_ENV.md_env.matrix_type,
+					MOD_ENV.md_env.matrix,
+					&dpmode,
+					&MOD_ENV.md_id ),
+		targetid = COMP.objid,
+		targetos = COMP.osnum );
+
+  /*
+   * set the new parameter values in the expression header.
+   */
+  sts = ci$send(msg = message expression.NDset_value(NULL,par1,&MOD_ENV,&rc1),
+                targetid = expobj[0].objid,
+                targetos = expobj[0].osnum);
+
+  sts = ci$send(msg = message expression.NDset_value(NULL,par2,&MOD_ENV,&rc1),
+                targetid = expobj[1].objid,
+                targetos = expobj[1].osnum);
+
+wrapup:
+
+  if ( cvno > 0) BSfreecv( &rc, crv_geom[0] );
+  if ( cvno == 2) BSfreecv( &rc, crv_geom[1] );
+
+}

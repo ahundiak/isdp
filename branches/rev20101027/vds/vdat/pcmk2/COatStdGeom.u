@@ -1,0 +1,192 @@
+/* $Id: COatStdGeom.u,v 1.1 2002/02/28 22:23:11 ahundiak Exp $  */
+/***************************************************************************
+ * I/VDS
+ *
+ * File:        vdat/pcmk2/COatStdGeom.u
+ *
+ * Description: Checks to see if standard geomoetry exists for
+ *              all standard pieces
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ *      $Log: COatStdGeom.u,v $
+ *      Revision 1.1  2002/02/28 22:23:11  ahundiak
+ *      ah
+ *
+ *
+ * History:
+ * MM/DD/YY  AUTHOR  	DESCRIPTION
+ * 01/07/02  ah         Creation.
+ ***************************************************************************/
+
+#include "VDppl.h"
+#include "coparamac.h"
+
+extern ASstart_var_fence();
+extern ASend_fence();
+
+#define thePrompt  "Select Plate(s)"
+#define theCommand "Check Standard Plate Geometry"
+
+IGRint traceFlag;
+
+extern VDobjPrint2();
+
+extern VDvalGetStdPcmk2Info();
+extern VDvalQryStdGeom2();
+extern VDvalQryMissingStdGeom2();
+extern VDvalDeleteStdPcmk2Cache();
+
+IGRint missingCnt;
+
+/* -------------------------------------
+ * Process the selected piece
+ */
+int process(pieceOE)
+TGRobj_env *pieceOE;
+{
+  IGRint sts;
+  IGRchar geom_key[128];
+  IGRchar grade[32];
+  IGRchar thickness[32];
+
+  TGRid stdGeomID;
+  
+  IGRchar fam_part1[128];
+  IGRchar fam_part2[128];
+  
+  // Arg check
+  if (pieceOE->obj_id.objid == NULL_OBJID) goto wrapup;
+
+  // See if has a geometry key
+  VDvalGetStdPcmk2Info(pieceOE,geom_key,grade,thickness);
+  if (*geom_key == 0) goto wrapup;
+
+  // Look it up
+  VDvalQryStdGeom2(geom_key,&stdGeomID);
+  if (stdGeomID.objid != NULL_OBJID) {
+    printf("OK %s\n",geom_key);
+    goto wrapup;
+  }
+  missingCnt = missingCnt + 1;
+  
+  // Find what is missing
+  VDvalQryMissingStdGeom2(geom_key,fam_part1,fam_part2);
+
+  printf("--- Piece geometry is not in database ---\n");
+  VDobjPrint2(pieceOE,NULL);
+  if (*fam_part1) printf("fam_part1 %s\n",fam_part1);
+  if (*fam_part2) printf("fma_part2 %s\n",fam_part2);
+  if ((*fam_part1==0) && (*fam_part2== 0)){
+    printf("%s\n",geom_key);
+  }
+  
+  
+wrapup:
+  return 1;
+}
+
+/* --------------------------------------
+ * The main routine
+ */
+int main()
+{
+  int 			sts,msg,response;
+  TGRobj_env  		objOE;
+  TGRobj_env 		*locOEs;
+  IGRint      		locNum;
+  IGRint      		i;
+  OM_S_CLASSLIST        eligibleClasses;
+  OMuword               classids[2];
+  
+  IGRchar buf[128];
+  
+  traceFlag = 0;
+
+  // Delete the cache
+  VDvalDeleteStdPcmk2Cache();
+  
+  // Fiil up filter
+  i = 0;
+  sts = om$get_classid( classname = "VSsrcPlate",
+		        p_classid = &classids[i] );
+  if (sts & 1) i = i + 1;
+
+#if 0
+  sts = om$get_classid( classname = "VSbeam",
+		        p_classid = &classids[i] );
+  if (sts & 1) i = i + 1;
+#endif
+
+  if (i != 1) {
+    UI_status("Need to be running I/STRUCT");
+    return 0;
+  }
+
+  eligibleClasses.w_count   = i;
+  eligibleClasses.w_flags   = OM_CLST_subclass;
+  eligibleClasses.p_classes = classids ;
+    
+  while(1) {
+
+    objOE.obj_id.objid = NULL_OBJID;
+    
+    response = 0;
+
+    UI_message(theCommand);
+
+    sts = ci$locate(prompt  = thePrompt,
+		    eligible_classes= &eligibleClasses,
+		    owner_action = LC_RIGID_OWNER | 
+                                   LC_RIGID_COMP  |
+                                   LC_FLEX_COMP   | 
+                                   LC_FLEX_OWNER  |
+                                   LC_REF_OBJECTS,
+
+                    stackable    = 1,
+		    response     = &response,
+		    md_env       = &objOE.mod_env,
+		    obj          = &objOE.obj_id.objid,
+		    osnum	 = &objOE.obj_id.osnum);
+
+    if (!(sts & 1)) response = 0;
+
+    switch(response) {
+
+    case EX_OBJID:   // Object Set
+
+      /* Grab Located Objects */
+      as$start_fence(
+      set       = &objOE.obj_id,
+      set_env   = &objOE.mod_env,
+      nb_obj    = &locNum,
+      p_obj_env = &locOEs);
+
+      printf(">>> Processing %d pieces\n",locNum);
+      missingCnt = 0;
+      
+      for(i = 0; i < locNum; i = i + 1) {
+        process(&locOEs[i]);
+      }
+
+      ASend_fence();
+
+      if (missingCnt == 0) UI_status("No missing geometry");
+      else {
+	sprintf(buf,"Missing %d pieces of geometry",missingCnt);
+	UI_status(buf);
+      }
+      
+      break;
+      
+    case EX_DATA:    // Single Object
+      process(&objOE);
+      break;
+
+    } // Switch
+  }
+
+wrapup:
+  return 1;
+}

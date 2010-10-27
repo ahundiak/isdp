@@ -1,0 +1,168 @@
+/* $Id $  */
+
+/* --------------------------------------------------------------------
+ * I/VDS
+ *
+ * File:        vdppl/nodemass.u
+ *
+ * Description: get node mass .
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ *      $Log $
+ *
+ * History:
+ *      MM/DD/YY        AUTHOR          DESCRIPTION
+ *      12/05/97        yzhu            creation date
+ *
+ * -------------------------------------------------------------------*/
+/* #include "math.h" */
+#include "ciminimum.h"
+#include "cieveryone.h"
+#include "cimacros.h"
+#include "igrdp.h"
+#include "dp.h"
+#include "go.h"
+#include "gr.h"
+#include "grmacros.h"
+#include "dpdef.h"
+#include "growner.h"
+#include "dpmacros.h"
+#include "v_slcdef.h"
+#include "v_pplslc.h"
+// #include "v_risproto.h"
+#include "vdprocinfo.h"
+
+#define VD_VLA_ID_MAX 4096
+/*  #define VD_DEBUGn */
+
+extern int VDatGetLeafsVLA();
+extern int VDvlaID_GetAt();
+extern int VDatGetLeafObject();
+extern long VDvlaID_Construct();
+extern long VDvlaID_Empty();
+extern long VDvlaID_Delete();
+extern long GRaccumulate_range();
+
+extern int printf();
+
+typedef struct {
+  struct  TVDvlaID *next;
+  IGRuint cnt;
+  struct GRid   list[VD_VLA_ID_MAX];
+} TVDvlaID;
+
+
+main()
+{
+int                  status, i ;
+long                 msg ;
+double               sideLen[3];
+double               volume, mass ;
+struct	GRobj_env    objenv;
+struct	GRid	     object;
+ 
+#ifdef  VD_DEBUGn
+        printf( "nodemass--main\n");
+#endif 
+
+        mass = 0.0;
+
+        /* get GRobj_env id */
+        vd$ppl_getarg_at_index(which_info = INPUT_INFO,
+                                index     = 0,
+                                value     = &objenv );
+        object = objenv.obj_id;
+
+#ifdef  VD_DEBUGn
+        printf( "Get object from INPUT_INFO [%d, %d]\n", 
+			object.objid, object.osnum); 
+#endif
+        /* get mass */
+        status = 
+        VDget_node_mass ( &msg, object, &mass); 
+
+#ifdef  VD_DEBUGn
+       printf( "Main--mass %f\n",mass);
+#endif
+     	/* set size for OUTPUT_INFO */
+	vd$ppl_set_size (which_info = OUTPUT_INFO,
+			 size	    = 1		  );	
+
+        /* set mass */
+        vd$ppl_setarg_at_index(which_info = OUTPUT_INFO,
+                                index     = 0,
+                                type      = VD_double,
+                                value     = &mass  );
+     
+#ifdef  VD_DEBUGn
+        printf( "nodemass--main end\n");
+#endif
+        return 1;
+}
+
+/*-------------------------------------------------------*/
+long VDget_node_mass ( msg, object, mass)
+IGRlong 		*msg;
+struct GRid             object;
+IGRdouble               *mass ;
+{
+   int  		leafI;
+   TVDvlaID     	leafVLA;
+   struct GRid  	leafID;
+   long         	status;
+   double         	massL, cur_mass;
+   struct GRobj_env 	objenv;
+   
+#ifdef  VD_DEBUGn 
+   printf( "nodemass--VDget_node_mass\n");
+#endif
+   // Init vla
+   VDvlaID_Construct(&leafVLA);
+
+
+   /* get leaf objects */
+   VDatGetLeafsVLA( &object, &leafVLA);
+
+   /* for leaf loop */
+   cur_mass = 0;   
+
+   for ( leafI = 0; VDvlaID_GetAt( &leafVLA, &leafID, leafI); leafI = leafI +1) 
+   {
+
+#ifdef  VD_DEBUGn
+      printf( " leaf [%d, %d]\n", leafID.objid, leafID.osnum);
+#endif
+
+     /* get model object of leaf */
+      status = VDatGetLeafObject(&leafID, &objenv);
+
+#ifdef  VD_DEBUGn
+      printf( " model object [%d, %d]\n", objenv.obj_id.objid,
+                                         objenv.obj_id.osnum);
+#endif
+     /* for each leaf to get mass */
+     massL = 0;
+
+     status =
+     vd$proc_attr(  msg        = msg,
+                    grid       = objenv.obj_id,
+                    md_env     = &(objenv.mod_env),
+                    mass       = &massL);
+
+#ifdef  VD_DEBUGn
+        printf( "nodemass--VDget_node_mass mass %f \n", massL);
+#endif
+     cur_mass = cur_mass + massL;
+   }
+
+   *mass = cur_mass;  
+
+   VDvlaID_Delete(&leafVLA);  
+#ifdef  VD_DEBUGn 
+        printf( "nodemass--VDget_node_mass end\n");
+#endif
+   return TRUE;
+}
+

@@ -1,0 +1,497 @@
+/* $Id: FabData.u,v 1.1.1.1 2001/01/04 21:07:43 cvs Exp $  */
+
+/***************************************************************************
+ * I/VDS
+ *
+ * File:        $VDS/vdat/ppl/FabData.u
+ *
+ * Description:
+ *
+ * Revision History:
+ *      $Log: FabData.u,v $
+ *      Revision 1.1.1.1  2001/01/04 21:07:43  cvs
+ *      Initial import to CVS
+ *
+# Revision 1.4  1999/02/09  20:00:40  pinnacle
+# Replaced: vdat/ppl/FabData.u for:  by vsrivast for vds
+#
+# Revision 1.3  1999/01/21  16:15:00  pinnacle
+# Replaced: vdat/ppl/FabData.u for:  by vsrivast for vds
+#
+# Revision 1.2  1999/01/19  17:22:32  pinnacle
+# Replaced: vdat/ppl/FabData.u for:  by vsrivast for vds
+#
+ *
+ * History:
+ * MM/DD/YY  AUTHOR          DESCRIPTION
+ * 01/19/99  vinit	     Created header 
+ * 01/19/99  vinit	     Added functions for review attributtes
+ * 01/21/99  vinit   	     Added function to search the data set using 
+ *			     the pocket menu.
+ ***************************************************************************/
+#include "VDppl.h"
+#include "VDobj.h"
+#include "VDsa.h"
+#include "vdparmacros.h"
+#include "VDatparmacros.h"
+#include "VDmem_ppl.h"
+#include "v_datamacros.h"
+#include "v_dbgmacros.h"
+
+
+extern calloc();
+extern free();
+
+
+extern VDatGetParentsVLA();
+extern VDatGetParentNode();
+extern VDatGetChildObject();
+extern VDatRecurseGetPcmkForFabData();
+
+TGRid   NODE_ID;
+IGRchar NODE_PATH[128];
+
+IGRchar NODE_TYPE [64];
+IGRchar NODE_NAME [64];
+IGRchar NODE_DESC [64];
+IGRchar NODE_TABLE[64];
+
+IGRchar NODE_MSG [128];
+
+IGRint  NODE_IND;
+IGRint  NODE_LEVEL;
+
+IGRint  nodeFlag;
+
+IGRchar SET_TYPE        [64];
+IGRchar SET_TYPE_DESC   [64];
+
+IGRchar SET_TYPE_TREE_TABLE[64];
+IGRchar SET_TYPE_LEAF_TABLE[64];
+
+IGRint  SET_TYPE_IS_TREE;
+IGRint  SET_TYPE_DO_SUM;
+IGRint  SET_TYPE_REV;
+
+OM_S_CLASSLIST CLASS_LIST;
+
+IGRint  LIST_IND;
+IGRchar LIST_TEXT[64];
+
+TGRobj_env PIECE_OE;
+
+IGRint 	TYPE;
+IGRint  NB_ATTRS;
+TGRid	SET_ID;
+
+struct ACrg_coll *COLL;
+
+IGRchar SEARCH_STRING[128];
+
+extern VDatGetLeafPath();
+
+/* ------------------------------------------------
+ * Gets the display name for the leaf
+ */
+IGRstar getLeafName()
+{
+  IGRstat retFlag;
+  IGRchar *p;
+  
+  // Init
+  *NODE_NAME = 0;
+  retFlag = 0;
+  
+  // get the path
+  VDatGetLeafPath(&NODE_ID,NODE_PATH);
+  
+  // Name is just last part
+  p = strrchr(NODE_PATH,':');
+  if (p == NULL) goto wrapup;
+
+  strcpy(NODE_NAME,p+1);
+
+  retFlag = 1;
+
+wrapup:
+
+  return retFlag;
+}
+
+/* ------------------------------------------------
+ * Decides which of three lists objects belong to
+ */
+IGRstar getListInd()
+{
+  IGRstat sts;
+  IGRchar sa  [64];
+  IGRchar txt[128];
+
+  // First see if it is a detail
+  sprintf(sa,"%s%s:%s:%s",VDSA_KEY_SA_PPL,"VDatPiece","IsDetail","StagingTree");
+  vdsa$GetStruct(objOE = &PIECE_OE, name = sa, txt = txt);
+  if ((*txt == 'Y') || (*txt == 'y')) {
+    LIST_IND = 2;
+    return 1;
+  }
+
+  // Next try for plate
+  sts = vdobj$IsAncestryValid(objOE = &PIECE_OE, superClassName = "VSplate");
+  if (sts & 1) {
+    LIST_IND = 0;
+    return 1;
+  }
+
+  // Next try for beam
+  sts = vdobj$IsAncestryValid(objOE = &PIECE_OE, superClassName = "VSbeam");
+  if (sts & 1) {
+    LIST_IND = 1;
+    return 1;
+  }
+
+  // Default to last list
+  LIST_IND = 2;
+  return 0;
+}
+
+/* -------------------------------------------------
+ * List text labels
+ */
+IGRstar getListText()
+{
+  switch(LIST_IND) {
+  case 0: strcpy(LIST_TEXT,"Plates"); return 1;
+  case 1: strcpy(LIST_TEXT,"Beams");  return 1;
+  case 2: strcpy(LIST_TEXT,"Other");  return 1;
+  }
+  strcpy(LIST_TEXT,"Unknown");
+  return 0;
+}
+
+/* -------------------------------------------------
+ * Class filters
+ */
+IGRstar getFilter()
+{
+  IGRint i;
+
+  i = 0;
+
+  om$get_classid( 
+    classname = "VSplate",
+    p_classid = &CLASS_LIST.p_classes[i]
+  ) ;
+  if (CLASS_LIST.p_classes[i] != 0) i = i + 1;
+
+  om$get_classid( 
+    classname = "VSbeam",
+    p_classid = &CLASS_LIST.p_classes[i]
+  ) ;
+  if (CLASS_LIST.p_classes[i] != 0) i = i + 1;
+
+  CLASS_LIST.w_count = i;
+
+  // printf("Filter set\n");
+
+  return 1;
+}
+
+/* -------------------------------------------------
+ * Assorted information about the set type
+ */
+IGRstar getSetTypeInfo()
+{
+  strcpy(SET_TYPE,     "FabData");
+  strcpy(SET_TYPE_DESC,"Fabrication Data");
+  
+  SET_TYPE_IS_TREE = 0;
+  SET_TYPE_DO_SUM  = 0;
+  SET_TYPE_REV     = 0;
+
+  strcpy(SET_TYPE_TREE_TABLE,"");
+  strcpy(SET_TYPE_LEAF_TABLE,"vdat_fab");
+
+  return 1;
+}
+
+/* -------------------------------------------------
+ * Individual stage information for NODE_IND
+ */
+IGRstar getSetNodeInfo()
+{
+  switch(NODE_IND) {
+
+  case 0:
+    strcpy(NODE_TYPE, "PIECE");
+    strcpy(NODE_DESC, "PIECE");
+    strcpy(NODE_TABLE,"vdat_fab");
+    NODE_LEVEL = 0;
+    return 1;
+  }
+
+  *NODE_TYPE  =  0;
+  *NODE_DESC  =  0;
+  *NODE_TABLE =  0;
+   NODE_LEVEL = -1;
+
+  return 0;
+}
+
+IGRstat summarizeLeaf()
+{
+  return 1;
+}
+
+IGRstat summarizeNode()
+{
+  return 1;
+}
+
+/* -------------------------------------------------
+ * Say something if ppl is run by user
+ */
+main()
+{
+  getSetTypeInfo();
+
+  printf("%s %d '%s' %d %d\n",
+    SET_TYPE,
+    SET_TYPE_REV,
+    SET_TYPE_DESC,
+    SET_TYPE_IS_TREE,
+    SET_TYPE_DO_SUM);
+
+  return 1;
+}
+
+/* -------------------------------------------------
+ * Validates name format for given stage type
+ */
+IGRstat isNameValid()
+{
+  IGRstat retFlag;
+  IGRchar nodeName[128];
+  IGRchar nodeType[128];
+  
+  IGRchar *p;
+  
+  // Init
+   retFlag = 0;
+  *NODE_MSG = 0;
+
+  if (1) return 1;
+
+  // Local variables are safer
+  strcpy(nodeName,NODE_NAME);
+  strcpy(nodeType,NODE_TYPE);
+  
+  // Handle SAx
+  if ((strncmp(nodeType,"SA",2) == 0) && (strlen(nodeType) > 2)) {
+
+    // Never give a name for this
+    *NODE_NAME = 0;
+    retFlag = 1;
+    goto wrapup;
+  }
+  
+  // rest must all have some name
+  if (*nodeName == 0) {
+    strcpy(NODE_MSG,"Must specify stage name");
+    goto wrapup;
+  }
+  
+  // Upper case the name
+  for(p = nodeName; *p; p = p + 1) {
+    if ((*p >= 'a') && (*p <= 'z')) {
+      *p = *p - 32;
+    }
+  }
+    
+  // SA are numbers
+  if ((!strcmp(nodeType,"SA")) || (!strcmp(nodeType,"PSU"))) {
+
+    for(p = nodeName; *p; p = p + 1) {
+      if ((*p < '0') || (*p > '9')) {
+	sprintf(NODE_MSG,"%s's can only have numbers",nodeType);
+	goto wrapup;
+      }
+    }
+    retFlag = 1;
+    goto wrapup;
+  }
+
+  // CPSU and PSA are letters
+  if ((!strcmp(nodeType,"PSA")) || (!strcmp(nodeType,"CPSU"))) {
+
+    for(p = nodeName; *p; p = p + 1) {
+      if ((*p < 'A') || (*p > 'Z')) {
+	sprintf(NODE_MSG,"%s's can only have letters",nodeType);
+	goto wrapup;
+      }
+    }
+    strcpy(NODE_NAME,nodeName);
+    retFlag = 1;
+    goto wrapup;
+  }
+
+  // Oops
+  strcpy(NODE_MSG,"StagineTree.Unknown stage type");
+
+wrapup:
+  return retFlag;
+}
+
+/* ------------------------------------------------------------
+ * Gets full path for a node handling all swapping and special cases
+ */
+int getNodePath()
+{
+  IGRint  retFlag;
+  TGRid   nodeID;
+  IGRchar node_type[128];
+  IGRchar node_name[128];
+  
+  // Init
+  retFlag = 0;
+  *NODE_PATH = 0;
+  nodeID = NODE_ID;
+  
+  // Always start with type for now 
+  vdsa$GetStruct(objID = &nodeID, name = "node_type", txt = node_type);
+  vdsa$GetStruct(objID = &nodeID, name = "node_name", txt = node_name);
+  sprintf(NODE_PATH,"%s %s",node_type,node_name);
+	
+  retFlag = 1;
+  
+wrapup:
+  return retFlag;
+}
+
+
+IGRint getNumofAttributes()
+{
+	switch(TYPE){
+
+	case VDAT_REVIEW_ATTRIBUTES: 	NB_ATTRS = 3;
+					break;
+	case VDAT_EXTR_FOR_REVIEW  : 	NB_ATTRS = 3;
+					break;
+			}
+
+return 1;
+}
+IGRint getReviewAttributes()
+{
+
+        TGRid 	nodeID;
+	IGRint  retFlag;
+	IGRint  i;
+	IGRlong status, sts;
+
+	IGRchar exp_major[128];
+	IGRchar exp_minor[128];
+	IGRchar u_notes[128];
+
+
+	//Init
+	nodeID = NODE_ID;
+	retFlag = 0;
+	
+	// Switch on Type
+
+	switch (TYPE){
+
+	case VDAT_REVIEW_ATTRIBUTES: 
+				// Allocate memory for the Collector
+				COLL = _MALLOC(NB_ATTRS, struct ACrg_coll);
+				if(COLL == NULL)
+				__DBGpr_com( " Allocation Error");
+				// Get EXP_MAJOR 
+				vdsa$GetStruct(objID = &nodeID, name = "u_exp_major", txt = exp_major);
+				strcpy(COLL[0].desc.value.att_txt, exp_major);
+				strcpy(COLL[0].name, "FabData_EXP_MAJOR");
+
+				// Get EXP_MINOR 
+				vdsa$GetStruct(objID = &nodeID, name = "u_exp_minor", txt = exp_minor);
+				strcpy(COLL[1].desc.value.att_txt, exp_minor);
+				strcpy(COLL[1].name, "FabData_EXP_MINOR");
+				
+				// Get U_NOTES 
+				vdsa$GetStruct(objID = &nodeID, name = "U_NOTES", txt = u_notes);
+				strcpy(COLL[2].desc.value.att_txt, u_notes);
+				strcpy(COLL[2].name, "FabData_U_NOTES");
+
+				for(i=0;i<NB_ATTRS;i=i+1)
+				COLL[i].desc.type = AC_ATTRIB_TEXT;
+				goto wrapup;
+	case VDAT_EXTR_FOR_REVIEW:		
+				// Allocate memory for the Collector
+				COLL = _MALLOC(NB_ATTRS, struct ACrg_coll);
+				if(COLL == NULL)
+				__DBGpr_com( " Allocation Error");
+			
+				// Get EXP_MAJOR 
+				vdsa$GetStruct(objID = &nodeID, name = "u_exp_major", txt = exp_major);
+				strcpy(COLL[0].desc.value.att_txt, exp_major);
+				strcpy(COLL[0].name, "FabData_EXP_MAJOR");
+
+				// Get EXP_MINOR 
+				vdsa$GetStruct(objID = &nodeID, name = "u_exp_minor", txt = exp_minor);
+				strcpy(COLL[1].desc.value.att_txt, exp_minor);
+				strcpy(COLL[1].name, "FabData_EXP_MINOR");
+				
+				// Get U_NOTES 
+				vdsa$GetStruct(objID = &nodeID, name = "U_NOTES", txt = u_notes);
+				strcpy(COLL[2].desc.value.att_txt, u_notes);
+				strcpy(COLL[2].name, "FabData_U_NOTES");
+
+				for(i=0;i<NB_ATTRS;i=i+1)
+				COLL[i].desc.type = AC_ATTRIB_TEXT;
+				goto wrapup;
+	default : 		break;
+			}
+
+wrapup:
+	retFlag = 1;
+	return retFlag;
+}
+
+
+IGRint searchforNode()
+{
+
+	IGRint 	i, len;
+	IGRint 	found;
+	IGRint  retFlag;
+	IGRint  pcmk;
+	TGRid	nodeID;
+	TGRid	pcmkID;
+	TGRid 	setID;
+
+	//init
+	retFlag = 0;
+	found = 0;
+	pcmkID.objid = NULL_OBJID;
+	
+	setID = SET_ID;
+
+	VDatGetChildObject(&setID, 0, &nodeID);
+
+	len = strlen(SEARCH_STRING);
+	
+	if(('0' < SEARCH_STRING[0]) && (SEARCH_STRING[0] < '9'))                                                                  // A Piecemark
+	{
+		pcmk = atoi(SEARCH_STRING);
+		NODE_ID.objid = NULL_OBJID;
+		found =0;
+		// Get the objid of the Leaf (PM)
+		VDatRecurseGetPcmkForFabData(&nodeID, &pcmkID, pcmk, &found);
+		NODE_ID = pcmkID;
+		retFlag =1;
+	}
+	
+wrapup:
+	return retFlag;
+}
+
+

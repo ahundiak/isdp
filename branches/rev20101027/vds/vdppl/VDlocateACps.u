@@ -1,0 +1,513 @@
+/* $Id: VDlocateACps.u,v 1.1 2001/01/18 20:41:07 hans Exp $  */
+ /* --------------------------------------------------------------------
+ * I/VDS
+ *
+ * File:	VDlocateACps.u
+ *
+ * Description:
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ *	$Log: VDlocateACps.u,v $
+ *	Revision 1.1  2001/01/18 20:41:07  hans
+ *	SP16 additions/modifications
+ *	
+# Revision 1.1  2000/08/21  20:19:26  pinnacle
+# Created: vds/vdppl/VDlocateACps.u by jvhanson for Service Pack
+#
+ *
+ * History:
+ *	MM/DD/YY	AUTHOR		DESCRIPTION
+ *	08/16/00	jvh		Creation date
+ *
+ * -------------------------------------------------------------------*/
+
+/*
+ * PPL VDlocateMacs.u
+ *
+ * This PPL provides a very fast function to find ALL objects of a particular CLASSID
+ * in the specified object space (no locate required !!!).
+ *
+ * Usage: "ci=VDLocateACps"
+ *
+ * Following is an example of how to find & list ALL OPP_ACpretendin_class_id's in OS 2
+ */
+
+#include <stdio.h>
+#include <cieveryone.h>
+#include <cimacros.h>
+#include "OMindex.h"
+#include <grmacros.h>
+
+#include "refdef.h"
+#include "ref.h"
+#include "exmacros.h" 
+#include "EXproduct.h"
+#include "VDmem_ppl.h"
+
+#define  tmpfilename	".process.log"
+#define	 NUMTYPES	1
+#define  FI_STRLEN 132
+#define  MAX_NUM_REFS	150
+
+IGRint		*refosnums, used_ref_count;
+IGRlong		CurOsnum ;
+struct GRmd_env	MOD_ENV;
+FILE		*logfile ;
+IGRchar		msgstr[60] ;
+
+extern IGRint EX_get_global();
+extern IGRint EX_get_super();
+extern VDpms_find_objects();
+
+extern GRclassid	OPP_ACpretendin_class_id;
+
+
+
+/********************************************************/
+
+
+get_ref_list()
+{
+IGRint		sts ;
+IGRint		msg ;
+IGRint		count ;
+IGRint		i ;
+IGRint		j ;
+IGRint		k ;
+IGRint		unused ;
+IGRint		m ;
+IGRint		sel;
+IGRint		number ;
+IGRint		array_size ;
+IGRint		var_size ;
+IGRint		bad_var ;
+IGRlong		zero ;
+IGRlong		temp ;
+IGRulong	ref_prop ;
+GRobj		*OBJECTS , mgr_objid ;
+IGRshort	*OSNUMS;
+struct GRinquire_list   list[3];
+IGRchar		file_name[FI_STRLEN];
+IGRchar		saved_view[FI_STRLEN];
+IGRchar		filename[128];
+OMuword		osnum;
+struct EX_var_list ex_var[2];
+
+   sel = FALSE;
+   var_size = 1024;
+
+   ex_var[0].var = 1;
+   ex_var[0].var_value = &filename[0];
+   ex_var[0].num_bytes = &var_size;
+
+   ex_var[1].var = NULL;
+
+   msg = EX_get_global( 0, &ex_var[0], &bad_var);
+
+   CurOsnum = 2;
+
+   ci$get_module_info(md_env = &MOD_ENV);
+
+   sts = ex$get_super (
+                mod_id = MOD_ENV.md_id.objid,
+                mod_osnum = MOD_ENV.md_id.osnum,
+                super_name = REFERENCE_FILE_MANAGER,
+                create = TRUE, super_class = "Super_rfmgr",
+                super_id = &mgr_objid);
+
+   sts = ci$send(msg = message Super_rfmgr.GRget_channel_count(
+                &msg,&ref_prop, &zero, &count),
+		targetid = mgr_objid,
+                targetos = MOD_ENV.md_id.osnum);
+
+   #ifdef DEBUG
+   printf("sts=%d,msg=%d,count=%d\n", sts, msg, count);
+   #endif
+
+   array_size = count * sizeof(GRobjid);
+   OBJECTS = NULL;
+   OSNUMS = NULL;
+   if( count  < 1){ count = 1; }
+
+   OBJECTS = _MALLOC ( count , GRobj );
+   if( OBJECTS == NULL ){
+  	msg = FALSE;
+  	goto wrapup;
+   }
+   
+   OSNUMS = _MALLOC ( count , IGRshort );
+   if( OSNUMS == NULL ){
+   	msg = FALSE;
+   	goto wrapup;
+   }
+   
+   sts = ci$send(msg = message Super_rfmgr.GRget_channel_objects(
+                &msg,
+                &ref_prop,
+                &zero,
+                &array_size,
+                OBJECTS,
+                OSNUMS,
+                &count),
+                targetid = mgr_objid,
+                targetos = MOD_ENV.md_id.osnum);
+
+    #ifdef DEBUG
+    printf("Super msg,msg=", sts , msg ) ;
+    printf("MOD_ENV.md_id.osnum=%d\n",MOD_ENV.md_id.osnum ) ;
+    for (i=0; i < count; i=i+1) printf("the object ids[%d, %d]\n", OBJECTS[i] , OSNUMS[i] ) ;
+    #endif
+
+    list[0].var = REFERENCE_FILE_NAME;
+    list[0].var_ptr = file_name;
+    list[0].num_requested = FI_STRLEN;
+
+    list[1].var = SAVED_VIEW_NAME;
+    list[1].var_ptr = saved_view;
+    list[1].num_requested = FI_STRLEN;
+
+    list[2].var = END_PARAM;
+    list[2].var_ptr = NULL;
+    list[2].num_requested = NULL;
+
+    m=0;
+    k=0;
+    #ifdef DEBUG
+    printf( "number of references=%d\n", count );
+    #endif
+
+    for (i=0; i < count; i=i+1) {
+
+	sts = ci$send (msg = message GRreffile.GRinquireref(
+                        &msg,
+                        &MOD_ENV,
+                        list,
+                        &temp,
+                        &zero,
+                        NULL),
+                        targetid = OBJECTS[i],
+                        targetos = OSNUMS[i]);
+
+	sts = ci$send (msg = message GRreffile.GRgetosnum(
+                        &msg,
+			&osnum ),
+                        targetid = OBJECTS[i],
+                        targetos = OSNUMS[i]);
+
+    	
+    	unused = TRUE;
+    	
+    	for( j=0;j<used_ref_count;j=j+1){
+    		#ifdef DEBUG
+    		printf("osnum=%d, refosnums[%d]=%d\n", osnum, j, refosnums[j]);
+    		#endif
+    		if( osnum == refosnums[j] ){
+    			unused = FALSE;
+    			break;
+    		}
+    	}	
+	
+    	if( unused == TRUE ){
+    		if( k==0){
+    		
+			sprintf ( msgstr, "Reference files with no connections\n" );
+			#ifdef DEBUG
+			printf ( "%s", msgstr );
+			#endif
+			fprintf ( logfile , "%s", msgstr );
+			k=1;
+    		}
+    	
+		sprintf ( msgstr, "Ref file[%s], Object space[%d] has no geometry connections.\n",
+				list[0].var_ptr, osnum );
+		#ifdef DEBUG
+		printf ( "%s", msgstr );
+		#endif
+		fprintf ( logfile , "%s", msgstr );
+		
+		#ifdef DEBUG
+	    	printf("Unused reference file\n" ) ;
+	    	printf("filename =%s\n", list[0].var_ptr ) ;
+	    	printf("save view=%s\n", list[1].var_ptr ) ;
+	    	printf("ref osnum[%d]\n", osnum );
+	    	#endif
+    	}
+    	
+    }/* end of for (i=0; i < count; i=i+1)  */
+
+wrapup:
+
+    _FREE( OBJECTS );
+    _FREE( OSNUMS );
+}
+
+
+/********************************************************/
+
+
+main()
+{
+  IGRchar	       *c, macname[40];
+  IGRint	        i0, j0, k0, l0, m0, cnt, cnt1, sts;
+  IGRint		displist[2000];
+  IGRint		isnew;
+  IGRlong     		msg;
+  IGRdouble		pnt[3];
+  IGRdouble 		num;
+  struct GRevent  	jimbo;
+  IGRchar		msg_str[128];
+  IGRchar		outputfilename[128];
+  
+  struct GRid	        *listeners;
+  struct GRid	        obj_id;
+  struct GRmd_env       ModuleInfo;
+  
+  struct GRid           macro;
+  OM_S_OBJID	       *list;
+  GRclassid	        class_id[NUMTYPES];
+
+  class_id[0] = OPP_ACpretendin_class_id;
+
+
+  if( logfile == NULL ){
+	  logfile = ( FILE * ) fopen( tmpfilename , "w") ;
+	  if ( logfile == NULL) {
+		printf("could not open the log file \n" ) ;
+		fclose( logfile);
+		exit;
+	  }
+  }
+ 
+  message ( "Find all unused Reference File connections" );
+
+again:
+
+  macname[0] = 0;
+  
+	cnt = 0;
+	for( i0=0; i0<NUMTYPES; i0=i0+1){
+		sts = VDpms_find_objects ( 2, class_id[i0], &cnt1, NULL );
+  		cnt = cnt + cnt1;
+  	}
+  	  
+	//list = ( OM_S_OBJID * ) om$malloc ( size = cnt * sizeof ( OM_S_OBJID ) );
+	list = _MALLOC ( cnt , OM_S_OBJID );
+	refosnums = _MALLOC ( MAX_NUM_REFS , IGRint );
+	for( i0=0;i0<MAX_NUM_REFS; i0=i0+1) refosnums[i0]=0;
+	
+	ci$get_module_info ( md_env = &ModuleInfo );
+
+	if ( list )
+	{
+		cnt = 0;
+		for( i0=0; i0<NUMTYPES; i0=i0+1){
+			sts = VDpms_find_objects ( 2, class_id[i0], &cnt1, &list[cnt] );
+			cnt = cnt + cnt1;
+    		}
+    		
+		j0 = 0;
+		used_ref_count=0;
+		obj_id.osnum  = 2;
+
+		for ( i0=0; i0 < cnt; i0=i0+1)
+		{
+			obj_id.objid = list[i0];
+			displist[j0] = i0;
+			
+			cnt1 = 0;
+			
+			msg = getChannelObjects ( obj_id, "ASsource.listeners" , 
+			  	&cnt1, &listeners );
+
+			#ifdef DEBUG			  
+			printf("id[%d,%d] listeners cnt=%d, msg=%d\n", 
+				obj_id.objid, obj_id.osnum , cnt1 , msg );
+			#endif
+			
+			
+			for( k0=0; k0<cnt1; k0=k0+1){
+				if( listeners[k0].osnum != 2 ){
+					isnew = TRUE;
+					for( l0=0; l0<j0+1; l0=l0+1){
+						#ifdef DEBUG
+						printf("listeners[%d].osnum=%d, refosnum[%d]=%d\n", 
+						k0, listeners[k0].osnum, l0, refosnums[l0]);
+						#endif
+					
+						if( listeners[k0].osnum == refosnums[l0] ){
+							isnew = FALSE;
+							break;
+						}
+												
+					}
+					
+					if( isnew == TRUE ){
+						#ifdef DEBUG
+						printf("!!listener[%d] id[%d, %d]\n", k0, 
+							listeners[k0].objid, listeners[k0].osnum );
+						#endif
+						refosnums[used_ref_count] = listeners[k0].osnum;
+						used_ref_count=used_ref_count+1;
+						
+					#ifdef DEBUG
+					}else{
+						printf("!!listener[%d] id[%d, %d] NOT NEW\n", k0, 
+							listeners[k0].objid, listeners[k0].osnum );
+					#endif
+					}
+				}	
+			}
+			
+						
+			j0 = j0+1;
+		}
+    
+    		
+		sprintf ( msgstr, "Number of ACpretendin's (ref connections) found=%d.\n", j0 );
+		fprintf ( logfile , "%s", msgstr );
+		
+		#ifdef DEBUG
+		printf ( "%s", msgstr );
+
+		for(i0=0;i0<j0;i0=i0+1){
+    
+			obj_id.objid  = list[displist[i0]];
+			sprintf( msgstr , "ID[%d, %d]\n", obj_id.objid , obj_id.osnum );
+			#ifdef DEBUG
+			printf ( "%s", msgstr );
+			#endif
+			fprintf ( logfile , "%s", msgstr );
+		}
+
+		for(i0=0;i0<used_ref_count;i0=i0+1){
+			printf("used ref osnums[%d]=%d\n", i0, refosnums[i0]);
+		
+		}
+		printf ( "\n");
+		#endif
+		
+		if (list){
+			om$dealloc ( ptr = list );
+			list = NULL;
+		}
+		get_ref_list();
+	}
+wrapup:
+
+	if( logfile != NULL ){
+		fclose( logfile);
+		logfile = NULL;
+	}
+	_FREE( listeners );
+	_FREE( list );
+	_FREE( refosnums );
+
+	status("done");
+}
+
+
+/************************************************************************
+this is a simplified get channel objects. the out_objs is allocated 
+by this function but the caller needs to free the data after it is done.
+************************************************************************/
+
+getChannelObjects ( in_obj, channame , count, out_objs )
+struct GRid	in_obj;
+char		*channame;
+int		*count;
+struct GRid	**out_objs;
+{
+IGRint		msg, i, size;
+IGRchar		name[ DI_PATH_MAX ];
+IGRchar		objclassname[ DI_PATH_MAX ];
+struct GRid	tmpObj;
+int		first;
+struct GRid 	*out_objst;
+OM_S_OBJECT_LINKAGE     *ls_list;
+OM_S_CHANSELECT 	cmp_chan;
+
+	*count = 0 ;
+	ls_list = NULL;
+	
+        msg = om$make_chanselect (
+                channame = channame,
+                p_chanselect = &cmp_chan);
+
+        #ifdef DEBUG
+        printf("om$make_chanselect msg=%d\n", msg ) ;
+        #endif
+		
+        msg = om$get_channel_count (
+                osnum           = (int)in_obj.osnum,
+                objid           = in_obj.objid,
+                p_chanselect    = &cmp_chan,
+                count           = &size);
+
+        
+        #ifdef DEBUG
+        printf("number components on %s=%d, msg=%d,  ", channame , size, msg ) ;
+        #endif
+        
+        if( !(msg & 1)){ size = 0;} 
+        
+        *count = size;
+        if( size == 0 ){ msg = TRUE; goto wrapup; }
+        
+        msg = TRUE ;
+        	
+    if( out_objs != NULL ){
+    	
+    	ls_list = _MALLOC ( size , OM_S_OBJECT_LINKAGE );
+	if ( ls_list == NULL ){ 
+		printf("object linkage malloc failed\n"); 
+		msg = FALSE; 
+		goto wrapup;
+	}
+	
+	msg = om$get_channel_objects(
+				objid           = in_obj.objid,
+                                osnum           = (int)in_obj.osnum,
+                                p_chanselect    = &cmp_chan,
+                                list            = ls_list,
+                                size            = size,
+                                count           = count );
+                                
+        if( *count == 0 ){ msg = TRUE; goto wrapup; }
+        
+	out_objst = NULL;
+    	out_objst = _MALLOC ( *count , struct GRid );
+	if ( out_objst == NULL ){ 
+		printf("Grid malloc failed\n"); 
+		msg = FALSE ; 
+		goto wrapup;
+	}
+	
+	#ifdef DEBUG
+	printf("found %d objects on %s channel\n",*count, channame );
+	#endif
+	
+	for ( i = 0 ; i < *count ; i = i + 1 ) {
+		out_objst[i].objid = ls_list[i].S_objid;
+		out_objst[i].osnum = ls_list[i].osnum;
+	}
+	
+	msg = TRUE;
+   } 
+   
+   #ifdef DEBUG
+   else {
+   	printf("out_objs is NULL\n");
+   }
+   #endif
+   	
+wrapup:
+
+   _FREE( ls_list );
+   if( out_objs != NULL ){  *out_objs = out_objst; }
+  
+   return( msg );
+
+}
+

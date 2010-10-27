@@ -1,0 +1,247 @@
+/* $Id: COcrv_expans.u,v 1.1.1.1 2001/01/04 21:08:55 cvs Exp $  */
+
+/***************************************************************************
+ * I/VDS
+ *
+ * File:	vdloft/ppl/COcrv_expans.u
+ *
+ * Description:
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ *	$Log: COcrv_expans.u,v $
+ *	Revision 1.1.1.1  2001/01/04 21:08:55  cvs
+ *	Initial import to CVS
+ *	
+# Revision 1.1  1998/04/29  16:27:20  pinnacle
+# VDS 2.5.1
+#
+# Revision 1.1  1997/05/08  13:20:44  pinnacle
+# New project VDS 250
+#
+# Revision 1.1  1996/07/19  20:33:52  pinnacle
+# Create VDS 241 project
+#
+# Revision 1.1  1996/03/24  19:30:24  pinnacle
+# Created: ./vdloft/ppl/COcrv_expans.u by azuurhou for vds.240
+#
+ *
+ * History:
+ *	MM/DD/YY	AUTHOR		DESCRIPTION
+ *			jll		creation date
+ *
+ ***************************************************************************/
+
+#include <stdio.h>
+#include "ciminimum.h"
+#include "cievent.h"
+#include "OMminimum.h"
+#include "cimacros.h"
+#include "cieveryone.h"
+#include "cievent.h"
+#include "bserr.h"
+#include "bs_values.h"
+#include "bstypes.h"
+#include "msdef.h"
+#include "EMSdpb.h"
+#include "growner.h"
+#include "igrdp.h"
+#include "grmacros.h"
+#include "asmacros.h"
+
+
+#define	MACNAME	"crv_expans"
+
+extern		IGRlong	MANCreWinRef();
+extern		ASmake_source_from_env();
+extern 		init_cnst_list();
+extern		GRdisplay_object();	
+GRobj 		ci_mac_bib_FileId;
+IGRint		resp_exp, i_sts;
+
+struct 	OM_sd_classlist	classlist;
+	OMuword		classid0[2], classid1[2];
+
+struct 	GRmd_env	MOD_ENV, LOC_ENV;
+struct 	GRid 		TEMP[5];
+	GRobj 		MAC1; 
+	IGRlong		suc, l_msg;
+	IGRchar		loc_mes[80],loc_prompt[80], exp_prompt[80];
+IGRdouble		exp_default;
+
+main()
+{ 
+
+  while(1){
+
+step0:
+     resp_exp = 0;
+     status("Reset to create expressions");
+
+step1:
+
+     ci$locate (      prompt           = "Identify support surface",
+                      properties       = LC_DP_ONLY | LC_RW,
+		      owner_action     = LC_RIGID_COMP  |
+                                         LC_RIGID_OWNER | LC_FLEX_COMP |
+                                         LC_FLEX_OWNER  | LC_REF_OBJECTS,
+		      obj              = &(TEMP[1].objid),
+		      osnum            = &(TEMP[1].osnum),
+		      classes          = "EMSsubbs",
+		      response         = &M_response,
+		      md_env           = &LOC_ENV  );
+
+	if( (M_response == EX_RJT_MOVEON) && (resp_exp == 0)){
+		resp_exp = 1;
+		ask_expressions();
+		goto step1;
+	}
+	else if( (M_response == EX_DATA)   ){
+		if(  resp_exp == 0 ) cre_default_expressions();
+	}
+	else if( M_response == EX_BACK_UP ){ 
+		resp_exp = 1;
+		ask_expressions();
+		goto step1;
+	}
+        else  exit;
+
+	as$make_source( go_grid = TEMP[1],
+			mod_env = &LOC_ENV,
+			as_grid = &TEMP[1] );
+ 
+step2:
+
+	classlist.p_classes = classid0;
+
+	if( !ci$locate ( prompt     = "Identify c.s. / Point for projection",
+                      properties       = LC_DP_ONLY | LC_RW,
+		      owner_action     = LC_RIGID_COMP  |
+                                         LC_RIGID_OWNER | LC_FLEX_COMP |
+                                         LC_FLEX_OWNER  | LC_REF_OBJECTS,
+		      obj              = &(TEMP[0].objid),
+		      osnum            = &(TEMP[0].osnum),
+		      eligible_classes = &classlist,
+		      md_env           = &LOC_ENV  ) ) goto step1;
+
+	as$make_source( go_grid = TEMP[0],
+		      mod_env = &LOC_ENV,
+		      as_grid = &TEMP[0] );
+    
+    while(1)
+    {
+
+step3:
+	if(!ci$locate (  prompt           = "Identify curve",
+                         properties       = LC_DP_ONLY | LC_RW,
+		         owner_action     = LC_RIGID_COMP  |
+                                            LC_RIGID_OWNER | LC_FLEX_COMP |
+                                            LC_FLEX_OWNER  | LC_REF_OBJECTS,
+		   	 obj              = &(TEMP[2].objid),
+		  	 osnum            = &(TEMP[2].osnum),
+		         classes	  = "GRcurve",
+			 md_env           = &LOC_ENV  ) ) goto step2;
+
+	as$make_source( go_grid = TEMP[2],
+			mod_env = &LOC_ENV,
+			as_grid = &TEMP[2] );
+
+	classlist.p_classes = classid1;
+
+	if( !ci$locate ( prompt           = "Identify boundary object",
+                      properties       = LC_DP_ONLY | LC_RW,
+		      owner_action     = LC_RIGID_COMP  |
+                                         LC_RIGID_OWNER | LC_FLEX_COMP |
+                                         LC_FLEX_OWNER  | LC_REF_OBJECTS,
+		      obj              = &(TEMP[3].objid),
+		      osnum            = &(TEMP[3].osnum),
+		      eligible_classes = &classlist,
+		      md_env           = &LOC_ENV  ) ) goto step3;
+
+	as$make_source( go_grid = TEMP[3],
+			mod_env = &LOC_ENV,
+			as_grid = &TEMP[3] );
+
+	MAC1	= NULL_OBJID;
+	i_sts = ci$send( msg = message nci_macro.init( 	&suc,
+							0,	
+							MACNAME,
+							5,
+		   					TEMP,
+							NULL,
+							&MOD_ENV ),
+		 targetid = MAC1,
+           	 targetos = MOD_ENV.md_id.osnum);
+
+
+   	  if( suc == 0 ){
+failed:
+		write("placement of nci_macro \"crv_expans\" failed\n");
+		status("placement of nci_macro \"crv_expans\" failed");
+      		ci$send(msg = message Root.delete(0),
+	      		targetid = MAC1,
+	      		targetos = MOD_ENV.md_id.osnum );
+	  }
+
+    } /* Step 3 loop */
+
+  } /* while MAIN process ... */
+
+}
+
+/*==========================================================================*/
+init(){
+
+   	ci$get_module_info(md_env = &MOD_ENV);
+
+  	om$get_classid( classname = "GRlbsys", p_classid = &classid0[0]);
+  	om$get_classid( classname = "GRpoint", 	p_classid = &classid0[1]);
+
+  	classlist.w_count = 2;
+  	classlist.w_flags = OM_CLST_subclass;
+  	om$get_classid( classname = "EMSsubbs", p_classid = &classid1[0]);
+  	om$get_classid( classname = "GRpoint", 	p_classid = &classid1[1]);
+
+  	strcpy(loc_mes,"<Assoc> Place Expansion Curve");
+ 
+ 	ci$load ( file_name = "ci_mac_bib.u",
+		  load      = LOAD,
+	  	  file_id   = &ci_mac_bib_FileId,
+		  stat      = &suc );
+	if( suc != CI_S_SUCCESS ) exit;
+
+}
+
+/*==========================================================================*/
+wakeup(){
+	message(loc_mes);
+}
+/*==========================================================================*/
+ask_expressions(){
+
+suc = 0;
+while( ( suc !=1 ) ){
+
+       strcpy(loc_prompt,"enter expression for the expansion type");
+       strcpy(exp_prompt,"enter value ( default = 0 )");
+       exp_default = 0.0;
+       push (char *)&suc,loc_mes,loc_prompt,exp_prompt,exp_default,
+            (char *)&TEMP[4];
+       ci$run( file_id   = &ci_mac_bib_FileId,
+ 	       entry     = "loc_exp" );
+}
+}
+
+/*==========================================================================*/
+
+
+cre_default_expressions(){
+
+         push (char *)&suc, (IGRdouble)0.0, (char *)&TEMP[4];
+         ci$run( file_id = &ci_mac_bib_FileId,
+ 	         entry   = "CreDefUnExp" );
+         if( suc != MSSUCC ) exit;
+}
+/*==========================================================================*/
+

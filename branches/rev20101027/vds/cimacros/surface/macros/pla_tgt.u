@@ -1,0 +1,537 @@
+/* $Id: pla_tgt.u,v 1.1.1.1 2001/01/04 21:07:21 cvs Exp $  */
+
+/* --------------------------------------------------------------------
+ * I/VDS
+ *
+ * File:	vds/cimacros/surface/macros / pla_tgt.u
+ *
+ * Description:
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ *	$Log: pla_tgt.u,v $
+ *	Revision 1.1.1.1  2001/01/04 21:07:21  cvs
+ *	Initial import to CVS
+ *	
+# Revision 1.1  1998/04/29  16:27:20  pinnacle
+# VDS 2.5.1
+#
+# Revision 1.2  1998/02/11  03:48:38  pinnacle
+# Replaced: cimacros/surface/macros/pla_tgt.u for:  by vgnair for vds
+#
+# Revision 1.1  1997/05/08  13:20:44  pinnacle
+# New project VDS 250
+#
+# Revision 1.1  1996/07/19  20:33:52  pinnacle
+# Create VDS 241 project
+#
+# Revision 1.3  1996/02/15  11:15:34  pinnacle
+# Replaced: cimacros/surface/macros/pla_tgt.u for:  by ksundar for vds.240
+#
+# Revision 1.2  1995/10/25  17:26:30  pinnacle
+# Replaced: cimacros/surface/macros/pla_tgt.u for:  by tlbriggs for vds.240
+#
+# Revision 1.1  1994/11/14  22:42:32  pinnacle
+# Create vds.240 from vds.232
+#
+# Revision 1.1  1994/11/08  16:07:00  pinnacle
+# create vds.232
+#
+ *
+ * History:
+ *	MM/DD/YY	AUTHOR		DESCRIPTION
+ *	10/25/95	tlb		EMS 3.2: changed cs.h to grcoordsys.h
+ * 	02/11/98	vini 		TR-179702556
+ *
+ * -------------------------------------------------------------------*/
+
+/*
+	 VDS 2.0 - PPM macro library - 92/07/09 (alc)
+ */
+   
+#include "cieveryone.h"
+#include "cimacros.h"
+#include "ci_mac_def.h"
+#include "bserr.h"
+#include "csdef.h"
+#include "grcoordsys.h"
+#include "EMSssprops.h"
+#include "msdef.h"
+
+
+#define		EPSILON		1.E-10
+
+IGRboolean		all_on_surf, is_planar;
+IGRchar 		*temp_names[3], *feet_names[1];
+IGRint			temp_types[3];
+GRobj 			ci_mac_def1;
+struct GRid		CI_MACRO_ID;
+
+IGRlong			EMSrtmsg;
+
+unsigned IGRchar	props;
+
+IGRshort		type, mat_type;
+IGRdouble		matrix[16];
+
+IGRint			i, k,j, num_inter;
+IGRlong			msg, num_pts, stat, rc, size;
+
+IGRdouble 	        VX[3],VY[3], VZ[3], ux, uy, u_p, v_p, dist_cou;
+IGRdouble 	        proj_pt[3], min_dist, dudv[24], pt[9];
+IGRdouble		*proj_pts, *u_par, *v_par, *t_par, evalsf[9];
+
+struct IGRbsp_surface   *BsSrf;
+struct IGRbsp_curve     *BsCrv;
+
+OMuword	 		pt_cl, ln_cl, ft_cl;
+
+struct GRid		CUV, CRV ,GRid_plane, SRF;
+
+struct GRmd_env         MOD_ENV;
+struct GRvg_construct   cst;
+struct IGRdisplay	dis;
+struct ret_struct	len, elm, ln;
+
+
+extern char     	*malloc();
+
+extern IGRint 		init_cnst_list(),
+			BSnorvec(),
+			BScrossp(),
+			BSmdistptsf(),
+			free();
+
+extern IGRdouble	BSdistptpt();
+
+extern 			BSpj_pt_sf(),
+			BStst_plan(),
+			BSsfeval(),
+			BSxlnpl(),
+			GRabsg_del_by_objid();
+
+extern	IGRboolean	BSpl_cv_int(),
+			BScv_sf_int();
+extern		ASsuper_construct();
+
+/* ========================================================================= */
+/* the main function is the one implementing the definition creation
+/* ========================================================================= */
+
+main ()
+{
+
+  temp_names[0] = "plane_size";  
+  temp_names[1] = "surface";  
+  temp_names[2] = "linear_elem";  
+
+  temp_types[0] = parameter_generic | double_type;
+  temp_types[1] = other_generic;
+  temp_types[2] = point_generic | curve_generic | conic_generic | line_generic;
+
+  ci_mac_def1 = NULL_OBJID;
+
+  ac$cimacdef( 	cimacdef          =  ci_mac_def1,
+		status 	          = &stat, 	
+		name              = "pla_tgt",
+              	temp_num          = 3, 		
+		temp_names        = temp_names,
+		temp_types        = temp_types,
+	      	extern_feet_num   = 1, 	
+		extern_feet_names = feet_names );
+
+}
+
+/* ========================================================================= */
+place ()
+{
+
+  comp_pla();
+
+  if( GRid_plane.objid == NULL_OBJID ) return(0);
+
+  ci$send( msg = message  ci_macro.set_all_extern_feet
+		(&stat, 1, &GRid_plane, &MOD_ENV ),
+	   targetid = CI_MACRO_ID.objid,
+	   targetos = CI_MACRO_ID.osnum );
+
+  return(1);
+
+}
+
+
+/* ========================================================================= */
+
+compute ()
+{
+
+  comp_pla();
+
+  if( GRid_plane.objid == NULL_OBJID ) return(0);
+
+  ci$send( msg = message  ci_macro.set_all_extern_feet
+		(&stat, 1, &GRid_plane, &MOD_ENV ),
+	   targetid = CI_MACRO_ID.objid,
+	   targetos = CI_MACRO_ID.osnum );
+  return(1);
+}
+
+/* ========================================================================= */
+
+
+comp_pla()
+{
+	GRid_plane.objid = NULL_OBJID;
+	GRid_plane.osnum = MOD_ENV.md_id.osnum;
+        BsCrv    = NULL;
+        BsSrf    = NULL;
+	proj_pts = NULL; 
+	t_par    = NULL;
+        u_par    = NULL;
+	v_par    = NULL;
+//        BsCrv    = NULL;    
+//        BsSrf    = NULL;    
+
+/*---------------------------------------------------------------------------*/
+/*----			get the size					-----*/
+/*---------------------------------------------------------------------------*/
+        
+  	ci$send( msg      = message  ACcpx.ACfind_exp_temp_struct
+			           (&stat, 0, (char *)&len,&MOD_ENV ),
+		 targetid = CI_MACRO_ID.objid,
+		 targetos = CI_MACRO_ID.osnum );
+	if( stat != 1 ){
+		status(" bad object template " );
+		return;
+	}
+
+/*---------------------------------------------------------------------------*/
+/*----			retrieve the surface				-----*/
+/*---------------------------------------------------------------------------*/
+
+        GRid_plane.objid = NULL_OBJID;
+
+  	msg = ci$send( msg = message  ACcpx.ACfind_exp_temp_obj(&stat,1,&CUV),
+           	       targetid = CI_MACRO_ID.objid,
+           	       targetos = CI_MACRO_ID.osnum );
+
+	if( !(stat&msg&1) ) return;
+
+  	msg = ci$send( msg      = message NDmacro.ACreturn_foot(	
+						&stat ,
+						"",
+						&SRF, 
+						&mat_type, 
+					        matrix ),
+	   	targetid = CUV.objid,
+	   	targetos = CUV.osnum );
+
+	if( !(stat&msg&1) ) return;
+
+	GRabsg_del_by_objid(&SRF.objid,&SRF.osnum);
+
+  	stat =	ci$send( msg = message GRvg.GRgetsize( 	&msg,
+			     		       		&mat_type,
+			     		       		matrix,
+			     		       		&size ),
+	  	 	 targetid = SRF.objid,
+	  	 	 targetos = SRF.osnum );
+	if( !(stat&msg&1) ) goto wrapup;
+
+/*malloc BsSrf for TR179702556 */
+		BsSrf = (struct IGRbsp_surface *) malloc(size);
+
+  		ci$send( msg = message GRvg.GRgetgeom( 	
+					&EMSrtmsg,
+			     		&mat_type,
+			     		matrix,
+			     		( char *) BsSrf ),
+	  	 	 targetid = SRF.objid,
+	  	 	 targetos = SRF.osnum );
+
+  		if( !(EMSrtmsg &  1)  ){
+			write("erreur\n");
+			goto wrapup;
+		}
+
+  	ci$send( msg      = message  EMSsubbs.EMget_props( &msg,&props),
+	  	 targetid = SRF.objid,
+	  	 targetos = SRF.osnum );
+ 
+/*---------------------------------------------------------------------------*/
+/*----			get the the linear element			-----*/
+/*---------------------------------------------------------------------------*/
+
+  	msg = ci$send( msg = message  ACcpx.ACfind_exp_temp_obj(&stat,2,&CUV),
+           	 targetid = CI_MACRO_ID.objid,
+           	 targetos = CI_MACRO_ID.osnum );
+	if( !(msg&stat&1) ) return;
+
+  	msg = ci$send( msg      = message NDmacro.ACreturn_foot(	
+						&stat ,
+						"",
+						&CRV, 
+						&mat_type, 
+					        matrix ),
+	   	 targetid = CUV.objid,
+	   	 targetos = CUV.osnum );
+	if( !(msg&stat&1) ) goto wrapup;
+
+  	om$get_classid(	classname	= "GR3dlineseg", p_classid = &ln_cl  ) ;
+  	om$get_classid(	classname	= "GR3dpoint"  , p_classid = &pt_cl  ) ;
+
+      	om$get_classid(	osnum		= CRV.osnum	,
+			objid		= CRV.objid	,
+			p_classid	= &ft_cl	) ;
+
+
+/*---------------------------------------------------------------------------*/
+/*----	if the linear element is a point, we get the perpendicular	-----*/
+/*---------------------------------------------------------------------------*/
+
+     	if( om$is_ancestry_valid( superclassid = pt_cl,
+			          subclassid   = ft_cl ) == OM_S_SUCCESS ) {
+
+  		msg = ci$send( msg      = message  ACcpx.ACfind_exp_temp_struct
+		           		(&stat, 2, (char *)&elm,&MOD_ENV ),
+		 	 targetid = CI_MACRO_ID.objid,
+	   	 	 targetos = CI_MACRO_ID.osnum );
+		if( !(msg&stat&1) ){
+			status(" bad object template " );
+			goto wrapup;
+		}
+   		BStst_plan( (BsSrf->u_num_poles * BsSrf->v_num_poles ),
+		    	     BsSrf->poles,BsSrf->weights,
+                    	     &is_planar,VZ,&rc);
+
+			proj_pts = (IGRdouble *) malloc(24);
+		if( is_planar == TRUE ){
+// - for TR179702556		proj_pts = (IGRdouble *) malloc(24);
+			for(i=0;i<3;i=i+1) 
+				VX[i] = elm.var.point_st.pt[i] + 10.0 * VZ[i];
+			BSxlnpl(&rc,VZ,&(BsSrf->poles[0]),elm.var.point_st.pt,
+			        VX, proj_pts );
+			if( rc != BSSUCC ) goto wrapup;
+ 		}
+		else{
+			BSmdistptsf(	&rc,
+					BsSrf,
+					elm.var.point_st.pt,
+					&u_p,
+					&v_p,
+					VX,
+					&min_dist );
+
+			if( rc != BSSUCC ) goto wrapup;
+		}
+	}
+
+/*---------------------------------------------------------------------------*/
+/*----	if the linear element is just a line we project the first point	  ---*/
+/*----  of the line following the direction and get the closest projected ---*/
+/*----  point to the first point					  ---*/
+/*---------------------------------------------------------------------------*/
+
+	else if( om$is_ancestry_valid( superclassid = ln_cl,
+				       subclassid   = ft_cl ) == OM_S_SUCCESS ){
+
+  		ci$send( msg      = message  ACcpx.ACfind_exp_temp_struct
+		           		(&stat, 2, (char *)&ln, &MOD_ENV ),
+		 	 targetid = CI_MACRO_ID.objid,
+	   	 	 targetos = CI_MACRO_ID.osnum );
+		if( !(stat&msg&1) ){
+			status(" bad object template " );
+			goto wrapup;
+		}
+
+   		BStst_plan( (BsSrf->u_num_poles * BsSrf->v_num_poles ),
+		    	     BsSrf->poles,BsSrf->weights,
+                    	     &is_planar,VZ,&rc);
+
+			proj_pts = (IGRdouble *) malloc(24);
+		if( is_planar == TRUE ){
+// TR179702556		proj_pts = (IGRdouble *) malloc(24);
+			BSxlnpl(&rc,VZ,&(BsSrf->poles[0]),ln.var.line_st.p0,
+			        ln.var.line_st.p1, proj_pts );
+			if( rc != BSSUCC ) goto wrapup;
+ 		}
+		else{
+#ifdef DEBUG
+	write( "line_st.p0 = ", ln.var.line_st.p0[0],
+				ln.var.line_st.p0[1],
+				ln.var.line_st.p0[2],"\n");
+
+	write( "line_st.v0 = ", ln.var.line_st.v0[0],
+				ln.var.line_st.v0[1],
+				ln.var.line_st.v0[2],"\n");
+#endif
+  			BSpj_pt_sf(     BsSrf, 
+                        		&ln.var.line_st.p0[0], 
+                			&ln.var.line_st.v0[0], 
+                			&num_pts, 
+                			&proj_pts, 
+                			&u_par, 
+                			&v_par, 
+                			&rc      );
+
+#ifdef DEBUG
+	write( " num_pts = ",num_pts,"\n");
+#endif
+  			if( (rc != BSSUCC) || (num_pts == 0) ) goto wrapup;
+
+			min_dist = 1.0E30;
+
+			for(i=0; i<num_pts; i=i+1){
+			   dist_cou = BSdistptpt(&rc,&proj_pts[3*i],
+				         ln.var.line_st.p0 );
+			   if( ( min_dist - dist_cou )	> EPSILON ) {
+				j = i;
+				min_dist = dist_cou;
+			   }
+			}
+
+			u_p = u_par[j];
+			v_p = v_par[j];
+#ifdef DEBUG
+	write( " j = ",j,"u_p = ", u_p, "v_p = ", v_p,"\n");
+#endif
+		}
+        }
+
+        else{
+		GRabsg_del_by_objid(&CRV.objid,&CRV.osnum);
+
+  		ci$send( msg = message GRvg.GRgetsize( 	&msg,
+			     		       		&mat_type,
+			     		       		matrix,
+			     		       		&size ),
+	  	 	 targetid = CRV.objid,
+	  	 	 targetos = CRV.osnum );
+
+
+		BsCrv = (struct IGRbsp_curve *) malloc(size);
+
+  		ci$send( msg = message GRvg.GRgetgeom( 	
+						&EMSrtmsg,
+			     		       	&mat_type,
+			     		       	matrix,
+			     		       	( char *)BsCrv ),
+	  	 	 targetid = CRV.objid,
+	  	 	 targetos = CRV.osnum );
+#ifdef DEBUG
+	write( " GRvg.GRgetgeom = ", msg,"\n");
+#endif
+  		if( !(EMSrtmsg & 1) ){
+			write("erreur\n");
+			goto wrapup;
+		}
+
+		/* evaluate the intersection between curve and 2nd surface */
+
+   		BStst_plan( (BsSrf->u_num_poles * BsSrf->v_num_poles ),
+		    	     BsSrf->poles,BsSrf->weights,
+                    	     &is_planar,VZ,&rc);
+
+// TR179702556	if( is_planar == TRUE ){
+
+			i = 8 * BsCrv->num_poles;
+			proj_pts = (IGRdouble *) malloc(3*i);
+			u_par    = (IGRdouble *) malloc(i);
+			v_par    = (IGRdouble *) malloc(i);
+			t_par    = (IGRdouble *) malloc(i);
+
+		if( is_planar == TRUE ){
+			BSpl_cv_int( &rc, BsCrv, &(BsSrf->poles[0]),
+				     VZ, &num_inter,proj_pts,
+				     u_par, &j, t_par, v_par );
+			if( rc != BSSUCC ) goto wrapup;
+		}
+		else{
+#ifdef DEBUG
+	write( " enter BScv_sf_int\n");
+#endif
+
+			BScv_sf_int( &rc, BsCrv, BsSrf, &num_inter,
+			     	     &proj_pts, &t_par, &u_par, &v_par );
+
+#ifdef DEBUG
+	write( " BScv_sf_int  num_inter = ", num_inter,"\n");
+#endif
+
+			if( rc != BSSUCC ) goto wrapup;
+			u_p = u_par[0];
+			v_p = v_par[0];
+		}
+        }
+	if( is_planar == TRUE ){
+		u_p = 0.0;
+		v_p = 0.0;
+  		BSsfeval( BsSrf, u_p, v_p, 1, evalsf, &rc );
+		for(i=0;i<3;i=i+1) evalsf[i] = proj_pts[i];
+	}
+	else{
+  		BSsfeval( BsSrf, u_p, v_p, 1, evalsf, &rc );
+	}
+
+	BScrossp( &rc,&(evalsf[6]),&(evalsf[3]),VZ );
+	if( !(props & EMSIS_NRML_REVERSED) )
+		for(k=0;k<3;k=k+1) VZ[k] = -1.0 * VZ[k]; 
+	BSnorvec( &rc,VZ );
+	BSnorvec( &stat,&(evalsf[3]));
+   	BScrossp( &stat,&(evalsf[3]),VZ, VY );
+
+   	for(i=0; i<3; i=i+1){
+		ux      = len.var.root_pm_st.value * evalsf[i+3] ;
+		uy      = len.var.root_pm_st.value * VY[i] ;
+     		pt[i]   = evalsf[i] + uy - ux;
+		pt[i+3] = pt[i] + 2.0 * ux;
+		pt[i+6] = pt[i] - 2.0 * uy;
+   	}
+
+  	init_cnst_list();
+  	get_symb();
+
+  	dis.color		= cnst_list.color;
+  	dis.weight		= cnst_list.weight;
+  	dis.style		= cnst_list.style;
+  	cst.msg			= &msg;
+  	cst.properties		= GRIS_LOCATABLE | GRIS_NEW | GRIS_DISPLAYABLE;
+  	cst.display		= &dis;
+  	cst.env_info		= &MOD_ENV;
+  	cst.newflag		= FALSE;
+  	cst.level		= cnst_list.level;
+  	cst.name		= NULL;
+	cst.class_attr 		= NULL;
+  	cst.geometry   		= NULL;
+
+	type = 0;
+
+   	stat = ci$send(msg      = message EMSplane.EMplane (&msg,&cst,pt,type),
+           	       targetid = GRid_plane.objid,
+	   	       targetos = GRid_plane.osnum );
+
+#ifdef DEBUG
+write("GRconstruct stat =",stat,"GRid_plane =",GRid_plane.objid,
+                                              GRid_plane.osnum, "\n");
+#endif
+	if( !(stat&1) ) {
+		GRid_plane.objid = NULL_OBJID;
+	}
+
+wrapup:
+	if( proj_pts != NULL ) free(proj_pts); 
+	if( t_par    != NULL ) free(t_par);
+        if( u_par    != NULL ) free(u_par);
+	if( v_par    != NULL ) free(v_par);
+//        if( BsCrv    != NULL ) free(BsCrv); 
+//        if( BsSrf    != NULL ) free(BsSrf);    
+
+}
+
+init()
+/* for initialization at loading time */
+{
+  feet_names[0] = "tgt_plane";
+}
+

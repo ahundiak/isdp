@@ -1,0 +1,249 @@
+/* --------------------------------------------------------------------
+ * I/VDS
+ *
+ * File:	api/compartment/APINcmpAttr.u
+ *
+ * Description:
+ *
+ *	This file is a ppl example to defined an attribute for compartment,
+ *	and allows to made automatic naming of compartment.
+ *	It also to convert volume from inch_cub to meter_cub 
+ *
+ *	Program computes:
+ *	=================
+ *
+ *	Compartment Side (comp_side)
+ *
+ *			0 : centerline,
+ *                      1 : starboard,
+ *                      2 : portside.
+ *
+ *	Aft frame     (aft_frame)
+ *
+ *		The name of the frame at the aft bulkhead of the enclosed
+ *		boundary of compartment. If the forward boundary is between
+ *		frame, this frame is the foremost frame out of the compartment.
+ *                           
+ *	Fore frame  (fore_frame)
+ *
+ *      	The name of the frame at the foremost bulkhead of the enclosed
+ *		boundary of compartment. If the forward boundary is between
+ *		frame, this frame is the foremost frame within the compartment.
+ *               
+ *	Compartment number   (cpt_num)
+ *
+ *		Attribute is the concatenation of 
+ *
+ *			- deck number  (In 2.2 it's user defined attribute) 
+ *                      - fore frame number
+ *			- compartement side
+ *                      - compartment use   (cpt_use).
+ *
+ *	Meter Volume   (MVolume)  
+ *
+ *		Convertion of attribute "volume" to meter 
+ *				(volume is supposed to be in inch).
+ *
+ *
+ * Dependencies:
+ *	Compile	cci.vds	APINcmpAttr.u
+ *
+ * Revision History:
+ *
+ * History:
+ *	MM/DD/YY	AUTHOR		DESCRIPTION
+ *			Intergraph
+ *
+ * -------------------------------------------------------------------*/
+
+
+/* Minimum include  files for PPL  */
+
+#include <stdio.h>
+#include <string.h>
+#include "ciminimum.h"
+
+/* Following include file contains definition of all SMAN macros        */
+/* SM$GetAttribute , SM$SetAttribute , SM$CompCmpSide, SM$AftForeFrame  */
+
+#include "SMPPlMac.h"
+
+main()
+{
+  /*  DECLARATIONS OF VARIABLE        */
+
+  /* Return code of macro */
+  long      	msg;
+
+  /* Some temporal variable */
+  IGRint 	side,fore_fr_num; 
+
+  /* to store value of attribute */
+  char      	comp_side[80],
+		fore_fr_name[80],aft_fr_name[80],
+            	deck_num[80],comp_use[80],comp_num[80]; 
+
+  /* To store value of volumes */
+  short     	data_type;    
+  IGRdouble 	volume,MVolume;
+
+ 
+  /*                START CODE        */
+
+  /* We retrieve the deck number : for now it's a user attribute */
+  SM$GetAttribute(msg      = &msg,
+		  name_att = "deck_num",
+		  text_value = deck_num);
+
+  /* If not found, put a default value 'x' */
+  if(!(msg & 1)) strcpy(deck_num,"x");
+   
+  /* We compute the compartment side */
+  SM$CompCmpSide(msg  = &msg,
+		 side = &side);
+
+  /* If compute has failed we put a default value */
+  /* If it's ok we set a text attribute           */
+  if(!(msg & 1)) strcpy(comp_side,"x");
+  else           sprintf(comp_side,"%d",side);  
+
+  /*
+    We set this attribute
+    Note : compartment family should be updated and have this attribute name
+    if you want this attribute print in report
+   */
+
+  SM$SetAttribute(msg         = &msg,
+		  name_att    = "comp_side",
+		  text_value  = comp_side);
+
+  /* If fail, something is really wrong : maybe this attribute was a static
+     attribute. We stop computation here and put a default value for cpt_num */ 
+  if(!(msg & 1)) goto default_value;
+
+  /*
+    Compute aft frame name 
+    */
+
+  SM$AftForeFrame(msg         = &msg,
+		  low_fr_name = aft_fr_name,
+		  which_frame = SM_AFT_FRAME);
+
+  if(!(msg & 1)) strcpy(aft_fr_name,"xx");
+
+  SM$SetAttribute(msg         = &msg,
+		  name_att    = "aft_frame",
+		  text_value  = aft_fr_name);
+
+  /* Something wrong, put a default value*/
+  if(!(msg & 1)) goto default_value;
+  
+  /*
+    Compute fore frame
+  */
+
+  SM$AftForeFrame(msg         = &msg,
+		  low_fr_num  = &fore_fr_num,
+		  low_fr_name = fore_fr_name,
+		  which_frame = SM_FORE_FRAME);
+
+  /* If fail put a default value */
+  if(!(msg & 1)) {strcpy(fore_fr_name,"xx");}
+
+  SM$SetAttribute(msg         = &msg,
+		  name_att    = "fore_frame",
+		  text_value  = fore_fr_name);
+  if(!(msg & 1)) goto default_value;
+
+  
+  /*
+    Retrieve the cpt_use
+  */
+
+  SM$GetAttribute(msg      = &msg,
+		  name_att = "cpt_use",
+		  text_value = comp_use);
+
+  /* If not found, put a default value 'Q' (miscellaneous spaces) */
+  if(!(msg & 1)) strcpy(comp_use,"Q");
+
+
+  /*
+    Set compartment number.
+    Value of attribute cpt_num is concatenation of : 
+    deck_num,fore_frame,comp_side and cpt_use 
+    Note : compartment family should be updated and have this attribute name
+            if you want this attribute print in report
+  */
+
+ 
+  if(strcmp(fore_fr_name,"xx")) /* Fore frame num well defined */
+    sprintf(comp_num,"%s-%d-%s-%s",deck_num,fore_fr_num,comp_side,comp_use);
+  else
+    sprintf(comp_num,"%s-xx-%s-%s",deck_num,comp_side,comp_use); 
+
+  SM$SetAttribute(msg        = &msg,
+		  name_att   = "cpt_num",
+		  text_value = comp_num);
+
+  /*
+       If fail, we return simply return error                                
+       (we cannot hope to set a default value!) something is really wrong. 
+       Macro SM$SetAttribute will display an error message               
+  */
+ 
+  if(!(msg & 1)) {return 0;}
+  
+  /*
+    Create Attribute MVolume. 
+    "volume" attribute is in internal unit (supposed inch_cub)
+    */
+
+  /* We give the type of attribute as a double so the macro can check it */
+  data_type = SM_DOUBLE_ATTRIB;
+
+  SM$GetAttribute(msg          = &msg,
+		  name_att     = "volume",
+		  data_type     = &data_type,
+		  double_value = &volume);
+
+  /* If fail put a default value */
+  if(!(msg & 1)) volume = 0.0;
+  
+  /* 1 Inch_cub = 0.000016387064  meter_cub */
+  MVolume = volume * 0.000016387064 ;
+  SM$SetAttribute(msg          = &msg,
+		  name_att     = "MVolume",
+		  data_type    = SM_DOUBLE_ATTRIB,
+		  double_value = MVolume);
+
+  /* If fail, something is really wrong */
+  if(!(msg & 1)) {return 0;}
+  
+  /*
+    Similar code can be done for "area" attribute if needed
+    */
+
+
+  /*
+      Don't forget completion return code
+   */
+  
+  return 1 ; /* All OK */
+
+  /* We reach this point only if no value can be computed                */
+  /* There is two solutions : put a default value or simply return error */
+  default_value:
+
+  
+  /* Comment next call if you don't want a default value */
+  SM$SetAttribute(msg        = &msg,
+		  name_att   = "cpt_num",
+		  text_value = "xx-xx-xx-x"); 
+  if(!(msg & 1)) return 0; 
+  
+  status("Warning: put a default value for cpt_num");
+  return 1;  /*  */
+
+} /* main() */
+ 

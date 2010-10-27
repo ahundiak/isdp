@@ -1,0 +1,325 @@
+/* $Id: cpymir2.u,v 1.1.1.1 2001/01/04 21:07:20 cvs Exp $  */
+
+/* --------------------------------------------------------------------
+ * I/VDS
+ *
+ * File:	vds/cimacros/obsolete/macros / cpymir2.u
+ *
+ * Description:
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ *	$Log: cpymir2.u,v $
+ *	Revision 1.1.1.1  2001/01/04 21:07:20  cvs
+ *	Initial import to CVS
+ *	
+# Revision 1.1  1998/04/29  16:27:20  pinnacle
+# VDS 2.5.1
+#
+# Revision 1.1  1997/05/08  13:20:44  pinnacle
+# New project VDS 250
+#
+# Revision 1.1  1996/07/19  20:33:52  pinnacle
+# Create VDS 241 project
+#
+# Revision 1.1  1994/11/14  22:42:32  pinnacle
+# Create vds.240 from vds.232
+#
+# Revision 1.1  1994/11/08  16:07:00  pinnacle
+# create vds.232
+#
+ *
+ * History:
+ *	MM/DD/YY	AUTHOR		DESCRIPTION
+ *
+ * -------------------------------------------------------------------*/
+
+/*
+	 VDS 2.0 - PPM macro library - 92/07/09 (alc)
+	(THIS MACRO IS OBSOLETE - to be removed)
+ */
+   
+#include "cieveryone.h"
+#include "cimacros.h"
+#include "ci_mac_def.h"
+
+extern  int	printf()	;
+extern			ASsuper_construct();
+
+#define  MACRO_NAME    "cpymir2"     /* Name of the macro                      */
+#define  NB_TEMPLATE   2            /* Number of template of the macro        */
+#define  NB_FEET       1            /* Number of feet of the macro            */
+
+/* Definition of the names of the objects of the macro                        */
+
+#define  ORIGINAL   "original"     /* Original object                         */
+#define  COORD_SYS  "coord_sys"    /* Coordinate system                       */
+#define  MIROR_OBJ  "miror_obj"    /* Miror object                            */
+
+  char *template_name[NB_TEMPLATE];/* Names of the templates of the macro     */
+  char *feet_name[NB_FEET];        /* Names of the feet of the macro          */
+  struct GRid temp_obj[NB_TEMPLATE];/* Template objects of the macro          */
+  GRobj  macro_def_id;             /* Identifier of the macro definition      */
+  GRobj  dummy;			   /* just a variable			      */
+
+  double dbl;
+
+struct {
+	int xy;
+}var;
+
+extern UI_message();
+
+/*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
+/*                               main function                                */
+/*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
+
+  int    stat;                   /* Returned status of the definition       */
+
+main()
+  {
+  /*
+  Description : Create the definition of the macro
+  Constraint  : none
+  */ 
+
+  /* Declare the template names */
+
+  template_name[0] = COORD_SYS;
+  template_name[1] = ORIGINAL;
+
+  /* Declare the feet names */
+
+  feet_name[0] = MIROR_OBJ;
+
+  /* Construct the macro definition */
+
+  macro_def_id = NULL_OBJID;
+
+  ac$cimacdef
+    (cimacdef          = macro_def_id,
+     status            = &stat,
+//     int_name = "var"   ,
+//     int_size   = sizeof(var),
+     name              = MACRO_NAME,
+     temp_num          = NB_TEMPLATE,
+     temp_names        = template_name,
+     extern_feet_num   = NB_FEET,
+     extern_feet_names = feet_name);
+}/* end main */
+
+/*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
+/*                           cons_miror_obj function                          */
+/*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
+/*int    status;                      Returned status of messages             */
+  int    msg;                      /* Returned status of messages             */
+  double length;                   /* Length of the hole                      */
+  double diameter;                 /* Diameter of the hole                    */
+  struct IGRdisplay display;       /* Attributes for the display              */
+  struct GRvg_construct const;     /* Attributes for the construction         */
+  struct GRid      CI_MACRO_ID;    /* Objid of the occurence of the macro     */
+  struct GRid      referential;    /* Objid of the coordinate system          */
+  struct GRid      original_obj;   /* Original object                         */
+  struct GRid      miror_obj;      /* Object obtained by miror                */
+  struct GRmd_env  MOD_ENV;        /* Environment for construction            */
+  struct GRmd_env  from_env;       /* Environment for construction            */
+  double           *matrix;        /* Matrix of the graphic object            */
+  double           tmp_matrix[16]; /* Tempory matrix                          */
+  double           trans_matrix[16];/* Tempory matrix                         */
+  short            mat_type;       /* Matrix type of the graphic object       */
+  short            four;           /* Dimension of the matrix                 */
+  struct GRid      newobjid;       /* Objid of the referential                */
+  struct GRid      CUV;            /* Objid of                                */
+  struct GRid      OFOOT;	   /* just variable		   	      */
+
+  int i;
+  OMuword	   ass_cl, ft_cl ;
+
+  struct          {
+                 IGRint type      /* the type of the union */;
+                 IGRmatrix t;     /* absolute matrix of referential      */
+		 IGRint last_t;   /* index of last transformation if any */
+                }ref_st;
+
+
+  extern int MAinvmx();
+  extern int MAmulmx();
+  extern int MAtypemx();
+
+
+
+cons_miror_obj()
+  {
+  four = 4;
+  /*-----------------------------------*/
+  /* Get the values of the expressions */
+  /*-----------------------------------*/
+
+   msg = ci$send
+    (msg      = message ACcpx.ACfind_temp_obj(&stat,ORIGINAL,&CUV),
+     targetid = CI_MACRO_ID.objid,
+     targetos = CI_MACRO_ID.osnum);
+
+   if( !(msg&stat&1) ) return;
+
+   msg = ci$send( msg      = message NDmacro.ACreturn_foot(	
+						&stat ,
+						"",
+						&original_obj, 
+						&from_env.md_env.matrix_type, 
+					        from_env.md_env.matrix ),
+	   targetid = CUV.objid,
+	   targetos = CUV.osnum );
+   if( !(msg&stat&1) ) return;
+   from_env.md_id.osnum = original_obj.osnum;
+
+   msg = ci$send
+    (msg      = message ACcpx.ACfind_temp_struct(&stat,COORD_SYS,
+                                                 &ref_st, &MOD_ENV ),  
+     targetid = CI_MACRO_ID.objid,
+     targetos = CI_MACRO_ID.osnum);
+   if( !(msg&stat&1) ) return;
+
+
+  /* compute the new transformation matrix */ 
+   
+  matrix = ref_st.t;
+
+// write("var.xy:", var.xy, "0: this is y\n\n");
+
+/***
+write('\n');
+for(i=0;i<4; i=i+1 ){
+write(matrix[(i*4)],matrix[1+(i*4)],matrix[2+(i*4)],matrix[3+(i*4)],'\n');
+}
+ *********/
+
+var.xy = 0 ;
+
+  MAinvmx(&msg,&four,matrix,tmp_matrix);
+  if( var.xy == 1 ){
+	  matrix[1]  = - matrix[1];
+	  matrix[5]  = - matrix[5];
+	  matrix[9]  = - matrix[9];
+  } else {
+	  matrix[0]  = - matrix[0];
+	  matrix[4]  = - matrix[4];
+	  matrix[8]  = - matrix[8];
+  }
+  MAmulmx(&msg,&four,&four,&four,matrix,tmp_matrix,trans_matrix);
+  MAtypemx(&msg,trans_matrix,&mat_type);
+
+#if DEBUG
+  printf( " cpymir.u  original_obj[%d,%d]\n", original_obj.osnum,original_obj.objid ) ;
+#endif
+  miror_obj.osnum = MOD_ENV.md_id.osnum;
+
+  om$get_classid(	classname	= "NDnode", p_classid = &ass_cl  ) ;
+  om$get_classid(	osnum		= original_obj.osnum	,
+			objid		= original_obj.objid	,
+			p_classid	= &ft_cl	) ;
+  if( om$is_ancestry_valid(	superclassid	= ass_cl,
+				  subclassid	= ft_cl ) == OM_S_SUCCESS ) 
+   {
+   stat = ci$send( msg	   = message NDnode.NDcopy_to_root(  &msg,0,
+							 &MOD_ENV,
+                                             	         &MOD_ENV,
+							 &miror_obj),
+                  targetid = original_obj.objid,
+	          targetos = original_obj.osnum  );
+   if( !( stat & 1 ) )
+  	printf( "cpymir.u -  GRgraphics.NDcopy_to_root error\n" ) ;
+         OFOOT = miror_obj;
+#if DEBUG
+  printf( " moving [%d,%d] to root\n", OFOOT.osnum, OFOOT.objid ) ;
+#endif
+  } else 
+  {
+
+  from_env.md_id.osnum = original_obj.osnum;
+
+  stat = ci$send( msg	   = message GRgraphics.GRcopy(  &msg,
+							 &from_env,
+                                             	         &MOD_ENV,
+							 &miror_obj.objid ),
+                  targetid = original_obj.objid,
+	          targetos = original_obj.osnum  );
+  if( !( stat & 1 ) )
+  	printf( "cpymir.u -  GRgraphics.GRcopy error\n" ) ;
+#if DEBUG
+  printf( "GRgraphics.GRcopy [%d,%d] NOT moved to root\n", 
+				miror_obj.osnum, miror_obj.objid ) ;
+#endif
+  }
+  dummy = NULL_OBJID ;
+
+  stat = ci$send(	msg	= message GRgraphics.GRxform(   &msg,
+								&MOD_ENV,
+								&mat_type,
+								trans_matrix,
+								&dummy ),
+		targetid = miror_obj.objid,
+	        targetos = miror_obj.osnum  );
+  if( !( stat & 1 ) )
+  	printf( " GRgraphics.GRxform error\n" ) ;
+  miror_obj.objid = dummy;
+#if DEBUG
+  printf( " [%d,%d]GRgraphics.GRxform \n", miror_obj.osnum, miror_obj.objid ) ;
+#endif
+
+
+}/* end cons_miror_obj */
+  
+/*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
+/*                               place function                               */
+/*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
+
+place()
+
+  /*
+  Description : Place an occurence of the macro definition
+  Constraint  : none
+  */ 
+  {
+  /* Construct the miror object */
+
+  cons_miror_obj();
+
+  /* Connect the feet of the occurence */
+
+  ci$send
+    (msg      = message ci_macro.set_all_extern_feet
+                        (&stat,NB_FEET,&miror_obj,&MOD_ENV),
+     targetid = CI_MACRO_ID.objid,
+     targetos = CI_MACRO_ID.osnum);
+
+  return(1);
+}/* end place */
+
+/*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
+/*                               compute function                               */
+/*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
+
+compute()
+
+  /*
+  Description : recompute an occurence of the macro definition
+  Constraint  : none
+  */ 
+  {
+  /* Construct the miror object */
+
+  cons_miror_obj();
+  feet_name[0] = MIROR_OBJ;
+
+  /* Change the feet of the occurence */
+
+  ci$send
+    (msg      = message ci_macro.chang_extern_feet
+                        (&stat,NB_FEET,feet_name,&miror_obj,&MOD_ENV),
+     targetid = CI_MACRO_ID.objid,
+     targetos = CI_MACRO_ID.osnum);
+}/* end compute */
+
+/*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/

@@ -1,0 +1,372 @@
+/* $Id: VDDstPln.u,v 1.1.1.1 2001/01/04 21:09:22 cvs Exp $  */
+
+/* --------------------------------------------------------------------
+ * I/VDS
+ *
+ * File:	vdspace/ppl / VDDstPln.u
+ *
+ * Description:
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ *	$Log: VDDstPln.u,v $
+ *	Revision 1.1.1.1  2001/01/04 21:09:22  cvs
+ *	Initial import to CVS
+ *	
+# Revision 1.1  1998/04/29  16:27:20  pinnacle
+# VDS 2.5.1
+#
+# Revision 1.1  1997/05/08  13:20:44  pinnacle
+# New project VDS 250
+#
+# Revision 1.1  1996/07/19  20:33:52  pinnacle
+# Create VDS 241 project
+#
+# Revision 1.1  1994/11/14  22:42:32  pinnacle
+# Create vds.240 from vds.232
+#
+# Revision 1.1  1994/11/08  16:07:00  pinnacle
+# create vds.232
+#
+ *
+ * History:
+ *	MM/DD/YY	AUTHOR		DESCRIPTION
+ *
+ * -------------------------------------------------------------------*/
+
+#include "cieveryone.h"
+#include "cimacros.h"
+#include "ci_mac_def.h"
+#include "bstypes.h"
+#include "bserr.h"
+#include "bsconic.h"
+#include "emsedgedef.h"
+
+#include "DIdef.h"
+#include "acmacros.h"
+#include "COmdef.h"
+#include "vdsmacros.h"
+#include "AS_status.h"
+
+extern int ASsuper_construct();
+
+#define	  VERBOSE	1
+/* #define	  DEBUG	/* */
+
+#define   MAX_TEMP	6 	/* number of templates */
+
+/* Different kind of intersections, the first word is for the support */
+
+struct GRid		CI_MACRO_ID;
+GRobj 			ci_mac_def1;
+IGRchar			*temp_names[MAX_TEMP], *feet_names[1];
+IGRint			temp_types[MAX_TEMP];
+
+/* #include "ACgive_bib.h" /* to be included after definition of feet_names */
+		        /* and CI_MACRO_ID */
+
+struct GRmd_env         MOD_ENV;
+struct GRid		GRid_list;
+IGRlong			stat, msg;
+
+extern		VDextract_plane();
+
+
+extern int	init_cnst_list(), strcpy(), VDRedPts(), VDget_mat(),
+		ACcreate_def_temp(), printf();
+
+/* ========================================================================= */
+/* the main function is the one implementing the definition creation
+/* ========================================================================= */
+
+main ()
+{
+  struct GRid mac, def_temp;
+  struct ret_struct ret_str[MAX_TEMP];
+
+  temp_names[0] = "cs/plane";  
+  temp_names[1] = "axis";
+  temp_names[2] = "dist";  
+  temp_names[3] = "size";
+  temp_names[4] = "justif";  
+  temp_names[5] = "texte";  
+ 
+
+  temp_types[0] = ref_generic | other_generic;
+  temp_types[1] = text_type;
+  temp_types[2] = double_type;
+  temp_types[3] = double_type;
+  temp_types[4] = text_type;
+  temp_types[5] = text_type;
+
+
+  feet_names[0] = "plane";
+
+  ci_mac_def1 = NULL_OBJID;
+
+  ac$cimacdef( 	cimacdef  		= ci_mac_def1,
+		status 	  		= &stat, 
+		name 			= "VDDstPln",
+             	temp_num  		= MAX_TEMP,
+ 		temp_names 		= temp_names,
+                temp_types 		= temp_types,
+	      	extern_feet_num 	= 1, 
+		extern_feet_names 	= feet_names);
+
+ /* Put the default value */
+ ret_str[0].type = ref_generic | other_generic;
+ ret_str[1].type = text_type;
+ ret_str[2].type = double_type;
+ ret_str[3].type = double_type;
+ ret_str[4].type = text_type;
+ ret_str[5].type = text_type;
+
+ strcpy(ret_str[1].var.text_st.text_string, "x");
+ ret_str[2].var.root_pm_st.value = 0;
+ ret_str[3].var.root_pm_st.value = 0;
+ strcpy(ret_str[4].var.text_st.text_string, "CC"); 
+ strcpy(ret_str[5].var.text_st.text_string, ""); /* No texte displayed */
+ 
+ mac.objid = ci_mac_def1;
+ mac.osnum = AC_construct_id.osnum;
+
+/* ac$create_def_temp( search_option = USER_SPECIFIED ,
+/* 		     search_path   = ".", 
+/*		     symbology     = CHG_LAYER | CHG_COLOR | CHG_WEIGHT | CHG_STYLE,
+/*		     macro 	   = &mac,
+/*		     def_temp	   = &def_temp,
+/*		     value	   = ret_str);
+/* */
+}
+
+/* ========================================================================= */
+
+place ()
+{
+  create_pl();
+
+  if( GRid_list.objid == NULL_OBJID ) return(0);
+
+  ci$send( msg = message  ci_macro.set_all_extern_feet
+		(&stat, 1, &GRid_list, &MOD_ENV ),
+	   targetid = CI_MACRO_ID.objid,
+	   targetos = CI_MACRO_ID.osnum );
+ if (stat!=OM_S_SUCCESS) 
+  {
+   printf("failure in set_all_extern feet\n");
+   return(0);
+  }
+
+ return(1);
+}
+
+
+/* ========================================================================= */
+
+compute ()
+{
+  create_pl();
+
+ if( GRid_list.objid == NULL_OBJID ) return(0);
+
+  ci$send( msg = message  ci_macro.set_all_extern_feet
+		(&stat, 1, &GRid_list, &MOD_ENV ),
+	   targetid = CI_MACRO_ID.objid,
+	   targetos = CI_MACRO_ID.osnum );
+ if (stat!=OM_S_SUCCESS) 
+  {
+   printf("failure in set_all_extern feet\n");
+   return(0);
+  }
+  return(1);
+}
+
+/* ========================================================================= */
+
+create_pl()
+
+{
+  struct GRvg_construct cst_pl;
+  struct IGRdisplay	dis;
+  struct ret_struct	temp1_rts;
+  struct GRid		obj;
+  IGRdouble 	        matrix[16], size, dist, offset1, offset2;
+  IGRdouble		pt0[3], pt1[3], cs_mat[16];
+  char	 		axis, justif[3];
+  IGRint		status;
+  IGRint                i, index;
+  IGRshort		mat_type;
+  unsigned IGRchar	props;
+  short			cs_pl;
+
+  /* CREATE THE GRAPHIC PLAN */
+
+  GRid_list.objid = NULL_OBJID;
+
+  init_cnst_list();
+  get_symb();
+
+  dis.color		= cnst_list.color;
+  dis.weight		= cnst_list.weight;
+  dis.style		= cnst_list.style;
+
+  cst_pl.msg		= &msg;
+  cst_pl.display	= &dis;
+  cst_pl.env_info	= &MOD_ENV;
+  cst_pl.newflag	= 0;
+  cst_pl.class_attr	= NULL;
+  cst_pl.name		= NULL;
+  cst_pl.geometry	= NULL;
+  cst_pl.level		= cnst_list.level;
+  cst_pl.properties	= GRIS_LOCATABLE | GRIS_DISPLAYABLE;
+
+  /*  Extract the matrix (from the cs or a plane) */
+  status = ci$send( msg = message  ACcpx.ACfind_exp_temp_obj(&msg, 0, &obj),
+                       verbose  = VERBOSE,
+                       targetid = CI_MACRO_ID.objid,
+                       targetos = CI_MACRO_ID.osnum );
+  as$status(action = RET_STATUS);
+
+  status = ci$send( msg      = message NDmacro.ACreturn_foot(
+                                                &msg ,
+                                                "",
+                                                &obj,
+                                                &mat_type,
+                                                matrix ),
+                        verbose  = VERBOSE,
+                 	targetid = obj.objid,
+                 	targetos = obj.osnum );
+  if(!msg) return 0;
+
+  if(VDget_mat(&obj, mat_type, matrix, cs_mat, &props, &cs_pl) != 1) return 0;
+
+
+# ifdef DEBUG
+  printf("got the matrix info\n");
+# endif
+
+   status = ci$send(msg = message ACcpx.ACfind_temp_struct(&msg,
+                                                  "dist",
+                                                  (char *)&temp1_rts,
+                                                  &MOD_ENV),
+                       verbose = VERBOSE,
+           	       targetid = CI_MACRO_ID.objid,
+           	       targetos = CI_MACRO_ID.osnum );
+   as$status();
+   
+   dist = temp1_rts.var.root_pm_st.value;
+   
+   offset1 = 0;
+   offset2 = 0;
+
+# ifdef DEBUG
+  printf("offset: %lf, %lf, %lf\n", dist, offset1, offset2);
+# endif
+
+  status = ci$send(msg = message ACcpx.ACfind_temp_struct(&msg,
+                                                  "axis",
+                                                  (char *)&temp1_rts,
+                                                  &MOD_ENV),
+                       verbose = VERBOSE,
+           	       targetid = CI_MACRO_ID.objid,
+           	       targetos = CI_MACRO_ID.osnum );
+  as$status();
+
+ if(temp1_rts.var.text_st.text_string[0] != 'x' &&
+    temp1_rts.var.text_st.text_string[0] != 'y' &&
+    temp1_rts.var.text_st.text_string[0] != 'z') axis = 'z';
+ else axis = temp1_rts.var.text_st.text_string[0];
+ if(cs_pl == 1) axis = 'z';
+
+#ifdef DEBUG
+ printf("axis: %c\n",axis);
+#endif
+
+
+   status = ci$send(msg = message ACcpx.ACfind_temp_struct(&msg,
+                                                  "size",
+                                                  (char *)&temp1_rts,
+                                                  &MOD_ENV),
+                       verbose = VERBOSE,
+           	       targetid = CI_MACRO_ID.objid,
+           	       targetos = CI_MACRO_ID.osnum );
+   as$status();
+
+  size = temp1_rts.var.root_pm_st.value;
+
+
+  status = ci$send(msg = message ACcpx.ACfind_temp_struct(&msg,
+                                                  "justif",
+                                                  (char *)&temp1_rts,
+                                                  &MOD_ENV),
+                       verbose = VERBOSE,
+           	       targetid = CI_MACRO_ID.objid,
+           	       targetos = CI_MACRO_ID.osnum );
+  as$status();
+
+ temp1_rts.var.text_st.text_string[2] = '\0';
+ strcpy(justif, temp1_rts.var.text_st.text_string);
+
+#ifdef DEBUG
+ printf("justif: %s\n",justif);
+#endif
+
+  status = ci$send(msg = message ACcpx.ACfind_temp_struct(&msg,
+                                                  "texte",
+                                                  (char *)&temp1_rts,
+                                                  &MOD_ENV),
+                       verbose = VERBOSE,
+           	       targetid = CI_MACRO_ID.objid,
+           	       targetos = CI_MACRO_ID.osnum );
+  as$status();
+
+  GRid_list.osnum = MOD_ENV.md_id.osnum;
+  GRid_list.objid = NULL_OBJID;
+
+  vd$const_plane (     msg     = &msg,
+		       matrix  = cs_mat,
+		       axe     = axis,
+		       dist    = dist,
+		       size    = size,
+                       name    = temp1_rts.var.text_st.text_string,
+		       justif  = justif,
+		       offset1 = offset1,
+		       offset2 = offset2,
+		       props   = props,
+		       cst     = &cst_pl,
+		       obj     = &GRid_list);
+  if (msg!=1)
+    {
+     printf("error in const_pla3\n");
+     GRid_list.objid = NULL_OBJID;
+     return 0;
+    }
+
+#ifdef DEBUG
+ printf("feet: %d, %d\n",GRid_list.objid, GRid_list.osnum);
+#endif
+return 1;
+}
+
+
+NDdrawing_copy_geom (selected_elements, nb_elements, drawing_elements,
+                 nb_drawing_elem, vector,point, level,lbsys,
+                 from_env,to_env)
+  struct GRid *selected_elements;
+  int    nb_elements;
+  struct GRid **drawing_elements;
+  int    *nb_drawing_elem;
+  double *vector,*point;
+  int *level;struct IGRlbsys *lbsys;
+  struct GRmd_env *from_env,*to_env;
+{
+ long status;
+ status = VDextract_plane(&CI_MACRO_ID,drawing_elements, nb_drawing_elem,
+			  level,lbsys,from_env,to_env);
+ return status;
+}
+
+
+
+

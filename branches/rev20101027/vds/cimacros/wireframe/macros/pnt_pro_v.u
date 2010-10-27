@@ -1,0 +1,348 @@
+/* $Id: pnt_pro_v.u,v 1.1.1.1 2001/01/04 21:07:23 cvs Exp $  */
+
+/* --------------------------------------------------------------------
+ * I/VDS
+ *
+ * File:	vds/cimacros/wireframe/macros / pnt_pro_v.u
+ *
+ * Description:
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ *	$Log: pnt_pro_v.u,v $
+ *	Revision 1.1.1.1  2001/01/04 21:07:23  cvs
+ *	Initial import to CVS
+ *	
+# Revision 1.1  1998/04/29  16:27:20  pinnacle
+# VDS 2.5.1
+#
+# Revision 1.1  1997/05/08  13:20:44  pinnacle
+# New project VDS 250
+#
+# Revision 1.1  1996/07/19  20:33:52  pinnacle
+# Create VDS 241 project
+#
+# Revision 1.1  1994/11/14  22:42:32  pinnacle
+# Create vds.240 from vds.232
+#
+# Revision 1.1  1994/11/08  16:07:00  pinnacle
+# create vds.232
+#
+ *
+ * History:
+ *	MM/DD/YY	AUTHOR		DESCRIPTION
+ *
+ * -------------------------------------------------------------------*/
+
+/*
+	 VDS 2.0 - PPM macro library - 92/07/09 (alc)
+ */
+   
+#include "cieveryone.h"
+#include "cimacros.h"
+#include "ci_mac_def.h"
+#include "bserr.h"
+
+
+IGRchar			*temp_names[3], *feet_names[1];
+IGRint			temp_types[3];
+GRobj 			ci_mac_def1;
+struct GRid		CI_MACRO_ID;
+
+IGRshort 		mat_type;
+
+IGRint			k, j, num_pts;
+IGRlong			stat, msg;
+ 
+IGRdouble 		matrix[16], t_plan[6], min_dist, cou_dist;
+IGRdouble		*proj_pts, *u_par, *v_par, tab[6];
+
+GRclassid 		loc_class_id, comp_class_id;
+
+struct GRid		CUV, SF_ID, GRid_list;
+struct GRmd_env		MOD_ENV;
+struct IGRbsp_surface   *bsp_surf;
+struct GRvg_construct   cst;
+struct IGRdisplay	dis;
+struct IGRpolyline      geom;
+struct GRprops          props;
+
+struct ret_struct	pt_rts, vec_rts;
+struct IGRplane		n_plans;
+
+extern int	BSpj_pt_sf(),
+		free(),
+		init_cnst_list();
+
+extern	BSxlnpl();
+
+extern double   BSdistptpt();
+extern			ASsuper_construct();
+
+/* ========================================================================= */
+/* the main function is the one implementing the definition creation
+/* ========================================================================= */
+
+main ()
+{
+
+  temp_names[0]  = "pnt";  
+  temp_names[1]  = "vec";  
+  temp_names[2]  = "surf";
+
+  temp_types[0]  = point_generic;
+  temp_types[1]  = line_generic;
+  temp_types[2]  = other_generic;
+
+  feet_names[0] = "pj_pt";
+
+  ci_mac_def1 = NULL_OBJID;
+
+  ac$cimacdef( 	cimacdef          = ci_mac_def1,
+		status 	          = &stat, 	
+		name              = "pnt_pro_v",
+              	temp_num          = 3, 		
+		temp_names        = temp_names,
+		temp_types	  = temp_types,
+	      	extern_feet_num   = 1, 	
+		extern_feet_names = feet_names );
+}
+
+/* ========================================================================= */
+
+place ()
+{
+  construct_pjs();
+
+  if( GRid_list.objid == NULL_OBJID ) return(0);
+
+  ci$send( msg = message  ci_macro.set_all_extern_feet
+	 ( &stat, 1,&GRid_list, &MOD_ENV ),
+	   targetid = CI_MACRO_ID.objid,
+	   targetos = CI_MACRO_ID.osnum );
+  
+  return(1);
+}
+
+/* ========================================================================= */
+
+compute ()
+{
+
+  construct_pjs();
+
+  if( GRid_list.objid == NULL_OBJID ) return(0);
+
+  ci$send( msg = message  ci_macro.set_all_extern_feet
+	 ( &stat, 1,&GRid_list, &MOD_ENV ),
+	   targetid = CI_MACRO_ID.objid,
+	   targetos = CI_MACRO_ID.osnum );
+  return(1);
+}
+
+/* ========================================================================= */
+
+
+construct_pjs()
+{
+
+
+  GRid_list.objid = NULL_OBJID;
+
+
+/* --- get the projection vector structure --- */
+
+
+  msg = ci$send( msg      = message  ACcpx.ACfind_exp_temp_struct
+		           (&stat, 1, (char *)&vec_rts,&MOD_ENV ),
+	   targetid = CI_MACRO_ID.objid,
+	   targetos = CI_MACRO_ID.osnum );
+  if( !(stat&msg&1) ){
+	status(" bad vector " );
+	return;
+  }
+
+
+/* --- locate the project point structure --- */
+
+
+  msg = ci$send( msg      = message  ACcpx.ACfind_exp_temp_struct
+		           (&stat, 0, (char *)&pt_rts,&MOD_ENV ),
+	   targetid = CI_MACRO_ID.objid,
+	   targetos = CI_MACRO_ID.osnum );
+  if( !(stat&msg&1) ){
+	status(" bad project point " );
+	return;
+  }
+
+
+/* --- get the surface or plane --- */
+
+
+  msg = ci$send( msg = message  ACcpx.ACfind_exp_temp_obj(&stat,2,&CUV),
+           targetid = CI_MACRO_ID.objid,
+           targetos = CI_MACRO_ID.osnum );
+  if( !(stat&msg&1) )return;
+
+  msg = ci$send( msg      = message NDmacro.ACreturn_foot(	
+						&stat ,
+						"",
+						&SF_ID, 
+						&mat_type, 
+					        matrix ),
+	   targetid = CUV.objid,
+	   targetos = CUV.osnum );
+
+  if( !(stat&msg&1) )return;
+
+
+  stat = om$get_classid( objid     = SF_ID.objid,
+			 osnum     = SF_ID.osnum,
+			 p_classid = &loc_class_id );
+  if( !( stat & 1 ) ) return;
+
+  stat = om$get_classid(classname = "EMSplane",
+                        p_classid = &comp_class_id);
+  if( !( stat & 1 ) ) return;
+
+  stat = om$is_ancestry_valid ( subclassid = loc_class_id,
+			        superclassid = comp_class_id);
+#ifdef DEBUG
+  write(" stat ances stat = ",stat,"\n");
+#endif
+
+  if( stat == 1 ){
+
+/* --- if it's a plane --- */
+
+	n_plans.point   = &t_plan[0];
+	n_plans.normal  = &t_plan[3];
+  	ci$send( msg = message  GRvg.GRdetplane( &msg,
+				                 &mat_type, 
+				                 matrix, 
+                                		 &n_plans ),
+	 	 targetid = SF_ID.objid,
+	 	 targetos = SF_ID.osnum );
+
+	for(k=0; k<3; k=k+1)
+ 	  vec_rts.var.line_st.p1[k] = pt_rts.var.point_st.pt[k] +
+				      vec_rts.var.line_st.v0[k];
+
+	BSxlnpl( &msg, n_plans.normal, n_plans.point,
+	         pt_rts.var.point_st.pt , vec_rts.var.line_st.p1, tab );
+
+    	for(k=0; k<3; k=k+1) tab[k+3] = tab[k];
+	
+  }/* --- end if it's a plane or a planar surface  --- */
+ 
+  else {
+
+/* --- if it's a general surface --- */
+
+#ifdef DEBUG
+write(" c' est une general surface \n");
+#endif
+
+  	ci$send( msg = message GRvg.GRgenabsg( &msg,
+				               &mat_type, 
+				               matrix, 
+					       &bsp_surf ),
+           	 targetid = SF_ID.objid,
+ 	   	 targetos = SF_ID.osnum );
+
+
+  	BSpj_pt_sf(     bsp_surf, 
+                        &(pt_rts.var.point_st.pt[0]), 
+                	&(vec_rts.var.line_st.v0[0]), 
+                	&num_pts, 
+                	&proj_pts, 
+                	&u_par, 
+                	&v_par, 
+                	&msg      );
+#ifdef DEBUG
+write( " BSpj_pt_sf msg =",msg,"\n");
+#endif
+
+  	if( (msg != BSSUCC) || (num_pts == 0) ){
+	    return;
+        }
+
+        j=0;
+        min_dist = 1.0E10;
+
+#ifdef DEBUG
+write("num_pts =",num_pts,"\n");
+#endif
+
+	for( k=0; k<3*num_pts; k=k+3 ){
+	   cou_dist = BSdistptpt(&msg, &(pt_rts.var.point_st.pt[0]),
+                                 &(proj_pts[k]));
+
+           if( cou_dist < min_dist ){
+	    	min_dist = cou_dist;
+		j = k;
+           }
+	}
+
+#ifdef DEBUG
+write( "j= ",j,"\n");
+#endif
+
+    	for(k=0; k<3; k=k+1)
+  	{
+    		tab[k]   = proj_pts[k+j];
+    		tab[k+3] = tab[k];
+  	}
+	
+	free(proj_pts);
+	free(u_par);
+        free(v_par);
+
+  } /* end if it's a general surface */
+
+
+  init_cnst_list();
+  get_symb();
+
+  dis.color		= cnst_list.color;
+  dis.weight		= cnst_list.weight;
+
+  if( dis.weight < 3)   dis.weight = 3; 
+
+  dis.style		= cnst_list.style;
+
+  cst.msg		= &msg;
+  cst.properties	= GRIS_LOCATABLE | GRIS_NEW | GRIS_DISPLAYABLE;
+  cst.display		= &dis;
+  cst.env_info		= &MOD_ENV;
+  cst.newflag		= 0;
+  cst.level		= cnst_list.level;
+  cst.geometry		= NULL;
+  cst.class_attr	= 0;
+  cst.name		= 0;
+
+
+  geom.num_points = 2;
+  geom.points  = tab;
+  cst.geometry = (char *)&geom;
+
+  GRid_list.osnum = MOD_ENV.md_id.osnum;
+
+  ci$send( msg       = message GR3dpoint.GRaltconstruct(&cst),
+           targetid  = GRid_list.objid,
+ 	   targetos  = GRid_list.osnum,
+           construct = 1 );
+
+
+}
+
+
+/*=========================================================================*/
+init()
+/* for initialization at loading time */
+{
+  feet_names[0] = "pj_pt";
+}
+/*=========================================================================*/
+

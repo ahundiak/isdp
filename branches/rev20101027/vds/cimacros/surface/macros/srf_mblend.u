@@ -1,0 +1,267 @@
+/* $Id: srf_mblend.u,v 1.1.1.1 2001/01/04 21:07:21 cvs Exp $  */
+
+/* --------------------------------------------------------------------
+ * I/VDS
+ *
+ * File:	vds/cimacros/surface/macros / srf_mblend.u
+ *
+ * Description:
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ *	$Log: srf_mblend.u,v $
+ *	Revision 1.1.1.1  2001/01/04 21:07:21  cvs
+ *	Initial import to CVS
+ *	
+# Revision 1.1  1998/04/29  16:27:20  pinnacle
+# VDS 2.5.1
+#
+# Revision 1.1  1997/05/08  13:20:44  pinnacle
+# New project VDS 250
+#
+# Revision 1.1  1996/07/19  20:33:52  pinnacle
+# Create VDS 241 project
+#
+# Revision 1.1  1994/11/14  22:42:32  pinnacle
+# Create vds.240 from vds.232
+#
+# Revision 1.1  1994/11/08  16:07:00  pinnacle
+# create vds.232
+#
+ *
+ * History:
+ *	MM/DD/YY	AUTHOR		DESCRIPTION
+ *
+ * -------------------------------------------------------------------*/
+
+/*
+	 VDS 2.0 - PPM macro library - 92/07/09 (alc)
+ */
+   
+#include "cieveryone.h"
+#include "cimacros.h"
+#include "ci_mac_def.h"
+#include "cimath.h"
+#include "nddef.h"
+#include "macro.h"
+
+#define	MAX_TEMP	8
+#define MAX_CHA_TEMP	6
+ 
+struct GRid	CI_MACRO_ID;
+
+struct var
+{
+  int		num; 
+  int		tot; 
+  int		srf[4];
+  int		crv[4];
+} *me;
+
+struct GRid		display_info, COMP;
+int			icurv, isurf;
+
+IGRchar 	 	*temp_names[MAX_TEMP], *feet_names[1];
+
+IGRint			temp_types[MAX_TEMP], num_ent;
+
+IGRchar			buff[MAX_TEMP*MAX_CHA_TEMP];
+
+IGRdouble		pnt[3],dist,center[3],normal[3];
+
+IGRint		        i, j, k,l,m;
+
+IGRlong			stat, msg;
+
+GRobj 	 		COMP1;
+GRobj 			ci_mac_def1;
+
+struct GRvg_construct	cst;
+struct GRmd_env		MOD_ENV;
+struct IGRdisplay	dis;
+struct GRid		CUV;
+struct GRlc_info	elem[8];
+struct GRlc_info        *curves_p[4], *surfaces_p[4];
+struct GRprops          props;
+
+
+
+extern int 		init_cnst_list(),
+	    		sprintf(); 
+extern ASsuper_construct();
+
+
+/* ========================================================================= */
+/* the main function is the one implementing the definition creation
+/* ========================================================================= */
+
+main ()
+{
+
+  for (i=0; i<MAX_TEMP; i=i+1){
+	j = i * MAX_CHA_TEMP;
+	sprintf(&buff[j],"crv%d",i);
+	temp_names[i] = &buff[j];
+	temp_types[i] = other_generic;	
+  }
+
+  feet_names[0]="ressur";
+
+  ci_mac_def1 = NULL_OBJID;
+
+  ac$cimacdef( 	cimacdef 	  = ci_mac_def1,
+		prop	          = ACvariable_template | ACwith_instances,
+		status 	 	  = &stat, 	
+		name 	          = "srf_mblend",
+		int_name 	  = "var",	
+		int_size 	  = sizeof( struct var ),
+              	temp_num 	  = MAX_TEMP, 		
+		temp_names        = temp_names,
+	      	extern_feet_num   = 1, 	
+		extern_feet_names = feet_names );
+}
+
+/* ========================================================================= */
+
+place ()
+{
+
+  construct_comp();
+
+  if( COMP.objid == NULL_OBJID ) return(0);
+
+  ci$send( msg = message  ci_macro.set_all_extern_feet
+		(&stat, 1,&COMP, &MOD_ENV ),
+	   targetid = CI_MACRO_ID.objid,
+	   targetos = CI_MACRO_ID.osnum);
+
+  return(1);
+}
+
+
+/* ========================================================================= */
+
+compute ()
+{
+
+  construct_comp();
+
+  if( COMP.objid == NULL_OBJID ) return(0);
+
+  ci$send( msg = message  ci_macro.set_all_extern_feet
+		(&stat, 1,&COMP, &MOD_ENV ),
+	   targetid = CI_MACRO_ID.objid,
+	   targetos = CI_MACRO_ID.osnum);
+
+  return(1);
+}
+
+/* ========================================================================= */
+
+construct_comp()
+{
+  	COMP.objid = NULL_OBJID;
+  	COMP.osnum = MOD_ENV.md_id.osnum;
+
+  	stat = ci$send(msg = message NDnode.NDget_objects(ND_ROOT,NULL,0,NULL,
+					     		0,OM_K_MAXINT,&num_ent),
+	   	 targetid = CI_MACRO_ID.objid,
+	   	 targetos = CI_MACRO_ID.osnum);
+
+  	if(!(stat&1)) return;
+
+  	for(k=0; k<num_ent; k=k+1){
+
+     		msg = ci$send( msg = message  ACcpx.ACfind_exp_temp_obj(
+							&stat,k,&CUV),
+ 	      		 targetid = CI_MACRO_ID.objid,
+	      		 targetos = CI_MACRO_ID.osnum );
+
+     		if( !(stat&msg&1) ) return;
+
+     		msg = ci$send( msg      = message NDmacro.ACreturn_foot(	
+				&stat ,
+				"",
+				&elem[k].located_obj, 
+				&elem[k].module_info.md_env.matrix_type, 
+				elem[k].module_info.md_env.matrix ),
+	      		 targetid = CUV.objid,
+	      		 targetos = CUV.osnum );
+
+     		if( !(stat&msg&1) ){
+			write(" bad element \n" );
+			return;
+     		}
+  		ci$send( msg = message GRvg.GRgeomprops( 
+					&msg,
+					&elem[k].module_info.md_env.matrix_type, 
+					elem[k].module_info.md_env.matrix, 
+			        	&props ),
+           		 targetid = elem[k].located_obj.objid,
+           		 targetos = elem[k].located_obj.osnum );
+
+  		elem[k].module_info.md_id.osnum = elem[k].located_obj.osnum;
+
+   	   if( props.type == 1 ){
+		 #ifdef DEBUG
+		 	write("element[",k,"] is a surface \n");
+		 #endif
+		 surfaces_p[isurf] = &elem[k];
+		 isurf = isurf + 1;
+	   }
+   	   else{
+		#ifdef DEBUG
+			write("element[",k,"] is a curve \n");
+		#endif
+		curves_p[icurv] = &elem[k];
+		icurv = icurv + 1;
+	  }
+
+        }
+
+  	init_cnst_list();
+  	get_symb();
+  	cst.level		= cnst_list.level;
+  	dis.color		= cnst_list.color;
+  	dis.weight 		= cnst_list.weight;
+  	dis.style 		= cnst_list.style;
+
+  	cst.msg			= &msg;
+  	cst.properties		= GRIS_LOCATABLE | GRIS_NEW | GRIS_DISPLAYABLE;
+  	cst.display		= &dis;
+  	cst.env_info		= &MOD_ENV;
+  	cst.newflag		= 0;
+  	cst.geometry		= NULL;
+  	cst.class_attr		= 0;
+ 	cst.name		= 0;
+
+	   
+   	COMP1 = NULL_OBJID;
+
+#ifdef DEBUG
+	write("me->num =",me->num,"\n");
+	write("icurv =",icurv,"\n");
+#endif
+
+   	stat = ci$send(msg      = message EMSgenbs.EMblend_3_or_more_curves(
+             				(IGRlong)icurv,
+					curves_p,
+					surfaces_p,
+					&cst,
+					dist,
+					center,
+					normal,
+					&COMP1	),
+           	        targetid = COMP.objid,
+	                targetos = COMP.osnum );
+
+#ifdef DEBUG
+	write("COMP.objid =",COMP.objid,"COMP1=",COMP1,"\n");
+#endif
+
+	COMP.objid = COMP1;
+
+   	if( !(stat&1) ) COMP.objid = NULL_OBJID;
+
+ }

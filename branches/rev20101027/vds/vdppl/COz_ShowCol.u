@@ -1,0 +1,203 @@
+/* $Id: COz_ShowCol.u,v 1.1 2001/01/18 20:38:35 hans Exp $  */
+
+/***************************************************************************
+ * I/VDS
+ *
+ * File:        $VDS/vdppl/COz_ShowCol.u
+ *
+ * Description: Show Collectors
+ *              List the contents of all parent and component collectors
+ *              attached to the selected objects
+ *
+ * Revision History:
+ *      $Log: COz_ShowCol.u,v $
+ *      Revision 1.1  2001/01/18 20:38:35  hans
+ *      SP16 additions/modifications
+ *
+# Revision 1.1  2000/10/20  14:17:26  pinnacle
+# ah
+#
+ *
+ * History:
+ * MM/DD/YY  AUTHOR  DESCRIPTION
+ * 10/20/00  ah      Creation
+ ***************************************************************************/
+
+#include "VDppl.h"
+#include "VDobj.h"
+#include "VDchn.h"
+
+#include "coparamac.h"
+
+extern ASstart_var_fence();
+extern ASend_fence();
+
+extern VDclassid OPP_ACrg_collect_class_id;
+ 
+/* --------------------------------------
+ * Show one possible collector
+ */
+IGRstat showCol(desc,nth,colID)
+  IGRchar *desc;
+  IGRint   nth;
+  TGRid   *colID;
+{
+  IGRstat retFlag;
+  IGRstat sts,msg;
+
+  TACrg_coll  attrs[64];
+  TACrg_coll *attr;
+  IGRint      attrCnt;
+  IGRint      i;
+  
+  // Init
+  retFlag = 0;
+  
+  // Make sure have a collector
+  sts = vdobj$IsAncestryValid(objID = colID, 
+                              superClassID = OPP_ACrg_collect_class_id); 
+  if (!(sts & 1)) {
+    retFlag = 1;
+    goto wrapup;
+  }
+
+  // Dump it
+  printf("%s %2d, Object %d,%d\n",desc,nth,colID->osnum,colID->objid);
+  attrCnt = 0;
+  ci$send(msg = message ACrg_collect.
+	  AClist_attribute(&msg,64,attrs,&attrCnt),
+	  targetid = colID->objid,
+	  targetos = colID->osnum);
+
+  for(i = 0; i < attrCnt; i = i + 1) {
+
+    attr = &attrs[i];
+    printf("Attr %2d %-15s ",i,attr->name);
+
+    switch(attr->desc.type) {
+
+      case AC_ATTRIB_TEXT:  
+	printf("TXT '%s'\n",attr->desc.value.att_txt); 
+	break;
+
+      case AC_ATTRIB_DOUBLE:  
+	printf("DBL  %.2f\n",attr->desc.value.att_exp); 
+	break;
+
+      default: printf("UNKNOWN ATTR TYTPE\n");
+    }
+  }
+  
+  // Done
+  retFlag = 1;
+  
+ wrapup:
+  return retFlag;
+}
+
+/* --------------------------------------
+ * Show the collectors for an object
+ */
+IGRstat showColls(objOE)
+  TGRobj_env *objOE;
+{
+  IGRstat retFlag;
+  
+  TGRobj_env colOE;
+  IGRint i;
+  
+  // Init
+  retFlag = 0;
+  
+  // Say Hi
+  printf("---------------- Show Collectors ----------------\n");
+  vdobj$Print(objOE = objOE);
+  
+  // Cycle through parents
+  for(i = 0; 
+      vdobj$GetTemplate(objOE = objOE, nth = i, templateOE = &colOE); 
+      i = i + 1) {
+    showCol("Temp",i,&colOE.obj_id);
+  }
+  
+  // Cucle through components
+  for(i = 0; 
+      vdchn$Get2(objOE  = objOE, 
+		 chnIDx = VDCHN_IDX_TO_COMPONENTS,
+		 nth    = i,
+		 outID  = &colOE.obj_id);
+      i = i + 1) {
+    showCol("Foot",i,&colOE.obj_id);
+  }
+
+  // Done
+  retFlag = 1;
+  
+ wrapup:
+  return retFlag;
+}
+
+/* --------------------------------------
+ * The main routine
+ */
+int main()
+{
+  IGRstat  sts,msg;
+  IGRint   response;
+  
+  TGRobj_env  objOE;
+  TGRobj_env *locOEs;
+  IGRint      locNum;
+  IGRint      i;
+
+  while(1) {
+
+    UI_message("Show Collectors");
+
+    sts = ci$locate(prompt  = "Select Object",
+		    classes = "ACncpx",
+		    owner_action = LC_RIGID_OWNER | 
+                                   LC_RIGID_COMP  |
+                                   LC_FLEX_COMP   | 
+                                   LC_FLEX_OWNER  |
+                                   LC_REF_OBJECTS,
+
+		    response     = &response,
+		    md_env       = &objOE.mod_env,
+		    obj          = &objOE.obj_id.objid,
+		    osnum	 = &objOE.obj_id.osnum);
+    
+    if (!(sts & 1)) response = 0;
+    
+    switch(response) {
+
+      case EX_OBJID:   // Object Set
+
+	/* Grab Located Objects */
+	as$start_fence(
+	  set       = &objOE.obj_id,
+	  set_env   = &objOE.mod_env,
+	  nb_obj    = &locNum,
+	  p_obj_env = &locOEs);
+
+	for(i = 0; i < locNum; i = i + 1) {
+	  showColls(&locOEs[i]);
+	}
+
+	ASend_fence();
+	break;
+      
+      case EX_DATA:
+
+	showColls(&objOE);
+	break;
+	
+    }
+  }
+  return 1;
+}
+
+wakeup()
+{
+  UI_message("Show Collectors");  
+}
