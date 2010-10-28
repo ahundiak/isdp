@@ -1,35 +1,20 @@
-SRC
-$(EXNUC)/icob/actions
-
-INCLUDE
-$(EXNUC)/include
-$(UMS_INC_PATH)
-#if defined (X11)
-$(X11_INC_PATH)
-#endif
-#if defined (XGL)
-$(XGLHOME)/include
-$(XGLHOME)/include/xgl
-#endif
-
-SPEC
-$(EXNUC)/spec
-
 SOURCE
 do_it_a.I
 set_a.C
 
-#if defined(CLIX) || defined(SUNOS) || defined(IRIX)
 LIB
-$(TARGET)/icob/lib/actions.o
-#elif defined (NT)
-ARCHIVE
-$(TARGET)/icob/lib/actions.lib
-#endif
+$EXNUC/lib/cob_actions.o
+
+INCLUDE
+$UMS/include
+$EXNUC/include
+
+SPEC
+$EXNUC/spec
 
 OPP
-$(BASE)/bin/opp
+$EXNUC/bin/opp
 
 OMCPP
-$(BASE)/bin/omcpp
+$EXNUC/bin/omcpp
 
