@@ -1,18 +1,5 @@
 COPT
-#ifdef NT
-
-#ifdef _DEBUG
--W3 -Zp8 -Gd -nologo -Od -Zi -MTd
-#else /* _DEBUG */
--W3 -Zp8 -Gd -nologo -O2
-#endif /* _DEBUG */
-
-#else /* NT */
 -DBASE_EMS
-#endif /* NT */
-
-SRC
-$(EXNUC)/om/IGRdir/dir
 
 SOURCE
 DIboot.I
@@ -35,24 +22,19 @@ DIsyn.I
 DIuntrans.I
 IGRdiri.I
 
-#if defined(CLIX) || defined(SUNOS) || defined(IRIX)
 LIB
-$(TARGET)/om/IGRdir/lib/DIrectorylib.o
-#elif defined(NT)
-ARCHIVE
-$(TARGET)\om\IGRdir\lib\DIrectorylib.lib
-#endif
+$EXNUC/lib/om_igrdir_dir.o
 
 SPEC
-$(EXNUC)/spec
+$EXNUC/spec
 
 INCLUDE
-$(EXNUC)/include
-$(EXNUC)/om/IGRdir/include
-
+$EXNUC/include
+$EXNUC/om/include
+$EXNUC/om/IGRdir/include
+        
 OPP
-$(BASE)/bin/opp
+$EXNUC/bin/opp
 
 OMCPP
-$(BASE)/bin/omcpp
-
+$EXNUC/bin/omcpp
