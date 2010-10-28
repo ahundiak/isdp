@@ -1,24 +1,7 @@
 COPT
-#ifdef NT
-
-#ifdef _DEBUG
--W3 -Zp8 -Gd -nologo -Od -Zi -MTd
-#else /* _DEBUG */
--W3 -Zp8 -Gd -nologo -O2
-#endif /* _DEBUG */
-
-#else /* NT */
 -DBASE_EMS
-#endif /* NT */
-
-SRC
-$(EXNUC)/om/src
 
 SOURCE
-#if defined(sparc) || defined(mips)
-OMdict.C
-OMport.C
-#endif
 OMClusteri.I
 OMClusterr.I
 OMFiledOSi.I
@@ -74,67 +57,22 @@ Rooti.I
 OMSupGroupi.I
 OMarch.C
 OMsibling.C
-#ifdef NT
-OMmetas.c
-#endif
 
-ARCHIVE
-#ifndef NT
-$(TARGET)/$(LIBLOC)/libOM.a
-#else
-$(TARGET)/libOM.lib
-#endif
-
-DEPLIB
-#if defined (NT)
-$(TARGET)\om\spec\omspec.lib
-$(TARGET)\om\IGRdir\lib\DIbtreelib.lib
-$(TARGET)\om\IGRdir\lib\GRouplib.lib
-$(TARGET)\om\IGRdir\lib\DIrectorylib.lib
-#else
-$(TARGET)/om/spec/omspec.o
-$(TARGET)/om/IGRdir/lib/DIbtreelib.o
-$(TARGET)/om/IGRdir/lib/GRouplib.o
-$(TARGET)/om/IGRdir/lib/DIrectorylib.o
-$(TARGET)/om/src/OMmetas.o
-#endif
-#	if defined (CLIX)
-$(TARGET)/om/src/OMfloatcvt.o
-#	endif
+LIB
+$EXNUC/lib/omsrc.o
 
 SPEC
-$(EXNUC)/spec
-$(EXNUC)/om/spec
+$EXNUC/spec
+$EXNUC/om/spec
 
 INCLUDE
-$(EXNUC)/include
-$(EXNUC)/om/include
-$(EXNUC)/trans/include
-$(LIBXC_INC_PATH)
-
-DEFINE
-CCDEF
-
-POST_SPECIAL
-
-opl = $(BASE)/bin/opl
-
-$(TARGET)/om/src/OMmetas.o: $(TARGET)/om/spec/omspec.o
-	@echo "\t$(TARGET)/om/src/OMmetas.o"
-	$(opl) -m $(TARGET)/om/spec/omspec.o
-	$(CCDEF) -c OMmetas.c
-
-#	if defined (CLIX)
-$(TARGET)/om/src/OMfloatcvt.o: $(SRC)/OMfloatcvt.s
-	@echo "\t$(TARGET)/om/src/OMfloatcvt.o"
-	@cd $(SRC); \
-	as $(ASOPT) -o $(TARGET)/om/src/OMfloatcvt.o $(SRC)/OMfloatcvt.s
-#	endif
-
-END_SPECIAL
+$EXNUC/include
+$EXNUC/om/include
+$EXNUC/trans/include
+$LIBXC/include
 
 OPP
-$(BASE)/bin/opp
+$EXNUC/bin/opp
 
 OMCPP
-$(BASE)/bin/omcpp
+$EXNUC/bin/omcpp
