@@ -171,9 +171,7 @@ return( TRUE );
 
 }
 
-rtree_volume ( coord, volume )
-DB_3D_FLT_BOX *coord;
-double *volume;
+rtree_volume ( DB_3D_FLT_BOX *coord, double *volume )
 {
 double a,b,c;
 
@@ -287,11 +285,11 @@ else
    }
 }
 
-rtree_enlarge_volume ( new_coord, old_coord, old_volume, vol_diff )
-DB_3D_FLT_BOX *new_coord;
-DB_3D_FLT_BOX *old_coord;
-double *old_volume;
-double *vol_diff;
+rtree_enlarge_volume ( 
+DB_3D_FLT_BOX *new_coord,
+DB_3D_FLT_BOX *old_coord,
+double *old_volume,
+double *vol_diff)
 {
 double a,b,c;
 
@@ -317,10 +315,10 @@ if (c == 0)
 return(1);
 }
 
-rtree_intersect_volume ( c1, c2, volume )
-DB_3D_FLT_BOX *c1;
-DB_3D_FLT_BOX *c2;
-double *volume;
+rtree_intersect_volume (
+DB_3D_FLT_BOX *c1,
+DB_3D_FLT_BOX *c2,
+double *volume)
 {
 double a,b,c;
 if ( rtree_3d_box_intersect ( c1, c2 ) )
@@ -951,15 +949,16 @@ return( DB_SUCCESS );
 
 
 /*********************** DB_rtree_pick_next_3d_flt ********************/
-DB_rtree_pick_group_3d_flt(fullpage_p,index,  grp1volume,
-                   grp2volume, grp1coord_p,
-		   grp2coord_p, group1newindex_p, group2newindex_p)
+DB_rtree_pick_group_3d_flt(
 
-R_PAGE_3D_FLT    *fullpage_p;
-int              index;
-double           grp1volume, grp2volume;
-DB_3D_FLT_BOX    *grp1coord_p, *grp2coord_p;
-int              *group1newindex_p, *group2newindex_p;
+R_PAGE_3D_FLT    *fullpage_p,
+int              index,
+double           grp1volume, 
+double           grp2volume,
+DB_3D_FLT_BOX    *grp1coord_p, 
+DB_3D_FLT_BOX    *grp2coord_p,
+int              *group1newindex_p, 
+int              *group2newindex_p)
 
 {
 DB_3D_FLT_BOX    temp_grp1coord, temp_grp2coord, inx_key_coord;
