@@ -374,12 +374,12 @@ static int Read_Dir( fp )
 }
 static   int err = 0;
 #argsused
-static int EXgetfil_form_notif ( f_label, g_label, value, fp )
+static int EXgetfil_form_notif ( 
 
-  int		f_label;	/* i - The label of the form	*/
-  int		g_label;	/* i - The label of the gadget	*/
-  double	value;		/* i - The value of the gadget	*/
-  Form		fp;		/* i - Form pointer		*/
+  int		f_label,
+  int		g_label,
+  double	value,
+  Form		fp)
 {
   char	text_buff[MAXPATHLEN], *expanded_dir;
   int	sf, rp;
