@@ -1,6 +1,3 @@
-SRC
-$(EXNUC)/exec/IGEcolor
-
 SOURCE
 APPcolor2i.I
 IGEchgclr.I
@@ -13,27 +10,18 @@ IGEcolori.I
 IGEuserrampi.I
 DPcolors.C
 
+LIB
+$EXNUC/lib/exec_color.o
+
 SPEC
-$(EXNUC)/spec
+$EXNUC/spec
 
 INCLUDE
-$(EXNUC)/include
-#if defined (ENV5)
-$(FORMS_INC_PATH)
-#elif defined (X11)
-$(XFORMSDP_INC_PATH)
-$(X11_INC_PATH)
-#endif
-#if defined (XGL)
-$(XGLHOME)/include
-$(XGLHOME)/include/xgl
-#endif
-
-DEFINE
-CCDEF
+$FORMS/include
+$EXNUC/include
 
 OPP
-$(BASE)/bin/opp
+$EXNUC/bin/opp
 
 OMCPP
-$(BASE)/bin/omcpp
+$EXNUC/bin/omcpp
