@@ -3,7 +3,7 @@ do_it_a.I
 set_a.C
 
 LIB
-$EXNUC/lib/cob_actions.o
+$EXNUC/lib/icob_actions.o
 
 INCLUDE
 $UMS/include
