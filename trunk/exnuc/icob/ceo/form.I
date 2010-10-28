@@ -295,12 +295,11 @@ quit:
 /*								*/
 /*   The default form input method is CEO.form_notification().	*/
 /****************************************************************/
-void COB_FI_form_notification ( form_label, gadget_label,
-				value, form_ptr )
-  int		form_label;
-  int		gadget_label;
-  double	value;
-  Form		form_ptr;
+void COB_FI_form_notification (
+  int		form_label,
+  int		gadget_label,
+  double	value,
+  Form		form_ptr)
 {
   unsigned int		cmd_oid;
   unsigned short	cmd_os;
@@ -362,12 +361,11 @@ void COB_FI_form_notification ( form_label, gadget_label,
 /*   ( as opposed to a FUNCTION ) allows the command to access	*/
 /*   its instance data when handling input from the form.	*/
 /****************************************************************/
-void COB_FI_initial_form_notification ( form_label, gadget_label,
-					value, form_ptr )
-  int		form_label;
-  int		gadget_label;
-  double	value;
-  Form		form_ptr;
+void COB_FI_initial_form_notification (
+  int		form_label,
+  int		gadget_label,
+  double	value,
+  Form		form_ptr)
 {
   unsigned int		cmd_oid;
   unsigned short	cmd_os;
