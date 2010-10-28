@@ -1,0 +1,216 @@
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+#
+# Name
+#   hdr
+#
+# Abstract
+#   Default Header Generator
+#
+# Synopsis: hdr
+#   -F <filename>       - for top-of-file header
+#   -f <function name>  - for functions
+#   -c <class name>     - for class specification file header
+#   -i <method name>    - for methods
+#   -s <message name>   - for message headers in class specification file
+#   -S <synopsis>       - <synopsis> should be a quoted prototype statement
+#   -o <message name>   - for message overrides
+#   -m <macro name>     - for OM style macros
+#   -h                  - help:  prints this message
+#   
+#  The switch  -k <keywords> may be used in conjuction with one of the 
+#  header-type switches [Ffcism] to specify the keywords.
+#
+# Keywords
+#   kshell script generate header
+#
+# Notes
+#
+# History
+#     srh   01/19/93  created
+#     srh   01/21/93  modified for use by Relax; added -F and -c switches
+#     srh   02/02/93  modified -F switches to take filename 
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+usage()
+{
+   echo "$USAGE" >&2
+}
+
+USAGE="Usage: hdr <switches>
+
+  -F <file name>     - for top-of-file header (except .S files)
+  -f <function name> - for functions
+  -c <class name>    - for class specification \"top-of-file\" header
+  -i <method name>   - for methods
+  -s <message name>  - for message headers in class specification file
+  -m <macro name>    - for OM style macros
+  -o <message name>  - for message overrides
+  -h                 - help:  prints this message
+       
+  The switch  -k <keywords> may be used in conjuction with one of the 
+  header-type switches [Ffcism] to specify the keywords. Multiple 
+  keywords must be quoted as a single argument\n"
+
+# default field titles
+T_NAME="\nName\n"
+T_ABSTRACT="\nAbstract\n"
+T_SYNOPSIS="\nSynopsis\n"
+T_DESCRIPTION="\nDescription\n"
+T_RETURN_VALUE="\nReturn Value\n"
+T_NOTES="\nNotes\n"
+T_INDEX="\nIndex\n"
+T_KEYWORDS="\nKeywords\n"
+T_HISTORY="\nHistory"
+T_JUSTIFY=""
+
+# default fields for header (suppressed/altered depending on switches)
+NAME="$T_NAME"
+ABSTRACT="$T_ABSTRACT"
+SYNOPSIS="$T_SYNOPSIS"
+DESCRIPTION="$T_DESCRIPTION"
+RETURN_VALUE="$T_RETURN_VALUE"
+NOTES="$T_NOTES"
+INDEX="$T_INDEX"
+KEYWORDS=""
+JUSTIFY=""
+HISTORY="$T_HISTORY
+  $(date +%D) : $(grep ^""$(logname): /etc/passwd | cut -d: -f5) : created"
+
+typeset -i count=0
+
+#
+# NOTE:  To suppress KEYWORDS (or JUSTIFY), set T_KEYWORDS (or T_JUSTIFY)
+#        to "".  For all other fields, set the default field (e.g. NAME, 
+#        INDEX, etc) to "".
+#
+# get options
+while getopts F:f:c:i:S:s:m:o:k:h opt 2>/dev/null
+do
+  case $opt in
+
+    F) # for top-of-file header
+       NAME="$T_NAME  ${OPTARG}\n"
+       T_KEYWORDS=""
+       HISTORY=""
+       ABSTRACT=""
+       SYNOPSIS=""
+       RETURN_VALUE=""
+       NOTES="$T_NOTES"
+       INDEX=""
+       T_KEYWORDS=""
+       HISTORY=""
+       count=$((count + 1))
+       ;;
+       
+    f) #for function header
+       NAME="$T_NAME  ${OPTARG}\n"
+       count=$((count + 1))
+       ;;
+
+    i) #for object method header
+       NAME="$T_NAME  ${OPTARG}\n"
+       count=$((count + 1))
+       ;;
+
+    c) #for class specification top-of-file header
+       NAME="$T_NAME  ${OPTARG}\n"
+       SYNOPSIS=""
+       RETURN_VALUE=""
+       INDEX=""
+       T_KEYWORDS=""
+       count=$((count + 1))
+       ;;
+
+    S) # for formated synopsis - should be a prototype statement
+       syntext="${OPTARG}"
+       SYNOPSIS="${T_SYNOPSIS}$syntext\n"
+       ;;
+       
+
+    s) # for class message header
+       NAME="$T_NAME  ${OPTARG}\n"
+       count=$((count + 1))
+       SYNOPSIS="${T_SYNOPSIS}"
+       ;;
+
+    o) # for class message override header
+       NAME="$T_NAME  ${OPTARG}\n"
+       T_JUSTIFY="\nJustification\n"
+       count=$((count + 1))
+       # suppress all others
+       SYNOPSIS=""
+       ABSTRACT=""
+       SYNOPSIS=""
+       DESCRIPTION=""
+       RETURN_VALUE=""
+       NOTES=""
+       INDEX=""
+       T_KEYWORDS=""
+       HISTORY=""
+       ;;
+
+    m) #for OM style macro header
+       NAME="$T_NAME  ${OPTARG}\n"
+       count=$((count + 1))
+       ;;
+
+    h) usage
+       exit 2
+       ;;
+
+    k) # for overriding default keywords
+       KEYWORDS="  $(echo $OPTARG)\n" # indent, strip multiple white spaces
+       ;;
+
+   \?) usage
+       exit 2
+       ;;
+  esac
+done
+
+shift $(($OPTIND - 1))
+
+
+if [ $# -ne 0 ]
+then
+  echo "$0: argument problem encountered"
+  usage
+  exit
+fi
+
+if [ $count -eq 0 ]
+then
+  echo "$0: Must use a single header-type switch"
+  usage
+  exit 2
+fi
+
+if [ $count -gt 1 ]
+then
+   echo "$0:  Only one switch can be used at a time"
+   exit 2
+fi
+
+# keyword check
+if [ -n "${T_KEYWORDS}" ]
+then
+  KEYWORDS="${T_KEYWORDS}${KEYWORDS}"
+else
+  KEYWORDS=""
+fi
+
+# justification check
+if [ -n "${T_JUSTIFY}" ]
+then
+  JUSTIFY="${T_JUSTIFY}"
+else
+  JUSTIFY=""
+fi
+
+#print the formated header
+echo '/*
+'"${NAME}${ABSTRACT}${SYNOPSIS}${DESCRIPTION}${RETURN_VALUE}${NOTES}${INDEX}${KEYWORDS}${JUSTIFY}${HISTORY}"'
+
+ */'
+
+# the end
