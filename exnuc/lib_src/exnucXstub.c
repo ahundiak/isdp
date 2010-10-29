@@ -26,7 +26,7 @@ IGEclosest_match_colors()
         printf("IGEclosest_match_colors is not implemented\n");
 	return 0;
 }
-#ifdef IRIX
+#if 1
 Help_kill()
 {
 	printf("EXNUCX stub:\t");
