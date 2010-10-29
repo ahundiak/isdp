@@ -1,19 +1,3 @@
-SRC
-$(EXNUC)/exec/locale
-
-SPEC
-$(EXNUC)/om/spec
-
-INCLUDE
-$(EXNUC)/include
-#if defined (X11)
-$(X11_INC_PATH)
-#endif
-#if defined (XGL)
-$(XGLHOME)/include
-$(XGLHOME)/include/xgl
-#endif
-
 SOURCE
 exlocale.C
 exlocinit.C
@@ -24,11 +8,16 @@ exlogkbd.C
 exlanguage.C
 
 LIB
-$(TARGET)/exec/lib/locale.o
+$EXNUC/lib/exec_locale.o
+
+SPEC
+$EXNUC/spec
+
+INCLUDE
+$EXNUC/include
 
 OPP
-$(BASE)/bin/opp
+$EXNUC/bin/opp
 
 OMCPP
-$(BASE)/bin/omcpp
-
+$EXNUC/bin/omcpp
