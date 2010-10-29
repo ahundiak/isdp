@@ -1,29 +1,22 @@
-SRC
-$(EXNUC)/exec/cm
-
 SOURCE
 cm.I
 cm_forms.C
 
-SPEC
-$(EXNUC)/spec
+LIB
+$EXNUC/lib/exec_cm.o
 
 INCLUDE
 $(EXNUC)/include
 $(EXNUC)/exec/wl
-#if defined (X11)
-$(X11_INC_PATH)
-#endif
-#if defined (XGL)
-$(XGLHOME)/include
-$(XGLHOME)/include/xgl
-#endif
+
+SPEC
+$EXNUC/spec
+
+OPP
+$EXNUC/bin/opp
+
+OMCPP
+$EXNUC/bin/omcpp
 
 DEFINE
 CCDEF
-
-OPP
-$(BASE)/bin/opp
-
-OMCPP
-$(BASE)/bin/omcpp
