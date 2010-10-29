@@ -1,30 +1,22 @@
-SRC
-$(EXNUC)/exec/module
-
 SOURCE
 modulei.I
 modinit.I
 modswitch.I
 
+LIB
+$EXNUC/lib/exec_module.o
+
 SPEC
-$(EXNUC)/spec
+$EXNUC/spec
 
 INCLUDE
-$(EXNUC)/include
-#if defined (ENV5)
-$(FORMS_INC_PATH)
-#elif defined (X11)
-$(XFORMSDP_INC_PATH)
-$(X11_INC_PATH)
-#endif
-#if defined (XGL)
-$(XGLHOME)/include
-$(XGLHOME)/include/xgl
-#endif
+$UMS/include
+$LIBXC/include
+$FORMS/include
+$EXNUC/include
 
 OPP
-$(BASE)/bin/opp
+$EXNUC/bin/opp
 
 OMCPP
-$(BASE)/bin/omcpp
-
+$EXNUC/bin/omcpp
