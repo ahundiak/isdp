@@ -1,24 +1,17 @@
-SRC
-$(EXNUC)/exec/shexec
-
 SOURCE
 exnucglobal.C
 
-INCLUDE
-$(EXNUC)/include
-#if defined (X11)
-$(X11_INC_PATH)
-#endif
-#if defined (XGL)
-$(XGLHOME)/include
-$(XGLHOME)/include/xgl
-#endif
+LIB
+$EXNUC/lib/exec_execsh.o
 
-#ifdef IRIX5
-OPPFLAGS
--I$(SRC)
--D_MIPS_ISA=_MIPS_ISA_MIPS2
-#endif
+SPEC
+$EXNUC/spec
+
+INCLUDE
+$EXNUC/include
+
+OPP
+$EXNUC/bin/opp
 
 OMCPP
-$(BASE)/bin/omcpp
+$EXNUC/bin/omcpp
