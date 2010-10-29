@@ -1,6 +1,3 @@
-SRC
-$(EXNUC)/message/src
-
 SOURCE
 MSmsg.C
 MSfile.C
@@ -9,37 +6,21 @@ MSonoff.C
 MSdismsg.C
 MSgmessage.C
 
+LIB
+$EXNUC/lib/message.o
 
 SPEC
-$(EXNUC)/om/spec
+$EXNUC/spec
 
 INCLUDE
-$(EXNUC)/include
-$(INGRHOME)/include
-$(FONTSERVE_INC_PATH)
-$(UMS_INC_PATH)
-#if defined (ENV5)
-$(FORMS_INC_PATH)
-#elif defined (X11)
-$(XFORMSDP_INC_PATH)
-$(X11_INC_PATH)
-#endif
-#if defined (XGL)
-$(XGLHOME)/include
-$(XGLHOME)/include/xgl
-#endif
-
-#if defined( NT )
-ARCHIVE
-$(TARGET)/message/lib/message.lib
-#else
-LIB
-$(TARGET)/message/lib/message.o
-#endif
+$UMS/include
+$LIBXC/include
+$FORMS/include
+$FORMS/fs_include
+$EXNUC/include
 
 OPP
-$(BASE)/bin/opp
+$EXNUC/bin/opp
 
 OMCPP
-$(BASE)/bin/omcpp
-
+$EXNUC/bin/omcpp

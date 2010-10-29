@@ -378,11 +378,11 @@ int nbytes;
 /*                                                            */
 /**************************************************************/
 #argsused
-int EX_fi_message_strip (form, label, value,M_form)
-int form;
-int label;
-double value;
-Form M_form;
+int EX_fi_message_strip (
+int form,
+int label,
+double value,
+Form M_form)
 {
 int dummy;
 char t_str[500];
