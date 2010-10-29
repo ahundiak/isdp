@@ -1,41 +1,23 @@
 COPT
-#ifdef NT
-
-#ifdef _DEBUG
--W3 -Zp8 -Gd -nologo -Od -Zi -MTd
-#else /* _DEBUG */
--W3 -Zp8 -Gd -nologo -O2
-#endif /* _DEBUG */
-
-#else /* NT */
 -DBASE_EMS
-#endif /* NT */
-
-SRC
-$(EXNUC)/om/IGRdir/group
 
 SOURCE
 GRoupi.I
 GRoupsi.I
 
-#if defined(CLIX) || defined(SUNOS) || defined(IRIX)
 LIB
-$(TARGET)/om/IGRdir/lib/GRouplib.o
-#elif defined(NT)
-ARCHIVE
-$(TARGET)\om\IGRdir\lib\GRouplib.lib
-#endif
+$EXNUC/lib/om_igrdir_group.o
 
 SPEC
-$(EXNUC)/spec
+$EXNUC/spec
 
 INCLUDE
-$(EXNUC)/include
-$(EXNUC)/om/IGRdir/include
+$EXNUC/include
+$EXNUC/om/include
+$EXNUC/om/IGRdir/include
 
 OPP
-$(BASE)/bin/opp
+$EXNUC/bin/opp
 
 OMCPP
-$(BASE)/bin/omcpp
-
+$EXNUC/bin/omcpp
