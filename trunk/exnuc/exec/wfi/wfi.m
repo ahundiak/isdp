@@ -1,6 +1,3 @@
-SRC
-$(EXNUC)/exec/wfi
-
 SOURCE
 IGEabsdigi.I
 IGEdigwini.I
@@ -16,25 +13,20 @@ waitmsg.C
 squeue.C
 button.C
 
-INCLUDE
-$(EXNUC)/include
-#if defined (ENV5)
-$(FORMS_INC_PATH)
-#elif defined (X11)
-$(XFORMSDP_INC_PATH)
-$(X11_INC_PATH)
-#endif
-#if defined (XGL)
-$(XGLHOME)/include
-$(XGLHOME)/include/xgl
-#endif
+LIB
+$EXNUC/lib/exec_wfi.o
 
 SPEC
-$(EXNUC)/spec
+$EXNUC/spec
+
+INCLUDE
+$UMS/include
+$LIBXC/include
+$FORMS/include
+$EXNUC/include
 
 OPP
-$(BASE)/bin/opp
+$EXNUC/bin/opp
 
 OMCPP
-$(BASE)/bin/omcpp
-
+$EXNUC/bin/omcpp
