@@ -1,6 +1,3 @@
-SRC
-$(EXNUC)/exec/execco
-
 SOURCE
 EX_bckupi.I
 EX_veri.I
@@ -20,27 +17,20 @@ EX_swapmenui.I
 EX_menuchki.I
 EX_rclkeyini.I
 
+LIB
+$EXNUC/lib/exec_execco.o
+
 SPEC
-$(EXNUC)/spec
+$EXNUC/spec
 
 INCLUDE
-$(EXNUC)/include
-$(UMS_INC_PATH)
-$(LIBXC_INC_PATH)
-#if defined (ENV5)
-$(FORMS_INC_PATH)
-#elif defined (X11)
-$(XFORMSDP_INC_PATH)
-$(X11_INC_PATH)
-#endif
-#if defined (XGL)
-$(XGLHOME)/include
-$(XGLHOME)/include/xgl
-#endif
+$UMS/include
+$LIBXC/include
+$FORMS/include
+$EXNUC/include
 
 OPP
-$(BASE)/bin/opp
+$EXNUC/bin/opp
 
 OMCPP
-$(BASE)/bin/omcpp
-
+$EXNUC/bin/omcpp
