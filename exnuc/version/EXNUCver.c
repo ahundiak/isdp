@@ -17,3 +17,8 @@ EX_get_version ()
     EX_date[sizeof(EX_date) - 1 ] = '\0';
  }
 
+/* ==================================
+ * Majic number taken from the icob makefile
+ */
+int give_cob_version() { return 4864; }
+
