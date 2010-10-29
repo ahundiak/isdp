@@ -158,19 +158,12 @@ extern Form	MS_panel_menu;
 %safe
 
 #argsused
-#ifdef ENV5
-void IGE_record_routine ( form_label, g_label, value, form )
-#elif defined(X11)
-int IGE_record_routine ( form_label, g_label, value, form )
-#elif defined( NT )
-int IGE_record_routine ( form_label, g_label, value, form )
-#else
-#error Unknown GUI
-#endif
-  int    form_label;
-  int    g_label;
-  double value;
-  Form   form;
+int IGE_record_routine (
+
+  int    form_label,
+  int    g_label,
+  double value,
+  Form   form)
 {
   int type, i, num_rows, selected;
   char form_name[15];
@@ -1678,7 +1671,7 @@ static int Locate_16char_start_byte( cpos, string )
   return (index);
 }
 #endif
-int IGEFEI_SSDrawText(window,font,fontAUX,text,length,x,y,nx,ny,mode)
+// int IGEFEI_SSDrawText(window,font,fontAUX,text,length,x,y,nx,ny,mode)
 /*********************************************************************
 
 Doc:
@@ -1704,7 +1697,7 @@ History: 16-MAR-89 MDS Genesis.
 		       Modified it.
 
 *******************************************************************/
-
+#if 0
   int		window;	  /* Environ V window number in which to draw */
   FontId	font;	  /* Font id of the 7 bit font                */
   FontId	fontAUX;  /* Font id of the 8 or 16 bit font          */
@@ -1714,6 +1707,18 @@ History: 16-MAR-89 MDS Genesis.
   double	*nx,*ny;  /* Returns the final x,y position	      */
   int		mode;	
 		 /* FI_FS_7_OR_16_BIT_FONT_TYPE - mixed 7 and 16 bits */
+#endif
+int IGEFEI_SSDrawText(
+  int		window,
+  FontId	font,
+  FontId	fontAUX,
+  unsigned char	*text,
+  int		length,
+  double	x,
+  double        y,
+  double       *nx,
+  double       *ny,
+  int		mode)
 {
   int		sts;	  /* Return status		*/
   int		pos;      /* Index into string          */
