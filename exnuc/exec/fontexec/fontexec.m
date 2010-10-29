@@ -1,31 +1,22 @@
-SRC
-$(EXNUC)/exec/fontexec
-
-INCLUDE
-$(EXNUC)/include
-$(FONTSERVE_INC_PATH)
-#if defined (X11)
-$(X11_INC_PATH)
-#endif
-#if defined (XGL)
-$(XGLHOME)/include
-$(XGLHOME)/include/xgl
-#endif
-
-SPEC
-$(EXNUC)/om/spec
-$(EXNUC)/exec/exec
-
 SOURCE
 FEchkrngspec.C
 FEfontexec.C
 FEmapaddfont.C
 FEreadfont.C
 
+LIB
+$EXNUC/lib/exec_font.o
+
+SPEC
+$EXNUC/spec
+
+INCLUDE
+$FORMS/include
+$FORMS/fs_include
+$EXNUC/include
+
 OPP
-$(BASE)/bin/opp
+$EXNUC/bin/opp
 
 OMCPP
-$(BASE)/bin/omcpp
-
-
+$EXNUC/bin/omcpp
