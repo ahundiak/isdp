@@ -621,7 +621,7 @@ long msg;
 static int EXgetprtfil_form_notif ( f_label, g_label, value, fp )
 int		f_label;	/* i - The label of the form	*/
 int		g_label;	/* i - The label of the gadget	*/
-double		value;		/* i - The value of the gadget	*/
+IGRdouble		value;		/* i - The value of the gadget	*/
 Form		fp;		/* i - Form pointer		*/
 {
 int     sf, rp, i;
@@ -977,7 +977,7 @@ char  text_buff[MAXPATHLEN];
 static int prtdef_form_notif( f_label, g_label, value, fp )
 int		f_label;	/* i - The label of the form	*/
 int		g_label;	/* i - The label of the gadget	*/
-double		value;		/* i - The value of the gadget	*/
+IGRdouble		value;		/* i - The value of the gadget	*/
 Form		fp;		/* i - Form pointer		*/
 {
 char text_buff[MAXPATHLEN];

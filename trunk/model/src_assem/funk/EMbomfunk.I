@@ -3125,7 +3125,7 @@ quit:
 void EMCnstr_notify(form_label, label, value, form_ptr )
   int     form_label;       /* The label of the form   */
   int     label;       /* The label of the gadget */
-  double  value;         /* The value of the gadget */
+  IGRdouble  value;         /* The value of the gadget */
   Form    form_ptr;            /* Pointer to the form     */ 
 {
    ASM_tree *p_node;
@@ -3355,7 +3355,7 @@ void EMCnstr_notify(form_label, label, value, form_ptr )
 void EMPrt_notify ( f_label, g_label, value, fp )
   int     f_label;       /* The label of the form   */
   int     g_label;       /* The label of the gadget */
-  double  value;         /* The value of the gadget */
+  IGRdouble  value;         /* The value of the gadget */
   Form    fp;            /* Pointer to the form     */
 {
   int  status;

@@ -601,7 +601,7 @@ int	PALlist_notify_routine(form_label, gadget_label, value, form )
 
   int form_label;
   int gadget_label;
-  double value;
+  IGRdouble value;
   Form form;
 {
 

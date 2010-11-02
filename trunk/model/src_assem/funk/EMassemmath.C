@@ -1599,7 +1599,7 @@ AXIS_INFO axis_part1,axis_part2;
 }
 
 /*******************************************************************************
-   Description      : ‚Core routine for mate-mate-acute without freezing other 
+   Description      : ï¿½Core routine for mate-mate-acute without freezing other 
    		       degrees of freedom
    Return Values    :  ASM_MATH_SUCC - Successful
 		       ASM_MABS_FAIL - Failure
@@ -2164,8 +2164,8 @@ IGRvector nrm1;
 **************************************************************************/
 
 IGRint MATH_ang_of_lines (vec1, vec2, angle, norm)
-double *vec1,*vec2,*norm;
-double *angle;
+IGRdouble *vec1,*vec2,*norm;
+IGRdouble *angle;
 {
         int rc;
         double cost,sint, dotp;

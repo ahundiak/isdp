@@ -48,7 +48,7 @@ class implementation EMinstance;
 int EMget_basis(num_inc, constype, rel_angle, pbasis_id)
 IGRint num_inc;	                   /* The # of incident constr */
 unsigned int constype[];           /* The set of incident constraints */
-double rel_angle[];                /* The relative angle between constraints */
+IGRdouble rel_angle[];                /* The relative angle between constraints */
 unsigned int *pbasis_id;           /* The basis id OUT */
 {
   unsigned int constr_basis;
