@@ -12,13 +12,10 @@
 
 
 #### Compiler and tool definitions shared by all build targets #####
-ISDP_C_CC	= cc
-ISDP_C_DEFINES	= -Di86pc
-C_DEFINES	= $(ISDP_C_DEFINES)
-ISDP_C_FLAGS	= -g -xCC -Xa -Kpic -m32
 CC		= $(ISDP_C_CC)
+C_DEFINES	= $(ISDP_C_DEFINES) -DSHFONT -DNDEBUG
 CPPFLAGS	= -I../include
-CFLAGS		= $(CPPFLAGS) $(C_FLAGS) $(C_DEFINES)
+CFLAGS		= $(ISDP_C_FLAGS) -g $(C_DEFINES)
 
 
 # Define the target directories.
