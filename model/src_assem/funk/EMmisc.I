@@ -266,7 +266,7 @@ char   loc_str[156], *ptr = NULL;
 
 EMevaluate_exp_syntax(exp_name, exp_syntax, expval, p_mod_env, p_osnum)
 char	*exp_syntax, *exp_name;
-double	*expval;
+IGRdouble	*expval;
 struct	GRmd_env *p_mod_env;
 OMuword	*p_osnum;
 {

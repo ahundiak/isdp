@@ -44,7 +44,7 @@ int EMgetrelang(part_grid, incident_constr_1, incident_constr_2, prel_angle)
 struct GRid part_grid;                  /* The part on which constraints act */
 struct GRid incident_constr_1;		/* The incident constraints */
 struct GRid incident_constr_2;		/* The incident constraints */
-double *prel_angle;
+IGRdouble *prel_angle;
 {
   IGRlong msg_loc, stat_OM;
   IGRboolean is_incident_1, is_incident_2;
