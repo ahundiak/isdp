@@ -24,13 +24,14 @@ History:
 
   Creation : pp : 02/15/90
 ******************************* */
+typedef double IGRdouble;
 
 MSget_first_area_moments(rec_origin,centroid,prop,mx,my)
 
-double *rec_origin;
-double *centroid;
-double prop[20];
-double *mx, *my;
+IGRdouble *rec_origin;
+IGRdouble *centroid;
+IGRdouble prop[20];
+IGRdouble *mx, *my;
 
 {
   double newcent[3];
