@@ -628,7 +628,7 @@ wrapup:
 
 IGRint ECxhatch_process_form (form_label, gadget_label, value, form_ptr)
 int form_label, gadget_label;
-double value;
+IGRdouble value;
 Form  form_ptr;
 {
   IGRint stat_func, stat_OM;
