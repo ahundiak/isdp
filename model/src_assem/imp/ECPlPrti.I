@@ -877,7 +877,7 @@ quit:
 int plcmntops_form_notif( f_label, g_label, value, fp )
 int  	f_label;
 int  	g_label;
-double  	value;	
+IGRdouble  	value;
 Form  	fp;	
 {
   IGRint   	status;

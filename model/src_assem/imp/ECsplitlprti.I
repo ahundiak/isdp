@@ -62,7 +62,7 @@ enum states {LOC_ELEMENT,
              SHOW_FORM,
              FILE_EXIST,
              GET_VIEW,
-	     EXE_SPLIT
+             EXE_SPLIT
              };
 #define FINISHED -1
 
@@ -99,10 +99,11 @@ enum states {LOC_ELEMENT,
 /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*
                Interface functions between C-forms and CO
  *~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
+typedef double IGRdouble;
 
 ECsplit_local_router(form_label,label,value,form_ptr)
 int form_label,label;
-double value;
+IGRdouble value;
 char *form_ptr;
 {
  int status;
@@ -126,7 +127,7 @@ quit:
 
 ECsplit_status_router(form_label,label,value,form_ptr)
 int form_label,label;
-double value;
+IGRdouble value;
 char *form_ptr;
 {
  int status;
