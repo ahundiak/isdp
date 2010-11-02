@@ -78,11 +78,12 @@ int spl_bits;
 
     p->info.op_type = op | spl_bits;
 }
+typedef double IGRdouble;
 
 /* Form notification routine for Revise Assembly */
 int EMrevasm_callback(f_label, g_label, value, form)
 int f_label, g_label;
-double value;
+IGRdouble value;
 Form form;
 {   
 REVASM_TREE *p, *tr_p;
