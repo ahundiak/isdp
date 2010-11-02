@@ -28,16 +28,17 @@ History
 	RC	08/31/87	Modified to return 4*4 matrix
 */
 
-	
+typedef double IGRdouble;
+
 short  EFget_uv_trans_mat (rc,
                            org_range,
                            new_range,
                            trans_mat)
 
   long        *rc;
-  double      org_range[4];
-  double      new_range[4];
-  double      trans_mat[16];
+  IGRdouble    org_range[4];
+  IGRdouble    new_range[4];
+  IGRdouble    trans_mat[16];
 
 {
   int	i;
