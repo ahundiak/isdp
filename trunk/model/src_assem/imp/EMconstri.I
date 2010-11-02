@@ -241,7 +241,7 @@ wrap_up:
 
 get_exp_val( expid, value )
 struct GRid *expid;
-double *value;
+IGRdouble *value;
 {
 struct 	  ret_struct retst;
 struct    GRmd_env env;

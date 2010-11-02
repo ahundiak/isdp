@@ -88,7 +88,7 @@ enum states {LOC_ELEMENT,
 
 ECsplit_router(form_label,label,value,form_ptr)
 int form_label,label;
-double value;
+IGRdouble value;
 char *form_ptr;
 {
  int status;
