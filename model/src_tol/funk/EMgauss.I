@@ -5,9 +5,7 @@ class implementation Root;
 %endsafe
 #include <stdlib.h>
 
- void EMgauss(iseed,deviate)
- double  *deviate;
- long  *iseed;
+ void EMgauss(long *iseed, double *deviate)
  {
  int iset=0;
  double gset,v1,v2,fac,r,rand;

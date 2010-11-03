@@ -7,8 +7,10 @@ class implementation Root;
 #include <stdlib.h>
 double exp();
 
+typedef double IGRdouble;
+
 double EMgas(x,y,arglist,rc)
- double x,y;
+  IGRdouble x,y;
  long  *rc;
  char *arglist;
  {

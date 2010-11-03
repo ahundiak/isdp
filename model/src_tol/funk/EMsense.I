@@ -63,11 +63,11 @@ from expression import modify;
 
         struct GRmd_env  *driven_dimension_env;
         struct GRid      *driven_dimension_grid, *driving_dimension_grid;
-        double           *driving_dim_hi_tol,
+     IGRdouble           *driving_dim_hi_tol,
                          *driving_dim_value;
-        double           *driving_dim_low_tol;
-        double           *sensitivity;
-        double           *percent_contribution ;
+     IGRdouble           *driving_dim_low_tol;
+     IGRdouble           *sensitivity;
+     IGRdouble           *percent_contribution ;
 
         int     *num_of_dim,
                 *driven_dim_type;

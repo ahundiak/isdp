@@ -43,7 +43,6 @@ class implementation Root;
 #include "msmacros.h"
 #include "EC_S.h"
 
-
 #define ERROR(sts_stupid, error_number, error_message)\
  {\
   if (! (1 & sts_stupid & error_number)) goto wrapup;\
@@ -80,7 +79,7 @@ from expression import modify;
 
         int     *driven_dim_type;
 
-        double  *driving_dim_hi_tol,
+     IGRdouble  *driving_dim_hi_tol,
                 *driving_dim_value,
                 *driving_dim_low_tol,
                 *histogram,

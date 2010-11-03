@@ -7,8 +7,10 @@ class implementation Root;
 
 double pow(), log();
 
+typedef double IGRdouble;
+
  void EMweibull(sigma,eat,iseed,deviate)
- double  *deviate,*sigma,*eat;
+ IGRdouble  *deviate,*sigma,*eat;
  long  *iseed;
 
  {

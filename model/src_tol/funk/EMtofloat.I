@@ -3,9 +3,7 @@ class implementation Root;
 #include <ctype.h>
 #include <string.h>
 
-   void EMtofloat(char_array,number)
-   char *char_array;
-   double *number;
+   void EMtofloat(char *char_array, double *number)
    {
 
    int multiplier=1;
