@@ -24,7 +24,9 @@ $(GRNUC)/spec
 $(MODEL)/spec
 LIB
 $(MDTARG)/src_lib/EMSdprI.o
-SOURCE=grp1
+
+/* SOURCE=grp1 */
+SOURCE
 EMaddnode.I
 EMaddraftdim.I
 EMaddraftgoi.I
