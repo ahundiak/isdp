@@ -64,8 +64,7 @@ History
   06/22/93 : Carlos M. Diaz :  created
  */
 
-int compare_doubles(a, b) 
-double *a, *b;
+int compare_doubles(double *a, double *b) 
 {
   return((*a == *b) ? 0 : (*a < *b) ? -1 : 1);
 }
@@ -97,9 +96,7 @@ History
   06/22/93 : Carlos M. Diaz : created
 
 */
-int elim_adj_reps (list, length)
-double *list;
-int *length;
+int elim_adj_reps (double *list, int *length)
 {
   int i;
 #ifdef DEBUG
