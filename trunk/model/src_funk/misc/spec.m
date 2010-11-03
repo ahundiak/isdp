@@ -5,8 +5,8 @@ $(EXTARG)/bin/opp
 OMCPP
 $(EXTARG)/bin/omcpp
 INCLUDE
-$(INGRHOME)/include
-$(XINC)
+$(UMS)/include
+$(FORMS)/include
 $(GRNUC)/ingrsys
 $(MODEL)/include
 $(EXNUC)/include
@@ -23,7 +23,8 @@ $(GRNUC)/spec
 $(MODEL)/spec
 LIB
 $(MDTARG)/src_lib/EMSmiscF.o
-SOURCE=grp1
+/* SOURCE=grp1 */
+SOURCE
 DEhiliteso.I
 EF2dpyint.C
 EFMatch.I
