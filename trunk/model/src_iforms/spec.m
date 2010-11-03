@@ -11,7 +11,7 @@ $(EXTARG)/bin/omcpp
 INCLUDE
 $(MODEL)/src_iforms/include
 $(INGRHOME)/include
-$(XINC)
+$(FORMS)/include
 $(GRNUC)/ingrsys
 $(MODEL)/include
 $(EXNUC)/include
