@@ -22,7 +22,8 @@ $(GRNUC)/spec
 $(MODEL)/spec
 LIB
 $(MDTARG)/src_lib/EMSsketchI.o
-SOURCE=grp1
+/* SOURCE=grp1 */
+SOURCE
 SKaoeval.I
 SKaomkjacob.I
 SKarci.I

@@ -231,7 +231,7 @@ static void AutoPermanentWindow ()
 void AutoProcessForm ( FormLabel, GadgetLabel, Value )
 int    FormLabel;
 int    GadgetLabel;
-double Value;
+IGRdouble Value;
 {
   GRspacenum Osnum;
   char       Syntax [DI_PATH_MAX];

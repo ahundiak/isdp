@@ -722,7 +722,7 @@ ret_end:
 int ConvertProcessForm ( FormLabel, GadgetLabel, Value, form_ptr )
 int    FormLabel;
 int    GadgetLabel;
-double Value;
+IGRdouble Value;
 Form   form_ptr;
 {
   IGRlong msg_loc;

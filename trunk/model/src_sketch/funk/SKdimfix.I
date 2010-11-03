@@ -712,8 +712,8 @@ put_back_dim_constrs(struct GRid mgr)
 }
 
 angle_between_lines(vec1,vec2,angle,norm)
-double *vec1,*vec2,*norm;
-double *angle;
+IGRdouble *vec1,*vec2,*norm;
+IGRdouble *angle;
 {
     int rc;
     double cost,sint, dotp;
