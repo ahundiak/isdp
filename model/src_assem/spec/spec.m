@@ -5,7 +5,7 @@ $(EXTARG)/bin/opp
 OMCPP
 $(EXTARG)/bin/omcpp
 INCLUDE
-$(INGRHOME)/include
+$(FORMS)/include
 $(MODEL)/include
 $(EXNUC)/include
 $(GRNUC)/include
