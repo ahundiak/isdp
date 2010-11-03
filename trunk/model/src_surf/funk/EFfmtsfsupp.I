@@ -1094,7 +1094,7 @@ for (vix = 0, grix = 0;  vix < num_v_patches; vix++)
 static int workfunc (datfile, dim, num_points, points)
 FILE *datfile;
 int dim, num_points;
-double *points;
+IGRdouble *points;
 {
   int i, funcval;
   double (*pts2d)[2], (*pts3d)[3];
