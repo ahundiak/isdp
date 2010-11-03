@@ -9,9 +9,7 @@ class implementation Root;
 #define  IA 1366
 #define  IC 150889
 
-void EMrand(idum,dev)
-double *dev;
-long *idum;
+void EMrand(long *idum, double *dev)
 {
      static long iy, ir[98];
      static int iff=0;

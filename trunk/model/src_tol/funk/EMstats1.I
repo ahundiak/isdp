@@ -76,7 +76,7 @@ from expression import modify;
 
         IGRboolean   *driving_dim_sel;
 
-        double  *driving_dim_hi_tol,
+     IGRdouble  *driving_dim_hi_tol,
                 *driving_dim_type,
                 *driving_dim_value,
                 *driving_dim_low_tol,
