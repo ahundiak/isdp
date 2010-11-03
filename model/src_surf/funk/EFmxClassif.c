@@ -7,9 +7,7 @@
 
 # define IS     ==
 
-int EFmatrixClassification(mx)
-
-double  *mx;
+int EFmatrixClassification(double *mx)
 
 /*
 Abstract

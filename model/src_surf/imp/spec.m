@@ -1,15 +1,16 @@
 SRC
 $(MODEL)/src_surf/imp
+
 OPP
 $(EXTARG)/bin/opp
 OMCPP
 $(EXTARG)/bin/omcpp
+
 INCLUDE
-$(INGRHOME)/include
-$(XINC)
+$(FORMS)/include
 $(GRNUC)/ingrsys
 $(MODEL)/include
-$(HSURF)/include
+/* $(HSURF)/include */
 $(EXNUC)/include
 $(GRNUC)/include
 $(BS)/include
@@ -22,11 +23,11 @@ $(XGLHOME)/include/xgl
 SPEC
 $(GRNUC)/spec
 $(MODEL)/spec
-$(HSURF)/spec
+/* $(HSURF)/spec */
 $(EXNUC)/spec
 LIB
 $(MDTARG)/src_lib/EMSsurfI.o
-SOURCE=grp1
+SOURCE
 EFMkSkinSrf.I
 EFSpltSrf.I
 EMblendsf34.I
