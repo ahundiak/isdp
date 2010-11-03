@@ -443,7 +443,7 @@ ECmf_show_segs(msg, fill_sf, num, str_segs, end_segs)
 IGRlong *msg;
 struct IGRbsp_surface *fill_sf;
 int num;
-double *str_segs, *end_segs;
+IGRdouble *str_segs, *end_segs;
 {
   IGRlong               rc=BSSUCC, stat=1, mloc=1;
   IGRint                ii;

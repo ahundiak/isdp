@@ -678,7 +678,7 @@ method wakeup(int pos)
 
 IGRint process_form(form_label, gadget_label, value)
 int form_label, gadget_label;
-double value;
+IGRdouble value;
 {
  IGRlong sts,EMmsg;
  int sel, rpos;

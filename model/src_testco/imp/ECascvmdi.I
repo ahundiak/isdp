@@ -466,7 +466,7 @@ wrapup:
 
 IGRint opt1_process_form (form_label, gadget_label, value,
 form_ptr) 
-  int form_label, gadget_label; double value; Form form_ptr; 
+  int form_label, gadget_label; IGRdouble value; Form form_ptr;
 {
   /***opt1_process_form***/
 

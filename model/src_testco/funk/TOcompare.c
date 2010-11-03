@@ -9,9 +9,7 @@
 
 #define absdif(a,b) ((a>b)?(a-b):(b-a))
 
-int TOcompare(a,b,top_tol)
-double top_tol;
-struct point **a, **b;
+int TOcompare(struct point **a, struct point **b, double top_tol)
 {
    if(absdif(((*a)->x),((*b)->x)) > top_tol) 
       return(((*a)->x < (*b)->x) ? -1 : 1);
