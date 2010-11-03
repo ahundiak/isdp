@@ -332,7 +332,7 @@ wrapup:
 }
 
 static void free_pts (pts, num)
-double ***pts;
+IGRdouble ***pts;
 int num;
 {
   int i; 
