@@ -4,9 +4,11 @@ OPP
 $(EXTARG)/bin/opp
 OMCPP
 $(EXTARG)/bin/omcpp
+        
 INCLUDE
-$(INGRHOME)/include
-$(XINC)
+$(UMS)/include
+$(FORMS)/include
+$(LIBXC)/include
 $(GRNUC)/ingrsys
 $(MODEL)/include
 $(MODEL)/src_testco/include
@@ -14,7 +16,6 @@ $(EXNUC)/include
 $(GRNUC)/include
 $(BS)/include
 $(BS)/include/prototypes
-$(INGRHOME)/include/xc
 #if defined (XGL)
 $(XGLHOME)/include
 $(XGLHOME)/include/xgl

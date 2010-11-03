@@ -948,7 +948,7 @@ wrapup:
 
 IGRint main_process_form (form_label, gadget_label, value,
 form_ptr) 
-  int form_label, gadget_label; double value; Form form_ptr; 
+  int form_label, gadget_label; IGRdouble value; Form form_ptr;
 {
   /***main_process_form***/
 
@@ -2110,7 +2110,7 @@ wrapup:
 
 IGRint edt_process_form (form_label, gadget_label, value,
 form_ptr) 
-  int form_label, gadget_label; double value; Form form_ptr; 
+  int form_label, gadget_label; IGRdouble value; Form form_ptr;
 {
   /***edt_process_form***/
   IGRint stat_func;

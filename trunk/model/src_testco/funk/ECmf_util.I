@@ -181,7 +181,7 @@ ret_end:
 
 static void ECrnd_opt_notify(form_label, gad_label, value, form_ptr)
 int form_label, gad_label;
-double value;
+IGRdouble value;
 char * form_ptr;
 {
   unsigned int cmd_oid;

@@ -2,7 +2,7 @@
 class implementation ECdynload;
 
 #include "EMS.h"
-#include "xc/dload.h"
+#include "dload.h"
 /*
 DESCRIPTION
         DEBUG COMMAND

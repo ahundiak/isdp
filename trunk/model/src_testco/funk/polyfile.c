@@ -7,7 +7,7 @@
 
 int polyfile (num_points, points)
 int num_points;
-double *points;
+IGRdouble *points;
 {
   char filename[20];
   int dim, funcval;
@@ -37,7 +37,7 @@ double *points;
 
 int polysfile (numgrp, numpts_grp, pts)
 int numgrp, *numpts_grp;
-double **pts;
+IGRdouble **pts;
 {
   char filename[20];
   int i, dim, funcval;
@@ -103,7 +103,7 @@ struct IGRbsp_curve *cv;
 int pywritefunk (datfile, dim, num_points, points)
 FILE *datfile;
 int dim, num_points;
-double *points;
+IGRdouble *points;
 {
   int i, funcval;
   double (*pts2d)[2], (*pts3d)[3];
@@ -136,7 +136,7 @@ return (funcval);
 int cvpywritefunk (datfile, dim, tol, cv)
 FILE *datfile;
 int dim;
-double tol;
+IGRdouble tol;
 struct IGRbsp_curve *cv;
 {
   int stat_func, numpts;
@@ -172,7 +172,7 @@ struct IGRbsp_curve *cv;
 int prtmat (datfile, m, n, p)
 FILE *datfile;
 int m, n;
-double *p;
+IGRdouble *p;
 {
   char filename[20];
   int i, j, here_file;
