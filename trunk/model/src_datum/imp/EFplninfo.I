@@ -86,10 +86,10 @@ IGRlong EFget_pln_info( p_datum_plane,
   struct GRid *p_datum_plane;
   unsigned int options;
   struct GRmd_env *env;
-  double *xdir;
-  double *ydir;
-  double *zdir;
-  double *origin;
+  IGRdouble *xdir;
+  IGRdouble *ydir;
+  IGRdouble *zdir;
+  IGRdouble *origin;
   unsigned int *props;
 {
   int OMsts = OM_S_SUCCESS;
