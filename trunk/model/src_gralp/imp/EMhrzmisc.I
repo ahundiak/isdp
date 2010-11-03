@@ -35,7 +35,7 @@ extern IGRboolean  MAinvmx();
 int EMcompare_vectors(v1, v2, result)
 
 IGRvector   v1, v2;
-double      *result;
+IGRdouble  *result;
 
 {
   long      rc;
