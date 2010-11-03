@@ -469,7 +469,7 @@ ret_end:
 
 static void post_temp_value (dim_type, dim_value, dim_grid, md_env)
 IGRshort dim_type;
-double dim_value;
+IGRdouble dim_value;
 struct GRid *dim_grid;
 struct GRmd_env *md_env;
 {

@@ -28,9 +28,9 @@ long                  *msg;
 unsigned short        opts;
 struct GRid           *comp_curve;
 struct GRmd_env       *md_env;
-double                *origin;
-double                *x_axis;
-double                *z_axis;
+IGRdouble             *origin;
+IGRdouble             *x_axis;
+IGRdouble             *z_axis;
 struct GRid           *mgr_GRid, *cv_GRid;
 {
   int 			element_no, count;

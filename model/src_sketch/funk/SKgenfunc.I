@@ -217,11 +217,11 @@ IGRchar *grclass_name;
 
 #argsused
 void SKget_included_geom (msg, opts, ptid_pair, geomclass, geomid)
-IGRlong *msg;
+IGRlong  *msg;
 IGRushort opts;
-GRobjid *ptid_pair;
+GRobjid  *ptid_pair;
 GRclassid geomclass;
-GRobjid *geomid;
+GRobjid  *geomid;
 {
   IGRint i, j, inxlim, counts[2];
   OMuint count;
@@ -333,11 +333,11 @@ History
 #define MAINTAIN_DATA_BASE_UNITS -1
 
 void EMcnvt_db_dim_units (msg, expid, val, valtype, revcnv)
-long 		*msg;
-struct GRid 	*expid;
-double 		*val;
-char 		*valtype;
-IGRboolean 	revcnv;
+long 		    *msg;
+struct GRid *expid;
+IGRdouble 	*val;
+char 		    *valtype;
+IGRboolean 	 revcnv;
 {
   IGRchar 		unit_alias[GRIO_MAX_ALIAS_SIZE], 
   			working_unit_alias[GRIO_MAX_ALIAS_SIZE];

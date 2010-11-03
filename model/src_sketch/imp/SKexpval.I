@@ -254,7 +254,7 @@ void SKforget_dims ()
 SKget_last_dim ( osnum, objid, p_value )
 GRspacenum  osnum    /* The osnum of the dim				IN  */;
 GRobjid     objid    /* The objid of the dim				IN  */;
-double      *p_value /* Its value          				OUT */;
+IGRdouble  *p_value /* Its value          				OUT */;
 {
   int i;
   

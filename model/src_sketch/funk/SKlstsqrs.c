@@ -45,9 +45,9 @@ void SKleast_squares (msg, num_vars, num_eqns,
 long *msg;
 int num_vars, num_eqns;
 struct BSspars_mat *jacobian;
-double *funcval;
-double zerotol;
-double *deltas;
+IGRdouble *funcval;
+IGRdouble zerotol;
+IGRdouble *deltas;
 {
   int num_unconstr, num_redund, num_confl;
   int *unconstr_inx, *confl_inx;
@@ -125,7 +125,7 @@ void SKsparse_mult ( msg, jac, jjt, zerotol)
 long               *msg	    /* The return code					OUT */;
 struct BSspars_mat *jac     /* Values of the sparse elements			IN  */;
 struct BSspars_mat *jjt	    /* The matrix product of [J]x[Jt]		        OUT */;
-double             zerotol  /* Zero tolerance                                   IN  */;
+IGRdouble             zerotol  /* Zero tolerance                                   IN  */;
 {
    int    i, j, m;
    int    ik, jk;
@@ -245,8 +245,8 @@ double             zerotol  /* Zero tolerance                                   
 void SKsparse_vecmul ( msg, jac, lambda, deltax)
 long      *msg	           /* The return code				OUT */;
 struct BSspars_mat *jac    /* Sparse matrix                             IN  */;
-double    *lambda          /* The vector   			        IN  */,
-          *deltax          /* The multiplication result of jacT*lambda	OUT */; 
+IGRdouble    *lambda       /* The vector   			        IN  */,
+             *deltax       /* The multiplication result of jacT*lambda	OUT */;
 {
    int    i, k;
 

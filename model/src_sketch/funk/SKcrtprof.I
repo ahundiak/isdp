@@ -71,15 +71,15 @@ static int degrees_of_freedom ();
 #argsused
 long SKcreate_profile ( msg, opts, curve, md_env, datplane, datpoint, xyz_origin, x_axis, z_axis,
                         num_cnstr_ptinfo, cnstr_ptinfo, closed, skmgr )
-long 		*msg;
+IGRlong 		*msg;
 IGRushort 	opts;
 GRobjid 	curve;
 struct GRmd_env *md_env;
 struct GRid 	*datplane, *datpoint;
-double 		*xyz_origin;
-double 		*x_axis;
-double 		*z_axis;
-int 		num_cnstr_ptinfo;
+IGRdouble 		*xyz_origin;
+IGRdouble 		*x_axis;
+IGRdouble 		*z_axis;
+IGRint 		num_cnstr_ptinfo;
 struct SKcnstr_ptinfo *cnstr_ptinfo;
 IGRboolean 	closed;
 GRobjid 	*skmgr;

@@ -16,7 +16,7 @@ GRspacenum        os;
 GRobjid           grobj;
 struct IGRdisplay *disp_attr;
 short             *disp_level;
-double            *disp_len;
+IGRdouble         *disp_len;
 {
   long                  msg_loc, stat_OM;
   struct GRsymbology    symb;
