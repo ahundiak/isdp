@@ -37,12 +37,12 @@ static void cnvt_py_to_cv
 */     
 
 void pwInitCvpt (cvpt, topopos, pt, ptdim, spaninx, spanpar, cvid)
-struct PWcvpt *cvpt;
-enum PWtopopostype topopos;
-double *pt;
+struct     PWcvpt *cvpt;
+enum       PWtopopostype topopos;
+IGRdouble *pt;
 int ptdim, spaninx;
-double spanpar;
-PWobjid cvid;
+IGRdouble  spanpar;
+PWobjid    cvid;
 {
   double *p;
 
