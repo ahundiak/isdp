@@ -3,6 +3,14 @@
 #ifndef _TYPES
 #define _TYPES	0
 
+/* ===============================================================
+ * The Boolean typedef caused problems somewhere in Vds
+ * X11 defines it as a char
+ * and Vds was complaining about it
+ *
+ * But up to Grnuc ar least, int seems to work fine
+ * int was the original definition so setting it back for now
+ */
 
 /**********************************
 * Generic scalar type definitions *
@@ -12,7 +20,9 @@ typedef char		Int8;
 typedef short		Int16;
 typedef int		Int32,
 			Int;
-typedef char            Boolean; // Was an int
+
+typedef int            Boolean; // Was an int
+
 typedef unsigned char	uInt8,
 			Char8,
 			Char;
