@@ -1,7 +1,6 @@
 SOURCE
 exnucXstub.c
 fp_stub.c
-link_stub.c
 
 LIB
 $EXNUC/lib/exstubs.o
