@@ -47,7 +47,7 @@ printf("\n*** Constructed class D object ***\n");
 printf("\n Prepare to send to parent's display.\n");
 #endif
 
-sts = om$make_message(	classname="classd", 
+sts = om$make_message(	classname="classd",
 			methodname="display", 
 			p_msg=&display_msg);
 			
