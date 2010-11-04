@@ -3,7 +3,9 @@ EX_bckupi.I
 EX_veri.I
 EX_filei.I
 EX_funckyi.I
+#if 0
 EX_digi.I
+#endif
 EX_defbuti.I 
 EX_testi.I
 EX_pricmdi.I
