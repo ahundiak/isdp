@@ -10,7 +10,7 @@
 #define	MSG_SND_KEY	0x48515346	/* send msg queue key ("FSQ0") */
 #define	MSG_RCV_KEY	0x49515346	/* receive msg queue key ("FSQ1") */
 
-#define	DAEMON_PATH	"/usr/ip32/resrc/fontserver/fsdaemon"
+#define	DAEMON_PATH	"/opt/ingr/resrc/fontserver/fsdaemon"
 
 
 /** Message opcodes **/

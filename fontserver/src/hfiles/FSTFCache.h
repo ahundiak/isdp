@@ -12,26 +12,26 @@
 
 #define	TF_CACHE_SIZE	4		/* size of typeface cache */
 
-#define TF_PATH		"/usr/ip32/resrc/fontserver/typeface"
+#define TF_PATH		  "/opt/ingr/resrc/fontserver/typeface"
 #define	TF_PATH_VAR	"FS_TFPATH"
-#define	TF_EXT		".tf"
+#define	TF_EXT		  ".tf"
 
 
 typedef struct
 {
-    TFBlockHeader	infoHdr;	/* font info block header	*/
-    TFInfo		info;		/* general font information	*/
-    TFBlockHeader	kernPairHdr;	/* kerning pair data block hdr	*/
-    TFKernPair		*kernPair;	/* ptr to kern pair records	*/
-    TFBlockHeader	ligatureHdr;	/* ligature data block header	*/
-    TFLigature		*ligature;	/* ptr to ligature records	*/
-    TFBlockHeader	kernTrackHdr;	/* track kerning data block hdr	*/
-    TFKernTrack		*kernTrack;	/* ptr to track kern records	*/
-    TFBlockHeader	charDirHdr;	/* char directories block hdr	*/
-    TFCharInfo		*charDir;	/* ptr to char directory recs	*/
-    TFBlockHeader	outlinesHdr;	/* outline data block header	*/
-    TFOutlines		*outlines;	/* ptr to comp outline data	*/
-    char		*memory;	/* memory allocated for tf	*/
+    TFBlockHeader	 infoHdr;	     /* font info block header	*/
+    TFInfo		     info;		      /* general font information	*/
+    TFBlockHeader	 kernPairHdr;	  /* kerning pair data block hdr	*/
+    TFKernPair		*kernPair;	    /* ptr to kern pair records	*/
+    TFBlockHeader	 ligatureHdr;	  /* ligature data block header	*/
+    TFLigature		*ligature;	    /* ptr to ligature records	*/
+    TFBlockHeader	 kernTrackHdr;	/* track kerning data block hdr	*/
+    TFKernTrack		*kernTrack;	    /* ptr to track kern records	*/
+    TFBlockHeader	 charDirHdr;	  /* char directories block hdr	*/
+    TFCharInfo		*charDir;	      /* ptr to char directory recs	*/
+    TFBlockHeader	 outlinesHdr;	  /* outline data block header	*/
+    TFOutlines		*outlines;	    /* ptr to comp outline data	*/
+    char		      *memory;	      /* memory allocated for tf	*/
 }   TFStruct;	/* typeface (compressed outline) structure */
 
 

@@ -13,9 +13,9 @@
 #define	CM_CACHE_SIZE	4		/* size of char map cache */
 #define MAX_CHARMAP	64		/* to support char map ids */
 
-#define CM_PATH		"/usr/ip32/resrc/fontserver/charmap"
+#define CM_PATH		  "/opt/ingr/resrc/fontserver/charmap"
 #define	CM_PATH_VAR	"FS_CMPATH"
-#define	CM_EXT		".cm"
+#define	CM_EXT		  ".cm"
 
 
 /** Character mapping file header **/
