@@ -5,4 +5,4 @@ mkfile: ums.m
 	grmakemake ums.m mkfile
 
 clean:
-	@rm -f *.o
+	@rm -f *.o mkfile
