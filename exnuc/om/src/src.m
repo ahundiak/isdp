@@ -59,7 +59,7 @@ OMarch.C
 OMsibling.C
 
 LIB
-$EXNUC/lib/omsrc.o
+$EXNUC/lib/om_src.o
 
 SPEC
 $EXNUC/spec
