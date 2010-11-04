@@ -1,6 +1,5 @@
 SOURCE
 EXNUCapplinit.C
-EXNUCclassinit.C
 EXNUCver.c
 
 LIB

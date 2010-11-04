@@ -13,7 +13,7 @@
 
 extern IGRshort           MS_Gs_messages_on;
 static int              first_msinit = 1;
-static first = 1;
+static int first = 1;
 static struct MS_session_config *MS_session_config = 0;
 static int file_found = 0;
 
