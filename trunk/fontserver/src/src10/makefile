@@ -1,8 +1,8 @@
 target: mkfile
 	grmake -r -k -f mkfile
 
-mkfile: fs.m
-	grmakemake fs.m mkfile
+mkfile: xfs.m
+	grmakemake xfs.m mkfile
 
 clean:
 	@rm -f *.o
