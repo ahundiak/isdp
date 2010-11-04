@@ -1,7 +1,7 @@
-SOURCE
+SOURCE=align
 align.C
 
-EXEC
+EXEC=align
 align
 
 LINKLIB
