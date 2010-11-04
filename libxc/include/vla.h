@@ -1,6 +1,12 @@
 #ifndef _VLA_H
 #define _VLA_H  1
 
+/* ---------------------------------------------------------
+ * This tries to define a structure where t sets the data type
+ * of the body.  Editor does not like it at all;
+ *
+ * But the compilier does not seem to mind
+ */
 #define vla(t)     struct { unsigned int incr; unsigned int dim; t *body;}
 
 #ifndef VLA_C
