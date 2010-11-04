@@ -8,15 +8,15 @@ OMOSCO.S
 OMTag.S
 OMTagCon.S
 
+LIB
+$EXNUC/lib/om_spec.o
+
 SPEC
 $EXNUC/spec
 
 INCLUDE
 $EXNUC/include
 $EXNUC/om/include
-
-LIB
-$EXNUC/lib/omspec.o
 
 OPP
 $EXNUC/bin/opp
