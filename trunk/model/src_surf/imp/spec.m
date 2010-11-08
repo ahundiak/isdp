@@ -178,7 +178,7 @@ EMsfTopMove.I
 EMsf_Lift.I
 EMsfboolrnd.I
 EMsfcomprcp.I
-SOURCE=grp2
+/* SOURCE=grp2 */
 EMsfcreundo.I
 EMsfcrsect.I
 EMsfcutprim.I
@@ -329,7 +329,7 @@ EMssgetowner.I
 EMssgetparms.I
 EMssgetprops.I
 EMssgetpt.I
-SOURCE=grp3
+/* SOURCE=grp3 */
 EMssgetuvrng.I
 EMssinitInst.I
 EMssinitdisp.I

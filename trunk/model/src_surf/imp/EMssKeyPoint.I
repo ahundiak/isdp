@@ -302,19 +302,19 @@ short prj_line_to_pole(msg, surface, line, line_point, line_parameter,
 int             *msg;
 struct          IGRbsp_surface *surface;
 struct          IGRline *line;
-double          line_point[3];
-double          *line_parameter;
-double          projected_point[3];
+IGRdouble        line_point[3];
+IGRdouble       *line_parameter;
+IGRdouble        projected_point[3];
 int             *u_pole_index, *v_pole_index;
-double          *minimum_distsq;
+IGRdouble       *minimum_distsq;
 
 {
  short          status;
  extern short   MAlnpsproj(), MA2pt2dis(), BSunwght_p();
  int            pole_index, weight_index, pole_offset, weight_offset;
  int            loc_msg, pole_number, num_bytes, i;
- double         distsq, pnt_on_line[3], pole[3], t_of_line, *unweighted_poles;
- double         static_unweighted_poles[STATIC_UNWEIGHTED_SIZE][3];
+ IGRdouble      distsq, pnt_on_line[3], pole[3], t_of_line, *unweighted_poles;
+ IGRdouble      static_unweighted_poles[STATIC_UNWEIGHTED_SIZE][3];
  struct         IGRpointset point_set;
 
 /*
