@@ -1,13 +1,11 @@
 SRC
 $(MODEL)/ve/src/debug
+
 LIB
-debug.o
-COPT
--ga
-CC
-acc -knr
+$(MDTARG)/src_lib/ve_debug.o
+
 INCLUDE
-$(INGRHOME)/include
+$(UMS)/include
 $(GRNUC)/ingrsys
 $(EXNUC)/include
 $(GRNUC)/include
@@ -15,10 +13,13 @@ $(MODEL)/include
 $(MODEL)/proto_include
 $(BS)/include
 $(BS)/include/prototypes
+
 OPP
 $(EXTARG)/bin/opp
+
 OMCPP
 $(EXTARG)/bin/omcpp
+        
 SOURCE
 VEdebug.c
 VEelem_debug.c
