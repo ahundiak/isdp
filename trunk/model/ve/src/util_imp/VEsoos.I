@@ -200,7 +200,7 @@ void VEplace_multiple_soos( number_of_boundaries, u_parms, span_type,
 	                    continuous, curve_objid, curve_env )
 
 	int number_of_boundaries;
-	double *u_parms;
+	IGRdouble *u_parms;
 	short span_type[], continuous;
 	OM_S_OBJID curve_objid;
 	struct GRmd_env *curve_env;
