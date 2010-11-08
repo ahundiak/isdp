@@ -1,4 +1,11 @@
 
+/* ===================================================
+ * 08 Nov 2010
+ * Not sure why Hans added this here
+ * Already have an implementation under hplot/src
+ *
+ * Just rename for now
+ */
 /*
 $Author: hans $
 $Revision: 1.1.1.1 $
@@ -61,10 +68,10 @@ HISTORY
 */
 
 #if defined(__STDC__) || defined(__cplusplus)
-	void HPgenerate_unique_name( char *node_name,
+	void HPgenerate_unique_namex( char *node_name,
 				     char *unique_name )
 #else
-	void HPgenerate_unique_name( node_name, unique_name )
+	void HPgenerate_unique_namex( node_name, unique_name )
 
 	char *node_name;
 	char *unique_name;
