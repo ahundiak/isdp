@@ -1,16 +1,9 @@
 SRC
 $(MODEL)/hsurf/src/bundle_imp
+
 LIB
-$(MDTARG)/hsurf/src/bundle_imp/bundle_imp.o
-#if defined (sun)
-CC
-cc
-#else
-CC
-acc -knr
-#endif
-COPT
--ga
+$(MDTARG)/src_lib/hsurf_bunde_imp.o
+
 SPEC
 $(MODEL)/hsurf/src/spec
 $(EXNUC)/spec
@@ -18,8 +11,10 @@ $(GRNUC)/spec
 $(MODEL)/hsurf/spec
 $(MODEL)/spec
 $(MODEL)/ve/spec
+
 INCLUDE
-$(INGRHOME)/include
+$(UMS)/include
+$(FORMS)/include
 $(GRNUC)/ingrsys
 $(MODEL)/hsurf/src/render_imp
 $(EXNUC)/include
@@ -29,17 +24,13 @@ $(MODEL)/proto_include
 $(MODEL)/ve/include
 $(BS)/include
 $(BS)/include/prototypes
-#ifdef X11
-$(XINC)
-#endif
-#if defined (XGL)
-$(XGLHOME)/include
-$(XGLHOME)/include/xgl
-#endif
+
 OPP
 $(EXTARG)/bin/opp
+
 OMCPP
 $(EXTARG)/bin/omcpp
+
 SOURCE
 HSapp_newmac.I
 HSappi.I
