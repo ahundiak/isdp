@@ -1,17 +1,13 @@
 SRC
 $(MODEL)/hsurf/src/display_func
+
 LIB
-$(MDTARG)/hsurf/src/display_func/display_func.o
-COPT
--ga
-CC
-acc -knr
+$(MDTARG)/src_lib/hsurf_display_func.o
+
 INCLUDE
-$(INGRHOME)/include
+$(UMS)/include
+$(FORMS)/include
 $(GRNUC)/ingrsys
-#ifdef X11
-$(XINC)
-#endif
 $(MODEL)/hsurf/src/include
 $(EXNUC)/include
 $(GRNUC)/include
@@ -19,10 +15,7 @@ $(MODEL)/include
 $(MODEL)/proto_include
 $(BS)/include
 $(BS)/include/prototypes
-#if defined (XGL)
-$(XGLHOME)/include
-$(XGLHOME)/include/xgl
-#endif
+
 SOURCE
 HSd_af_ifb.c
 HSd_af_op.c
