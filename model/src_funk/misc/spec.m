@@ -175,7 +175,7 @@ EMmapbstouv.C
 EMmaptozview.I
 EMmdlchansel.I
 EMmkeparlist.C
-SOURCE=grp2
+/* SOURCE=grp2 */
 EMmkintlist.C
 EMmklp.I
 EMmkownlist.C
