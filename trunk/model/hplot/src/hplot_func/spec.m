@@ -1,22 +1,13 @@
 SRC
 $(MODEL)/hplot/src/hplot_func
+
 LIB
-hplot_func.o
-#if defined (sun)
-CC
-cc
-#else
-CC
-acc -knr
-#endif
-COPT
--ga
+$(MDTARG)/src_lib/hplot_func.o
+
 INCLUDE
-$(PWD)
-$(INGRHOME)/include
+$(UMS)/include
+$(FORMS)/include
 $(GRNUC)/ingrsys
-/usr/include
-$(HSURF)/src/include
 $(MODEL)/hsurf/src/include
 $(EXNUC)/include
 $(GRNUC)/include
@@ -24,14 +15,7 @@ $(MODEL)/include
 $(MODEL)/proto_include
 $(BS)/include
 $(BS)/include/prototypes
-#if defined (X11)
-$(XINC)
-$(XINC)/X11
-#endif
-#if defined (XGL)
-$(XGLHOME)/include
-$(XGLHOME)/include/xgl
-#endif
+
 SOURCE
 HPavail_mem.c
 HPbanding.c
