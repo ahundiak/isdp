@@ -91,9 +91,7 @@ HISTORY
 		Created
 */
 
-static int	CEIL( x )
-
-double	x;
+static int	CEIL( double x )
 
 	{
 	int	a;
