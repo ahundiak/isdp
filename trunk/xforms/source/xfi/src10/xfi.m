@@ -69,7 +69,9 @@ symbol.c
 text.c
 toggle.c
 Xevent.c
-        
+FIconfbox.c
+FIfsetorig.c
+
 LIB
 xfi.o
 
