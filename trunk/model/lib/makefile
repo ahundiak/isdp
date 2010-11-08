@@ -154,3 +154,6 @@ target: $(MODEL)/lib/model.o
 $(MODEL)/lib/model.o : $(objects)
 	@ld -r -o $(MODEL)/lib/model.o $(objects)
 	@ls    -l $(MODEL)/lib/model.o
+
+clean:
+	@rm -f *.o
