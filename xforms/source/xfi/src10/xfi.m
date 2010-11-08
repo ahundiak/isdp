@@ -5,6 +5,7 @@ bezel.c
 button.c
 cklst.c
 cmd_oid.c
+common.c
 dial.c
 drawbezel.c
 efpi.c
