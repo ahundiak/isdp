@@ -1,17 +1,12 @@
 SRC
 $(MODEL)/hsurf/src/ncv_func
+
 LIB
-$(MDTARG)/hsurf/src/ncv_func/ncv_func.o
-#if defined (sun)
-CC
-cc
-#endif
-COPT
--ga
-CC
-acc -knr
+$(MDTARG)/src_lib/hsurf_ncv_func.o
+
 INCLUDE
-$(INGRHOME)/include
+$(UMS)/include
+$(FORMS)/include
 $(GRNUC)/ingrsys
 $(EXNUC)/include
 $(GRNUC)/include
@@ -19,13 +14,7 @@ $(MODEL)/include
 $(MODEL)/proto_include
 $(BS)/include
 $(BS)/include/prototypes
-#ifdef X11
-$(XINC)
-#endif
-#if defined (XGL)
-$(XGLHOME)/include
-$(XGLHOME)/include/xgl
-#endif
+
 SOURCE
 NCd_co_op_dm.c
 NCd_co_op_ht.c

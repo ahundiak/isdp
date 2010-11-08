@@ -1,25 +1,18 @@
 SRC
 $(MODEL)/hsurf/src/hplot_imp
+
 LIB
-$(MDTARG)/hsurf/src/hplot_imp/hplot_imp.o
-#if defined (sun)
-CC
-cc
-COPT
--DRUN_X
-#else
-COPT
--c -ga -knr
-CC
-acc
-#endif
+$(MDTARG)/src_lib/hsurf_hplot_imp.o
+
 SPEC
 $(EXNUC)/spec
 $(GRNUC)/spec
 $(MODEL)/spec
 $(MODEL)/hsurf/src/spec
+
 INCLUDE
-$(INGRHOME)/include
+$(UMS)/include
+$(FORMS)/include
 $(GRNUC)/ingrsys
 $(MODEL)/hsurf/src/include
 $(MODEL)/hsurf/src/hplot_imp
@@ -29,17 +22,13 @@ $(EXNUC)/include
 $(GRNUC)/include
 $(BS)/include
 $(BS)/include/prototypes
-#if defined (sun)
-$(XINC)
-#endif
-#if defined (XGL)
-$(XGLHOME)/include
-$(XGLHOME)/include/xgl
-#endif
+
 OPP
 $(EXTARG)/bin/opp
+
 OMCPP
 $(EXTARG)/bin/omcpp
+
 SOURCE
 HPclassify.I
 HPcollect.I
