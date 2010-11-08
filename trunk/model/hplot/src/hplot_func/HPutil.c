@@ -390,8 +390,12 @@ HISTORY
    ??/??/??	M. Lanier
            Created
 */
-
-void DPinq_style (unsigned int index,
+/* ====================================================================
+ * 08 Nov 2010
+ * Not sure if this whole library is meant to be dynamically loaded or not
+ * This clashes with Grni function so renamed it for now
+ */
+void HP_DPinq_style (unsigned int index,
                        unsigned short *pattern)
 
    {
