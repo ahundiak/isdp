@@ -1,23 +1,18 @@
 SRC
 $(MODEL)/hsurf/src/gragad_imp
+
 LIB
-$(MDTARG)/hsurf/src/gragad_imp/gragad_imp.o
-#if defined (sun)
-CC
-cc
-#else
-CC
-acc -knr
-#endif
-COPT
--ga
+$(MDTARG)/src_lib/hsurf_gragad_imp.o
+
 SPEC
 $(MODEL)/hsurf/src/spec
 $(EXNUC)/spec
 $(GRNUC)/spec
 $(MODEL)/spec
+
 INCLUDE
-$(INGRHOME)/include
+$(UMS)/include
+$(FORMS)/include
 $(GRNUC)/ingrsys
 $(EXNUC)/include
 $(GRNUC)/include
@@ -26,17 +21,13 @@ $(BS)/include
 $(BS)/include/prototypes
 $(MODEL)/proto_include
 $(GRNUC)/proto_priv
-#ifdef X11
-$(XINC)
-#endif
-#if defined (XGL)
-$(XGLHOME)/include
-$(XGLHOME)/include/xgl
-#endif
+
 OPP
 $(EXTARG)/bin/opp
+
 OMCPP
 $(EXTARG)/bin/omcpp
+
 SOURCE
 HScal.I
 HSclear.I
