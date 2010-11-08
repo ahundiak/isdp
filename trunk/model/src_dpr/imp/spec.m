@@ -177,7 +177,7 @@ EMmvputSSI.I
 EMpartsupp.I
 EMpholecopy.I
 EMpribcopy.I
-SOURCE=grp2
+/* SOURCE=grp2 */
 EMpslotcopy.I
 EMptcomp.I
 EMptplace.I
@@ -328,7 +328,7 @@ EMsfibgeting.I
 EMsfllmtree.I
 EMsfmacroi.I
 EMsfmcreate.I
-SOURCE=grp3
+/* SOURCE=grp3 */
 EMsfmfeainf.I
 EMsfmgetpath.I
 EMsfmkface.I
