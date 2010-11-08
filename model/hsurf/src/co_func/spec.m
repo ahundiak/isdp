@@ -1,18 +1,9 @@
 SRC
 $(MODEL)/hsurf/src/co_func
+
 LIB
-$(MDTARG)/hsurf/src/co_func/co_func.o
-#if defined (sun)
-CC
-cc
-COPT
--DRUN_X
-#else
-CC
-acc -knr
-COPT
--ga
-#endif
+$(MDTARG)/src_lib/hsurf_co_func.o
+
 SPEC
 $(EXNUC)/spec
 $(GRNUC)/spec
@@ -21,8 +12,10 @@ $(MODEL)/hsurf/src/spec
 $(MODEL)/spec
 $(MODEL)/ve/spec
 $(MODEL)/ve/src/spec
+
 INCLUDE
-$(INGRHOME)/include
+$(UMS)/include
+$(FORMS)/include
 $(GRNUC)/ingrsys
 $(MODEL)/hsurf/src/render_imp
 $(EXNUC)/include
@@ -31,17 +24,13 @@ $(MODEL)/include
 $(MODEL)/proto_include
 $(BS)/include
 $(BS)/include/prototypes
-#if defined (sun)
-$(XINC)
-#endif
-#if defined (XGL)
-$(XGLHOME)/include
-$(XGLHOME)/include/xgl
-#endif
+
 OPP
 $(EXTARG)/bin/opp
+
 OMCPP
 $(EXTARG)/bin/omcpp
+        
 SOURCE
 HSalert_box.C
 HSbldphyctbl.C

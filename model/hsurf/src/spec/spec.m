@@ -1,18 +1,22 @@
 SRC
 $(MODEL)/hsurf/src/spec
-ARCHIVE
-$(MDTARG)/hsurf/lib/hsurf_spec.a
+
+LIB
+$(MDTARG)/src_lib/hsurf_spec.o
+
 COPT
 -ga
 CC
 acc -knr
+
 SPEC
 $(EXNUC)/spec
 $(GRNUC)/spec
 $(MODEL)/spec
+
 INCLUDE
-$(INGRHOME)/include
-$(XINC)
+$(UMS)/include
+$(FORMS)/include
 $(GRNUC)/ingrsys
 $(MODEL)/hsurf/src/include
 $(BS)/include
@@ -21,14 +25,13 @@ $(EXNUC)/include
 $(GRNUC)/include
 $(MODEL)/include
 $(MODEL)/ve/include
-#if defined (XGL)
-$(XGLHOME)/include
-$(XGLHOME)/include/xgl
-#endif
+
 OPP
 $(EXTARG)/bin/opp
+
 OMCPP
 $(EXTARG)/bin/omcpp
+
 SOURCE
 HSNCdpb.S
 HSNCtoolpmg.S

@@ -1,23 +1,18 @@
 SRC
 $(MODEL)/hsurf/src/co_imp
+
 LIB
-$(MDTARG)/hsurf/src/co_imp/co_imp.o
-#if defined (sun)
-CC
-cc
-#else
-CC
-acc -knr
-#endif
-COPT
--ga
+$(MDTARG)/src_lib/hsurf_co_imp.o
+
 SPEC
 $(MODEL)/hsurf/src/spec
 $(EXNUC)/spec
 $(GRNUC)/spec
 $(MODEL)/spec
+
 INCLUDE
-$(INGRHOME)/include
+$(UMS)/include
+$(FORMS)/include
 $(GRNUC)/ingrsys
 $(MODEL)/hsurf/src/render_imp
 $(EXNUC)/include
@@ -27,17 +22,13 @@ $(MODEL)/include
 $(MODEL)/proto_include
 $(BS)/include
 $(BS)/include/prototypes
-#ifdef X11
-$(XINC)
-#endif
-#if defined (XGL)
-$(XGLHOME)/include
-$(XGLHOME)/include/xgl
-#endif
+
 OPP
 $(EXTARG)/bin/opp
+
 OMCPP
 $(EXTARG)/bin/omcpp
+        
 SOURCE
 HSactivei.I
 HSanimatei.I
