@@ -10,19 +10,13 @@ $(EXTARG)/bin/omcpp
 
 INCLUDE
 $(MODEL)/src_xforms/include
-$(INGRHOME)/include
-$(XINC)
+$(FORMS)/include
 $(GRNUC)/ingrsys
 $(MODEL)/include
 $(EXNUC)/include
 $(GRNUC)/include
 $(BS)/include
 $(BS)/include/prototypes
-$(BS)/include/prototypes
-#if defined (XGL)
-$(XGLHOME)/include
-$(XGLHOME)/include/xgl
-#endif
 
 SPEC
 $(EXNUC)/spec
