@@ -57,7 +57,7 @@ IGRboolean EFstroke_the_curve(
  msg)                           /* Error return code */
 
 struct          IGRbsp_curve *curve;
-double          *tolerance;
+IGRdouble      *tolerance;
 struct          IGRpolyline *poly_line;
 IGRlong         *msg;
 {

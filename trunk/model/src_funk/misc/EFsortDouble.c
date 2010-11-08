@@ -1,11 +1,7 @@
 /* ###################   APOGEE COMPILED   ################## */
 /* ###################   ANSI COMPILED     ################## */
 #include "EMS.h"
-void EFsortDouble(array, size)
-
-double  *array;
-int     size;
-
+void EFsortDouble(double *array, int size)
 {
   int       i, j;
   double    temp;
