@@ -1,21 +1,15 @@
-LIB
-$(MDTARG)/ve/lib/ve.o
-CC
-acc -knr
 SRC
 $(MODEL)/ve/src/make_sh
-DEPLIB
-$(MDTARG)/ve/src/co_imp/co_imp.o
-$(MDTARG)/ve/src/debug/debug.o
-$(MDTARG)/ve/src/dpb_imp/dpb_imp.o
-$(MDTARG)/ve/src/driver/driver.o
-$(MDTARG)/ve/src/gragad_imp/gragad_imp.o
-$(MDTARG)/ve/src/hiding/hiding.o
-$(MDTARG)/ve/src/marking/marking.o
-$(MDTARG)/ve/src/util_func/util_func.o
-$(MDTARG)/ve/src/util_imp/util_imp.o
+
+LIB
+$(MDTARG)/src_lib/ve_global.o
+
+SRC
+$(MODEL)/ve/src/make_sh
+
 INCLUDE
-$(INGRHOME)/include
+$(UMS)/include
+$(FORMS)/include
 $(GRNUC)/ingrsys
 $(EXNUC)/include
 $(GRNUC)/include
@@ -23,9 +17,6 @@ $(MODEL)/include
 $(MODEL)/hsurf/include
 $(BS)/include
 $(BS)/include/prototypes
-#if defined (XGL)
-$(XGLHOME)/include
-$(XGLHOME)/include/xgl
-#endif
+
 SOURCE
 ve_global.c

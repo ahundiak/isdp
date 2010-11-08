@@ -1,17 +1,16 @@
 SRC
 $(MODEL)/ve/src/marking
+
 LIB
-marking.o
-COPT
--ga
-CC
-acc -knr
+$(MDTARG)/src_lib/ve_marking.o
+
 SPEC
 $(EXNUC)/spec
 $(GRNUC)/spec
 $(MODEL)/spec
+
 INCLUDE
-$(INGRHOME)/include
+$(UMS)/include
 $(GRNUC)/ingrsys
 $(EXNUC)/include
 $(GRNUC)/include
@@ -21,10 +20,13 @@ $(BS)/include/prototypes
 $(MODEL)/include
 $(MODEL)/proto_include
 $(MODEL)/hsurf/include
+
 OPP
 $(EXTARG)/bin/opp
 OMCPP
+
 $(EXTARG)/bin/omcpp
+        
 SOURCE
 VEmk_lpedges.I
 VEmk_rules.I

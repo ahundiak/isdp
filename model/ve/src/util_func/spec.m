@@ -1,17 +1,16 @@
 SRC
 $(MODEL)/ve/src/util_func
+
 LIB
-util_func.o
-COPT
--ga
-CC
-acc -knr
+$(MDTARG)/src_lib/ve_util_func.o
+
 SPEC
 $(GRNUC)/spec
 $(MODEL)/spec
+
 INCLUDE
-$(INGRHOME)/include
-$(XINC)
+$(UMS)/include
+$(FORMS)/include
 $(GRNUC)/ingrsys
 $(EXNUC)/include
 $(GRNUC)/include
@@ -20,14 +19,13 @@ $(BS)/include
 $(BS)/include/prototypes
 $(MODEL)/include
 $(MODEL)/proto_include
-#if defined (XGL)
-$(XGLHOME)/include
-$(XGLHOME)/include/xgl
-#endif
+
 OPP
 $(EXTARG)/bin/opp
+
 OMCPP
 $(EXTARG)/bin/omcpp
+
 SOURCE
 VEb_scripts.C
 VEbatch_func.C
