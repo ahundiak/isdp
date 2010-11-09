@@ -73,12 +73,12 @@ SetADPWeight form.
 #include "adpdef.h"
 
 #argsused
-void GRchg_adp_line_weight(form_label,label,value,form_ptr)
+void GRchg_adp_line_weight(
 
-int form_label;  /* form label                                   */
-int label;       /* label of the gadget whose data has changed   */
-double value;    /* return value of the gadget                   */
-Form form_ptr;   /* pointer to the form whose gadget was updated */
+int form_label,  /* form label                                   */
+int label,       /* label of the gadget whose data has changed   */
+double value,    /* return value of the gadget                   */
+Form form_ptr)   /* pointer to the form whose gadget was updated */
 {
     FIg_erase(form_ptr,GRWEIGHT_LINE);
     FIg_set_line_weight(form_ptr,GRWEIGHT_LINE,(IGRint)value);

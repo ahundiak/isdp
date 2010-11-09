@@ -70,11 +70,11 @@ Parameters form.
 #include "coimport.h"
 #include "FI.h"
 #argsused
-void GRprocess_adp(form_label,label,value,form_ptr)
+void GRprocess_adp(
 
-int form_label;  /* form label                                   */
-int label;       /* label of the gadget whose data has changed   */
-double value;    /* return value of the gadget                   */
-Form form_ptr;   /* pointer to the form whose gadget was updated */
+int form_label,  /* form label                                   */
+int label,       /* label of the gadget whose data has changed   */
+double value,    /* return value of the gadget                   */
+Form form_ptr)   /* pointer to the form whose gadget was updated */
 {
 }
