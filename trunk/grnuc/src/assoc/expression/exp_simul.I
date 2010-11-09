@@ -100,11 +100,11 @@ History
   03/04/93 : Kapil Singh : created
 
  */
-int Eqn_compute_strong_component(cyc_count, cyc_grid, iterlim, itertol)
-int cyc_count;
-struct GRid cyc_grid[];
-int iterlim;
-double itertol;
+int Eqn_compute_strong_component(
+  int         cyc_count,
+  struct GRid cyc_grid[],
+  int         iterlim,
+  double      itertol)
 {
   struct BSspars_mat *pjacobian;
   double *pfuncval, *pdelta, *poriginal_value;
@@ -338,14 +338,21 @@ History
   03/04/93 : Kapil Singh : created
 
  */
-int Eqn_alloc_NR_space(cyc_count, pporiginal_value, 
-                       ppjacobian, ppfuncval, ppdelta,
-                       ppunconstr_inx, ppredund_ptr, ppconfl_inx)
+int Eqn_alloc_NR_space(
+  int                  cyc_count,
+  double             **pporiginal_value,
+  struct BSspars_mat **ppjacobian,
+  double             **ppfuncval,
+  double             **ppdelta,
+  int                **ppunconstr_inx,
+  int                **ppredund_ptr,
+  int                **ppconfl_inx)
+#if 0
 int cyc_count;
 struct BSspars_mat **ppjacobian;
 double **pporiginal_value, **ppfuncval, **ppdelta;
-
 int **ppunconstr_inx, **ppredund_ptr, **ppconfl_inx;
+#endif
 {
   int matsize;
  
@@ -424,11 +431,20 @@ History
   03/04/93 : Kapil Singh : created
 
  */
-int Eqn_free_NR_space(poriginal_value, pjacobian, pfuncval, pdelta,
-                       punconstr_inx, predund_ptr, pconfl_inx, predund_inx)
+int Eqn_free_NR_space(
+  double             *poriginal_value,
+  struct BSspars_mat *pjacobian,
+  double             *pfuncval,
+  double             *pdelta,
+  int                *punconstr_inx,
+  int                *predund_ptr,
+  int                *pconfl_inx,
+  int                *predund_inx)
+#if 0
 struct BSspars_mat *pjacobian;
 double *poriginal_value, *pfuncval, *pdelta;
 int *punconstr_inx, *predund_ptr, *pconfl_inx, *predund_inx;
+#endif
 {
   if (poriginal_value)
     free (poriginal_value);
@@ -488,12 +504,12 @@ History
   03/04/93 : Kapil Singh : created
 
  */
-int Eqn_build_NR_mat(cyc_count, cyc_grid, pjacobian, pfuncval, psolve_status)
-int cyc_count;
-struct GRid cyc_grid[];
-struct BSspars_mat *pjacobian;
-double *pfuncval;
-long *psolve_status;
+int Eqn_build_NR_mat(
+  int                 cyc_count,
+  struct GRid         cyc_grid[],
+  struct BSspars_mat *pjacobian,
+  double             *pfuncval,
+  long               *psolve_status)
 {
   int i;
   long status;

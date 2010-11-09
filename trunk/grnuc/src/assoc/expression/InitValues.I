@@ -46,11 +46,11 @@ static int    DIaccept, DIcount;
 %endsafe
 
 #argsused
-void DINotifyInit ( form_label, gadget_label, value, form )
-int    form_label;
-int    gadget_label;
-double value;
-Form   form;
+void DINotifyInit (
+  int    form_label,
+  int    gadget_label,
+  double value,
+  Form   form)
 {
   int  i, flag, response = TERMINATE;
   char tmp [DI_PATH_MAX];
@@ -78,10 +78,10 @@ Form   form;
 }
 
 
-EXPGiveInitialValues ( names, count, values )
-char   *names [] /* list of variable names				IN  */;
-int    count     /* number of names					IN  */;
-double values [] /* the values						OUT */;
+EXPGiveInitialValues (
+  char   *names [], /* list of variable names IN  */
+  int    count,     /* number of names	      IN  */
+  double values []) /* the values						  OUT */
 /*
  * This routine is used to initialize variables of equations that are
  * in a strong component.

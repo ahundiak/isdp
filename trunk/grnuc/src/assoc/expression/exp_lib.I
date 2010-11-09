@@ -93,13 +93,21 @@ static GRspacenum osn;
 /* This function does the construction of an expression
 /*--------------------------------------------------------------------------*/
 #argsused
-EXP_create_double ( exp_name, exp_value, p_objid , osnum, p_osnum, 
-		    type_rq, p_type_ob )
+EXP_create_double ( 
+  char       *exp_name,
+  double      exp_value,
+  OM_S_OBJID *p_objid ,
+  OMuword     osnum,
+  OMuword  *p_osnum,
+  char        type_rq,
+  char     *p_type_ob )
+#if 0
 char		*exp_name;
 double		exp_value;
 OM_S_OBJID	*p_objid;
 char		type_rq, *p_type_ob;
 OMuword		osnum, *p_osnum;
+#endif
 /*.EXP_create_double*/
 {
   char syntax[200];
