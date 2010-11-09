@@ -51,10 +51,11 @@ from expression import list;
 
 ******************************************************************************/
 
-COm_condit_router(form_label,label,value,form_ptr)
-int form_label,label;
-double value;
-char *form_ptr;
+COm_condit_router(
+  int    form_label,
+  int    label,
+  double value,
+  char  *form_ptr)
 /*.COm_router*/
 {
  char text[80];
@@ -84,10 +85,11 @@ char *form_ptr;
 
 
 #argsused
-COm_condit_option(form_label,label,value,form_ptr)
-int form_label,label;
-double value;
-char *form_ptr;
+COm_condit_option(
+  int    form_label,
+  int    label,
+  double value,
+  char  *form_ptr)
 /*.COm_crdef_option*/
 {
  COm_condit_router(form_label,label+200,value,COm_condit_form_ptr);
