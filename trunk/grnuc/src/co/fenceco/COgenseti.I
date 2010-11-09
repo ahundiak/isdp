@@ -873,10 +873,11 @@ finish:
     return(sts & msg & 1);
 }
 
-int COgenset_notify(f_label, g_label, value, form)
-int f_label, g_label;
-double value;
-Form form;
+int COgenset_notify(
+  int    f_label,
+  int    g_label,
+  double value,
+  Form   form)
 {
     IGRuchar *p_mask;
     IGRuchar color_mask[COLOR_MASK_SIZE];
