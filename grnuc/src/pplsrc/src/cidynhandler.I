@@ -40,7 +40,7 @@ int PPLdynamics(	dynargs	, /* Args passed to dp$dynamics		    */
 			outdum3	)
 	CIdynargs		*dynargs ;
 	struct EX_button	*crsrpos ;
-	double			*windmat ;
+	IGRdouble			*windmat ;
 	struct GRid		*objects ;
 	int			*obcount ;
 	struct DPele_header	*dynbuff ;
