@@ -10,6 +10,7 @@ $(GRNUC)/include
 $(EXNUC)/include
 $(BS)/include
 $(BS)/include/prototypes
+$(FORMS)/include
 $(GRNUC)/proto_pub
 $(GRNUC)/proto_priv
 
