@@ -8,7 +8,7 @@ class implementation ci;
 void ci_notification ( form_label, gadget_label, value, form )
   int	 form_label;
   int	 gadget_label;
-  double value;
+  IGRdouble value;
   Form	 form;
 {
   int	 		status, sts;

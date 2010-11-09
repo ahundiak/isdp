@@ -8,7 +8,7 @@ OMCPP
 $(EXTARG)/bin/omcpp
 
 INCLUDE
-$(INGRHOME)/include
+$(FORMS)/include
 $(GRNUC)/include
 $(EXNUC)/include
 $(BS)/include/prototypes
@@ -22,10 +22,5 @@ $(EXNUC)/spec
 SOURCE
 cinotifyi.I
 
-#ifndef NT
 LIB
 $(GRLIB)/lib/cinotify.o
-#else
-ARCHIVE
-$(GRLIB)/lib/cinotify.lib
-#endif
