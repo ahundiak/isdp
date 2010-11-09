@@ -100,7 +100,7 @@ struct GRid list[];
 int   count;
 char *output_expr;
 short  *output_size;
-double conv_factor;
+IGRdouble conv_factor;
 {
 	inpbuf  = input_expr;
 	inpsize = input_size;
