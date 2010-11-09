@@ -2096,7 +2096,7 @@ DMappend_space (text_string,type,len,space)
 	 char  *text_string;
 	 int  type;
 	 short  *len;
-	 double  space;
+	 IGRdouble  space;
 /*.DMappend_space*/
 {
 	char string[10];
