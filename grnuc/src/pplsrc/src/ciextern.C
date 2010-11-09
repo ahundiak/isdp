@@ -21,6 +21,8 @@
 #include "citypedef.h"
 #include "ciprivmacros.h"
 
+// #define DEBUG 1
+
 #define	NUM_REG_ARGS	2		/* # subr register arguments */
 
 extern struct instance_ci *ci_data;

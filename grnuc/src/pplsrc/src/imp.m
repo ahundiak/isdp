@@ -53,9 +53,11 @@ MIPS_fcall.s
 X86_fcall.s
 #endif
 
+#if 0
 DEPLIB
 $(GRLIB)/lib/cicom.o
-
+#endif
+        
 #ifndef NT
 LIB
 $(GRLIB)/lib/ci.o
@@ -69,8 +71,9 @@ $(EXNUC)/spec
 $(GRNUC)/spec
 
 INCLUDE
-$(INGRHOME)/include
-$(XINC)
+$(UMS)/include
+$(LIBXC)/include
+$(FORMS)/include
 $(EXNUC)/include
 $(GRNUC)/include
 $(BS)/include

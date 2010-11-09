@@ -22,6 +22,8 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include "cisetup.h"
+
+// #define DEBUG 1
 /*----------------------------------------------------------------------------*/
 extern char		*CIexmessage()	;
 void			CIfreesyms()	;
@@ -54,9 +56,13 @@ void CIfreesyms() {
 
 
 /*----------------------------------------------------------------------------*/
+/* SOL10 09 Nov 2010
+ * Not sure if it is because I replaced the dload stuff with dirct calls to dlsym or not but
+ * we no longer want to prepend an _ to symbol names
+ */
 void *CIfindsym( name )	char *name ; {
 
-#if defined(SUNOS) || defined(CLIX)
+#if defined(SUNOSx) || defined(CLIX)
 char buff[512];
 
 strcpy (&buff[1], name);
