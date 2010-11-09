@@ -58,11 +58,11 @@ extern int
    FIg_set_state_off();
 
 #argsused
-void  GRPolarDpt_notification( f_label, g_label, value, fp )
-   int     f_label;       /* The label of the form   */
-   int     g_label;       /* The label of the gadget */
-   double  value;         /* The value of the gadget */
-   Form    fp;            /* Pointer to the form     */
+void  GRPolarDpt_notification(
+   int     f_label,       /* The label of the form   */
+   int     g_label,       /* The label of the gadget */
+   double  value,         /* The value of the gadget */
+   Form    fp)            /* Pointer to the form     */
 {
 
    int  

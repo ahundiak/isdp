@@ -43,11 +43,11 @@ extern int
 from CEO import erase_form_by_label;
 
 #argsused
-void GRMtrxDpt_notification ( f_label, g_label, value, fp )
-   int     f_label;       /* The label of the form   */
-   int     g_label;       /* The label of the gadget */
-   double  value;         /* The value of the gadget */
-   Form    fp;            /* Pointer to the form     */
+void GRMtrxDpt_notification (
+   int     f_label,       /* The label of the form   */
+   int     g_label,       /* The label of the gadget */
+   double  value,         /* The value of the gadget */
+   Form    fp)            /* Pointer to the form     */
 {
    char
      *text,
