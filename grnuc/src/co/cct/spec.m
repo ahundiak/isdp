@@ -1,23 +1,11 @@
 SRC 
 $(GRNUC)/src/co/cct
 
-#ifndef NT
-ARCHIVE
-$(GRLIB)/lib/cct_spec.a
-#else
-ARCHIVE
-$(GRLIB)/lib/cct_spec.lib
-#endif
-
-
-COPT
--ga
+LIB
+$(GRLIB)/lib/cct_spec.o
 
 SOURCE
 COcctform.S
-
-CC
-acc -knr
 
 SPEC
 $(EXNUC)/spec
