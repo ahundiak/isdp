@@ -54,13 +54,13 @@ extern int FIfld_set_text();
 extern int FIg_display();
 
 #argsused
-int COsppfname(pd, form_label, gadget_label, value, form, name)
-PIplotdata *pd;
-int form_label;
-int gadget_label;
-double value;
-Form form;
-char *name;
+int COsppfname(
+  PIplotdata *pd,
+  int    form_label,
+  int    gadget_label,
+  double value,
+  Form   form,
+  char  *name)
 {
     int sts, i, sel, file_count;
     int have_dir, have_file;

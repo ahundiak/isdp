@@ -76,11 +76,11 @@ Keywords
 extern IGRint GRplot_fence_del();
 
 #argsused
-int COcpnotify (form_label, gadget_label, value, form)
-int form_label;
-int gadget_label;
-double value;
-Form form;
+int COcpnotify (
+  int    form_label,
+  int    gadget_label,
+  double value,
+  Form   form)
 {
     char buf[128], *c, *c1;
     int i, j, sts, msg, sel;

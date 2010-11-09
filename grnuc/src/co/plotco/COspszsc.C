@@ -47,12 +47,12 @@ extern int FIg_display();
 
 
 #argsused
-int COspsizescale(pd, form_label, gadget_label, value, form)
-PIplotdata *pd;
-int form_label;
-int gadget_label;
-double value;
-Form form;
+int COspsizescale(
+  PIplotdata *pd,
+  int    form_label,
+  int    gadget_label,
+  double value,
+  Form   form)
 {
     int row, sel, sts;
     double *z;

@@ -35,10 +35,12 @@ extern int FIfld_set_text ();
 extern int FIg_display ();
 
 
-int COspcvttoout (x_in, y_in, size, x_out, y_out)
-double x_in, y_in;
-int size;
-char *x_out, *y_out;
+int COspcvttoout (
+  double x_in,
+  double y_in,
+  int    size,
+  char  *x_out,
+  char  *y_out)
 {
 #ifdef STANDALONE
 

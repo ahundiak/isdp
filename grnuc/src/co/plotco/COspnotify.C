@@ -69,11 +69,11 @@ History
 #include "pi.h"
 #include "pilabel.h"
 
-int COspnotify(form_label, gadget_label, value, form)
-int form_label;
-int gadget_label;
-double value;
-Form form;
+int COspnotify(
+  int    form_label,
+  int    gadget_label,
+  double value,
+  Form   form)
 {
     char buf[128], buf1[32];
     int i, row, sel, sts;
