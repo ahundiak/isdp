@@ -32,8 +32,7 @@ struct expr_attr
 
 
 
-double dsqr ( x )
-             double x;
+double dsqr ( double x )
 /* just to take the square of x */
 {
   return ( x * x );
@@ -178,10 +177,11 @@ double give_lines_distance ( l1, l2 )
 
 
 
-int give_distance ( id1, id2, ptr_dist, md_env )
-                    struct GRid id1, id2;
-                    double *ptr_dist;
-		    struct GRmd_env *md_env;
+int give_distance (
+  struct GRid id1,
+  struct GRid id2,
+  double *ptr_dist,
+	struct GRmd_env *md_env)
 /* this function computes the distance between the objects id1 & id2 */
 /*.give_distance */
 {

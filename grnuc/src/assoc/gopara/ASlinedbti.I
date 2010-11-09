@@ -29,11 +29,12 @@ extern GRclassid OPP_GR3dlineseg_class_id;
 
 /***********************************************************************/
  
-IGRdouble ref_from_centers(center1,center2,ix,iy,jx,jy)
+IGRdouble ref_from_centers(
 
-IGRpoint center1, center2 ; 
-double *ix,*iy,            	/* normed vector of centers */
-       *jx,*jy;			/* normed vector orthogonal*/
+  IGRpoint center1,
+  IGRpoint center2,
+  double *ix, double *iy,     /* normed vector of centers */
+  double *jx, double *jy)			/* normed vector orthogonal*/
 /* .ref_from_c */
 {
 double  x,y,d;

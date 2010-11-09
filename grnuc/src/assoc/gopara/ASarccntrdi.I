@@ -59,14 +59,18 @@ double fabs();
 /*
    Get the parents of the associative arc 
 */
-static ASget_parent(count,list,
-		    param_val,cent_p,start_p,sweep_p,
-		    track_p,norm,track,plane,md_env)
-int count;
-struct GRid *list;
-double *param_val,*cent_p,*start_p,*sweep_p,*track_p,*norm;
-int *track,*plane;
-struct GRmd_env *md_env;
+static ASget_parent(
+  int    count,
+  struct GRid *list,
+  double *param_val,
+  double *cent_p,
+  double *start_p,
+  double *sweep_p,
+  double *track_p,
+  double *norm,
+  int    *track,
+  int    *plane,
+  struct GRmd_env *md_env)
 /*.ASget_parent*/
  {
   struct ret_struct opt_def[2],point_def;
