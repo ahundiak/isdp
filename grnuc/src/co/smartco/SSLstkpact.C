@@ -71,7 +71,7 @@ int SSListKeyptActivePt ( action, objid, osnum, point )
   int         action;
   GRobjid     objid;
   GRspacenum  osnum;
-  double     *point;
+  IGRdouble  *point;
 {
   int       rc = OM_S_SUCCESS;
   long      sts = TRUE;

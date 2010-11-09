@@ -88,7 +88,7 @@ int SSCheckCoincident ( pObject, PLastObject, Tolerance, PBoreLine,
                         ConstraintPoint, KeyPoint, PpObject )
 SSObject       *pObject       /* The object to check for coinc cnstr    IN  */;
 SSObject       *PLastObject   /* The last object in the list (not used) IN  */;
-double         Tolerance      /* The window tolerance                   IN  */;
+IGRdouble       Tolerance     /* The window tolerance                   IN  */;
 struct IGRline *PBoreLine     /* The bore line                          IN  */;
 IGRpoint       ConstraintPoint/* The point we are constrained to        OUT */;
 IGRpoint       KeyPoint       /* The key point of the element (not used)OUT */;

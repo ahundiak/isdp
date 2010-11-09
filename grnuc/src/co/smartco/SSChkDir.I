@@ -86,10 +86,10 @@ int SSCheckDirection ( PObject, PLastObject, Tolerance, x, y, z,
                        ConstraintPoint, KeyPoint, PPObject )
 SSObject *PObject;
 SSObject *PLastObject;
-double   Tolerance;
-double   x, y, z;
-IGRpoint ConstraintPoint;
-IGRpoint KeyPoint;
+IGRdouble Tolerance;
+IGRdouble x, y, z;
+IGRpoint  ConstraintPoint;
+IGRpoint  KeyPoint;
 SSObject **PPObject;
 {
   int    ConstraintType = SSNONE;

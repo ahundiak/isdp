@@ -76,12 +76,12 @@ History
 
 #argsused
 int SSHiliteConstraint ( p_type, matrix, p_module, p_object, point, tolerance )
-short       *p_type	/* The matrix type				IN  */;
-IGRmatrix   matrix	/* The matrix					IN  */;
-struct GRid *p_module   /* The current module				IN  */;
-struct GRid *p_object	/* The constraint to be hilited			IN  */;
-IGRpoint    point	/* The data point				IN  */;
-double      tolerance   /* The tolerance				IN  */;
+short       *p_type	     /* The matrix type				IN  */;
+IGRmatrix    matrix	     /* The matrix					IN  */;
+struct GRid *p_module    /* The current module				IN  */;
+struct GRid *p_object	   /* The constraint to be hilited			IN  */;
+IGRpoint     point	     /* The data point				IN  */;
+IGRdouble    tolerance   /* The tolerance				IN  */;
 {
   return OM_S_SUCCESS;
 }

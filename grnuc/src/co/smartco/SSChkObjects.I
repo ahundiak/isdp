@@ -103,8 +103,8 @@ History
 
  */
 int SSCheckObjects ( window, x, y, z, PConstraintType )
-OM_S_OBJID window          /* The window we got the point from          IN  */;
-double     x, y, z         /* The current data point                    IN  */;
+OM_S_OBJID  window         /* The window we got the point from          IN  */;
+IGRdouble   x, y, z        /* The current data point                    IN  */;
 int        *PConstraintType/* The constraint type                       OUT */;
 /*
  * This routine hilites the relevant potential constraint that can
@@ -612,11 +612,11 @@ wrapup:
  *
  */
 int ssget_arc_lock_pt( lock_flag, cnt, e1, cp, e2 )
-  int lock_flag; /* IN  - should be 90/180/270 only */
-  double *cnt;   /* IN  - center point of arc       */
-  double *e1;    /* IN  - start point on arc        */
-  double *cp;    /* IN  - cursor point              */
-  double *e2;    /* OUT - actual lock point on arc  */
+  int lock_flag;  /* IN  - should be 90/180/270 only */
+  IGRdouble *cnt; /* IN  - center point of arc       */
+  IGRdouble *e1;  /* IN  - start point on arc        */
+  IGRdouble *cp;  /* IN  - cursor point              */
+  IGRdouble *e2;  /* OUT - actual lock point on arc  */
 {
   double radius = 0.0;
   BSrc   bsrc; 

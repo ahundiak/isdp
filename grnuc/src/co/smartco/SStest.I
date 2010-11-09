@@ -89,7 +89,6 @@ struct EX_button *PButton;
   IGRlong    bufsize = sizeof( IGRboolean );
   IGRlong    nret;
   IGRboolean dynamics_all_windows;
-  extern int SSWeNeedToReorder();
 
   if (!SSIsActive ())
     return OM_S_SUCCESS;
@@ -250,18 +249,20 @@ History
  */
  
 #argsused
-SSDynamicTest ( dummy, point, matrix, p_grids, num_grids, buffers, 
-                num_buffers, dummy_in1, dummy_in2, dummy_in3, dummy_out1, 
-                dummy_out2, dummy_out3 )
-char                 *dummy;
-struct EX_button     *point;
-double               *matrix;
-struct GRid          **p_grids;
-int                  *num_grids;
-struct DPele_header  **buffers;
-int                  *num_buffers;
-char                 *dummy_in1, *dummy_in2, *dummy_in3;
-char                 **dummy_out1, **dummy_out2, **dummy_out3;
+SSDynamicTest (
+  char                 *dummy,
+  struct EX_button     *point,
+  double               *matrix,
+  struct GRid         **p_grids,
+  int                  *num_grids,
+  struct DPele_header **buffers,
+  int                  *num_buffers,
+  char                 *dummy_in1,
+  char                 *dummy_in2,
+  char                 *dummy_in3,
+  char                **dummy_out1,
+  char                **dummy_out2,
+  char                **dummy_out3)
 {
   *num_buffers = 0;
   
@@ -665,9 +666,7 @@ void SSPrintObjectList()
   }
 }
 
-void SSPrintVector( label, v )
-  char   *label; 
-  double *v;
+void SSPrintVector( char *label, double *v )
 {
   printf ( "%s = { %g, %g, %g }\n", label, v[0], v[1], v[2] );
 }
@@ -695,5 +694,6 @@ void SSPrintDispBuff( label, p_buffer )
   printf ( "  %s->mdenv_info = 0x%x\n", label, p_buffer->mdenv_info );
 }
 */
+
 end implementation Root;
 

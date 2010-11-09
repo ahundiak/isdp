@@ -108,10 +108,10 @@ SSCheckTangency ( pObject, PLastObject, Tolerance, xpos, ypos, zpos,
                   ConstraintPoint, KeyPoint, PpObject )
   SSObject *pObject;
   SSObject *PLastObject;
-  double   Tolerance;
-  double   xpos, ypos, zpos;
-  IGRpoint ConstraintPoint;
-  IGRpoint KeyPoint;
+  IGRdouble Tolerance;
+  IGRdouble xpos, ypos, zpos;
+  IGRpoint  ConstraintPoint;
+  IGRpoint  KeyPoint;
   SSObject **PpObject;
 {
   int       ConstraintType = SSNONE;
