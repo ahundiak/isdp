@@ -9,19 +9,15 @@
 
 
 DEset_bdrys ( bdrys, symbs, count, u1, u2, u3, u4, u5, u6, symb1, symb2, symb3 )
-              double bdrys [6]	/* the resulting boundaries		OUT */;
-              struct IGRdisplay symbs [3]
-                      	 	/* symbologies				OUT */;
-              int    count	/* number of boundaries			IN  */;
-              double u1, u2	/* the first boundary		     	IN  */,
-                     u3, u4	/* the second boundary		        IN  */,
-                     u5, u6	/* the third boundary		        IN  */;
-              struct IGRdisplay *symb1	
-              			/* symbology for [u1, u2]		IN  */,
-                                *symb2	
-                                /* symbology for [u3, u4]		IN  */,
-                                *symb3	
-                                /* symbology for [u5, u6]		IN  */;
+              IGRdouble bdrys [6]	/* the resulting boundaries		   OUT */;
+              struct    IGRdisplay symbs [3] /* symbologies				 OUT */;
+              int       count	          /* number of boundaries			IN  */;
+              IGRdouble u1, u2	        /* the first boundary		   	IN  */,
+                        u3, u4	        /* the second boundary		  IN  */,
+                        u5, u6	        /* the third boundary		    IN  */;
+              struct IGRdisplay *symb1	/* symbology for [u1, u2]		IN  */,
+                                *symb2	/* symbology for [u3, u4]		IN  */,
+                                *symb3	/* symbology for [u5, u6]		IN  */;
 /*
    This function fills out bdrys and symbs with u[i] and symb[i] 
    i = 0, ... count.
@@ -51,11 +47,11 @@ DEset_bdrys ( bdrys, symbs, count, u1, u2, u3, u4, u5, u6, symb1, symb2, symb3 )
 
 DEinter_bound ( p_count, bdrys, symbs, u1, u2, u3, u4, symb1, symb2 )
                 int    *p_count	/* number of boundaries			OUT */;
-                double bdrys [6]/* the resulting boundaries		OUT */;
+                IGRdouble bdrys [6]/* the resulting boundaries		OUT */;
                 struct IGRdisplay symbs [3] 
                                 /* symbologies				OUT */;
-                double u1, u2	/* the first boundary		     	IN  */,
-                       u3, u4	/* the second boundary		        IN  */;
+                IGRdouble u1, u2	/* the first boundary		     	IN  */,
+                          u3, u4	/* the second boundary		        IN  */;
                 struct IGRdisplay *symb1
                 		/* symbology for [u1, u2]		IN  */,
                                   *symb2

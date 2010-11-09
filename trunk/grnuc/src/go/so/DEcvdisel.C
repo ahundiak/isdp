@@ -289,7 +289,7 @@ wrapup:
 DEshow_only_one_soo ( msg, grid, u, window, md_env )
                       long        *msg        /* return status          OUT */;
                       struct GRid *grid       /* object with override   IN  */; 
-                      double      u           /* the u of the acpt pnt  IN  */;
+                      IGRdouble    u          /* the u of the acpt pnt  IN  */;
                       struct GRid *window     /* the window of override IN  */;
                       struct GRmd_env *md_env /* the module env         IN  */;
 /*
