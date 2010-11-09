@@ -1,6 +1,6 @@
 INCLUDE
 $(INGRHOME)/include
-$(INGRHOME)/include
+$(FORMS)/include
 $(EXNUC)/include
 $(GRNUC)/include
 $(BS)/include
