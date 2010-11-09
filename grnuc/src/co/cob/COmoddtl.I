@@ -289,18 +289,18 @@ struct  GRevent   *events[];
 }
 
                                  
-IGRlong COmeasure_get_ref_scale(msg,locate_os,loc_env,ref_flag,ref_scale)
-IGRlong *msg;
-OMuword locate_os;
-struct GRmd_env *loc_env;
-IGRboolean *ref_flag;
-double *ref_scale;
+IGRlong COmeasure_get_ref_scale(
+  IGRlong          *msg,
+  OMuword          locate_os,
+  struct GRmd_env *loc_env,
+  IGRboolean      *ref_flag,
+  double          *ref_scale)
 {
 	IGRlong rc;
-        IGRint status=OM_S_SUCCESS;
-        struct GRid context;
-        OM_S_OBJECT_LINKAGE  ref_objid[2];
-        OM_S_CHANSELECT chan;
+  IGRint status=OM_S_SUCCESS;
+  struct GRid context;
+  OM_S_OBJECT_LINKAGE  ref_objid[2];
+  OM_S_CHANSELECT chan;
 	OMuint count;
 	
 		/*|- Get Ref_Mgr ID -*/
