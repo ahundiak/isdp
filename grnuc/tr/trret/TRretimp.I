@@ -8,7 +8,7 @@ class implementation TRret;
 #include "OMminimum.h"
 #include "exdef.h"
 #include "expriv.h"
-#include "xc/error.h"
+#include "XCerror.h"
 #include "TRprod_type.h"
 %safe
 #include "TRprod_name.h" /* Initializes TRprod_name[] and  TRprod_load[] */

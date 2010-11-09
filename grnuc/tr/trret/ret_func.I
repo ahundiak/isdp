@@ -284,7 +284,7 @@ quit:
 TRRET_process_form ( form_label, gadget_label, value )
 int     form_label;
 int     gadget_label;
-double  value;
+IGRdouble  value;
 {
   int   sel_flag;
   int   i, rpos, accept, sts;
