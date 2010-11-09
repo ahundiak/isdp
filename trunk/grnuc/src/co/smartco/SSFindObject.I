@@ -88,8 +88,8 @@ static long status = OM_S_SUCCESS;
 %endsafe
 
 int SSFindObject ( window, x, y, z, PConstraintType )
-OM_S_OBJID window;
-double     x, y, z;
+OM_S_OBJID  window;
+IGRdouble   x, y, z;
 int        *PConstraintType;
 {
   OM_S_KEY_DESC         key;

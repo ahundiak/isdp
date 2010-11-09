@@ -155,13 +155,13 @@ int SSDispIcon ( msg, in_points, ConstraintType, DisplayMode, PButton,
  * feed back. The text is always displayed in the window plane near the
  * mouse position.
  */
-long             *msg           /* return status                IN */;
-double           *in_points     /* where to display the icon    IN */;
-int              ConstraintType         /* ConstraintType icon (see SS.h)       IN */;
-enum GRdpmode    DisplayMode    /* The mode to use for display  IN */;
-struct EX_button *PButton       /* The window, button, ...      IN */;
-int              XCoordinate, 
-                 YCoordinate    /* Screen coordinates           IN */;
+long             *msg            /* return status                  IN */;
+IGRdouble        *in_points      /* where to display the icon      IN */;
+int               ConstraintType /* ConstraintType icon (see SS.h) IN */;
+enum GRdpmode     DisplayMode    /* The mode to use for display    IN */;
+struct EX_button *PButton        /* The window, button, ...        IN */;
+int               XCoordinate,
+                  YCoordinate    /* Screen coordinates             IN */;
 {
   struct IGResbc        *SpecialAttributes;
   struct DPele_header   ElementHeader;

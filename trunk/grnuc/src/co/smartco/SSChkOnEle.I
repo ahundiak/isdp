@@ -176,8 +176,8 @@ History
 static int SSBoreLineObjectDistance ( pBoreLine, pObject, Extended, PDistance )
   struct IGRline *pBoreLine;
   SSObject       *pObject;
-  int            Extended;
-  double         *PDistance;
+  int             Extended;
+  IGRdouble      *PDistance;
 {
   struct IGRline Line;
   double         *Parms, *InterParms;
@@ -636,10 +636,10 @@ int SSIntersectObjects ( pObject1,
                          IntersectionPoint )
 SSObject *pObject1;
 SSObject *pObject2;
-IGRpoint Point;
-int      Extended;
-double   Tolerance;
-IGRpoint IntersectionPoint;
+IGRpoint  Point;
+int       Extended;
+IGRdouble Tolerance;
+IGRpoint  IntersectionPoint;
 {
   struct IGRline      Line1, Line2;
   long                LocalStatus = TRUE;
@@ -803,12 +803,12 @@ SSCheckOnElement ( pObject, PLastObject, Tolerance, pBoreLine, Extended,
                    ConstraintPoint, KeyPoint, PpObject )
 SSObject       *pObject;
 SSObject       *PLastObject;
-double         Tolerance;
+IGRdouble       Tolerance;
 struct IGRline *pBoreLine;
-int            Extended; 
-IGRpoint       ConstraintPoint;
-IGRpoint       KeyPoint;
-SSObject       **PpObject;
+int             Extended;
+IGRpoint        ConstraintPoint;
+IGRpoint        KeyPoint;
+SSObject      **PpObject;
 {
   int      ConstraintType = SSNONE;
   int      ElligibleConstraints;

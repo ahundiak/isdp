@@ -84,9 +84,9 @@ History
  */
 
 void SSGetWindowTolerance ( window, x, y, z, pTolerance, pRange, pBoreLine )
-  GRobjid        window;
-  double         x, y, z;
-  double         *pTolerance;
+  GRobjid         window;
+  IGRdouble       x, y, z;
+  IGRdouble      *pTolerance;
   DB_3D_DBL_BOX  *pRange;
   struct IGRline *pBoreLine;
 {

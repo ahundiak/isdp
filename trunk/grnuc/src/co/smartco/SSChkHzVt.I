@@ -92,15 +92,15 @@ int SSCheckHzVt ( pObject,
 		  PLastObject, 
 		  Tolerance, 
 		  x, y, z,
-                  ConstraintPoint, 
+      ConstraintPoint, 
 		  KeyPoint, 
 		  PpObject )
 SSObject *pObject;
 SSObject *PLastObject;
-double   Tolerance;
-double   x, y, z;
-IGRpoint ConstraintPoint;
-IGRpoint KeyPoint;
+IGRdouble Tolerance;
+IGRdouble x, y, z;
+IGRpoint  ConstraintPoint;
+IGRpoint  KeyPoint;
 SSObject **PpObject;
 {
 
@@ -290,10 +290,10 @@ int ss_adjust_for_new_arc ( isectVector,
                             keyPoint, 
                             pconstraintType, 
                             constraintPoint )
-  IGRvector isectVector;
-  double   *keyPoint;
-  int       pconstraintType;
-  double   *constraintPoint;
+  IGRvector  isectVector;
+  IGRdouble *keyPoint;
+  int        pconstraintType;
+  IGRdouble *constraintPoint;
 {
   int       status = MSSUCC;
   BSrc      bsrc;
