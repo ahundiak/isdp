@@ -10,5 +10,4 @@ makeimp: imp.m
 
 clean:
 	@rm -f makespec makeimp *.o *.c
-
-
+	@svn update
