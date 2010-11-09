@@ -1,14 +1,8 @@
-CC
-$(COMPILER)
-
-COPT
-$(COMPOPT)
-
 INCLUDE
 $EXNUC/include
 
-ARCHIVE
-$(GRLIB)/lib/TRfile_id.a
+LIB
+$(GRLIB)/lib/tr.o
 
 SOURCE
 TRfile_id.c
