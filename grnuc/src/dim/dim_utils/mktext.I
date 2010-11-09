@@ -710,7 +710,7 @@ DMadd_symbol_char(str,length,symb_char,height,width,gtattr)
 IGRuchar *str;
 short *length;
 char symb_char;
-double height,width;
+IGRdouble height,width;
 struct GTattr *gtattr;
 /*.DMadd_symbol_char*/
 {

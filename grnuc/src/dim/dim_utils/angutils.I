@@ -28,7 +28,7 @@ IGRint DMselect_sector (msg,
 	 IGRdouble line2[2][3];
 	 IGRdouble  *selpt;
 	 struct DMplan_info  *plan_info;
-	 double  *trak_dist;
+	 IGRdouble  *trak_dist;
 	 int  *sector;
  /*
 IGRint *msg;
@@ -264,9 +264,9 @@ DMget_ang_txt_info (plan_info,
 	*/
 struct DMplan_info *plan_info;
 struct DMloc_param *p_loc;
-double lead_dist;
+IGRdouble lead_dist;
 int leader;
-double *txt_vec_orie,*breakpt,*centerpt,*norm_vec;
+IGRdouble *txt_vec_orie,*breakpt,*centerpt,*norm_vec;
 IGRshort *txt_just;
 /*.DMget_ang_txt_info*/
 {
@@ -389,7 +389,7 @@ DMget_txt_length (text_grid,
 	)
 	*/
 struct GRid text_grid;
-double *min_length, *max_length;
+IGRdouble *min_length, *max_length;
 struct GRmd_env *md_env;
 struct DMplan_info *plan_info;
 {
@@ -420,10 +420,10 @@ struct DMplan_info *plan_info;
 }
 
 int DMget_inter_point (cenpt,endpt,intpt,loc_pt)
-	 double  *cenpt;
-	 double  *endpt;
-	 double  *intpt;
-	 double  *loc_pt;
+	 IGRdouble  *cenpt;
+	 IGRdouble  *endpt;
+	 IGRdouble  *intpt;
+	 IGRdouble  *loc_pt;
 /*DMget_inter_point*/
 {
 	int i;
@@ -455,12 +455,12 @@ int DMget_inter_point (cenpt,endpt,intpt,loc_pt)
 }
 
 int DMget_pt_at_angle (pt1,pt2,arc_r,plane,endpt,ext_len,type)
-	 double  *pt1;
-	 double  *pt2;
-	 double  arc_r;
-	 double  plane[16];
-	 double  *endpt;
-	 double  ext_len;
+	 IGRdouble  *pt1;
+	 IGRdouble  *pt2;
+	 IGRdouble  arc_r;
+	 IGRdouble  plane[16];
+	 IGRdouble  *endpt;
+	 IGRdouble  ext_len;
 	 int  type;
 /*.DMget_pt_at_angle*/
 {

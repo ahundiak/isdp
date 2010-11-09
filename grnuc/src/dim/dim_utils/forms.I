@@ -1027,7 +1027,7 @@ IGRint DMnotify_form (form_label,label,value,form_ptr)
 */
 int form_label;
 int label;
-double value;
+IGRdouble value;
 Form form_ptr;
 {
 	int status;
@@ -1062,7 +1062,7 @@ IGRint DMatof (s,d)
 	)
 */
 char s[];
-double *d;
+IGRdouble *d;
 {
 	char *t;
 

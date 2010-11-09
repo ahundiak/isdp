@@ -611,10 +611,10 @@ DMget_annot_txt_info (plan_info,
 		      prev_dir)
 	 struct DMplan_info  *plan_info;
 	 struct DMsenv_param  *p_senv;
-	 double  *txt_vec_orie;
-	 double  *norm_vec;
+	 IGRdouble  *txt_vec_orie;
+	 IGRdouble  *norm_vec;
 	 IGRshort  *txt_just;
-	 double  *prev_dir;
+	 IGRdouble  *prev_dir;
 /*.DMget_ang_txt_info*/
 {
 	BSrc bs_rc;

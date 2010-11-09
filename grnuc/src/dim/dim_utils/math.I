@@ -216,7 +216,7 @@ extern  IGRboolean BSproj0();
 	*/
 	int *msg;
 	struct IGRlbsys *lbsys;
-	double box[4][3];
+	IGRdouble box[4][3];
 	/*.MATH_get_box_points*/
 	{
 		double o, xmin, ymin, xmax, ymax;
@@ -484,9 +484,9 @@ extern  IGRboolean BSproj0();
 	)
 	*/
 	int *msg;
-	double meas_axis[3];
-	double win[16];
-	double act[16];
+	IGRdouble meas_axis[3];
+	IGRdouble win[16];
+	IGRdouble act[16];
 	/*.MATH_compute_plan_info*/
 	{
 		/*****************************************
@@ -614,11 +614,11 @@ extern  IGRboolean BSproj0();
 	)
 	*/
 	int *msg;
-	double term_pt[3];
-	double break_pt[3];
-	double plane[16];
-	double box[4][3];
-	double endpt[3];
+	IGRdouble term_pt[3];
+	IGRdouble break_pt[3];
+	IGRdouble plane[16];
+	IGRdouble box[4][3];
+	IGRdouble endpt[3];
 	/*.MATH_line_break*/
 	{
                 IGRint status;
@@ -669,10 +669,10 @@ extern  IGRboolean BSproj0();
 	)
 	*/
 	int *msg;
-	double term_pt[3];
-	double break_pt[3];
-	double box[4][3];
-	double extpt[3];
+	IGRdouble term_pt[3];
+	IGRdouble break_pt[3];
+	IGRdouble box[4][3];
+	IGRdouble extpt[3];
 	/*.MATH_line_extend*/
 	{
 	        BSrc bs_rc;
@@ -730,8 +730,8 @@ extern  IGRboolean BSproj0();
 	*/
 	int *msg;
 	short flag;
-	double *upar;
-	double point[3];
+	IGRdouble *upar;
+	IGRdouble point[3];
 	struct GRid text_grid;
 	struct GRmd_env *md_env;
 	/*.MATH_get_box_pt_upar*/
@@ -822,7 +822,7 @@ extern  IGRboolean BSproj0();
 	}
 
 	double MATH_fix_dbl (d)
-	 double  d;
+	 IGRdouble  d;
  /*
 	double d;
  */
@@ -846,8 +846,8 @@ IGRint MATH_ang_bet_lines (vec1,
 	 double  *norm
 	)
 	*/
-double *vec1,*vec2,*norm;
-double *angle;
+IGRdouble *vec1,*vec2,*norm;
+IGRdouble *angle;
 /*.MATH_ang_bet_lines*/
 {
 	BSrc bs_rc;
@@ -887,8 +887,8 @@ IGRint MATH_get_dir_vec (rc,
 	)
 	*/
 int *rc;
-double *centerpt,*startpt,*endpt;
-double *norm_vec;
+IGRdouble *centerpt,*startpt,*endpt;
+IGRdouble *norm_vec;
 int *flag;
 /*.MATH_get_dir_vec*/
 {
