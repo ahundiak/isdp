@@ -11,18 +11,18 @@ Description
 History
         mrm     09/20/91    "borrowed" from InterPlot
 */
-
+typedef double IGRdouble;
 int GRFltVaxToFlt32(no_floats, vax_float, ieee_float)
 int		no_floats;
 unsigned long	vax_float[];
-double		*ieee_float;
+IGRdouble		*ieee_float;
 {
     return(UTFltVaxToFlt32(no_floats, vax_float, ieee_float));
 }
 
 int GRFlt32ToFltVax(no_floats, ieee_float, vax_float)
 int		no_floats;
-double		*ieee_float;
+IGRdouble		*ieee_float;
 unsigned long	vax_float[];
 {
     return(UTFlt32ToFltVax(no_floats, ieee_float, vax_float));
@@ -47,7 +47,7 @@ unsigned long	vax_float[];
 
 int flt32_to_fltvax(no_floats, ieee_float, vax_float)
 int		no_floats;
-double		*ieee_float;
+IGRdouble		*ieee_float;
 unsigned long	vax_float[];
 {
     return(GRFlt32ToFltVax(no_floats, ieee_float, vax_float));
@@ -57,7 +57,7 @@ int fltvax_to_flt32(no_floats, vax_float, ieee_float)
 
 int		no_floats;
 unsigned long	vax_float[];
-double		*ieee_float;
+IGRdouble		*ieee_float;
 {
    return(GRFltVaxToFlt32(no_floats, vax_float, ieee_float));
 }
@@ -172,9 +172,8 @@ double		*ieee_float;
 #define VAX_NEGATIVE_MAX	-1.70e+38
 
 
-double UTAdjustDouble(ieee_val)
+double UTAdjustDouble(double ieee_val)
 
-double	ieee_val;
 {
     double	adj_val;		/* value representable on VAX	*/
 
@@ -306,7 +305,7 @@ double	ieee_val;
 int UTFlt32ToFltVax(no_floats, ieee_float, vax_float)
 
 int		no_floats;
-double		*ieee_float;
+IGRdouble		*ieee_float;
 unsigned long	vax_float[];
 {
 #ifdef VAX
@@ -524,7 +523,7 @@ int UTFltVaxToFlt32(no_floats, vax_float, ieee_float)
 
 int		no_floats;
 unsigned long	vax_float[];
-double		*ieee_float;
+IGRdouble		*ieee_float;
 {
 #ifdef VAX
     int	bytes_to_move;
