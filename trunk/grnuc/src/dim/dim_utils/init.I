@@ -1118,7 +1118,7 @@ void clear_dbl (d,n)
 	 int  n
 	)
 */
-double *d;
+IGRdouble *d;
 int n;
 {
 	while (n) d[--n] = 0.0;

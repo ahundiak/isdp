@@ -1049,7 +1049,7 @@ IGRint DMget_cnv_factor (meas_unit,factor)
 	)
 */
 int meas_unit;
-double *factor;
+IGRdouble *factor;
 /*.DMget_cnv_factor*/
 {
 	IGRint status, rc;
@@ -1472,7 +1472,7 @@ IGRint DMgive_value (exp,d)
 	)
 	*/
 struct GRid exp;
-double *d;
+IGRdouble *d;
 /*.DMgive_value*/
 {
 	IGRint status;
