@@ -1425,9 +1425,7 @@ int compute_Parse ( count, parents_list, syntax, result )
 
 /* -------------------------------------------------------------------------*/
 
-int EXP_evaluate(syntax,pvalue)
-  char 		*syntax;
-  double	*pvalue;
+int EXP_evaluate(char *syntax, double *pvalue)
 {
   int 		rc;
   struct 	data_struct result;

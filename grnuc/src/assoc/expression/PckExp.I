@@ -243,11 +243,11 @@ static void EXPAddExpression ( char *ExpressionName )
 
 
 #argsused
-void EXPNotifyPick ( form_label, GadgetLabel, value, form )
-int    form_label;
-int    GadgetLabel;
-double value;
-Form   form;
+void EXPNotifyPick (
+  int    form_label,
+  int    GadgetLabel,
+  double value,
+  Form   form)
 {
   int  response = TERMINATE, Flag, position, Space;
   long msg;
