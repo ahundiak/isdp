@@ -1,28 +1,15 @@
 SRC
 $(GRNUC)/src/go/EMSstubs
 
-#ifndef IDRAW
-
-#ifndef NT
-ARCHIVE
-$(GRLIB)/lib/stub.a
-#else
-ARCHIVE
-$(GRLIB)/lib/stub.lib
-#endif
-
-#else
-
-ARCHIVE
-$GRMDS/lib/stub.a
-#endif
+LIB
+$(GRLIB)/lib/ems_stubs.o
 
 SOURCE
 
 EMSbcstubs.I
 EMScvstubs.I
-COcvtype8788.I
-RASTERstubs.c
+/* COcvtype8788.I ah */
+/* RASTERstubs.c  ah */
 EMgetacdtm.c
 FIconfbox.c
 FIfsetorig.c
