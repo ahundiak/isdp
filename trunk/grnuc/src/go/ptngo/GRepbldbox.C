@@ -30,10 +30,10 @@ History
 
 int GRbuildbox (msg, left, xrange, yrange, box)
 
-long     *msg;               /* return code */
-int       left;              /* extend box to the left (1) or right (0) */
-double    xrange, yrange;    /* of symbol defining pattern */
-double   *box;               /* returned polygon */
+long      *msg;               /* return code */
+int        left;              /* extend box to the left (1) or right (0) */
+IGRdouble  xrange, yrange;    /* of symbol defining pattern */
+IGRdouble *box;               /* returned polygon */
 
 {
     double   direction;      /* left or right */
