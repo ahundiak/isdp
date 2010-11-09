@@ -1,32 +1,21 @@
-CC
-$(COMPILER)
-
-COPT
-$(COMPOPT)
-
 SPEC
 $(EXNUC)/spec
 $(EXNUC)/exec/spec
 $(GRNUC)/go/spec
 
 INCLUDE
-$(XFORMSDP)/xfi/include
-$(INGRHOME)/include
-$(XINC)
-#ifdef XGL
-$(XGLHOME)/include
-$(XGLHOME)/include/xgl
-#endif
-$(TRANSLATE)/include
+$(UMS)/include
+$(LIBXC)/include
+$(FORMS)/include
 $(EXNUC)/include
 $(GRNUC)/include
 $(BS)/include
 
 OPP
-$(EXTARG)/bin/opp $(TR_OPPOPT)
+$(EXTARG)/bin/opp
 
 OMCPP
-$(EXTARG)/bin/omcpp $(TR_OMCPPOPT)
+$(EXTARG)/bin/omcpp
 
 LIB
 $(GRLIB)/lib/trsav.o
