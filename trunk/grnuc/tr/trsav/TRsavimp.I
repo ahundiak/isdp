@@ -127,7 +127,7 @@ quit:
 TRSAV_process_form ( form_label, gadget_label, value )
 int     form_label;
 int     gadget_label;
-double  value;
+IGRdouble  value;
 {
   int   i, rpos, sel_flag, accept, sts;
   char  prod_str[64], msg_str[256], msg_file[256], str[256];
@@ -1002,7 +1002,7 @@ char *argv[];
 int EMsvrename_ops_notify ( form_label, gadget_label, value, fp )
 int     form_label;
 int     gadget_label;
-double  value;
+IGRdouble  value;
 Form    fp;
 {
 char numb[40], rev[40], desc[40], newfile[40];
