@@ -53,10 +53,11 @@ History
         mrm     04/14/89    creation
 */
 
-int COpqinfo (plotter_queue, x, y, plotter_unit)
-char *plotter_queue;
-double *x, *y;
-char *plotter_unit;
+int COpqinfo (
+  char   *plotter_queue,
+  double *x,
+  double *y,
+  char   *plotter_unit)
 {
     int sts;
     char *c, buf[32], filename[128];
@@ -169,10 +170,12 @@ Description
 */
 
 #argsused
-int COspformatqinfo (queue, x, y, unit, buf)
-char *queue;
-double x, y;
-char *unit, *buf;
+int COspformatqinfo (
+  char  *queue,
+  double x,
+  double y,
+  char  *unit,
+  char  *buf)
 {
     char active_units[3][32];
     double v[2];

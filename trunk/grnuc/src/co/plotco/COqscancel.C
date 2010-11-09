@@ -40,11 +40,11 @@ extern int FIg_display ();
 
 
 #argsused
-int COqscancel (form_label, gadget_label, value, form)
-int form_label;
-int gadget_label;
-double value;
-Form form;
+int COqscancel (
+int    form_label,
+int    gadget_label,
+double value,
+Form   form)
 {
     char buf[128], buf1[128], *c, *c2, *j, jobid[128];
     int sts, i, rpos, sel;

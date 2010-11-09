@@ -50,12 +50,12 @@ extern int FIg_reset ();
 extern int FIg_set_text ();
 
 #argsused
-int COqsupdate (pd, form_label, gadget_label, value, form)
-PIplotdata *pd;
-int form_label;
-int gadget_label;
-double value;
-Form form;
+int COqsupdate (
+  PIplotdata *pd,
+  int    form_label,
+  int    gadget_label,
+  double value,
+  Form   form)
 {
     int sts = 0, i, row, sel;
     char buf[128];

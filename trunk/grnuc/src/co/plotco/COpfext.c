@@ -64,12 +64,13 @@ Return Codes
                     PI_F_FAIL       unknown file type
 */
 
-int COget_plotfile_extents (filename, x, y, unit, filetype, clipbox)
-char     *filename;
-double   *x, *y;
-char     *unit;
-int      *filetype;
-unsigned *clipbox;
+int COget_plotfile_extents (
+char     *filename,
+double   *x,
+double   *y,
+char     *unit,
+int      *filetype,
+unsigned *clipbox)
 {
     int sts, msg;
 
@@ -106,12 +107,13 @@ unsigned *clipbox;
 
 
 
-int IGDSfile_extents (msg, filename, x, y, unit, clipbox)
-int      *msg;
-char     *filename;
-double   *x, *y;
-char     *unit;
-unsigned *clipbox;
+int IGDSfile_extents (
+int      *msg,
+char     *filename,
+double   *x, 
+double   *y,
+char     *unit,
+unsigned *clipbox)
 {
     char             mu_name[3];
     short            type9_found = FALSE;

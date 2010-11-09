@@ -60,9 +60,10 @@ Description
         Convert an x, y size in a specified unit to internal units.
 */
 
-int COcvtsize (x, y, unit)
-double *x, *y;
-char *unit;
+int COcvtsize (
+  double *x,
+  double *y,
+  char   *unit)
 {
 #ifdef STANDALONE
 

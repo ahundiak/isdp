@@ -59,11 +59,11 @@ History
 #include "pi.h"
 #include "pilabel.h"
 
-int COqsnotify (form_label, gadget_label, value, form)
-int form_label;
-int gadget_label;
-double value;
-Form form;
+int COqsnotify (
+  int    form_label,
+  int    gadget_label,
+  double value,
+  Form   form)
 {
     char buf[128], jobnum[128];
     int row, sel, sts;
