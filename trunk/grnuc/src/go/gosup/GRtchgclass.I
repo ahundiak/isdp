@@ -112,15 +112,15 @@ from GRconic import GRputarc;
 long GRtaltchgclass(msg, env, my_id, type, classname,  properties,
 	geometry, old_range, range)
 
-    long 	*msg; 			/* return message		*/
-    struct GRmd_env *env; 		/* environment information	*/
-    GRobjid	*my_id;			/* objects id			*/
-    int	type;			/* 0 = arc, 1 = polyline	*/
-    char 	*classname; 		/* classname to construct	*/
-    short       *properties;	/* object properties		*/
-    char 	*geometry; 		/* the new geometry		*/
-    double	*old_range;
-    double   *range;
+    long 	    *msg; 			    /* return message		*/
+    struct     GRmd_env *env; /* environment information	*/
+    GRobjid	  *my_id;			    /* objects id			*/
+    int	       type;			    /* 0 = arc, 1 = polyline	*/
+    char      *classname; 		/* classname to construct	*/
+    short     *properties;	  /* object properties		*/
+    char      *geometry; 		  /* the new geometry		*/
+    IGRdouble	*old_range;
+    IGRdouble *range;
 
 {
 	long		OMmsg;		/* OM return code		*/
