@@ -2,8 +2,7 @@
 #include <stdio.h>
 #include <string.h>
 
-int GRvalidate_rtree_range( range )
-double *range;
+int GRvalidate_rtree_range( double *range )
 {
     char tstr[1024];
     char *p=NULL;
