@@ -9,6 +9,5 @@ makeimp: imp.m
 	grmakemake imp.m makeimp
 
 clean:
-	@rm -f makespec makeimp *.o 
-
-
+	@rm -f makespec makeimp *.o *.c
+	@svn update
