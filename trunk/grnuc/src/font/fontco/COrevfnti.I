@@ -196,7 +196,7 @@ method init ( int type; char *str_ptr )
       {
 	 *tfpath='\0';
 	 tfpath= (char *)strcat(tfpath,tmp);
-	 tfpath= (char *)strcat(tfpath,":/usr/ip32/resrc/fontserver/typeface");
+	 tfpath= (char *)strcat(tfpath,":/opt/ingr/resrc/fontserver/typeface");
       }
    }
 
@@ -208,7 +208,7 @@ method init ( int type; char *str_ptr )
       {
 	 *cmpath='\0';
 	 cmpath= (char *)strcat(cmpath,tmp);
-	 cmpath= (char *)strcat(cmpath,":/usr/ip32/resrc/fontserver/charmap");
+	 cmpath= (char *)strcat(cmpath,":/opt/ingr/resrc/fontserver/charmap");
       }
    }
 
@@ -509,8 +509,8 @@ method execute(int *response;
 int GRfont_form_notify (form_label, gadget_label, value, form_ptr)
 
 int form_label, gadget_label;
-double value;
-Form  form_ptr;
+IGRdouble value;
+Form      form_ptr;
 {
   IGRlong msg_loc;
   GRobjid cmdobj;
