@@ -184,11 +184,11 @@ DPdelete_vw_form()
     return(TRUE);
 }
 
-static void DPform_notification (form_label,gadget_label,value,form_ptr  )
-int form_label;
-int gadget_label;
-double value;
-Form form_ptr;
+static void DPform_notification (
+  int    form_label,
+  int    gadget_label,
+  double value,
+  Form   form_ptr)
 {
     IGRint i;
     IGRlong msg;
