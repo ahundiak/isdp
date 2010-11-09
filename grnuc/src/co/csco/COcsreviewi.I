@@ -185,11 +185,11 @@ finish:
 
 
 #argsused
-IGRint COcsreview_notify (form_label, gadget_label, value, form)
-int form_label;
-int gadget_label;
-double value;
-Form form;
+IGRint COcsreview_notify (
+  int    form_label,
+  int    gadget_label,
+  double value,
+  Form   form)
 {
     IGRchar name[GRNAME_SIZE], desc[GRNAME_SIZE], *c;
     IGRint sts, msg, row, col, pos, sel, nrow, i, j, size;
