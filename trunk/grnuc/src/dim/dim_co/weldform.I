@@ -53,7 +53,7 @@ DMprocess_weld_form (form_label,label,value,form,subform1,subform2,subform3,
         save_data,ignore_data,par_weld)
 	 int  form_label;
 	 int  label;
-	 double  value;
+	 IGRdouble  value;
 	 Form  form;
 	 Form  subform1;
 	 Form  subform2;
