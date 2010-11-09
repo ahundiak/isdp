@@ -93,20 +93,22 @@ void COdelete_rev_lib_forms()
 
 ******************************************************************************/
 
-COm_lib_review(f_label,g_label,value,fp)
-int f_label,g_label;
-double value;
-char *fp;
+COm_lib_review(
+  int    f_label,
+  int    g_label,
+  double value,
+  char  *fp)
 /*.COm_router*/
 {
-COm_lib_router(f_label,g_label+100,value,COm_lib_form_ptr);
-return 1;
+  COm_lib_router(f_label,g_label+100,value,COm_lib_form_ptr);
+  return 1;
 }
 
-COm_lib_router(f_label,g_label,value,fp)
-int f_label,g_label;
-double value;
-char *fp;
+COm_lib_router(
+  int    f_label,
+  int    g_label,
+  double value,
+  char  *fp)
 /*.COm_router*/
 {
  char *c, *c1, *strchr(), *strrchr();

@@ -156,10 +156,11 @@ GRspacenum osnum;
    Interface function between C-form and CO
 
 ******************************************************************************/
-COm_navig_router(f_label,g_label,value,fp)
-int f_label,g_label;
-double value;
-char *fp;
+COm_navig_router(
+int    f_label,
+int    g_label,
+double value,
+char  *fp)
 /*.COm_navig_router*/
 {
  struct GRid cmd_obj;

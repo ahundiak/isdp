@@ -242,9 +242,7 @@ method ACiconnect(IGRint prop; struct GRid father,context; char *down_scan)
 
 /* Transform give_structure by a transformation matrix */
 
-AStrans_rst(rst,matrix)
- struct ret_struct *rst;
- double *matrix;
+AStrans_rst(struct ret_struct *rst, double *matrix)
  {
   double tmp_matrix[16];
   int i, msg;

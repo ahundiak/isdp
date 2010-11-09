@@ -94,8 +94,12 @@ IGRint DYrblinepara(  param_id, line_def,  display, md_env )
     return ( TRUE );
 }
 
-t_vector(in,p0,v0,norm,out)
-double *in,*p0,*v0,*norm,*out;
+t_vector(
+  double *in,
+  double *p0,
+  double *v0,
+  double *norm,
+  double *out)
 /*.placement_point*/
 {
  double tmp[3];

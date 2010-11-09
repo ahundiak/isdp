@@ -159,12 +159,12 @@ char *name_exp,null_name = '\0';
    }
 }
 
-ASget_param_from_string(response_data,type_generic,param,param_value,md_env)
-char *response_data;
-int type_generic;
-struct GRid *param;
-double *param_value;
-struct GRmd_env *md_env;
+ASget_param_from_string(
+  char   *response_data,
+  int     type_generic,
+  struct  GRid *param,
+  double *param_value,
+  struct  GRmd_env *md_env)
 {
  IGRchar *equal, *strchr();  
  char real_name[DI_PATH_MAX];
