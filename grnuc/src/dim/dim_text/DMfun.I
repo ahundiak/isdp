@@ -29,7 +29,7 @@ IGRint DMcompute_angular_text ( osnum,
 				p_std)
 	 OMuword  osnum;
 	 struct DMtxt_str  *dim_text;
-	 double  dimn_val;
+	 IGRdouble  dimn_val;
 	 struct DMenv_param  *p_env;
 	 struct DMloc_param  *p_loc;
 	 struct DMmisc_param  *p_misc;
@@ -102,7 +102,7 @@ IGRint DMcompute_dim_text (osnum,
 	 OMuword  osnum;
 	 struct DMtxt_str  *dim_text;
 	 int  dim_type;
-	 double  dimn_val;
+	 IGRdouble  dimn_val;
 	 struct DMenv_param  *p_env;
 	 struct DMloc_param  *p_loc;
 	 struct DMmisc_param  *p_misc;
@@ -341,7 +341,7 @@ IGRint DMcompute_tol_limits (dim_text,
 			     p_misc,
 			     type)
 	 struct DMtxt_str  *dim_text;
-	 double  dimn_val;
+	 IGRdouble  dimn_val;
 	 int  tol_field_no;
 	 struct DMstd_param  *p_std;
 	 struct DMenv_param  *p_env;
@@ -423,7 +423,7 @@ IGRint DMcompute_ang_limits (osnum,
 			     p_misc)
 	 OMuword  osnum;
 	 struct DMtxt_str  *dim_text;
-	 double  dimn_val;
+	 IGRdouble  dimn_val;
 	 int  tol_field_no;
 	 struct DMstd_param  *p_std;
 	 struct DMenv_param  *p_env;
@@ -487,7 +487,7 @@ IGRint DMadd_angular_text (osnum,
 	 OMuword  osnum;
 	 struct DMtxt_str  *dim_text;
 	 struct measure_unit  *unit_type;
-	 double  dimn_val;
+	 IGRdouble  dimn_val;
 	 struct DMloc_param  *p_loc;
 	 struct DMenv_param  *p_env;
 /*.DMadd_angular_text*/
@@ -579,7 +579,7 @@ IGRint DMcompute_dim_string (dim_text,
 	 struct DMtxt_str  *dim_text;
 	 struct DMloc_param  *p_loc;
 	 struct DMenv_param  *p_env;
-	 double  dim_val;
+	 IGRdouble  dim_val;
 	 struct DMmisc_param  *p_misc;
 	 int  mode;
 /*.DMcompute_dim_string*/
@@ -679,7 +679,7 @@ IGRint DMadd_format_string (ftflag,
 	 struct DMtxt_str  *dim_text;
 	 int  metric;
 	 struct measure_unit  *unit_type;
-	 double  dim_val;
+	 IGRdouble  dim_val;
 	 struct DMenv_param  *p_env;
 	 struct DMloc_param  *p_loc;
 /*.DMadd_format_string*/
@@ -753,7 +753,7 @@ IGRint DMget_frac_index ( dim_val,
 			  index,
 			  accuracy,
 			  flag)
-	 double  dim_val;
+	 IGRdouble  dim_val;
 	 int  *index;
 	 int  accuracy;
 	 int  *flag;
@@ -813,7 +813,7 @@ IGRint DMdeci_dimension (dim_val,
 			 unit_type,
 			 dim_text,
 			 p_loc)
-	 double  dim_val;
+	 IGRdouble  dim_val;
 	 struct measure_unit  *unit_type;
 	 struct DMtxt_str  *dim_text;
 	 struct DMloc_param  *p_loc;
@@ -1323,8 +1323,8 @@ DMpreproc_presuf (dir,
 DMcheck_limits_accuracy (result1,
 			 result2,
 			 unit)
-	 double  result1;
-	 double  result2;
+	 IGRdouble  result1;
+	 IGRdouble  result2;
 	 struct measure_unit  *unit;
 /*.DMcheck_limits_accuracy*/
 {

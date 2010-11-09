@@ -326,7 +326,7 @@ struct DMloc_param *p_par_loc;
 IGRint DMadd_dimension_field(dim_text,field_num,dimn_val,env_param,p_loc,p_misc,mode)
 struct DMtxt_str *dim_text;
 struct DMenv_param *env_param;
-double dimn_val;
+IGRdouble dimn_val;
 int field_num;
 struct DMmisc_param *p_misc;
 struct DMloc_param *p_loc;
@@ -364,7 +364,7 @@ OMuword osnum;
 struct DMtxt_str *dim_text;
 int dim_field_no;
 struct DMenv_param *p_env;
-double dimn_val;
+IGRdouble dimn_val;
 struct DMmisc_param *p_misc;
 struct DMloc_param *p_loc;
 /*.DMadd_angular_field*/
@@ -408,9 +408,9 @@ struct DMtxt_str *dim_text;
 struct DMstd_param *std_arr;
 int field_num;
 int dim_field;
-double tol_size;
+IGRdouble tol_size;
 char tol_weig;
-double descent_r;
+IGRdouble descent_r;
 /*.DMtol_up_low_start_ansi*/
 {
 	IGRuchar *text_ptr;
@@ -443,9 +443,9 @@ struct DMtxt_str *dim_text;
 struct DMstd_param *std_arr;
 int field_num;
 int dim_field;
-double tol_size;
+IGRdouble tol_size;
 char tol_weig;
-double descent_r;
+IGRdouble descent_r;
 /*.DMtol_up_low_iso*/
 {
 	IGRuchar *text_ptr;
@@ -478,7 +478,7 @@ struct DMtxt_str *dim_text;
 struct DMstd_param *std_arr;
 int field_num;
 int dim_field;
-double tol_size, descent_r;
+IGRdouble tol_size, descent_r;
 /*.DMtol_up_low_center_ansi*/
 {
 	IGRuchar *text_ptr;
@@ -512,7 +512,7 @@ struct DMtxt_str *dim_text;
 struct DMstd_param *std_arr;
 int field_num;
 int dim_field;
-double tol_size, descent_r;
+IGRdouble tol_size, descent_r;
 /*.DMtol_up_low_center_iso*/
 {
 	IGRuchar *text_ptr;
@@ -543,7 +543,7 @@ struct DMtxt_str *dim_text;
 struct DMstd_param *std_arr;
 int field_num;
 int text_weight;
-double tol_size,descent_r;
+IGRdouble tol_size,descent_r;
 /*.DMtol_up_low_end_ansi*/
 {
 	IGRuchar *text_ptr;
@@ -568,7 +568,7 @@ struct DMtxt_str *dim_text;
 struct DMstd_param *std_arr;
 int field_num;
 int text_weight;
-double tol_size,descent_r;
+IGRdouble tol_size,descent_r;
 /*.DMtol_up_low_end_iso*/
 {
 	IGRuchar *text_ptr;
@@ -591,7 +591,7 @@ IGRint DMtol_middle_start(dim_text,field_num,dim_field,std_arr,tol_size,tol_weig
 struct DMtxt_str *dim_text;
 struct DMstd_param *std_arr;
 int field_num, dim_field;
-double tol_size;
+IGRdouble tol_size;
 char   tol_weig;
 /*.DMtol_middle_start*/
 {
@@ -617,7 +617,7 @@ char   tol_weig;
 IGRint DMtol_middle_end( dim_text, field_num, tol_size, text_weight)
 struct DMtxt_str *dim_text;
 int    field_num;
-double tol_size;
+IGRdouble tol_size;
 int    text_weight;
 /*.DMtol_middle_end*/
 {
