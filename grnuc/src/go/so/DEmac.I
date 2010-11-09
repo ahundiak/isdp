@@ -35,7 +35,7 @@ DEplace_so ( msg, type, symb, u1, u2, go, window, module, inter )
              long              *msg   /* return status             OUT */;
              int               type   /* the type of the entry     IN  */;
              struct IGRdisplay *symb  /* symbology of the override IN  */;
-             double            u1, u2 /* parms of the override     IN  */;
+             IGRdouble         u1, u2 /* parms of the override     IN  */;
              struct GRid       *go    /* object for the override   IN  */;
              struct GRid       *window/* window for the override   IN  */;
              struct GRmd_env   *module/* context of the override   IN  */;
@@ -95,7 +95,7 @@ DEdelete_so ( msg, type, symb, u1, u2, go, window, module )
               long              *msg    /* return status              OUT */;
               int               type    /* the type of the entry      IN  */;
               struct IGRdisplay *symb   /* symbology of the override  IN  */;
-              double            u1, u2  /* parms of the override      IN  */;
+              IGRdouble         u1, u2  /* parms of the override      IN  */;
               struct GRid       *go     /* object for the override    IN  */;
               struct GRid       *window /* window for the override    IN  */;
               struct GRmd_env   *module /* context of the override    IN  */;
@@ -266,7 +266,7 @@ DEchange_so ( msg, old_type, old_symbology, old_u1, old_u2,
                                    /* the type of the entry             IN  */;
               struct IGRdisplay *old_symbology
                                    /* the old symbology of the override IN  */;
-              double            old_u1, old_u2
+              IGRdouble          old_u1, old_u2
                                    /* the old u parms                   IN  */;
               struct GRid       *old_window
                                    /* the old view of the override      IN  */;
@@ -275,7 +275,7 @@ DEchange_so ( msg, old_type, old_symbology, old_u1, old_u2,
               int type                   /* the type of the entry       IN  */;
               struct IGRdisplay *symbology
                                    /* the new symbology                 IN  */;
-              double            u1, u2
+              IGRdouble          u1, u2
                                    /* the new u parms                   IN  */;
               struct GRid       *go
                                    /* the object with the override      IN  */;
@@ -318,10 +318,10 @@ DEretrieve_so ( msg, p_type, symb, p_u1, p_u2, go, u, window, module )
                 long              *msg   /* return status             OUT */;
                 int               *p_type/* the type of the override  OUT */;
                 struct IGRdisplay *symb  /* symbology of the override OUT */;
-                double            *p_u1, 
+                IGRdouble         *p_u1,
                                   *p_u2  /* parms of the override     OUT */;
                 struct GRid       *go    /* object for the override   IN  */;
-                double            u      /* u parms                   IN  */;
+                IGRdouble          u      /* u parms                   IN  */;
                 struct GRid       *window/* window for the override   IN  */;
                 struct GRmd_env   *module/* context of the override   IN  */;
 /*
@@ -352,7 +352,7 @@ DEnext_so ( msg, p_type, symb, p_u1, p_u2 )
             long              *msg   /* return status              OUT */;
             int               *p_type/* the type of the override   OUT */;
             struct IGRdisplay *symb  /* symbology of the override  OUT */;
-            double            *p_u1, 
+            IGRdouble         *p_u1,
                               *p_u2  /* parms of the override      OUT */;
 /*
    This function retrieves the next override (called after a retrieve).
