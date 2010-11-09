@@ -40,10 +40,11 @@ History
 
 ******************************************************************************/
 
-COm_move_router(form_label,label,value,form_ptr)
-int form_label,label;
-double value;
-char *form_ptr;
+COm_move_router(
+  int    form_label,
+  int    label,
+  double value,
+  char  *form_ptr)
 /*.COm_router*/
 {
  char text[80];

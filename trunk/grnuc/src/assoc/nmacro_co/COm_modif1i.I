@@ -36,10 +36,11 @@ History
 
 ******************************************************************************/
 
-COm_modif_router(form_label,label,value,form_ptr)
-int form_label,label;
-double value;
-char *form_ptr;
+COm_modif_router(
+int    form_label,
+int    label,
+double value,
+char  *form_ptr)
 /*.COm_router*/
 {
  int status;
@@ -73,10 +74,11 @@ char *form_ptr;
  return(1);
 }
 
-COm_modif_option(form_label,label,value,form_ptr)
-int form_label,label;
-double value;
-char *form_ptr;
+COm_modif_option(
+  int    form_label,
+  int    label,
+  double value,
+  char  *form_ptr)
 /*.COm_crdef_option*/
 {
  if ( form_ptr ) ;

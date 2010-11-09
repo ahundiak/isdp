@@ -46,10 +46,11 @@ extern struct ACdef_param ACglobal_place;
 
 ******************************************************************************/
 
-COm_place_router(form_label,label,value,form_ptr)
-int form_label,label;
-double value;
-char *form_ptr;
+COm_place_router(
+  int    form_label,
+  int    label,
+  double value,
+  char  *form_ptr)
 /*.COm_router*/
 {
  int status;
@@ -79,10 +80,11 @@ char *form_ptr;
  return(1);
 }
 
-COm_user_place_router(form_label,label,value,form_ptr)
-int form_label,label;
-double value;
-char *form_ptr;
+COm_user_place_router(
+  int    form_label,
+  int    label,
+  double value,
+  char  *form_ptr)
 /*.COm_router*/
 {
  int status;
@@ -112,10 +114,11 @@ char *form_ptr;
  return(1);
 }
 
-COm_place_select(form_label,label,value,form_ptr)
-int form_label,label;
-double value;
-char *form_ptr;
+COm_place_select(
+  int    form_label,
+  int    label,
+  double value,
+  char  *form_ptr)
 /*.COm_place_select*/
 {
  extern struct GRid *ACpath_grid;
@@ -141,10 +144,11 @@ char *form_ptr;
 
 /* form_label is the pointer to the form which call the place option form */
 
-COm_place_option(form_label,label,value,form_ptr)
-int form_label,label;
-double value;
-char *form_ptr;
+COm_place_option(
+  int    form_label,
+  int    label,
+  double value,
+  char  *form_ptr)
 /*.COm_place_option*/
 {
  /*
@@ -156,10 +160,11 @@ char *form_ptr;
 }
 
 
-COm_place_name(form_label,label,value,form_ptr)
-int form_label,label;
-double value;
-char *form_ptr;
+COm_place_name(
+  int    form_label,
+  int    label,
+  double value,
+  char  *form_ptr)
 /*.COm_place_option*/
 {
  /*

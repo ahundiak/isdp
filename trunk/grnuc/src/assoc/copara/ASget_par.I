@@ -565,12 +565,27 @@ IGRint ASctl_param(act_parms,new_entry,locate_args,action)
 /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
 
 IGRint ASget_all_param
-  (
-  ret_code,TokenList,event1,event2,locate_mask,input_mask,event_size,
-  display_flag,response,response_data,locate_prompt,acc_prompt,relocate_prompt,
-  attributes,stack,type_generic,located_obj,param_value
-  )
-
+(
+  IGRlong            *ret_code,
+  IGRint              TokenList[],
+  struct GRevent     *event1,
+  struct GRevent     *event2,
+  IGRlong            *locate_mask,
+  IGRlong            *input_mask,
+  IGRint             *event_size,
+  IGRlong            *display_flag,
+  IGRint             *response,
+  IGRchar            *response_data,
+  IGRchar            *locate_prompt,
+  IGRchar            *acc_prompt,
+  IGRchar            *relocate_prompt,
+  struct GRlc_locate *attributes,
+  struct GRlc_stack  *stack,
+  int                 type_generic,
+  struct GRid        *located_obj,
+  double             *param_value
+)
+#if 0
   IGRlong   *ret_code;            /* Return code from ls$locate               */
   IGRint    TokenList[];          /* List of token of the command object      */
   struct    GRevent   *event1;    /* Event for the locate point               */
@@ -589,7 +604,7 @@ IGRint ASget_all_param
   struct GRlc_stack  *stack;      /* Contains objid and context               */
   struct GRid        *located_obj;/* Located object                           */
   int 	    type_generic;	  /* eligible type			      */
-
+#endif
 
 
   /*.ASget_all_param*/
@@ -754,12 +769,26 @@ INTERRUP : /*| Command interupted (by another command for example */
 /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
 
 IGRint ASget_param
-  (
-  ret_code,TokenList,event1,event2,locate_mask,input_mask,event_size,
-  display_flag,response,response_data,locate_prompt,acc_prompt,relocate_prompt,
-  attributes,stack,located_obj,param_value
-  )
-
+(
+  IGRlong            *ret_code,
+  IGRint              TokenList[],
+  struct GRevent     *event1,
+  struct GRevent     *event2,
+  IGRlong            *locate_mask,
+  IGRlong            *input_mask,
+  IGRint             *event_size,
+  IGRlong            *display_flag,
+  IGRint             *response,
+  IGRchar            *response_data,
+  IGRchar            *locate_prompt,
+  IGRchar            *acc_prompt,
+  IGRchar            *relocate_prompt,
+  struct GRlc_locate *attributes,
+  struct GRlc_stack  *stack,
+  struct GRid        *located_obj,
+  double             *param_value
+)
+#if 0
   IGRlong   *ret_code;            /* Return code from ls$locate               */
   IGRint    TokenList[];          /* List of token of the command object      */
   struct    GRevent   *event1;    /* Event for the locate point               */
@@ -777,6 +806,7 @@ IGRint ASget_param
   struct GRlc_locate *attributes; /* Attributes to be found                   */
   struct GRlc_stack  *stack;      /* Contains objid and context               */
   struct GRid        *located_obj;/* Located object                           */
+#endif
 {
 int status;
 status =  ASget_all_param
