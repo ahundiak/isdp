@@ -172,7 +172,7 @@ static void CIfm_form_notification (f_label, g_label, value, form)
 
 int    f_label;
 int    g_label;
-double value;
+IGRdouble value;
 Form   form;
 {
   unsigned int		cmd_oid;
