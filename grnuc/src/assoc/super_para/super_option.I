@@ -98,11 +98,11 @@ char *opt_name,*dir_name;
 
 /* Retrieve option expression */ 
 
-ASretrieve_option_obj(osnum,opt_name,obj,val)
-GRspacenum osnum;
-char *opt_name;
-struct GRid *obj;
-double *val;
+ASretrieve_option_obj(
+  GRspacenum osnum,
+  char   *opt_name,
+  struct  GRid *obj,
+  double *val)
 /*.ASretrieve_option_obj*/
 {
  int status;
