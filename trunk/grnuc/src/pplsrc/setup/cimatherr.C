@@ -25,8 +25,8 @@
 /* Fix to get the exception structure included on all boxes while
  * compilingunder STDC (standard C).  14-Sep-92
  */
-#if defined (__STDC__) && !defined(__clipper__) || defined(__mips__)
-#if !defined(IRIX5)  && !defined(SUNOS58)
+//#if defined (__STDC__) && !defined(__clipper__) || defined(__mips__)
+//#if !defined(IRIX5)  && !defined(SUNOS58)
 struct exception {
         int type;
         char *name;
@@ -34,8 +34,8 @@ struct exception {
         double arg2;
         double retval;
 };
-#endif
-#endif
+//#endif
+//#endif
 
 #define  CI_DOMAIN     1
 #define  CI_SING       2
