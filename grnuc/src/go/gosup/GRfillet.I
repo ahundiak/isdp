@@ -159,7 +159,7 @@ IGRboolean GRfillet(msg,obj1,env1,pt1,parms1,obj2,env2,pt2,parms2,radius,
 	   struct GRmd_env     *env2;   /* second object environment info    */
 	   IGRpoint		pt2;	/* approximate tangent point on obj2 */
 	   struct GRparms      *parms2; /* second object geometrical parms   */
-	   double   	       *radius;	/* radius of desired fillet	     */
+	   IGRdouble   	       *radius;	/* radius of desired fillet	     */
 	   struct IGRline      *center;	/* approximate center of fillet      */
 	   short   	       *trim_flag; /* flag for trimming		     */
 	   IGRpoint		tr_pnt1;/* point on portion of obj1 to keep  */

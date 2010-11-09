@@ -484,11 +484,11 @@ int   GRget_coordinate_data(msg,object_id,md_env,origin,x_vector,
  long	*msg;
  struct GRid	*object_id;
  struct GRmd_env *md_env;
- double *origin;
- double *x_vector;
- double *y_vector;
- double *z_vector;
- double *scale;
+ IGRdouble *origin;
+ IGRdouble *x_vector;
+ IGRdouble *y_vector;
+ IGRdouble *z_vector;
+ IGRdouble *scale;
  IGRmatrix *matrix;
 {
    int OMmsg;
@@ -597,13 +597,13 @@ History:
 int GRproject_point_on_element(msg,object_id,md_env,point, 
 		proj_pt,u_parm,v_parm)
 
-long			*msg;
-struct GRmd_env		*md_env;
+long            *msg;
+struct GRmd_env *md_env;
 struct GRid  		*object_id;
-double		*point;
-double		*proj_pt;
-double		*u_parm;
-double               *v_parm;
+IGRdouble		*point;
+IGRdouble		*proj_pt;
+IGRdouble		*u_parm;
+IGRdouble   *v_parm;
 {
 
    int OMmsg;
