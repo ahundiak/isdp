@@ -40,12 +40,12 @@ double fabs ();
 */
    
 
-int ASeval_radius(count, list, radius, center, md_env)
-IGRint count;               /* number of parents   */
-struct GRid 	*list;      /* GRid of the parents */
-double 		*radius;    /* returned radius     */
-double          *center;    /* point at center     */
-struct GRmd_env *md_env;    /* obsolete argument   */
+int ASeval_radius(
+  IGRint  count,            /* number of parents   */
+  struct  GRid *list,       /* GRid of the parents */
+  double *radius,           /* returned radius     */
+  double *center,           /* point at center     */
+  struct  GRmd_env *md_env) /* obsolete argument   */
 
 /*.ASeval_radius */
 {

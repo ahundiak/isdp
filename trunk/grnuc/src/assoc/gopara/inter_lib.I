@@ -308,10 +308,14 @@ IGRpoint p0,p1,vect_ptr;
 ----------------------------------------------------------------------------
 */
 
-IGRint cmp_intersection_line_circle(p0, p1,circle_st,ch_pt,pt_ptr,orient)
-double *p0, *p1, *ch_pt, *pt_ptr;
-struct circle_data circle_st;
-IGRint *orient;
+IGRint cmp_intersection_line_circle(
+  double *p0,
+  double *p1,
+  struct circle_data circle_st,
+  double *ch_pt,
+  double *pt_ptr,
+  IGRint *orient)
+
 /*.int_line_cir.Root */
 {
   IGRpoint pa,pb,va,pl,pc,vcp,pin1,pin2,vtrans,v_to_orient1,
@@ -443,10 +447,12 @@ IGRint *orient;
    between two circles
 ----------------------------------------------------------------------------
 */
-IGRint cmp_intersection_circle_circle(circle_st1,circle_st2,ch_pt,pt_ptr,orient)
-struct circle_data circle_st1, circle_st2;
-double *ch_pt, *pt_ptr;
-IGRint *orient;
+IGRint cmp_intersection_circle_circle(
+  struct circle_data circle_st1,
+  struct circle_data circle_st2,
+  double *ch_pt,
+  double *pt_ptr,
+  IGRint *orient)
 /*.int_cir_cir.Root */
 {
   IGRpoint pa,pc1,pc2,vcp,normal_to_c1_in_c2,v_cent2_cent1;
@@ -632,11 +638,11 @@ IGRdouble div;
  *  USED BY DIM
  */
 
-int ASarc_pts( msg, arc_struct, start_pt, sweep_pt )
- int 			*msg;		/* completion code		*/
- struct ret_struct	*arc_struct;	/* arc structure		*/
- double			*start_pt;	/* start point			*/
- double			*sweep_pt;	/* sweep point			*/
+int ASarc_pts(
+ int 			  *msg,		/* completion code		*/
+ struct ret_struct	*arc_struct,	/* arc structure		*/
+ double			*start_pt,	/* start point			*/
+ double			*sweep_pt)	/* sweep point			*/
 /*.ASarc_pts*/
 {
  double *teta, *rad, mat[9], v[3];

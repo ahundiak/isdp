@@ -610,9 +610,11 @@ IGRchar **geometry;
 
 /* intersection between 2 curves with extends */
 
-static cmp_int_cv_cv(obj0,obj1,pt_init,pt_res)
-  struct GRid *obj0,*obj1;
-  double *pt_init,*pt_res;
+static cmp_int_cv_cv(
+  struct GRid *obj0,
+  struct GRid *obj1,
+  double *pt_init,
+  double *pt_res)
 
    {
     IGRlong status;

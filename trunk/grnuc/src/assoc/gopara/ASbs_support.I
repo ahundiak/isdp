@@ -778,10 +778,13 @@ char **bc;
 int ASnp_for_min_dist = 80;
 %endsafe
 
-ASmdstptcv(bc,pt_init,par,pt_res,dist,rc) 
-struct IGRbsp_curve *bc;
-double *pt_init,*par,*pt_res,*dist;
-long *rc;
+ASmdstptcv(
+struct IGRbsp_curve *bc,
+double *pt_init,
+double *par,
+double *pt_res,
+double *dist,
+long   *rc)
 /*.ASmdstptcv*/
 {
  int i,imin = 0,inext;
