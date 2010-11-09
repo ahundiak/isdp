@@ -32,6 +32,7 @@
 #include <signal.h>
 #include <string.h>
 
+// #define DEBUG 1
 
 #define SOFT_ERR(text,number)		/* software error */ \
     sprintf(errmess, "%s\tline %d: %s %d", __FILE__, __LINE__, text, number); \

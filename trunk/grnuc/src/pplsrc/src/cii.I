@@ -10,6 +10,8 @@
  */
 class implementation ci;
 
+// #define DEBUG 1
+
 %safe
 #include <ctype.h>
 #include <errno.h>
@@ -690,7 +692,14 @@ method execute(int *response; char *response_data; int pos)
 #endif
 	WRAPUP :
 #ifdef DEBUG
-  printf( "ci.execute( %s ) EXIT\n", ci_data->ficcmd ) ; fflush( stdout ) ;
+      if (ci_data && ci_data->ficcmd)
+      {
+        printf( "ci.execute( %s ) EXIT\n", ci_data->ficcmd ) ; fflush( stdout ) ;
+      }
+      else
+      {
+        printf( "ci.execute( %s ) EXIT\n", "CI_DATA NULL" ) ; fflush( stdout ) ;
+      }
 #endif
 	return OM_S_SUCCESS ;
 }
