@@ -188,10 +188,8 @@ unsigned long *buffer;
 
 *******************************************************************************/
 /* ARGSUSED */
-void UTConvertDouble(num_swaps,buffer)
+void UTConvertDouble(int num_swaps, double *buffer)
 
-int num_swaps;
-double *buffer;
 {
 #ifdef BIG_ENDIAN
     unsigned char *char_ptr;
