@@ -1,3 +1,10 @@
+/* ===============================================================
+ * SOL10 09 Nov 2010
+ * This is used by the ppl processor, still not really sure why or what exactly it does
+ * This in turn need the .s file to call XC_init which in turn needs xcsyscall
+ *
+ * Trace through some time
+ */
 #if defined(__sparc__)
 #include <sys/utsname.h>
 static struct utsname info;

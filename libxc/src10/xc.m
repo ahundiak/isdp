@@ -1,8 +1,8 @@
 SOURCE
-stub.c
 dload.c
 exit.c
 stralloc.c
+getargs.c
 hashadd.c
 hashc.c
 hashdel.c
@@ -14,9 +14,12 @@ hashinit.c
 hashlookup.c
 hashnext.c
 hashrpl.c
+ipcl.c
 vla.c
 whence.c
-
+xcsyscall.c
+XCinit_x86.s
+        
 LIB
 xc.o
 

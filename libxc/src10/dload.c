@@ -106,10 +106,14 @@ void *dload_ctrl (int cmd, ...)
 }
 void *dload (char *path, int options)
 {
-  if (DLOAD_TRACE) printf("XC dload %s %d\n",path,options);
+  // If path is null then return handle to global symbol objects
+
+  if (DLOAD_TRACE) 
+  {
+    if (path) printf("XC dload %s %d\n", path, options);
+    else      printf("XC dload %s %d\n","NULL",options);
+  }
   return dlopen(path,RTLD_NOW | RTLD_GLOBAL);
-  // printf("XC dload %s %d\n",path,options);
-  // return 0;
 }
 void *dload_address_lookup (char *name)
 {
@@ -118,12 +122,21 @@ void *dload_address_lookup (char *name)
   address = dlsym(RTLD_DEFAULT,name);
   if (!address) 
   {
-    if (DLOAD_TRACE) printf("dload_adderss_lookup - Not found - %s\n",name);
+    if (DLOAD_TRACE) printf("XC dload_address_lookup, Not found '%s'\n",name);
     return 0;
   }
-  if (DLOAD_TRACE) printf("XC dload_address_lookup %s\n",name);
+  // if (DLOAD_TRACE) printf("XC dload_address_lookup, Found '%s'\n",name);
   return address;
   
   // printf("XC dload_address_lookup %s\n",name);
   // return NULL;
+}
+int dload_symbol_lookup(void *handle, char *name, struct symdef **buf)
+{
+  if (DLOAD_TRACE || 1)
+  {
+    if (name) printf("XC dload_symbol_lookup %s\n",name);
+    else      printf("XC dload_symbol_lookup NULL\n");
+  }
+  return 0;
 }
