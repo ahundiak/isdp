@@ -5,10 +5,11 @@
 [Rotation] * [Tranformation]. This routine will be much faster
 than the generic MAinvmx() */
 
-DPinvmxRT(mx,invmx)
+DPinvmxRT(double *mx, double *invmx)
+#if 0
 double *mx;     /* mx = R * T */
 double *invmx;  /* output matrix, the inverse of mx */
-
+#endif
 /*double mx[4][4];      previous declaration of parameters passed */
 /*double invmx[4][4];*/
 {
