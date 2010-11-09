@@ -1,5 +1,13 @@
-target: mkfile
-	make -r -f mkfile
+target: makeimp
+	grmake -r -k -f makeimp
 
-mkfile: attrib.m
-	makemake attrib.m mkfile
+makespec: spec.m
+	grmakemake spec.m makespec
+
+makeimp: imp.m
+	grmakemake imp.m makeimp
+
+clean:
+	@rm -f makespec makeimp *.o *.c
+
+

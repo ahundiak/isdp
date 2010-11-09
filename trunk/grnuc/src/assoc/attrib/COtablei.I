@@ -492,10 +492,11 @@ return OM_S_SUCCESS;
 }
 
 #argsused
-AStable_read(form_label,label,value,form_ptr)
-int form_label,label;
-double value;
-char *form_ptr;
+AStable_read(
+  int    form_label,
+  int    label,
+  double value,
+  char  *form_ptr)
 {
   long size;
   int  resp,pos;

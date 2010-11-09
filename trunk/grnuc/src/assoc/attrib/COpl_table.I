@@ -230,13 +230,11 @@ return	OM_S_SUCCESS;
 }
 
 
-VDpm_out(table_name,  key, feet_count, feet_values )
-
-	char	*table_name		;
-	int	*feet_count	;
-	struct ret_struct    *key;
-	double	*feet_values	; 
-
+VDpm_out(
+  char              *table_name,
+  int               *feet_count,
+  struct ret_struct *key,
+  double            *feet_values)
 {
 
 	FILE	*pmfile	;
