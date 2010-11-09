@@ -29,6 +29,7 @@ $(GRNUC)/spec
  
 INCLUDE
 $(INGRHOME)/include
+$(FORMS)/include
 $(EXNUC)/include
 $(GRNUC)/include
 $(BS)/include
