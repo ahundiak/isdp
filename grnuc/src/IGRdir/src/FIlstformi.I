@@ -83,10 +83,10 @@ method set_defaults ( char *data; char *back )
 }
 
 
-int DirList_form_input ( form_label, gadget_label, value )
-int    form_label;
-int    gadget_label;
-double value;
+int DirList_form_input (
+int    form_label,
+int    gadget_label,
+double value)
 {
   int  Row;
   int  *sel_flag, *r_pos;
