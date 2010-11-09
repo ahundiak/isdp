@@ -451,11 +451,11 @@ Form form;
         
 
 /*ARGSUSED*/
-void GRlist_notify_routine(form_label, gadget_label, value, form )
-int    form_label;
-int    gadget_label;
-double value;
-Form   form;
+void GRlist_notify_routine(
+int    form_label,
+int    gadget_label,
+double value,
+Form   form)
 {
     int  i;
     int  found = FALSE;
