@@ -1,3 +1,8 @@
+# ========================================================
+# 01 Nov 2010
+# Tried changing to yacc30/lex30 and got errors
+# Just keep with yacc40 for not
+
 .SUFFIXES:  .l .y .o
 YFLAGS = -d
 
@@ -79,3 +84,6 @@ COparse.o: $(GRNUC)/src/grio/parse/COparse.y
 	@$(CC)  -c $(COPT) $(ipath) COparse.c -lm -ll -ly
 	@if test "$(COPT)" != "-g"; then rm COparse.c COparse.C; fi
 	@rm y.tab.c
+
+clean:
+	@rm -f *.o  y.output   y.tab.h
