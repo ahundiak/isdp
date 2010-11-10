@@ -834,7 +834,7 @@ wrapup:
 static int FormNotification( flabel, glabel, value, form )
 int flabel;
 int glabel;
-double value;
+IGRdouble value;
 Form form;
 {
   int sts; 

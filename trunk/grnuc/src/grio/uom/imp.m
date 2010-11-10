@@ -11,9 +11,9 @@ COedtuomi.I
 uomgetunit.I
 
 INCLUDE
-$(INGRHOME)/include
-$(INGRHOME)/include/xc
-$(XINC)
+$(UMS)/include
+$(LIBXC)/include
+$(FORMS)/include
 $(EXNUC)/include
 $(GRNUC)/include
 $(BS)/include
