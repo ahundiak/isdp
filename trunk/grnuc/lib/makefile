@@ -15,7 +15,10 @@ objects = \
 	$(GRNUC)/lib/attrco.o       \
 	$(GRNUC)/lib/attrcosp.o     \
 	$(GRNUC)/lib/attrib.o       \
+	$(GRNUC)/lib/ci_executor.o  \
+	$(GRNUC)/lib/cinotify.o     \
 	$(GRNUC)/lib/cct.o          \
+	$(GRNUC)/lib/cct_spec.o     \
 	$(GRNUC)/lib/ceo_gslocate.o \
 	$(GRNUC)/lib/ceo_locate.o   \
 	$(GRNUC)/lib/ci.o           \
@@ -184,6 +187,8 @@ objects = \
 	$(GRNUC)/lib/toolco.o       \
 	$(GRNUC)/lib/toolcosp.o     \
 	$(GRNUC)/lib/tr.o           \
+	$(GRNUC)/lib/trret.o        \
+	$(GRNUC)/lib/trsav.o        \
 	$(GRNUC)/lib/transco.o      \
 	$(GRNUC)/lib/transcosp.o    \
 	$(GRNUC)/lib/transgo.o      \
