@@ -21,7 +21,7 @@ int GRIO_float_to_ascii(float_in,
 			readout_spec,
 			ascii_result)
      
-double float_in;
+IGRdouble float_in;
 struct GRIOreadout_spec *readout_spec;
 char *ascii_result;
 {

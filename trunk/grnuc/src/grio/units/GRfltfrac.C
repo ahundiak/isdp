@@ -20,13 +20,14 @@
          string      = "6/8"
 
  */
+typedef double IGRdouble;
 
 int GRIO_float_to_frac(reduce_flag,
 		       value,
 		       denominator,
 		       string)
 short reduce_flag;
-double value;
+IGRdouble value;
 short denominator;
 char *string;
 {
