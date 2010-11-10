@@ -13,7 +13,7 @@ class implementation UOMsuper;
 #include "OMerrordef.h"
 #include "exmacros.h"
 #include "msdef.h"
-#include <xc/hash.h>
+#include "hash.h"
 #include "UOMtls.h"
 #include "UOMerrordef.h"
 #include "UOMyaerrdef.h"

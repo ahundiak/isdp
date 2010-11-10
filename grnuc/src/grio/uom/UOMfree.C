@@ -2,7 +2,7 @@
  *  functions to deallocate unit lists
  */
 
-#include "xc/hash.h"
+#include "hash.h"
 
 #include "OMerrordef.h"
 #include "UOMdef.h"

@@ -25,6 +25,8 @@ Notes
 #include "UOM.h"
 #include "msdef.h"
 
+typedef double IGRdouble;
+
 /*
  *  ANSI static prototype
  */
@@ -113,7 +115,7 @@ char *str2;
 }
 
 int UOM_float_to_sci( d, readout, out_buf )
-double d;
+IGRdouble d;
 UOM_READOUT *readout;
 char *out_buf;
 {
@@ -154,7 +156,7 @@ char *out_buf;
 
 int UOM_float_to_frac( reduce_flag, value, denominator, string )
 short reduce_flag;
-double value;
+IGRdouble value;
 short denominator;
 char *string;
 {
@@ -198,7 +200,7 @@ char *string;
 /******************************************************************************/
 
 int UOM_float_to_ascii( d, readout, out_buf )
-double d;
+IGRdouble d;
 UOM_READOUT *readout;
 char *out_buf;
 {
@@ -387,7 +389,7 @@ static int process_decimal( outbfsz, outbf, alias, value, readout,
 int outbfsz;
 char *outbf;
 UOMalias_name alias;
-double *value;
+IGRdouble *value;
 UOM_READOUT *readout;
 char *tmp;
 OM_p_FUNCPTR conv_func;
@@ -415,7 +417,7 @@ static int process_fraction( outbfsz, outbf, alias, value, readout,
 int outbfsz;
 char *outbf;
 UOMalias_name alias;
-double *value;
+IGRdouble *value;
 UOM_READOUT *readout;
 char *tmp;
 short *fraction_mode;
@@ -448,7 +450,7 @@ int UOM_format_readout( readout, num_alias, alias_list,
 UOM_READOUT *readout;
 short *num_alias;
 UOMalias_name *alias_list;
-double *value_list;
+IGRdouble *value_list;
 short *field_size;
 short *fraction_mode;
 char *out_buf;
