@@ -53,6 +53,6 @@ $(EXTARG)/bin/omcpp
 SRC
 $(GRNUC)/src/stubs/perm
 
-ARCHIVE
-$(GRLIB)/lib/libGRstub.a
+LIB
+$(GRLIB)/lib/gr_perm_stubs.o
 
