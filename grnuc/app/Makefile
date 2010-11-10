@@ -2,8 +2,10 @@
 .SUFFIXES: .I .S .C .c .o
 
 opp = $(EXTARG)/bin/opp
+opp = opp
 
 omcpp = $(EXTARG)/bin/omcpp
+omcpp = omcpp -l
 
 CC = $(COMPILER)
 
@@ -19,20 +21,39 @@ IPATH =  \
 	-I$(GRNUC)/include
 
 # Libraries to be linked by the loader
+# This causes a coredump on startup
+#	-lxcmalloc \
+
 LINKLIB = \
 	-lIGbspmath -lIGexnuc -lIGgrnuc \
+	-lxc  -lUMS \
 	-lXFS -lXFI \
 	-lm -lc -lsocket -ldl -lnsl -lX11 -lXt -lXext \
-	/opt/ingr/ums/lib/i86pc/libUMS.a      \
-	/opt/ingr/libxc/lib/libxc.a           \
-	/opt/ingr/libxc/lib/libxcmalloc.a     \
+	-lxml2 -lxslt -lglib -lgtk -lgdk \
 	/opt/ingr/helpdp/lib/i86pc/libhc.a    \
 	/opt/ingr/helpdp/lib/i86pc/libhlib.a  \
 	/opt/ingr/exnucdp/lib/igefei.o        \
-	/opt/ingr/grnucdp/lib/isl/stub.a      \
-	/opt/ingr/grnucdp/lib/isl/libGRstub.a \
-	/opt/ingr/grnucdp/lib/isl/dl.o        \
-	/opt/ingr/grnucdp/lib/isl/ci.o
+	/opt/ingr/grnucsrc/lib/isl/stub.a      \
+	/opt/ingr/grnucsrc/lib/isl/libGRstub.a \
+	/opt/ingr/grnucsrc/lib/isl/dl.o        \
+	/opt/ingr/grnucsrc/lib/isl/ci.o
+
+#LINKLIB = \
+#	-lIGbspmath -lIGexnuc -lIGgrnuc \
+#	-lxc -lxcmalloc \
+#	-lXFS -lXFI \
+#	-lm -lc -lsocket -ldl -lnsl -lX11 -lXt -lXext \
+#	-lxml2 -lxslt -lglib -lgtk -lgdk \
+#	/opt/ingr/ums/lib/i86pc/libUMS.a      \
+#	/opt/ingr/libxc/lib/libxc.a           \
+#	/opt/ingr/libxc/lib/libxcmalloc.a     \
+#	/opt/ingr/helpdp/lib/i86pc/libhc.a    \
+#	/opt/ingr/helpdp/lib/i86pc/libhlib.a  \
+#	/opt/ingr/exnucdp/lib/igefei.o        \
+#	/opt/ingr/grnucsrc/lib/isl/stub.a      \
+#	/opt/ingr/grnucsrc/lib/isl/libGRstub.a \
+#	/opt/ingr/grnucsrc/lib/isl/dl.o        \
+#	/opt/ingr/grnucsrc/lib/isl/ci.o
 
 # OPP and OMCPP options
 
@@ -87,3 +108,6 @@ Emspp :
 	GRNUCver.o GRNUCprodinit.o \
 	MODELver.o MODELprodinit.o MODELclassinit.o \
 	EMSPPver.o EMSPPprodinit.o
+
+clean:
+	@rm -f *.o
