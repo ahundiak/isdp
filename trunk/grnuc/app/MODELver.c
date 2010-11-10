@@ -5,7 +5,7 @@
 
 extern int Model_compare_version();
 
-INGR_S_PRODUCT_DEF MODEL_appl_version_id = {"I/MODEL 03.03.00.20 27-Jul-10",
+INGR_S_PRODUCT_DEF MODEL_appl_version_id = {"I/MODEL 03.04.00.20 27-Jul-10",
  Model_compare_version};
 
 int Model_compare_version( curr_ver, file_ver )
