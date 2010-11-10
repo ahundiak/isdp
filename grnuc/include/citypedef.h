@@ -28,6 +28,11 @@ struct ci_instruction {
 
 /* -- Information about open files.
    -- */
+/* =======================================
+ * 01 Nov 2010 - ah
+ * For some reasion I had to chane FILE to struct __FILE
+ * For the Solaris 10 build
+ */
 struct CI_FILE_DES {
 
 /* File name								*/
@@ -37,7 +42,7 @@ struct CI_FILE_DES {
 						state		;
 /* Stream pointers for writing
    ( w_... ) and reading ( r_... )					*/
-					FILE 	*w_strm,
+					struct __FILE 	*w_strm,
 	 					*r_strm		;
 } ;
 
