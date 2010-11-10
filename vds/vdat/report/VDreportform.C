@@ -86,7 +86,7 @@ static int VDrp_fileFormNotification( form_label, gadget, value, form )
 
 int	form_label,
 	gadget ;
-double	value ;
+IGRdouble	value ;
 char	*form ; {
 
 	VD_fileFormInfo	*info ;
