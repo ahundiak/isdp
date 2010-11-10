@@ -551,3 +551,7 @@ GRC_M_ZAnalyzeElem,GRZAnEl,COci,0,0,,"COanalyze"
 0x088991ae,GRStrtRcrd,RAPcobCO,0
 0x088991b6,GRStopRcrd,RAPcobCO,0
 0x08899206,GRShRc,RAPcobCO,0
+GRC_M_AppendRecord,GRApndRcrd,RAPcobCO,0
+GRC_M_StartRecord,GRStrtRcrd,RAPcobCO,0
+GRC_M_StopRecord,GRStopRcrd,RAPcobCO,0
+GRC_M_ShutdownRcrd,GRShRc,RAPcobCO,0
