@@ -7,7 +7,7 @@ stub10.c
 stub11.c
 stub12.c
 stub14.c
-
+        
 SPEC
 $(EXNUC)/spec
 $(GRNUC)/spec
@@ -30,6 +30,6 @@ $(EXTARG)/bin/omcpp
 SRC
 $(GRNUC)/src/stubs/temp
 
-ARCHIVE
-$(GRLIB)/lib/tempGRstub.a
+LIB
+$(GRLIB)/lib/gr_temp_stubs.o
 
