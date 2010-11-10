@@ -42,3 +42,7 @@ ${VDS}/config/commands/VDGnCmpRep : VDCmdReport.t \
 
 mkfile: vdastrep.m
 	grmakemake vdastrep.m mkfile
+
+clean:
+	@rm -f *.o *.c mkfile
+
