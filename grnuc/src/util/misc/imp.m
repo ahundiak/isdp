@@ -1,6 +1,6 @@
 INCLUDE
 $(INGRHOME)/include
-$(XINC)
+$(FORMS)/include
 $(EXNUC)/include
 $(GRNUC)/include
 $(BS)/include
@@ -27,16 +27,11 @@ COPT
 SRC
 $(GRNUC)/src/util/misc
 
-#ifndef NT
-ARCHIVE
-$(GRLIB)/lib/utilmisc.a
-#else
-ARCHIVE
-$(GRLIB)/lib/utilmisc.lib
-#endif
+LIB
+$(GRLIB)/lib/utilmisc.o
 
 SOURCE
 GRgetprodata.c
 GRlistref.c
-GRconfirm.c
+/* GRconfirm.c defined elsewhere */
 GRingrhome.c
