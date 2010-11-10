@@ -28,7 +28,7 @@ int                        *rc;
 struct GRIOreadout_spec    *readout_spec;
 short                      *num_alias;
 GRIOalias_name             *alias_list[];
-double                     *value_list;
+IGRdouble                  *value_list;
 short                      *field_size;
 short                      *fraction_mode;
 char                       *return_string;
