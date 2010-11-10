@@ -55,7 +55,7 @@ class implementation COcc;
 #include "go.h"
 #include "griodef.h"
 #include "grio.h"
-#include <xc/dload.h>
+#include "dload.h"
 
 
 char read_line ( fet, line )

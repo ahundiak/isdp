@@ -8,7 +8,7 @@ SRC
 $(GRNUC)/cc
 
 INCLUDE
-$(INGRHOME)/include
+$(LIBXC)/include
 $(EXNUC)/include
 $(GRNUC)/include
 $(BS)/proto_include
