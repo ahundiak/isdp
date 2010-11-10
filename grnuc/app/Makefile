@@ -110,4 +110,7 @@ Emspp :
 	EMSPPver.o EMSPPprodinit.o
 
 clean:
-	@rm -f *.o
+	@rm -f *.o APP_main.c Grnuc Model Emspp
+	@rm -f EXNUCclassinit.c EMSPPprodinit.c  EXNUCapplinit.c
+	@rm -f GRNUCclassinit.c GRNUCprodinit.c
+	@rm -f MODELclassinit.c MODELprodinit.c
