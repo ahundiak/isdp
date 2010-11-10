@@ -1,0 +1,73 @@
+#!/bin/ksh
+
+# ============================================================
+# Link existing spec files
+# rm -f ${GRNUC}/spec/*.S
+# find  ${GRNUC}/src* -type f -name '*.S' -depth -print -exec ln {} ${GRNUC}/spec \;
+
+# Message files
+# cd ${GRNUC}/config/english/messages/src
+# make -rk
+
+# ============================================================
+# Run all the make.sl
+function runSlic
+{
+  SLIC_FILE_LIST=`find $GRNUC/src -name 'make.sl' -print`
+  # echo $SLIC_FILE_LIST
+
+  for m in $SLIC_FILE_LIST
+  do
+    d=`dirname $m`
+    echo "------------------slicing $d ---------------------"
+    cd $d
+    make -rk -f make.sl
+    cd - > /dev/null
+  done
+}
+# runSlic
+
+# =============================================================
+# Make the .imp and .spec makefiles
+function runGenMakeFiles
+{
+MAKELIST="`cat $GRNUC/build/makelist` $OTHER_LIST"
+MAKELIST="src/IGRdir/src src/IGRdir/nb"
+MAKELIST="src/assoc/ci_macro"
+
+for dir in $MAKELIST
+do
+  # some directories do not exist on foreign boxes
+
+  if [ "$SGI" = "y" -o "$SUN5" = "y" -o "$ISL" = "y" -o "$SUNZX" = "y" ]
+  then
+    case "$dir" in
+      "src/lg/options"    | \
+      "src/lg/lastprod"   | \
+      "src/lg/copyos"     ) continue ;;
+    esac
+  fi
+
+  if [ ! -d $GRNUC/$dir ]
+  then
+    echo "$GRNUC/$dir does not exist"
+    continue
+  fi
+
+  cd $GRNUC/$dir
+  export MSRC=$dir
+
+  if [ -f imp.m ]
+  then
+    make -f $GRNUC/build/mkmakefile ${GRTARG}/${MSRC}/makeimp
+    grmake -r -k -f makeimp
+  fi
+
+  if [ -f spec.m ]
+  then
+    make -f $GRNUC/build/mkmakefile ${GRTARG}/${MSRC}/makespec
+    grmake -r -k -f makespec
+  fi
+done
+}
+runGenMakeFiles
