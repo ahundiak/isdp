@@ -4,34 +4,18 @@
 /*
  * File of #defined constants for ci.
  */
+// The pulls in MAXPATHLEN of 1024
+#include <sys/param.h>
 
-#if defined(__clipper__)
-#       include <sys/param.h>
-#	include <unistd.h>
-#       define CI_PATH_MAX  MAXPATHLEN
-#       define CI_NAME_MAX  NAME_MAX
-#elif (defined(__sparc__) || defined(__sparc) || defined(__mips__) || defined(__i386__))
-#       include <sys/param.h>
-#	define _POSIX_SOURCE
-#	define _POSIX_C_SOURCE 199506L
-#	include <limits.h>
-#	undef  _POSIX_SOURCE
-#	undef  _POSIX_C_SOURCE
-
-/* ---------------------
- * TODO Figure out limits nonsense
+/* ============================================================
+ * The posix stuff is nonsense, just hard code for now
  */
 #ifndef _POSIX_NAME_MAX
 #define _POSIX_NAME_MAX 14
 #endif
 
-#       define CI_PATH_MAX  MAXPATHLEN
-#       define CI_NAME_MAX  _POSIX_NAME_MAX
-#elif (defined(NT))
-#	include <stdlib.h>
-#       define CI_PATH_MAX  _MAX_PATH
-#       define CI_NAME_MAX  _MAX_FNAME
-#endif
+#define CI_PATH_MAX  MAXPATHLEN
+#define CI_NAME_MAX  _POSIX_NAME_MAX
 
 #ifndef CIDEF_INCLUDE
 #	define CIDEF_INCLUDE 
