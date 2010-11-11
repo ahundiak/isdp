@@ -1288,7 +1288,7 @@ return 1;
 VDsame_context(obj,first,first_matrix)
 struct GRid * obj;
 short first;
-double *first_matrix;
+IGRdouble *first_matrix;
 {
  double matrix[16],fabs();
  short type;
@@ -1361,7 +1361,7 @@ return 1;
 #argsused
 VDchg_scale(obj,new_scale,new_exp,md_env)
 struct GRid *obj,*new_exp;
-double new_scale;
+IGRdouble new_scale;
 struct GRmd_env *md_env;
 {
  long status,loc_msg,ret_code;
@@ -1408,7 +1408,7 @@ VDstore_levels_and_vol(source, nb_att, levels, point, vector, md_env)
 struct	GRid 	 *source;
 int		 nb_att;
 int		 *levels;
-double		 *point,*vector;
+IGRdouble		 *point,*vector;
 struct	GRmd_env *md_env;
 {
 IGRlong status,msg,is_VDcontext;

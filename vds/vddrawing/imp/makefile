@@ -37,3 +37,6 @@
 TGT = vdidrwimp
 
 include ${VDS_PATH}/etc/makefiles/lib_only.h
+
+clean:
+	@rm -f mkfile *.o *.c
