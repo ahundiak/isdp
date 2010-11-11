@@ -36,3 +36,6 @@ target: mkfile
 mkfile : vdbin.m
 	grmakemake vdbin.m mkfile
 
+clean:
+	@rm -f mkfile *.o *.c
+
