@@ -35,3 +35,6 @@
 TGT = vdichkimp
 
 include ${VDS_PATH}/etc/makefiles/lib_only.h
+
+clean:
+	@rm -r mkfile *.o VDScheckin.c VDpostProd.c
