@@ -69,7 +69,7 @@ char      *family;
 char      *par_name;
 int        units_set_in;
 int        units_set_out;
-double     old_value;
+IGRdouble     old_value;
 {
   double      new_value1, new_value;
 
@@ -262,9 +262,9 @@ double     old_value;
 
 VDcorr_wrt_resol( new_value1, resolution, new_value )
 
-double        new_value1;
-double        resolution;
-double       *new_value;
+IGRdouble        new_value1;
+IGRdouble        resolution;
+IGRdouble       *new_value;
 {
   double    coeff;
   int       val1, val2, i=0;
