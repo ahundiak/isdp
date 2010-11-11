@@ -17,19 +17,6 @@
 #	Revision 1.1.1.1  2001/01/04 21:08:38  cvs
 #	Initial import to CVS
 #	
-# Revision 1.1  1997/05/08  15:31:56  pinnacle
-# rep bin w/txt
-#
-# Revision 1.1  1995/06/27  18:27:58  pinnacle
-# Created: vddraw/imp/makefile by azuurhou for vds.240
-#
-# Revision 1.4  1995/01/20  21:03:42  pinnacle
-# Replaced: vddraw/imp/makefile by azuurhou r#
-#
-# Revision 1.3  1995/01/09  18:25:10  pinnacle
-# Replaced: vddraw/imp by azuurhou r#
-#
-# Revision 1.1  1994/12/22  22:10:26  pinnacle
 # OPE
 #
 #
@@ -42,3 +29,6 @@
 TGT = vddrawimp
 
 include ${VDS_PATH}/etc/makefiles/lib_only.h
+
+clean:
+	@rm -f mkfile *.o *.c
