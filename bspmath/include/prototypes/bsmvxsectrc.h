@@ -1,0 +1,2 @@
+/* /usr3/bs/src.em/bsmvxsectrc.c */
+extern void BSmvxsectrc(IGRint, struct IGRbsp_curve *[], IGRint, struct IGRbsp_curve *[], IGRboolean, IGRboolean, IGRdouble [], IGRboolean, IGRdouble [3][3], IGRpoint [], IGRpoint [], IGRpoint [], IGRboolean, IGRboolean, IGRboolean, struct IGRbsp_curve *[], IGRboolean, struct IGRbsp_curve *[], struct IGRbsp_surface *, struct IGRbsp_surface *, struct IGRbsp_surface *, struct IGRbsp_surface *, struct IGRbsp_surface **, BSrc *);

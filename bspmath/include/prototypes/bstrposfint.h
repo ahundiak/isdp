@@ -1,0 +1,2 @@
+/* /usr3/bs/src.em/bstrposfint.c */
+extern void BStrposfint(struct BSgeom_bsp_surf *, struct BSgeom_bsp_surf *, struct BSgeom_bsp_surf *, IGRdouble [2], IGRdouble [2], IGRdouble [2], IGRdouble [2], IGRdouble [2], IGRdouble [2], IGRdouble, IGRboolean, IGRboolean, IGRboolean, IGRdouble, IGRdouble, IGRdouble, IGRint *, IGRpoint **, IGRpoint **, IGRpoint **, IGRpoint **, IGRdouble **, IGRdouble **, IGRdouble **, IGRdouble **, IGRdouble **, IGRdouble **, BSrc *);

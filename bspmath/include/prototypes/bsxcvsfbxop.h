@@ -1,0 +1,2 @@
+/* /usr3/bs/src.md/bsxcvsfbxop.c */
+extern void BSxcvsfbxop(struct IGRbsp_surface *, struct IGRbsp_surface *, IGRdouble, IGRdouble, IGRdouble, IGRdouble, IGRdouble, IGRdouble, IGRdouble, IGRdouble, IGRdouble [2], IGRdouble [2], IGRdouble [2], IGRdouble [2], IGRdouble, IGRdouble, IGRboolean, IGRboolean, IGRboolean, IGRdouble, IGRdouble, IGRpoint, IGRint, IGRboolean *, IGRpoint, IGRdouble *, IGRdouble *, IGRdouble *, IGRdouble *, BSrc *);

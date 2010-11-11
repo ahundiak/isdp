@@ -1,0 +1,2 @@
+/* /usr3/bs/src.lg/bssfplintbs.c */
+extern void BSsfplintbs(IGRdouble *, IGRdouble *, struct IGRbsp_surface *, IGRdouble, IGRdouble, IGRint, IGRint, IGRint, IGRint, IGRdouble *, IGRint *, IGRint **, IGRdouble ***, IGRint ***, IGRint ***, IGRint ***, IGRdouble ****, IGRint ***, IGRint ***, IGRint ***, IGRdouble ****, IGRint **, IGRint **, IGRint **, IGRdouble ***, IGRdouble ***, IGRint **, IGRint **, IGRint **, IGRdouble ***, IGRdouble ***, IGRdouble **, BSrc *);

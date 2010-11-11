@@ -1,0 +1,2 @@
+/* /usr3/bs/src.em/bsvrfilsfwl.c */
+extern void BSvrfilsfwl(struct IGRbsp_surface *, struct IGRbsp_surface *, IGRdouble, IGRdouble, IGRboolean, IGRboolean, IGRboolean, IGRpoint, IGRpoint, IGRpoint, IGRboolean, struct IGRbsp_curve *, IGRdouble, IGRdouble, IGRboolean [2], struct IGRbsp_curve *, struct IGRbsp_curve *, struct IGRbsp_surface *, struct IGRbsp_surface *, struct IGRbsp_surface **, BSrc *);
