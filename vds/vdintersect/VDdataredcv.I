@@ -78,7 +78,7 @@ class implementation GRvg ;
 long VD_drwCvApplyDataReduction( msg, redTolerance, elmId, elmEnv )
 
 long			*msg ;		/* O : Return code.		      */
-double			*redTolerance ;	/* I : Data Red Tolerance Value       */
+IGRdouble			*redTolerance ;	/* I : Data Red Tolerance Value       */
 struct GRid		*elmId ;	/* I/O : Bspline intesection.         */
 struct GRmd_env		*elmEnv ; {	/* I : Object Envireonment.	      */
 
