@@ -42,3 +42,7 @@ loadmkfile: risload.m
 
 execmkfile: risexec.m
 	grmakemake risexec.m execmkfile
+
+clean:
+	@rm -f loadmkfile execmkfile *.o *.c
+
