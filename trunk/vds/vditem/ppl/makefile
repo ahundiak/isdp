@@ -34,3 +34,8 @@ TGT = vditemppl
 
 # include ${VDS_PATH}/etc/makefiles/ppl_only.h
 
+target:
+
+clean:
+	@rm -f pplmkfile *.e
+
