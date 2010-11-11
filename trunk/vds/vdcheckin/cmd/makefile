@@ -42,3 +42,7 @@ VDCmdChkIn.S : VDCmdChkIn.sl \
 
 mkfile:	vdchkcmd.m
 	grmakemake vdchkcmd.m mkfile
+
+clean:
+	@rm -f mkfile *.o *.c
+
