@@ -119,7 +119,7 @@ IGRshort        four,one;
 
 VDSis_same_plane( obj, pl_point )
 struct GRid *obj;		/* I : cs to test */
-double      *pl_point;		/* I : definition of reference plane */
+IGRdouble   *pl_point;		/* I : definition of reference plane */
 {
 long   		sts;
 int             nb;
@@ -167,7 +167,7 @@ double          tmp_vect[4],wld[4];
 int VDSis_there_image( mac, mac_env, pl_point, cur_os, img_id )
 struct GRid		*mac;		/* I : Model */
 struct GRmd_env		*mac_env;	/* I : Model_Env */
-double			*pl_point;	/* I : plan reference */
+IGRdouble	 *pl_point;	/* I : plan reference */
 IGRint			cur_os;
 struct GRid		*img_id;
 
@@ -257,7 +257,7 @@ return	loc_msg;
 int VDScheck_image_placement( mac, mac_env, pl_point, cur_os, img_id )
 struct GRid		*mac;		/* I: Model */
 struct GRmd_env		*mac_env;	/* I: Model_Env */
-double			*pl_point;	/* I: plan reference */
+IGRdouble	 *pl_point;	/* I: plan reference */
 IGRint			cur_os;
 struct GRid		*img_id;
 {

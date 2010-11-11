@@ -30,3 +30,6 @@ mkfile:	vdrelhdr.m
 
 pplmkfile: vdrelppl.m
 	ksh $(VDS)/etc/bin/mkmkppl vdrelppl.m pplmkfile $(VDS)
+
+clean:
+	@rm -f mkfile pplmkfile *.e *.o *.c
