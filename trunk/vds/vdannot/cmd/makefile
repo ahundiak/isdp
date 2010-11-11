@@ -90,3 +90,6 @@ VDCmdDeItPr.S : VDCmdDeItPr.sl \
 mkfile : vdannotcmd.m
 	grmakemake vdannotcmd.m mkfile
 
+clean:
+	@rm -f mkfile *.o *.c
+
