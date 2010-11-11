@@ -105,7 +105,7 @@ long	VD_crtSectionObjects(	msg,
 long			*msg ;
 struct	GRmd_env	*md_env ;
 struct	GRobj_env	*mvObj ;
-double			volOffset ;
+IGRdouble			volOffset ;
 int			comp3dVw ;
 short			level3d ;
 char			*visual2d ;

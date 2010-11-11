@@ -487,8 +487,7 @@ IGRlong			*msg;
 struct	GRobj_env	*source;
 int			nb_att;
 int			*levels;
-double			*pnt,
-			*vec;
+IGRdouble *pnt, *vec;
 struct	GRmd_env	*mdEnv;
 {
 	IGRint			sts = OM_S_SUCCESS ;
