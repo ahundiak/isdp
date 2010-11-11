@@ -45,13 +45,8 @@ class implementation VDSroot;
 #include "bssf_copy.h"
 #include "bslenvec.h"
 
-/* --------------------------------------------------
- * Keep these for now
- */
-extern  IGRint		abs();
-extern  IGRchar	       *memcpy();
-extern  IGRdouble	sqrt();
-extern	IGRdouble	fabs();
+#include <stdlib.h>
+#include <math.h>
 
 extern GRclassid OPP_GR3dlinestr_class_id;
 extern GRclassid OPP_EMSgenbs_class_id;
