@@ -27,4 +27,6 @@ target:	mkfile
 mkfile:	vditem.m
 	grmakemake vditem.m mkfile
 
+clean:
+	@rm -f mkfile *.o *.c
 
