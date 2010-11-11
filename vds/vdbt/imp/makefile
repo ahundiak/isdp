@@ -32,3 +32,7 @@ target:	mkfile
 
 mkfile:	vdibtimp.m
 	grmakemake vdibtimp.m mkfile
+
+clean:
+	@rm -f mkfile *.o *.c
+
