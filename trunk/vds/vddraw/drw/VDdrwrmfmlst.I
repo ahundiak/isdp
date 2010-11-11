@@ -18,26 +18,6 @@
 # Revision 1.1  1998/04/29  16:27:20  pinnacle
 # VDS 2.5.1
 #
-# Revision 1.2  1997/10/30  21:24:46  pinnacle
-# Warnings
-#
-# Revision 1.1  1997/05/08  13:20:44  pinnacle
-# New project VDS 250
-#
-# Revision 1.1  1996/07/19  20:33:52  pinnacle
-# Create VDS 241 project
-#
-# Revision 1.6  1995/11/21  00:56:54  pinnacle
-# Replaced: ./vddraw/drw/VDdrwrmfmlst.I for:  by azuurhou for vds.240
-#
-# Revision 1.5  1995/08/23  20:05:56  pinnacle
-# Replaced: vddraw/drw/VDdrwrmfmlst.I for:  by azuurhou for vds.240
-#
-# Revision 1.4  1995/06/27  18:31:28  pinnacle
-# Replaced: vddraw/drw/VDdrwrmfmlst.I for:  by azuurhou for vds.240
-#
-# Revision 1.3  1995/06/01  23:17:04  pinnacle
-# Replace: vddraw/drw/VDdrwrmfmlst.I by azuurhou for OPE
 #
  *
  * History:
@@ -196,7 +176,7 @@ long VD_drwGetIndexFromElemList( msg,	viewVector, elmList,
 					inCnt, inList, outCnt )
 
 long			*msg ;
-double			*viewVector ;
+IGRdouble			*viewVector ;
 struct	VDve_elem_buf	*elmList ;
 int			inCnt ;
 struct	GRobj_env	*inList ;
