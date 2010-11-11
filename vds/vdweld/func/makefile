@@ -24,3 +24,7 @@ target:	mkfile
 
 mkfile:	vdweldfnc.m
 	grmakemake vdweldfnc.m mkfile
+
+clean:
+	@rm -f mkfile *.o *.c
+
