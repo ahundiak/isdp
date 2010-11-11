@@ -1,0 +1,2 @@
+/* /usr3/bs/src.md/bspch_tbls.c */
+extern void BSpch_tbls(struct IGRbsp_surface *, struct IGRbsp_surface *, IGRpoint, IGRpoint, IGRpoint, IGRpoint, IGRpoint *, IGRpoint *, IGRpoint *, IGRpoint *, IGRint, struct BStree_ptr *[20 ], IGRint, IGRint, IGRint, IGRint, IGRint, IGRdouble *, IGRdouble *, IGRdouble *, IGRdouble *, IGRint *, IGRint *, IGRint *, IGRint ***, IGRint *, IGRint *, IGRint *, IGRint *, IGRint *, IGRint *, BSrc *);

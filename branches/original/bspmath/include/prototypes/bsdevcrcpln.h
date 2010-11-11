@@ -1,0 +1,2 @@
+/* /usr3/bs/src.em/bsdevcrcpln.c */
+extern void BSdevcrcpln(struct IGRbsp_curve *, struct IGRbsp_curve *, IGRboolean, IGRdouble, IGRdouble, IGRvector, IGRvector, IGRint, IGRdouble *, IGRpoint *, IGRint, IGRdouble *, IGRpoint *, IGRint, IGRdouble *, IGRpoint *, IGRint, IGRdouble *, IGRpoint *, IGRint, IGRint *, IGRboolean, IGRboolean *, IGRint *, IGRint *, IGRdouble *, IGRpoint *, IGRint *, IGRdouble *, IGRpoint *, IGRint *, IGRdouble *, IGRpoint *, IGRint *, IGRdouble *, IGRpoint *, BSrc *);

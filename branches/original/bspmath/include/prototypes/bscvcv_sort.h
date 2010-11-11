@@ -1,0 +1,2 @@
+/* /usr3/bs/src.md/bscvcv_sort.c */
+extern void BScvcv_sort(struct IGRbsp_curve *, struct IGRbsp_curve *, IGRboolean, IGRboolean, IGRdouble, IGRdouble, IGRint, IGRint, IGRdouble *, IGRdouble *, IGRdouble *, IGRdouble *, IGRdouble *, IGRdouble *, IGRint, IGRint, IGRpoint *, IGRdouble *, IGRdouble *, IGRpoint *, IGRdouble *, IGRdouble *, IGRint *, IGRint *, IGRboolean *, IGRboolean *, IGRpoint **, IGRdouble **, IGRdouble **, IGRpoint **, IGRdouble **, IGRdouble **, BSrc *);

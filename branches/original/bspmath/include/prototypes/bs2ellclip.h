@@ -1,0 +1,2 @@
+/* /usr3/bs/src.em/bs2ellclip.c */
+extern void BS2ellclip(struct BSgeom_bsp_surf *, struct BSgeom_bsp_surf *, IGRpoint, IGRpoint, IGRpoint, IGRpoint, IGRpoint, IGRpoint, IGRvector, IGRvector, IGRint, IGRint *, IGRint *, IGRpoint *, IGRpoint *, IGRdouble *, IGRdouble *, IGRpoint, IGRdouble, IGRdouble, IGRpoint, IGRdouble, IGRdouble, IGRpoint, IGRdouble, IGRpoint, IGRdouble, IGRpoint, IGRdouble, IGRpoint, IGRdouble, IGRint *, IGRint *, struct BSgeom_bsp_curve **, BSrc *);

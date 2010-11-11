@@ -1,0 +1,2 @@
+/* /usr3/bs/src.bl/bsboolplcln.c */
+extern void BSboolplcln(IGRint, IGRint *, IGRint **, IGRint **, IGRdouble **, IGRint **, IGRint **, IGRdouble **, IGRint, IGRint *, IGRint, IGRint *, IGRint **, IGRint **, IGRint **, IGRdouble ***, IGRdouble ***, IGRint, IGRint *, IGRint **, IGRint **, IGRdouble ***, IGRint, IGRint *, IGRint **, IGRint **, IGRint **, IGRdouble ***, IGRdouble ***, IGRdouble, IGRint *, IGRint **, IGRint ***, IGRint ***, IGRint ***, IGRdouble ****, IGRdouble ****, BSrc *);
