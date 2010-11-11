@@ -70,10 +70,10 @@ typedef char	FILENAME[1+FILENAME_MAX] ;
 #argsused
 static int VDfileFormNotification( form_label, gadget, value, form )
 
-int	form_label,
-	gadget ;
-double	value ;
-char	*form ; {
+IGRint    form_label, gadget ;
+IGRdouble	value ;
+IGRchar  *form ;
+{
 
 	VD_fileFormInfo	*info ;
 	int		sel,
