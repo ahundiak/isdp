@@ -35,10 +35,14 @@
 target: pplmkfile \
 	mkfile
 	grmake -r -k -f mkfile
-	grmake -r -k -f pplmkfile
+#	grmake -r -k -f pplmkfile
 
 mkfile:	vdibtpm.m
 	grmakemake vdibtpm.m mkfile
 
 pplmkfile: pplbtpm.m
 	ksh $(VDS)/etc/bin/mkmkppl pplbtpm.m pplmkfile $(VDS)
+
+clean:
+	@rm -f mkfile pplmkfile *.e *.o VDbtPMCmd.c VDbtFunc.c
+
