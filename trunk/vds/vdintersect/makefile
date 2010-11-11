@@ -38,3 +38,6 @@
 TGT = vdintersect
 
 include ${VDS_PATH}/etc/makefiles/lib_only.h
+
+clean:
+	@rm -f mkfile pplmkfile *.o *.e *.c
