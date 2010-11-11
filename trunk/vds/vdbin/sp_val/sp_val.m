@@ -72,8 +72,7 @@ $VDS_PATH/lib/vdirisrc.o
 $VDS_PATH/lib/vdivalx1.o
 $VDS_PATH/lib/vdivalx2.o
 $VDS_PATH/lib/vdigeom2.o
-/opt/ingr/lib/ris.a
-/opt/ingr/lib/libUMS.a
+
 
 INCLUDE
 #if ISDP_MAKE_SP
