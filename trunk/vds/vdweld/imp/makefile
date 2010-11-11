@@ -25,3 +25,7 @@ target:	mkfile
 
 mkfile:	vdweldimp.m
 	grmakemake vdweldimp.m mkfile
+
+clean:
+	@rm -f mkfile *.o *.c
+
