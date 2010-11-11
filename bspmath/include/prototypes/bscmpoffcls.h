@@ -1,0 +1,2 @@
+/* /usr3/bs/src.md/bscmpoffcls.c */
+extern void BScmpoffcls(struct IGRbsp_curve *, struct IGRbsp_curve *, struct IGRbsp_curve *, struct IGRbsp_curve *, struct IGRbsp_curve *, struct IGRbsp_curve *, IGRdouble, IGRdouble, IGRdouble, IGRdouble, IGRint, IGRboolean, IGRvector, IGRint, IGRint *, IGRint *, IGRdouble *, IGRboolean *, IGRpoint, struct IGRbsp_curve **, struct IGRbsp_curve **, struct IGRbsp_curve **, struct IGRbsp_curve **, struct IGRbsp_curve **, BSrc *);

@@ -1,0 +1,2 @@
+/* /usr3/bs/src.em/bsdevparmix.c */
+extern void BSdevparmix(IGRdouble, IGRint, IGRdouble *, IGRpoint *, IGRint, IGRdouble *, IGRpoint *, IGRint, IGRdouble *, IGRpoint *, IGRint, IGRdouble *, IGRpoint *, IGRdouble *, IGRpoint *, IGRdouble *, IGRpoint *, IGRdouble *, IGRpoint *, IGRdouble *, IGRpoint *, IGRboolean *, IGRint *, IGRdouble *, IGRpoint *, IGRint *, IGRdouble *, IGRpoint *, IGRint *, IGRint *, IGRdouble *, IGRpoint *, BSrc *);
