@@ -170,3 +170,7 @@ ${VDS}/config/commands/VDRcmpTbl : VDCmdRcmpTbl.t \
 
 mkfile : vdctblcmd.m
 	grmakemake vdctblcmd.m mkfile
+
+clean:
+	@rm -f mkfile *.o *.c
+
