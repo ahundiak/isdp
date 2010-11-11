@@ -17,21 +17,6 @@
 # *      Revision 1.1.1.1  2001/01/04 21:07:42  cvs
 # *      Initial import to CVS
 # *
-# Revision 1.3  1998/04/09  14:33:28  pinnacle
-# ah
-#
-# Revision 1.2  1998/04/09  14:29:20  pinnacle
-# ah
-#
-# Revision 1.2  1998/04/09  14:24:48  pinnacle
-# ah
-#
-# Revision 1.2  1997/11/26  22:03:00  pinnacle
-# AssyTree
-#
-# Revision 1.1  1997/11/25  16:23:36  pinnacle
-# AssyTree
-#
 # *
 # * History:
 # *      MM/DD/YY  AUTHOR  DESCRIPTION
@@ -55,3 +40,7 @@ target:	mkfile
 
 mkfile:	${TGT}.m
 	grmakemake ${TGT}.m mkfile
+
+clean:
+	@rm -f mkfile *.o *.c
+
