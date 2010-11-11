@@ -38,4 +38,8 @@
 TGT = vdiannotdim
 TGT_PPL = ppldim
 
-include ${VDS_PATH}/etc/makefiles/lib_ppl.h
+include ${VDS_PATH}/etc/makefiles/lib_only.h
+
+clean:
+	@rm -f mkfile pplmkfile *.e *.o *.c
+
