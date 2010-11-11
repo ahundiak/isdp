@@ -11,21 +11,7 @@
 # *
 # * Revision History:
 # * $Log: makefile,v $
-# * Revision 1.7  2002/04/19 21:27:39  ylong
-# * *** empty log message ***
-# *
-# * Revision 1.6  2002/04/19 21:20:40  ylong
-# * *** empty log message ***
-# *
-# * Revision 1.5  2001/06/15 16:43:26  ylong
-# * *** empty log message ***
-# *
-# * Revision 1.4  2001/04/27 19:42:57  ylong
-# * *** empty log message ***
-# *
-# * Revision 1.3  2001/04/27 19:36:04  ylong
-# * TR5120, "Move Drawing View" is not in the pload
-# *
+#
 # * Revision 1.2  2001/01/08 19:02:59  art
 # * ah
 # *
@@ -42,7 +28,7 @@ target: sl \
 	pplmkfile \
 	mkfile
 	grmake -r -k -f mkfile
-	grmake -r -k -f pplmkfile
+#	grmake -r -k -f pplmkfile
 	@if test ${ISDP_MAKE_SP} -eq 1; \
 	then \
 	   ld -z text -G -o ${SPXV}/lib/${TGT}.so ${SPXV}/lib/${TGT}.o; \
@@ -70,3 +56,6 @@ pplmkfile: ${TGT_PPL}.m
 	else \
 	   ksh $(VDS_PATH)/etc/bin/mkmkppl ${TGT_PPL}.m pplmkfile $(VDS); \
 	fi
+
+clean:
+	@rm -f mkfile pplmkfile *.e *.o *.c
