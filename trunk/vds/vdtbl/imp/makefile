@@ -48,7 +48,7 @@
 target:	mkfile \
 	pplmkfile
 	grmake -r -k -f mkfile
-	grmake -r -k -f pplmkfile
+#	grmake -r -k -f pplmkfile
 	@ldso	${VDS_PATH}/lib/vditblimp; \
 	if test ${ISDP_MAKE_SP} -eq 1; \
 	then \
@@ -77,3 +77,7 @@ pplmkfile: ppltbli.m
 	else \
 	   ksh ${VDS_PATH}/etc/bin/mkmkppl ppltbli.m pplmkfile ${VDS}; \
 	fi
+
+clean:
+	@rm -f mkfile pplmkfile *.e *.o *.c
+
