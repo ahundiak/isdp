@@ -36,3 +36,6 @@ target: mkfile
 mkfile : vdvesh.m
 	grmakemake vdvesh.m mkfile
 
+clean:
+	@rm -f mkfile *.o *.c
+
