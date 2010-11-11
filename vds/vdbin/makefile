@@ -29,9 +29,9 @@ target :
 	cd files; grmake;
 	cd http; grmake;
 	cd replaceOS; grmake;
-	cd sp_pens; grmake;
-	cd sp_std; grmake;
-	cd sp_val; grmake;
+#	cd sp_pens; grmake;
+#	cd sp_std; grmake;
+#	cd sp_val; grmake;
 	cd stopsign; grmake;
 	cd tree; grmake;
 	cd zip; grmake;
