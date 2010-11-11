@@ -29,8 +29,7 @@
 #
 # -------------------------------------------------------------------
 
-target: $(VDS)/ppl/bin/COlayers.e \
-	mkfile
+target: mkfile
 	grmake -r -k -f mkfile
 
 mkfile: vdutil.m
@@ -47,4 +46,8 @@ $(VDS)/ppl/bin/COlayers.e : COlayers.u
         -I$(PDU)/include                \
         -I$(VDS)/include			COlayers.u
 	mv COlayers.e $(VDS)/ppl/bin/COlayers.e
+
+clean:
+	@rm -f mkfile *.e *.o *.c
+	@svn update
 

@@ -80,7 +80,7 @@ extern GRclassid OPP_ACrg_collect_class_id;
 VDSSetAttDbl(coll, att_name, att_value, mod)
 struct GRid *coll;              /* Collection id to update  (I) */
 char        *att_name;          /* attribute name           (I) */
-double       att_value;         /* new value to store       (I) */
+IGRdouble    att_value;         /* new value to store       (I) */
 int	     mod;		/* 1=> only modif else 0    (I) */
  {
   IGRlong status, msg;
@@ -118,7 +118,7 @@ int	     mod;		/* 1=> only modif else 0    (I) */
 VDSGetAttDbl(coll, att_name, att_value)
 struct GRid *coll;              /* Collection id to update  (I) */
 char        *att_name;          /* attribute name           (I) */
-double      *att_value;         /* returned value           (O) */
+IGRdouble   *att_value;         /* returned value           (O) */
 {
   IGRlong status, msg;
   struct ACrg_coll att;
