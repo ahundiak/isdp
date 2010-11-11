@@ -1986,7 +1986,7 @@ char 		*frame_name,*strrchr(), occ_name[DI_PATH_MAX];
 IGRint VDnotify_form (form_label,label,value,form_ptr)
 int form_label;
 int label;
-double value;
+IGRdouble value;
 Form form_ptr;
 {
         int status;
@@ -2807,7 +2807,7 @@ method realloc_frame(int nb_frame)
 void VDchg_FrPs_field(form_label,label,value,form_ptr)
 int form_label;  /* form label                                   */
 int label;       /* label of the gadget whose data has changed   */
-double value;    /* return value of the gadget                   */
+IGRdouble value;    /* return value of the gadget                   */
 Form form_ptr;   /* pointer to the form whose gadget was updated */
 {
     __DBGpr_dbl( "VDchg_FrPs_field value", value);
@@ -2820,7 +2820,7 @@ This function will update the subform for frame position.
 ******************************************************************/
 IGRint VDupdsubform(msg,active_position,form_ptr)
 IGRlong           *msg;          /* return code                   */
-double            active_position; /* active position  */
+IGRdouble         active_position; /* active position  */
 Form              form_ptr;      /* pointer to form to be updated */
 {
 
@@ -2841,7 +2841,7 @@ This function will return value from string mte->act_frpos.
 ******************************************************************/
 IGRint VDstrToVal(msg,string,value)
 IGRlong           *msg;          /* return code                   */
-double            *value; /* active position  */
+IGRdouble         *value; /* active position  */
 char              *string;      /* pointer to form to be updated */
 {
 IGRchar        *ptr1 = NULL, *ptr2 = NULL, tmp[20], tmp1[20];
