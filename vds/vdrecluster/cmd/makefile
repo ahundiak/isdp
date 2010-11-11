@@ -31,3 +31,6 @@ target: mkfile
 
 mkfile : vdrecluscmd.m
 	grmakemake vdrecluscmd.m mkfile
+
+clean:
+	@rm -f mkfile *.o *.c

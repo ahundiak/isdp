@@ -77,7 +77,7 @@ extern	Form COm_lib_form_ptr;
 
 VDm_lib_router(f_label,g_label,value,fp)
 int f_label,g_label;
-double value;
+IGRdouble value;
 char *fp;
 {
   int toggl = 0;
