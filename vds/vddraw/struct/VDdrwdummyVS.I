@@ -164,7 +164,7 @@ long VSdrwGetDeclivity( msg, inp, xData, declivityAngle )
 long                    *msg ;
 const VSdrwInputData    *inp ;
 const VSdrwExecData     *xData ;
-double                  *declivityAngle ; {
+IGRdouble               *declivityAngle ; {
 
         SetProc( DUMMY_VSdrwGetDeclivity ); Begin
 
