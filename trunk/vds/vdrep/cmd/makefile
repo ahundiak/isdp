@@ -36,7 +36,7 @@ target: sl \
 	pplmkfile \
 	mkfile
 	grmake -r -k -f mkfile
-	grmake -r -k -f pplmkfile
+#	grmake -r -k -f pplmkfile
 	@if test ${ISDP_MAKE_SP} -eq 1; \
 	then \
 	   ldso    ${VDS_PATH}/lib/vdcrepcmd; \
@@ -68,3 +68,6 @@ mkfile: vdrepcmd.m
 
 pplmkfile: vdrepppl.m
 	ksh $(VDS)/etc/bin/mkmkppl vdrepppl.m pplmkfile $(VDS)
+
+clean:
+	@rm -f mkfile pplmkfile *.e *.o *.c
