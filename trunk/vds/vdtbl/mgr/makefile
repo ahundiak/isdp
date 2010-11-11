@@ -35,7 +35,7 @@
 
 target:	mkfile
 	grmake -r -k -f mkfile
-	ldso    ${VDS_PATH}/lib/vditblmgr
+	@ldso    ${VDS_PATH}/lib/vditblmgr
 	@if test ${ISDP_MAKE_SP} -eq 1; \
 	then \
 	   /bin/cp ${VDS_PATH}/lib/vditblmgr.so ${SPV}; \
@@ -44,5 +44,8 @@ target:	mkfile
 
 mkfile : vdtblmgr.m
 	grmakemake vdtblmgr.m mkfile
+
+clean:
+	@rm -f mkfile *.o *.c
 
 
