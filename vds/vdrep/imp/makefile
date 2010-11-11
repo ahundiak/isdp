@@ -35,3 +35,6 @@ target: mkfile
 mkfile: vdrepimp.m
 	grmakemake vdrepimp.m mkfile
 
+clean:
+	@rm -f mkfile *.o *.c
+
