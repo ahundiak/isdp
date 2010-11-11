@@ -31,7 +31,6 @@
 
 target: sl \
 	${VDS}/config/commands/VDRpDr \
-	$(VDS)/ppl/bin/COdircmdfrm.e \
 	mkfile
 	grmake -r -k -f mkfile
 
@@ -65,4 +64,7 @@ $(VDS)/ppl/bin/COdircmdfrm.e : COdircmdfrm.u
 
 mkfile : vdvisucmd.m
 	grmakemake vdvisucmd.m mkfile
+
+clean:
+	@rm -f mkfile *.o *.c
 
