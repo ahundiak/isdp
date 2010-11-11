@@ -35,3 +35,6 @@ target: mkfile
 mkfile : vdvisuimp.m
 	grmakemake vdvisuimp.m mkfile
 
+clean:
+	@rm -f mkfile *.o *.c
+
