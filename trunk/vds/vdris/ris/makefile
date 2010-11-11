@@ -48,4 +48,5 @@ target:
 
 clean:
 	@rm -f *.o *.c
+	@rm -f ${VDS}/vdris/lib/VdsRisLib.o
 
