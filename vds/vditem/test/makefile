@@ -26,10 +26,13 @@
 target: pplmkfile \
 	mkfile
 	grmake -r -k -f mkfile
-	grmake -r -k -f pplmkfile
+#	grmake -r -k -f pplmkfile
 
 mkfile:	vdittest.m
 	grmakemake vdittest.m mkfile
 
 pplmkfile: vdittestppl.m
 	ksh $(VDS)/etc/bin/mkmkppl vdittestppl.m pplmkfile $(VDS)
+
+clean:
+	@rm -f mkfile pplmkfile *.e *.o *.c
