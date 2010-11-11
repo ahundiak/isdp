@@ -34,6 +34,8 @@
 TGT     = vdiatpcmk2
 TGT_PPL = vdiatppl
 
-include ${VDS_PATH}/etc/makefiles/lib_ppl.h
+include ${VDS_PATH}/etc/makefiles/lib_only.h
 
-
+clean:
+	@rm -f mkfie pplmkfile *.e *.o 
+	@rm -f VDefpSrfComp.c VDgeomNatEd2.c VDefpSrfTran.c VDatStdVer.c
