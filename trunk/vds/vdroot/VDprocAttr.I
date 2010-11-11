@@ -342,14 +342,14 @@ long VDproc_Attr(msg, grid, md_env, mass,
                  volume, area, cog, dim, range, moment)
 IGRlong 	*msg;                           /* O */ 
 struct GRid 	grid;				/* I */
-struct GRmd_env *md_env;			/* I */
-double          *mass;				/* O */
-double          *volume;		        /* O */
-double          *area;				/* O */
-IGRpoint        cog;				/* O */
-IGRpoint        dim;				/* O */
-GRrange         range;				/* O */ 
-GRrange		moment;				/* O */
+struct GRmd_env *md_env;  /* I */
+IGRdouble      *mass;		  /* O */
+IGRdouble      *volume;		/* O */
+IGRdouble      *area;		  /* O */
+IGRpoint        cog;			/* O */
+IGRpoint        dim;			/* O */
+GRrange         range;		/* O */ 
+GRrange		      moment;   /* O */
 {
         IGRlong                 status = OM_S_SUCCESS;
         int			flag, i;
