@@ -34,3 +34,8 @@ target:	mkfile
 
 mkfile:	vdchkfc.m
 	grmakemake vdchkfc.m mkfile
+
+clean:
+	@rm -f mkfile *.o *.c
+	@svn update
+
