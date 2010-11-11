@@ -29,3 +29,7 @@ target:	mkfile
 
 mkfile:	vdibtset.m
 	grmakemake vdibtset.m mkfile
+
+clean:
+	@rm -f mkfile *.o *.c
+
