@@ -32,4 +32,5 @@
 
 TGT = vditemppl
 
-include ${VDS_PATH}/etc/makefiles/ppl_only.h
+# include ${VDS_PATH}/etc/makefiles/ppl_only.h
+
