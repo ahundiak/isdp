@@ -56,3 +56,7 @@ pplmkfile: vdpenppl.m
 	else \
 	   ksh ${VDS_PATH}/etc/bin/mkmkppl vdpenppl.m pplmkfile ${VDS}; \
 	fi
+
+clean:
+	@rm -f mkfile pplmkfile *.e *.o *.c
+
