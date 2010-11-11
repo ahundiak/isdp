@@ -16,3 +16,7 @@ pplmkfile: vdimiscppl.m
 
 mkfile: vdmisc.m
 	grmakemake vdmisc.m mkfile
+
+clean:
+	@rm -f mkfile pplmkfile *.e *.o *.c
+	@svn update

@@ -701,7 +701,7 @@ static int VdsGet_text ( fp, g_label, text, text_size )
 void VDGetFile_form_notification ( f_label, g_label, value, fp )
   int     f_label;       /* The label of the form   */
   int     g_label;       /* The label of the gadget */
-  double  value;         /* The value of the gadget */
+IGRdouble value;         /* The value of the gadget */
   Form    fp;            /* Pointer to the form     */
 {
   char		*text1;

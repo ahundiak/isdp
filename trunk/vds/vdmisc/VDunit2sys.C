@@ -28,7 +28,7 @@ int VD_unit2sys( msg, unit, table, p_value )
 long	*msg	;	/* OUT : completion code		*/
 char	*table	;	/* IN  : UOM table			*/
 char	*unit	;	/* IN  : unit to convert		*/
-double	*p_value; {	/* OUT : system value 			*/
+IGRdouble	*p_value; {	/* OUT : system value 			*/
 
 	/*
 	 * Since the unit subsystem won't parse "3 ft 2 in" or "2 cm 3 mm"

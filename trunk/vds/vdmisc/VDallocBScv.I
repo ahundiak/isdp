@@ -45,11 +45,11 @@ static void VD_farthestAndClosestPoint( testPnt, pntArray, count,
 					iClosest, iFarthest )
 
 IGRpoint	testPnt ;
-double		pntArray[] ;
+IGRdouble		pntArray[] ;
 int		count,
 		*iClosest,
-		*iFarthest ; {
-
+		*iFarthest ;
+{
 	long	msg ;
 	int	i ;		/* Loop index			*/
 	double	D2,		/* SQUARED distance		*/
@@ -117,7 +117,7 @@ IGRpoint		center,
 			pnt2 ;
 IGRvector		normal ;
 struct IGRbsp_surface	*planeGeom ;
-double			moreLength ;
+IGRdouble		moreLength ;
 IGRpoint		extPnt ; {
 
 	/*
@@ -303,8 +303,8 @@ IGRpoint		endPoint,	/* End pnt where to extend	*/
 int			whichEnd,	/* Which end (0 or 1)		*/
 			portionOnly ;	/* Only return ext'd portion ?	*/
 struct IGRbsp_curve	*curveGeom,
-			**p_extGeom ; {
-
+			**p_extGeom ;
+{
 	long			sts = OM_W_ABORT,
 				rc ;
 	struct IGRbsp_curve	*newCurve,
@@ -432,7 +432,7 @@ IGRpoint	P1,
 
 	long	rc   ;
 	int	i ;
-	double	dP1P2,
+	IGRdouble	dP1P2,
 		P1QdotP1P2,
 		scale ;
 	/*
@@ -463,7 +463,8 @@ static void VD_merge_ls( rc, ls1, ls2, newls )
 long			*rc ;
 struct IGRbsp_curve	*ls1,
 			*ls2,
-			*newls ; {
+			*newls ;
+{
 	double	*newp0,
 		*newp1,
 		*p1_0	= ls1->poles + 0,
@@ -496,7 +497,7 @@ static long VD_lineExtOfCurve( msg, curveGeom, planeGeom, whichEnd, moreLength,
 long			*msg ;
 struct IGRbsp_curve	*curveGeom,
 			**extension ;
-double			whichEnd,	/* Which end (0. or 1.)		*/
+IGRdouble			whichEnd,	/* Which end (0. or 1.)		*/
 			moreLength ;
 int			portionOnly ;	/* Only return ext'd portion ?	*/
 struct IGRbsp_surface	*planeGeom ; {

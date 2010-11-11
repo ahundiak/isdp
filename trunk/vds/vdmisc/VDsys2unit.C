@@ -35,7 +35,7 @@ int VD_sys2unit( msg, mod_os, value, table, unit )
 
 long	*msg	;	/* OUT : completion code		*/
 OMuword	mod_os	;	/* IN  : object space of UOM table	*/
-double	value	;	/* IN  : system value to convert	*/
+IGRdouble	value	;	/* IN  : system value to convert	*/
 char	*table	;	/* IN  : UOM table			*/
 char	**unit	; {	/* OUT : pointer to unit (static buffer)*/
 
