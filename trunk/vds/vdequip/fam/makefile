@@ -51,3 +51,7 @@ ${VDS}/config/commands/VDGnFmFl : VDCmdGenFam.t VDCmdGenFam.S	\
 
 mkfile: vdequipfam.m
 	grmakemake vdequipfam.m mkfile
+
+clean:
+	@rm -f mkfile *.o *.c
+
