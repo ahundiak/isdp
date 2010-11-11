@@ -131,3 +131,7 @@ exp.o:	exp.C ${VDS}/include/VDattrexp.h
 
 exp:	target exp.o ${OBJ}
 	acc -o exp exp.o ${OBJ} ${MISC_OBJ} -lm -lbsd
+
+clean:
+	@rm -f mkfile *.o *.c
+
