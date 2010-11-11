@@ -11,3 +11,7 @@ ${VDS}/config/commands/VDzupCrvPl: VDCzupGenPl.S VDCzupGenPl.t \
 
 mkfile:	vdcsup.m
 	grmakemake vdcsup.m mkfile
+
+clean:
+	@rm -f mkfile *.o *.c
+
