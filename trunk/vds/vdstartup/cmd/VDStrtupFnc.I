@@ -110,7 +110,7 @@ int VDSchkRefFilesNotification( form_label, gadget, value, form )
 
 int	form_label ;
 int	gadget ;
-double	value ;
+IGRdouble	value ;
 char	*form ; {
 
 	long		msg, sts ;
