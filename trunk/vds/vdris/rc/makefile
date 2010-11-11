@@ -14,22 +14,7 @@
 #	$Log: makefile,v $
 #	Revision 1.6  2002/03/13 16:19:33  ahundiak
 #	ah
-#	
-#	Revision 1.5  2002/02/26 16:46:24  ahundiak
-#	ah
-#	
-#	Revision 1.4  2001/11/09 14:57:23  ahundiak
-#	ah
-#	
-#	Revision 1.3  2001/05/24 18:54:07  ahundiak
-#	ah
-#	
-#	Revision 1.2  2001/02/11 17:59:58  ahundiak
-#	Renamed VDris2 to VDrisc
-#	
-#	Revision 1.1  2001/02/01 21:58:19  ahundiak
-#	ah
-#	
+#
 #
 # History:
 # 02/01/01  ah  Creation
@@ -94,3 +79,5 @@ VDrisUtil.o : ${INCF} VDrisUtil.rc
 	@echo riscpp  VDrisUtil.rc
 	@${CCR}   -c  VDrisUtil.rc
 
+clean:
+	@rm -r *.o *.c
