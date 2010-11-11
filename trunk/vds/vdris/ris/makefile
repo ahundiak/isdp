@@ -45,3 +45,7 @@
 
 target:
 	ksh grmake -r -k -f make_"`uname -s`"
+
+clean:
+	@rm -f *.o *.c
+
