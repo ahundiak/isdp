@@ -1,0 +1,2 @@
+/* /usr3/bs/src.em/bsosficvnpe.c */
+extern void BSosficvnpe(struct BSgeom_bsp_surf *, struct BSgeom_bsp_surf *, IGRboolean, IGRboolean, IGRdouble, IGRdouble, IGRdouble, struct IGRbsp_curve *, IGRint, struct IGRbsp_curve *, IGRdouble, IGRdouble, IGRdouble, IGRdouble, IGRdouble, IGRboolean, IGRdouble *, IGRdouble *, IGRdouble *, IGRdouble *, IGRdouble *, IGRdouble *, IGRpoint, IGRpoint, IGRpoint, IGRvector, IGRvector, IGRpoint, IGRboolean *, BSrc *);

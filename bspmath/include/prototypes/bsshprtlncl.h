@@ -1,0 +1,2 @@
+/* /usr3/bs/src.em/bsshprtlncl.c */
+extern void BSshprtlncl(struct BSgeom_bsp_surf *, struct BSgeom_bsp_surf *, IGRshort, IGRint, IGRint, IGRdouble, IGRdouble, IGRdouble *, IGRdouble *, IGRint, IGRint, IGRdouble *, IGRdouble *, IGRdouble *, IGRboolean, IGRboolean, IGRint, IGRint *, IGRdouble *, IGRdouble *, IGRdouble *, IGRint *, IGRboolean *, IGRdouble **, IGRdouble **, IGRdouble **, IGRint **, BSrc *);

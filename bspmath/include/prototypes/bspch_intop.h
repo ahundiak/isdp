@@ -1,0 +1,2 @@
+/* /usr3/bs/src.md/bspch_intop.c */
+extern void BSpch_intop(struct IGRbsp_surface *, struct IGRbsp_surface *, IGRint, IGRint, IGRint, IGRint, IGRdouble *, IGRdouble *, IGRdouble *, IGRdouble *, IGRdouble [2], IGRdouble [2], IGRdouble [2], IGRdouble [2], IGRpoint *, IGRpoint *, IGRpoint *, IGRpoint *, IGRint *, IGRint *, IGRint **, IGRint, IGRint, IGRdouble, IGRdouble, IGRboolean, IGRboolean, IGRboolean, IGRdouble, IGRdouble, IGRint *, IGRint *, struct BSlnseg ***, BSrc *);
