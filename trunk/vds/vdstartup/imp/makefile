@@ -35,3 +35,9 @@
 TGT = vdstartimp
 
 include ${VDS}/etc/makefiles/lib_only.h
+
+clean:
+	@rm -f mkfile *.o
+	@rm -f VDSnopdu_ini.c VDsuperi.c VDScheck_pdu.c VDureflib.c
+	@rm -f VDaddPktMenu.c VDsuper.c  VDSudp_init.c  VDSupdrefdep.c
+
