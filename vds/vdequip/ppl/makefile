@@ -33,7 +33,11 @@
 # -------------------------------------------------------------------
 
 target: mkfile
-	grmake -r -k -f mkfile
+#	grmake -r -k -f mkfile
 
 mkfile: VDSequipppl.m
 	ksh ${VDS}/etc/bin/mkmkppl VDSequipppl.m mkfile $(VDS)
+
+clean:
+	@rm -f mkfile *.e
+
