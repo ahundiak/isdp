@@ -306,7 +306,7 @@ from  VDSroot         import  VDGetParamsId;
 
 VDm_place_router(form_label,label,value,form_ptr)
 int form_label,label;
-double value;
+IGRdouble value;
 char *form_ptr;
 /*.VDm_router*/
 {
@@ -346,7 +346,7 @@ char *form_ptr;
 
 VDm_place_select(form_label,label,value,form_ptr)
 int form_label,label;
-double value;
+IGRdouble value;
 char *form_ptr;
 
 /*.VDm_place_select*/

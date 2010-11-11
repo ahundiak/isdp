@@ -42,3 +42,6 @@ VDm_modify.S : VDm_modify.sl \
 
 mkfile:	vdeqcmd.m
 	grmakemake vdeqcmd.m mkfile
+
+clean:
+	@rm -f mkfile *.o *.c
