@@ -27,10 +27,14 @@
 target: pplmkfile \
 	mkfile
 	grmake -r -k -f mkfile
-	grmake -r -k -f pplmkfile
+#	grmake -r -k -f pplmkfile
 
 mkfile:	vdiunwrap.m
 	grmakemake vdiunwrap.m mkfile
 
 pplmkfile: pplunwrap.m
 	ksh $(VDS)/etc/bin/mkmkppl pplunwrap.m pplmkfile $(VDS)
+
+clean:
+	@rm -f mkfile pplmkfile *.e *.o *.c
+

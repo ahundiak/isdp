@@ -60,8 +60,8 @@ class implementation VDSroot;
  * bssidecntrs No include file
  * bssplitncvs No include file
  */
+#include <stdlib.h>
 
-extern  IGRchar	*memcpy();
 extern  void	 FAsetRng();
 
 from EMSsubbs import EMisoparcvs;
