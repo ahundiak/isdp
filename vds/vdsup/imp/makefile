@@ -31,3 +31,7 @@ target: mkfile
 
 mkfile : vdisup.m
 	grmakemake vdisup.m mkfile
+
+clean:
+	@rm -f mkfile *.o *.c
+
