@@ -610,8 +610,8 @@ short		       pl_size;
 /* small point for the x and y direction. Pti and pto can be tha same array
 /* */
 VDRedPts(pti,pto)
-double *pti; 	/* Array of 3 points, IN  */
-double *pto; 	/* Array of 3 points, OUT */
+IGRdouble *pti; 	/* Array of 3 points, IN  */
+IGRdouble *pto; 	/* Array of 3 points, OUT */
 /*.VDRedPts*/
 {
  int 	i;
@@ -669,8 +669,8 @@ return(1);
 
 vdgendraw2(window, center_pt, vline, plane, pl_size)
 struct GRid	*window;		/* window id	*/
-double		*center_pt;		/* center point */
-double		*vline;			/* line vector  */
+IGRdouble		*center_pt;		/* center point */
+IGRdouble		*vline;			/* line vector  */
 struct IGRplane *plane;			/* plane def	*/
 short		pl_size;		/* plane size (3 types available) (I) */
 /*.vdgendraw2*/
@@ -934,7 +934,7 @@ IGRdouble		pt0[3], vz_length;
   /* 
    *  output the axis labels and the name of the coordinate system
    *
-   *  NOTE:   This is done using the Environ V tools directly, ‚since
+   *  NOTE:   This is done using the Environ V tools directly, ï¿½since
    *          view- and scale-independent text is not available.  This
    *          happens to work okay since drawing the triad through IGE
    *          leaves everything set up properly.
@@ -1038,12 +1038,12 @@ IGRdouble		pt0[3], vz_length;
  */
 
 VDcnst_pln(msg,mat,dist,offset1,offset2,axe,length,name,justif,props,plan_obj,cst)
-IGRint			*msg;	   /* return code *msg = 1 SUCCESS     	*/
-double			*mat;	   /* Matrix defining the cs	    	*/
-double			dist;	   /* distance on axis			*/
-double			offset1, offset2;  /* Distance along axis   	*/
-char			axe;	   /* selected axis of the matrix	*/
-double			length;	   /* If regular plane length	    	*/
+IGRint		*msg;	   /* return code *msg = 1 SUCCESS     	*/
+IGRdouble	*mat;	   /* Matrix defining the cs	    	*/
+IGRdouble	 dist;	   /* distance on axis			*/
+IGRdouble	 offset1, offset2;  /* Distance along axis   	*/
+char			 axe;	   /* selected axis of the matrix	*/
+IGRdouble	 length;	   /* If regular plane length	    	*/
 char			*name;	   /* name to display (NULL => no display */
 char			*justif;   /* justification			*/
 unsigned char		props;	   /* properties of the plane           */

@@ -148,7 +148,7 @@ SMelem_(type_flag, element, mat_type, matrix, type, plane, bsp_sf, bsp_cv, nb_sf
 int			type_flag; 
 struct 	GRid	 	*element;  /* I  element id			*/
 short			 mat_type; /* I  matrix type 			*/
-double			*matrix;   /* I  matrix of the element		*/
+IGRdouble			*matrix;   /* I  matrix of the element		*/
 int		 	*type;	   /* O  type of element (PLAN, ..)	*/
 struct	IGRplane 	*plane;	   /* O  */
 struct 	IGRbsp_surface	***bsp_sf; /* O  allocated in the function */
@@ -439,9 +439,9 @@ struct IGRplane		*plane2;	/* (I)plane def of surf2 (NULL if not)*/
 int			nb_sf2;		/* (I)number of surf2 (if composite)  */
 int			*nb_int;	/* (O)number of intersections	      */
 int			**nb_pts;	/* (O)number of intersection points   */
-double			***pts;		/* (O)pointeur on array[][] of points */
-double			***p_par1;	/* (O)pointeur on array[][] of params */
-double			***p_par2;	/* (O)pointeur on array[][] of params */
+IGRdouble	***pts;		  /* (O)pointeur on array[][] of points */
+IGRdouble	***p_par1;	/* (O)pointeur on array[][] of params */
+IGRdouble	***p_par2;	/* (O)pointeur on array[][] of params */
 /*.VDint */
 {
  IGRint				sts,i,int_flag, numgrps,tnb_int, *num_int,
@@ -887,9 +887,9 @@ struct IGRplane		*plane2;	/* (I)plane def of surf2 (NULL if not)*/
 int			nb_sf2;		/* (O)number of surf2 (if composite)  */
 int			*nb_int;	/* (O)number of intersections	      */
 int			**nb_pts;	/* (O)number of intersection points   */
-double			***pts;		/* (O)pointeur on array[][] of points */
-double			***p_par1;	/* (O)pointeur on array[][] of params */
-double			***p_par2;	/* (O)pointeur on array[][] of params */
+IGRdouble			***pts;		/* (O)pointeur on array[][] of points */
+IGRdouble			***p_par1;	/* (O)pointeur on array[][] of params */
+IGRdouble			***p_par2;	/* (O)pointeur on array[][] of params */
 /*.VDcomposite_int*/
 {
  IGRint			sts,i,j, k, l, comp_nb_int, *comp_nb_pts,
@@ -1666,14 +1666,14 @@ VDSorder_pt(nb_int, nb_pts, pts, p_par1, p_par2, snb_int, snb_pts,spts,
 
 int		nb_int;   	/* input nb gpe 	*/
 int		*nb_pts;	/* input nb_pts / gpe 	*/
-double 		**pts;		/* pts of gpe		*/
-double 		**p_par1;       /* par1 of gpe		*/
-double 		**p_par2;  	/* par2 of gpe		*/
-int		*snb_int;	/* out nb gpe		*/
-int		**snb_pts;	/* out nb_pts / gpe 	*/
-double 		***spts;	/* pts of gpe		*/
-double 		***sp_par1;	/* par1 of gpe		*/
-double 		***sp_par2;	/* par2 of gpe		*/
+IGRdouble **pts;		  /* pts of gpe		*/
+IGRdouble **p_par1;   /* par1 of gpe		*/
+IGRdouble **p_par2;  	/* par2 of gpe		*/
+int		     *snb_int;	/* out nb gpe		*/
+int		    **snb_pts;	/* out nb_pts / gpe 	*/
+IGRdouble ***spts;	  /* pts of gpe		*/
+IGRdouble ***sp_par1;	/* par1 of gpe		*/
+IGRdouble ***sp_par2;	/* par2 of gpe		*/
 /*.VDSorder_pt */
 {
 int			close,tnb_int,i,j,k,l,nb,*tnb_pts;
@@ -2593,10 +2593,10 @@ return 0;
    ------------------------------------------------------------------- */
 
 reverse_pt(pts, nb, par1,par2)
-double 		**pts;
+IGRdouble 		**pts;
 int		nb;
-double 		**par1;
-double 		**par2;
+IGRdouble 		**par1;
+IGRdouble 		**par2;
 /*.reverse_pt*/
 {
 double 		*tpts,*tpar1,*tpar2;
@@ -2699,7 +2699,7 @@ return 0;
 
 VDSlns_curve(num_pts, pts, curve)
 int 		num_pts;	/* I  Number of points 		*/
-double		*pts;		/* I  Array of points		*/
+IGRdouble		*pts;		/* I  Array of points		*/
 struct IGRbsp_curve **curve;	/* O  bspline curve		*/
 /*.VDSlns_curve */
 {
@@ -2767,8 +2767,8 @@ struct IGRbsp_curve **curve;	/* O  bspline curve		*/
 
 VDSfill_curve(num_pts, pts, par, curve)
 int 			num_pts;	/* I  Number of points 		  */
-double			*pts;		/* I  Array of points		  */
-double			*par;		/* I  Array of param (on surface) */
+IGRdouble			*pts;		/* I  Array of points		  */
+IGRdouble			*par;		/* I  Array of param (on surface) */
 struct IGRbsp_curve 	**curve;	/* O  bspline curve		  */
 /*.VDSfill_curve */
 {
@@ -2878,8 +2878,8 @@ return 1;
    ------------------------------------------------------------------- */
 
 VDSdist2(pt1, pt2)
-double		pt1[3];
-double		pt2[3];
+IGRdouble		pt1[3];
+IGRdouble		pt2[3];
 /*.VDSdist2*/
 {
  double      dx, dy, dz, dist;
@@ -3350,8 +3350,8 @@ wrapup:
 
 VDadd_cv_to_close(msg,end_par1, end_par2, nb_cv, bsp_surf,curves)
 long			*msg;
-double			*end_par1;
-double			*end_par2;
+IGRdouble			*end_par1;
+IGRdouble			*end_par2;
 int			*nb_cv;
 struct IGRbsp_surface   *bsp_surf;
 struct IGRbsp_curve	***curves;

@@ -117,7 +117,7 @@ struct IGRplane		*plane2;	/* plane def of surf2 (NULL if not) */
 int			nb_sf2;		/* number of surf2 (if composite)   */
 int			*nb_int;	/* number of intersections	*/
 int			**nb_pts;	/* number of intersection points*/
-double			***pts;		/* pointeur on array[][] of points  */
+IGRdouble			***pts;		/* pointeur on array[][] of points  */
 {
  printf("VDintersect is no longer defined\n");
 
@@ -128,7 +128,7 @@ SMelem_type(element, mat_type, matrix, type, plane, bsp_sf, nb_sf)
 
 struct 	GRid	 	*element;  /* I  element id			*/
 short			 mat_type; /* I  matrix type 			*/
-double			*matrix;   /* I  matrix of the element		*/
+IGRdouble			*matrix;   /* I  matrix of the element		*/
 int		 	*type;	   /* O  type of element (PLAN, ..)	*/
 struct	IGRplane 	*plane;	   /* O  */
 struct 	IGRbsp_surface	***bsp_sf; /* O  */
