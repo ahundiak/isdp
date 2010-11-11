@@ -33,3 +33,7 @@
 TGT = vdiatpost
 
 include ${VDS_PATH}/etc/makefiles/lib_only.h
+
+clean:
+	@rm -f mkfile *.o *.c
+	@rm -f VDatFile.c VDatPdm.c VDatPost.c VDatTable.c VDatKey.c VDatMisc.c
