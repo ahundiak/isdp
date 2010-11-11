@@ -15,9 +15,9 @@
 /*----------------------------------------------------------------------------*/
 double *VD_scalvc( scale, in, out )
 
-double		scale ;
-const double 	*in ;
-double		*out ; {
+IGRdouble		scale ;
+const IGRdouble 	*in ;
+IGRdouble		*out ; {
 
 	double *scaled = out ; int i ;
 
@@ -28,7 +28,7 @@ double		*out ; {
 	
 } /* VD_scalvc */
 /*----------------------------------------------------------------------------*/
-double *VD_negvc( in, out ) const double *in ; double *out ; {
+double *VD_negvc( in, out ) const IGRdouble *in ; IGRdouble *out ; {
 
 	double *neg = out ; int i ;
 
@@ -39,7 +39,7 @@ double *VD_negvc( in, out ) const double *in ; double *out ; {
 
 } /* VD_negvc */
 /*----------------------------------------------------------------------------*/
-double *VD_vccpy( out, in ) const double *in ; double *out ; {
+double *VD_vccpy( out, in ) const IGRdouble *in ; IGRdouble *out ; {
 
 	double *cpy = out ; int i ;
 
@@ -50,7 +50,7 @@ double *VD_vccpy( out, in ) const double *in ; double *out ; {
 
 } /* VD_vccpy */
 /*----------------------------------------------------------------------------*/
-double *VD_zerovc( out ) double *out ; {
+double *VD_zerovc( out ) IGRdouble *out ; {
 
 	double *zero = out ; int i ;
 
@@ -61,7 +61,7 @@ double *VD_zerovc( out ) double *out ; {
 
 } /* VD_zerovc */
 /*----------------------------------------------------------------------------*/
-double *VD_mxcpy( out, in ) const double *in ; double *out ; {
+double *VD_mxcpy( out, in ) const IGRdouble *in ; IGRdouble *out ; {
 
 	double *cpy = out ; int i ;
 
@@ -113,9 +113,9 @@ IGRvector	prod ; {
 /*----------------------------------------------------------------------------*/
 double *VD_midpoint( pt1, pt2, mid )
 
-const double	*pt1 ;
-const double	*pt2 ;
-double		*mid ; {
+const IGRdouble	*pt1 ;
+const IGRdouble	*pt2 ;
+IGRdouble		*mid ; {
 
 	int i ;
 
@@ -126,7 +126,7 @@ double		*mid ; {
 
 } /* VD_midpoint */
 /*----------------------------------------------------------------------------*/
-double *VD_mxorigin( mx, origin ) const double *mx ; double *origin ; {
+double *VD_mxorigin( mx, origin ) const IGRdouble *mx ; IGRdouble *origin ; {
 
 	origin[0] = mx[3] ;
 	origin[1] = mx[7] ;

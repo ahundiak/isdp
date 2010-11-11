@@ -145,8 +145,8 @@ long		*msg ;
 int		opType ;
 struct GRid	*surface ;
 struct GRmd_env	*env ;
-double		density ;
-double		*propsArray ; {
+IGRdouble		density ;
+IGRdouble		*propsArray ; {
 
 	long		sts ;		/* OM return code		*/
 	int		count,		/* Count of sub-surfaces	*/
@@ -274,10 +274,10 @@ static void VD_xformMassProps( xform, cog, MofI, area, volume, mass )
 
 IGRmatrix	xform ;
 IGRpoint	cog ;
-double		MofI[6] ;
-double		*area ;
-double		*volume ;
-double		*mass ; {
+IGRdouble		MofI[6] ;
+IGRdouble		*area ;
+IGRdouble		*volume ;
+IGRdouble		*mass ; {
 
 	short		_4 = 4 ;
 	long		RC ;
@@ -348,7 +348,7 @@ long VD_getMassProps( msg, surface, env, density,
 long		*msg ;
 struct GRid	*surface ;
 struct GRmd_env	*env ;
-double		density,
+IGRdouble		density,
 		*volume,
 		*area,
 		moment[6],
@@ -407,7 +407,7 @@ long VD_getAreaProps( msg, surface, env, area, centroid, moment )
 long		*msg ;
 struct GRid	*surface ;
 struct GRmd_env	*env ;
-double		*area,
+IGRdouble		*area,
 		moment[6] ;
 IGRpoint	centroid ; {
 

@@ -29,7 +29,7 @@ long VD_getNormal( msg, sfId, sfEnv, parm, normal )
 long		*msg ;
 struct GRid	*sfId ;
 struct GRmd_env *sfEnv ;
-double		parm[2] ;
+IGRdouble	parm[2] ;
 IGRvector	normal ; {
 
 	long			bsRC,

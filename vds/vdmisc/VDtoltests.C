@@ -20,8 +20,8 @@
 #include "bslenvec.h"
 #include "maang2vc.h"
 /*----------------------------------------------------------------------------*/
-int VD_zeroDist( d ) double d ; {
-
+int VD_zeroDist( double d )
+{
 	long	msg ;
 	double	tollenvec ;
 
@@ -72,7 +72,7 @@ int VD_orthoVectors( v1, v2 ) IGRvector v1, v2 ; {
 
 } /* VD_orthoVectors */
 /*----------------------------------------------------------------------------*/
-int VD_areaColinearVectors( v1, v2, angle ) IGRvector v1, v2 ; double angle ; {
+int VD_areaColinearVectors( v1, v2, angle ) IGRvector v1, v2 ; IGRdouble angle ; {
 
 	/*
 	 * This function returns TRUE if vector v2 is inside the set of
@@ -98,7 +98,7 @@ int VD_areaColinearVectors( v1, v2, angle ) IGRvector v1, v2 ; double angle ; {
 
 } /* VD_areaColinearVectors */
 /*----------------------------------------------------------------------------*/
-int VD_areaOrthoVectors( v1, v2, angle ) IGRvector v1, v2 ; double angle ; {
+int VD_areaOrthoVectors( v1, v2, angle ) IGRvector v1, v2 ; IGRdouble angle ; {
 
 	/*
 	 * This function returns TRUE if vector v2 is inside the set of

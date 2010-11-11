@@ -24,7 +24,7 @@ static long VD_split( msg, env, cv, pm, pt, cnt, cvs )
 long		*msg ;
 struct GRmd_env	*env ;
 OM_S_OBJID	cv ;
-double		pm ;
+IGRdouble		pm ;
 IGRpoint	pt ;
 int		*cnt ;
 OM_S_OBJID	*cvs ; {
@@ -82,7 +82,7 @@ long VD_ptatpr( msg, env, cv, pm, pt )
 long		*msg ;
 struct GRmd_env	*env ;
 OM_S_OBJID	cv ;
-double		pm ;
+IGRdouble		pm ;
 IGRpoint	pt ; {
 
 	long	sts ;
@@ -105,8 +105,8 @@ long VD_pratpt( msg, env, cv, pt, pm )
 long		*msg ;
 struct GRmd_env	*env ;
 OM_S_OBJID	cv ;
-IGRpoint	pt ;
-double		*pm ; {
+IGRpoint	  pt ;
+IGRdouble	 *pm ; {
 
 	long	sts ;
 	int	count ;

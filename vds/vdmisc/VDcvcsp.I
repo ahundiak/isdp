@@ -83,7 +83,7 @@ int VDget_cv_cusp_pts ( msg, crv, num_csp, cusps, rc )
   long			 *msg ;
   struct GRobj_env	 *crv ;
   int			 *num_csp;
-  double		**cusps ;
+  IGRdouble	**cusps ;
   BSrc			 *rc ;
 
 {

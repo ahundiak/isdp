@@ -19,7 +19,7 @@
 /*----------------------------------------------------------------------------*/
 double *VD_rotatemx( angle, inMx, outMx )
 
-double		angle ;
+IGRdouble		angle ;
 const IGRmatrix	inMx ;
 IGRmatrix	outMx ; {
 
@@ -55,7 +55,7 @@ Abstract
 	(O) outMx.
 */
 
-double		scale ;
+IGRdouble		scale ;
 const IGRmatrix	inMx ;
 IGRmatrix	outMx ; {
 

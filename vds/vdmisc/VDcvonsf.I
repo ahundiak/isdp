@@ -91,7 +91,7 @@ int VDcurve_on_surface( msg, crv, srf, tol, rc )
   long			*msg ;
   struct GRobj_env	*crv ;
   struct GRobj_env	*srf ;
-  double		 tol ;
+  IGRdouble	 tol ;
   BSrc			*rc ;
 
 {

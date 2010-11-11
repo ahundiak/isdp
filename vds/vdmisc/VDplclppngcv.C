@@ -24,7 +24,7 @@ int VD_isPlaneClippingCurve( cvGeom, plane, firstIntPoint, firstIntPm )
 const struct IGRbsp_curve	*cvGeom ;	
 const struct IGRplane		*plane ;
 IGRpoint			firstIntPoint ;
-double				*firstIntPm ; {
+IGRdouble		 *firstIntPm ; {
 
 	/*
 	 * This function is interfaced by macro vd_$isPlaneClippingCurve

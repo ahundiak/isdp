@@ -29,9 +29,10 @@ class implementation expression ;
 /*----------------------------------------------------------------------------*/
 long VD_expValue( exp_id, exp_os, p_value )
 
-OM_S_OBJID	exp_id ;
-OMuword		exp_os ;
-double		*p_value ; {
+OM_S_OBJID exp_id ;
+OMuword    exp_os ;
+IGRdouble *p_value ;
+{
 
 	long			sts,
 				msg ;
@@ -51,8 +52,8 @@ double		*p_value ; {
 /*----------------------------------------------------------------------------*/
 long VD_createExp( name, value, osnum, p_objid )
 
-char		*name ;
-double		value ;
+IGRchar		*name ;
+IGRdouble	value ;
 OMuword		osnum ;
 OM_S_OBJID	*p_objid ; {
 
