@@ -29,3 +29,7 @@ target:	mkfile
 
 mkfile:	vdiatrdb.m
 	grmakemake vdiatrdb.m mkfile
+
+clean:
+	@rm -f mkfile *.o *.c
+
