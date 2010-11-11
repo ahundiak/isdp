@@ -29,4 +29,6 @@ target:	mkfile
 mkfile:	vdiatspec.m
 	grmakemake vdiatspec.m mkfile
 
+clean:
+	@rm -f mkfile *.o *.c
 
