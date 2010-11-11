@@ -40,3 +40,8 @@ target: mkfile
 
 mkfile: vdvesrc.m
 	grmakemake vdvesrc.m mkfile
+
+clean:
+	@rm -f mkfile *.o *.c
+	@svn update
+
