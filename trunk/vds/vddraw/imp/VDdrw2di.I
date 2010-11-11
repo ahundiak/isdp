@@ -173,20 +173,18 @@ static long VDdrw2d_drwACncpx_NDdrawing_copy_geom(construction,
 						to_env,
 						drwId )
 
-struct GRid		*construction ;
-char			*drw2dView ;
-char			*visualFile ;
-struct GRid		*selected_elements ;
-int			nb_elements ;
-struct GRid		**outList ;
-int			*outCount ;
-double			*vector,
-			*point ;
-int			*levelMask ;
-struct IGRlbsys		*lbsys ;
-struct GRmd_env		*from_env,
-			*to_env ; 
-struct GRid		*drwId;
+struct GRid     *construction ;
+char            *drw2dView ;
+char            *visualFile ;
+struct GRid     *selected_elements ;
+int              nb_elements ;
+struct GRid    **outList ;
+int             *outCount ;
+IGRdouble       *vector, *point ;
+int             *levelMask ;
+struct IGRlbsys *lbsys ;
+struct GRmd_env *from_env, *to_env ;
+struct GRid     *drwId;
 {
 
 	long			sts,
