@@ -58,3 +58,6 @@ target: mkfile
 
 mkfile: ${TGTm}.m
 	grmakemake ${TGTm}.m mkfile
+
+clean:
+	@rm -f mkfile *.o *.c
