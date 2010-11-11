@@ -36,3 +36,7 @@ ${VDS}/config/commands/VDsupCrvPl: VDCsupGenPl.S VDCsupGenPl.t \
 
 mkfile:	vdcsup.m
 	grmakemake vdcsup.m mkfile
+
+clean:
+	@rm -f mkfile *.o *.c
+
