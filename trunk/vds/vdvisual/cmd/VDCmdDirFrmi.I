@@ -281,7 +281,7 @@ VDfetch_form_find( line, index )
 int VDdirform_process_form ( form_label, gadget_label, value )
 int form_label;
 int  gadget_label;
-double value;
+IGRdouble value;
 {
   int        stat_func, stat_OM;
   long       msg_loc;
