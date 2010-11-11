@@ -195,7 +195,7 @@ quit:
 int     VDSCheckinNotif(f_label, g_label, value, fp)
 int     f_label;
 int     g_label;
-double  value;
+IGRdouble  value;
 Form    fp;
 {
         int     row,sts;
