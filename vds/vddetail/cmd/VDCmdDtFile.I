@@ -77,8 +77,8 @@ int	flag;	 /* FALSE -> display only the view orienation names 	*/
 char	*fm_ptr; /* active form pointer					*/
 int	*cnt;	 /* return the number defined view orientations		*/
 char	*view;	 /* view orienation name to be found when flag = TRUE 	*/
-double	*h_vec;  /* return the found horizontal vector values		*/
-double	*v_vec;  /* return the found vertical vector values		*/
+IGRdouble	*h_vec;  /* return the found horizontal vector values		*/
+IGRdouble	*v_vec;  /* return the found vertical vector values		*/
 
 {
 FILE	*file_ptr;
@@ -168,9 +168,9 @@ int	flag;	 /* FALSE -> display only the view volume names 	*/
 char	*fm_ptr; /* active form pointer					*/
 int	*cnt;	 /* number of found view volume definitions		*/
 char	*view;	 /* view volume name to be found when flag = TRUE 	*/
-double	*min_v;  /* return the found minimum volume values		*/
-double	*max_v;  /* return the found maximum volume values		*/
-double	*orig;	 /* return the found origin values			*/
+IGRdouble	*min_v;  /* return the found minimum volume values		*/
+IGRdouble	*max_v;  /* return the found maximum volume values		*/
+IGRdouble	*orig;	 /* return the found origin values			*/
 {
 FILE	*file_ptr;
 IGRint	i, row;
