@@ -33,3 +33,6 @@ target: mkfile
 mkfile : vddrawprd.m
 	grmakemake vddrawprd.m mkfile
 
+clean:
+	@rm -f mkfile *.o *.c
+
