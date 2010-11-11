@@ -1,0 +1,2 @@
+/* /usr3/bs/src.em/bsvf_edgitr.c */
+extern void BSvf_edgitr(struct BSgeom_bsp_surf *, struct BSgeom_bsp_surf *, IGRdouble, IGRdouble, IGRboolean, IGRboolean, IGRdouble [2], IGRdouble [2], IGRdouble [2], IGRdouble [2], BSpair, BSpair, IGRdouble, struct IGRbsp_curve *, struct IGRbsp_curve *, IGRdouble, IGRdouble, IGRpoint, IGRdouble, IGRdouble, IGRdouble, IGRboolean, IGRdouble *, IGRdouble *, IGRvector, IGRvector, IGRpoint, IGRpoint, IGRpoint, BSrc *);

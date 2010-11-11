@@ -1,0 +1,2 @@
+/* /usr3/bs/src.em/bstrpofsfit.c */
+extern void BStrpofsfit(struct IGRbsp_surface *, struct IGRbsp_surface *, struct IGRbsp_surface *, IGRdouble [2], IGRdouble [2], IGRdouble [2], IGRdouble [2], IGRdouble [2], IGRdouble [2], IGRdouble, IGRdouble, IGRdouble, IGRdouble, IGRdouble, IGRdouble, IGRpoint, IGRdouble *, IGRdouble *, IGRdouble *, IGRdouble *, IGRdouble *, IGRdouble *, IGRboolean *, BSrc *);
