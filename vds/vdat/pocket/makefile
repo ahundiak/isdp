@@ -50,3 +50,7 @@ ${VDS}/config/commands/VDSlAsCp: VDCSlAsCp.S VDCSlAsCp.t \
 
 mkfile:	vdiatpoc.m
 	grmakemake vdiatpoc.m mkfile
+
+clean:
+	@rm -f mkfile *.o *.c
+
