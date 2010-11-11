@@ -34,3 +34,7 @@ target:	mkfile
 
 mkfile:	vdeqimp.m
 	grmakemake vdeqimp.m mkfile
+
+clean:
+	@rm -f mkfile *.o *.c
+
