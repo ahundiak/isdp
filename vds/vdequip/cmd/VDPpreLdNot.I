@@ -73,7 +73,7 @@ from VDPEqBuffer	import	VDPrsrvEquipment;
 
 VDPPreldLstForm_notif(form_label,label,value,FormPtr)
 int form_label,label;
-double value;
+IGRdouble value;
 char *FormPtr;
 {
     IGRlong		msg, status=OM_S_SUCCESS;
