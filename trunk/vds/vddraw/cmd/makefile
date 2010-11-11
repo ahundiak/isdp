@@ -23,34 +23,6 @@
 #	Revision 1.1.1.1  2001/01/04 21:08:36  cvs
 #	Initial import to CVS
 #	
-# Revision 1.1  1997/05/08  15:30:54  pinnacle
-# rep bin w/txt
-#
-# Revision 1.8  1995/08/21  16:51:54  pinnacle
-# Replaced: vddraw/cmd/makefile for:  by azuurhou for vds.240
-#
-# Revision 1.7  1995/06/27  19:22:00  pinnacle
-# Replaced: vddraw/cmd/makefile for:  by azuurhou for vds.240
-#
-# Revision 1.6  1995/03/16  19:12:58  pinnacle
-# Replaced: vddraw/cmd/makefile by azuurhou r#
-#
-# Revision 1.5  1995/01/20  21:04:28  pinnacle
-# Replaced:  vddraw/cmd/makefile r#
-#
-# Revision 1.4  1995/01/20  21:01:16  pinnacle
-# Replaced: vddraw/cmd/makefile by azuurhou r#
-#
-# Revision 1.3  1995/01/09  17:04:28  pinnacle
-# Replaced: vddraw/cmd by azuurhou r#
-#
-# Revision 1.2  1994/12/23  20:03:08  pinnacle
-# Replaced: vddraw/cmd/makefile by tdumbach r#
-#
-# Revision 1.1  1994/12/22  22:10:26  pinnacle
-# OPE
-#
-#
 # History:
 #	MM/DD/YY	AUTHOR		DESCRIPTION
 #	12/01/94	adz		creation date
@@ -103,4 +75,7 @@ $(VDS)/config/commands/VDOPE_ExDr : VDCmdExDr.t \
 
 mkfile : vddrawcmd.m
 	grmakemake vddrawcmd.m mkfile
+
+clean:
+	@rm -f mkfile *.o *.c
 
