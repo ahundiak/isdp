@@ -14,3 +14,6 @@ target: mkfile
 
 mkfile: vddrawdrw.m
 	grmakemake vddrawdrw.m mkfile
+
+clean:
+	@rm -f mkfile *.o *.c

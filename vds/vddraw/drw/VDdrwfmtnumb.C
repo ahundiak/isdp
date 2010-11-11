@@ -14,7 +14,7 @@ int VD_formatNumber( format, d, output, size, errFile )
 
 const char	*format ;	/* IN : Format for number		*/
 char		output[] ;	/* OUT: Buffer for formatted number	*/
-double		d ;		/* IN : Number to format		*/
+IGRdouble		d ;		/* IN : Number to format		*/
 int		size ;		/* IN : Size of output buffer		*/
 FILE		*errFile ; {	/* IN : error file pointer (may be NULL)*/
 

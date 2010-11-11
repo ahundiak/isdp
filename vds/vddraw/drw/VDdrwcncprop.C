@@ -14,7 +14,7 @@ void VD_conicprp( curve,
 
 struct IGRbsp_curve	*curve ;
 int			*type ;
-double			*r1_r,
+IGRdouble			*r1_r,
 			*r2 ;
 IGRpoint		center,
 			f1_f,

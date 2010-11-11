@@ -204,8 +204,8 @@ static char *VD_allocDrwText( t, n ) register VD_drwText *t ; unsigned n ; {
 void VD_drwTxMOVE( t, mvflag, mvval )
 
 VD_drwText		*t ;
-char			mvflag ;		/* mvflag = 'h','v','s'	*/
-double			mvval ; {
+IGRchar			mvflag ;		/* mvflag = 'h','v','s'	*/
+IGRdouble			mvval ; {
 
 	/*
 	 * Puts text commands 'h','v','s' into string buffer.
