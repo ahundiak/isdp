@@ -34,3 +34,7 @@ target: mkfile
 
 mkfile: vdspacecmd.m
 	grmakemake vdspacecmd.m mkfile
+
+clean:
+	@rm -f mkfile *.o *.c
+
