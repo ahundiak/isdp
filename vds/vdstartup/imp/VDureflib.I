@@ -360,7 +360,7 @@ void VDSchkRefLibNotification( form_label, gadget, value, form )
 
 int	form_label ;
 int	gadget ;
-double	value ;
+IGRdouble	value ;
 char	*form ;
 {
 	long	msg ;
@@ -1039,7 +1039,7 @@ struct vdfile_struct *VDlibfile;
 /* Note that the year is added, no 2000 error       */
 int VDann_cal_tick (caldate,outdate)
 char caldate[26];
-double *outdate; /* decimal year */
+IGRdouble *outdate; /* decimal year */
 {
 	IGRint		monadd,
 			day, hour, min, sec, year,
