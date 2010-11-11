@@ -20,3 +20,6 @@ target: mkfile
 
 mkfile: vdio.m
 	grmakemake vdio.m mkfile
+
+clean:
+	@rm -f mkfile *.o *.c
