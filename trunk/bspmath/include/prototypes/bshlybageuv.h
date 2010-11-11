@@ -1,0 +1,2 @@
+/* /usr3/bs/src.lg/bshlybageuv.c */
+extern void BShlybageuv(IGRint, IGRint, IGRdouble *, IGRdouble, IGRdouble, IGRdouble *, IGRint, IGRdouble *, IGRint, IGRdouble *, IGRint, IGRdouble *, IGRint, IGRdouble *, IGRdouble *, IGRint *, IGRdouble *, IGRint *, IGRdouble *, IGRint *, IGRdouble *, IGRint *, IGRdouble *, IGRdouble *, IGRint *, IGRdouble *, IGRint *, IGRdouble *, IGRint *, IGRdouble *, IGRint *, IGRdouble *, BSrc *);
