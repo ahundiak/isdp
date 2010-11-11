@@ -3,3 +3,7 @@ target: mkfile
 
 mkfile:	vdpeqbuf.m
 	grmakemake vdpeqbuf.m mkfile
+
+clean:
+	@rm -f mkfile *.o *.c
+
