@@ -62,3 +62,5 @@ VDCmdMdDvDp.S : VDCmdMdDvDp.sl \
 mkfile : vddetlcmd.m
 	grmakemake vddetlcmd.m mkfile
 
+clean:
+	@rm -f mkfile *.o *.c
