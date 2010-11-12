@@ -396,7 +396,7 @@ wrap_up:
 
 
 int VDXradius1(p1, p2, p3, p4, rad, cen, matrix, sweep)
-double p1[3], p2[3], p3[3], p4[3], *rad, cen[3], matrix[16], *sweep;
+IGRdouble p1[3], p2[3], p3[3], p4[3], *rad, cen[3], matrix[16], *sweep;
 {
 
 double	a, b, c, angle;
@@ -744,7 +744,7 @@ wrap_up:
 }
 
 VDXv_cross1(v1,v2,v3)
-double	v1[3], v2[3], v3[3];
+IGRdouble	v1[3], v2[3], v3[3];
 {
 	v3[0]= v1[1]* v2[2] -  v1[2]* v2[1] ;
 	v3[1]= v1[2]* v2[0] -  v1[0]* v2[2] ;
@@ -752,7 +752,7 @@ double	v1[3], v2[3], v3[3];
 }
 
 VDXv_scale1(v1,s,v2)
-double v1[3], v2[3], s;
+IGRdouble v1[3], v2[3], s;
 {
 	v2[0]=v1[0]*s;
 	v2[1]=v1[1]*s;
@@ -760,13 +760,13 @@ double v1[3], v2[3], s;
 }
 
 VDXv_len1(v1,l)
-double v1[3],*l;
+IGRdouble v1[3],*l;
 {
 	*l = sqrt(fabs( v1[0]*v1[0]+v1[1]*v1[1]+v1[2]*v1[2]));
 }
 
 VDXcalc_radius(p2, p3, p4, rad)
-double	p2[3], p3[3], p4[3], *rad;
+IGRdouble	p2[3], p3[3], p4[3], *rad;
 {
 int	i;
 double	a=0.0, b=0.0, c=0.0, h=0.0, x=0.0;
