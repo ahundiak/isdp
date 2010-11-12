@@ -56,3 +56,6 @@ SMCmdModSct.S : SMCmdModSct.sl \
 mkfile : smframecmd.m
 	grmakemake smframecmd.m mkfile
 
+clean:
+	@rm -f mkfile *.o *.c
+
