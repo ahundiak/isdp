@@ -29,9 +29,7 @@
 #
 # -------------------------------------------------------------------
 
-target: $(VDS)/ppl/bin/SMFrPln.e \
-	$(VDS)/ppl/bin/VDFrPln.e \
-	mkfile 
+target: mkfile
 	grmake -r -f mkfile
 
 
@@ -61,3 +59,7 @@ $(VDS)/ppl/bin/VDFrPln.e : VDFrPln.u
 	-I$(VDS)/vdinclude		\
         -I$(VDS)/include			VDFrPln.u
 	mv VDFrPln.e $(VDS)/ppl/bin/VDFrPln.e
+
+clean:
+	@rm -f mkfile *.e *.o *.c
+
