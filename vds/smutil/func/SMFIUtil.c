@@ -51,19 +51,19 @@
 #include <stdio.h>
 #include <varargs.h>
 #include <stdlib.h>
-#include <FI.h>
-
+#include "FI.h"
+#include "igrtypedef.h"
 
 /* -----------------------  int SMget_double --------------------------- */
 /* This function improve the FIfld_get_value . It recovers a double or   */
 /* return 0 if the field is empty or is not representing a double        */
 
 int SMget_double(form,label,row,col,db)
-Form    form;    /* [I] */
-int     label;   /* [I] */
-int     row;     /* [I] */
-int     col;     /* [I] */
-double *db;      /* [O] */
+Form       form;    /* [I] */
+IGRint     label;   /* [I] */
+IGRint     row;     /* [I] */
+IGRint     col;     /* [I] */
+IGRdouble *db;      /* [O] */
 {
   char txt_value[80];
   int sel_flag,r_pos;
