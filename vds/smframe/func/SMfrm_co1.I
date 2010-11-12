@@ -417,9 +417,9 @@ int                      command_type; /* [I] PLACE or MODIFY */
 /* Save the value for plane size in fonction of the type_list */
 
 static void get_plane_size(type_list,value_field,ret_value)
-char   *type_list;          /* [I] Small,Regular,Large,user             */
-double value_field;         /* [I] The value in the corresponding field */
-double *ret_value;          /* [O] The value return                     */
+IGRchar   *type_list;          /* [I] Small,Regular,Large,user             */
+IGRdouble value_field;         /* [I] The value in the corresponding field */
+IGRdouble *ret_value;          /* [O] The value return                     */
 {
   if(strcmp(type_list,"Small") == 0) *ret_value = -1.0;
   else if(strcmp(type_list,"Regular") == 0) *ret_value = 0.0;
@@ -431,9 +431,9 @@ double *ret_value;          /* [O] The value return                     */
 /* Fonction of value in the list_label put the value in field_label */
 
 static void put_plane_size(last_value,list_str,field_value) 
-double  last_value;    /* [I] The last value save */
-char    *list_str;     /* [O] String in the corresponding list */
-double  *field_value;  /* [O] Value return for the field      */
+IGRdouble  last_value;    /* [I] The last value save */
+IGRchar    *list_str;     /* [O] String in the corresponding list */
+IGRdouble  *field_value;  /* [O] Value return for the field      */
 {
   switch((int)last_value)
    {
