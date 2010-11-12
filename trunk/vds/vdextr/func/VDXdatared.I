@@ -76,7 +76,7 @@ from NDmacro	import ACreturn_foot;
 long VDX_ObjDataReduction( msg, redTolerance, elmId, elmEnv )
 
 long			*msg ;		/* O : Return code.		      */
-double			*redTolerance ;	/* I : Data Red Tolerance Value       */
+IGRdouble			*redTolerance ;	/* I : Data Red Tolerance Value       */
 struct GRid		*elmId ;	/* I/O : Bspline intesection.         */
 struct GRmd_env		*elmEnv ; {	/* I : Object Envireonment.	      */
 
@@ -241,7 +241,7 @@ struct GRmd_env		*elmEnv ; {	/* I : Object Envireonment.	      */
 long VDX_sfDataReduction( msg, redTolerance, inGeom, outGeom )
 
 long			*msg ;		/* O : Return code.		      */
-double			*redTolerance ;	/* I : Data Red Tolerance Value       */
+IGRdouble			*redTolerance ;	/* I : Data Red Tolerance Value       */
 struct IGRbsp_surface	*inGeom ;	/* I/O : Bspline intesection.         */
 struct IGRbsp_surface	**outGeom ; {	/* I : Output Geometry 		      */
 
@@ -587,7 +587,7 @@ IGRint PlaceCirRevOrPro(in_obj, stparam, enparam,
 			type, VDXnum_pnts, VDX_types, 
 			VDXpnts, VDXmod_env)
 struct GRid	in_obj;
-double stparam, enparam;
+IGRdouble stparam, enparam;
 IGRint	type;
 IGRint	*VDXnum_pnts;
 IGRint	*VDX_types;

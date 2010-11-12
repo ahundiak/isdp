@@ -29,3 +29,6 @@ target:	mkfile
 
 mkfile:	vdxfunc.m
 	grmakemake vdxfunc.m mkfile
+
+clean:
+	@rm -f mkfile *.o *.c
