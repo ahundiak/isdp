@@ -43,3 +43,6 @@ SMCmdSglPl.S : SMCmdSglPl.sl \
 mkfile : smplanecmd.m
 	grmakemake smplanecmd.m mkfile
 
+clean:
+	@rm -f mkfile *.o *.c
+

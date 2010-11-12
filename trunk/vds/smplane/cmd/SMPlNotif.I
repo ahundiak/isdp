@@ -501,7 +501,7 @@ struct GRmd_env      *mod_env;        /* [I]                                  */
 static int PlDisplayDoubleField(form,label,default_value)
 Form   form;          /* [I] Form pointer where the field must appear      */
 int    label;         /* [I] Label of gadget to display		           */
-double default_value; /* [I] The value to place in the field (or NO_VALUE) */  
+IGRdouble default_value; /* [I] The value to place in the field (or NO_VALUE) */
 {
   int    test;
   double ext_value;
