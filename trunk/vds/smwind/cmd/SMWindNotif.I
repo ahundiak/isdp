@@ -75,10 +75,10 @@ extern GRclassid OPP_GRlinear_class_id;
 /* Return 1 if found or create. Return 0 if cannot create             */
 
 static int set_att_db(name,ACrg,nb_attr,f)
-char             name[];   /* [I] Name of the attribute               */
+IGRchar          name[];   /* [I] Name of the attribute               */
 struct ACrg_coll ACrg[];   /* [O] Array of ACrg_col where to modify   */
-int             *nb_attr;  /* [I/O] Number of element in the ACrg     */   
-double          f;         /* [I] value of attribut (if double)       */
+IGRint          *nb_attr;  /* [I/O] Number of element in the ACrg     */
+IGRdouble        f;         /* [I] value of attribut (if double)       */
 {
   int i;
   
@@ -153,10 +153,10 @@ char             str[];   /* [I] value of attribut (if text)         */
 /* Return 1 if found and 0 if not found                               */
 
 static int get_att_db(name,ACrg,nb_attr,f)
-char             name[];    /* [I] Name of the attribute              */
+IGRchar          name[];    /* [I] Name of the attribute              */
 struct ACrg_coll ACrg[];    /* [I] Array of ACrg_col where to search  */
-int              nb_attr;   /* [I] Number of element in the ACrg      */
-double          *f;         /* [O] double return if AC_ATTRIB_DOUBLE  */
+IGRint           nb_attr;   /* [I] Number of element in the ACrg      */
+IGRdouble       *f;         /* [O] double return if AC_ATTRIB_DOUBLE  */
 {
   int i;
   
