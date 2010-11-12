@@ -1370,8 +1370,8 @@ struct GRid	*frame;		/* Frame identifier		(I) */
 struct GRid	*frame_def;	/* Frame definition identifier	(I) */
 int		 frame_number;  /* Frame number to look		(I) */
 char		*axis;		/* Axis				(O) */
-double		*dist;		/* Distance onlong axis		(O) */
-double		*size;		/* Size of the plane		(O) */
+IGRdouble		*dist;		/* Distance onlong axis		(O) */
+IGRdouble		*size;		/* Size of the plane		(O) */
 char		*name;		/* Text displayed 		(O) */
 char		*justif;	/* Justification		(O) */
 IGRuchar        *props;	        /* Reversed Normal props	(O) */
