@@ -1,4 +1,4 @@
-# $Id: makefile,v 1.1.1.1 2001/01/04 21:07:37 cvs Exp $
+cd ..# $Id: makefile,v 1.1.1.1 2001/01/04 21:07:37 cvs Exp $
 
 # -------------------------------------------------------------------
 # I/VDS
@@ -35,3 +35,7 @@ target: mkfile
 mkfile : smspacefc.m
 	grmakemake smspacefc.m mkfile
 
+clean:
+	@rm -f mkfile *.o
+	@rm -f SMspcTmpStr.c SMextcurv.c SMspace_int.c SMOrie.c
+	@rm -f VDmdist.c SMspace_fn.c SMspace_int1.c SMSolUtil.c
