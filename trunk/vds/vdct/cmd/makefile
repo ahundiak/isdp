@@ -26,10 +26,14 @@
 target: pplmkfile \
 	mkfile
 	grmake -r -k -f mkfile
-	grmake -r -k -f pplmkfile
+#	grmake -r -k -f pplmkfile
 
 mkfile:	vdictcmd.m
 	grmakemake vdictcmd.m mkfile
 
 pplmkfile: vdictppl.m
 	ksh $(VDS)/etc/bin/mkmkppl vdictppl.m pplmkfile $(VDS)
+
+clean:
+	@rm -f mkfile pplmkfile *.e *.o *.c
+
