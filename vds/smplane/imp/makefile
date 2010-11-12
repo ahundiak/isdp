@@ -29,8 +29,7 @@
 #
 # -------------------------------------------------------------------
 
-target: $(VDS)/ppl/bin/SMInfPlane.e \
-	mkfile 
+target: mkfile
 	grmake -r -f mkfile
 
 
@@ -47,3 +46,7 @@ $(VDS)/ppl/bin/SMInfPlane.e : SMInfPlane.u
         -I$(MODEL)/include              \
         -I$(VDS)/include			SMInfPlane.u
 	mv SMInfPlane.e $(VDS)/ppl/bin/SMInfPlane.e
+
+clean:
+	@rm -f mkfile *.e *.o *.c
+
