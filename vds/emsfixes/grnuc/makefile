@@ -23,16 +23,6 @@
 #	Revision 1.1.1.1  2001/01/04 21:07:28  cvs
 #	Initial import to CVS
 #	
-# Revision 1.1  1997/05/08  14:57:34  pinnacle
-# rep bin w/txt
-#
-# Revision 1.1  1994/11/14  22:42:32  pinnacle
-# Create vds.240 from vds.232
-#
-# Revision 1.1  1994/11/08  16:07:00  pinnacle
-# create vds.232
-#
-#
 # History:
 #	MM/DD/YY	AUTHOR		DESCRIPTION
 #
@@ -41,6 +31,9 @@
 TGT = vdidloadgr
 
 include ${VDS_PATH}/etc/makefiles/lib_only.h
+
+clean:
+	@rm -f mkfile *.o *.c
 
 #if 0
 #target : elinmasteri.I \

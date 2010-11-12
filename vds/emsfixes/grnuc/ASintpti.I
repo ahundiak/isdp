@@ -649,7 +649,7 @@ char  l0;
 
 static cmp_int_cv_cv(obj0,obj1,pt_init,pt_res)
   struct GRid *obj0,*obj1;
-  double *pt_init,*pt_res;
+  IGRdouble *pt_init,*pt_res;
 
 {
     IGRlong status;

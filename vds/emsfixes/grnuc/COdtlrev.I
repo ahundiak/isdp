@@ -357,10 +357,10 @@ extern int COrevref_output ( msg, num, depth, requests, info )
 
 #argsused
 int COdetail_review_notify (form_label, gadget_label, value, form_ptr)
-    int     form_label;
-    int     gadget_label;
-    double  value;
-    Form    form_ptr;
+    IGRint     form_label;
+    IGRint     gadget_label;
+    IGRdouble  value;
+    Form       form_ptr;
 {
     if ( gadget_label == FI_ACCEPT ) FIf_delete (form_ptr);
     return (1);

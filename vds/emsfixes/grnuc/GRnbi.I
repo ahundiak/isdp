@@ -117,10 +117,10 @@ static void NBPermanentWindow ()
   FIg_disable ( NBform, 5 );
 }
 
-int NBProcessForm ( form_label, gadget_label, value )
-int form_label;
-int  gadget_label;
-double value;
+IGRint NBProcessForm ( form_label, gadget_label, value )
+IGRint    form_label;
+IGRint    gadget_label;
+IGRdouble value;
 {
 
   if (gadget_label == EXIT_BUTTON || gadget_label == ABORT_BUTTON)
@@ -448,9 +448,9 @@ static Form NBfile_form = NULL;
 
 
 void NBprocess_file_out ( form_label, gadget_label, value )
-int form_label;
-int  gadget_label;
-double value;
+IGRint    form_label;
+IGRint    gadget_label;
+IGRdouble value;
 {
   int  i, sel_flag, position; 
   FILE *fet;
@@ -537,9 +537,9 @@ FILE *fet	/* The file to read from				IN  */;
 
 
 void NBprocess_file_in ( form_label, gadget_label, value )
-int form_label;
-int  gadget_label;
-double value;
+IGRint    form_label;
+IGRint    gadget_label;
+IGRdouble value;
 {
   int  line; 
   FILE *fet;

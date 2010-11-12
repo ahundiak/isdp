@@ -80,7 +80,7 @@ DEresolve_inter ( done, used, count, bdrys, sbts, ptr, entry, win, wn_ndx, md_en
                   int             *done    /* Has entry been added ?    OUT */;
                   int             *used    /* Number of used entries IN/OUT */;
                   int             count    /* Number of boundaries      IN  */;
-                  double          *bdrys   /* Boundaries                IN  */;
+               IGRdouble          *bdrys   /* Boundaries                IN  */;
                   struct IGRdisplay *sbts /* The symbologies of the bdrys IN */;
                   DEsoe           *ptr     /* The existing entry         IN  */,
                                   *entry   /* The entry to be added      IN  */;

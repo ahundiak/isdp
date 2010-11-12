@@ -113,10 +113,10 @@ static IGRshort        num_colors = 0;      /* # of buttons on color palette */
 #argsused
 void GRprocess_setadp( form_label, label, value, form_ptr)
 
-int form_label;  /* form label                                   */
-int label;       /* label of the gadget whose data has changed   */
-double value;    /* return value of the gadget                   */
-Form form_ptr;   /* pointer to the form whose gadget was updated */
+IGRint form_label;  /* form label                                   */
+IGRint label;       /* label of the gadget whose data has changed   */
+IGRdouble value;    /* return value of the gadget                   */
+Form    form_ptr;   /* pointer to the form whose gadget was updated */
 {
     extern  IGRboolean     COInvisibleColor;
     extern void            GRchg_adp_line_weight();
