@@ -28,3 +28,7 @@ target:	mkfile
 
 mkfile:	vdictimp.m
 	grmakemake vdictimp.m mkfile
+
+clean:
+	@rm -f mkfile 8.o *.c
+
