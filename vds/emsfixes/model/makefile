@@ -46,3 +46,5 @@ target : mkfile
 mkfile : vdmd.m
 	grmakemake vdmd.m mkfile
 
+clean:
+	@rm -f mkfile *.o EFgetcreator.c EMcoll.c
