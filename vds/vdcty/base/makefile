@@ -24,4 +24,6 @@ TGT = vdictybase
 
 include ${VDS}/etc/makefiles/lib_only.h
 
+clean:
+	@rm -f mkfile *.o
 
