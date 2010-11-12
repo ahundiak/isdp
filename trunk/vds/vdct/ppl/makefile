@@ -24,7 +24,11 @@
 # ***************************************************************************/
 
 target: pplmkfile
-	grmake -r -k -f pplmkfile
+#	grmake -r -k -f pplmkfile
 
 pplmkfile: vdictppl.m
 	ksh ${VDS}/etc/bin/mkmkppl vdictppl.m pplmkfile $(VDS)
+
+clean:
+	@rm -f pplmkfile *.e
+
