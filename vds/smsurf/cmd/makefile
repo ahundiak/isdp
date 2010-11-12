@@ -97,3 +97,6 @@ SMCmdLgCrBk.S : SMCmdLgCrBk.sl \
 mkfile: smsurfcmd.m
 	grmakemake smsurfcmd.m mkfile 
 	
+clean:
+	@rm -f mkfile *.o *.c
+
