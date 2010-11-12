@@ -43,3 +43,7 @@ target:	mkfile
 
 mkfile: smfrmapi.m
 	grmakemake smfrmapi.m mkfile
+
+clean:
+	@rm -f mkfile *.o *.c
+
