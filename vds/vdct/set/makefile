@@ -28,3 +28,7 @@ target:	mkfile
 
 mkfile:	vdictset.m
 	grmakemake vdictset.m mkfile
+
+clean:
+	@rm -f mkfile 8.o *.c
+
