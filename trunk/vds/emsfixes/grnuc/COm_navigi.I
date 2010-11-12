@@ -228,9 +228,9 @@ GRspacenum osnum;
 
 ******************************************************************************/
 COm_navig_router(f_label,g_label,value,fp)
-int f_label,g_label;
-double value;
-char *fp;
+IGRint    f_label,g_label;
+IGRdouble value;
+IGRchar  *fp;
 /*.COm_navig_router*/
 {
  struct GRid cmd_obj;

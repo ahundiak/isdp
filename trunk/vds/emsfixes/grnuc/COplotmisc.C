@@ -85,8 +85,8 @@ Description
 */
 
 int COcvtsize (x, y, unit)
-double *x, *y;
-char *unit;
+IGRdouble *x, *y;
+IGRchar   *unit;
 {
 #ifdef STANDALONE
 

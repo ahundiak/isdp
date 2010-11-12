@@ -70,7 +70,7 @@ from expression import give_syntax, NDgive_value, put_value, NDchange_node;
 /*
 
 Name
- COdelete_dir_form ð
+ COdelete_dir_form ï¿½
 Abstract
  This function is called from the super_object when 
  it gets the sleep message. It deletes the form so that it 
@@ -334,10 +334,10 @@ DIform_find ( start, lines, ptr, max_level, deep, grids )
 }
 
 #argsused
-int DIdirform_process_form ( form_label, gadget_label, value, form )
-int form_label;
-int  gadget_label;
-double value;
+IGRint DIdirform_process_form ( form_label, gadget_label, value, form )
+IGRint    form_label;
+IGRint    gadget_label;
+IGRdouble value;
 Form form;
 {
   int        stat_func, stat_OM;
@@ -415,10 +415,10 @@ static struct GRid DIEditedGrid;
 
 #argsused
 void DIModifNotify ( FormLabel, GadgetLabel, Value, NotUsed )
-int    FormLabel;
-int    GadgetLabel;
-double Value;
-Form   NotUsed;
+IGRint    FormLabel;
+IGRint    GadgetLabel;
+IGRdouble Value;
+Form      NotUsed;
 {
   int  AutoAccept = 0;
   char alpha [DI_PATH_MAX];
@@ -1649,7 +1649,7 @@ method update ()
 
     }
 /*
- * ‚    FIfld_set_num_rows ( DIform, DIR_WINDOW, dir_count );
+ * ï¿½    FIfld_set_num_rows ( DIform, DIR_WINDOW, dir_count );
  */
 
   }
@@ -1860,9 +1860,9 @@ static Form report_form = NULL;
 
 #argsused
 void DIprocess_dir_report ( form_label, gadget_label, value )
-int form_label;
-int  gadget_label;
-double value;
+IGRint    form_label;
+IGRint    gadget_label;
+IGRdouble value;
 {
   char file_name [DI_PATH_MAX], tmp_name[5];
   int  i;
@@ -1958,9 +1958,9 @@ static Form mkdir_form = NULL;
 
 #argsused
 void DIprocess_mkdir ( form_label, gadget_label, value )
-int form_label;
-int  gadget_label;
-double value;
+IGRint    form_label;
+IGRint    gadget_label;
+IGRdouble value;
 {
   char dir_name [DI_PATH_MAX];
   int  ReturnStatus;
@@ -2039,9 +2039,9 @@ static Form rmdir_form = NULL;
 
 #argsused
 void DIprocess_rmdir ( form_label, gadget_label, value )
-int form_label;
-int  gadget_label;
-double value;
+IGRint    form_label;
+IGRint    gadget_label;
+IGRdouble value;
 {
   char            dir_name [DI_PATH_MAX];
   int             i, dir, ReturnStatus;
