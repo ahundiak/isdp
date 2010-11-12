@@ -121,14 +121,14 @@ int nb_attr1,nb_attr2;             /* [I] Nb of attribut in each ACrg */
 /* */
 
 int SMGetAttr(name,ACrg,SMattr,nb_attr,type,f,str,sm_type)
-char name[];             /* [I] Name of the attribute              */
+IGRchar name[];          /* [I] Name of the attribute              */
 struct ACrg_coll ACrg[]; /* [I] Array of ACrg_col where to search  */
-IGRshort SMattr[];       /* [I] Array of sman type of attributes    */
-int nb_attr;             /* [I] Number of element in the ACrg      */   
-int *type;               /* [O] type of return value  (or NULL)    */
-double  *f;              /* [O] double return if AC_ATTRIB_DOUBLE (or NULL) */
-char str[];              /* [O] string return if AC_ATTRIB_TEXT (or NULL) */
-IGRshort *sm_type;      /* [O] SMAN TYPE Of the Attribute  (or NULL) */
+IGRshort    SMattr[];    /* [I] Array of sman type of attributes    */
+IGRint      nb_attr;     /* [I] Number of element in the ACrg      */
+IGRint     *type;        /* [O] type of return value  (or NULL)    */
+IGRdouble  *f;           /* [O] double return if AC_ATTRIB_DOUBLE (or NULL) */
+IGRchar     str[];       /* [O] string return if AC_ATTRIB_TEXT (or NULL) */
+IGRshort   *sm_type;     /* [O] SMAN TYPE Of the Attribute  (or NULL) */
 {
   int i;
   
@@ -159,15 +159,15 @@ IGRshort *sm_type;      /* [O] SMAN TYPE Of the Attribute  (or NULL) */
 /* Return 1 if found or create. Return 0 if cannot create    */
 
 int SMSetAttr(name,ACrg,SMattr,nb_attr,type,f,str,sm_type,max_attr)
-char name[];              /* [I] Name of the attribute               */
+IGRchar name[];          /* [I] Name of the attribute               */
 struct ACrg_coll ACrg[]; /* [O] Array of ACrg_col where to modify   */
-IGRshort SMattr[];       /* [O] Array of sman type of attributes    */
-int *nb_attr;            /* [I/O] Number of element in the ACrg     */   
-int type;                /* [I] ACrg_type type of attribut          */
-double  f;               /* [I] value of attribut (if double)       */
-char str[];              /* [I] value of attribut (if text)         */
-IGRshort sm_type;        /* [I] SMAN TYPE Of the Attribute          */
-int max_attr;            /* [I] max nb_attr possible in ACrg        */ 
+IGRshort   SMattr[];     /* [O] Array of sman type of attributes    */
+IGRint    *nb_attr;      /* [I/O] Number of element in the ACrg     */
+IGRint     type;         /* [I] ACrg_type type of attribut          */
+IGRdouble  f;            /* [I] value of attribut (if double)       */
+IGRchar    str[];        /* [I] value of attribut (if text)         */
+IGRshort   sm_type;      /* [I] SMAN TYPE Of the Attribute          */
+IGRint     max_attr;     /* [I] max nb_attr possible in ACrg        */
 {
   int i;
   
