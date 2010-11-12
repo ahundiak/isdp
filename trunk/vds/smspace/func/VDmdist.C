@@ -67,9 +67,9 @@ double BSlenvec(),BSdotp(),sqrt(),fabs();
 
 VDmdistcvcv(bc1,bc2,num,pt1,pt2,dist0,dist,eps,rc)
 struct IGRbsp_curve *bc1,*bc2;
-int *num;
-double **pt1,**pt2,dist0,*dist,eps;
-long *rc;
+IGRint *num;
+IGRdouble **pt1,**pt2,dist0,*dist,eps;
+IGRlong *rc;
 
 {
  long loc_rc;
