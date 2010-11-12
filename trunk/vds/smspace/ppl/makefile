@@ -38,7 +38,11 @@
 # 92/10/28
 
 target: mkfile 
-	grmake -r -k -f mkfile
+#	grmake -r -k -f mkfile
 
 mkfile: smbndppl.m
 	ksh ${VDS}/etc/bin/mkmkppl smbndppl.m mkfile $(VDS)
+
+clean:
+	@rm -f mkfile *.e
+
