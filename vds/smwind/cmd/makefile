@@ -43,3 +43,6 @@ SMCmdWind.S : SMCmdWind.sl \
 mkfile : smwindcmd.m
 	grmakemake smwindcmd.m mkfile
 
+clean:
+	@rm -f mkfile *.o *.c
+
