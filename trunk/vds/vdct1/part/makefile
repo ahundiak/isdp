@@ -33,7 +33,7 @@ TPT = vdict1ppl
 target:	mkfile \
 	pplmkfile
 	grmake -r -k -f mkfile
-	grmake -r -k -f pplmkfile
+#	grmake -r -k -f pplmkfile
 	@if test ${ISDP_MAKE_SP} -eq 1; \
 	then \
 	   ldso    ${SPXV}/lib/${TGT}; \
@@ -54,3 +54,6 @@ pplmkfile: ${TPT}.m
 	else \
 	   ksh $(VDS)/etc/bin/mkmkppl ${TPT}.m pplmkfile $(VDS); \
 	fi
+
+clean:
+	@rm -f mkfile pplmkfle *.e *.o
