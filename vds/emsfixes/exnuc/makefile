@@ -38,3 +38,6 @@ target: mkfile
 mkfile : vdex.m
 	grmakemake vdex.m mkfile
 
+clean:
+	@rm -f mkfile *.o *.c
+
