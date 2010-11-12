@@ -36,3 +36,6 @@ target: mkfile
 mkfile: smsurfimp.m
 	grmakemake smsurfimp.m mkfile 
 	
+clean:
+	@rm -f mkfile *.o *.c
+
