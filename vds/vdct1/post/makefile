@@ -36,3 +36,7 @@ target:	mkfile
 
 mkfile:	${TGT}.m
 	grmakemake ${TGT}.m mkfile
+
+clean:
+	@rm -f mkfile *.o *.c
+
