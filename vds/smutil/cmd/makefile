@@ -43,3 +43,6 @@ SMCmdConInf.S : SMCmdConInf.sl \
         ${VDS}/include/VDmsg.h ${VDS}/include/VDcmd.h
 	$(EXNUC)/bin/slic -C -p${VDS}/spec SMCmdConInf.sl
 
+clean:
+	@rm -f mkfile *.o *.c
+
