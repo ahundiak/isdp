@@ -157,12 +157,14 @@ int PDU_FIf_display(Form form)
 
   return sts;
 }
+typedef int    IGRint;
+typedef double IGRdouble;
 
 int design_form_notification_routine ( f_label, g_label, value, fp )
-  int     f_label;       /* The label of the form   */
-  int     g_label;       /* The label of the gadget */
-  double  value;         /* The value of the gadget */
-  Form    fp;            /* Pointer to the form     */
+  IGRint     f_label;       /* The label of the form   */
+  IGRint     g_label;       /* The label of the gadget */
+  IGRdouble  value;         /* The value of the gadget */
+  Form       fp;            /* Pointer to the form     */
 {
   int             status;
   int             responses[1];

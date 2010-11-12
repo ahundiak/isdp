@@ -19,4 +19,9 @@
 TGT = vdidloadpdu
 TGT_PPL = vdpdppl
 
-include ${VDS_PATH}/etc/makefiles/lib_ppl.h
+include ${VDS_PATH}/etc/makefiles/lib_only.h
+
+clean:
+	@rm -f mkfile *.o
+	@rm -f PMdlprto.c PDUmcf_list.c PDUgrpart.c PDUstate_frm.c PDUlf_form.c
+
