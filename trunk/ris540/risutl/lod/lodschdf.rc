@@ -1,0 +1,253 @@
+/* Do not alter this SPC information: $Revision: 1.1.53.1 $ */
+/*
+**	NAME:				lodschdf.rc								
+**	AUTHORS:			Jennifer Xia			
+**	CREATION DATE:		June 26, 1990			
+**	ABSTRACT:			It contains functions which process default schema or
+**						create schema statement.	
+**	
+**	REVISION HISTORY:	August 6th, 1991 Hitesh Patel
+*/
+ 
+/* {{{ INCLUDES */
+
+#include <sys/types.h>
+#ifdef MM
+#include "lod.h"
+#endif
+
+exec sql include "lod.h";
+
+/* }}} */
+/* {{{ VARIABLES */
+
+static  char format[sizeof("%s%s%s%XXs")];
+
+/* }}} */
+/* {{{ FUNCTION PROTOTYPES */
+
+#define lodschdf_rc
+#include "comdebug.prt"
+#include "comumsg.prt"
+#include "sys.prt"
+#include "loddmp.prt"
+#include "lodermsg.prt"
+#include "lodgtstm.prt"
+#include "lodlogdp.prt"
+#include "lodschdf.prt"
+#include "lodschst.prt"
+
+/* }}} */
+/******************************************************************************/
+/* {{{ RISlod_proc_sch_def() */
+
+extern int RISlod_proc_sch_def(
+	char			*sch_name,
+	char			*sch_pwd,
+	char			*new_sch_name,
+	char			*new_sch_pwd,
+	int				sch_select)
+{
+/* {{{ Local Variables */
+
+	int			sch_stmt_type = 0;
+/***
+	char		keyword1[8];
+	char		keyword2[7];
+***/
+	char		sch_name_pwd[2 * RIS_MAX_ID_SIZE + 2];
+	int			retn = FAILURE;
+	char	*sch_name_ptr;
+	int	i;
+
+/* }}} */
+
+	LOD_DBG(("RISlod_proc_sch_def: sch_name <%s>, new_sch_name <%s> sch_select <%c> ",
+			sch_name, new_sch_name, sch_select));
+
+/* {{{ Determine type of statement in the unload file */
+
+	if ((sch_stmt_type = RISlod_get_sch_def1()) == FAILURE)
+	{
+		/* not a default, create, or create secure schema statement */
+		RISlod_load_err_handler(RISUTL_E_NOT_DEF_OR_CREATE_SCH,(char *) NULL);
+		RISlod_dump_sch_err_to_bad(RISlod_sql_stmt);
+		RISlod_dump_sch_info("TOBADFILE");
+
+		LOD_DBG(("11. RISlod_proc_sch_def: end\n"));
+		return(FAILURE);
+	}
+
+	if (sch_stmt_type == END_OF_MAIN_FILE)
+	{
+		LOD_DBG(("1. RISlod_proc_sch_def: end\n"));
+		return(END_OF_MAIN_FILE);
+	}
+	LOD_DBG(("The first schema statement is <%s>\n", RISlod_sql_stmt));
+
+/* }}} */
+/* {{{ Get the <schema_name>[.[<password>]] from the file */
+
+	/* 
+	** Get the <schema_name>.<password> from one of the following statements:
+	**	DEFAULT SCHEMA <schema_name>.<password>
+	**	CREATE SCHEMA <schema_name>.<password>
+	**	CREATE SECURE SCHEMA <schema_name>.<password>
+	*/
+
+	/* Set sch_name_ptr to the word "schema" */
+	for (sch_name_ptr = RISlod_sql_stmt;
+		 sch_name_ptr && strncmp(++sch_name_ptr, "schema", 6);
+		 sch_name_ptr = strchr(sch_name_ptr, ' '))
+		;
+	if (sch_name_ptr == NULL) return FAILURE;
+
+	/* Skip ahead to <schema_name> */
+	sch_name_ptr = strchr(sch_name_ptr, ' '); /* skip ahead to the next space */
+	if (sch_name_ptr == NULL) return FAILURE;
+	sch_name_ptr++; /* now we should be at the schema name */
+
+	/* Now copy "<schema_name>[.<password>]" into sch_name_pwd */
+	for (i = 0;
+		 *sch_name_ptr != '\0' &&
+		 *sch_name_ptr != ' ' &&
+		 i < 2 * RIS_MAX_ID_SIZE + 1;
+		 i++, sch_name_ptr++)
+		sch_name_pwd[i] = *sch_name_ptr;
+	sch_name_pwd[i] = '\0';
+
+	if (RISlod_separate_sch_name_pwd(RISlod_sql_stmt,
+									 sch_name_pwd, 
+									 sch_name, 
+									 sch_pwd) == FAILURE)
+	{
+		LOD_DBG(("2. RISlod_proc_sch_def: end\n"));
+		return(FAILURE);
+	}
+
+/* }}} */
+
+	if (RISlod_lod_or_dmp_sch(sch_name, new_sch_name, new_sch_pwd, sch_select) 
+		== DUMP)
+	{
+		/* Do not Dump ... */
+		RISlod_dump_sch_info((char *) NULL);		
+
+		LOD_DBG(("3. RISlod_proc_sch_def: end\n"));
+		return(FAILURE);
+	}
+
+/* {{{ DEFAULT_SCHEMA */
+
+	if (sch_stmt_type == DEFAULT_SCHEMA)
+	{
+/* {{{ if rename the schema */
+
+		if( new_sch_name[0] != '\0' ) 		/* rename */
+		{
+			RISlod_print_msg(MSG(RISUTL_E_DEFAULTING_SCHEMA), 
+				new_sch_name);
+			retn = RISlod_proc_new_default_sch(RISlod_sql_stmt,
+											sch_name,
+											sch_pwd,
+											new_sch_name,
+											new_sch_pwd);
+			if (retn == SUCCESS)
+			{
+				RISlod_print_msg(MSG(RISUTL_E_DEFAULTED_SCHEMA), 
+					new_sch_name);
+				RISlod_construct_n_dump_to_log("\nSchema: %s transferred to: %s.\n",sch_name,new_sch_name);
+			}
+			else
+			{
+				RISlod_construct_n_dump_to_log("\nSchema: %s not transferred to: %s.\n",sch_name,new_sch_name);
+			}
+		}
+
+/* }}} */
+/* {{{ else do not rename the schema */
+
+		else
+		{
+			RISlod_print_msg(MSG(RISUTL_E_DEFAULTING_SCHEMA), sch_name);
+			retn = RISlod_proc_default_sch(RISlod_sql_stmt, sch_name, sch_pwd);
+			if (retn == SUCCESS)
+			{
+				RISlod_print_msg(MSG(RISUTL_E_DEFAULTED_SCHEMA), 
+					sch_name);
+				RISlod_construct_n_dump_to_log("\nSchema: %s loaded.\n",sch_name);
+			}
+			else
+			{
+				RISlod_construct_n_dump_to_log("\nSchema: %s not loaded.\n",sch_name);
+			}
+		}
+
+/* }}} */
+
+		LOD_DBG(("7. RISlod_proc_sch_def: end\n"));
+		return(retn);
+	}
+
+/* }}} */
+/* {{{ CREATE_SCHEMA or CREATE_SECURE_SCHEMA */
+
+	if (sch_stmt_type == CREATE_SCHEMA || sch_stmt_type == CREATE_SECURE_SCHEMA)
+	{
+/* {{{ if rename the schema */
+
+		if( new_sch_name[0] != '\0' )
+		{
+			RISlod_print_msg(MSG(RISUTL_E_DEFAULTING_SCHEMA), 
+				new_sch_name);
+			retn = RISlod_proc_new_default_sch(RISlod_sql_stmt,
+											sch_name,
+											sch_pwd,
+											new_sch_name,
+											new_sch_pwd);
+			if (retn == SUCCESS)
+			{
+				RISlod_print_msg(MSG(RISUTL_E_DEFAULTED_SCHEMA), 
+								 new_sch_name);
+				RISlod_construct_n_dump_to_log("\nSchema: %s transferred to: %s.\n",
+											   sch_name,new_sch_name);
+			}
+			else
+			{
+				RISlod_construct_n_dump_to_log("\nSchema: %s not transferred to: %s.\n",
+											   sch_name,new_sch_name);
+			}
+		}
+
+/* }}} */
+/* {{{ else do not rename the schema */
+
+		else /* no renaming */
+		{
+			RISlod_print_msg(MSG(RISUTL_E_LOADING_SCHEMA), 
+				sch_name);
+			retn = RISlod_proc_create_sch(RISlod_sql_stmt, sch_name, sch_pwd);
+			if (retn == SUCCESS)
+			{
+				RISlod_print_msg(MSG(RISUTL_E_LOADED_SCHEMA), 
+					sch_name);
+				RISlod_construct_n_dump_to_log("\nSchema: %s loaded.\n",sch_name);
+			}
+			else
+			{
+				RISlod_construct_n_dump_to_log("Schema: %s not loaded.\n",sch_name);
+			}
+		}
+
+/* }}} */
+
+		LOD_DBG(("8. RISlod_proc_sch_def: end\n"));
+		return(retn);
+	}
+
+/* }}} */
+
+	return(retn);
+}
+
+/* }}} */

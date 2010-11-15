@@ -1,0 +1,922 @@
+/* Do not alter this SPC information: $Revision: 1.2.9.1 $ */
+/*
+**     NAME:                    lodschst.rc                                        
+**     AUTHORS:               Jennifer Xia               
+**     CREATION DATE:          June 26, 1990               
+**     ABSTRACT:               It contains a function which processes defaults chema
+**                              statment and also another function which process es
+**                              create schema statement.     
+**     REVISION HISTORY:     August 6th, 1991 Hitesh Patel
+**                              Sept. 1991  -  format string changes/RIS_MAX_ID_SIZE dvk
+*/
+ 
+/* {{{ INCLUDES */
+
+#if defined(WIN32S) && defined(ULD_EXE)
+#include <windows.h>
+#include <windowsx.h>
+#include "winport.h"
+#include "winio.h"
+#include "winhan.h"
+#include "risutl.h"
+#include "prog32s.h"
+#endif 
+
+#include <ctype.h>
+#include "ris_err.h"
+#include "comisfn.prt"
+
+#ifdef MM
+#include "lod.h"
+#endif
+
+exec sql include "lod.h";
+
+/* }}} */
+/* {{{ VARIABLES */
+
+static  char format_37[sizeof("%s%s%XXs")];  /* format string */
+
+/* }}} */
+/* {{{ FUNCTION PROTOTYPES */
+
+#define lodschst_rc
+#include "sys.prt"
+#include "comdebug.prt"
+#include "comstcmi.prt"
+#include "comumsg.prt"
+#if defined(ULD_EXE)
+#include "loddesch.prt"
+#include "lodpaswd.prt"
+#else
+#include "ucodesch.prt"
+#include "ucopaswd.prt"
+#endif
+#include "ris.prt"
+#include "lodermsg.prt"
+#include "lodlogdp.prt"
+#include "lodmisc.prt"
+#include "lodschst.prt"
+#include "ucoerrbx.prt"
+
+/* }}} */
+/*****************************************************************************/
+/* {{{ RISlod_proc_default_sch() */
+
+extern int RISlod_proc_default_sch(
+     char               *sch_def_stmt,
+     char               *sch_name,
+     char               *sch_pwd)
+{
+/* {{{ Local Variables */
+
+     char     *period;
+
+#if !defined(ULD_DLL)
+     char     osuser_name[RIS_MAX_ID_SIZE];
+     char     db_name[RIS_MAX_ID_SIZE];
+#endif
+     char     osuser_pwd[RIS_MAX_ID_SIZE];
+     char     db_pwd[RIS_MAX_ID_SIZE];
+     int      rest_pwd_indx = 0; /* start at password index 0? */
+
+     exec sql begin declare section;
+          char     *aux_sch_def;
+          char     declare_sch_stmt[256];
+          char     *err_ptr;
+     exec sql end declare section;
+
+/* }}} */
+#if !defined(ULD_DLL)
+     osuser_name[0] = '\0';
+     db_name[0] = '\0';
+#endif
+     db_pwd[0] = '\0';
+     osuser_pwd[0] = '\0';
+
+     if (RISlod_mode == INTERACT)
+     {
+#if !defined(ULD_DLL)
+#if defined(WIN32S)
+          if (RISlod_set_default_schema(sch_name, sch_pwd, 
+               osuser_name, osuser_pwd,db_name,db_pwd))
+#else
+          if (RISuco_set_default_schema(sch_name, sch_pwd, osuser_name, osuser_pwd,db_name,db_pwd))
+#endif
+          {
+               return FAILURE;
+          }
+          else if (SQLCODE != RIS_SUCCESS)
+          {
+               exec sql report error into :err_ptr;
+               PUTS(err_ptr);
+               return FAILURE;
+          }
+          else
+               return SUCCESS;
+#endif
+     }
+
+
+     /*
+     ** Everything after this point is for EMBED and BATCH mode.
+     */
+
+     exec sql whenever sqlerror goto :PDS_error; 
+
+
+#if !defined(ULD_DLL)
+#else
+#endif
+
+     /* This routine also prompts for sch_pwd */
+     /* All errors or sprintfs have to be done here 'cause it does not call
+        RISlod_default_sch */
+
+     sprintf(RISlod_default_sch_stmt,"default schema %s\n", sch_name);
+     period = strchr(sch_def_stmt, '.');
+
+     if ((period != NULL) &&
+          (RIScom_isspace(*(period + 1)) || *(period+1) == '\0'))
+
+     {
+        /*
+        ** Obtain schema password ONLY
+        */
+          rest_pwd_indx = 0;
+
+          if (RISlod_obtain_pwd(sch_def_stmt,
+                                     "schema", 
+                                     sch_name, 
+                                     sch_pwd, 
+                                     (period + 1),
+                                     rest_pwd_indx) == NULL)
+          {
+               LOD_DBG(("1. RISlod_proc_default_sch: end\n\n"));
+               return(FAILURE);
+          }
+     }
+     else if (RISlod_ptr_struct_ptr->bsnode_ptr->num_sch_pwd > 
+           RISlod_ptr_struct_ptr->bsnode_ptr->num_relations  )
+      {
+          RISlod_obtain_pwd(sch_def_stmt,
+                                     "", 
+                                     "", 
+                                     sch_pwd, 
+                                     sch_def_stmt + strlen(sch_def_stmt), 
+                                     rest_pwd_indx);
+
+     }
+     /* If there is a user password, this should get it. */
+     if (RISlod_ptr_struct_ptr->bsnode_ptr->num_relations > 0)
+     {
+         rest_pwd_indx = RISlod_ptr_struct_ptr->bsnode_ptr->num_sch_pwd -
+                         RISlod_ptr_struct_ptr->bsnode_ptr->num_relations;
+         osuser_pwd[0] = '\0';
+         RISlod_obtain_pwd(sch_def_stmt,
+                           "", /* used only in INTERACT */
+                           "",
+                           osuser_pwd, 
+                           sch_def_stmt + strlen(sch_def_stmt), /* end of str */
+                           rest_pwd_indx);
+          rest_pwd_indx ++;
+     }
+
+     /* If there is a db user password, this should get it. */
+
+     if (RISlod_ptr_struct_ptr->bsnode_ptr->num_relations == 2)
+     {
+
+          db_pwd[0] = '\0';
+          RISlod_obtain_pwd(sch_def_stmt,
+                           "", /* used only in INTERACT */
+                           "",
+                           db_pwd, 
+                           sch_def_stmt + strlen(sch_def_stmt), /* end of str */
+                           rest_pwd_indx);
+     }
+     /* Do the DECLARE SCHEMA */
+
+#if !defined(ULD_DLL)
+#if defined(WIN32S)
+     RISlod_declare_schema_str(sch_name, sch_pwd,
+                           RISlod_ptr_struct_ptr->bsnode_ptr->user_name,
+                           osuser_pwd,
+                           RISlod_ptr_struct_ptr->bsnode_ptr->db_name,
+                           db_pwd,
+                           declare_sch_stmt, 256);
+#else
+     RISuco_declare_schema_str(sch_name, sch_pwd,
+                           RISlod_ptr_struct_ptr->bsnode_ptr->user_name,
+                           osuser_pwd,
+                           RISlod_ptr_struct_ptr->bsnode_ptr->db_name,
+                           db_pwd,
+                           declare_sch_stmt, 256);
+#endif
+#endif
+     LOD_DBG(("RISlod_proc_default_sch: \n"));
+     exec sql execute immediate :declare_sch_stmt;
+
+
+     aux_sch_def = sch_def_stmt;
+     exec sql execute immediate :aux_sch_def;
+
+     LOD_WARNING_CHECK(RISlod_ptr_struct_ptr->bsnode_ptr->sqlwarnings);
+
+     LOD_DBG(("2. RISlod_proc_default_sch: end\n\n"));
+     return(SUCCESS);
+
+PDS_error:
+/* {{{ Handle sql errors */
+
+     exec sql whenever sqlerror continue;
+
+     if( RISlod_mode == EMBED )
+     {
+          RISlod_ptr_struct_ptr->bsnode_ptr->ris_err_code = risca->sqlcode;
+          RISlod_ptr_struct_ptr->bsnode_ptr->db_err_code = dbca->sqlcode;
+     }
+     else
+     {
+          exec sql report error into :err_ptr;
+#if !defined(ULD_DLL)
+          PUTS(err_ptr);
+#endif
+     }
+
+     RISlod_dump_sch_err_to_bad(sch_def_stmt);
+     RISlod_dump_sch_info("TOBADFILE");
+
+     LOD_DBG(("3. RISlod_proc_default_sch: end\n\n"));
+     return(FAILURE);
+
+/* }}} */
+}
+
+/*****************************************************************************/
+/* {{{ RISlod_proc_new_default_sch() */
+
+extern int RISlod_proc_new_default_sch(
+     char     *sch_def_stmt,
+     char     *sch_name,
+     char     *sch_pwd,
+     char     *new_sch_name,
+     char     *new_sch_pwd)
+{
+/* {{{ Local Variables */
+
+/***
+     char     new_sch_name_pwd[RIS_MAX_ID_SIZE+1+RIS_MAX_ID_SIZE];
+***/
+
+     exec sql begin declare section;
+          char     sql_stmt[STRING_MAX_LEN];
+          char     *err_ptr;
+     exec sql end declare section;
+
+     exec sql whenever sqlerror goto :PDS_error; 
+
+/* }}} */
+
+     LOD_DBG(("RISlod_proc_new_default_sch: new_schname: %s \n",
+                         new_sch_name));
+
+     /* All errors and sprintfs are done here */
+     /* If error dump the original sch_def */
+
+     if( sch_pwd[0] == '\0' )
+          sprintf(RISlod_default_sch_stmt,"default schema %s\n",sch_name);     
+     else
+          sprintf(RISlod_default_sch_stmt,"default schema %s.\n",sch_name);     
+
+     /*
+     ** Do a DECLARE SCHEMA if necessary (already did it for INTERACT interface)
+     */
+     if (RISlod_mode != INTERACT)
+     {
+#if !defined(ULD_DLL)
+#if defined(WIN32S)
+          RISlod_declare_schema_str(new_sch_name, new_sch_pwd,
+                RISlod_ptr_struct_ptr->bsnode_ptr->new_user_name,
+                RISlod_ptr_struct_ptr->bsnode_ptr->new_user_pwd,
+                 "","",
+                      sql_stmt, STRING_MAX_LEN);
+#else
+          RISuco_declare_schema_str(new_sch_name, new_sch_pwd,
+                RISlod_ptr_struct_ptr->bsnode_ptr->new_user_name,
+                RISlod_ptr_struct_ptr->bsnode_ptr->new_user_pwd,
+                 "","",
+                sql_stmt, STRING_MAX_LEN);
+#endif
+#endif
+          exec sql execute immediate :sql_stmt;
+     }
+
+
+     /*
+     ** Do the DEFAULT SCHEMA statement
+     */
+     sprintf(sql_stmt, "default schema %s", new_sch_name);
+     exec sql execute immediate :sql_stmt;
+
+     LOD_WARNING_CHECK(RISlod_ptr_struct_ptr->bsnode_ptr->sqlwarnings);
+
+     LOD_DBG(("1. RISlod_proc_new_default_sch: end\n\n"));
+     return(SUCCESS);
+
+PDS_error:
+/* {{{ Handle sql errors */
+
+     exec sql whenever sqlerror continue;
+
+     RISlod_global_err_ind = TRUE; /* so that default schema.. is not dumped */
+     RISlod_dump_to_bad(sch_def_stmt); /* DUMP only sch_def */
+     RISlod_rename_err_handler(RISUTL_E_INVALID_NEW_SCH,new_sch_name);
+     RISlod_dump_sch_info("TOBADFILE");
+
+     if( RISlod_mode == EMBED )
+     {
+          RISlod_ptr_struct_ptr->bsnode_ptr->lnd_err_code = RISUTL_E_INVALID_NEW_SCH;
+          RISlod_ptr_struct_ptr->bsnode_ptr->ris_err_code = risca->sqlcode;
+          RISlod_ptr_struct_ptr->bsnode_ptr->db_err_code = dbca->sqlcode;
+     }
+     else
+     {
+          exec sql report error into :err_ptr;
+#if !defined(ULD_DLL)
+          PUTS(err_ptr);
+#endif
+     }
+
+     LOD_DBG(("3. RISlod_proc_default_sch: end\n\n"));
+     return(FAILURE);
+
+/* }}} */
+}
+
+/* }}} */
+/*****************************************************************************/
+/* {{{ RISlod_proc_create_sch() */
+
+extern int RISlod_proc_create_sch(
+     char               *sch_def_stmt,
+     char               *sch_name,
+     char               *sch_pwd)
+{
+/* {{{ Local Variables */
+
+     char     *search_posi; /* Current search position within sch_def_stmt */
+     char     *period; /* Location of the next '.' character */
+     char     *pwd_start_ptr; /* Location after period, spot to insert the password if needed */
+     char     *pwd_end_ptr; /* Word after the password */
+     char     name[RIS_MAX_ID_SIZE]; /* schema, user, or osuser name */
+     char     *name_start_ptr; /* Start of the name part (before the period) */
+     char     *name_end_ptr; /* End of the name part (space) */
+     char     *keyword_start_ptr; /* Start of the clause */
+     char     *keyword_end_ptr; /* End of the clause (space) */
+     char     clause_name[9]; /* Type of clause: schema, osuser, or user */
+     char     pwd[RIS_MAX_ID_SIZE]; /* Current password */
+     char     keyword1[RIS_MAX_ID_SIZE]; /* Junk */
+     char     keyword2[RIS_MAX_ID_SIZE]; /* Junk */
+     char     keyword3[RIS_MAX_ID_SIZE]; /* Junk */
+     char     sch_name_pwd[RIS_MAX_ID_SIZE+1+RIS_MAX_ID_SIZE]; /* <schema>[.<passwd>] read from */
+     char *c_ptr;  /*junk c-pointer */
+            /* sch_def_stmt in case schema already */
+            /* exists, so we can do a default */
+            /* schema on it. */
+     int          rest_pwd_indx = 0;
+     int          got_schema;     /* Found a schema[.] */
+     int          got_osuser;     /* Found an OSUSER clause */
+     int          got_user;     /* Found a USER clause */
+
+     exec sql begin declare section;
+          char     declare_sch_stmt[250];
+          char     *aux_sch_def;
+          char     *err_ptr;
+     exec sql end declare section;
+
+/* }}} */
+
+     LOD_DBG(("RISlod_proc_create_sch: sch_name <%s> \n", sch_name));
+
+     got_schema = 0;
+     got_osuser = 0;
+     got_user = 0;
+
+     sprintf(declare_sch_stmt, "declare schema %s", sch_name);
+
+    /*
+    ** Indicating the first password to be obtained
+    */
+
+     /*
+     **     This sprintf is reqd later on if in case any stmts fail after the create
+     **     schema stmt was executed successfully
+     */
+     sprintf(RISlod_default_sch_stmt,"default schema %s\n",sch_name);     
+     search_posi = sch_def_stmt;
+     for (;;)
+     {
+          period = strchr(search_posi, '.');
+          if (period == NULL)
+          {
+               break;
+          }
+          else
+          {
+               sprintf(RISlod_default_sch_stmt,"default schema %s.\n",sch_name);     
+               pwd_start_ptr = period + 1;
+               pwd_end_ptr = RISlod_skip_char(pwd_start_ptr);
+
+               name_end_ptr = period - 1;
+               name_start_ptr = RISlod_reverse_skip_char(name_end_ptr);
+               
+               keyword_end_ptr = RISlod_reverse_skip_space(name_start_ptr);
+               keyword_start_ptr = RISlod_reverse_skip_char(keyword_end_ptr);
+
+/* {{{ Determine the clause for this passwd: SCHEMA, OSUSER, or USER */
+
+     if((RIScom_strncmp_ic((keyword_start_ptr+1), "schema", 6) == 0) 
+          && RIScom_isspace(*(keyword_start_ptr + 7)))
+     {
+          strcpy(clause_name, "schema");
+     }
+        else if((RIScom_strncmp_ic((keyword_start_ptr+1), "osuser", 6) == 0)
+               && RIScom_isspace(*(keyword_start_ptr + 7)))
+     {
+                strcpy(clause_name, "osuser");
+     }
+     else if((RIScom_strncmp_ic((keyword_start_ptr+1), "user", 4) == 0) 
+          && RIScom_isspace(*(keyword_start_ptr + 5)))
+     {
+          strcpy(clause_name, "user");
+     }
+     else
+     {
+          search_posi = period + 1;
+          continue;
+     }
+
+/* }}} */
+/* {{{ Make sure name and passwd are proper length */
+
+     if ((name_start_ptr == name_end_ptr) ||
+          ((name_end_ptr - name_start_ptr) > (RIS_MAX_ID_SIZE - 1)))
+     {
+     /***     To avoid logging default schema stmt in bad file */
+          RISlod_global_err_ind = TRUE;
+          RISlod_load_err_handler(RISUTL_E_INVALID_ID_SIZE,sch_def_stmt);
+          if( RISlod_mode == EMBED )
+               RISlod_ptr_struct_ptr->bsnode_ptr->lnd_err_code = risca->sqlcode;
+
+          RISlod_global_err_ind = TRUE;
+          RISlod_dump_sch_info("TOBADFILE");
+
+          LOD_DBG(("1. RISlod_proc_create_sch: end\n\n"));
+          return(FAILURE);
+     }
+
+     if ((pwd_end_ptr - pwd_start_ptr) > (RIS_MAX_ID_SIZE - 1))
+     {
+          /*
+          **     To avoid logging default schema stmt in bad file
+          */
+          RISlod_global_err_ind = TRUE;
+          RISlod_load_err_handler(RISUTL_E_INVALID_ID_SIZE,sch_def_stmt);
+          if( RISlod_mode == EMBED )
+          RISlod_ptr_struct_ptr->bsnode_ptr->lnd_err_code = risca->sqlcode;
+          RISlod_global_err_ind = TRUE;
+          RISlod_dump_sch_info("TOBADFILE");
+
+          LOD_DBG(("2. RISlod_proc_create_sch: end\n\n"));
+          return(FAILURE);
+     }
+
+/* }}} */
+/* {{{ Get the password if necessary */
+
+     if (RIScom_isspace(*pwd_start_ptr) || *pwd_start_ptr == '\0')
+     {
+           strncpy(name, name_start_ptr+1, name_end_ptr-name_start_ptr);
+           name[name_end_ptr - name_start_ptr] = '\0';
+
+           if ((search_posi = RISlod_obtain_pwd(sch_def_stmt,
+                      clause_name, name, pwd, (period + 1),
+                                              rest_pwd_indx)) == NULL)
+           {
+                LOD_DBG(("3. RISlod_proc_create_sch: end\n\n"));
+                 return(FAILURE);
+           }
+           if (rest_pwd_indx > 2)
+           {
+                LOD_DBG(("4. RISlod_proc_create_sch: failure end\n\n"));
+                 return(FAILURE);
+
+           }
+           rest_pwd_indx++;
+
+           /* Add to the DECLARE SCHEMA statement */
+           if (strcmp(clause_name, "schema") == 0)
+           {
+                 LOD_DBG(("add to declare schema stmt. \n"));
+                 strcpy(sch_pwd, pwd);
+
+                 if (!got_schema && !got_user && !got_osuser)
+                 {
+                     got_schema = 1;
+                     strcat(declare_sch_stmt, ".");
+                     strcat(declare_sch_stmt, pwd);
+                  }
+
+                  /* Remove the dot from the statement */
+                   *(pwd_start_ptr - 1) = ' ';
+            }
+            else if (strcmp(clause_name, "user") == 0)
+            {
+                  if (!got_user) /* make sure no duplicates */
+                  {
+                       strcat(declare_sch_stmt, " user ");
+                       strcat(declare_sch_stmt, name);
+                              strcat(declare_sch_stmt, ".");
+                              strcat(declare_sch_stmt, pwd);
+                              got_user = 1;
+                  }
+
+                  /* Remove the user clause from the statement, 
+                     because we specify it in the */
+                  /* DECLARE SCHEMA statement */
+
+                  if ((c_ptr = strchr(search_posi,'.')) != NULL) 
+                         search_posi = c_ptr + 1;
+                 RISlod_splice_string(keyword_start_ptr, pwd_end_ptr);
+            }
+            else if (strcmp(clause_name, "osuser") == 0)
+            {
+                         if (!got_osuser) /* make sure no duplicates */
+                         {
+                              strcat(declare_sch_stmt, " osuser ");
+                              strcat(declare_sch_stmt, name);
+                              strcat(declare_sch_stmt, ".");
+                              strcat(declare_sch_stmt, pwd);
+                              got_osuser = 1;
+                         }
+
+                         /* Remove the osuser clause from the statement, because we specify it in */
+                         /* the DECLARE SCHEMA statement */
+
+                         if ((c_ptr = strchr(pwd_end_ptr,',')) != NULL)
+                         {
+                            pwd_end_ptr = c_ptr + 1;
+                         }
+                         RISlod_splice_string(keyword_start_ptr, pwd_end_ptr);
+                    }
+                    else
+                         LOD_DBG(("RISlod_proc_create_sch: invalid clause_name\n"));
+               }
+               else
+               {
+                    search_posi = pwd_end_ptr;
+               }
+
+/* }}} */
+          }
+     }
+
+/* {{{ Execute the DECLARE SCHEMA statement */
+
+     exec sql execute immediate :declare_sch_stmt;
+     if (SQLCODE != 0)
+     {
+          /* for all modes */
+          /* error in create stmt */
+          RISlod_dump_sch_err_to_bad(sch_def_stmt);
+          RISlod_dump_sch_info("TOBADFILE");
+
+          if( RISlod_mode == EMBED )
+          {
+               /* 
+               ** for extra info that error was found during first 
+               ** execution of schema 
+               */
+               RISlod_ptr_struct_ptr->bsnode_ptr->ris_err_code = risca->sqlcode;
+               RISlod_ptr_struct_ptr->bsnode_ptr->db_err_code = dbca->sqlcode;
+          }
+          else
+          {
+               exec sql report error into :err_ptr;
+#if !defined(ULD_DLL)
+               PUTS(err_ptr);
+#endif
+          }
+          
+          LOD_DBG(("3.5. RISlod_proc_create_sch: end\n\n"));
+          return(FAILURE);
+     }
+
+/* }}} */
+/* {{{ Execute the CREATE or DEFAULT SCHEMA statement */
+
+     aux_sch_def = sch_def_stmt;
+     exec sql execute immediate :aux_sch_def;
+
+     LOD_WARNING_CHECK(RISlod_ptr_struct_ptr->bsnode_ptr->sqlwarnings);
+
+/* {{{ if sql error */
+
+     if (SQLCODE < 0)
+     {
+          /* Did the schema already exist?  Then make it the default. */
+          if (SQLCODE == RIS_E_DUP_SCHNAME)
+          {
+             if (!format_37[0])
+                {
+                   if (strstr(sch_def_stmt,"secure") != NULL)
+                   {
+                       sprintf(format_37, "%%s%%s%%s%%%ds", 
+               RIS_MAX_ID_SIZE-1+1+RIS_MAX_ID_SIZE-1);
+                   }
+                   else 
+                   {
+                       sprintf(format_37, "%%s%%s%%%ds", 
+               RIS_MAX_ID_SIZE-1+1+RIS_MAX_ID_SIZE-1);
+                   }
+                }
+                if (strstr(sch_def_stmt,"secure") != NULL)
+                { /*tag*/
+
+             sscanf(sch_def_stmt, format_37, keyword1, keyword2, 
+                    keyword3, sch_name_pwd);
+                }
+                else
+                {
+             sscanf(sch_def_stmt, format_37, keyword1, keyword2, 
+                          sch_name_pwd);
+                }
+               
+               if (RISlod_default_new_sch(sch_name_pwd) == FAILURE)
+               {
+                    LOD_DBG(("4. RISlod_proc_create_sch: end\n\n"));
+                    return(FAILURE);
+               }
+               else
+               {
+                    LOD_DBG(("5. RISlod_proc_create_sch: end\n\n"));
+                    return(SUCCESS);
+               }
+          }
+          else
+          {
+               /* for all modes */
+               /* error in create stmt */
+               RISlod_dump_sch_err_to_bad(sch_def_stmt);
+               RISlod_dump_sch_info("TOBADFILE");
+
+               if( RISlod_mode == EMBED )
+               {
+                    /* 
+                    ** for extra info that error was found during first 
+                    ** execution of schema 
+                    */
+                    RISlod_ptr_struct_ptr->bsnode_ptr->ris_err_code = risca->sqlcode;
+                    RISlod_ptr_struct_ptr->bsnode_ptr->db_err_code = dbca->sqlcode;
+               }
+               else
+               {
+                    exec sql report error into :err_ptr;
+#if !defined(ULD_DLL)
+                    PUTS(err_ptr);
+#endif
+               }
+
+               LOD_DBG(("6. RISlod_proc_create_sch: end\n\n"));
+               return(FAILURE);
+          }
+     }     /* SQLCODE */
+
+/* }}} */
+/* {{{ else no error */
+
+     else
+     {
+          /* Once the create schema stmt is loaded what about sprintf */
+          sprintf(RISlod_default_sch_stmt,"default schema %s\n",sch_name);     
+          LOD_DBG(("7. RISlod_proc_create_sch: end\n\n"));
+          return(SUCCESS);
+     }
+
+/* }}} */
+
+/* }}} */
+}
+
+/* }}} */
+/*****************************************************************************/
+/* {{{ RISlod_separate_sch_name_pwd() */
+
+extern int RISlod_separate_sch_name_pwd(
+     char     *sch_def_stmt,
+     char     *sch_name_pwd,
+     char     *sch_name,
+     char     *sch_pwd)
+{
+     char     *period;
+
+     LOD_DBG(("RISlod_separate_sch_name_pwd: schema <%s>\n", sch_name));
+
+     if ((period = strchr(sch_name_pwd, '.')) != NULL)
+     {
+          *period = '\0';
+
+          if ((period - sch_name_pwd) >= RIS_MAX_ID_SIZE)
+          {
+               *period = '.';
+
+               /*
+               **     To avoid logging default schema stmt in bad file
+               */
+               RISlod_global_err_ind = TRUE;
+               RISlod_load_err_handler(RISUTL_E_INVALID_ID_SIZE,sch_def_stmt);
+               if( RISlod_mode == EMBED )
+                    RISlod_ptr_struct_ptr->bsnode_ptr->lnd_err_code = risca->sqlcode;
+
+               RISlod_dump_sch_info("TOBADFILE");
+
+               LOD_DBG(("1. RISlod_separate_sch_name_pwd: end\n\n"));
+               return(FAILURE);
+          }
+
+          if (strlen(period + 1) >= RIS_MAX_ID_SIZE)
+          {
+               *period = '.';
+
+               /*
+               **     To avoid logging default schema stmt in bad file
+               */
+               RISlod_global_err_ind = TRUE;
+               RISlod_load_err_handler(RISUTL_E_INVALID_ID_SIZE,sch_def_stmt);
+               if( RISlod_mode == EMBED )
+                    RISlod_ptr_struct_ptr->bsnode_ptr->lnd_err_code = risca->sqlcode;
+
+               RISlod_dump_sch_info("TOBADFILE");
+
+               LOD_DBG(("2. RISlod_separate_sch_name_pwd: end\n\n"));
+               return(FAILURE);
+          }
+
+          strcpy(sch_name, sch_name_pwd);
+          strcpy(sch_pwd, (period + 1));
+          *period = '.';
+     }
+     else
+     {
+          if (strlen(sch_name_pwd) >= RIS_MAX_ID_SIZE)
+          {
+
+               /*
+               **     To avoid logging default schema stmt in bad file
+               */
+               RISlod_global_err_ind = TRUE;
+               RISlod_load_err_handler(RISUTL_E_INVALID_ID_SIZE,sch_def_stmt);
+               if( RISlod_mode == EMBED )
+                    RISlod_ptr_struct_ptr->bsnode_ptr->lnd_err_code = risca->sqlcode;
+               RISlod_dump_sch_info("TOBADFILE");
+
+               LOD_DBG(("3. RISlod_separate_sch_name_pwd: end\n\n"));
+               return(FAILURE);
+          }
+
+          strcpy(sch_name, sch_name_pwd);
+
+          sch_pwd[0] = '\0';
+     }
+
+     LOD_DBG(("4. RISlod_separate_sch_name_pwd: end\n\n"));
+     return(SUCCESS);
+}
+
+/* }}} */
+/*****************************************************************************/
+/* {{{ RISlod_obtain_pwd() */
+
+extern char     *RISlod_obtain_pwd(
+     char     *sch_def_stmt,
+     char     *clause_name,
+     char     *name,
+     char     *pwd,
+     char     *pwd_start_ptr,
+    int       rest_pwd_indx)
+{
+/* {{{ Local Variables */
+
+     int               pwd_len;
+     static  int     pwd_indx = -1;
+/***
+     char          *ptr;
+***/
+/* }}} */
+
+     LOD_DBG(("RISlod_obtain_pwd: \n"));
+     
+/* {{{ if interactive mode */
+
+     if (RISlod_mode == INTERACT)
+     {
+          RISlod_print_msg(MSG(RISUTL_I_ENTER_PSWD_FOR_CL), 
+               clause_name, name);
+#if !defined(ULD_DLL)
+#if defined(WIN32S)
+          RISlod_get_password(NULL, pwd, RIS_MAX_PASSWD_SIZE);
+#else
+          RISuco_get_password(NULL, pwd, RIS_MAX_PASSWD_SIZE);
+#endif
+#endif     
+          if (*pwd == '\0')
+          {
+               /*
+               **     To avoid logging default schema stmt in bad file
+               */
+               RISlod_global_err_ind = TRUE;
+               if( strcmp(clause_name,"schema") == 0 )
+                    RISlod_load_err_handler(RISUTL_E_NO_SCHEMA_PASSWORD,sch_def_stmt);
+            else if( strcmp(clause_name,"osuser") == 0 )
+               {
+                RISlod_load_err_handler(RISUTL_E_NO_OSUSER_PASSWORD,sch_def_stmt);
+               }
+               else if( strcmp(clause_name,"user") == 0 )
+                    RISlod_load_err_handler(RISUTL_E_NO_USER_PASSWORD,sch_def_stmt);
+               if( RISlod_mode == EMBED )
+                    RISlod_ptr_struct_ptr->bsnode_ptr->lnd_err_code = risca->sqlcode;
+               RISlod_dump_sch_info("TOBADFILE");
+
+               LOD_DBG(("1. RISlod_obtain_pwd: end"));
+               return((char *) NULL);
+          }     
+     }
+
+/* }}} */
+/* {{{ else, batch or embed mode */
+
+     else
+     {
+         /* if (rest_pwd_indx)
+               pwd_indx = 0;
+          else 
+
+          pwd_indx++;  on first time, will make zero */
+
+          pwd_indx = rest_pwd_indx;
+
+          if (pwd_indx > RISlod_ptr_struct_ptr->bsnode_ptr->num_sch_pwd)
+          {
+               /*
+               **     To avoid logging default schema stmt in bad file
+               */
+               RISlod_global_err_ind = TRUE;
+               RISlod_load_err_handler(RISUTL_E_NOT_ENOUGH_PASSWORDS,sch_def_stmt);
+
+               if( RISlod_mode == EMBED )
+                    RISlod_ptr_struct_ptr->bsnode_ptr->lnd_err_code = risca->sqlcode;
+               RISlod_dump_sch_info("TOBADFILE");
+
+               LOD_DBG(("2. RISlod_obtain_pwd: end"));
+               return((char *) NULL); 
+          }
+
+          strcpy(pwd, RISlod_ptr_struct_ptr->bsnode_ptr->sch_pwd_matrix[pwd_indx]);
+     }
+
+/* }}} */
+
+/* {{{ Put the password into the statement at the proper position */
+
+    /*
+    ** Put this password at the its respective location(after schema, osuser or
+    ** user keyword) in the schema definition stmt
+    */
+     pwd_len = strlen(pwd);
+     
+     /* Change the "." to a space (that is, remove the password phrase),
+     ** because we will do a DECLARE SCHEMA instead of putting the password
+     ** in the statement where it would show up in error messages.
+     */
+     if (*(pwd_start_ptr - 1) == '.')
+     {
+          *(pwd_start_ptr - 1) = ' ';
+     }
+
+/* }}} */
+     
+     return(pwd_start_ptr + pwd_len);
+}
+
+/* }}} */
+/**********************************************************************/
+extern void RISlod_splice_string(
+     char *start, /* First character to cut */
+     char *end) /* Last character to cut */
+{
+     LOD_DBG(("RISlod_splice_string: '%c' -> '%c'\n", *start, *end));
+     for (; *end != '\0'; start++)
+          *start = *(++end);
+     *start = *end; /* in case *end == '\0' */
+}

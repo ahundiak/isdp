@@ -1,0 +1,164 @@
+/* Do not alter this SPC information: $Revision: 1.1.53.1 $ */
+/*
+**	NAME:							ulddsvie.rc
+**	AUTHORS:						Hitesh Patel
+**	CREATION DATE:					5/91
+**	ABSTRACT:
+**		This file has function which map output of batch mode structures to
+**		embedded mode structures.
+**	
+**	REVISION HISTORY:
+*/
+ 
+/*
+**	INCLUDES
+*/
+#ifdef MM
+#include "unlod.h"
+#endif
+
+exec sql include "unlod.h";
+
+/*
+**	DEFINES
+*/
+
+/*
+**	VARIABLES
+*/
+
+/*
+**	FUNCTIONS
+*/
+
+/*
+**      FUNCTION PROTOTYPES
+*/
+#define ULDdesview_c
+#include "sys.prt"
+#include "comdebug.prt"
+#include "comjmp.prt"
+#include "comumsg.prt"
+#include "ulddsvie.prt"
+#include "uldermsg.prt"
+#include "uldstspc.prt"
+#include "uldtime.prt"
+
+
+extern int RISuld_view_select_mode_ALL(
+	risulddes		*risulddes_ptr,
+	int				schindx)
+{
+	int					num_view = 0;
+	int					viewindx;
+	risuldsch			*risuldsch_ptr;
+	risuldview			*risuldview_ptr;
+	batch_vnode_type	*bvnode_ptr;
+
+	ULD_DBG(("RISuld_view_select_mode_ALL! risulddes_ptr: 0x%x schindx: <%d>\n",risulddes_ptr,schindx));
+
+	num_view = RISuld_get_num_of_view();
+
+	risuldsch_ptr = risulddes_ptr->schemas+schindx;
+	risuldsch_ptr->viewinfo.view_count = num_view;
+
+	if( num_view == 0 )
+	{
+		ULD_DBG(("1. RISuld_view_select_mode_ALL! END.\n"));
+		return(SUCCESS);
+	}
+
+	risuldview_ptr = (risuldview *) calloc(num_view,sizeof(risuldview));
+	CHK_MEM_ALLOC_ERR(risuldview_ptr);
+
+	for( viewindx = 0, bvnode_ptr = RISuld_ptr_struct_ptr->bsnode_ptr->bvhlink->bvlink;
+			(viewindx < num_view) && (bvnode_ptr != NULL);
+				viewindx++, bvnode_ptr = bvnode_ptr->bvlink )
+	{
+		strcpy(risuldview_ptr[viewindx].viewname,bvnode_ptr->vnode_ptr->view_name);
+		risuldview_ptr[viewindx].uld_err_code = bvnode_ptr->vnode_ptr->lnd_err_code;
+		risuldview_ptr[viewindx].ris_err_code = bvnode_ptr->vnode_ptr->ris_err_code;
+		risuldview_ptr[viewindx].db_err_code = bvnode_ptr->vnode_ptr->db_err_code;
+		strncpy(risuldview_ptr[viewindx].sqlwarnings,
+			bvnode_ptr->vnode_ptr->sqlwarnings, 8);
+	}
+
+	risuldsch_ptr->viewinfo.views = risuldview_ptr;
+
+	ULD_DBG(("2. RISuld_view_select_mode_ALL! END.\n"));
+	return(SUCCESS);
+}
+
+
+extern void RISuld_view_select_mode_SOME(
+	risulddes		*risulddes_ptr,
+	int				schindx)
+{
+	int			viewindx;
+	risuldsch	*risuldsch_ptr;
+
+	ULD_DBG(("RISuld_view_select_mode_SOME! risulddes_ptr: 0x%x schindx: <%d>\n",risulddes_ptr,schindx));
+	risuldsch_ptr = risulddes_ptr->schemas+schindx;
+
+	for(viewindx = 0; viewindx < risuldsch_ptr->viewinfo.view_count; viewindx++)
+	{
+		if( !CHECK_ID_SIZE_OK(
+			strlen(risuldsch_ptr->viewinfo.views[viewindx].viewname),
+			RIS_MAX_ID_SIZE) )	
+		{
+			risulddes_ptr->uld_err_code = RISUTL_E_INVALID_ID_SIZE;
+			TERMINATE_RISUNLOAD
+		}
+		RISuld_create_bvnode(risuldsch_ptr->viewinfo.views[viewindx].viewname);
+	}
+
+	ULD_DBG(("1. RISuld_view_select_mode_SOME! END.\n"));
+}
+
+
+extern int RISuld_view_select_post(
+	risulddes		*risulddes_ptr,
+	int				schindx)
+{
+	int					num_view = 0;
+	int					viewindx;
+	risuldsch			*risuldsch_ptr;
+	batch_vnode_type	*bvnode_ptr;
+
+	ULD_DBG(("RISuld_view_select_post! risulddes_ptr: 0x%x schindx: <%d> \n",risulddes_ptr,schindx));
+
+
+	num_view = RISuld_get_num_of_view();
+	risuldsch_ptr = risulddes_ptr->schemas+schindx;
+
+	for( viewindx = 0, bvnode_ptr = RISuld_ptr_struct_ptr->bsnode_ptr->bvhlink->bvlink;
+			(viewindx < num_view) && (bvnode_ptr != NULL);
+				viewindx++, bvnode_ptr = bvnode_ptr->bvlink )
+	{
+		risuldsch_ptr->viewinfo.views[viewindx].uld_err_code = bvnode_ptr->vnode_ptr->lnd_err_code;
+		risuldsch_ptr->viewinfo.views[viewindx].ris_err_code = bvnode_ptr->vnode_ptr->ris_err_code;
+		risuldsch_ptr->viewinfo.views[viewindx].db_err_code = bvnode_ptr->vnode_ptr->db_err_code;
+		strncpy(risuldsch_ptr->viewinfo.views[viewindx].sqlwarnings,
+			bvnode_ptr->vnode_ptr->sqlwarnings, 8);
+	}
+
+	ULD_DBG(("1. RISuld_view_select_post! END.\n"));
+	return(SUCCESS);
+}
+
+
+extern int RISuld_get_num_of_view()
+{
+	int					num_view = 0;
+	batch_vnode_type	*bvnode_ptr;
+
+	for(bvnode_ptr = RISuld_ptr_struct_ptr->bvhnode_ptr->bvlink;
+			bvnode_ptr != NULL;
+				bvnode_ptr = bvnode_ptr->bvlink )
+	{
+		num_view++;
+	}
+	return num_view;
+}
+
+

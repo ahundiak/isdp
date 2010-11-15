@@ -1,0 +1,601 @@
+/*
+**	NAME:							uldfmsch.rc
+**	AUTHORS:						Jennifer Xia
+**	CREATION DATE:					7/90
+**	ABSTRACT:
+**		It contains a function which forms a default schema
+**		statement, specifying a dba schema. It also contains
+**		functions which form the schema, database descriptiona
+**		and user clauses of a create schema statement.
+**	
+**	REVISION HISTORY:
+**		August 6th, 1991 Hitesh Patel
+**		10/24/94 -Radha
+**			Added changes for MSSQL data server.
+*/
+ 
+/* {{{ DEFINES */
+
+/* }}} */
+/* {{{ INCLUDES */
+
+#ifdef MM
+#include "unlod.h"
+#endif
+
+exec sql include "unlod.h";
+
+#define SQL_H
+
+/* }}} */
+/* {{{ VARIABLES */
+
+/* }}} */
+/* {{{ FUNCTION PROTOTYPES */
+
+#define uldfmsch_rc
+#include "sys.prt"
+#include "comdebug.prt"
+#include "comjmp.prt"
+#include "comumsg.prt"
+#include "uldermsg.prt"
+#include "uldfmsch.prt"
+#include "uldtime.prt"
+
+/* }}} */
+/**********************************************************************/
+/* {{{ RISuld_form_sch_clause() */
+
+extern void RISuld_form_sch_clause(
+	sch_node_type	*sch_node_ptr)
+{
+
+	ULD_DBG(("RISuld_form_sch_clause: sch_node_ptr 0x%x \n", sch_node_ptr));
+
+	if (FPRINTF(RISuld_out_fp, "create ") < 0)
+		WRITING_FILE_ERR(RISUTL_E_CANT_WRITE_OUTPUT_FILE)
+
+    /* Is this a secure schema? */
+    if (sch_node_ptr->os_name[0] != '\0')
+	{
+		if (FPRINTF(RISuld_out_fp, "secure ") < 0)
+			WRITING_FILE_ERR(RISUTL_E_CANT_WRITE_OUTPUT_FILE)
+	}
+
+	if (FPRINTF(RISuld_out_fp, "schema %s", sch_node_ptr->sch_name) < 0)
+		WRITING_FILE_ERR(RISUTL_E_CANT_WRITE_OUTPUT_FILE)
+
+
+	/* Append a dot to the schema name if the schema has a password */
+	if (sch_node_ptr->sch_pwd_ind >= 0)
+	{
+		if (FPRINTF(RISuld_out_fp, ".") < 0)
+			WRITING_FILE_ERR(RISUTL_E_CANT_WRITE_OUTPUT_FILE)
+	}
+
+	ULD_DBG(("1. RISuld_form_sch_clause: end"));
+
+}
+
+/* }}} */
+/**********************************************************************/
+/* {{{ RISuld_form_dbtype_clause() */
+
+extern void RISuld_form_dbtype_clause(
+	unsigned char	db_type)
+{
+
+	ULD_DBG(("RISuld_form_dbtype_clause: db_type = <%c> \n", db_type));
+
+	switch(db_type)
+	{
+		case 'X':
+			if (FPUTS(" (informix", RISuld_out_fp) == EOF) 
+				WRITING_FILE_ERR(RISUTL_E_CANT_WRITE_OUTPUT_FILE)
+		break;
+		case 'O':
+			if (FPUTS(" (oracle", RISuld_out_fp) == EOF) 
+				WRITING_FILE_ERR(RISUTL_E_CANT_WRITE_OUTPUT_FILE)
+		break;
+		case 'I':
+			if (FPUTS(" (ingres", RISuld_out_fp) == EOF) 
+				WRITING_FILE_ERR(RISUTL_E_CANT_WRITE_OUTPUT_FILE)
+		break;
+		case 'D':
+			if (FPUTS(" (db2", RISuld_out_fp) == EOF) 
+				WRITING_FILE_ERR(RISUTL_E_CANT_WRITE_OUTPUT_FILE)
+		break;
+		case 'R':
+			if (FPUTS(" (rdb", RISuld_out_fp) == EOF) 
+				WRITING_FILE_ERR(RISUTL_E_CANT_WRITE_OUTPUT_FILE)
+		break;
+		case 'Y':
+			if (FPUTS(" (sybase", RISuld_out_fp) == EOF) 
+				WRITING_FILE_ERR(RISUTL_E_CANT_WRITE_OUTPUT_FILE)
+		break;
+		case 'M':
+			if (FPUTS(" (mssql", RISuld_out_fp) == EOF) 
+				WRITING_FILE_ERR(RISUTL_E_CANT_WRITE_OUTPUT_FILE)
+		break;
+		case '4':
+			if (FPUTS(" (os400", RISuld_out_fp) == EOF) 
+				WRITING_FILE_ERR(RISUTL_E_CANT_WRITE_OUTPUT_FILE)
+		break;
+		default:
+			RISuld_fatal_err_handler(RISUTL_E_ILLEGAL_SCH_MODE);
+			TERMINATE_RISUNLOAD
+		break;
+	}
+
+	ULD_DBG(("1. RISuld_form_dbtype_clause: end"));
+}
+
+/* }}} */
+/**********************************************************************/
+/* {{{ RISuld_form_ostype_clause() */
+
+extern void RISuld_form_ostype_clause(
+	unsigned char os_type)
+{
+
+	ULD_DBG(("RISuld_form_ostype_clause: os_type = <%c> \n", os_type));
+
+	switch(os_type)
+	{
+		case 'N':
+			if (FPUTS(", ostype nt", RISuld_out_fp) == EOF) 
+				WRITING_FILE_ERR(RISUTL_E_CANT_WRITE_OUTPUT_FILE)
+		break;
+		case 'U':
+			if (FPUTS(", ostype unix", RISuld_out_fp) == EOF) 
+				WRITING_FILE_ERR(RISUTL_E_CANT_WRITE_OUTPUT_FILE)
+		break;
+		case 'V':
+			if (FPUTS(", ostype vms", RISuld_out_fp) == EOF) 
+				WRITING_FILE_ERR(RISUTL_E_CANT_WRITE_OUTPUT_FILE)
+		break;
+		default:
+			RISuld_fatal_err_handler(RISUTL_E_ILLEGAL_SCH_MODE);
+			TERMINATE_RISUNLOAD
+		break;
+	}
+
+	ULD_DBG(("1. RISuld_form_ostype_clause: end"));
+}
+
+/* }}} */
+/**********************************************************************/
+/* {{{ RISuld_form_dbname_clause() */
+
+extern void RISuld_form_dbname_clause(
+	char			*db_name)
+{
+
+	ULD_DBG(("RISuld_form_dbname_clause: db_name <%s> \n", db_name));
+
+	if (*db_name != '\0') 
+	{
+		if (FPRINTF(RISuld_out_fp, ", dbname %s", db_name) < 0)
+			WRITING_FILE_ERR(RISUTL_E_CANT_WRITE_OUTPUT_FILE)
+	}
+		
+	ULD_DBG(("1. RISuld_form_dbname_clause: end"));
+}
+
+/* }}} */
+/**********************************************************************/
+/* {{{ RISuld_form_ris_dict_dbname_clause() */
+
+extern void RISuld_form_ris_dict_dbname_clause(
+	ris_db_info *db_info)
+{
+	char		*ris_dict_dbname;
+
+        ris_dict_dbname = (char *)NULL;
+
+	ULD_DBG(("RISuld_form_ris_dict_dbname_clause: db_info <0x%x> \n", 
+              db_info));
+	
+/* {{{ Get the ris_dict_dbname if needed for the database */
+
+	if (db_info->dtype == '4')
+	{
+	   ris_dict_dbname = db_info->info.os400.ris_dict_dbname;
+
+	   if (ris_dict_dbname && *ris_dict_dbname != '\0') 
+	   {
+               if (FPRINTF(RISuld_out_fp, ", ris_dict_dbname %s", ris_dict_dbname) < 0)
+               {
+		   WRITING_FILE_ERR(RISUTL_E_CANT_WRITE_OUTPUT_FILE)
+               }
+	   }
+		
+        }
+	ULD_DBG(("1. RISuld_form_ris_dict_dbname_clause: end"));
+}
+
+/* }}} */
+/**********************************************************************/
+/* {{{ RISuld_form_osuser_clause() */
+
+extern void RISuld_form_osuser_clause(
+	ris_db_info	*db)
+{
+	char		*osuser = NULL;
+	char		*ospass = NULL;
+
+	ULD_DBG(("RISuld_form_osuser_clause: db <0x%x> \n", db));
+	
+/* {{{ Get the osuser and ospass if needed for the database */
+
+	switch (db->dtype)
+	{
+		case 'X':
+		case 'I':
+		case 'R':
+			osuser = ""; 
+		break;
+/*
+**	Fix for TR# 249406523. RAJU 09/21/94
+*/
+		case 'Y':
+			osuser = db->info.syb.osuser;
+			ospass = db->info.syb.ospass;
+		break;
+		case 'M':
+			osuser = db->info.mssql.osuser;
+			ospass = db->info.mssql.ospass;
+		break;
+		case 'D':
+			osuser = db->info.db2.osuser;
+			ospass = db->info.db2.ospass;
+		break;
+		case '4':
+			osuser = db->info.os400.osuser;
+			ospass = db->info.db2.ospass;
+		break;
+		case 'O':
+			osuser = db->info.ora.osuser;
+			ospass = db->info.ora.ospass;
+		break;
+		default:
+			RISuld_fatal_err_handler(RISUTL_E_ILLEGAL_SCH_MODE);
+			TERMINATE_RISUNLOAD
+		break;
+	}
+
+/* }}} */
+/* {{{ Output the OSUSER clause if necessary */
+
+	if (*osuser != '\0')
+    {
+		if( *ospass == '\0' )
+		{
+       	 	if (FPRINTF(RISuld_out_fp, ", osuser %s ", osuser) < 0)
+				WRITING_FILE_ERR(RISUTL_E_CANT_WRITE_OUTPUT_FILE)
+		}
+		else
+		{
+			/*
+			** Blank space after '.' is necessary
+			*/
+       		if (FPRINTF(RISuld_out_fp, ", osuser %s. ", osuser) < 0)
+				WRITING_FILE_ERR(RISUTL_E_CANT_WRITE_OUTPUT_FILE)
+		}
+    }
+
+/* }}} */
+
+	ULD_DBG(("1. RISuld_form_osuser_clause: end"));
+}
+
+/* }}} */
+/**********************************************************************/
+/* {{{ RISuld_get_osuser() */
+
+extern void RISuld_get_osuser(
+	ris_db_info	*db,
+	char **osuser, /* Set to NULL if no OSUSER info, otherwise, point to OSUSER info */
+	char **ospass)
+{
+	*osuser = NULL;
+	*ospass = NULL;
+
+	ULD_DBG(("RISuld_get_osuser: db <0x%x> \n", db));
+	
+	switch (db->dtype)
+	{
+	  case 'X':
+	  case 'I':
+	  case 'R':
+	  case 'Y':
+	  case 'M':
+		break;
+	  case 'D':
+		*osuser = db->info.db2.osuser;
+		*ospass = db->info.db2.ospass;
+		break;
+	  case '4':
+		*osuser = db->info.os400.osuser;
+		*ospass = db->info.os400.ospass;
+		break;
+	  case 'O':
+		*osuser = db->info.ora.osuser;
+		*ospass = db->info.ora.ospass;
+		break;
+	  default:
+		RISuld_fatal_err_handler(RISUTL_E_ILLEGAL_SCH_MODE);
+		TERMINATE_RISUNLOAD
+		break;
+	}
+
+	ULD_DBG(("1. RISuld_get_osuser: end"));
+}
+
+/* }}} */
+/**********************************************************************/
+/* {{{ RISuld_form_dir_clause() */
+
+extern void RISuld_form_dir_clause(
+	ris_db_info	*db)
+{
+	char		*parms = NULL;
+
+	ULD_DBG(("RISuld_form_dir_clause: db <0x%x> \n", db));
+	
+	switch (db->dtype)
+	{
+		case 'D':
+		case 'R':
+		case 'M':
+		case '4':
+			parms = ""; 
+		break;
+		case 'Y':
+			parms = db->info.syb.dir;
+		break;
+		case 'X':
+			parms = db->info.ifx.dir;
+		break;
+		case 'I':
+			parms = db->info.igs.dir;
+		break;
+		case 'O':
+			parms = db->info.ora.dir;
+		break;
+		default:
+			RISuld_fatal_err_handler(RISUTL_E_ILLEGAL_SCH_MODE);
+			TERMINATE_RISUNLOAD
+		break;
+	}
+
+	if (*parms != '\0')
+    {
+        if (FPRINTF(RISuld_out_fp, ", dir %s", parms) < 0)
+			WRITING_FILE_ERR(RISUTL_E_CANT_WRITE_OUTPUT_FILE)
+    }
+
+	ULD_DBG(("1. RISuld_form_dir_clause: end"));
+}
+
+/* }}} */
+/**********************************************************************/
+/* {{{ void RISuld_form_remote_clause() */
+
+extern void RISuld_form_remote_clause(
+	ris_db_info	*db)
+{
+
+	short int	num_protocol;
+
+	ULD_DBG(("RISuld_form_remote_clause: db 0x%x \n", db));
+
+	for (num_protocol = 0; 
+				(num_protocol < RIS_MAX_PROTOCOLS) &&
+				(((db->pathways) + num_protocol)->protocol != '\0') &&
+		   		(*(((db->pathways) + num_protocol)->netaddr) != '\0');
+						num_protocol++)
+	{
+		if (!num_protocol)
+		{
+			if (FPUTS(", remote (", RISuld_out_fp) == EOF)
+				WRITING_FILE_ERR(RISUTL_E_CANT_WRITE_OUTPUT_FILE)
+		}
+		else
+		{
+#if defined(__clipper__) || defined(sco) || defined(__hpux__)
+	 		if (FPUTS(", ", RISuld_out_fp) == EOF)
+				WRITING_FILE_ERR(RISUTL_E_CANT_WRITE_OUTPUT_FILE)
+#endif				
+		}
+
+		ULD_DBG(("protocol = <%c>\n", ((db->pathways) + num_protocol)->protocol));
+		ULD_DBG(("node = <%s>\n", ((db->pathways) + num_protocol)->netaddr));
+
+#if defined (__clipper__) || defined(sco)
+		if (((db->pathways) + num_protocol)->protocol == 'X')
+		{
+			if (FPRINTF(RISuld_out_fp, "xns %s", ((db->pathways) + num_protocol)->netaddr) < 0)
+				WRITING_FILE_ERR(RISUTL_E_CANT_WRITE_OUTPUT_FILE)
+		}
+		else if (((db->pathways) + num_protocol)->protocol == 'T')
+		{
+			if (FPRINTF(RISuld_out_fp, "tcp %s", ((db->pathways) + num_protocol)->netaddr) < 0)
+				WRITING_FILE_ERR(RISUTL_E_CANT_WRITE_OUTPUT_FILE)
+		}
+		else if (((db->pathways) + num_protocol)->protocol == 'D')
+		{
+			if (FPRINTF(RISuld_out_fp, "dnp %s", ((db->pathways) + num_protocol)->netaddr) < 0)
+				WRITING_FILE_ERR(RISUTL_E_CANT_WRITE_OUTPUT_FILE)
+		}
+#elif defined(unix) || defined(WIN32) || defined(DOS)
+		if (((db->pathways) + num_protocol)->protocol == 'T')
+		{
+			/*
+			** Only TCP/IP supported for unix, nt and msdos
+			*/
+			if (FPRINTF(RISuld_out_fp, "tcp %s", ((db->pathways) + num_protocol)->netaddr) < 0)
+				WRITING_FILE_ERR(RISUTL_E_CANT_WRITE_OUTPUT_FILE)
+			break;
+		}
+#endif
+	}
+	if (FPUTC(')', RISuld_out_fp) == EOF) 
+		WRITING_FILE_ERR(RISUTL_E_CANT_WRITE_OUTPUT_FILE)
+
+	ULD_DBG(("1. RISuld_form_remote_clause: end"));
+}
+
+/* }}} */
+/**********************************************************************/
+/* {{{ RISuld_form_gateway_clause() */
+
+extern void RISuld_form_gateway_clause(
+	ris_db_info 	*db)
+{
+	int	 len = 0;
+	char gateways[SQL_SMALL_STMT_LEN];
+
+	ULD_DBG(("RISuld_form_gateway_clause: db <0x%x \n",db));
+	gateways[0] = '\0';
+
+	switch (db->dtype)
+	{
+		case 'D':
+			if( db->info.db2.arch[0] )
+				len += sprintf(gateways+len,"arch=%s,",db->info.db2.arch);
+			if( db->info.db2.os[0] )
+				len += sprintf(gateways+len,"os=%s,",db->info.db2.os);
+			if( db->info.db2.env[0] )
+				len += sprintf(gateways+len,"env=%s,",db->info.db2.env);
+			if( db->info.db2.host_program[0] )
+				len += sprintf(gateways+len,"host_program=%s,",db->info.db2.host_program);
+			if( db->info.db2.net_protocol[0] )
+				len += sprintf(gateways+len,"net_protocol=%s,",db->info.db2.net_protocol);
+			if( db->info.db2.ris_lu[0] )
+				len += sprintf(gateways+len,"ris_lu=%s,",db->info.db2.ris_lu);
+			if( db->info.db2.host_lu[0] )
+				len += sprintf(gateways+len,"host_lu=%s,",db->info.db2.host_lu);
+			if( db->info.db2.mode[0] )
+				len += sprintf(gateways+len,"mode=%s,",db->info.db2.mode);
+			if( db->info.db2.group[0] )
+				len += sprintf(gateways+len,"group=%s,",db->info.db2.group);
+			if( db->info.db2.node[0] )
+				len += sprintf(gateways+len,"node=%s,",db->info.db2.node);
+			if( db->info.db2.port )
+				len += sprintf(gateways+len,"port=%d,",db->info.db2.port);
+		break;
+		case '4':
+			if( db->info.os400.host_program[0] )
+				len += sprintf(gateways+len,"host_program=%s,",db->info.os400.host_program);
+			if( db->info.os400.net_protocol[0] )
+				len += sprintf(gateways+len,"net_protocol=%s,",db->info.os400.net_protocol);
+			if( db->info.os400.ris_lu[0] )
+				len += sprintf(gateways+len,"ris_lu=%s,",db->info.os400.ris_lu);
+			if( db->info.os400.host_lu[0] )
+				len += sprintf(gateways+len,"host_lu=%s,",db->info.os400.host_lu);
+			if( db->info.os400.mode[0] )
+				len += sprintf(gateways+len,"mode=%s,",db->info.os400.mode);
+			if( db->info.os400.group[0] )
+				len += sprintf(gateways+len,"group=%s,",db->info.os400.group);
+		break;
+		case 'R':
+		case 'Y':
+		case 'M':
+		case 'X':
+		case 'I':
+		case 'O':
+		break;
+		default:
+			RISuld_fatal_err_handler(RISUTL_E_ILLEGAL_SCH_MODE);
+			TERMINATE_RISUNLOAD
+		break;
+	}
+
+	if (*gateways != '\0')
+    {
+		/*
+		** rm trailing comma
+		*/
+		gateways[strlen(gateways)-1] = '\0';
+        if (FPRINTF(RISuld_out_fp, ", gateway(%s)", gateways) < 0)
+			WRITING_FILE_ERR(RISUTL_E_CANT_WRITE_OUTPUT_FILE)
+    }
+
+	ULD_DBG(("1. RISuld_form_gateway_clause: end"));
+}
+
+/* }}} */
+/**********************************************************************/
+/* {{{ RISuld_form_option_clause() */
+
+extern void RISuld_form_option_clause(
+	ris_db_info 	*db)
+{
+	int	 len = 0;
+	char options[SQL_SMALL_STMT_LEN];
+
+	ULD_DBG(("RISuld_form_option_clause: db <0x%x \n",db));
+	options[0] = '\0';
+
+	switch (db->dtype)
+	{
+		case 'I':
+		case 'O':
+		case 'D':
+		case 'R':
+		case 'Y':
+		case 'M':
+		case '4':
+		break;
+		case 'X':
+			if( db->info.ifx.sqlexec[0] )
+				len += sprintf(options+len,"sqlexec=%s,",db->info.ifx.sqlexec);
+			if( db->info.ifx.dbtemp[0] )
+				len += sprintf(options+len,"dbtemp=%s,",db->info.ifx.dbtemp);
+			if( db->info.ifx.tbconfig[0] )
+				len += sprintf(options+len,"tbconfig=%s,",db->info.ifx.tbconfig);
+		break;
+		default:
+			RISuld_fatal_err_handler(RISUTL_E_ILLEGAL_SCH_MODE);
+			TERMINATE_RISUNLOAD
+		break;
+	}
+
+	if (*options != '\0')
+    {
+		/*
+		** rm trailing comma
+		*/
+		options[strlen(options)-1] = '\0';
+        if (FPRINTF(RISuld_out_fp, ", option(%s)", options) < 0)
+			WRITING_FILE_ERR(RISUTL_E_CANT_WRITE_OUTPUT_FILE)
+    }
+    if (FPRINTF(RISuld_out_fp, ")") < 0)
+		WRITING_FILE_ERR(RISUTL_E_CANT_WRITE_OUTPUT_FILE)
+
+	ULD_DBG(("1. RISuld_form_option_clause: end"));
+}
+
+/* }}} */
+/**********************************************************************/
+/* {{{ RISuld_form_user_clause() */
+
+extern void RISuld_form_user_clause(
+	char	*user_name,
+	char	*user_pwd)
+{
+
+	ULD_DBG(("RISuld_form_user_clause: user_name <%s> \n", user_name));
+
+	if (FPRINTF(RISuld_out_fp, " user %s", user_name) < 0)
+		WRITING_FILE_ERR(RISUTL_E_CANT_WRITE_OUTPUT_FILE)
+
+	if (user_pwd[0] != '\0')
+		if (FPRINTF(RISuld_out_fp, ".") < 0)
+			WRITING_FILE_ERR(RISUTL_E_CANT_WRITE_OUTPUT_FILE)
+
+	ULD_DBG(("1. RISuld_form_user_clause: end"));
+}
+
+/* }}} */
