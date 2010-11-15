@@ -1,0 +1,216 @@
+/*
+** Copyright 1993, Intergraph Corporation, All Rights Reserved
+*/
+
+/*
+**	================================================
+**
+**	File		: async1.rc
+**	Purpose		: Asynchronous Execution of SQL 
+**
+**	================================================
+*/
+
+#include <stdio.h>
+#include "ris.prt"
+
+/*
+**	Host variable declarations -- this is global
+*/
+exec sql begin declare section;
+ 	int		async1;
+exec sql end declare section;
+
+extern int my_error_handler();
+extern void display_all_rows();
+
+extern void main()
+{
+    /*
+	**	Default to schema sch1 (static SQL with no parameters)
+	*/
+	printf("Default to schema sch1\n");
+    exec sql default schema sch1;
+	if( my_error_handler(SQLCODE) != RIS_SUCCESS )
+	{
+		return;
+	}
+
+    /*
+	**	Asynchonously, insert a row into the table tools (static SQL with no 
+	**	parameters)
+	*/
+	printf("Insert one more row into table tools\n");
+    exec sql async :async1 insert into tools values('boxes', 1300, 2.95);
+	if( my_error_handler(SQLCODE) != RIS_SUCCESS )
+	{
+		return;
+	}
+
+	/*
+	**	Execute some user code here
+	*/
+	printf(" ** Execute some user code here ** \n");
+
+	/*
+	**	Test if previous started asynchronous statement is complete or not
+	*/
+	printf("Test completion on async1\n");
+	exec sql test :async1 completion;
+	while( my_error_handler(SQLCODE) == STATEMENT_NOT_COMPLETE ) 
+	{
+		exec sql test :async1 completion;
+	}
+
+	/*
+	**  select tools table
+	*/
+	display_all_rows();
+
+    /*
+	**	prepare an update statement (dynamic SQL with no parameters)
+	*/
+	printf("Update one more row into table tools\n");
+    exec sql prepare stmt1 from 
+		"update tools set price = 2.00 where item = 'boxes'";
+	if( my_error_handler(SQLCODE) != RIS_SUCCESS )
+	{
+		return;
+	}
+
+    exec sql async :async1 execute stmt1; 
+	if( my_error_handler(SQLCODE) != RIS_SUCCESS )
+	{
+		return;
+	}
+
+	/*
+	**	Execute some user code here
+	*/
+	printf(" ** Execute some user code here ** \n");
+
+	/*
+	**	Wait till the previous started asynchronous statement is complete
+	*/
+	printf("Wait completion on async1\n");
+	exec sql wait :async1 completion;
+	if( my_error_handler(SQLCODE) != RIS_SUCCESS )
+	{
+		return;
+	}
+
+	/*
+	**  select tools table
+	*/
+	display_all_rows();
+}
+
+extern int my_error_handler(
+	int status)
+{
+	/*
+	**	Host variable declarations
+	*/
+    exec sql begin declare section;
+		char	*error_ptr;
+    exec sql end declare section;
+
+	switch( status )
+	{
+		case RIS_SUCCESS:
+		case END_OF_DATA:
+		case STATEMENT_NOT_COMPLETE:
+		return(status);
+		case STATEMENT_FAILED:
+			/*
+			** For asynchronous errors
+			*/
+			exec sql report error for async :async1 into :error_ptr;
+			puts(error_ptr);
+		return(status);
+		default:
+			/*
+			** For any other types of errors
+			*/
+			exec sql report error into :error_ptr;
+			puts(error_ptr);
+		return(status);
+	}
+}
+
+extern void display_all_rows()
+{
+	/*
+	**	Host variable declarations
+	*/
+    exec sql begin declare section;
+        char	name[21];
+        int		amount;
+        long	amount_ind;
+		char	value[10];
+        char	*error_ptr;
+    exec sql end declare section;
+
+	/*
+	**	Define exception handlers
+	**	i.e., if SQL error detected goto label error
+	**		  if no more rows detected goto lable not_found
+	*/
+    exec sql whenever sqlerror goto :error;
+    exec sql whenever not found goto :not_found;
+
+    /*
+	**	Select multiple rows from the table using cursors
+	*/
+
+	/*
+	** Declare a cursor for select statement (static SQL with parameters)
+	*/
+	printf("Declare cursor for select from table tools\n");
+    exec sql declare c1 cursor for select * from tools;
+
+	/*
+	**	Open cursor c1 using parameter
+	*/
+	printf("Open cursor for select from table tools\n");
+    exec sql open c1;
+
+    for (;;)
+    {
+        exec sql fetch c1 into :name, :amount:amount_ind, :value;
+    	printf("name: %s amount: %d value: %s\n", 
+				name, amount_ind ? -1 : amount, value);
+    }
+
+not_found:
+	/*
+	** This part of code is executed when no more data is found
+	*/
+    exec sql whenever not found continue;
+    printf("No more data\n");
+
+	/*
+	** Close the cursor c1
+	*/
+	exec sql close c1;
+
+    return;
+
+error:
+	/*
+	** This part of code is executed when error is detected
+	*/
+
+	/*
+	** Ignore SQL error from onwards and continue processing
+	*/
+    exec sql whenever sqlerror continue;
+
+	/*
+	** Retreive the message string resulting form the last SQL error
+	*/
+    exec sql report error into :error_ptr;
+    puts(error_ptr);
+
+    return;
+}

@@ -1,0 +1,363 @@
+/* Do not alter this SPC information: $Revision: 1.2.13.1 $ */
+/*
+**	NAME:				lodgtspc.rc
+**	AUTHORS:			Jennifer Xia			
+**	CREATION DATE:		July 25, 1990			
+**	ABSTRACT:			It contains a function which fetches a token from either
+**						a command line or specification file. Tokens are
+**						processed and identified by another function in this
+**						file.
+**	REVISION HISTORY:	August 6th, 1991 Hitesh Patel
+*/
+ 
+/*
+**	DEFINES
+*/
+
+/*
+**	INCLUDES
+*/
+
+#ifdef MM
+#include "lod.h"
+#endif
+
+exec sql include "lod.h";
+
+/*
+**	VARIABLES
+*/
+
+/*
+**	FUNCTIONS
+*/
+
+/*
+**      FUNCTION PROTOTYPES
+*/
+#define lodgtspc_rc
+#include "sys.prt"
+#include "comjmp.prt"
+#include "comdebug.prt"
+#include "comstcmi.prt"
+#include "comumsg.prt"
+#include "lodmisc.prt"
+#include "lodgtspc.prt"
+#include "lodermsg.prt"
+#include "lodtime.prt"
+
+
+
+extern int RISlod_fetch_token(
+	int		argc,
+	char	*argv[],
+	FILE	*spec_fp,
+	char	*token_buf)
+{
+	static  int	argi = 1;
+
+	LOD_DBG(("RISlod_fetch_token: argc %d argv 0x%x spec_fp 0x%x token_buf 0x%x\n",
+						argc, argv, spec_fp, token_buf));
+
+	if (spec_fp == NULL)
+	{
+		if (argi >= argc)
+		{
+			LOD_DBG(("1. RISlod_fetch_token returning NO_MORE_SPEC\n"));
+			return(NO_MORE_SPEC);
+		}	
+
+		if (strlen(argv[argi]) > (RIS_MAX_PATH_SIZE + 1))
+		{
+			RISlod_parse_err_handler(RISUTL_E_INVALID_PATH_SIZE);
+			TERMINATE_RISLOAD
+		}
+
+		strcpy(token_buf, argv[argi]);
+		argi++;
+	}
+	else
+	{
+		if (fscanf(spec_fp, "%259s", token_buf) == EOF)
+		{
+			LOD_DBG(("2. RISlod_fetch_token returning END_OF_SPEC_FILE\n"));
+			return(END_OF_SPEC_FILE);
+		}
+	}
+		
+	LOD_DBG(("3. RISlod_fetch_token returning <%s>\n",token_buf));
+	return(SUCCESS);
+}
+
+
+extern int RISlod_fetch_analyze_spec(
+	int			argc,
+	char		*argv[],
+	FILE		*spec_fp,
+	char		*token_buf)
+{
+
+	static  int			num_token_from_spec = 0;
+	static  short int	expect_sch_token = FALSE;
+	int					token_type;
+	int					retn;
+	unsigned int					char_indx;
+
+	LOD_DBG(("RISlod_fetch_analyze_spec: argc %d argv 0x%x spec_fp 0x%x token_buf 0x%x\n",
+						argc, argv, spec_fp, token_buf));
+
+	if (spec_fp)
+	{
+		num_token_from_spec++;
+		LOD_DBG(("num_token_from_spec = %d\n",num_token_from_spec));
+	}
+
+	token_type = RISlod_fetch_token(argc, argv, spec_fp, token_buf);
+
+	if ((token_type == NO_MORE_SPEC) || (token_type == END_OF_SPEC_FILE))
+	{
+		LOD_DBG(("1. RISlod_fetch_analyze_spec: end\n"));
+		return(token_type);
+	}
+
+	/*
+	**	For second and other following schema names 
+	*/
+	if ((spec_fp) && expect_sch_token)
+	{
+		expect_sch_token = FALSE;
+
+		LOD_DBG(("2. RISlod_fetch_analyze_spec: end\n"));
+		return(SCHEMA);
+	}
+
+	/*
+	**	if ';' detected
+	*/
+	if (spec_fp)
+	{
+		if (token_buf[0] == ';')
+		{
+			if (token_buf[1] == '\0')
+			{
+				if (RISlod_fetch_token(argc, argv, spec_fp, token_buf) == NO_MORE_SPEC)
+				{
+					LOD_DBG(("3. RISlod_fetch_analyze_spec: end\n"));
+					return(NO_MORE_SPEC);
+				}
+				else
+				{
+					LOD_DBG(("4. RISlod_fetch_analyze_spec: end\n"));
+					return(SCHEMA);
+				}
+			}
+			else
+			{
+				for(char_indx = 0; char_indx < strlen(token_buf); char_indx++)
+					token_buf[char_indx] = token_buf[char_indx + 1];
+
+				LOD_DBG(("5. RISlod_fetch_analyze_spec: end\n"));
+				return(SCHEMA);
+			}
+		}
+		else if (token_buf[strlen(token_buf) - 1] == ';')
+		{	
+			token_buf[strlen(token_buf) - 1] = '\0';
+
+			expect_sch_token = TRUE;
+		}
+	}
+
+	if (RIScom_strcmp_ic(token_buf, "rename") == 0)
+	{
+		LOD_DBG(("6. RISlod_fetch_analyze_spec: end\n"));
+		return(RENAME);
+	}
+	if (RIScom_strcmp_ic(token_buf, "user") == 0)
+	{
+		LOD_DBG(("6.5. RISlod_fetch_analyze_spec: end\n"));
+		return(RENAME_USER);
+	}
+	if (RIScom_strcmp_ic(token_buf, "table") == 0)
+	{
+		LOD_DBG(("7. RISlod_fetch_analyze_spec: end\n"));
+		return(TABLE);
+	}
+	else if (RIScom_strcmp_ic(token_buf, "index") == 0)
+	{
+		LOD_DBG(("8. RISlod_fetch_analyze_spec: end\n"));
+		return(INDEX);
+	}
+	else if (RIScom_strcmp_ic(token_buf, "view") == 0)
+	{
+		LOD_DBG(("9. RISlod_fetch_analyze_spec: end\n"));
+		return(VIEW);
+	}
+	else if (RIScom_strcmp_ic(token_buf, "grant") == 0)
+	{
+		LOD_DBG(("10. RISlod_fetch_analyze_spec: end\n"));
+		return(GRANT);
+	}
+	else if (RIScom_strcmp_ic(token_buf, "all") == 0)
+	{
+		LOD_DBG(("11. RISlod_fetch_analyze_spec: end\n"));
+		return(EVERY_THING);
+	}
+	else if (RIScom_strcmp_ic(token_buf, "new") == 0) 
+	{
+		LOD_DBG(("12. RISlod_fetch_analyze_spec: end\n"));
+		return(NEW);
+	}
+	else if (RIScom_strcmp_ic(token_buf, "clear") == 0) 
+	{
+		LOD_DBG(("13. RISlod_fetch_analyze_spec: end\n"));
+		return(CLEAR);
+	}
+	else if (RIScom_strcmp_ic(token_buf, "with") == 0)
+	{
+		LOD_DBG(("14. RISlod_fetch_analyze_spec: end\n"));
+		return(WITH);
+	}
+	else if (RIScom_strcmp_ic(token_buf, "data") == 0) 
+	{
+		LOD_DBG(("15. RISlod_fetch_analyze_spec: end\n"));
+		return(DATA);
+	}
+		
+#if defined(DOS)
+#pragma offwarn(257)
+#endif
+	if(	((strcmp(token_buf, "-g") == 0) && (retn = DEBUG_FLAG))		||
+		((strcmp(token_buf, "-n") == 0) && (retn = NON_ANSI_MODE))  ||
+		((strcmp(token_buf, "-p") == 0) && (retn = PRESERVE_BLANKS)) )
+	{
+#if defined(DOS)
+#pragma popwarn
+#endif
+		if (spec_fp != NULL)
+		{
+			RISlod_parse_err_handler(RISUTL_E_ARGU_NOT_ALLOWED);
+			TERMINATE_RISLOAD
+		}
+		/*
+		**	No additional arguments
+		*/
+		
+		LOD_DBG(("18. RISlod_fetch_analyze_spec: end\n"));
+		return(retn);
+	}
+
+#if defined(DOS)
+#pragma offwarn(257)
+#endif
+	if(	
+		((strcmp(token_buf, "-b") == 0) && (retn = BAD_FILE))  		||
+		((strcmp(token_buf, "-c") == 0) && (retn = COMMIT_INTERVAL))||
+		((strcmp(token_buf, "-d") == 0) && (retn = DELIMITOR)) 		||
+		((strcmp(token_buf, "-e") == 0) && (retn = ENABLE_DB)) 		||
+		((strcmp(token_buf, "-f") == 0) && (retn = SPEC_FILE)) 		||
+		((strcmp(token_buf, "-i") == 0) && (retn = MAIN_FILE)) 		||
+		((strcmp(token_buf, "-l") == 0) && (retn = LOG_FILE))  		||
+		((strcmp(token_buf, "-m") == 0) && (retn = FILE_MODE)) 		||
+		((strcmp(token_buf, "-s") == 0) && (retn = SCHEMA))  
+	  )
+	{
+#if defined(DOS)
+#pragma popwarn
+#endif
+		if (spec_fp != NULL)
+		{
+			RISlod_parse_err_handler(RISUTL_E_ARGU_NOT_ALLOWED);
+			TERMINATE_RISLOAD
+		}
+		
+		if (RISlod_fetch_token(argc, argv, spec_fp, token_buf) == NO_MORE_SPEC)
+		{
+			LOD_DBG(("16. RISlod_fetch_analyze_spec: end\n"));
+			return(NO_MORE_SPEC);
+		}
+
+		if(	(strcmp(token_buf, "-b") == 0)	||
+			(strcmp(token_buf, "-c") == 0)	||
+			(strcmp(token_buf, "-d") == 0)	||
+			(strcmp(token_buf, "-e") == 0)	||
+			(strcmp(token_buf, "-f") == 0)	||
+			(strcmp(token_buf, "-g") == 0)	||
+			(strcmp(token_buf, "-i") == 0)	||
+			(strcmp(token_buf, "-l") == 0)	||
+			(strcmp(token_buf, "-m") == 0)	||
+			(strcmp(token_buf, "-n") == 0)	||
+			(strcmp(token_buf, "-s") == 0)	)
+		{
+			RISlod_parse_err_handler(RISUTL_E_INVALID_IDENTIFIER);
+			TERMINATE_RISLOAD
+		}
+
+		LOD_DBG(("17. RISlod_fetch_analyze_spec: end\n"));
+		return(retn);
+	}
+
+
+#if defined(DOS)
+#pragma offwarn(257)
+#endif
+	if( 
+		((strncmp(token_buf, "-b", 2) == 0) && (retn = BAD_FILE))  		||
+		((strncmp(token_buf, "-c", 2) == 0) && (retn = COMMIT_INTERVAL))||
+		((strncmp(token_buf, "-d", 2) == 0) && (retn = DELIMITOR)) 		||
+		((strncmp(token_buf, "-e", 2) == 0) && (retn = ENABLE_DB)) 		||
+		((strncmp(token_buf, "-f", 2) == 0) && (retn = SPEC_FILE))		||
+		((strncmp(token_buf, "-i", 2) == 0) && (retn = MAIN_FILE))		||
+		((strncmp(token_buf, "-l", 2) == 0) && (retn = LOG_FILE))  		||
+		((strncmp(token_buf, "-m", 2) == 0) && (retn = FILE_MODE))		||
+		((strncmp(token_buf, "-s", 2) == 0) && (retn = SCHEMA)) 
+   	  )
+	{
+#if defined(DOS)
+#pragma popwarn
+#endif
+		if (spec_fp != NULL)
+		{
+			RISlod_parse_err_handler(RISUTL_E_ARGU_NOT_ALLOWED);
+			TERMINATE_RISLOAD
+		}
+		
+		for (char_indx = 0; char_indx < strlen(token_buf) - 1; char_indx++)
+			token_buf[char_indx] = token_buf[char_indx + 2];
+
+		if(	(strcmp(token_buf, "-b") == 0)	||
+			(strcmp(token_buf, "-c") == 0)	||
+			(strcmp(token_buf, "-d") == 0)	||
+			(strcmp(token_buf, "-e") == 0)	||
+			(strcmp(token_buf, "-f") == 0)	||
+			(strcmp(token_buf, "-g") == 0)	||
+			(strcmp(token_buf, "-i") == 0)	||
+			(strcmp(token_buf, "-l") == 0)	||
+			(strcmp(token_buf, "-m") == 0)	||
+			(strcmp(token_buf, "-n") == 0)	||
+			(strcmp(token_buf, "-s") == 0)	)
+		{
+			RISlod_parse_err_handler(RISUTL_E_INVALID_IDENTIFIER);
+			TERMINATE_RISLOAD
+		}
+
+		LOD_DBG(("19. RISlod_fetch_analyze_spec: end\n"));
+		return(retn);
+	}
+
+	if (num_token_from_spec == 1)
+	{
+		LOD_DBG(("20. RISlod_fetch_analyze_spec: end\n"));
+		return(SCHEMA);
+	}
+	else if (token_buf[0] == '.')
+	{
+		LOD_DBG(("21. RISlod_fetch_analyze_spec: end\n"));
+		return(PASSWORD);
+	}
+	else
+	{	
+		LOD_DBG(("22. RISlod_fetch_analyze_spec: end\n"));
+		return(RELATION_NAME);
+	}
+}

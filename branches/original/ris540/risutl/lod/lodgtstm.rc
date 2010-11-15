@@ -1,0 +1,594 @@
+/* Do not alter this SPC information: $Revision: 1.4.9.1 $ */
+/*
+**	NAME:				lodgtstm.rc									
+**	AUTHORS:			Jennifer Xia			
+**	CREATION DATE:		June 26, 1990			
+**	ABSTRACT:			It contains various functions which read a line of
+**						statement from an ASCII file and identify the statement.
+**	
+**	REVISION HISTORY:	August 6th, 1991 Hitesh Patel
+**						Sept. 1991  -  format string changes/RIS_MAX_ID_SIZE dvk
+*/
+ 
+/* {{{ INCLUDES */
+
+#include <ctype.h>
+#ifdef MM
+#include "lod.h"
+#endif
+
+exec sql include "lod.h";
+
+/* }}} */
+/* {{{ FUNCTION PROTOTYPES */
+
+#define lodgtstm_rc
+#include "sys.prt"
+#include "comjmp.prt"
+#include "comdebug.prt"
+#include "comwrap.prt"
+#include "comstcmi.prt"
+#include "comumsg.prt"
+#include "lodermsg.prt"
+#include "lodgtstm.prt"
+#include "lodlogdp.prt"
+#include "lodmisc.prt"
+#include "lodtime.prt"
+#include "ucofgets.prt"
+#include "comisfn.prt"
+
+/* }}} */
+/**********************************************************************/
+/* {{{ RISlod_get_sch_def1() */
+
+extern int RISlod_get_sch_def1()
+{
+/* {{{ Local Variables */
+
+	char	keyword1[8];
+	char	first_space;
+	char	keyword2[7];
+	char	second_space;
+	char	one_char[2];
+
+/* }}} */
+
+	LOD_DBG(("RISlod_get_sch_def1: \n"));
+
+	if (RISuco_fgets(RISlod_sql_stmt, RIS_MAX_STMT_LEN - 1, RISlod_in_fp) == NULL)
+	{
+		LOD_DBG(("1. RISlod_get_sch_def1: end\n"));
+		return(END_OF_MAIN_FILE);
+	}
+
+	if (strncmp(RISlod_sql_stmt, "--",2) == 0)
+	{
+		LOD_DBG(("Comment = <%s>\n",RISlod_sql_stmt));
+		while(1)
+		{
+			if (RIScom_fgets(RISlod_sql_stmt, RIS_MAX_STMT_LEN - 1, RISlod_in_fp) == NULL)
+				UNEXPECTED_EOF(RISUTL_E_CANT_READ_INPUT_FILE);
+			if (strncmp(RISlod_sql_stmt, "--",2) != 0)
+				break;
+			LOD_DBG(("Comment = <%s>\n",RISlod_sql_stmt));
+		}
+	}
+
+	sscanf(RISlod_sql_stmt, "%7s%c%6s%c%1s", keyword1, &first_space, keyword2, &second_space, one_char);
+	RISlod_str_to_low(keyword1);
+  	RISlod_str_to_low(keyword2);
+	
+	if ((strcmp(keyword1, "default") == 0) && RIScom_isspace(first_space) &&
+	    (strcmp(keyword2, "schema") == 0) && RIScom_isspace(second_space) &&
+		(one_char[0] != '\0'))
+	{
+		LOD_DBG(("2. RISlod_get_sch_def1: end\n"));
+		return(DEFAULT_SCHEMA);
+	}
+/***
+	else if ((strcmp(keyword1, "declare") == 0) && RIScom_isspace(first_space) &&
+			 (strcmp(keyword2, "schema") == 0) && RIScom_isspace(second_space) &&
+			 (one_char[0] != '\0'))
+	{
+		LOD_DBG(("3. RISlod_get_sch_def1: end\n"));
+		return(DECLARE_SCHEMA);
+	}
+***/
+	else if ((strcmp(keyword1, "create") == 0) && RIScom_isspace(first_space) &&
+	    	 (strcmp(keyword2, "schema") == 0) && RIScom_isspace(second_space) &&
+			 (one_char[0] != '\0'))
+	{
+		LOD_DBG(("4. RISlod_get_sch_def1: end\n"));
+		return(CREATE_SCHEMA);
+	}
+	else if ((strcmp(keyword1, "create") == 0) && RIScom_isspace(first_space) &&
+	    	 (strcmp(keyword2, "secure") == 0) && RIScom_isspace(second_space) &&
+			 (one_char[0] != '\0'))
+	{
+		LOD_DBG(("5. RISlod_get_sch_def1: end\n"));
+		return(CREATE_SECURE_SCHEMA);
+	}
+	else
+	{
+		LOD_DBG(("6. RISlod_get_sch_def1: end\n"));
+		return(FAILURE);
+	}
+}
+
+/* }}} */
+/**********************************************************************/
+/* {{{ RISlod_get_tivgdef_stmt() */
+
+extern int RISlod_get_tivgdef_stmt(
+	char		*sch_name,
+	char		*rel_name,
+	char		*indx_name)
+{
+/* {{{ Local Variables */
+
+	char	keyword1[7];
+	char	first_space;
+	char	keyword2[7];
+	char	second_space;
+	char	keyword3[RIS_MAX_ID_SIZE];
+	char	third_space;
+	char	keyword4[RIS_MAX_ID_SIZE];
+	char	fourth_space;
+	char	keyword5[RIS_MAX_ID_SIZE];
+	char	fifth_space;
+	char	keyword6[RIS_MAX_ID_SIZE];
+	char	sixth_space;
+	char	*grant_stmt_ptr;
+	char	rel_spec[2 * RIS_MAX_ID_SIZE];
+	char	*leftparen;
+
+/* }}} */
+
+    /* big enough to hold format string */
+    static  char format[sizeof("%6s%c%6s%c%XXs%c%XXs%c%XXs%c%XXs%c")];
+    static  char grant_format[sizeof("%XXs%XXs")];
+
+	LOD_DBG(("RISlod_get_tivgdef_stmt: sch_name <%s>, rel_name <%s> indx_name <%s> \n",
+						sch_name, rel_name, indx_name));
+
+	RISlod_current_stmt_spot = RISlod_create_stmt_spot = ftell(RISlod_in_fp);
+	if (RIScom_fgets(RISlod_sql_stmt, RIS_MAX_STMT_LEN - 1, RISlod_in_fp) == NULL)
+		UNEXPECTED_EOF(RISUTL_E_CANT_READ_INPUT_FILE);
+	
+	LOD_DBG(("GOT STMT = <%s>\n",RISlod_sql_stmt));
+
+	if (strncmp(RISlod_sql_stmt, "--",2) == 0)
+	{
+		LOD_DBG(("Comment = <%s>\n",RISlod_sql_stmt));
+		while(1)
+		{
+			RISlod_current_stmt_spot = RISlod_create_stmt_spot = ftell(RISlod_in_fp);
+			if (RIScom_fgets(RISlod_sql_stmt, RIS_MAX_STMT_LEN - 1, RISlod_in_fp) == NULL)
+				UNEXPECTED_EOF(RISUTL_E_CANT_READ_INPUT_FILE);
+			if (strncmp(RISlod_sql_stmt, "--",2) != 0)
+				break;
+			LOD_DBG(("Comment = <%s>\n",RISlod_sql_stmt));
+		}
+	}
+
+	if (strncmp(RISlod_sql_stmt, "***RIS*** End of Schema ***RIS***", EOS_STR_LEN - 1) == 0)
+	{
+		if (RISlod_err_fnd_in_sch)
+			RISlod_dump_to_bad(RISlod_sql_stmt);
+
+		LOD_DBG(("1. RISlod_get_tivgdef_stmt: end\n"));
+		return(END_OF_SCHEMA);
+	}
+
+	/*
+	** The format string lets us use RIS_MAX_ID_SIZE instead of
+	** hardcoding a number like 18 or 30.
+	*/
+    if (!format[0])
+        sprintf(format,"%%6s%%c%%6s%%c%%%ds%%c%%%ds%%c%%%ds%%c%%%ds%%c",
+            RIS_MAX_ID_SIZE-1, RIS_MAX_ID_SIZE-1, RIS_MAX_ID_SIZE-1,
+            RIS_MAX_ID_SIZE-1);
+ 
+	/*
+	** schema_name + period + relation_name
+	*/
+    if (!grant_format[0])
+        sprintf(grant_format,"%%%ds",
+            RIS_MAX_ID_SIZE-1 + 1 + RIS_MAX_ID_SIZE-1);
+
+    sscanf (RISlod_sql_stmt, format,
+			keyword1, &first_space, keyword2, &second_space, keyword3, &third_space, 
+			keyword4, &fourth_space, keyword5, &fifth_space, keyword6, &sixth_space);
+	RISlod_str_to_low(keyword1);
+	RISlod_str_to_low(keyword2);
+	RISlod_str_to_low(keyword3);
+	RISlod_str_to_low(keyword4);
+	RISlod_str_to_low(keyword5);
+	RISlod_str_to_low(keyword6);
+
+	if ((strcmp (keyword1, "create") == 0) && RIScom_isspace(first_space) &&
+	    (strcmp (keyword2, "table") == 0) && RIScom_isspace(second_space) &&
+		(keyword3[0] != '\0') && RIScom_isspace(third_space))
+	{
+		strcpy(rel_name, keyword3);
+
+		LOD_DBG(("2. RISlod_get_tivgdef_stmt: end\n"));
+		return(CREATE_TABLE);
+	}
+
+	if ((strcmp (keyword1, "create") == 0) && RIScom_isspace(first_space) &&
+	   	(strcmp (keyword2, "index") == 0) && RIScom_isspace(second_space) &&
+		(keyword3[0] != '\0') && RIScom_isspace(third_space) &&
+		(strcmp (keyword4, "on") == 0) && RIScom_isspace(fourth_space) &&
+		(keyword5[0] != '\0') && RIScom_isspace(fifth_space))
+	{
+		strcpy(indx_name, keyword3);
+		strcpy(rel_name, keyword5);
+
+		LOD_DBG(("3. RISlod_get_tivgdef_stmt: end\n"));
+		return(CREATE_INDEX);
+	}
+
+	if ((strcmp (keyword1, "create") == 0) && RIScom_isspace(first_space) &&
+	   	(strcmp (keyword2, "unique") == 0) && RIScom_isspace(second_space) &&
+	   	(strcmp (keyword3, "index") == 0) && RIScom_isspace(third_space) &&
+		(keyword4[0] != '\0') && RIScom_isspace(fourth_space) &&
+		(strcmp (keyword5, "on") == 0) && RIScom_isspace(fifth_space) &&
+		(keyword6[0] != '\0') && RIScom_isspace(sixth_space))
+	{
+		strcpy(indx_name, keyword4);
+		strcpy(rel_name, keyword6);
+
+		LOD_DBG(("4. RISlod_get_tivgdef_stmt: end\n"));
+		return(CREATE_INDEX);
+	}
+
+	if ((strcmp (keyword1, "create") == 0) && RIScom_isspace(first_space) &&
+	    (strcmp (keyword2, "view") == 0) && RIScom_isspace(second_space) &&
+		(keyword3[0] != '\0'))
+	{
+		if ((leftparen = strchr(keyword3,'(')) != NULL)
+		{
+			*leftparen = '\0';
+		}
+		strcpy(rel_name, keyword3);
+				
+		LOD_DBG(("5. RISlod_get_tivgdef_stmt: end\n"));
+		return(CREATE_VIEW);
+	}
+
+	if ((strcmp (keyword1, "grant") == 0) && RIScom_isspace(first_space))
+	{
+		rel_spec[0] = '\0';
+		for (grant_stmt_ptr = RISlod_sql_stmt; 
+					*grant_stmt_ptr != '\0'; 
+							grant_stmt_ptr++)
+		{
+			if (RIScom_strcmp_ic(grant_stmt_ptr, "on") &&
+				RIScom_isspace(*(grant_stmt_ptr - 1)) && 
+				RIScom_isspace(*(grant_stmt_ptr + 2)))
+			{
+				sscanf((grant_stmt_ptr + 3), grant_format, rel_spec);
+				break;
+			}
+		}
+
+		if (rel_spec[0] != '\0')
+		{
+			RISlod_strip_off_dflt(sch_name, rel_spec, rel_name);
+
+			LOD_DBG(("6. RISlod_get_tivgdef_stmt: end\n"));
+			return(GRANT);
+		}
+	}
+
+	/*
+	**	Unkown Statement 
+	**	Echo error message to screen and bad file
+	*/
+#if !defined(WIN32S)
+	PRINTF(MSG(RISUTL_I_BAD_PARSE),RISlod_sql_stmt);
+#endif
+	RISlod_dump_to_bad(RISlod_sql_stmt);
+
+	LOD_DBG(("7. RISlod_get_tivgdef_stmt: end\n"));
+	return(FAILURE);
+}
+
+/* }}} */
+/**********************************************************************/
+/* {{{ RISlod_get_insert_into() */
+
+extern int RISlod_get_insert_into(
+	char	*tab_name)
+{
+/* {{{ Local Variables */
+
+	char	keyword1[7];
+	char	first_space;
+	char	keyword2[5];
+	char	second_space;
+	char	keyword3[RIS_MAX_ID_SIZE];
+	char	third_space;
+	char	*left_param1;
+	char	*left_param2;
+    static  char format[sizeof("%6s%c%4s%c%XXs%c")];
+                /* big enough to hold format string */
+
+/* }}} */
+
+	LOD_DBG(("RISlod_get_insert_into: tab_name <%s> \n", tab_name));
+
+	if (RIScom_fgets(RISlod_sql_stmt, RIS_MAX_STMT_LEN - 1, RISlod_in_fp) == NULL)
+		UNEXPECTED_EOF(RISUTL_E_CANT_READ_INPUT_FILE);
+
+	if (strncmp(RISlod_sql_stmt, "--",2) == 0)
+	{
+		LOD_DBG(("Comment = <%s>\n",RISlod_sql_stmt));
+		while(1)
+		{
+			if (RIScom_fgets(RISlod_sql_stmt, RIS_MAX_STMT_LEN - 1, RISlod_in_fp) == NULL)
+				UNEXPECTED_EOF(RISUTL_E_CANT_READ_INPUT_FILE);
+			if (strncmp(RISlod_sql_stmt, "--",2) != 0)
+				break;
+			LOD_DBG(("Comment = <%s>\n",RISlod_sql_stmt));
+		}
+	}
+
+	if (strncmp(RISlod_sql_stmt, "***RIS*** End of Table ***RIS***", EOT_STR_LEN - 1) == 0)
+	{
+		/* why this is needed?? */
+		if (RISlod_err_fnd_in_tab)
+			RISlod_dump_to_bad(RISlod_sql_stmt);
+
+		LOD_DBG(("1. RISlod_get_insert_into: end\n"));
+		return(END_OF_TABLE);
+	}
+
+	if (strncmp(RISlod_sql_stmt, "***RIS*** End of Schema ***RIS***", EOS_STR_LEN - 1) == 0)
+	{
+		fseek(RISlod_in_fp, 0 - strlen(RISlod_sql_stmt), 1);
+
+		LOD_DBG(("2. RISlod_insert_into: end\n"));
+		return(END_OF_SCHEMA);
+	}
+
+		/*
+		** the format string allows the use of RIS_MAX_ID_SIZE instead
+		** of a hardcoded number in a format string
+		** Format was "%6s%c%4s%c%18s%c"
+		*/
+    if (!format[0])
+        sprintf(format, "%%6s%%c%%4s%%c%%%ds%%c", RIS_MAX_ID_SIZE-1);
+ 
+    sscanf(RISlod_sql_stmt, format, 
+		   keyword1, &first_space, keyword2, &second_space, keyword3, &third_space);
+	RISlod_str_to_low(keyword1);
+	RISlod_str_to_low(keyword2);
+	RISlod_str_to_low(keyword3);
+
+	left_param1 = strchr(RISlod_sql_stmt, '(');
+	left_param2 = strrchr(RISlod_sql_stmt, '(');
+	
+	if ((strcmp(keyword1, "insert") == 0) && RIScom_isspace(first_space) &&
+		(strcmp(keyword2, "into") == 0) && RIScom_isspace(second_space) &&
+		(strcmp(tab_name, keyword3) == 0) && RIScom_isspace(third_space) &&
+		(left_param1 != NULL) && (left_param2 != NULL) && (left_param1 != left_param2))
+	{
+		LOD_DBG(("3. RISlod_get_insert_into: end\n"));
+		return(INSERT);
+	}
+	else
+	{
+		LOD_DBG(("4. RISlod_get_insert_into: end\n"));
+		return(FAILURE);
+	}
+}
+
+/* }}} */
+/**********************************************************************/
+/* {{{  RISlod_get_field_def() */
+
+extern int RISlod_get_field_def()
+{
+
+	LOD_DBG(("RISlod_get_field_def: \n"));
+
+	if (RIScom_fgets(RISlod_sql_stmt, RIS_MAX_STMT_LEN - 1, RISlod_in_fp) == NULL)
+		UNEXPECTED_EOF(RISUTL_E_CANT_READ_INPUT_FILE);
+
+	if (strncmp(RISlod_sql_stmt, "--",2) == 0)
+	{
+		LOD_DBG(("Comment = <%s>\n",RISlod_sql_stmt));
+		while(1)
+		{
+			if (RIScom_fgets(RISlod_sql_stmt, RIS_MAX_STMT_LEN - 1, RISlod_in_fp) == NULL)
+				UNEXPECTED_EOF(RISUTL_E_CANT_READ_INPUT_FILE);
+			if (strncmp(RISlod_sql_stmt, "--",2) != 0)
+				break;
+			LOD_DBG(("Comment = <%s>\n",RISlod_sql_stmt));
+		}
+	}
+
+	if (strncmp(RISlod_sql_stmt, "***RIS*** End of Table ***RIS***", EOT_STR_LEN - 1) == 0)
+	{
+		if (RISlod_err_fnd_in_tab)
+			RISlod_dump_to_bad(RISlod_sql_stmt);
+
+		LOD_DBG(("1. RISlod_get_field_def: end\n"));
+		return(END_OF_TABLE);
+	}
+
+	if (strncmp(RISlod_sql_stmt, "***RIS*** End of Schema ***RIS***", EOS_STR_LEN - 1) == 0)
+	{
+		fseek(RISlod_in_fp, 0 - strlen(RISlod_sql_stmt), 1);
+
+		LOD_DBG(("2. RISlod_get_field_def: end\n"));
+		return(END_OF_SCHEMA);
+	}
+
+	LOD_DBG(("3. RISlod_insert_into: end\n"));
+	return(SUCCESS);
+}
+
+/* }}} */
+/**********************************************************************/
+/* {{{ RISlod_arow_from_mfile() */
+
+extern int RISlod_arow_from_mfile()
+{
+
+	LOD_DBG(("RISlod_arow_from_mfile: \n"));
+
+	if (RIScom_fgets(RISlod_sql_stmt + 1, RIS_MAX_STMT_LEN - 1, RISlod_in_fp) == NULL)
+		UNEXPECTED_EOF(RISUTL_E_CANT_READ_INPUT_FILE);
+
+	RISlod_current_stmt_spot = ftell(RISlod_in_fp);
+
+	if (strncmp(RISlod_sql_stmt+1, "--",2) == 0)
+	{
+		LOD_DBG(("Comment = <%s>\n",RISlod_sql_stmt+1));
+		while(1)
+		{
+			if (RIScom_fgets(RISlod_sql_stmt+1, RIS_MAX_STMT_LEN - 1, RISlod_in_fp) == NULL)
+				UNEXPECTED_EOF(RISUTL_E_CANT_READ_INPUT_FILE);
+			if (strncmp(RISlod_sql_stmt+1, "--",2) != 0)
+				break;
+			LOD_DBG(("Comment = <%s>\n",RISlod_sql_stmt+1));
+		}
+	}
+
+	RISlod_current_stmt_spot = ftell(RISlod_in_fp);
+
+	if (strncmp(RISlod_sql_stmt + 1, "***RIS*** End of Table ***RIS***", EOT_STR_LEN - 1) == 0)
+	{
+		if (RISlod_err_fnd_in_tab)
+			RISlod_dump_to_bad(RISlod_sql_stmt + 1);
+
+		LOD_DBG(("1. RISlod_arow_from_mfile: end\n"));
+
+		return(END_OF_TABLE);
+	}
+
+	if (strncmp(RISlod_sql_stmt + 1, "***RIS*** End of Schema ***RIS***", EOS_STR_LEN - 1) == 0)
+	{
+		fseek(RISlod_in_fp, 0 - strlen(RISlod_sql_stmt + 1), 1);
+
+		LOD_DBG(("2. RISlod_arow_from_mfile: end\n"));
+		return(END_OF_SCHEMA);
+	}
+
+	LOD_DBG(("3. RISlod_arow_from_mfile: end\n"));
+	return(SUCCESS);
+}
+
+/* }}} */
+/**********************************************************************/
+/* {{{ RISlod_arow_from_dfile() */
+
+extern int RISlod_arow_from_dfile(
+	FILE	*data_fp)
+{
+
+	LOD_DBG(("RISlod_arow_from_dfile: data_fp 0x%x\n", data_fp));
+
+	if (RIScom_fgets(RISlod_sql_stmt + 1, RIS_MAX_STMT_LEN - 1, data_fp) == NULL)
+	{
+		LOD_DBG(("1. RISlod_arow_from_dfile: end\n"));
+		return(FAILURE);
+	}
+
+	if (strncmp(RISlod_sql_stmt+1, "--",2) == 0)
+	{
+		LOD_DBG(("Comment = <%s>\n",RISlod_sql_stmt+1));
+		while(1)
+		{
+			if (RIScom_fgets(RISlod_sql_stmt+1, RIS_MAX_STMT_LEN - 1, data_fp) == NULL)
+				UNEXPECTED_EOF(RISUTL_E_CANT_READ_DATA_FILE);
+			if (strncmp(RISlod_sql_stmt+1, "--",2) != 0)
+				break;
+			LOD_DBG(("Comment = <%s>\n",RISlod_sql_stmt+1));
+		}
+	}
+	
+	LOD_DBG(("2. RISlod_arow_from_dfile: end\n"));
+	return(SUCCESS);
+}
+
+/* }}} */
+/**********************************************************************/
+/* {{{ RISlod_indx_from_tfile() */
+
+extern void RISlod_indx_from_tfile(
+	FILE	*indx_tfp)
+{
+
+	LOD_DBG(("RISlod_indx_from_tfile: indx_tfp 0x%x", indx_tfp));
+
+	if (RIScom_fgets(RISlod_sql_stmt, RIS_MAX_STMT_LEN - 1, indx_tfp) == NULL)
+		UNEXPECTED_EOF(RISUTL_E_CANT_READ_TEMP_FILE);
+	
+	LOD_DBG(("1. RISlod_index_from_tfile: end\n"));
+}
+
+/* }}} */
+/**********************************************************************/
+/* {{{ RISlod_view_from_tfile() */
+
+extern void RISlod_view_from_tfile(
+	FILE	*view_tfp)
+{
+
+	LOD_DBG(("RISlod_view_from_tfile: view_tfp 0x%x", view_tfp));
+
+	if (RIScom_fgets(RISlod_sql_stmt, RIS_MAX_STMT_LEN - 1, view_tfp) == NULL)
+		UNEXPECTED_EOF(RISUTL_E_CANT_READ_TEMP_FILE);
+	
+	LOD_DBG(("1. RISlod_view_from_tfile: end\n"));
+}
+
+/* }}} */
+/**********************************************************************/
+/* {{{ RISlod_grant_from_tfile() */
+
+extern void RISlod_grant_from_tfile(
+	FILE	*grant_tfp)
+{
+
+	LOD_DBG(("RISlod_grant_from_tfile: grant_tfp 0x%x", grant_tfp));
+
+	if (RIScom_fgets(RISlod_sql_stmt, RIS_MAX_STMT_LEN - 1, grant_tfp) == NULL)
+		UNEXPECTED_EOF(RISUTL_E_CANT_READ_TEMP_FILE);
+	
+	LOD_DBG(("1. RISlod_grant_from_tfile: end\n"));
+}
+
+/* }}} */
+/**********************************************************************/
+/* {{{ RISlod_get_comments() ***not used*** */
+
+/*
+**	not used
+*/
+
+#ifdef LOAD_OLD
+extern void RISlod_get_comments(
+	char *stmt,
+	FILE *file_fp)
+{
+	if (strncmp(stmt, "--",2) == 0)
+	{
+		LOD_DBG(("Comment = <%s>\n",stmt));
+		while(1)
+		{
+			if (RIScom_fgets(stmt, RIS_MAX_STMT_LEN - 1, file_fp) == NULL)
+				UNEXPECTED_EOF(RISUTL_E_CANT_READ_INPUT_FILE);
+			if (strncmp(stmt, "--",2) != 0)
+				break;
+			LOD_DBG(("Comment = <%s>\n",stmt));
+		}
+	}
+}
+#endif
+
+/* }}} */

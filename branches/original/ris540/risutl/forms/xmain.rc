@@ -1,0 +1,418 @@
+/*
+**	NAME:							MSCxsmgrmn.c
+**	AUTHORS:						Terry McIntyre
+**	CREATION DATE:					2/90
+**	ABSTRACT:
+**	            main() for X RIS schema manager.
+**	
+**	REVISION HISTORY:
+*/
+
+/*
+**	INCLUDES
+*/
+#include <stdio.h>
+#if defined(HELP)
+#include <FEI.h>
+#endif
+#include <X11/Xlib.h>
+#include "risstjmp.h"
+#include "risprods.h"
+#include "ucommon.h"
+#include "forms.h"
+#include "risver.h"
+
+/*
+**	FUNCTION PROTOTYPES
+*/
+#define xmain_c
+#include "comjmp.prt"
+#include "comumsg.prt"
+#include "ucodebug.prt"
+#include "ucoerrbx.prt"
+#include "ucoumsg.prt"
+#if defined(HELP)
+#include "comgtdir.prt"
+#include "hlp.prt"
+#endif
+#include "fi.prt"
+#include "xwin.prt"
+#include "fi_xwin.prt"
+#include "ris.prt"
+#include "sys.prt"
+#include "dldmain.prt"
+#include "xmain.prt"
+#include "comdebug.prt"
+
+/*
+**	DEFINES
+*/
+
+/*
+**	VARIABLES
+*/
+
+Display *RISdisplay;
+
+#if defined(HELP)
+static int	help_initialized = 0;
+static struct msg_field_info_s
+	{
+		int f_label;
+		int g_label;
+	} msg_field_info[] = 
+	{
+		{	SM_FORM,	SM_MSG_FIELD	},
+		{	SI_FORM,	SI_MSG_FIELD	},
+		{	CS_FORM,	CS_MSG_FIELD	},
+		{	DS_FORM,	DS_MSG_FIELD	},
+		{	SD_FORM,	SD_MSG_FIELD	},
+		{	RD_FORM,	RD_MSG_FIELD	},
+		{	DD_FORM,	DD_MSG_FIELD	},
+		{	TI_FORM,	TI_MSG_FIELD	},
+		{	CT_FORM,	CT_MSG_FIELD	},
+		{	DT_FORM,	DT_MSG_FIELD	},
+		{	AT_FORM,	AT_MSG_FIELD	},
+		{	SF_FORM,	SF_MSG_FIELD	},
+		{	SP_FORM,	SP_MSG_FIELD	},
+		{	NI_FORM,	NI_MSG_FIELD	},
+		{	RP_FORM,	RP_MSG_FIELD	},
+	};
+static int msg_field_info_cnt =
+	sizeof(msg_field_info) / sizeof(struct msg_field_info_s);
+#endif
+
+/*
+**	FUNCTIONS
+*/
+
+/******************************************************************************/
+
+static int error_handler(
+	int		error,
+	char	*str)
+{
+	if (error)
+	{
+		fputs(str, stderr);
+	}
+	return 1;
+}
+
+/******************************************************************************/
+
+static void local_forms_error_handler()
+{
+	exec sql begin declare section;
+		char			*err;
+	exec sql end declare section;
+
+	if (RIS_forms_error.error == RISUTL_E_RIS_ERROR)
+	{
+		exec sql report error into :err;
+	}
+	else
+	{
+		err = RISfrm_generate_error_box();
+	}
+	RISfrm_error_box(err);
+}
+
+/******************************************************************************/
+
+#if defined(HELP)
+static int get_msg_field_label(
+	int f_label)
+{
+	int i;
+
+	for (i = 0; i < msg_field_info_cnt; i++)
+		if (msg_field_info[i].f_label == f_label)
+			return msg_field_info[i].g_label;
+
+	return -1;
+}
+#endif
+
+/******************************************************************************/
+
+#if defined(HELP)
+static void initialize_help()
+{
+	static char sp0[256];
+	static char sp1[256];
+	static char dir[256];
+	static int development
+	static char *search_paths[2];
+
+    RIScom_get_risdir(RIS_CLIENT_RUNTIME_PRODUCT,RIS_version_maj,
+		RIS_version_min, RIS_version_rel, MATCH_COMPATIBLE,
+		0, RISCONFIG_FILE, dir, &development, 0);
+
+	sprintf(sp0, "%s/config/english", dir);
+	strcpy(sp1, "/usr/ip32/forms/config/english");
+	search_paths[0] = sp0;
+	search_paths[1] = sp1;
+	Help_file_search_path (2, search_paths, "help_source/cr_schema.hp");
+
+	/*** tell help not to use S/R windows ***/
+	Help_mode (STANDARD_WINDOW_ONLY);
+
+	/*** round & round she goes, and where ***/
+	/*** the color wheel stops, nobody knows ***/
+	Help_standard_vlt_loading ( GX_GZ_VLT );
+	Help_standard_color_map ( GX_GZ_VLT );
+	
+	help_initialized = 1;
+}
+
+/******************************************************************************/
+
+static void process_help_topic(
+	int		f_label,
+	int		g_label,
+	double	value,
+	Form	fp)
+{
+	int help_active;
+	int msg_field_label;
+	char topic[32];
+
+	FRM_DBG(("process_help_topic(f_label:%d g_label:%d value:%f fp:0x%x)\n",
+		f_label, g_label, value, fp));
+
+	if (help_initialized)
+	{
+		if (g_label == FI_HELP)
+		{
+			/*
+			**	FI_HELP has been selected.  Check if FI_HELP has a topic.
+			**	If so, call Help_topic, otherwise call Help_toc.
+			*/
+			if ((msg_field_label = get_msg_field_label(f_label)) != -1)
+				FIfld_set_text(fp, msg_field_label, 0, 0,
+					MSG(RISUTL_I_READING_HELP_FILES), 0);
+
+			topic[0] = 0;
+			FIg_get_help_topic(fp, g_label, topic);
+			if (topic[0])
+				Help_topic(topic);
+			else
+				Help_toc();
+
+			if (msg_field_label != -1)
+				FIfld_set_text(fp, msg_field_label, 0, 0, "", 0);
+		}
+		else
+		{
+			/*
+			**	A gadget other than FI_HELP has been selected.  If help
+			**	is active(displayed), check if gadget has a topic.  If so,
+			**	call Help_topic
+			*/
+			Help_active(&help_active);
+			if (help_active)
+			{
+				topic[0] = 0;
+				FIg_get_help_topic(fp, g_label, topic);
+				if (topic[0])
+				{
+					if ((msg_field_label = get_msg_field_label(f_label)) != -1)
+						FIfld_set_text(fp, msg_field_label, 0, 0,
+							MSG(RISUTL_I_READING_HELP_FILES), 0);
+					Help_topic(topic);
+					if (msg_field_label != -1)
+						FIfld_set_text(fp, msg_field_label, 0, 0, "", 0);
+				}
+			}
+		}
+	}
+	else
+	{
+		/*
+		**	Help is not initialized.  If and only if gadget selected is 
+		**	FI_HELP, initialize help.  If FI_HELP has a topic, call Help_topic
+		**	othewise call Help_toc.
+		*/
+		if (g_label == FI_HELP)
+		{
+			if ((msg_field_label = get_msg_field_label(f_label)) != -1)
+				FIfld_set_text(fp, msg_field_label, 0, 0,
+					MSG(RISUTL_I_INITIALIZING_HELP), 0);
+			
+			initialize_help();
+
+			if (msg_field_label != -1)
+				FIfld_set_text(fp, msg_field_label, 0, 0,
+					MSG(RISUTL_I_READING_HELP_FILES), 0);
+
+			topic[0] = 0;
+			FIg_get_help_topic(fp, g_label, topic);
+			if (topic[0])
+				Help_topic(topic);
+			else
+				Help_toc();
+
+			if (msg_field_label != -1)
+				FIfld_set_text(fp, msg_field_label, 0, 0, "", 0);
+		}
+	}
+}
+#endif
+
+/******************************************************************************/
+
+main(argc, argv)
+	int argc;
+	char *argv[];
+{
+	int					i;
+	int					sts;
+	char 				*display_ptr;
+	static char 		env_buf[80];
+	RISfrm_init_parms	init_parms;
+	debug_info_s		debug_info;
+	int					debug_count;
+
+	if (sts = SETJMP())
+	{
+		RESETJMP();
+		RISuco_file_error_box(stdout, RISUTL_I_MGR_ERROR,
+							0, sts, NULL, 0, 1);
+		printf(CHECK_UNINIT_MSG(RISUTL_I_MGR_COULD_NOT_INIT,
+			"RIS Manager Utility could not initialize... Bye\n"));
+		RISterminate();
+ 		exit(sts);
+	}
+
+	debug_info.name = "frm";
+	debug_info.len = 3;
+	debug_info.flag = RISfrm_get_RISfrm_debug_addr();
+	debug_count = 1;
+	RISuco_initialize_debug(&debug_info, debug_count);
+
+	RISuco_initialize_ums(INIT_UTL_UMS_FILE|INIT_RIS_UMS_FILE);
+
+	RESETJMP();
+
+	memset(&init_parms, 0, sizeof(init_parms));
+#if defined(HELP)
+	init_parms.display_help_buttons = 1;
+	init_parms.pre_notification_routine = process_help_topic;
+#endif
+
+	if (!(display_ptr = getenv("DISPLAY")))
+	{
+		FRM_DBG(("environment variable DISPLAY is not defined; "));
+		display_ptr = "unix:0.0";
+	}
+
+	if (argc == 2)
+	{
+		if (strcmp(argv[1], "-V") == 0)
+		{
+			/*PRINTF(MSG(RISUTL_I_COPYRIGHT));*/
+			/* 1996.03.12:Alan Barksdale:TR439600483 */
+			PRINTF(MSG(RISUTL_I_BEGIN_COPYRIGHT));
+			PRINTF(" ");
+			PRINTF(COPYRIGHTYEAR);
+			PRINTF(", ");
+			PRINTF(COPYRIGHTYEAR);
+			PRINTF(MSG(RISUTL_I_END_COPYRIGHT));
+			PRINTF(MSG(RISUTL_I_RISMGR_VERSION), RIS_version);
+			return(0);
+		}
+		if (strcmp(argv[1], "-?") == 0)
+		{
+			PRINTF(MSG(RISUTL_I_XRISMGR_USAGE));
+			PRINTF(MSG(RISUTL_I_XRISMGR_USAGE_2));
+			PRINTF(MSG(RISUTL_I_RISMGR_USAGE_3));
+			/*
+			** "-db" is not in the document manual
+			PRINTF(MSG(RISUTL_I_XRISMGR_USAGE_5));
+			*/
+			PRINTF(MSG(RISUTL_I_XRISMGR_USAGE_1));
+			PRINTF(MSG(RISUTL_I_XRISMGR_USAGE_4));
+			return(0);
+		}
+	}
+
+	for (i = 1; i < argc; i++)
+	{
+		if (strcmp(argv[i],"-db") == 0)
+		{
+			RISfrm_enable_debug_form();
+		}
+		else if (strcmp(argv[i],"-e") == 0)
+		{
+			init_parms.error_handler_routine = error_handler;
+		}
+		else if (strcmp(argv[i],"-display") == 0)
+		{
+			if (i+1 == argc)
+			{
+				/* node name is not provided */
+				fprintf(stderr,MSG(RISUTL_I_INVALID_OPTION), argv[0], argv[i]);
+				fprintf(stderr, MSG(RISUTL_I_XRISMGR_USAGE));
+				return 1;
+			}
+			sprintf(env_buf,"DISPLAY=%s",argv[++i]);
+			putenv(env_buf);
+			display_ptr = getenv("DISPLAY");
+			FRM_DBG(("command line option -display %s\n", display_ptr));
+		}
+		else
+		{
+			fprintf(stderr,MSG(RISUTL_I_INVALID_OPTION), argv[0], argv[i]);
+			fprintf(stderr, MSG(RISUTL_I_XRISMGR_USAGE));
+			return 1;
+		}
+	}
+
+	if ((RISdisplay = XOpenDisplay(display_ptr)) == None)
+	{ 
+		char display_string[80];
+		sprintf(display_string, "DISPLAY=\"%s\"", display_ptr);
+		RISuco_file_error_box(stderr, RISUTL_I_FORMS_ERROR, 0,
+				RISUTL_E_OPEN_X_DISPLAY, display_string, 0, 1);
+		return -1;
+	}
+
+#if defined(__hpux__)
+	FI_select_X_fonts_first();
+#endif
+
+	FSEnter(RISdisplay, 0);
+	FI_enter(RISdisplay, 0, 0);
+
+#if defined(HELP)
+	FI_modify_env(FI_ACTIVATE_HELP,activate_help);
+#endif
+
+	FI_set_select_button(1);
+
+	if ((sts = RISfrm_initialize(&init_parms)) != RIS_SUCCESS)
+	{
+		local_forms_error_handler();
+		return sts;
+	}
+
+	if ((sts = RISfrm_display_schema_mgr_form()) != RIS_SUCCESS)
+	{
+		local_forms_error_handler();
+		return sts;
+	}
+
+	FI_process_forms();
+
+	RISterminate();
+
+#if defined(HELP)
+	if (help_initialized)
+		Help_kill();
+#endif
+
+	return RIS_SUCCESS;
+}
+
+/******************************************************************************/

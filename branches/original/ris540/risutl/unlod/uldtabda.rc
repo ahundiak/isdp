@@ -1,0 +1,423 @@
+/* Do not alter this SPC information: $Revision: 1.3.3.1 $ */
+/*
+**	NAME:							uldtabda.rc
+**	AUTHORS:						Jennifer Xia
+**	CREATION DATE:					July 9, 1990
+**	ABSTRACT:
+**		It contains a function which forms a row of data. It
+**		also contains another function which creates a data files.
+**	
+**	REVISION HISTORY:August 6th, 1991 Hitesh Patel
+**	 Ashley 7/9/96 - fix for 439402027 
+*/
+ 
+/*
+**	DEFINES
+*/
+
+/*
+**	INCLUDES
+*/
+#if defined(WIN32S) && defined(ULD_EXE)
+#include <windows.h>
+#include <windowsx.h>
+#include "winport.h"
+#include "winio.h"
+#include "winhan.h"
+#include "risutl.h"
+#include "prog32s.h"
+#endif 
+
+#ifdef MM
+#include "unlod.h"
+#endif
+
+exec sql include "unlod.h";
+#include "rispath.h"
+
+/*
+**	VARIABLES
+*/
+
+/*
+**	FUNCTIONS
+*/
+
+/*
+**      FUNCTION PROTOTYPES
+*/
+#define uldtabda_rc
+#include "sys.prt"
+#include "comdebug.prt"
+#include "comjmp.prt"
+#include "comwrap.prt"
+#include "comumsg.prt"
+#include "uldermsg.prt"
+#include "uldmisc.prt"
+#include "uldtabda.prt"
+#include "uldtime.prt"
+
+/*****************************************************************************/		
+extern int RISuld_unload_one_row(
+	char		out_fname,
+	FILE		*out_fp)
+{
+
+	short int	col_indx;
+	int			char_indx;
+	int			num_blanks;
+	datetime	*dt;
+	long		lnd_err_code = 0;
+
+	ULD_DBG(("RISuld_unload_one_row: out_fname <%d> out_fp 0x%x \n", out_fname, out_fp));
+
+	if( out_fname == 'm' )
+		lnd_err_code = RISUTL_E_CANT_WRITE_OUTPUT_FILE;
+	if( out_fname == 'd' )
+		lnd_err_code = RISUTL_E_CANT_WRITE_DATA_FILE;
+
+
+	for(col_indx = 0; col_indx < RISuld_out_desc.sqld; col_indx++)
+	{
+		/* This is for variable data format */
+		num_blanks = 2;
+		if (*RISuld_out_desc.sqlvar[col_indx].sqlind < 0)
+		{
+			switch(RISuld_out_desc.sqlvar[col_indx].sqltype)
+			{
+				case RIS_CHARACTER:
+					if (RISuld_ptr_struct_ptr->bthnode_ptr->format_select == FIXED)
+					{
+						num_blanks = RISuld_out_desc.sqlvar[col_indx].sqllen + 1;
+					}
+					break;
+				case RIS_DECIMAL:
+					if (RISuld_ptr_struct_ptr->bthnode_ptr->format_select == FIXED)
+					{
+						num_blanks = RISuld_out_desc.sqlvar[col_indx].sqllen;
+					}
+					break;
+				case RIS_INTEGER:
+					if (RISuld_ptr_struct_ptr->bthnode_ptr->format_select == FIXED)
+					{
+						num_blanks = INT_LEN + 1;
+					}
+					break;
+				case RIS_SMALLINT:
+					if (RISuld_ptr_struct_ptr->bthnode_ptr->format_select == FIXED)
+					{
+						num_blanks = SMALLINT_LEN + 1;
+					}
+					break;
+				case RIS_DOUBLE:
+					if (RISuld_ptr_struct_ptr->bthnode_ptr->format_select == FIXED)
+					{
+						num_blanks = DOUBLE_LEN + 1;
+					}
+					break;
+				case RIS_REAL:
+					if (RISuld_ptr_struct_ptr->bthnode_ptr->format_select == FIXED)
+					{
+						num_blanks = REAL_LEN + 1;
+					}
+					break;
+				case RIS_DATETIME:
+					if (RISuld_ptr_struct_ptr->bthnode_ptr->format_select == FIXED)
+					{
+						num_blanks = TIMESTAMP_LEN + 1;
+					}
+					break;
+				default:
+					RISuld_unload_err_handler(RISUTL_E_UNKNOWN_DATA_TYPE);
+					if( RISuld_mode == EMBED )
+					{
+						RISuld_ptr_struct_ptr->btnode_ptr->tnode_ptr->lnd_err_code = RISUTL_E_UNKNOWN_DATA_TYPE;
+					}
+					ULD_DBG(("1. RISuld_unload_one_row: end"));
+					return(0);
+			}
+
+			for(char_indx = 0; char_indx < num_blanks; char_indx++) 
+			{
+				if (PUTC(' ', out_fp) == EOF) 
+					WRITING_FILE_ERR(lnd_err_code)
+			}
+			continue;
+		} /* if NULL */
+
+		switch(RISuld_out_desc.sqlvar[col_indx].sqltype)
+		{
+			case RIS_CHARACTER:
+				RISuld_out_desc.sqlvar[col_indx].sqldata[RISuld_out_desc.sqlvar[col_indx].sqllen] = '\0';
+						
+				if (RISuld_ptr_struct_ptr->bthnode_ptr->format_select == FIXED)
+				{
+					if (FPRINTF(out_fp, "%s ", RISuld_out_desc.sqlvar[col_indx].sqldata) < 0)
+						WRITING_FILE_ERR(lnd_err_code)
+					num_blanks = RISuld_out_desc.sqlvar[col_indx].sqllen - strlen(RISuld_out_desc.sqlvar[col_indx].sqldata);
+					for(char_indx = 0; char_indx < num_blanks; char_indx++)
+					{
+						if (PUTC(' ', out_fp) == EOF)
+							WRITING_FILE_ERR(lnd_err_code)
+					}
+				}
+				else
+				{
+					if( RISuld_escape_delimiter(col_indx) == FAILURE )
+					{
+						return(0);
+					}
+					if (FPRINTF(out_fp, "'%s' ", RISuld_out_desc.sqlvar[col_indx].sqldata) < 0)
+						WRITING_FILE_ERR(lnd_err_code)
+				}
+				break;
+			case RIS_DECIMAL:
+				RISuld_out_desc.sqlvar[col_indx].sqldata[RISuld_out_desc.sqlvar[col_indx].sqllen - 1] = '\0';
+				if (FPRINTF(out_fp, "%s ", RISuld_out_desc.sqlvar[col_indx].sqldata) < 0)
+					WRITING_FILE_ERR(lnd_err_code)
+				
+				if (RISuld_ptr_struct_ptr->bthnode_ptr->format_select == FIXED)
+				{
+					num_blanks = RISuld_out_desc.sqlvar[col_indx].sqllen - 1 - strlen(RISuld_out_desc.sqlvar[col_indx].sqldata);
+					for(char_indx = 0; char_indx < num_blanks; char_indx++)
+					{
+						if (PUTC(' ', out_fp) == EOF)
+							WRITING_FILE_ERR(lnd_err_code)
+					}
+				}
+				break;
+			case RIS_INTEGER:
+				if (RISuld_ptr_struct_ptr->bthnode_ptr->format_select == FIXED)
+				{
+					if (FPRINTF(out_fp, "%-11d ", *(int *)RISuld_out_desc.sqlvar[col_indx].sqldata) < 0)
+						WRITING_FILE_ERR(lnd_err_code)
+				}
+				else
+				{
+					if (FPRINTF(out_fp, "%d ", *(int *)RISuld_out_desc.sqlvar[col_indx].sqldata) < 0)
+						WRITING_FILE_ERR(lnd_err_code)
+				}
+				break;
+			case RIS_SMALLINT:
+				if (RISuld_ptr_struct_ptr->bthnode_ptr->format_select == FIXED)
+				{
+					if (FPRINTF(out_fp, "%-6hd ", *(short *)RISuld_out_desc.sqlvar[col_indx].sqldata) < 0)
+						WRITING_FILE_ERR(lnd_err_code)
+				}
+				else
+				{
+					if (FPRINTF(out_fp, "%d ", *(short *)RISuld_out_desc.sqlvar[col_indx].sqldata) < 0)
+						WRITING_FILE_ERR(lnd_err_code)
+				}
+				break;
+			case RIS_DOUBLE:
+				if (RISuld_ptr_struct_ptr->bthnode_ptr->format_select == FIXED)
+				{
+					if (FPRINTF(out_fp, "%-23.15lg ", *(double *)RISuld_out_desc.sqlvar[col_indx].sqldata) < 0)
+					WRITING_FILE_ERR(lnd_err_code)
+				}
+				else
+				{
+					if (FPRINTF(out_fp, "%-.15lg ", *(double *)RISuld_out_desc.sqlvar[col_indx].sqldata) < 0)
+					WRITING_FILE_ERR(lnd_err_code)
+				}
+				break;
+			case RIS_REAL:
+				if (RISuld_ptr_struct_ptr->bthnode_ptr->format_select == FIXED)
+				{
+					if (FPRINTF(out_fp, "%-14.7g ", *(float *)RISuld_out_desc.sqlvar[col_indx].sqldata) < 0)
+						WRITING_FILE_ERR(lnd_err_code)
+				}
+				else
+				{
+					if (FPRINTF(out_fp, "%-.7g ", *(float *)RISuld_out_desc.sqlvar[col_indx].sqldata) < 0)
+						WRITING_FILE_ERR(lnd_err_code)
+				}
+				break;
+			case RIS_DATETIME:
+				dt = (datetime *)RISuld_out_desc.sqlvar[col_indx].sqldata;
+				/* DATETIME has only fixed format */
+				if (FPRINTF(out_fp, "%04d-", dt->year) < 0)
+					WRITING_FILE_ERR(lnd_err_code)
+				if (FPRINTF(out_fp, "%02d-", dt->month) < 0)
+					WRITING_FILE_ERR(lnd_err_code)
+				if (FPRINTF(out_fp, "%02d:", dt->day) < 0)
+					WRITING_FILE_ERR(lnd_err_code)
+				if (FPRINTF(out_fp, "%02d:", dt->hour) < 0)
+					WRITING_FILE_ERR(lnd_err_code)
+				if (FPRINTF(out_fp, "%02d:", dt->minute) < 0)
+					WRITING_FILE_ERR(lnd_err_code)
+				if (FPRINTF(out_fp, "%02d ", dt->second) < 0)
+					WRITING_FILE_ERR(lnd_err_code)
+				break;
+			default:
+				RISuld_unload_err_handler(RISUTL_E_UNKNOWN_DATA_TYPE);
+				if( RISuld_mode == EMBED )
+				{
+					RISuld_ptr_struct_ptr->btnode_ptr->tnode_ptr->lnd_err_code = RISUTL_E_UNKNOWN_DATA_TYPE;
+				}
+				ULD_DBG(("2. RISuld_unload_one_row: end"));
+				return(0);
+		}
+	}
+	if (PUTC('\n', out_fp) == EOF) 
+		WRITING_FILE_ERR(lnd_err_code)
+
+	ULD_DBG(("3. RISuld_unload_one_row: end"));
+	return(1);
+}
+
+/*****************************************************************************/		
+extern FILE	*RISuld_create_dfile(
+	char		*sch_name,
+	char		*tab_name,
+	char		**dfile_name_ptr)
+{
+	
+	static  int	num_dfile = 0;	/* extension to dfile */
+	int			dfile_name_len;
+	char		*dfile_name;
+	FILE		*data_fp;
+	FILE		*RIScom_fopen();
+	char		cwd_buf[RIS_MAX_PATH_SIZE + 2];
+
+	ULD_DBG(("RISuld_create_dfile: sch_name <%s> tab_name <%s> *dfile_name_ptr 0x%x \n",
+						sch_name, tab_name, *dfile_name_ptr));
+
+#if defined(unix)
+	if (getcwd(cwd_buf, RIS_MAX_PATH_SIZE + 2) == NULL)
+#endif	
+#if defined(WIN32) || defined(DOS)						
+	if (_getcwd(cwd_buf, RIS_MAX_PATH_SIZE + 2) == NULL)
+#endif
+	{
+		RISuld_unload_err_handler(RISUTL_E_CANT_GET_CWD);
+		if( RISuld_mode == EMBED )
+		{
+			RISuld_ptr_struct_ptr->btnode_ptr->tnode_ptr->lnd_err_code = RISUTL_E_CANT_GET_CWD;
+		}
+		TERMINATE_RISUNLOAD
+	}
+#if defined(WIN32) || defined(DOS)						
+	if (cwd_buf[strlen(cwd_buf)-1] == '\\')
+		cwd_buf[strlen(cwd_buf)-1] = '\0';/* if root, strip off last slash */
+#endif
+
+	num_dfile++;
+
+	/*		first 3 char of schema name
+		+	first 3 char of table name
+		+	10 char for unique integer value
+		+	4 char for .dmp
+		+	1 char for NULL
+	*/
+	dfile_name_len = 3+3+10+4+1; 
+	ULD_DBG(("dfile_name_len = %d\n", dfile_name_len));
+	dfile_name = (char *) calloc(dfile_name_len, sizeof(char));
+	CHK_MEM_ALLOC_ERR(dfile_name)
+
+	sprintf(dfile_name,"%.3s%.3s%d.dmp",sch_name,tab_name,num_dfile);
+	*dfile_name_ptr = dfile_name;
+
+	ULD_DBG(("Data file name = <%s>\n", dfile_name));
+
+	if( RISuld_mode == INTERACT ) /* data_fp has to be checked */
+	{
+		for(;;)
+		{
+			if( (data_fp = RISuld_interactive_open_file(dfile_name)) == NULL)
+			{
+				RISuld_print_msg(MSG(RISUTL_I_ENTER_TAB_FILE), 
+							tab_name);
+#if !defined(ULD_DLL)
+#if defined(WIN32S)
+				GETS(dfile_name);
+#else
+				RIScom_fgets(dfile_name,RIS_MAX_PATH_SIZE-1,stdin);
+ 		/* Ashley 7/9/96 - fix for 439402027 */
+        	/* this is may not be valid for international code */
+        	/* but rislod/unlod is not internationalized on unix */
+#if defined(unix)
+                 if ( feof(stdin)) /* was control-D hit */
+                      exit(0);
+#endif
+#endif
+#endif	
+				if (*dfile_name == DEFAULT)
+				{
+					ULD_DBG(("2. RISuld_create_dfile: end"));
+					return((FILE *) NULL);
+				}
+				RISuld_strip_newline(dfile_name);
+			}
+			else
+			{
+				break;
+			}
+		} /* for */
+	}
+	else
+	{
+		data_fp = RISuld_batch_open_file('d',dfile_name); 
+	}
+
+	if (FPRINTF(RISuld_out_fp, "***RIS*** %s%c%s ***RIS***\n", cwd_buf,
+		PATH_CHAR, dfile_name) < 0)
+	{
+		WRITING_FILE_ERR(RISUTL_E_CANT_WRITE_OUTPUT_FILE)
+	}
+	if (FPRINTF(data_fp, "***RIS*** Data in Table %s of Schema %s ***RIS***\n", tab_name, sch_name) < 0)
+	{
+		WRITING_FILE_ERR(RISUTL_E_CANT_WRITE_DATA_FILE)
+	}
+
+	ULD_DBG(("3. RISuld_create_dfile: end"));
+	return(data_fp);
+}
+
+/*****************************************************************************/		
+static int RISuld_escape_delimiter(
+	int col_indx)
+{
+	int			i,j;
+	char		delimiter = '\'';
+	char		tmp_sqldata[RIS_MAX_ROW_LENGTH];
+	sqlvar 		*sqlvar;
+
+	ULD_DBG(("RISuld_escape_delimiter(col_indx: %d)\n",col_indx));
+
+	sqlvar = &(RISuld_out_desc.sqlvar[col_indx]);
+
+	for( i = 0, j = 0; i < sqlvar->sqllen; i++, j++)
+	{
+		if( j >= RIS_MAX_ROW_LENGTH )
+		{
+			RISuld_unload_err_handler(RISUTL_E_OUT_OF_MEMORY);
+			if( RISuld_mode == EMBED )
+			{
+				RISuld_ptr_struct_ptr->btnode_ptr->tnode_ptr->lnd_err_code = RISUTL_E_OUT_OF_MEMORY;
+			}
+			ULD_DBG(("1. RISuld_escape_delimiter: failure"));
+			return(FAILURE);
+		}
+
+		if( sqlvar->sqldata[i] == delimiter )
+		{
+			tmp_sqldata[j++] = delimiter;
+			tmp_sqldata[j] = delimiter;
+		}
+		else
+		{
+			tmp_sqldata[j] = sqlvar->sqldata[i];
+		}
+	}
+	
+	tmp_sqldata[j] = '\0';
+	strncpy(sqlvar->sqldata,tmp_sqldata,strlen(tmp_sqldata));
+	ULD_DBG(("sqlvar->sqldata <%s>\n", sqlvar->sqldata));
+
+	ULD_DBG(("2. RISuld_escape_delimiter: success"));
+	return(SUCCESS);
+}
+
+/*****************************************************************************/		

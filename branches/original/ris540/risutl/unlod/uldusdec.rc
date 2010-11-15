@@ -1,0 +1,223 @@
+/* Do not alter this SPC information: $Revision: 1.4.3.1 $ */
+/*
+**	NAME:							uldusdec.rc
+**	AUTHORS:						Jennifer Xia
+**	CREATION DATE:					July 9, 1990
+**	ABSTRACT:
+**		It contains two functions which determine whether to
+**		unload a schema, table, view or privilege definition.
+**	
+**	REVISION HISTORY:August 6 1991 Hitesh Patel
+** 	 Ashley 7/9/96 - fix for 439402027 
+*/
+ 
+/*
+**	DEFINES
+*/
+
+/*
+**	INCLUDES
+*/
+#if defined(WIN32S) && defined(ULD_EXE)
+#include <windows.h>
+#include <windowsx.h>
+#include "winport.h"
+#include "winio.h"
+#include "winhan.h"
+#include "risutl.h"
+#include "prog32s.h"
+#endif 
+
+#include <ctype.h>
+#ifdef MM
+#include "unlod.h"
+#endif
+exec sql include "unlod.h";
+
+/*
+**	VARIABLES
+*/
+
+/*
+**	FUNCTIONS
+*/
+
+/*
+**      FUNCTION PROTOTYPES
+*/
+#define uldusdec_rc
+#include "comdebug.prt"
+#include "comwrap.prt"
+#include "comjmp.prt"
+#include "comumsg.prt"
+#include "uldermsg.prt"
+#include "uldtime.prt"
+#include "uldusdec.prt"
+#include "uldwhere.prt"
+
+#if defined(unix)
+#include "sys.prt"
+#endif
+
+extern char *RISuld_interactive_get_where()
+{
+	char *where_clause_ptr;
+	char tmp_buffer[SQL_MAX_STMT_LEN];
+
+	RISuld_print_msg(MSG(RISUTL_E_ENTER_WHERE_CLAUSE));
+#if !defined(ULD_DLL)
+#if defined(WIN32S)
+	GETS(tmp_buffer);
+#else
+	RIScom_fgets(tmp_buffer,SQL_MAX_STMT_LEN,stdin);
+ 	/* Ashley 7/9/96 - fix for 439402027 */
+        /* this is may not be valid for international code */
+        /* but rislod/unlod is not internationalized on unix */
+#if defined(unix)
+                 if ( feof(stdin)) /* was control-D hit */
+                      exit(0);
+#endif
+#endif
+#endif
+
+	if( tmp_buffer[0] == '\0' || tmp_buffer[0] == '\n' )
+	{
+		return ((char *) NULL);
+	}
+	where_clause_ptr = RISuld_analyze_where_clause(tmp_buffer);
+	return where_clause_ptr;
+}
+
+extern int RISuld_get_user_deci(
+	int 	item_type,
+	char	*sch_name,
+	char	*rel_name,
+	char	**where_clause_ptr)
+{
+	int		ans;
+#if !defined(ULD_DLL)
+	char	buffer[80];
+#endif
+	ULD_DBG(("RISuld_get_user_deci: item_type %d sch_name <%s> rel_name <%s>\n",
+					item_type, sch_name?sch_name:"NULL", rel_name?rel_name:"NULL"));
+
+	for(;;)
+	{
+		switch(item_type)
+		{
+			case TABLE:
+				RISuld_print_msg(MSG(RISUTL_E_UNLOAD_TABLE_Q),
+						rel_name);
+				break;
+			case INDEX:
+				RISuld_print_msg(MSG(RISUTL_E_UNLOAD_INDEX_Q), 
+						rel_name);
+				break;
+			case VIEW:
+				RISuld_print_msg(MSG(RISUTL_E_UNLOAD_VIEW_Q), 
+						rel_name);
+				break;
+			case GRANT:
+				if (sch_name)
+					RISuld_print_msg(MSG(RISUTL_E_UNLOAD_PRIV_Q1), 
+						sch_name, rel_name);
+				else
+					RISuld_print_msg(MSG(RISUTL_E_UNLOAD_PRIV_Q2), 
+						rel_name);
+				break;
+			default:
+				/*
+				** INTERNAL ERROR
+				*/
+				TERMINATE_RISUNLOAD
+		}
+#if !defined(ULD_DLL)
+#if defined(WIN32S)
+		GETS(buffer);
+#else
+		RIScom_fgets(buffer,80,stdin);
+ 	/* Ashley 7/9/96 - fix for 439402027 */
+        /* this is may not be valid for international code */
+        /* but rislod/unlod is not internationalized on unix */
+#if defined(unix)
+                 if ( feof(stdin)) /* was control-D hit */
+                      exit(0);
+#endif
+#endif
+		ans = buffer[0];
+
+		if (isupper(ans))
+		{
+			ans = _tolower(ans);
+		}
+
+		if( (ans == DEFAULT) || (ans == 'y') )
+		{
+			ans = YES;
+			if( item_type == TABLE )
+			{
+				if( RISuld_ptr_struct_ptr->bsnode_ptr->bthlink->def_data_select == BOTH )
+				{
+					*where_clause_ptr = RISuld_interactive_get_where();
+				}
+				else
+				{
+					*where_clause_ptr = (char *) NULL;
+				}
+			}
+			break;
+		}
+		
+		if (ans == 'n')
+		{
+			ans = NO;
+		}
+
+		if ((ans == YES) || (ans == NO)) 
+		{
+			break;
+		}
+		else
+		{
+			RISuld_print_msg(MSG(RISUTL_I_VALID_YES_OR_NO));
+		}
+#endif
+	}
+
+	ULD_DBG(("1. RISuld_get_user_deci: end"));
+	return(ans);
+}
+
+
+
+extern int RISuld_whether_to_nld(
+	int		item_type,
+	char	*sch_name,
+	char	*rel_name,
+	char	**where_clause_ptr,
+	int		select)
+{
+
+	int retn;	
+
+	ULD_DBG(("RISuld_whether_to_nld: item_type %d sch_name <%s> rel_name <%s> select <%c>\n",
+						item_type, sch_name?sch_name:"NULL", rel_name?rel_name:"NULL", select));
+
+	if ((select == ALL) || (select == ENTERED))
+	{
+		ULD_DBG(("1. RISuld_whether_to_nld: end"));
+		return(YES);
+	}
+	else if (select == PROMPTED)
+	{
+		ULD_DBG(("2. RISuld_whether_to_nld: end"));
+
+		retn = RISuld_get_user_deci(item_type, sch_name, rel_name, where_clause_ptr);
+		return retn;
+	}
+	else
+	{
+		ULD_DBG(("3. RISuld_whether_to_nld: end"));
+		return(NO);
+	}
+}

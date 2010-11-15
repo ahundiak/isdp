@@ -1,0 +1,502 @@
+/* Do not alter this SPC information: $Revision: 1.2.13.1 $ */
+/*
+**	NAME:				lodprvls.rc							
+**	AUTHORS:			Jennifer Xia			
+**	CREATION DATE:		June 26, 1990			
+**	ABSTRACT:			It contains the functions which process those privilege
+**						definitions stored in a temporary file.	
+**	
+**	REVISION HISTORY:	August 6th, 1991 Hitesh Patel
+*/
+ 
+/*
+**	DEFINES
+*/
+
+/*
+**	INCLUDES
+*/
+#if defined(WIN32S) && defined(ULD_EXE)
+#include <windows.h>
+#include <windowsx.h>
+#include "winport.h"
+#include "winio.h"
+#include "winhan.h"
+#include "risutl.h"
+#include "prog32s.h"
+#endif 
+
+#ifdef MM
+#include "lod.h"
+#endif
+
+exec sql include "lod.h";
+
+/*
+**	VARIABLES
+*/
+
+/*
+**	FUNCTIONS
+*/
+
+/*
+**	FUNCTION PROTOTYPES
+*/
+#define  lodprvls_rc
+#include "sys.prt"
+#include "comjmp.prt"
+#include "comdebug.prt"
+#include "comumsg.prt"
+#include "ris.prt"
+#include "lodermsg.prt"
+#include "lodgtstm.prt"
+#include "lodmisc.prt"
+#include "lodlogdp.prt"
+#include "lodprvls.prt"
+#include "lodtime.prt"
+#include "ucoerrbx.prt"
+
+
+
+extern grant_hnode_type	*RISlod_create_grant_hnode(
+	grant_hnode_type	*grant_header,
+	char				*sch_name,
+	char				*sch_pwd,
+	char				*new_sch_name,
+	char				*new_sch_pwd)
+{
+
+	grant_hnode_type	*ghnode_ptr;
+
+	LOD_DBG(("RISlod_create_grant_hnode: grant_header 0x%x sch_name <%s>\n",
+						grant_header, sch_name));
+
+	ghnode_ptr = (grant_hnode_type *) calloc(1, sizeof(grant_hnode_type));
+	CHK_MEM_ALLOC_ERR(ghnode_ptr)
+
+	strcpy(ghnode_ptr->sch_name, sch_name); 
+	strcpy(ghnode_ptr->sch_pwd, sch_pwd); 
+	strcpy(ghnode_ptr->new_sch_name, new_sch_name); 
+	strcpy(ghnode_ptr->new_sch_pwd, new_sch_pwd); 
+	ghnode_ptr->nlink = (grant_node_type *) NULL;
+
+	ghnode_ptr->hlink = grant_header;
+
+	LOD_DBG(("1. RISlod_create_grant_hnode: end"));
+	return(ghnode_ptr);
+}
+
+
+extern void RISlod_insert_to_grant_struct(
+	char				*rel_spec,
+	char				*grant_stmt,
+	grant_hnode_type	*ghnode_ptr,
+	FILE				*grant_tfp)
+{
+
+	grant_node_type	*pre_grant_node;
+	grant_node_type	*crnt_grant_node;
+	long			ftell();
+	
+	LOD_DBG(("RISlod_insert_to_grant_struct: rel_spec <%s> grant_stmt <%s> ghnode_ptr 0x%x grant_tfp 0x%x\n", 
+						rel_spec, grant_stmt, ghnode_ptr, grant_tfp));
+
+	pre_grant_node = ghnode_ptr->nlink;
+	crnt_grant_node = (grant_node_type *) calloc(1, sizeof(grant_node_type));
+	CHK_MEM_ALLOC_ERR(crnt_grant_node)
+	
+	strcpy(crnt_grant_node->rel_spec, rel_spec);
+	crnt_grant_node->offset = ftell(grant_tfp);
+	if (FPUTS(grant_stmt, grant_tfp) == EOF) WRITING_FILE_ERR(RISUTL_E_CANT_WRITE_TEMP_FILE)
+	if (FPUTC('\n', grant_tfp) == EOF) WRITING_FILE_ERR(RISUTL_E_CANT_WRITE_TEMP_FILE)
+
+	crnt_grant_node->processed = NO;
+	crnt_grant_node->mark = NO;
+	crnt_grant_node->no_of_privs = 0;	
+	crnt_grant_node->privsdonewith = 0;
+	crnt_grant_node->ris_err_code = 0;
+	crnt_grant_node->db_err_code = 0;	/* remove */
+	crnt_grant_node->nlink = pre_grant_node;
+	ghnode_ptr->nlink = crnt_grant_node;
+
+	LOD_DBG(("crnt_grant_node = %d\n", crnt_grant_node));	
+	LOD_DBG(("rel_spec = <%s>\n", crnt_grant_node->rel_spec));
+	LOD_DBG(("offset = <%ld>\n", crnt_grant_node->offset));
+	LOD_DBG(("processed = <%c>\n", crnt_grant_node->processed));
+	LOD_DBG(("mark = <%c>\n", crnt_grant_node->mark));
+	LOD_DBG(("ris_err_code = <%ld>\n", crnt_grant_node->ris_err_code));
+	LOD_DBG(("db_err_code = <%ld>\n", crnt_grant_node->db_err_code));
+	LOD_DBG(("grant_stmt = <%s>\n", grant_stmt));
+	LOD_DBG(("nlink = %d\n", crnt_grant_node->nlink));	
+	
+	LOD_DBG(("1. RISlod_insert_to_grant_struct: end")); 
+}
+
+
+extern void RISlod_proc_grant_struct(
+	grant_hnode_type 	*grant_header,
+	FILE				*grant_tfp)
+{
+	grant_hnode_type	*ghnode_ptr;
+	grant_node_type		*gnode_ptr;
+	short int			grant_loaded;
+	char				sch_name_pwd[RIS_MAX_ID_SIZE+1+RIS_MAX_ID_SIZE];
+
+	exec sql begin declare section;
+		char	*err_ptr;
+	exec sql end declare section;
+
+	LOD_DBG(("RISlod_proc_grant_struct(grant_header:0x%x grant_tfp:0x%x)\n",
+						grant_header, grant_tfp));
+
+	for(;;)	
+	{
+		grant_loaded = FALSE;
+	
+		for(ghnode_ptr = grant_header; 
+				ghnode_ptr; 
+					ghnode_ptr = ghnode_ptr->hlink)
+		{
+			/* for all schemas */
+			if (!ghnode_ptr->nlink)
+			{
+				continue;
+			}
+ 
+			RISlod_err_fnd_in_sch = FALSE;
+
+			if( ghnode_ptr->sch_pwd[0] == '\0' )
+			{
+				sprintf(RISlod_default_sch_stmt,"default schema %s\n",
+					ghnode_ptr->sch_name);
+			}
+			else
+			{
+				sprintf(RISlod_default_sch_stmt,"default schema %s.\n",
+					ghnode_ptr->sch_name);
+			}
+
+			if( ghnode_ptr->new_sch_name[0] == '\0' )
+			{
+				strcpy(sch_name_pwd, ghnode_ptr->sch_name);
+				if (ghnode_ptr->sch_pwd[0] != '\0')
+				{
+					strcat(sch_name_pwd, ".");
+					strcat(sch_name_pwd, ghnode_ptr->sch_pwd);
+				}
+			}
+			else /* rename */
+			{
+				strcpy(sch_name_pwd, ghnode_ptr->new_sch_name);
+				if (ghnode_ptr->new_sch_pwd[0] != '\0')
+				{
+					strcat(sch_name_pwd, ".");
+					strcat(sch_name_pwd, ghnode_ptr->new_sch_pwd);
+				}
+			}
+
+			if (default_sch(sch_name_pwd) == FAILURE)
+			{
+				if( RISlod_mode == EMBED ) 
+				{
+					/* error to all grant stmt for this schema */
+					for(gnode_ptr = ghnode_ptr->nlink;
+							gnode_ptr != NULL;
+								gnode_ptr = gnode_ptr->nlink)	
+					{
+						gnode_ptr->ris_err_code = risca->sqlcode;
+						gnode_ptr->db_err_code = dbca->sqlcode;
+					}
+				}
+				else
+				{
+					exec sql report error into :err_ptr;
+#if !defined(ULD_DLL)
+					PUTS(err_ptr);
+#endif
+				}
+				break; /* break the loop; goto next schema */
+			}
+
+			/*
+			** This will display warnings (once only)
+			*/
+			LOD_WARNING_CHECK(ghnode_ptr->nlink->sqlwarnings);
+			if( risca->sqlwarn[0] == 'W' )
+			{
+				/* warnings be copied to all grant stmt for this schema */
+				for(gnode_ptr = ghnode_ptr->nlink;
+						gnode_ptr != NULL;
+							gnode_ptr = gnode_ptr->nlink)	
+				{
+					strncpy(gnode_ptr->sqlwarnings,risca->sqlwarn,8);
+				}
+			}
+
+			for(gnode_ptr = ghnode_ptr->nlink;
+					gnode_ptr != NULL;
+						gnode_ptr = gnode_ptr->nlink)	/* for each schema */
+			{
+				if( gnode_ptr->processed == NO )
+				{
+					fseek(grant_tfp, gnode_ptr->offset, 0);
+					RISlod_grant_from_tfile(grant_tfp);
+					LOD_DBG(("RISlod_sql_stmt = <%s>\n", RISlod_sql_stmt));
+
+					exec sql execute immediate :RISlod_sql_stmt;
+
+					LOD_WARNING_CHECK(gnode_ptr->sqlwarnings);
+					if (SQLCODE < 0)
+					{
+						/* do nothing */
+						continue;
+					}
+					else
+					{	
+						gnode_ptr->processed = YES;
+						grant_loaded = TRUE;
+					}
+				}	/* NO */
+			}
+		} /* second for */
+
+		if (!grant_loaded)
+		{
+			break;
+		}
+	} /* first for */
+
+	if (!grant_loaded)
+	{
+		/* for all schemas */
+		for(ghnode_ptr = grant_header; 
+					ghnode_ptr; 
+							ghnode_ptr = ghnode_ptr->hlink)
+		{
+			RISlod_global_err_ind = FALSE;
+
+			/* for all schemas */
+			if (!ghnode_ptr->nlink)
+			{
+				continue;
+			}
+
+			if( ghnode_ptr->sch_pwd[0] == '\0' )
+			{
+				sprintf(RISlod_default_sch_stmt,"default schema %s\n",
+					ghnode_ptr->sch_name);
+			}
+			else
+			{
+				sprintf(RISlod_default_sch_stmt,"default schema %s.\n",
+					ghnode_ptr->sch_name);
+			}
+
+			if( ghnode_ptr->new_sch_name[0] == '\0' )
+			{
+				strcpy(sch_name_pwd, ghnode_ptr->sch_name);
+				if (ghnode_ptr->sch_pwd[0] != '\0')
+				{
+					strcat(sch_name_pwd, ".");
+					strcat(sch_name_pwd, ghnode_ptr->sch_pwd);
+				}
+			}
+			else /* rename */
+			{
+				strcpy(sch_name_pwd, ghnode_ptr->new_sch_name);
+				if (ghnode_ptr->new_sch_pwd[0] != '\0')
+				{
+					strcat(sch_name_pwd, ".");
+					strcat(sch_name_pwd, ghnode_ptr->new_sch_pwd);
+				}
+			}
+
+			if (default_sch(sch_name_pwd) == FAILURE)
+			{
+				if( RISlod_mode == EMBED )
+				{
+					/* err to all grant stmt for this schema */
+					for(gnode_ptr = ghnode_ptr->nlink;
+							gnode_ptr != NULL;
+								gnode_ptr = gnode_ptr->nlink)	
+					{
+						gnode_ptr->ris_err_code = risca->sqlcode;
+						gnode_ptr->db_err_code = dbca->sqlcode;
+					}
+				}
+				break; /* break the loop; goto next schema */
+			}	
+
+			/*
+			** This will display warnings (once only)
+			*/
+			LOD_WARNING_CHECK(ghnode_ptr->nlink->sqlwarnings);
+			if( risca->sqlwarn[0] == 'W' )
+			{
+				/* warnings be copied to all grant stmt for this schema */
+				for(gnode_ptr = ghnode_ptr->nlink;
+						gnode_ptr != NULL;
+							gnode_ptr = gnode_ptr->nlink)	
+				{
+					strncpy(gnode_ptr->sqlwarnings,risca->sqlwarn,8);
+				}
+			}
+
+			for(gnode_ptr = ghnode_ptr->nlink;
+						gnode_ptr != NULL;
+							gnode_ptr = gnode_ptr->nlink)
+			{
+				if( gnode_ptr->processed == NO )
+				{
+					fseek(grant_tfp, gnode_ptr->offset, 0);
+					RISlod_grant_from_tfile(grant_tfp);
+					LOD_DBG(("RISlod_sql_stmt = <%s>\n", RISlod_sql_stmt));
+	
+					exec sql execute immediate :RISlod_sql_stmt;
+
+					LOD_WARNING_CHECK(gnode_ptr->sqlwarnings);
+					if (SQLCODE < 0)
+					{
+						if( RISlod_mode != EMBED )
+						{
+							exec sql report error into :err_ptr;
+#if !defined(ULD_DLL)
+							PUTS(err_ptr);
+#endif
+						}
+		
+						RISlod_dump_to_bad_with_err(RISlod_sql_stmt);
+						gnode_ptr->ris_err_code	= risca->sqlcode;	
+					}
+					else
+					{
+						gnode_ptr->processed = YES;
+					}
+				} /* NO */
+			} /* second for */
+			RISlod_dump_end_of_sch_to_log();
+		} /* first for */
+	} /* if */
+	
+	LOD_DBG(("1. RISlod_proc_grant_struct: end"));
+}
+
+
+extern void RISlod_delete_from_grant_struct(
+	grant_hnode_type	*ghnode_ptr,
+	grant_node_type		*gnode_ptr,
+	grant_node_type		*pre_gnode_ptr)
+{
+
+	LOD_DBG(("RISlod_delete_from_grant_struct: ghnode_ptr 0x%x gnode_ptr 0x%x pre_gnode_ptr 0x%x\n",
+						ghnode_ptr, gnode_ptr, pre_gnode_ptr));
+
+	if (pre_gnode_ptr == NULL)
+		ghnode_ptr->nlink = gnode_ptr->nlink;
+	else
+		pre_gnode_ptr->nlink = gnode_ptr->nlink;
+
+	free(gnode_ptr);
+
+	LOD_DBG(("1. RISlod_delete_from_grant_struct"));
+}
+
+
+extern void RISlod_free_grant_struct(
+	grant_hnode_type	*grant_header)
+{
+	grant_hnode_type 	*ghnode_ptr;
+	grant_node_type		*gnode_ptr;
+	grant_hnode_type 	*post_ghnode_ptr;
+	grant_node_type		*post_gnode_ptr;
+
+	LOD_DBG(("RISlod_free_grant_struct: grant_header 0x%x\n", grant_header));
+	for(ghnode_ptr = grant_header;
+			ghnode_ptr != NULL;
+				ghnode_ptr = post_ghnode_ptr)
+	{
+		post_ghnode_ptr = ghnode_ptr->hlink;
+		for(gnode_ptr = ghnode_ptr->nlink;
+				gnode_ptr != NULL;
+					gnode_ptr = post_gnode_ptr)
+		{
+			post_gnode_ptr = gnode_ptr->nlink;
+			free(gnode_ptr);
+		}
+		free(ghnode_ptr);
+	}
+	LOD_DBG(("1. RISlod_free_grant_struct"));
+}
+
+
+/*
+** For debugging
+*/
+extern void RISlod_print_grant_struct(
+	int (*output_func)(const char *, ...),
+	grant_hnode_type	*grant_header)
+{
+	grant_hnode_type 	*ghnode_ptr;
+	grant_node_type		*gnode_ptr;
+
+	LOD_DBG(("RISlod_print_grant_struct: grant_header 0x%x\n", grant_header));
+	for(ghnode_ptr = grant_header;
+			ghnode_ptr != NULL;
+				ghnode_ptr = ghnode_ptr->hlink)
+	{
+		output_func("Schema: %s\n",ghnode_ptr->sch_name);
+		for(gnode_ptr = ghnode_ptr->nlink;
+				gnode_ptr != NULL;
+					gnode_ptr = gnode_ptr->nlink)
+		{
+			output_func("\tRel_spec: %s\n",gnode_ptr->rel_spec);
+			output_func("\tprocessed: %c\n",gnode_ptr->processed);
+			output_func("\tris_err_code: %ld\n",gnode_ptr->ris_err_code);
+		}
+	}
+	LOD_DBG(("1. RISlod_print_grant_struct"));
+}
+
+/*	
+** This default schema routine is used for loading grant statements
+*/
+static int default_sch(
+	char		*sch_name_pwd)
+{
+
+	char		sch_name[RIS_MAX_ID_SIZE];
+	char		sch_pwd[RIS_MAX_ID_SIZE];
+
+	exec sql begin declare section;
+		char 	default_sch_stmt[STRING_MAX_LEN];
+	exec sql end declare section;
+
+	sch_name[0] = '\0';
+	sch_pwd[0] = '\0';
+
+	LOD_DBG(("BEGIN default_sch(sch_name_pwd)\n")); /*don't display the damn password in a debug file!!!*/
+
+	exec sql whenever sqlerror goto :DS_error;
+
+	strcpy(default_sch_stmt, "default schema ");
+	strcpy(default_sch_stmt + 15, sch_name_pwd);
+
+	exec sql execute immediate :default_sch_stmt;
+
+	/*
+	** warning DONE by the caller 
+	*/
+	LOD_DBG(("2. default_sch: end\n"));
+	return(SUCCESS);
+
+DS_error:
+	exec sql whenever sqlerror continue;
+	/* 
+	** this routine is also called while loading a grant statement
+	** and therefore error is written where this routine was called 
+	*/
+	LOD_DBG(("3. default_sch: end\n"));
+	return(FAILURE);
+}
+		

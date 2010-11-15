@@ -1,0 +1,192 @@
+/* Do not alter this SPC information: $Revision: 1.1.53.1 $ */
+/*
+**	NAME:							uldviedf.rc
+**	AUTHORS:						Jennifer Xia
+**	CREATION DATE:					July 9, 1990
+**	ABSTRACT:
+**		It contains a function which unloads a view definition.
+**	
+**	REVISION HISTORY:August 6th, 1991 Hitesh Patel
+*/
+ 
+/*
+**	DEFINES
+*/
+
+/*
+**	INCLUDES
+*/
+#if defined(WIN32S) && defined(ULD_EXE)
+#include <windows.h>
+#include <windowsx.h>
+#include "winport.h"
+#include "winio.h"
+#include "winhan.h"
+#include "risutl.h"
+#include "prog32s.h"
+#endif 
+
+#ifdef MM
+#include "unlod.h"
+#endif
+
+exec sql include "unlod.h";
+
+/*
+**	VARIABLES
+*/
+
+/*
+**	FUNCTIONS
+*/
+
+/*
+**      FUNCTION PROTOTYPES
+*/
+#define uldviedf_rc
+#include "sys.prt"
+#include "comdebug.prt"
+#include "comjmp.prt"
+#include "comumsg.prt"
+#include "ris.prt"
+#include "uldermsg.prt"
+#include "uldmisc.prt"
+#include "uldtime.prt"
+#include "uldviedf.prt"
+#include "ucoerrbx.prt"
+
+
+extern int RISuld_unload_view_def(
+	char			*sch_name,
+	view_node_type	*view_node_ptr)
+{
+	int count;
+	exec sql begin declare section;
+		int			exist;
+		char		*aux_view_name;
+		char		view_substr[RIS_MAX_VIEWSTRING_SIZE]; 
+		int			seq_id;
+		char		*err_ptr;
+	exec sql end declare section;
+
+	exec sql whenever sqlerror goto :UVD_error;
+
+	ULD_DBG(("RISuld_unload_view_def: sch_name <%s> view_node_ptr 0x%x \n",
+						sch_name, view_node_ptr));
+
+	aux_view_name = view_node_ptr->view_name;
+
+	exec sql select count(*) into :exist 
+			 from ris5views
+			 where view_name   = :aux_view_name;
+
+	UNLOD_WARNING_CHECK(view_node_ptr->sqlwarnings);
+
+	if( !exist )
+	{
+		RISuld_unload_err_handler(RISUTL_E_VIEW_DOESNOT_EXISTS);
+		if( RISuld_mode == EMBED )
+			view_node_ptr->lnd_err_code = RISUTL_E_VIEW_DOESNOT_EXISTS;
+		return(FAILURE);
+	}
+
+	exec sql declare view_str_cursor cursor for
+		select 		ris_view_def, sequence_id
+		from 		ris5views
+		where 		(view_name = :aux_view_name) and
+					(ris_view_def is not null)
+		order by	sequence_id;
+
+	UNLOD_WARNING_CHECK(view_node_ptr->sqlwarnings);
+
+	exec sql open view_str_cursor;
+
+	UNLOD_WARNING_CHECK(view_node_ptr->sqlwarnings);
+
+	count = 0;
+	for (;;)
+	{
+		RISuld_assign_nulls(view_substr, RIS_MAX_VIEWSTRING_SIZE);
+
+		exec sql fetch view_str_cursor into :view_substr, :seq_id;
+
+		UNLOD_WARNING_CHECK(view_node_ptr->sqlwarnings);
+
+		if (SQLCODE == END_OF_DATA)
+		{
+			exec sql close view_str_cursor;
+
+			UNLOD_WARNING_CHECK(view_node_ptr->sqlwarnings);
+
+			exec sql clear cursor view_str_cursor;
+
+			UNLOD_WARNING_CHECK(view_node_ptr->sqlwarnings);
+
+			if( count )
+			{
+				if (FPUTS("\n", RISuld_out_fp) == EOF) 
+					WRITING_FILE_ERR(RISUTL_E_CANT_WRITE_OUTPUT_FILE)
+
+				view_node_ptr->unloaded = TRUE;
+
+				RISuld_print_msg(MSG(RISUTL_E_UNLOADED_VIEW), 
+								 view_node_ptr->view_name);
+
+				ULD_DBG(("2. RISuld_unload_view_def: end"));
+				return(SUCCESS);
+			}
+			else /* Did not unload the table */
+			{
+				RISuld_print_msg(MSG(RISUTL_E_UNLOADED_NO_VIEW), 
+								 view_node_ptr->view_name);
+
+				ULD_DBG(("2. RISuld_unload_view_def: end"));
+				return(FAILURE);
+			}
+
+		}
+		else
+		{
+			count++;
+			RISuld_fix_spaces(view_substr);
+			if (FPUTS(view_substr, RISuld_out_fp) == EOF)
+				WRITING_FILE_ERR(RISUTL_E_CANT_WRITE_OUTPUT_FILE)
+		}
+	}
+
+UVD_error:
+	exec sql whenever  sqlerror continue;
+	if( RISuld_mode == EMBED )
+	{
+		view_node_ptr->ris_err_code = risca->sqlcode;
+		view_node_ptr->db_err_code  = dbca->sqlcode;
+	}
+	else
+	{
+		exec sql report error into :err_ptr;
+#if !defined(ULD_DLL)
+		PUTS(err_ptr);
+#endif
+	}
+
+	ULD_DBG(("3. RISuld_unload_view_def: end"));
+	return(FAILURE);
+}
+
+/*****************************************************************************/
+
+static void RISuld_fix_spaces(
+    char    *view_substr)
+{
+    int i;
+
+    ULD_DBG(("RISuld_fix_spaces(view_substr <%s>)\n",view_substr));
+
+    for(i = strlen(view_substr); i < RIS_MAX_VIEWSTRING_SIZE-1; i++)
+        view_substr[i] = ' ';
+    view_substr[i] = '\0';
+
+    ULD_DBG(("RISuld_fix_spaces: end\n"));
+}
+
+/*****************************************************************************/

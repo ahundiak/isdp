@@ -1,0 +1,265 @@
+/* Do not alter this SPC information: $Revision: 1.2.9.1 $ */
+/*
+**	NAME:				lodstfld.rc								
+**	AUTHORS:			Jennifer Xia			
+**	CREATION DATE:		June 26, 1990			
+**	ABSTRACT:			It contains functions which store field information of
+**						columns into structure field_defs.	
+**	
+**	REVISION HISTORY:	August 6th, 1991 Hitesh Patel
+*/
+ 
+/*
+**	DEFINES
+*/
+
+/*
+**	INCLUDES
+*/
+#include <ctype.h>
+#ifdef MM
+#include "lod.h"
+#endif
+
+exec sql include "lod.h";
+
+/*
+**	VARIABLES
+*/
+
+/*
+**	FUNCTIONS
+*/
+
+/*
+**      FUNCTION PROTOTYPES
+*/
+#define lodstfld_rc
+#include "sys.prt"
+#include "comdebug.prt"
+#include "comstcmi.prt"
+#include "lodlogdp.prt"
+#include "lodermsg.prt"
+#include "lodstfld.prt"
+#include "comisfn.prt"
+
+
+/*
+**	Setting the "field_defs" struct with column names and its types
+*/
+extern void RISlod_set_col_info(
+	field_type	*field_defs)
+{
+
+	char  	*col_list_ptr;
+	int    	col_indx;
+	int		col_name_indx;
+
+	LOD_DBG(("RISlod_set_col_info: field_defs 0x%x\n", field_defs));
+
+	col_list_ptr = strchr(RISlod_sql_stmt, '(') + 1;
+
+	for(col_indx = 0; col_indx < RISlod_in_desc.sqld; col_indx++)
+	{
+		for(;;)
+		{
+			if (RIScom_isspace(*col_list_ptr) || (*col_list_ptr == ','))
+				col_list_ptr++;
+			else
+				break;
+		}
+
+		for (col_name_indx = 0; 
+					(col_name_indx < (RIS_MAX_ID_SIZE - 1)) &&
+					(! RIScom_isspace(*(col_list_ptr + col_name_indx))) &&
+					(*(col_list_ptr + col_name_indx) != ',') &&
+					(*(col_list_ptr + col_name_indx) != ')');
+							col_name_indx++)
+		{
+			field_defs[col_indx].col_name[col_name_indx] = *(col_list_ptr + col_name_indx);
+		}
+		field_defs[col_indx].col_name[col_name_indx] = '\0';
+		col_list_ptr += strlen(field_defs[col_indx].col_name);
+		
+		field_defs[col_indx].col_type = RISlod_in_desc.sqlvar[col_indx].sqltype;
+
+		field_defs[col_indx].start = -1;
+		field_defs[col_indx].format = FIXED; 
+	}
+
+	LOD_DBG(("1. RISlod_set_col_info: end"));
+} 
+
+
+/*
+**	Setting "field_defs" struct with start, end and format fields.
+*/
+extern int RISlod_set_field_def(
+	field_type	*field_defs,
+	field_type	field,
+	int			num_expect,
+	int			*max_end_posi_ptr)
+{
+
+	int	col_indxi;
+	int	col_indxj;
+	int	overlap;
+
+	LOD_DBG(("RISlod_set_field_def: field_defs 0x%x &field 0x%x num_expect %d *max_end_posi_ptr %d\n",
+						field_defs, &field, num_expect, *max_end_posi_ptr));
+
+    LOD_DBG(("field.col_name %s\n", field.col_name));
+    LOD_DBG(("field.start=%d field.end=%d\n", field.start, field.end));
+
+	for (col_indxi = 0; col_indxi < num_expect; col_indxi++)
+	{
+        LOD_DBG(("field_defs[%d].col_name %s\n",
+                col_indxi, field_defs[col_indxi].col_name));
+        LOD_DBG(("field_defs[%d].start=%d field_defs[%d].end=%d\n",
+                col_indxi, field_defs[col_indxi].start, col_indxi, field_defs[col_indxi].end));
+
+		if (RIScom_strcmp_ic(field_defs[col_indxi].col_name, field.col_name) == 0)
+		{
+			if (field.format == VARIABLE )
+			{
+				LOD_DBG(("VARIABLE format\n"));
+				field_defs[col_indxi].format = field.format;
+
+				/*
+				**	start and end fields does not make sense here
+				*/
+				field_defs[col_indxi].start = field.start;
+				field_defs[col_indxi].end = field.end;
+
+				if (*max_end_posi_ptr < field.end)
+					*max_end_posi_ptr = field.end;
+	
+			}
+			else
+			{
+				LOD_DBG(("FIXED format\n"));
+				if (field.start < 1)
+				{
+					RISlod_dump_partial_tab(TRUE, TRUE, FALSE);
+					RISlod_load_err_handler(RISUTL_E_START_FIELD_NEGATIVE,RISlod_sql_stmt);
+					if( RISlod_mode == EMBED )
+						RISlod_ptr_struct_ptr->btnode_ptr->lnd_err_code = RISUTL_E_START_FIELD_NEGATIVE;
+					RISlod_dump_tab_info(RISlod_sql_stmt);
+					LOD_DBG(("1. RISlod_set_field_def: end"));
+					return(FAILURE);
+				}
+	
+				if (field.start > (RIS_MAX_STMT_LEN - 2))
+				{
+					RISlod_dump_partial_tab(TRUE, TRUE, FALSE);
+					RISlod_load_err_handler(RISUTL_E_START_FIELD_GREATER_MAX,RISlod_sql_stmt);
+					if( RISlod_mode == EMBED )
+						RISlod_ptr_struct_ptr->btnode_ptr->lnd_err_code = RISUTL_E_START_FIELD_GREATER_MAX;
+					RISlod_dump_tab_info(RISlod_sql_stmt);
+					LOD_DBG(("2. RISlod_set_field_def: end"));
+					return(FAILURE);
+				}
+	
+				if (field.end < 1)
+				{
+					RISlod_dump_partial_tab(TRUE, TRUE, FALSE);
+					RISlod_load_err_handler(RISUTL_E_END_FIELD_NEGATIVE,RISlod_sql_stmt);
+					if( RISlod_mode == EMBED )
+						RISlod_ptr_struct_ptr->btnode_ptr->lnd_err_code = RISUTL_E_END_FIELD_NEGATIVE;
+					RISlod_dump_tab_info(RISlod_sql_stmt);
+					LOD_DBG(("3. RISlod_set_field_def: end"));
+					return(FAILURE);
+				}
+	
+				if (field.end > (RIS_MAX_STMT_LEN - 2))
+				{
+						RISlod_dump_partial_tab(TRUE, TRUE, FALSE);
+					RISlod_load_err_handler(RISUTL_E_END_FIELD_GREATER_MAX,RISlod_sql_stmt);
+					if( RISlod_mode == EMBED )
+						RISlod_ptr_struct_ptr->btnode_ptr->lnd_err_code = RISUTL_E_END_FIELD_GREATER_MAX;
+					RISlod_dump_tab_info(RISlod_sql_stmt);
+					LOD_DBG(("4. RISlod_set_field_def: end"));
+					return(FAILURE);
+				}
+	
+				if (field.end < field.start)
+				{
+					RISlod_dump_partial_tab(TRUE, TRUE, FALSE);
+					RISlod_load_err_handler(RISUTL_E_START_GREATER_THAN_END,RISlod_sql_stmt);
+					if( RISlod_mode == EMBED )
+						RISlod_ptr_struct_ptr->btnode_ptr->lnd_err_code = RISUTL_E_START_GREATER_THAN_END;
+					RISlod_dump_tab_info(RISlod_sql_stmt);
+					LOD_DBG(("5. RISlod_set_field_def: end"));
+					return(FAILURE);
+				}
+	
+				if (field_defs[col_indxi].start > 0)
+				{
+					RISlod_dump_partial_tab(TRUE, TRUE, FALSE);
+					RISlod_load_err_handler(RISUTL_E_COL_SPECIFIED_REPEATEDLY,RISlod_sql_stmt);
+					if( RISlod_mode == EMBED )
+						RISlod_ptr_struct_ptr->btnode_ptr->lnd_err_code = RISUTL_E_COL_SPECIFIED_REPEATEDLY;
+					RISlod_dump_tab_info(RISlod_sql_stmt);
+					LOD_DBG(("6. RISlod_set_field_def: end"));
+					return(FAILURE);
+				}
+	
+				overlap = FALSE;
+				for (col_indxj = 0; col_indxj < num_expect; col_indxj++)
+				{
+					if (field_defs[col_indxj].start == -1)
+						continue;
+					else if ((field_defs[col_indxj].start == field.start) ||
+						 	((field_defs[col_indxj].start < field.start) && (field.start <= field_defs[col_indxj].end)) ||
+						 	((field.start < field_defs[col_indxj].start) && (field_defs[col_indxj].start <= field.end)))
+					{
+						if (! overlap)
+						{
+							RISlod_dump_partial_tab(TRUE, TRUE, FALSE);
+							RISlod_load_err_handler(RISUTL_E_OVERLAPPING_COLUMNS,RISlod_sql_stmt);
+							if( RISlod_mode == EMBED )
+								RISlod_ptr_struct_ptr->btnode_ptr->lnd_err_code = RISUTL_E_OVERLAPPING_COLUMNS;
+							RISlod_dump_tab_info(RISlod_sql_stmt);
+							overlap = TRUE;
+						}
+					}
+				}
+	
+				if (overlap)
+				{
+					LOD_DBG(("7. RISlod_set_field_def: end"));
+					return(FAILURE);
+				}
+	
+				if ((field_defs[col_indxi].col_type == RIS_CHARACTER) &&
+					((field.end - field.start + 1) < 1))
+				{
+					RISlod_dump_partial_tab( TRUE, TRUE, FALSE);
+					RISlod_load_err_handler(RISUTL_E_FIELD_WIDTH_LESS_THAN_1,RISlod_sql_stmt);
+					if( RISlod_mode == EMBED )
+					{
+						RISlod_ptr_struct_ptr->btnode_ptr->lnd_err_code = RISUTL_E_FIELD_WIDTH_LESS_THAN_1;
+					}	
+					RISlod_dump_tab_info(RISlod_sql_stmt);
+					LOD_DBG(("8. RISlod_set_field_def: end"));
+					return(FAILURE);
+				}
+					
+				/*
+				**	Assigning
+				*/
+				field_defs[col_indxi].start = field.start;
+				field_defs[col_indxi].end = field.end;
+	
+				if (*max_end_posi_ptr < field.end)
+					*max_end_posi_ptr = field.end;
+	
+			}
+			LOD_DBG(("9. RISlod_set_field_def: end"));
+			return(SUCCESS);
+		}
+	}
+
+	LOD_DBG(("10. RISlod_set_field_def: end"));
+	return(FAILURE);
+}

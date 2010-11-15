@@ -1,0 +1,156 @@
+/* Do not alter this SPC information: $Revision: 1.1.53.1 $ */
+/*
+**	NAME:							utlclear.c
+**	AUTHORS:						J.Shivakumar
+**	CREATION DATE:					5/87
+**	ABSTRACT:
+**		Clear a query statement.
+**	
+**	REVISION HISTORY:
+*/
+ 
+/*
+**	INCLUDES
+*/
+#include "risasync.h"
+#include "util.h"
+
+/*
+**	FUNCTION PROTOTYPES
+*/
+#define utlclear_rc
+#include "comdebug.prt"
+#include "comexmod.prt"
+#include "comjmp.prt"
+#include "ris.prt"
+#include "utlclear.prt"
+#include "utlid.prt"
+#include "utlmisc.prt"
+#include "utlerror.prt"
+#include "utlprint.prt"
+
+/*
+**	DEFINES
+*/
+
+/*
+**	VARIABLES
+*/
+
+/*
+**	FUNCTIONS
+*/
+
+/******************************************************************************/
+
+extern void RISutl_clear(
+	unsigned char execute_mode)
+{
+	UTL_DBG(("RISutl_clear(execute_mode:%s)\n",
+		RIScom_get_execute_mode_name(execute_mode)));
+
+	RISutl_printf("\nClear Command\n");
+
+	if (!execute_mode)
+	{
+		for (RISutl_stmt_id = 0;
+			 RISutl_stmt_id < RISutl_parameters.max_user_stmts;
+			 RISutl_stmt_id++)
+		{
+			if (RISutl_stmts[RISutl_stmt_id].stmt_id != -1)
+			{
+				clear_stmt(RISutl_stmt_id,SYNC_MODE);
+			}
+		}
+	}
+	else
+	{
+		if (RISutl_get_stmt_id())
+		{
+			return;
+		}
+		clear_stmt(RISutl_stmt_id,execute_mode);
+	}
+
+	UTL_DBG(("RISutl_clear:returning\n"));
+}
+
+/******************************************************************************/
+
+static void clear_stmt(
+	short stmt_id,
+	unsigned char execute_mode)
+{
+	UTL_DBG(("clear_stmt(stmt_id:%d execute_mode:%s)\n", stmt_id,
+		RIScom_get_execute_mode_name(execute_mode)));
+
+	RISutl_clear_sqlda(&RISutl_stmts[stmt_id].input);
+	RISutl_clear_sqlda(&RISutl_stmts[stmt_id].output);
+	if (execute_mode == ASYNC_START_MODE)
+	{
+		RISint_clear(&RISutl_stmts[stmt_id].stmt_id, &RISutl_async_id,
+			execute_mode);
+	}
+	else
+	{
+		RISint_clear(&RISutl_stmts[stmt_id].stmt_id, 0, execute_mode);
+	}
+	UTL_WARNING_CHECK();
+	UTL_ERROR_CHECK();
+
+	if (execute_mode == ASYNC_START_MODE)
+	{
+		RISutl_printf("\nThe async id for this statement is %d\n",RISutl_async_id);
+	}
+
+	UTL_DBG(("clear_stmt:returning\n"));
+}
+
+/******************************************************************************/
+
+extern void RISutl_clear_all_util_stmts(
+	void)
+{
+	short id;
+
+	UTL_DBG(("RISutl_clear_all_util_stmts()\n"));
+
+	for (id = 0; id < RISutl_parameters.max_user_stmts; id++)
+	{
+		if (RISutl_stmts[id].stmt_id != -1)
+		{
+			RISutl_clear_sqlda(&RISutl_stmts[id].input);
+			RISutl_clear_sqlda(&RISutl_stmts[id].output);
+			RISutl_stmts[id].stmt_id = -1;
+		}
+	}
+
+	UTL_DBG(("RISutl_clear_all_util_stmts:returning\n"));
+}
+
+/******************************************************************************/
+
+extern void RISutl_clear_async(
+	void)
+{
+	exec sql begin declare section;
+		extern int RISutl_async_id;
+	exec sql end declare section;
+
+	UTL_DBG(("RISutl_clear_async()\n"));
+
+	RISutl_printf("\nClear Asynchronous Command \n");
+
+	if (RISutl_get_async_id())
+	{
+		return;
+	}
+
+	exec sql clear async :RISutl_async_id;
+	UTL_WARNING_CHECK();
+	UTL_ERROR_CHECK();
+
+	UTL_DBG(("RISutl_clear_async:returning\n"));
+}
+
+/******************************************************************************/

@@ -1,0 +1,526 @@
+;;***************************************************************************
+;; RIS Development Platform Installation - Intergraph Corporation
+;;***************************************************************************
+
+;;***************************************************************************
+DefineVariables
+;;***************************************************************************
+;;  Feb. 94, Modified for version RIS 5.x  - Sanju
+;;	09/21/93	Sanju	0.0.0.8	
+Text [ScriptVersion] := 1.0.0.0
+Text [CompanyName] := Intergraph Corporation
+Text [ProductName]
+Text [ProductNumber]
+Text [UserName]
+Text [OrgName]
+Text [SerNo]
+Logical [RegDataOK] := NoCharacter
+Directory [ProductDirectory]
+Directory [ReadmeFileName]
+Directory [ReadmeInstructions]
+Text [ProductVersion] := !version!
+Directory [DefaultInstallationDirectory] := c:\RIS
+Logical [OfferInstallationDirectoryChoice] := YesCharacter
+Number [MinimumFilesSetting] := 0
+Number [MinimumBuffersSetting] := 0
+;;Directory [ProgramToRun] := BlankString
+Logical [AddInstallDirectoryToPath] := NoCharacter
+Text [MinimumOSVersion] := 3.0
+Number [MinimumSystemMemoryRequiredPresent] := 0
+Logical [AllowCGA] := YesCharacter
+Logical [AllowMDA] := YesCharacter
+Logical [Allow808x] := NoCharacter
+Logical [Allow80286] := NoCharacter
+Text [NetWorkInstallation] := AllowNetwork
+Text [SpecialPopupColors] := WhiteOnBrown
+Logical [NeedToTerminate] := NoCharacter
+Logical [Installed] := NoCharacter
+Text [DisplayAdapterSummary]
+Text [CPUTypeSummary]
+Text [NetworkActive]
+Text [MathCoprocessorStatus]
+Text [InstallationDriveSummary]
+Text [OSVersionSummary]
+Text [SystemMemorySummary]
+Logical [InsufficientSystem] := NoCharacter
+Text [BottomLine]
+Directory [ResponseFIle]
+EndDefineVariables
+
+;; Set up RIS Values
+[ProductName] := RIS Development Platform
+[ProductNumber] := SNFO39700
+[ProductDirectory] := RISDP
+
+[ReadmeFileName] := [InstallationDirectory]\[ProductDirectory]\README.TXT
+[ReadmeInstructions] := [BootDrive]:\[ProductDirectory].TXT
+
+Do SetupInstalit
+Do PrepareSystemReport
+
+;; Find out if to run in auto mode
+If [CommandLine1] Contains /f:
+	[ResponseFile] := SubStringOf [CommandLine1] from 4 to End
+	TextBox @xy(Center,4)
+		Processing file [ResponseFile], please wait ...
+	EndTextBox
+	Do AutoInstallation
+	SetExitMessageto "Update the autoexec.bat file before using [ProductName]"
+	SoLong
+Endif
+
+:ShowSplashScreen
+ClearScreen
+;; Do Splash screen
+
+TextBox @xy(Center,4)
+	Welcome to the Intergraph Setup for the [ProductName] product.
+	This setup will install the RIS Development Platform (RISDP), either by a
+	Minimum Installation, Complete Installation, or by Customized Installation.
+EndTextBox
+GetMenuChoice @xy(Center,12) UseHeader "[ProductName] - Version [ProductVersion]"
+  Continue 
+    ;Continues with the installation
+  Exit Installation
+    ;Exits the installation and returns to the DOS prompt
+  Help
+    ;Displays the readme.txt file
+EndGetMenuChoice
+
+InCase choice is
+	=2:	Do ExitInstallation
+	=3:	Do ShowReadmeFile
+			Goto ShowSplashScreen
+EndInCase
+
+  ClearScreen
+SetBottomLineTo "<F1> Help <F2> Exit to DOS <F3> System Summary <F4> Readme File <F9> to Quit"
+
+;; get previous directory setting
+[Dir1] := EnvironmentStringFor [ProductDirectory]
+if [Dir1] <> BlankString
+	[Number1] := PositionOf [ProductDirectory] in [Dir1]
+	[Number1] := [Number1] -2
+	[DefaultInstallationDirectory] := SubStringOf [Dir1] from beginning to [Number1]
+Endif
+
+If Windows  ;; INSTALIT for Windows does not currently support ScriptView
+Popup This script was not designed for INSTALIT for Windows.
+else  ;; by default ScriptView is off
+	LetButton <F1> Do ShowHelpInfo
+	LetButton <F2> Do VisitOS
+	LetButton <F3> Do ShowSystemSummary
+	LetButton <F4> Do ShowReadmeFile
+	LetButton <F9> Do ExitInstallation
+	LetButton <CtrlX> Do ExitInstallation
+EndIf
+
+;;***************************************************************************
+;;Again
+;;***************************************************************************
+;; Branding -------- Sanju
+;;  Dialog @xy(Center,4) UseHeader "[ProductName]" PressAKey WhiteOnBlue
+;;
+;;   [ProductName]
+;;  Version [ProductVersion]
+;;
+;; EndDialog
+
+  While [RegDataOK] = NoCharacter
+    Dialog Multiple @xy(Center, Center) WhiteOnBlue
+ Please key in your registration data in the fields below.  You may also
+ specify the name of your company if this product will be used for business
+ purposes.  This data will be used later during the installation of this
+ product.  Key in <Ctrl-Enter> when you have completed all fields.
+
+ User Name:
+ Company:
+ Serial No:
+
+ InputVariable [UserName] 60 @xy(13,6) YellowOnBlue
+ InputVariable [OrgName] 60 @xy(13,7) YellowOnBlue
+ InputVariable [SerNo] 15 @xy(13,8) YellowOnBlue
+
+    EndDialog
+
+ If IngrVerifySerial [SerNo] 
+      Dialog [RegDataOK] WhiteOnBlue
+ You have entered the following information.  If it is correct, key in 'YesCharacter'
+ to continue the installation of this product.  If you would like to make
+ changes, key in 'NoCharacter' to return to the previous form.
+
+  User Name: [UserName]
+  Company:   [OrgName]
+  Serial No: [SerNo]
+
+      EndDialog
+ Else
+	Popup The serial number you have entered is not valid.
+ Endif
+ EndWhile
+
+:Again
+ClearScreen
+
+TextBox @xy(Center,4)
+  Select the installation option you prefer.
+EndTextBox
+[Number6] := SizeOfGroup 14 ;; deliv stuff
+[Number5] := SizeOfGroup 1 ;; minimum
+[Number3] := SizeOfGroup 3 ;; runtime stuff
+[Number4] := SizeOfGroup 4 ;; utilities stuff
+[Number1] := ([Number5]+[Number3]+[Number4]) / 1024
+[Number5] := SizeOfGroup 2 ;; complete
+[Number2] := ([Number5]+[Number3]+[Number4]+[Number6]) / 1024
+GetMenuChoice @xy(Center,10) UseHeader "Installation Options"
+  Minimum Installation
+    ;Installs only the basic RIS Development Platform.
+    ;This option requires approximately [Number1]K of disk space.
+  Complete Installation
+    ;Installs all RIS Development Platform.
+    ;This option requires approximately [Number2]K of disk space.
+  Customized Installation
+    ;Lets you select which components to install.
+  Exit
+	;Exit the installation and return to the DOS prompt.
+EndGetMenuChoice
+
+ClearScreen
+
+InCase choice is
+	=1:	QueFileGroup 1
+	=2:	QueAllFiles
+	=3:	Do CustomizedInstallation
+	=4:	Do ExitInstallation
+EndInCase
+
+ClearScreen
+
+If QueSize = 0
+	Goto Again
+EndIf
+
+If [InsufficientSystem] = YesCharacter
+	Dialog [YesOrNo1] WhiteOnRed ;; Insufficient system notice
+		Analysis of your system has determined that it is
+		not compatible with [ProductName].  For a complete
+		summary, press <F3>.
+
+		Do you wish to continue anyway?
+	EndDialog
+	If [YesOrNo1] = NoCharacter
+		GoTo Again
+	EndIf
+EndIf
+
+If [Installed] = NoCharacter
+	If [OfferInstallationDirectoryChoice] = YesCharacter
+		DetermineInstallationDirectory [DefaultInstallationDirectory] QueSize RequireFixed
+	else
+		EndIf
+EndIf
+
+SetBottomLineTo     BlankString
+Logging On
+SetLogFileTo [InstallationDirectory]\risdp.log
+
+ClearScreen
+GetQuedFiles ShowJustOne
+
+SetBottomLineTo "<F1> Help <F2> Exit to DOS <F3> System Summary <F4> Readme File <F9> to Quit"
+
+[Installed] := YesCharacter
+If QueSize <> 0  ;; Some files were selected but not installed if <> 0
+	[Installed] := NoCharacter
+	UnqueAllFiles  ;; Remove uninstalled files from que
+	Dialog ;; Message when unable to get all necessary files
+		Unable to successfully complete this option.
+	EndDialog
+EndIf
+:Continue
+Do ExitInstallation
+
+;;***************************************************************************
+Procedure ShowHelpInfo
+;;***************************************************************************
+	Dialog PressAKey [SpecialPopupColors]  ;; How to reach technical support
+		For assistance, call [CompanyName] Support.
+		You are installing [ProductName] product.
+
+		You can get a summary of your computer system
+		by pressing <F3>.  This information will be
+		important should you call Support.
+	EndDialog
+EndProcedure
+
+;;***************************************************************************
+Procedure ShowSystemSummary  ;; System summary - change with care.
+;;***************************************************************************
+	If [InstallationDirectory] <> BlankString
+		[InstallationDriveSummary] := InstallationDrive (FreeSpaceOnDrive InstallationDrive bytes free)
+	else
+		[InstallationDriveSummary] := (Not Selected)
+	EndIf
+	Dialog PressAKey [SpecialPopupColors]
+		.cHERE IS A SUMMARY OF YOUR SYSTEM
+		.c[String8]  ;; notes whether any incompatibilities were found
+		Product Name: [ProductName]
+		Product Version: [ProductVersion]
+		Installation Script Version: [ScriptVersion]
+
+		Operating System Version:  [OSVersionSummary]
+		CPU Type:  [CPUTypeSummary]
+		Display Adapter:  [DisplayAdapterSummary]
+		Math Coprocessor:  [MathCoprocessorStatus]
+		Main Memory Present:  [SystemMemorySummary]
+		Extended Memory Present:  ExtendedMemoryPresentK
+		XMS Memory Available:  XMSMemoryAvailableK
+		Installation Drive:  [InstallationDriveSummary]
+		Network:  [NetworkActive]
+		[String9]  ;; information about network suitability
+	EndDialog
+EndProcedure
+
+;;***************************************************************************
+Procedure PrepareSystemReport
+;;***************************************************************************
+	[InsufficientSystem] := NoCharacter
+	If OSVersion < [MinimumOSVersion]
+		[OSVersionSummary] := OSVersion (need at least [MinimumOSVersion])
+		[InsufficientSystem] := YesCharacter
+	else
+		[OSVersionSummary] := OSVersion
+	EndIf
+	If MainMemory < [MinimumSystemMemoryRequiredPresent]
+		[SystemMemorySummary] := MainMemoryK (need at least [MinimumSystemMemoryRequiredPresent]K)
+		[InsufficientSystem] := YesCharacter
+	else
+		[SystemMemorySummary] := MainMemoryK
+	EndIf
+	If 808X
+		If [Allow808X] = YesCharacter
+			[CPUTypeSummary] := 808x
+		else
+			[CPUTypeSummary] := 808x (not compatible with [ProductName])
+			[InsufficientSystem] := YesCharacter
+		EndIf
+	EndIf
+	If 80286
+		[CPUTypeSummary] := 80286
+	EndIf
+	If 80386
+		[CPUTypeSummary] := 80386
+	EndIf
+	If 80486
+		[CPUTypeSummary] := 80486
+	EndIf
+	If [CPUTypeSummary] = BlankString
+		[CPUTypeSummary] := 808x
+	EndIf
+	If MicroChannel
+		[CPUTypeSummary] := [CPUTypeSummary] (in MicroChannel Architecture)
+	else
+		[CPUTypeSummary] := [CPUTypeSummary] (ISA or EISA Architecture)
+	EndIf
+	If CGA
+		If [AllowCGA] = YesCharacter
+			[DisplayAdapterSummary] := CGA
+		else
+			[DisplayAdapterSummary] := CGA (not compatible with [ProductName])
+			[InsufficientSystem] := YesCharacter
+		EndIf
+	EndIf
+	If MDA
+		If [AllowMDA] = YesCharacter
+			[DisplayAdapterSummary] := MDA
+		else
+			[DisplayAdapterSummary] := MDA (not compatible with [ProductName])
+			[InsufficientSystem] := YesCharacter
+		EndIf
+	EndIf
+	If EGA
+		[DisplayAdapterSummary] := EGA
+	EndIf
+	If VGA
+		[DisplayAdapterSummary] := VGA
+	EndIf
+	If HGC
+		[DisplayAdapterSummary] := HGC
+	EndIf
+	If HGCPlus
+		[DisplayAdapterSummary] := HGC Plus
+	EndIf
+	If Network
+		[NetworkActive] := Network Active
+	else
+		[NetworkActive] := No Network Active
+	EndIf
+	If NovellLoaded
+		[NetworkActive] := Novell [NetworkActive]
+	EndIf
+	If MathCoprocessorPresent
+		[MathCoprocessorStatus] := Present
+	else
+			[MathCoprocessorStatus] := Not Present
+	EndIf
+
+	If [InsufficientSystem] = YesCharacter
+		[String8] := (Please note the listed incompatibilities)
+	EndIf
+	If [NetworkInstallation] contains DisallowNetwork
+		[String9] := "   (You cannot install this version on a network drive)"
+	EndIf
+EndProcedure
+
+Procedure VisitOS
+	SetAllowExit Off
+	Dialog [YesOrNo1] [SpecialPopupColors]  ;; Notice before exiting to OS
+		Do you wish to exit to the operating system and
+		then return?
+	EndDialog
+	If [YesOrNo1] = YesCharacter
+		ExitToDOS
+	EndIf
+
+	SetAllowExit On
+EndProcedure
+
+;;***************************************************************************
+Procedure ExitInstallation
+;;***************************************************************************
+
+	ClearScreen
+
+	;; Ask to read the product readme.txt file
+	If [Installed] = YesCharacter
+		Do ShowReadmeFile
+	EndIf
+	If [Installed] = YesCharacter
+		Dialog ;; Final Farewell
+			Installation for [ProductName] is complete!
+		EndDialog
+		If FileExists [InstallationDirectory]\[ProductDirectory]\bin\RISCPP.EXE
+			IngrStampRegInfo [InstallationDirectory]\[ProductDirectory]\bin\RISCPP.EXE
+		Endif
+		SetExitMessageto "Update the autoexec.bat file before using [ProductName]"
+	Endif
+
+;;  IngrLogInstallResult PASS
+
+	SoLong
+EndProcedure
+
+;;***************************************************************************
+Procedure SetupInstalit
+;;***************************************************************************
+  SetShadows On
+  SetBackgroundCharTo B0
+  SetMainBorderTo     None
+  SetPopupBorderTo    Single
+  SetModifyModeTo     Example
+  SetShadowAttrTo     DarkGrayOnBlack
+  SetScreenAttrTo     WhiteOnBlue
+  SetPopupAttrTo      BlueOnWhite
+  SetAttentionAttrTo  WhiteOnRed
+  SetTopLineAttrTo    BlackOnCyan
+  SetBottomLineAttrTo WhiteOnLightGray
+
+  SetTopLineTo        "  [CompanyName]'s [ProductName] Version [ProductVersion]  "
+
+EndProcedure
+
+;;***************************************************************************
+Procedure ShowReadmeFile
+;;***************************************************************************
+;; Ask to read the product readme.txt file
+If [Installed] = YesCharacter
+	[ReadmeFileName] := [InstallationDirectory]\[ProductDirectory]\readme.txt
+else
+	[ReadmeFileName] := [InstallFromDirectory]\readme.txt
+Endif
+SetAllowExit Off
+If [Installed] = YesCharacter
+	Dialog [YesOrNo1]
+		Do you want to read the [ProductName] readme file now?
+	EndDialog
+else
+	[YesOrNo1] := YesCharacter
+Endif
+	If [YesOrNo1] = YesCharacter
+		If FileExists [ReadmeFileName]
+			BrowseFile [ReadmeFileName]
+		else
+			Popup Sorry, readme file [ReadMeFileName] is missing.
+		EndIf
+	EndIf
+SetAllowExit On
+EndProcedure
+
+
+Procedure CustomizedInstallation
+	TextBox @xy(Center,4)
+		Which installation options do you want?
+		Use <SPACEBAR> to toggle a option, F10 to toggle ALL options
+		Use <RETURN> for next menu, <ESC> for previous menu
+	EndTextBox
+	[Number6] := SizeOfGroup 3
+	[Number7] := SizeOfGroup 4
+	[Number5] := SizeOfGroup 1
+	[Number1] := ([Number5]+[Number6]+[Number7]) / 1024
+	[Number5] := SizeOfGroup 12
+	[Number3] := [Number5] / 1024
+	[Number5] := SizeOfGroup 13
+	[Number4] := [Number5] / 1024
+	[Number5] := SizeOfGroup 14
+	[Number6] := [Number5] / 1024
+	SetAllowEscape On
+	GetMenuChoice @xy(Center,10) UseHeader "Customized Installation" PreSelectAll AllowIfNone
+		Minimum Installation Files
+			;Minimum Installation Files: requires [Number1]K of disk space
+		Loader/Unloader Development Files
+			;Loader/Unloader Development Files: requires [Number3]K of disk space
+		Samples Files 
+			;Samples Files: requires [Number4]K of disk space
+		RIS Run-Time Packaging Files
+			;RIS Run-Time Packaging Files: requires [Number6]K of disk space
+	EndGetMenuChoice
+	InCase choice is
+		=1:	QueFileGroup 1
+		=2:	QueFileGroup 12
+		=3:	QueFileGroup 13
+		=4:	QueFileGroup 14
+	EndInCase
+	SetAllowEscape Off
+	If Escaped
+		UnQueAllFiles
+		Goto Again
+	Endif
+EndProcedure
+
+Procedure AutoInstallation
+	[Number2] := 999
+	ExamineTextFile [ResponseFile]
+		[DefaultInstallationDirectory] := SettingFor DestPath
+		[String1] := SettingFor InstallType
+	ForgetTextFile
+	If [String1] = Minimum
+		[Number2] := 1
+		QueFileGroup 1
+	Endif
+	If [String1] = Complete
+		[Number2] := 2
+		QueAllFiles
+	Endif
+	if [Number2] = 999
+		Popup "Invalid InstallType
+		SoLong
+	Endif
+
+	[InstallationDirectory] := [DefaultInstallationDirectory]
+	ClearScreen
+	Logging On
+	SetLogFileTo [InstallationDirectory]\risdp.log
+
+	GetQuedFiles ShowJustOne
+	[Installed] := YesCharacter
+EndProcedure

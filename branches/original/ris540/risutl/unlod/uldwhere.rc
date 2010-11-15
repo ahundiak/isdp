@@ -1,0 +1,211 @@
+/* Do not alter this SPC information: $Revision: 1.2.26.1 $ */
+/*
+**	NAME:							uldwhere.rc
+**	AUTHORS:						Hitesh R. Patel
+**	CREATION DATE:					May 2, 1991
+**	ABSTRACT:
+**		It includes a subroutine which gets the where clause 
+**		(enclosed within double quotes (").
+**	
+**	REVISION HISTORY:
+*/
+ 
+/*
+**	DEFINES
+*/
+
+/*
+**	INCLUDES
+*/
+#ifdef MM
+#include "unlod.h"
+#endif
+exec sql include "unlod.h";
+
+/*
+**	VARIABLES
+*/
+
+/*
+**	FUNCTIONS
+*/
+
+/*
+**      FUNCTION PROTOTYPES
+*/
+#define uldwhere_rc
+#include "sys.prt"
+#include "comdebug.prt"
+#include "comstrcp.prt"
+#include "comjmp.prt"
+#include "comsusti.prt"
+#include "comumsg.prt"
+#include "uldermsg.prt"
+#include "uldgtspc.prt"
+#include "uldtime.prt"
+#include "uldwhere.prt"
+
+/*****************************************************************************/
+
+extern char *RISuld_get_where_clause(
+	int		argc,
+	char	*argv[],
+	FILE	*spec_fp,
+	char	*token_buf,
+	int		spec_type4)
+{
+	char	tmp_buffer[RIS_MAX_STMT_LEN];
+	int		spec_type5;
+	unsigned int		i;
+	char	*retn_where;
+
+	ULD_DBG(("RISuld_get_where_clause: argc %d argv 0x%x spec_fp 0x%x token_buf 0x%x spec_type4 <%d>\n",argc,argv,spec_fp,token_buf,spec_type4));
+
+	tmp_buffer[0] = '\0'; /* imp */
+
+	if( spec_type4 == JOIN )
+		goto join_part;
+	if( spec_type4 == WHERE )
+		goto where_part;
+
+join_part:
+	strcat(tmp_buffer,"join ");
+	for(;;)
+	{
+		spec_type5 = RISuld_fetch_analyze_spec(argc,argv,spec_fp,token_buf);
+		switch(spec_type5)
+		{
+			case RELATION_NAME:
+				strcat(tmp_buffer,token_buf);			
+				strcat(tmp_buffer," ");
+				break;
+			case WHERE:
+				strcat(tmp_buffer,"where ");			
+				goto where_part;
+			default:
+				RISuld_unload_err_handler(RISUTL_E_SYNTAX_ERROR_WHERE_CLAUSE);
+				if( RISuld_mode == EMBED )
+				{
+					RISuld_ptr_struct_ptr->btnode_ptr->tnode_ptr->lnd_err_code = RISUTL_E_SYNTAX_ERROR_WHERE_CLAUSE;
+				}
+				TERMINATE_RISUNLOAD
+		}
+	}
+
+where_part:
+	spec_type5 = RISuld_fetch_analyze_spec(argc,argv,spec_fp,token_buf);
+	if(spec_fp == NULL)			/* not spec_fp */
+	{
+		strcat(tmp_buffer,token_buf);
+	}
+	else
+	{
+		if( token_buf[0] == '"' )
+		{
+			for( i = 1; i <= strlen(token_buf); i++ )
+				token_buf[i-1] = token_buf[i];
+			strcat(tmp_buffer,token_buf);
+		}
+	}
+
+	retn_where = (char *) RISuld_analyze_where_clause(tmp_buffer);
+	ULD_DBG(("1. RISuld_get_where_clause END!\n"));
+	return(retn_where);
+}
+
+/*****************************************************************************/
+
+extern char *RISuld_analyze_where_clause(
+	char *tmp_buffer)
+{
+	int  i;
+	char *where_clause_ptr;
+	char  keyword[RIS_MAX_ID_SIZE];
+	char  where_buffer[RIS_MAX_STMT_LEN];
+	char *where_tok_ptr, *indx_ptr;
+	short int where_indx;
+
+	ULD_DBG(("RISuld_analyze_where_clause(tmp_buffer:<%s>\n",tmp_buffer));
+	/* fix TR:439500431 - kmreddy */
+	memset(where_buffer,'\0',sizeof(where_buffer));
+
+	/*
+	** Skip blank spaces
+	*/
+	while( *tmp_buffer == ' ' )
+	{
+		tmp_buffer++;
+	}
+
+	/*
+	** Uppercase or lowercase 'join' thru Embedded stuff
+	*/
+	i = 0;
+	while( tmp_buffer[i] != ' ' && i < RIS_MAX_STMT_LEN )
+	{
+		i++;
+	}
+	tmp_buffer[i] = '\0';
+	RIScom_lower_strcpy(keyword,tmp_buffer);
+	tmp_buffer[i] = ' ';
+
+	ULD_DBG(("keyword:<%s>\n",keyword));
+	if( strncmp(keyword,"join",4) == 0 )
+	{
+		/* Yes, additional tables */
+		indx_ptr = tmp_buffer+4;
+
+		if( (where_tok_ptr = RIScom_substr_ic(tmp_buffer,"where")) == NULL )
+		{
+			RISuld_unload_err_handler(RISUTL_E_SYNTAX_ERROR_WHERE_CLAUSE);
+			if( RISuld_mode == EMBED )
+			{
+					RISuld_ptr_struct_ptr->btnode_ptr->tnode_ptr->lnd_err_code = RISUTL_E_SYNTAX_ERROR_WHERE_CLAUSE;
+			}
+			TERMINATE_RISUNLOAD
+		}
+
+		where_indx = 0;
+		for( ;indx_ptr <= where_tok_ptr; ) 
+		{
+			while( *indx_ptr == ' ')
+			{
+				indx_ptr++;
+			}
+			if( indx_ptr >= where_tok_ptr )
+			{
+				where_buffer[where_indx++] = ' ';
+				where_buffer[where_indx++] = '\0';
+				strcat(where_buffer,where_tok_ptr);
+				break;
+			}
+			where_buffer[where_indx++] = ',';
+			where_buffer[where_indx++] = ' ';
+			while( *indx_ptr != ' ')
+			{
+				where_buffer[where_indx++] = *indx_ptr;
+				indx_ptr++;
+			}
+		}
+	}
+	else if( strncmp(keyword,"where",5) == 0 )
+	{
+		/* no additional tables and with 'where' token */
+		strcat(where_buffer,tmp_buffer);
+	}
+	else
+	{
+		/* no additional tables and no 'where' token */
+		strcpy(where_buffer," where ");
+		strcat(where_buffer,tmp_buffer);
+	}
+
+	where_clause_ptr = (char *) calloc(strlen(where_buffer)+1, sizeof(char));
+	strcpy(where_clause_ptr,where_buffer);
+	ULD_DBG(("RISuld_analyze_where_clause: where_clause=%s \n",where_clause_ptr));
+
+	ULD_DBG(("RISuld_analyze_where_clause: End"));
+	return where_clause_ptr;
+}
+
+/*****************************************************************************/

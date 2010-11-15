@@ -1,0 +1,441 @@
+/* Do not alter this SPC information: $Revision: 1.2.3.1 $ */
+/*
+**	NAME:							loddesch.rc
+**	AUTHORS:						Terrence D. McIntyre
+**	CREATION DATE:					1/94
+**	ABSTRACT:
+**	
+**	REVISION HISTORY:
+**	Ashley 7/9/96 - fix for 439402027
+*/
+ 
+/*
+**	INCLUDES
+*/
+#if defined(WIN32S) && defined(ULD_EXE)
+#include <windows.h>
+#include <windowsx.h>
+#include "winport.h"
+#include "winio.h"
+#include "winhan.h"
+#endif
+#include <ctype.h>
+#include "ucommon.h"
+#include "utl_inf.h"
+#include "ris_err.h"
+#include "rislimit.h"
+#include "risutl.h"
+#if defined(WIN32S)
+#include "prog32s.h"
+#endif 
+
+#ifdef MM
+#include "lod.h"
+#endif
+
+exec sql include "lod.h";
+
+/*
+**	DEFINES
+*/
+
+/*
+**	TYPES
+*/
+
+/*
+**	FUNCTION PROTOTYPES
+*/
+#define loddesch_rc
+#include "comdebug.prt"
+#include "comumsg.prt"
+#include "loddesch.prt"
+#include "ucofgets.prt"
+#include "lodpaswd.prt"
+#include "ucosqlca.prt"
+#include "ris.prt"
+#include "sys.prt"
+
+/*
+**	VARIABLES
+*/
+
+/*
+**	FUNCTIONS
+*/
+
+/******************************************************************************/
+
+/*
+**	Returns 1 if valid schema name, otherwise 0;
+*/
+extern int RISlod_valid_schname(
+	char *schname)
+{
+	if (!schname)
+	{
+		return 0;
+	}
+
+	if (!isalpha(*schname))
+	{
+		return 0;	
+	}
+	schname++;
+
+	while(*schname)
+	{
+		if (!isalnum(*schname) && *schname != '_')
+		{
+			return 0;
+		}
+		schname++;
+	}
+
+	return 1;
+}
+
+/******************************************************************************/
+
+/*
+** Returns 1 if schname is invalid, otherwise returns 0
+*/
+extern int RISlod_set_default_schema(
+	char *schname,	/* input */
+	char *schpass,	/* output -- assumming at least RIS_MAX_ID_SIZE */
+	char *osname,	/* output -- assumming at least RIS_MAX_ID_SIZE */
+	char *ospass,	/* output -- assumming at least RIS_MAX_ID_SIZE */
+	char *dbname,	/* output -- assumming at least RIS_MAX_ID_SIZE */
+	char *dbpass)	/* output -- assumming at least RIS_MAX_ID_SIZE */
+{
+exec sql begin declare section;
+	char default_command[80];
+	char declare_command[256];
+exec sql end declare section;
+
+	LOD_DBG(("RISlod_set_default_schema()\n"));
+
+	if (!RISlod_valid_schname(schname))
+	{
+		LOD_DBG(("RISlod_set_default_schema:returning 1\n"));
+		return 1;
+	}
+
+	schpass[0] = '\0';
+	osname[0] = '\0';
+	ospass[0] = '\0';
+	dbname[0] = '\0';
+	dbpass[0] = '\0';
+
+	sprintf(default_command, "default schema %s", schname);
+	exec sql execute immediate :default_command;
+	
+	if (SQLCODE == RIS_E_NEED_DECLARE_SCHEMA)
+	{
+		PRINTF(MSG(RISUTL_I_IS_SECURE_SCHEMA), schname);
+		/*
+		**	Get user name
+		*/
+		while (!osname[0])
+		{
+			/* NOTE: This prompt doesn't really have a dot password in it */
+			/*       It's named this for historic reasons                 */
+			PRINTF(MSG(RISUTL_I_ENTER_USR_DOT_PASSWORD));
+#if defined(WIN32S)
+			GETS(osname);
+#else
+			RISuco_fgets(osname, RIS_MAX_ID_SIZE, stdin);
+ 	/* Ashley 7/9/96 - fix for 439402027 */
+        /* this is may not be valid for international code */
+        /* but rislod/unlod is not internationalized on unix */
+#if defined(unix)
+                        if ( feof(stdin)) /* was control-D hit */
+                             exit(0);
+#endif
+#endif
+
+			if (!osname[0])
+			{
+				PRINTF(MSG(RISUTL_I_USER_MUST_BE_SPEC));
+			}
+		}
+
+		/*
+		**	Get user password
+		*/
+		RISlod_get_password(RIScom_umsg(RISUTL_I_ENTER_USR_PASSWORD),
+			ospass, RIS_MAX_ID_SIZE);
+#if defined(WIN32S)
+		RISlod_declare_schema_str(schname, schpass, osname, ospass,
+			dbname, dbpass, declare_command, sizeof(declare_command));
+#else
+		RISuco_declare_schema_str(schname, schpass, osname, ospass,
+			dbname, dbpass, declare_command, sizeof(declare_command));
+#endif
+		exec sql execute immediate :declare_command;
+
+		exec sql execute immediate :default_command;
+	if (SQLCODE == RIS_E_NEED_DECLARE_SCHEMA)
+	{
+		PRINTF(MSG(RISUTL_I_IS_SECURE_SCHEMA), schname);
+		/*
+		**	Get user name
+		*/
+		while (!dbname[0])
+		{
+			/* NOTE: This prompt doesn't really have a dot password in it */
+			/*       It's named this for historic reasons                 */
+			PRINTF(MSG(RISUTL_I_ENTER_USR_DOT_PASSWORD));
+#if defined(WIN32S)
+			GETS(osname);
+#else
+			RISuco_fgets(osname, RIS_MAX_ID_SIZE, stdin);
+ 	/* Ashley 7/9/96 - fix for 439402027 */
+        /* this is may not be valid for international code */
+        /* but rislod/unlod is not internationalized on unix */
+#if defined(unix)
+                        if ( feof(stdin)) /* was control-D hit */
+                             exit(0);
+#endif
+#endif
+
+		      	if (!dbname[0])
+			{
+				PRINTF(MSG(RISUTL_I_USER_MUST_BE_SPEC));
+			}
+		}
+
+		/*
+		**	Get user password
+		*/
+		RISlod_get_password(RIScom_umsg(RISUTL_I_ENTER_USR_PASSWORD),
+                           dbpass, RIS_MAX_ID_SIZE);
+#if defined(WIN32S)
+		RISlod_declare_schema_str(schname, schpass, osname, ospass,
+			dbname, dbpass, declare_command, sizeof(declare_command));
+#else
+
+		RISuco_declare_schema_str(schname, schpass, osname, ospass,
+			dbname, dbpass, declare_command, sizeof(declare_command));
+#endif
+		exec sql execute immediate :declare_command;
+
+		exec sql execute immediate :default_command;
+              }
+        }
+
+	if (SQLCODE == RIS_E_SCHPASS_NOT_SAME)
+	{
+		RISlod_get_password(RIScom_umsg(RISUTL_I_ENTER_SCHEMA_PASSWORD),
+			schpass, RIS_MAX_ID_SIZE);
+#if defined(WIN32S)
+		RISlod_declare_schema_str(schname, schpass, osname, ospass,
+			dbname, dbpass, declare_command, sizeof(declare_command));
+#else
+		RISuco_declare_schema_str(schname, schpass, osname, ospass,
+			dbname, dbpass, declare_command, sizeof(declare_command));
+#endif
+		exec sql execute immediate :declare_command;
+
+		exec sql execute immediate :default_command;
+	}
+
+	if (SQLCODE != RIS_SUCCESS)
+	{
+		if (SQLCODE == RIS_E_BAD_LOGIN)
+		{
+			RISuco_push_risca_dbca();
+
+			sprintf(declare_command, "undeclare schema %s", schname);
+			exec sql execute immediate :declare_command;
+
+			RISuco_pop_risca_dbca();
+		}
+	}
+
+	LOD_DBG(("RISlod_set_default_schema:returning 0\n"));
+	return 0;
+}
+
+/******************************************************************************/
+
+/* 
+**	Returns	1 if user hit CR and cr_to_exit_flag is non-zero,
+**	otherwise returns 0.
+*/
+
+extern int RISlod_default_schema(
+	int cr_to_exit_flag)
+{
+	int return_sts = 0;
+	char schname[RIS_MAX_ID_SIZE];
+	char schpass[RIS_MAX_ID_SIZE];
+	char osname[RIS_MAX_ID_SIZE];
+	char ospass[RIS_MAX_ID_SIZE];
+	char dbname[RIS_MAX_ID_SIZE];
+	char dbpass[RIS_MAX_ID_SIZE];
+
+	LOD_DBG(("RISlod_default_schema()\n"));
+
+	schname[0] = '\0';
+	while (1)
+	{
+		/* NOTE: This prompt doesn't really have a dot password in it */
+		/*       It's named this for historic reasons                 */
+		PRINTF(MSG(cr_to_exit_flag ? RISUTL_I_ENTER_SCHEMA_DOT_PASSWORD_CR :
+			RISUTL_I_ENTER_SCHEMA_DOT_PASSWORD));
+#if defined(WIN32S)
+		GETS(schname);
+#else
+		RISuco_fgets(schname, sizeof(schname), stdin);
+ 	/* Ashley 7/9/96 - fix for 439402027 */
+        /* this is may not be valid for international code */
+        /* but rislod/unlod is not internationalized on unix */
+#if defined(unix)
+                        if ( feof(stdin)) /* was control-D hit */
+                             exit(0);
+#endif
+
+#endif
+		if (!schname[0])
+		{
+			if (cr_to_exit_flag)
+			{
+				return_sts = 1;
+				break;
+			}
+			PRINTF(MSG(RISUTL_I_SCHEMA_MUST_BE_SPEC));
+		}
+		else
+		{
+			if (!RISlod_set_default_schema(schname, schpass, osname, ospass, dbname, dbpass))
+			{
+				break;
+			}
+			PRINTF(MSG(RISUTL_I_INV_SCHEMA_NAME));
+		}
+	}
+
+
+	LOD_DBG(("RISlod_default_schema:returning %d\n", return_sts));
+	return return_sts;
+}
+
+/******************************************************************************/
+
+/* {{{ RISuco_declare_schema_str() */
+
+/* {{{ doc */
+
+/**==================================================
+ ** FUNCTION: RISlod_declare_sch_str
+ ** DESCRIPTION: Creates a DECLARE SCHEMA statement in a string.
+ ** RETURN: 0 (zero) for success, 1 (one) if statement is longer than buffer_len
+ ** ARGUMENTS:
+ **		sch_name	I	Schema name.
+ **		sch_passwd	I	Schema password.
+ **		user		I	User name for the USER clause.  Set to "" for no USER clause.
+ **		passwd		I	Password for the USER clause.  Set to "" for no password.
+ **		os_user		I	User name for the OSUSER clause.  Set to "" for no OSUSER clause.
+ **		os_passwd	I	Password for the OSUSER clause.  Set to "" for no password.
+ **		buffer		O	String for the DECLARE SCHEMA statment
+ **		buffer_len	I	Length of the buffer string.
+ ** NOTES: This function assumes that all arguments are non-NULL strings.
+ ** AUTHOR(S): pmfitzge
+ **==================================================*/
+
+/* }}} */
+extern int RISlod_declare_schema_str(
+	char *sch_name,
+	char *sch_passwd,
+	char *user,          /*os_user */
+	char *passwd,       /*os_password */
+	char *db_user,       /*database user */ 
+	char *db_passwd,     /*database password */
+	char *buffer,
+	unsigned int buffer_len)
+{
+/* {{{ Check string boundary */
+
+	LOD_DBG(("RISlod_declare_schema_str() sch = <%s>, usr = <%s>, osusr = <%s>, \n",sch_name, user, db_user));
+
+	if (strlen("declare schema . user . osuser .") +
+		strlen(sch_name) + strlen(sch_passwd) +
+		strlen(user) + strlen(passwd) +
+		strlen(db_user) + strlen(db_passwd)
+		>= buffer_len)
+	{
+		/* DECLARE SCHEMA statement is too long to fit in buffer */
+		*buffer = '\0';
+		return 1;
+	}
+
+/* }}} */
+/* {{{ "declare schema <sch_name>[.<sch_passwd>]" */
+
+	strcpy(buffer, "declare schema ");
+	strcat(buffer, sch_name);
+
+	if (sch_passwd[0] != '\0')
+	{
+		strcat(buffer, ".");
+		strcat(buffer, sch_passwd);
+	}
+
+/* }}} */
+/* {{{ "[user <user>[.[<passwd>]]]" */
+
+	if ((user[0] != '\0') && (db_user[0] == '\0'))
+	{ /*because how this was written and used orig. was hosed*/
+
+		strcat(buffer, " user ");
+		strcat(buffer, user);
+
+		if (passwd[0] != '\0')
+		{
+			strcat(buffer, ".");
+			strcat(buffer, passwd);
+		}
+	}
+        else if ((user[0] == '\0') && (db_user[0] != '\0'))
+	{ /*because how this was written and used orig. was hosed*/
+          /* if only one argument was sent in it must be the os_user */
+
+		strcat(buffer, " user ");
+		strcat(buffer, db_user);
+
+		if (db_passwd[0] != '\0')
+		{
+			strcat(buffer, ".");
+			strcat(buffer, db_passwd);
+		}
+	}
+/* }}} */
+/* {{{ "[osuser <db_user>[.[<db_passwd>]]]" */
+        else if ((user[0] != '\0') && (db_user[0] != '\0'))
+        {
+		strcat(buffer, " user ");
+		strcat(buffer, db_user);
+
+		if (db_passwd[0] != '\0')
+		{
+			strcat(buffer, ".");
+			strcat(buffer, db_passwd);
+		}
+
+		strcat(buffer, " osuser ");
+		strcat(buffer, user);
+
+		if (passwd[0] != '\0')
+		{
+			strcat(buffer, ".");
+			strcat(buffer, passwd);
+		}
+       }
+/* }}} */
+	return 0;
+}
+
+/* }}} */
+
+/******************************************************************************/

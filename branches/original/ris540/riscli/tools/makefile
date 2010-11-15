@@ -1,0 +1,7 @@
+# Do not alter this SPC information: $Revision: 1.1.56.1 $
+BASE_NAME=tools
+UNUSED_EXCEPTIONS=\
+	makefile\
+	makeout\
+	nonfuncs
+include ../build/maketplt

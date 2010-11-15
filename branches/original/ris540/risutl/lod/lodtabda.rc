@@ -1,0 +1,803 @@
+/* Do not alter this SPC information: $Revision: 1.3.3.1 $ */
+/*
+**	NAME:				lodtabda.rc							
+**	AUTHORS:			Jennifer Xia			
+**	CREATION DATE:		June 26, 1990			
+**	ABSTRACT:			It contains a function which processes a create table 
+**						statement.
+**	
+**	REVISION HISTORY:	August 6th, 1991 Hitesh Patel
+*/
+ 
+/*
+**	DEFINES
+*/
+
+/*
+**	INCLUDES
+*/
+#if defined(WIN32S) && defined(ULD_EXE)
+#include <windows.h>
+#include <windowsx.h>
+#include "winport.h"
+#include "winio.h"
+#include "winhan.h"
+#include "risutl.h"
+#include "prog32s.h"
+#endif 
+
+#include <sys/types.h>
+#include <sys/stat.h>
+#ifdef MM
+#include "lod.h"
+#endif
+
+exec sql include "lod.h";
+
+/*
+**	VARIABLES
+*/
+
+#if !defined(WIN32)
+extern int errno;
+#endif
+/*
+**	FUNCTIONS
+*/
+
+/*
+**      FUNCTION PROTOTYPES
+*/
+#define lodtabda_rc
+#include "sys.prt"
+#include "comjmp.prt"
+#include "comdebug.prt"
+#include "comwrap.prt"
+#include "comumsg.prt"
+#include "ris.prt"
+#include "loddatfl.prt"
+#include "lodermsg.prt"
+#include "lodexdat.prt"
+#include "lodinsrt.prt"
+#include "lodgtstm.prt"
+#include "lodlogdp.prt"
+#include "lodmisc.prt"
+#include "lodtabda.prt"
+#include "lodtime.prt"
+#include "ucoerrbx.prt"
+
+/*****************************************************************************/
+
+extern void RISlod_proc_tab_data(
+	field_type		*field_defs,
+	int				max_end_posi,
+	int				data_format)
+{
+	int     total_rows = 0;
+	int		rows_loaded = 0;
+	int		inserted_rows = 0;
+	int		stmt_type;	
+	int		record_len;
+	int		char_indx;
+	int		col_indx;
+	int		extr_data_retn = FAILURE;
+	char	tmp_sql_row[SQL_MAX_STMT_LEN];
+	char	primary_tfile[RIS_MAX_PATH_SIZE];
+	FILE	*data_fp = (FILE *) NULL;
+	FILE	*primary_fp = (FILE *) NULL;
+
+	exec sql begin declare section;
+		char	*err_ptr;
+	exec sql end declare section;
+
+	LOD_DBG(("RISlod_proc_tab_data: "));
+	LOD_DBG(("\tfield_defs 0x%x max_end_posi %d data_format %d\n",
+						field_defs, max_end_posi, data_format));
+
+	exec sql set transaction autocommit off;
+
+	LOD_WARNING_CHECK(RISlod_ptr_struct_ptr->btnode_ptr->sqlwarnings);
+
+	stmt_type = RISlod_arow_from_mfile();	
+
+	if (stmt_type == END_OF_TABLE)
+	{
+		goto epilogue;
+	}
+
+	if (stmt_type == END_OF_SCHEMA)
+	{
+		RISlod_load_err_handler(RISUTL_E_END_SCH_READING_DATA,RISlod_sql_stmt); 
+
+		if( RISlod_mode == EMBED )
+		{
+			RISlod_ptr_struct_ptr->btnode_ptr->lnd_err_code = 
+				RISUTL_E_END_SCH_READING_DATA;
+		}
+		goto epilogue;
+	}
+
+	data_fp = RISlod_iden_data_file_spec();
+
+	if (data_fp == NULL)
+	{
+		goto epilogue;
+	}
+
+	if (data_fp != RISlod_in_fp)
+	{
+		if (RISlod_row1_from_dfile(data_fp) == FAILURE)
+		{
+			if (RISlod_arow_from_mfile() != END_OF_TABLE)
+			{
+				RISlod_dump_partial_tab(TRUE,TRUE,TRUE);
+				RISlod_load_err_handler(RISUTL_E_END_TAB_MISSING,RISlod_sql_stmt+1); 
+
+				if( RISlod_mode == EMBED )
+					RISlod_ptr_struct_ptr->btnode_ptr->lnd_err_code = RISUTL_E_END_TAB_MISSING;
+
+			 	RISlod_dump_tab_info(RISlod_sql_stmt+1);
+			}
+
+			goto epilogue;
+		}
+	}
+
+	for(;;)
+	{
+		record_len = strlen(RISlod_sql_stmt + 1);
+		for (char_indx = record_len; char_indx <= max_end_posi; char_indx++)
+		{
+			*(RISlod_sql_stmt + char_indx) = ' ';
+		}
+		if (record_len <= max_end_posi)
+		{
+			*(RISlod_sql_stmt + max_end_posi + 1) = '\n';
+			*(RISlod_sql_stmt + max_end_posi + 2) = '\0';
+		}
+	
+		LOD_DBG(("row of data = <%s>\n", RISlod_sql_stmt + 1));
+	
+		extr_data_retn = RISlod_process_one_row(field_defs, max_end_posi, data_format);
+
+		total_rows++;
+		if (extr_data_retn == -2 )
+		{
+			/* ILLEGAL DATATYPE */
+			goto epilogue;
+		}
+
+		if (extr_data_retn == SUCCESS)
+		{
+			strcpy(tmp_sql_row,RISlod_sql_stmt+1);
+
+			RISlod_exec_insert_into(); /* Warning already done */
+
+			if (SQLCODE < 0)
+			{
+				LOD_DBG(("++++ERROR FOUND IN THIS ROW.++++\n"));
+
+				/* for all three modes to bad file */
+				RISlod_dump_partial_tab(TRUE,TRUE,TRUE);
+				RISlod_dump_to_bad_with_err(tmp_sql_row); 
+				/* for INTERACT and BATCH */
+				if( RISlod_mode != EMBED )
+				{
+					exec sql report error into :err_ptr;
+#if !defined(ULD_DLL)
+					PUTS(err_ptr);
+#endif
+				}
+				else
+				{
+					RISlod_ptr_struct_ptr->btnode_ptr->ris_err_code = risca->sqlcode;
+					RISlod_ptr_struct_ptr->btnode_ptr->db_err_code = dbca->sqlcode;
+				}
+
+				if( inserted_rows > 1 )
+				{
+					rows_loaded += 
+						RISlod_commit_oper_one( field_defs,
+												max_end_posi,
+												data_format,
+												primary_fp,
+												inserted_rows);
+
+				}
+				/* remove */
+				RISlod_sql_stmt[record_len] = '\n';
+				RISlod_sql_stmt[record_len + 1] = '\0';
+#if !defined(ULD_DLL)
+#if defined(WIN32S)
+				PUTS(tmp_sql_row);
+#else
+				FPUTS(tmp_sql_row, stdout);
+#endif
+#endif
+				inserted_rows = 0;
+				if( primary_fp )
+				{
+					/* clear primary_tfile  */
+					LOD_DBG(("1. Removing primary: %s\n",primary_tfile));
+					RIScom_fclose(primary_fp);
+					remove(primary_tfile);
+				}
+			}
+			else
+			{
+				LOD_DBG(("+++NO ERROR FOUND IN THIS ROW.+++\n"));
+				inserted_rows++;
+				LOD_DBG(("+++inserted rows %d+++\n",inserted_rows));
+				if( inserted_rows == 1 )
+				{
+					RIScom_tmpnam(primary_tfile);
+					LOD_DBG(("Opening primary: %s\n",primary_tfile));
+					primary_fp = RISlod_batch_open_file('t',primary_tfile);
+				}
+				if( FPUTS(RISlod_sql_stmt+1,primary_fp) == EOF )
+					WRITING_FILE_ERR(RISUTL_E_CANT_WRITE_TEMP_FILE)
+
+				if( inserted_rows == RISlod_commit_interval )
+				{
+					rows_loaded += inserted_rows;
+					LOD_DBG(("++++++Committing:(total) rows_loaded %d ...\n",rows_loaded));
+					RISlod_print_msg(MSG(RISUTL_I_COMMIT_ROWS), inserted_rows);
+					exec sql commit;
+
+					LOD_WARNING_CHECK(
+						RISlod_ptr_struct_ptr->btnode_ptr->sqlwarnings);
+
+					exec sql set transaction autocommit off;
+
+					LOD_WARNING_CHECK(
+						RISlod_ptr_struct_ptr->btnode_ptr->sqlwarnings);
+
+					inserted_rows = 0;
+
+					if( primary_fp )
+					{
+						/* clear primary_tfile */
+						LOD_DBG(("2. Removing primary: %s\n",primary_tfile));
+						RIScom_fclose(primary_fp);
+						remove(primary_tfile);
+					}
+				}
+			}
+		}
+
+		if (data_fp == RISlod_in_fp)
+		{
+			stmt_type = RISlod_arow_from_mfile();	
+
+			if (stmt_type == END_OF_TABLE)
+				break;
+
+			if (stmt_type == END_OF_SCHEMA)
+			{
+				RISlod_load_err_handler(RISUTL_E_END_SCH_MISSING,RISlod_sql_stmt+1);
+				if( RISlod_mode == EMBED )
+					RISlod_ptr_struct_ptr->btnode_ptr->lnd_err_code = RISUTL_E_END_SCH_MISSING;
+				break;
+			}
+
+		}
+		else
+		{
+			if (RISlod_arow_from_dfile(data_fp) == FAILURE)
+			{
+				stmt_type = RISlod_arow_from_mfile();
+
+				if (stmt_type == END_OF_SCHEMA)
+				{
+					RISlod_dump_partial_tab(TRUE,TRUE,TRUE);
+					RISlod_load_err_handler(RISUTL_E_END_TAB_MISSING,RISlod_sql_stmt+1);
+					if( RISlod_mode == EMBED )
+						RISlod_ptr_struct_ptr->btnode_ptr->lnd_err_code = RISUTL_E_END_TAB_MISSING;
+					RISlod_dump_tab_info(RISlod_sql_stmt);
+				}
+				else if (stmt_type != END_OF_TABLE)
+				{
+					RISlod_dump_partial_tab(TRUE,TRUE,TRUE);
+					RISlod_load_err_handler(RISUTL_E_END_TAB_MISSING,RISlod_sql_stmt+1);
+					if( RISlod_mode == EMBED )
+						RISlod_ptr_struct_ptr->btnode_ptr->lnd_err_code = RISUTL_E_END_TAB_MISSING;
+
+					RISlod_dump_tab_info(RISlod_sql_stmt+1);
+				}
+				break;
+			}
+		}
+	}
+
+epilogue:
+	exec sql commit;
+
+	RISlod_clear_insert_into();
+
+	if( inserted_rows < RISlod_commit_interval )
+	{
+		rows_loaded += inserted_rows;
+	}
+	/* Melania M Stewart - TR#439602337 - Descriptor was never getting closed
+                               TR#439602601 - Was closing the main file (-i) descriptor  */
+	if ((data_fp) && (data_fp != RISlod_in_fp)){
+	        LOD_DBG (("2. removing descriptor for dump file\n")) ;
+		RIScom_fclose(data_fp);
+		data_fp = NULL ;
+	}
+	if( primary_fp )
+	{	
+		LOD_DBG(("3. removing primary: %s\n",	primary_tfile));
+		RIScom_fclose(primary_fp);
+		remove(primary_tfile);
+	}
+	exec sql set transaction autocommit on;
+
+	LOD_WARNING_CHECK(RISlod_ptr_struct_ptr->btnode_ptr->sqlwarnings);
+
+	RISlod_print_msg(MSG(RISUTL_E_ROWS_STATUS),
+					 rows_loaded, total_rows - rows_loaded);
+	RISlod_construct_n_dump_to_log("\tRows loaded: %d Error rows: %d\n",
+								   rows_loaded, total_rows - rows_loaded);
+
+	if( RISlod_mode == EMBED )
+	{
+		RISlod_ptr_struct_ptr->btnode_ptr->totalrows = total_rows;
+		RISlod_ptr_struct_ptr->btnode_ptr->rowsdonewith = rows_loaded;
+	}
+
+	/* Free the memory for the SQL input descriptor */
+	LOD_DBG(("RISlod_proc_tab_data: starting to free memory\n"));
+	for (col_indx = 0; col_indx < RISlod_in_desc.sqld; col_indx++)
+	{
+		free(RISlod_in_desc.sqlvar[col_indx].sqldata);
+		free(RISlod_in_desc.sqlvar[col_indx].sqlind);
+	}
+	free(RISlod_in_desc.sqlvar);
+
+	LOD_DBG(("1. RISlod_proc_tab_data: end\n"));
+}
+
+/*****************************************************************************/
+
+extern int RISlod_commit_oper_one(
+	field_type		*field_defs,
+	int				max_end_posi,
+	int				data_format,
+	FILE			*primary_fp,
+	int				commit_interval)
+{
+	int		total_rows = 0;
+	int		rows_loaded = 0;
+	int		inserted_rows = 0;
+	int		record_len;
+	int		char_indx;
+	int		extr_data_retn = FAILURE;
+	char	tmp_sql_row[SQL_MAX_STMT_LEN];
+	char	secondary_tfile[RIS_MAX_PATH_SIZE];
+	FILE	*secondary_fp = (FILE *) NULL;
+
+	exec sql begin declare section;
+		char	*err_ptr;
+	exec sql end declare section;
+
+	LOD_DBG(("RISlod_commit_oper_one: "));
+	LOD_DBG(("\tfield_defs 0x%x max_end_posi %d data_format %d primary_fp 0x%x commit_interval %d\n",
+						field_defs, max_end_posi, data_format, primary_fp, commit_interval));
+
+
+	exec sql set transaction autocommit off;
+
+	LOD_WARNING_CHECK(RISlod_ptr_struct_ptr->btnode_ptr->sqlwarnings);
+
+	rewind(primary_fp);
+	while( RISlod_arow_from_dfile(primary_fp) != FAILURE )	
+	{
+		record_len = strlen(RISlod_sql_stmt + 1);
+		for (char_indx = record_len; char_indx <= max_end_posi; char_indx++)
+		{
+			*(RISlod_sql_stmt + char_indx) = ' ';
+		}
+		if (record_len <= max_end_posi)
+		{
+			*(RISlod_sql_stmt + max_end_posi + 1) = '\n';
+			*(RISlod_sql_stmt + max_end_posi + 2) = '\0';
+		}
+	
+		LOD_DBG(("Commit_one:row of data = <%s>\n", RISlod_sql_stmt + 1));
+	
+		extr_data_retn = RISlod_process_one_row(field_defs, max_end_posi, data_format);
+
+		if( extr_data_retn == -2 )
+		{
+			/* if ILLEGAL DATATYPE */
+			return(0);
+		}
+
+		total_rows++;
+
+		if (extr_data_retn == SUCCESS)
+		{	
+			strcpy(tmp_sql_row,RISlod_sql_stmt+1);
+
+			RISlod_exec_insert_into(); /* Warning already done */
+
+			if (SQLCODE < 0)
+			{
+				/* for all three modes to bad file */
+				RISlod_dump_partial_tab(TRUE,TRUE,TRUE);
+				RISlod_dump_to_bad_with_err(tmp_sql_row); 
+				/* for INTERACT and BATCH */
+				if( RISlod_mode != EMBED )
+				{
+					exec sql report error into :err_ptr;
+#if !defined(ULD_DLL)
+					PUTS(err_ptr);
+#endif
+				}
+				else
+				{
+					RISlod_ptr_struct_ptr->btnode_ptr->ris_err_code = risca->sqlcode;
+					RISlod_ptr_struct_ptr->btnode_ptr->db_err_code = dbca->sqlcode;
+				}
+
+
+				if( inserted_rows > 1 )
+				{
+					rows_loaded += 
+						RISlod_commit_oper_two(field_defs,
+												max_end_posi,
+												data_format,
+												secondary_fp);
+				}
+				/* remove */
+				RISlod_sql_stmt[record_len] = '\n';
+				RISlod_sql_stmt[record_len + 1] = '\0';
+#if !defined(ULD_DLL)
+#if defined(WIN32S)
+				PUTS(tmp_sql_row);
+#else
+				FPUTS(tmp_sql_row, stdout);
+#endif
+#endif
+				inserted_rows = 0;
+				if( secondary_fp )
+				{
+					/* clear secondary_tfile */
+					LOD_DBG(("3. Removing secondary: %s\n",secondary_tfile));
+					RIScom_fclose(secondary_fp);
+					remove(secondary_tfile);
+				}	
+			}
+			else
+			{
+				LOD_DBG(("+++NO ERROR FOUND IN THIS ROW.+++\n"));
+				inserted_rows++;
+				if( inserted_rows == 1 )
+				{
+					RIScom_tmpnam(secondary_tfile);
+					LOD_DBG(("Opening secondary: %s\n",secondary_tfile));
+					secondary_fp = RISlod_batch_open_file('t',secondary_tfile);
+				}
+				if( FPUTS(RISlod_sql_stmt+1, secondary_fp) == EOF )
+					WRITING_FILE_ERR(RISUTL_E_CANT_WRITE_TEMP_FILE)
+				if( inserted_rows == commit_interval )
+				{
+					LOD_DBG(("++++++Committing ...\n"));
+					RISlod_print_msg(MSG(RISUTL_I_COMMIT_ROWS), inserted_rows);
+					exec sql commit;
+
+					LOD_WARNING_CHECK(
+						RISlod_ptr_struct_ptr->btnode_ptr->sqlwarnings);
+
+					exec sql set transaction autocommit off;
+
+					LOD_WARNING_CHECK(
+						RISlod_ptr_struct_ptr->btnode_ptr->sqlwarnings);
+
+					rows_loaded += inserted_rows;
+					inserted_rows = 0;
+					if( secondary_fp )
+					{
+						/* clear secondary_tfile */
+						LOD_DBG(("3. Removing secondary: %s\n",secondary_tfile));
+						RIScom_fclose(secondary_fp);
+						remove(secondary_tfile);
+					}
+				}
+			}
+		}
+
+	}
+
+	if( secondary_fp )
+	{
+		RIScom_fclose(secondary_fp);
+		remove(secondary_tfile);
+	}
+	LOD_DBG(("1. RISlod_commit_oper_one: end\n"));
+	return rows_loaded;
+}
+
+/*****************************************************************************/
+
+extern int RISlod_commit_oper_two(
+	field_type		*field_defs,
+	int				max_end_posi,
+	int				data_format,
+	FILE			*secondary_fp)
+{
+	int		total_rows = 0;
+	int		rows_loaded = 0;
+	int		inserted_rows = 1; /* for message display */
+	int		record_len;
+	int		char_indx;
+	int		extr_data_retn = FAILURE;
+
+	exec sql begin declare section;
+		char	*err_ptr;
+	exec sql end declare section;
+
+	LOD_DBG(("RISlod_commit_oper_two: "));
+	LOD_DBG(("\tfield_defs 0x%x max_end_posi %d data_format %d secondary_fp 0x%x\n",
+						field_defs, max_end_posi, data_format, secondary_fp));
+
+
+	exec sql set transaction autocommit on;
+
+	LOD_WARNING_CHECK(RISlod_ptr_struct_ptr->btnode_ptr->sqlwarnings);
+
+	rewind(secondary_fp);
+	while( RISlod_arow_from_dfile(secondary_fp) != FAILURE )	
+	{
+		record_len = strlen(RISlod_sql_stmt + 1);
+		for (char_indx = record_len; char_indx <= max_end_posi; char_indx++)
+		{
+			*(RISlod_sql_stmt + char_indx) = ' ';
+		}
+		if (record_len <= max_end_posi)
+		{
+			*(RISlod_sql_stmt + max_end_posi + 1) = '\n';
+			*(RISlod_sql_stmt + max_end_posi + 2) = '\0';
+		}
+	
+		LOD_DBG(("Commit_two:row of data = <%s>\n", RISlod_sql_stmt + 1));
+	
+		extr_data_retn = RISlod_process_one_row(field_defs, max_end_posi, data_format);
+
+		if( extr_data_retn == -2 )
+		{
+			/* if ILLEGAL DATATYPE */
+			return(0);
+		}
+
+		total_rows++;
+
+		if (extr_data_retn == SUCCESS)
+		{	
+			RISlod_exec_insert_into(); /* Warning already done */
+
+			if (SQLCODE < 0)
+			{
+				/* for all three modes to bad file */
+				RISlod_dump_partial_tab(TRUE,TRUE,TRUE);
+				RISlod_dump_to_bad_with_err(RISlod_sql_stmt+1); 
+				/* For INTERACT and BATCH */
+				if( RISlod_mode != EMBED )
+				{
+					exec sql report error into :err_ptr;
+#if !defined(ULD_DLL)
+					PUTS(err_ptr);
+#endif
+				}
+				else
+				{
+					RISlod_ptr_struct_ptr->btnode_ptr->ris_err_code = risca->sqlcode;
+					RISlod_ptr_struct_ptr->btnode_ptr->db_err_code = dbca->sqlcode;
+				}
+
+
+				/* remove */
+				RISlod_sql_stmt[record_len] = '\n';
+				RISlod_sql_stmt[record_len + 1] = '\0';
+#if !defined(ULD_DLL)
+#if defined(WIN32S)
+				PUTS(RISlod_sql_stmt + 1);
+#else
+				FPUTS(RISlod_sql_stmt + 1, stdout);
+#endif
+#endif
+			}
+			else
+			{
+				LOD_DBG(("++++++Committing ...\n"));
+				RISlod_print_msg(MSG(RISUTL_I_COMMIT_ROWS), inserted_rows);
+				rows_loaded++;
+			}
+		}
+
+	}
+
+	exec sql set transaction autocommit off; /* again off mode */
+
+	LOD_WARNING_CHECK(RISlod_ptr_struct_ptr->btnode_ptr->sqlwarnings);
+
+	LOD_DBG(("1. RISlod_commit_oper_two: end\n"));
+	return rows_loaded;
+}
+
+/*****************************************************************************/
+
+extern int RISlod_delete_from_table(
+	char	*tab_name)
+{
+	exec sql begin declare section;
+		char	delete_str[STRING_MAX_LEN];
+		char	*err_ptr;
+	exec sql end declare section;
+
+	LOD_DBG(("RISlod_delete_from_table: tab_name %s\n",tab_name));
+	exec sql whenever sqlerror goto :DT_error;
+
+
+	strcpy(delete_str,"delete ");
+	strcat(delete_str,"from ");
+	strcat(delete_str,tab_name);
+
+	exec sql execute immediate :delete_str;
+
+	LOD_WARNING_CHECK(RISlod_ptr_struct_ptr->btnode_ptr->sqlwarnings);
+
+	LOD_DBG(("1. RISlod_delete_from_table: end\n"));
+	return(SUCCESS);
+
+DT_error:
+    exec sql whenever sqlerror continue;
+
+	/* for all three modes to bad file */
+	RISlod_dump_partial_tab(TRUE,TRUE,TRUE);
+	RISlod_dump_tab_info(RISlod_sql_stmt); 
+
+	if( RISlod_mode != EMBED )
+	{
+		exec sql report error into :err_ptr;
+#if !defined(ULD_DLL)
+		PUTS(err_ptr);
+#endif
+	}
+	else
+	{
+		RISlod_ptr_struct_ptr->btnode_ptr->ris_err_code = risca->sqlcode;
+		RISlod_ptr_struct_ptr->btnode_ptr->db_err_code = dbca->sqlcode;
+	}
+
+	LOD_DBG(("2. RISlod_delete_from_table: end\n"));
+	return(FAILURE);
+}
+
+/*****************************************************************************/
+
+extern int RISlod_process_one_row(
+	field_type		*field_defs,
+	int				max_end_posi,
+	int				data_format)
+{
+	int		col_indx;
+	int		extr_data_retn = FAILURE;
+	char	tmp_chr;
+	int 	curr_pos = 1;
+
+	LOD_DBG(("RISlod_process_one_row(field_defs 0x%x max_end_posi %d data_format %d)\n",
+				field_defs, max_end_posi, data_format));
+
+	if( data_format == VARIABLE )
+	{
+		/*
+		**	The data format is VARIABLE
+		*/
+		max_end_posi = strlen(RISlod_sql_stmt);
+		for (col_indx = 0; col_indx < RISlod_in_desc.sqld; col_indx++)
+		{
+			switch(field_defs[col_indx].col_type)
+			{
+				case RIS_CHARACTER:
+					extr_data_retn = RISlod_extr_VARCHAR_val(field_defs, col_indx,
+															 max_end_posi, &curr_pos);
+					break;
+				case RIS_DECIMAL: 
+					extr_data_retn = RISlod_extr_VARDECIMAL_val(field_defs, col_indx,
+																max_end_posi, &curr_pos);
+				break;
+				case RIS_INTEGER:
+				case RIS_SMALLINT:
+				case RIS_REAL:
+				case RIS_DOUBLE: 
+					extr_data_retn = RISlod_extr_VARNUMERAL_val(field_defs, col_indx,
+																max_end_posi, &curr_pos);
+					break;
+				case RIS_DATETIME:
+					extr_data_retn = RISlod_extr_VARDATETIME_val(field_defs, col_indx,
+																 max_end_posi, &curr_pos);
+					break;
+				default:	
+					RISlod_dump_partial_tab(TRUE,TRUE,TRUE);
+					RISlod_load_err_handler(RISUTL_E_UNKNOWN_VALUE_FIELD_DEF,RISlod_sql_stmt+1); 
+	
+					if( RISlod_mode == EMBED )
+						RISlod_ptr_struct_ptr->btnode_ptr->lnd_err_code =
+							RISUTL_E_UNKNOWN_VALUE_FIELD_DEF;
+					RISlod_dump_tab_info(RISlod_sql_stmt+1);
+					return(-2);
+			}
+	
+			if (extr_data_retn == FAILURE)
+			{
+				LOD_DBG(("1. RISlod_process_one_row: end\n"));
+				return(FAILURE);
+			}
+		} /* for */
+	} /* if */
+	else
+	{
+		/*
+		**	The data format is FIXED 
+		*/
+		for (col_indx = 0; col_indx < RISlod_in_desc.sqld; col_indx++)
+		{
+			tmp_chr = RISlod_sql_stmt[field_defs[col_indx].end + 1];
+			RISlod_sql_stmt[field_defs[col_indx].end + 1] = '\0';
+		
+			switch(field_defs[col_indx].col_type)
+			{
+				case RIS_CHARACTER:
+					if( field_defs[col_indx].format == VARIABLE )
+					{
+						/*
+						** old version 'cuz found keyword var in field_def
+						*/
+						extr_data_retn = RISlod_extr_varchar_val(field_defs, col_indx);
+					}
+					else
+					{
+						/*
+						** new version
+						*/
+						extr_data_retn = RISlod_extr_fixchar_val(field_defs, col_indx);
+					}
+					break;
+				case RIS_DECIMAL: 
+					extr_data_retn = RISlod_extr_decimal_val(field_defs, col_indx);
+					break;
+				case RIS_INTEGER:
+				case RIS_SMALLINT:
+				case RIS_REAL:
+				case RIS_DOUBLE: 
+					extr_data_retn = RISlod_extr_numeral_val(field_defs, col_indx);
+					break;
+				case RIS_DATETIME:
+					extr_data_retn = RISlod_extr_datetime_val(field_defs, col_indx);
+					break;
+				default:	
+					RISlod_dump_partial_tab(TRUE,TRUE,TRUE);
+					RISlod_load_err_handler(RISUTL_E_UNKNOWN_VALUE_FIELD_DEF,RISlod_sql_stmt+1); 
+	
+					if( RISlod_mode == EMBED )
+						RISlod_ptr_struct_ptr->btnode_ptr->lnd_err_code = RISUTL_E_UNKNOWN_VALUE_FIELD_DEF;
+					RISlod_dump_tab_info(RISlod_sql_stmt+1);
+					return(-2);
+			}
+
+			RISlod_sql_stmt[field_defs[col_indx].end + 1] = tmp_chr;
+	
+			if (extr_data_retn == FAILURE)
+			{
+				LOD_DBG(("1. RISlod_process_one_row: end\n"));
+				return(FAILURE);
+			}
+		} /* for */
+	} /* else */
+	LOD_DBG(("2. RISlod_process_one_row: end\n"));
+	return(SUCCESS);
+}
+
+/*****************************************************************************/

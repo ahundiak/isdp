@@ -1,0 +1,133 @@
+/*
+** Copyright 1993, Intergraph Corporation, All Rights Reserved
+*/
+
+/*
+**	========================================
+**
+**	File		: static.rc
+**	Purpose		: Static SQL statements
+**
+**	========================================
+*/
+
+#include <stdio.h>
+#include <string.h>
+#include "ris.prt"
+
+extern void main()
+{
+	/*
+	**	Host variable declarations
+	*/
+    exec sql begin declare section;
+        char	name[21];
+        int		amount;
+        long	amount_ind;
+		char	value[10];
+        char	*error_ptr;
+    exec sql end declare section;
+
+	/*
+	**	Define exception handlers
+	**	i.e., if SQL error detected goto label error
+	**		  if no more rows detected goto lable not_found
+	*/
+    exec sql whenever sqlerror goto :error;
+    exec sql whenever not found goto :not_found;
+
+    /*
+	**	Default to schema sch1 (static SQL with no parameters)
+	*/
+	printf("Default to schema sch1\n");
+    exec sql default schema sch1;
+
+    /*
+	** Insert a row into the table tools (static SQL with no parameters)
+	*/
+	printf("Insert into table tools\n");
+    exec sql insert into tools values('hammer', 2000, 9.95);
+
+    /*
+	** Insert a row into the table tools (static SQL with parameters)
+	*/
+    strcpy(name, "saw");
+    amount = 500;
+    strcpy(value,"49.95");
+	printf("Insert into table tools\n");
+    exec sql insert into tools values(:name, :amount, :value);
+
+    /*
+	**	Select a row from the table tools (static SQL with parameters)
+	*/
+	printf("Select from table tools\n");
+    exec sql select * into :name, :amount:amount_ind, :value
+        from tools where item = 'hammer';
+
+    printf("name: %s amount: %d value: %s\n", 
+			name, amount_ind ? -1 : amount, value);
+
+    /*
+	**	Update the first row using parameters (static SQL with parameters)
+	*/
+	strcpy(name, "hammer");
+	amount += 100;
+	printf("Update table tools\n");
+    exec sql update tools set quantity = :amount where item = :name;
+
+    /*
+	**	Select multiple rows from the table using cursors
+	*/
+
+	/*
+	** Declare a cursor for select statement (static SQL with parameters)
+	*/
+	printf("Declare cursor for select from table tools\n");
+    exec sql declare c1 cursor for select * from tools where item <> :name;
+
+	/*
+	**	Open cursor c1 using parameter
+	*/
+	printf("Open cursor for select from table tools\n");
+    exec sql open c1 using :name;
+
+    for (;;)
+    {
+        exec sql fetch c1 into :name, :amount:amount_ind, :value;
+    	printf("name: %s amount: %d value: %s\n", 
+				name, amount_ind ? -1 : amount, value);
+    }
+
+not_found:
+	/*
+	** This part of code is executed when no more data is found
+	*/
+    exec sql whenever not found continue;
+    printf("No more data\n");
+
+	/*
+	** Close the cursor c1
+	*/
+    printf("Close cursor c1\n");
+	exec sql close c1;
+
+    return;
+
+error:
+	/*
+	** This part of code is executed when error is detected
+	*/
+
+	/*
+	** Ignore SQL error from onwards and continue processing
+	*/
+    exec sql whenever sqlerror continue;
+
+	/*
+	** Retreive the message string resulting form the last SQL error
+	*/
+    exec sql report error into :error_ptr;
+    puts(error_ptr);
+
+    return;
+}
