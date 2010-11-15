@@ -1,0 +1,288 @@
+/*
+** Copyright 1993, Intergraph Corporation, All Rights Reserved
+*/
+
+/*
+**	================================================
+**
+**	File		: blob2.rc
+**	Purpose		: Dynamic SQL statements using BLOBS
+**
+**	================================================
+*/
+
+#include <stdio.h>
+#include <fcntl.h>
+#include <errno.h>
+#include "ris.prt"
+
+exec sql define MAX_MEM_SIZE 200000;
+
+extern char * calloc();
+
+void main()
+{
+	/*
+	**	Host variable declarations
+	*/
+    exec sql begin declare section;
+        char    	sql_stmt[100];
+        sqlda   	out_desc;
+        char 		*err_ptr;
+		int			id;
+		char		name[30];
+		ris_blob	picture;
+    exec sql end declare section;
+
+	/*
+	**	C Program Variables
+	*/
+	int			i;
+	ris_blob	*blobcol;
+	ris_text	*textcol;
+
+	/*
+	**	Define exception handlers
+	**	i.e., if SQL error detected goto label error
+	**		  if no more rows detected goto lable not_found
+	*/
+    exec sql whenever sqlerror goto :error;
+    exec sql whenever not found goto :not_found;
+
+    /*
+	**	Default to schema sch1 (static SQL with no parameters)
+	*/
+	printf("Default to schema sch1\n");
+    exec sql default schema sch1 ;
+
+
+
+	/*
+	**	Insert into table employee (dynamic SQL with known parameters)
+	*/
+    strcpy(sql_stmt, 
+		"insert into employee (id, name, picture) values(?,?,?)");
+
+	/*
+	**	Prepare the dynamic insert statement
+	*/
+	printf("Prepare insert statemnt stmt1\n");
+    exec sql prepare stmt1 from :sql_stmt;
+
+	id = 1008;
+	strcpy(name,"Bob Shorty");
+#if defined(WIN32) || defined(DOS)
+    picture.filename = "C:\\users\\hpatel\\blob\\net.msg";
+#else
+    picture.filename = "/usr2/risapp/blob/utl.msg";
+#endif
+    picture.file_used = 1; /* picture data from a file */
+
+	/*
+	**	Now, execute the dynamic insert statement
+	*/
+	printf("Execute stmt1\n");
+    exec sql execute stmt1 using :id, :name, :picture;
+
+	/*
+	**	Clear the dynamic insert statement
+	*/
+	exec sql clear stmt1;
+
+	/*
+	**	Update table employee (dynamic SQL with known parameters)
+	*/
+    strcpy(sql_stmt, 
+		"update employee set picture = ? where name = 'Bob Shorty'");
+
+	/*
+	**	Prepare the dynamic update statement
+	*/
+	printf("Prepare update statemnt stmt2\n");
+    exec sql prepare stmt2 from :sql_stmt;
+
+#if defined(WIN32) || defined(DOS)
+    picture.filename = "C:\\users\\hpatel\\blob\\utl.msg";
+#else
+    picture.filename = "/usr2/risapp/blob/utl.msg";
+#endif
+    picture.file_used = 1; /* picture data from a file */
+
+	/*
+	**	Now, execute the dynamic update statement
+	*/
+	printf("Execute stmt2\n");
+    exec sql execute stmt2 using :picture;
+
+	/*
+	**	Clear the dynamic update statement
+	*/
+	exec sql clear stmt2;
+
+
+	/*
+	**	Select from table employee (dynamic cursor SQL)
+	*/
+    strcpy(sql_stmt, "select * from employee");
+
+	/*
+	**	Prepare the dynamic select statement
+	*/
+	printf("Prepare stmt3\n");
+    exec sql prepare stmt3 from :sql_stmt;
+
+	/*
+    ** To check if there are any output parameters for stmt3 set the followings.
+	** (for column names --> id, name, picture)
+	*/
+    out_desc.sqld = 0;
+    out_desc.sqln = 0;
+    out_desc.sqlvar = 0;
+
+	/*
+	** RIS will fill the value of sqld if output SQL variables exists
+	*/
+	printf("Describe stmt3\n");
+    exec sql describe output stmt3 using descriptor out_desc;
+
+    /* 
+	**	Allocate sqlvars for any output parameters 
+	*/
+    out_desc.sqlvar = (sqlvar*)calloc(out_desc.sqld, sizeof(sqlvar));
+    out_desc.sqln = out_desc.sqld;
+
+	/*
+	** 	Get information about output variables
+	*/
+    exec sql describe output stmt3 using descriptor out_desc;
+
+    /*
+	** Allocate user output buffers for each result column (depending upon
+	** RIS-datatype)
+	*/
+    for (i = 0; i < out_desc.sqld; ++i)
+    {
+		if (out_desc.sqlvar[i].sqltype == RIS_BLOB 
+		   || out_desc.sqlvar[i].sqltype == RIS_TEXT)
+		{
+			/*
+			** Assumming that blob and text structures are identical.
+			** As describing a blob/text column would not return the size of
+			** blob/text column, the size of blob/text should be known before
+			** hand. U could query ris dictionary table riscolumns to get the
+			** size of blob/text column size.
+			*/
+        	out_desc.sqlvar[i].sqldata = calloc(1, sizeof(ris_blob));
+			blobcol       		= (ris_blob *) out_desc.sqlvar[i].sqldata;
+			blobcol->array      = calloc(1, MAX_MEM_SIZE);
+        	blobcol->array_size = MAX_MEM_SIZE;
+        	blobcol->file_used  = 0;
+		}
+		else
+		{
+        	out_desc.sqlvar[i].sqldata = calloc(1, out_desc.sqlvar[i].sqllen);
+		}
+        out_desc.sqlvar[i].sqlind = (long*)calloc(1, sizeof(long));
+        out_desc.sqlvar[i].sqlnull = 1;
+    }
+
+	/*
+	** Declare a cursor curs1 for select statement
+	*/
+	printf("Declare cursor for stmt3\n");
+	exec sql declare curs1 cursor for stmt3;
+
+    /* 
+	** Open cursor curs1
+	*/
+	printf("Open cursor for stmt3\n");
+	exec sql open curs1;
+
+    for (;;)
+    {
+        /* 
+		** Fetch a row of output
+		*/
+		printf("Fetch from cursor\n");
+		exec sql fetch curs1 using descriptor out_desc;
+
+        /*
+		** print all columns of the recently fetched row
+		*/
+        for (i = 0; i < out_desc.sqld; ++i)
+        {
+            /*
+			** Print column name
+			*/
+            printf ("%-20.20s:", out_desc.sqlvar[i].sqlname.sqlnamec);
+
+            /*
+			** Check if the value is NULL
+			*/
+            if (*out_desc.sqlvar[i].sqlind < 0)
+            {
+                printf ("<NULL>\n");
+                continue;
+            }
+
+            /*
+			** Determine RIS-datatype
+			*/
+            switch(out_desc.sqlvar[i].sqltype)
+            {
+                case RIS_CHARACTER:
+                    printf("%s\n", out_desc.sqlvar[i].sqldata);
+                    break;
+
+                case RIS_DECIMAL:
+                    printf("%s\n", out_desc.sqlvar[i].sqldata);
+                    break;
+
+                case RIS_INTEGER:
+                    printf("%d\n", *(int*)out_desc.sqlvar[i].sqldata);
+                    break;
+
+                case RIS_SMALLINT:
+                    printf("%hd\n", *(short*)out_desc.sqlvar[i].sqldata);
+                    break;
+
+                case RIS_DOUBLE:
+                    printf("%lf\n", *(double*)out_desc.sqlvar[i].sqldata);
+                    break;
+
+                case RIS_REAL:
+                    printf("%f\n", *(float*)out_desc.sqlvar[i].sqldata);
+                    break;
+
+                case RIS_TEXT:
+					textcol = (ris_text *)out_desc.sqlvar[i].sqldata;
+					printf("TEXT Datatype - Size of TEXT is %d\n", 
+							textcol->output_len);
+                    break;
+
+                case RIS_BLOB:
+					blobcol = (ris_blob *)out_desc.sqlvar[i].sqldata;
+					printf("BLOB Datatype - Size of BLOB %d\n", 
+							blobcol->output_len);
+                    break;
+
+                default:
+                    printf("error: unknown output RIS-datatype");
+                    break;
+            }
+        }
+        printf("\n");
+    }
+
+not_found:
+    exec sql whenever not found continue;
+    printf("No more data\n");
+	exec sql clear stmt3;
+    return;
+
+error:
+    exec sql whenever sqlerror continue;
+    exec sql report error into :err_ptr;
+    puts(err_ptr);
+    exit();
+}
