@@ -1,0 +1,114 @@
+# Do not alter this SPC information: $Revision: 1.24.3.1 $
+
+!include $(RISDEVDIR)\ristools\include\makeenv.nt
+!include ..\setupenv.nt
+
+IPATH=	\
+	-I$(RISDEVDIR)\riscom\internal \
+	-I$(RISDEVDIR)\riscli\setup32\remove \
+	-I$(RISDEVDIR)\riscli\setup32\rmprod \
+	-I$(RISDEVDIR)\riscli\setup32\csource \
+	-I"$(NT_SETUP_DIR)\csource" \
+	-I"$(NT_SETUP_DIR)\csource\bldcui" \
+	-I"$(NT_SETUP_DIR)\isdklib" \
+	-I"$(NT_SETUP_DIR)\remove" \
+	-I"$(NT_SETUP_DIR)\setup32"
+
+fast: ..\bin\$(BINDIR)\risrem.lib
+
+$(OBJDIR)\ddeprog.obj: "$(NT_SETUP_DIR)\remove\ddeprog.c"
+	@echo.
+	@echo	Making ddeprog.obj
+	$(cc) -c $(IPATH) $(cdebug) $(cflags) $(cvarsdll) \
+		"$(NT_SETUP_DIR)\remove\ddeprog.c"
+	@if exist $@ del $@
+	@move $(@F) $(@)
+
+$(OBJDIR)\reglib.obj: "$(NT_SETUP_DIR)\remove\reglib.c"
+	@echo.
+	@echo	Making reglib.obj
+	$(cc) -c $(IPATH) $(cdebug) $(cflags) $(cvarsdll) \
+		"$(NT_SETUP_DIR)\remove\reglib.c"
+	@if exist $@ del $@
+	@move $(@F) $(@)
+
+!IF "$(CPU)" == "i386"
+setup_kludge_cflags = -c -W3 -nologo -D_X86_=1 -DWIN32
+!ELSE
+setup_kludge_cflags = -c -W3 -nologo -D_MIPS_=1 -DWIN32
+!ENDIF
+
+$(OBJDIR)\rmlib.obj: "$(NT_SETUP_DIR)\remove\rmlib.c"
+	@echo.
+	@echo	Making rmlib.obj
+# 1996.01.04:Alan Barksdale:replacing cflags because of warnings in rmlib.c
+#            that cflags treats as errors.  I've informed Mike Metheny of the
+#            problems with rmlib.c in Setup SDK 02.02.00.00.
+#	$(cc) -c $(IPATH) $(cdebug) $(cflags) $(cvarsdll) \
+	$(cc) -c $(IPATH) $(cdebug) $(setup_kludge_cflags) $(cvarsdll) \
+		"$(NT_SETUP_DIR)\remove\rmlib.c"
+	@if exist $@ del $@
+	@move $(@F) $(@)
+
+$(OBJDIR)\risrem.obj: risrem.c \
+	$(RISDEVDIR)\riscom\internal\risdebug.h \
+	$(RISDEVDIR)\riscom\internal\risver.h \
+	$(RISDEVDIR)\riscli\setup32\rmprod\ingrreg.h \
+	risrem.h \
+	$(RISDEVDIR)\rissrv\setup32\defines.h \
+	$(RISDEVDIR)\riscli\setup32\csource\rissrvc.h
+	@echo.
+	@echo	Making risrem.obj
+	$(cc) -c $(IPATH) $(cdebug) -DRISSHARE $(cflags) $(cvarsdll) risrem.c
+	@if exist $@ del $@
+	@move $(@F) $(@)
+	@echo	After making risrem.obj
+
+# 1996.04.18:Alan Barksdale:Use the ingrrmv.c under the Setup SDK 2.3.1
+#	directory when RMVResourceInitializeEx is fixed so that it uses the
+#	passed-in DLL handle.
+#$(OBJDIR)\ingrrmv.obj: "$(NT_SETUP_DIR)\csource\ingrrmv.c"
+$(OBJDIR)\ingrrmv.obj: ingrrmv.c risrem.h
+	@echo.
+	@echo Making ingrrmv.obj
+	$(cc) -c $(IPATH) $(cdebug) $(cflags) $(cvarsdll) \
+		ingrrmv.c
+#		"$(NT_SETUP_DIR)\csource\ingrrmv.c"
+	@if exist $@ del $@
+	@move $(@F) $(@)
+
+$(OBJDIR)\srvctl.obj: "$(NT_SETUP_DIR)\remove\srvctl.c" \
+	"$(NT_SETUP_DIR)\remove\rmdefs.h" \
+	"$(NT_SETUP_DIR)\remove\reglib.h" "$(NT_SETUP_DIR)\remove\srvctl.h"
+	@echo.
+	@echo	Making srvctl.obj
+	$(cc) -c $(IPATH) $(cdebug) $(cflags) $(cvarsdll) \
+		"$(NT_SETUP_DIR)\remove\srvctl.c"
+	@if exist $@ del $@
+	@move $(@F) $(@)
+
+$(OBJDIR)\rissrvc.obj: $(RISDEVDIR)\riscli\setup32\csource\rissrvc.c \
+	$(RISDEVDIR)\riscli\setup32\csource\rissrvc.h \
+	$(RISDEVDIR)\riscli\setup32\remove\risrem.h \
+	$(RISDEVDIR)\riscom\internal\risdebug.h \
+	$(RISDEVDIR)\riscom\internal\risver.h 
+	echo.
+	echo 	rissrvc.c -to-  $@
+	$(cc) -c $(IPATH) $(cdebug) -DREMOVAL_VERSION $(cflags) \
+		$(cvarsdll) $(RISDEVDIR)\riscli\setup32\csource\rissrvc.c
+	if exist $@ del $@
+	move $(@F) $@
+
+..\bin\$(BINDIR)\risrem.lib: $(OBJDIR)\risrem.obj $(OBJDIR)\ingrrmv.obj \
+	$(OBJDIR)\reglib.obj $(OBJDIR)\rmlib.obj $(OBJDIR)\ddeprog.obj \
+	$(OBJDIR)\srvctl.obj $(OBJDIR)\rissrvc.obj
+	@echo.
+	@echo	$(OBJDIR)\risrem.obj, etc. -to- $@
+	dir/b/s $(OBJDIR)\risrem.obj $(OBJDIR)\ingrrmv.obj \
+		$(OBJDIR)\reglib.obj $(OBJDIR)\rmlib.obj \
+		$(OBJDIR)\ddeprog.obj $(OBJDIR)\srvctl.obj \
+		$(OBJDIR)\rissrvc.obj > libfiles.txt
+	if exist risrem.lib del risrem.lib
+	if exist ..\bin\$(BINDIR)\risrem.lib del ..\bin\$(BINDIR)\risrem.lib
+	lib /out:..\bin\$(BINDIR)\risrem.lib @libfiles.txt
+	if exist libfiles.txt del libfiles.txt
