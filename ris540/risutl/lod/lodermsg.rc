@@ -1,0 +1,283 @@
+/* Do not alter this SPC information: $Revision: 1.1.53.1 $ */
+/*
+**	NAME:				lodermsg.rc									
+**	AUTHORS:			Hitesh Patel			
+**	CREATION DATE:		June 20th, 1991			
+**	ABSTRACT:			Redirects error message to stdout or a buffer depending **						upon the mode of execution.
+**	
+**	REVISION HISTORY:
+*/
+ 
+/*
+**	DEFINES
+*/
+
+/*
+**	INCLUDES
+*/
+#if defined(WIN32S) && defined(ULD_EXE)
+#include <windows.h>
+#include <windowsx.h>
+#include "winport.h"
+#include "winio.h"
+#include "winhan.h"
+#include "risutl.h"
+#include "prog32s.h"
+#endif 
+
+#include <stdarg.h>
+
+#ifdef MM
+#include "lod.h"
+#endif
+
+exec sql include "lod.h";
+
+/*
+**	VARIABLES
+*/
+
+/*
+**	FUNCTIONS
+*/
+
+/*
+**      FUNCTION PROTOTYPES
+*/
+#define lodermsg_rc
+#include "sys.prt"
+#include "comdebug.prt"
+#include "comumsg.prt"
+#include "lodermsg.prt"
+#include "lodlogdp.prt"
+#include "ucoerrbx.prt"
+#if defined(WIN32S)
+#include "btcerrbx.prt"
+#endif
+
+/*
+** Print messages if not Embedded Application
+*/
+extern void RISlod_print_msg(
+	const char *fmt, 
+	...)
+{
+	char	buffer[RIS_MAX_ERROR_MSG];
+
+	va_list args;
+
+	va_start(args,fmt);
+	vsprintf(buffer, fmt, args);
+	va_end(args);
+
+	if( RISlod_mode != EMBED )
+	{
+#if !defined(ULD_DLL)
+#if defined(WIN32S)
+		PRINTF(buffer);
+#else
+		FPUTS(buffer,stdout);
+		fflush(stdout);
+#endif
+#endif
+	}
+}
+
+/*
+**	For batch mode only : donot write to log or bad file
+*/
+extern void RISlod_parse_err_handler(
+	long	lnd_err_code)
+{
+	LOD_DBG(("RISlod_parse_err: lnd_err_code %ld\n", lnd_err_code));
+
+	if( lnd_err_code )
+	{
+#if defined(WIN32S)
+		RIS32s_file_error_box(RISUTL_I_LOAD_ERROR,0,lnd_err_code,NULL,
+			0, 1);
+#else
+		RISuco_file_error_box(stdout,RISUTL_I_LOAD_ERROR,0,lnd_err_code,NULL,
+			0, 1);
+		fflush(stdout);
+#endif
+	}
+
+}
+
+
+/*
+** For all modes	:  write to bad file only
+*/
+extern void RISlod_load_err_handler(
+	long	lnd_err_code,
+	char	*stmt)
+{
+	const char	*err_ptr;
+	char *cr;
+
+	LOD_DBG(("RISlod_load_err_handler(lnd_err_code %ld stmt:<>)\n",
+		lnd_err_code));
+	cr = NULL;
+
+	if( lnd_err_code )
+	{
+		if( RISlod_mode != EMBED )
+		{
+			/* Remove \n if necessary */
+			if (stmt)
+			{
+			cr = strchr(stmt, '\n');
+			if (cr)
+				*cr = '\0';
+			}
+
+	LOD_DBG(("RISlod_load_err_handler before error box\n"));
+#if defined(WIN32S)
+			RIS32s_file_error_box(RISUTL_I_LOAD_ERROR,0,lnd_err_code,
+					stmt,0,1);
+#else
+			RISuco_file_error_box(stdout,RISUTL_I_LOAD_ERROR,0,lnd_err_code,
+					stmt,0,1);
+			fflush(stdout);
+#endif
+	LOD_DBG(("RISlod_load_err_handler after error box\n"));
+			/* Restore stupid \n */
+			if (cr)
+				*cr = '\n';
+		}
+
+		/* to bad file */
+	LOD_DBG(("RISlod_load_err_handler to bad file \n"));
+		if( stmt )
+		{
+			err_ptr = MSG(lnd_err_code);
+			RISlod_dump_to_bad(stmt);
+			RISlod_construct_n_dump_to_bad("--RISLOAD Error (%ld)\n",
+				lnd_err_code);
+			RISlod_construct_n_dump_to_bad("--%s\n",err_ptr);
+		}
+	}
+	LOD_DBG(("RISlod_load_err_handler END \n"));
+}
+
+
+/*
+**	write to bad file only with rename error (for transfer objects to existing
+**	schema)
+*/
+extern void RISlod_rename_err_handler(
+	long	lnd_err_code,
+	char	*sch_name)
+{
+	const char	*err_ptr;
+
+	LOD_DBG(("RISlod_rename_err_handler: lnd_err_code: %ld sch_name: %s\n",
+		lnd_err_code, sch_name));
+
+	/* dbca struct is used for load error */
+	if( lnd_err_code )
+	{
+		if( RISlod_mode != EMBED )
+		{
+#if defined(WIN32S)
+			RIS32s_file_error_box(RISUTL_I_LOAD_ERROR,0,lnd_err_code,
+					NULL,0,1);
+#else
+			RISuco_file_error_box(stdout,RISUTL_I_LOAD_ERROR,0,lnd_err_code,
+					NULL,0,1);
+			fflush(stdout);
+#endif
+		}
+
+		/* to bad file */
+		err_ptr = MSG(lnd_err_code);
+		RISlod_construct_n_dump_to_bad("--RISLOAD Error (%ld)\n",lnd_err_code);
+		RISlod_construct_n_dump_to_bad("--%s\n",err_ptr);
+		RISlod_construct_n_dump_to_bad("--RISLOAD Error: Transfer schema was: %s\n", sch_name);
+	}
+}
+
+
+/* 
+**	write to bad file if flag set 
+*/
+extern void RISlod_fatal_err_handler(
+	long	lnd_err_code,
+	int		to_badfile)
+{
+	const char	*err_ptr;
+
+	LOD_DBG(("RISlod_fatal_err_handler: lnd_err_code %ld\n",
+		lnd_err_code));
+
+	if( lnd_err_code )
+	{
+		if( RISlod_mode == EMBED )
+		{
+			*RISlod_general_err = lnd_err_code;
+		}
+		else
+		{
+#if defined(WIN32S)
+			RIS32s_file_error_box(RISUTL_I_LOAD_ERROR,0,lnd_err_code,
+					NULL,0,1);
+#else
+			RISuco_file_error_box(stdout,RISUTL_I_LOAD_ERROR,0,lnd_err_code,
+					NULL,0,1);
+			fflush(stdout);
+#endif
+		}
+		err_ptr = MSG(lnd_err_code);
+		if( to_badfile )
+		{
+			RISlod_construct_n_dump_to_bad("--RISLOAD Error (%ld)\n",
+				lnd_err_code);
+			RISlod_construct_n_dump_to_bad("--%s\n",err_ptr);
+		}
+	}
+	LOD_DBG(("RISlod_fatal_err_handler: END\n"));
+}
+
+/* 
+**	dump stmts to bad file 
+*/
+extern void RISlod_construct_n_dump_to_bad(
+	char *fmt, 
+	...)
+{
+	char	buffer[LOD_BAD_BUFFER_LEN];
+
+	va_list args;
+
+	LOD_DBG(("RISlod_construct_n_dump_to_bad: Begin\n"));
+
+	va_start(args,fmt);
+	vsprintf(buffer, fmt, args);
+	va_end(args);
+
+	RISlod_dump_to_bad(buffer);
+	LOD_DBG(("1. RISlod_construct_n_dump_to_bad: End\n"));
+}
+
+
+/* 
+** dump information to log file
+*/
+extern void RISlod_construct_n_dump_to_log(
+	char *fmt, 
+	...)
+{
+	char	buffer[LOD_LOG_BUFFER_LEN];
+
+	va_list args;
+
+	LOD_DBG(("RISlod_construct_n_dump_to_log: Begin\n"));
+
+	va_start(args,fmt);
+	vsprintf(buffer, fmt, args);
+	va_end(args);
+
+	RISlod_dump_to_log(buffer);
+	LOD_DBG(("1. RISlod_construct_n_dump_to_log: End\n"));
+}

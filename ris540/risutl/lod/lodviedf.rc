@@ -1,0 +1,360 @@
+/* Do not alter this SPC information: $Revision: 1.2.13.1 $ */
+/*
+**	NAME:				lodviedf.rc								
+**	AUTHORS:			Jennifer Xia			
+**	CREATION DATE:		June 26, 1990			
+**	ABSTRACT:			It contains a function which processes a create view.
+**						It also contains three other functions which process
+**						those view deinitions stored in a temporary file.
+**	REVISION HISTORY:	August 6th, 1991 Hitesh Patel
+*/
+ 
+/*
+**	DEFINES
+*/
+
+/*
+**	INCLUDES
+*/
+#if defined(WIN32S) && defined(ULD_EXE)
+#include <windows.h>
+#include <windowsx.h>
+#include "winport.h"
+#include "winio.h"
+#include "winhan.h"
+#include "risutl.h"
+#include "prog32s.h"
+#endif 
+
+#include "ris_err.h"
+
+#ifdef MM
+#include "lod.h"
+#endif
+
+exec sql include "lod.h";
+
+/*
+**	VARIABLES
+*/
+
+/*
+**	FUNCTIONS
+*/
+
+/*
+**      FUNCTION PROTOTYPES
+*/
+#define lodviedf_rc
+#include "sys.prt"
+#include "comdebug.prt"
+#include "comjmp.prt"
+#include "comumsg.prt"
+#include "ris.prt"
+#include "lodmisc.prt"
+#include "lodermsg.prt"
+#include "lodgtstm.prt"
+#include "loddmp.prt"
+#include "lodlogdp.prt"
+#include "lodtime.prt"
+#include "lodviedf.prt"
+#include "ucoerrbx.prt"
+
+
+
+extern view_node_type	*RISlod_proc_create_view(
+	char			*sch_name,
+	char			*view_name,
+	int 			view_select,
+	view_node_type 	*view_header,
+	FILE			*view_tfp)
+{
+
+	char	*nl_ptr;
+	view_node_type	*RISlod_insert_to_view_list();
+
+	exec sql begin declare section;
+		char	*err_ptr;
+	exec sql end declare section;
+
+	LOD_DBG(("RISlod_proc_create_view: sch_name <%s>, view_name <%s>\n", sch_name, view_name));
+	LOD_DBG(("\tview_select <%c> view_header 0x%x \n",
+						view_select, view_header));
+
+	if (RISlod_lod_or_dmp_view(sch_name, 
+							   view_name, 
+							   view_select) == DUMP)
+	{
+		LOD_DBG(("1. RISlod_proc_create_view: end"));
+		return(view_header);
+	}
+
+	/*
+	**	Table may not be created yet and therefore this message may be repeated
+	**  RISlod_print_msg(MSG(RISUTL_E_LOADING_VIEW), view_name);
+	*/
+
+	nl_ptr = RISlod_sql_stmt + strlen(RISlod_sql_stmt) - 1;
+	*nl_ptr = '\0';
+	exec sql execute immediate :RISlod_sql_stmt;
+	*nl_ptr = '\n';
+
+	LOD_WARNING_CHECK(RISlod_ptr_struct_ptr->bvnode_ptr->sqlwarnings); 
+	if (SQLCODE < 0)
+	{
+		if (SQLCODE == RIS_E_UNKNOWN_RELATION)
+		{
+			view_header = RISlod_insert_to_view_list(view_name, view_header, view_tfp);
+
+			LOD_DBG(("2. RISlod_proc_create_view: end"));
+			return(view_header);
+		}
+		else
+		{
+			/* error and therefore dump it */
+			if( RISlod_mode == EMBED )
+			{
+				RISlod_ptr_struct_ptr->bvnode_ptr->ris_err_code = risca->sqlcode; 
+				RISlod_ptr_struct_ptr->bvnode_ptr->db_err_code = dbca->sqlcode; 
+			}
+			else
+			{
+				exec sql report error into :err_ptr;
+#if !defined(ULD_DLL)
+				PUTS(err_ptr);
+#endif
+			}
+
+			RISlod_construct_n_dump_to_log("\tView: %s not loaded.\n",view_name);
+			RISlod_dump_to_bad_with_err(RISlod_sql_stmt);
+
+			LOD_DBG(("3. RISlod_proc_create_view: end"));
+			return(view_header);
+		}
+	}
+	else
+	{		
+		RISlod_print_msg(MSG(RISUTL_E_LOADED_VIEW), view_name);
+		RISlod_construct_n_dump_to_log("\tView: %s loaded.\n", view_name);
+
+		RISlod_view_loaded++;
+
+		LOD_DBG(("4. RISlod_proc_create_view: end"));
+		return(view_header);
+	}
+}
+
+
+extern view_node_type 	*RISlod_insert_to_view_list(
+	char			*view_name,
+	view_node_type	*view_header,
+	FILE			*view_tfp)
+{
+
+	view_node_type	*pre_view_header;
+	long			ftell();
+	
+	LOD_DBG(("RISlod_insert_to_view_list: view_name <%s> view_header 0x%x view_tfp 0x%x\n", 
+						view_name, view_header, view_tfp));
+
+	pre_view_header = view_header;
+	view_header = (view_node_type *) calloc(1, sizeof(view_node_type));
+	CHK_MEM_ALLOC_ERR(view_header)
+	
+	strcpy(view_header->view_name, view_name);
+
+	view_header->offset = ftell(view_tfp);
+	if (FPUTS(RISlod_sql_stmt, view_tfp) == EOF) WRITING_FILE_ERR(RISUTL_E_CANT_WRITE_TEMP_FILE)
+
+	view_header->link = pre_view_header;
+
+	LOD_DBG(("view_header = %d\n", view_header));	
+	LOD_DBG(("view_name = <%s>\n", view_header->view_name));
+	LOD_DBG(("offset = <%ld>\n", view_header->offset));
+	LOD_DBG(("RISlod_sql_stmt = <%s>\n", RISlod_sql_stmt));
+	LOD_DBG(("view_header->link = %d\n", view_header->link));	
+	
+	LOD_DBG(("1. RISlod_insert_to_view_list: end"));
+	return(view_header);
+}
+
+
+extern void RISlod_proc_view_list(
+	view_node_type 	*view_header,
+	FILE			*view_tfp)
+{
+	
+	view_node_type	*pre_node_ptr;
+	view_node_type	*node_ptr;
+	view_node_type	*post_node_ptr;
+	short int		view_loaded;
+	view_node_type	*RISlod_delete_from_view_list();
+	char			*nl_ptr;
+
+	exec sql begin declare section;
+		char	*err_ptr;
+	exec sql end declare section;
+
+	LOD_DBG(("RISlod_proc_view_list: view_header 0x%x  view_tfp 0x%x\n", 
+						view_header, view_tfp));
+
+	for(;view_header != NULL;)
+	{
+		view_loaded = FALSE;
+
+		for(pre_node_ptr = (view_node_type *) NULL, 
+					node_ptr = view_header, post_node_ptr = view_header->link;
+							node_ptr != NULL;)
+		{
+			if( RISlod_mode == EMBED )
+			{
+				if(RISlod_search_view(node_ptr->view_name) == DUMP)
+					continue; /* this sets RISlod_ptr_struct_ptr->bvnode_ptr */
+			}
+			fseek(view_tfp, node_ptr->offset, 0);
+			RISlod_view_from_tfile(view_tfp);
+			LOD_DBG(("RISlod_sql_stmt = <%s>\n", RISlod_sql_stmt));
+			
+			nl_ptr = RISlod_sql_stmt + strlen(RISlod_sql_stmt) - 1;
+			*nl_ptr = '\0';
+			exec sql execute immediate :RISlod_sql_stmt;
+			*nl_ptr = '\n';
+
+			LOD_WARNING_CHECK(RISlod_ptr_struct_ptr->bvnode_ptr->sqlwarnings); 
+			if (SQLCODE < 0)
+			{
+				if (SQLCODE == RIS_E_UNKNOWN_RELATION)
+				{
+					pre_node_ptr = node_ptr;
+					node_ptr = post_node_ptr;
+					if (post_node_ptr != NULL)
+						post_node_ptr = post_node_ptr->link;
+				}
+				else
+				{
+					if( RISlod_mode == EMBED )
+					{
+						RISlod_ptr_struct_ptr->bvnode_ptr->ris_err_code = risca->sqlcode; 
+						RISlod_ptr_struct_ptr->bvnode_ptr->db_err_code = dbca->sqlcode; 
+					}
+					else
+					{
+						exec sql report error into :err_ptr;
+#if !defined(ULD_DLL)
+						PUTS(err_ptr);
+#endif
+					}
+
+				   RISlod_construct_n_dump_to_log("\tView: %s not loaded.\n",node_ptr->view_name);
+					RISlod_dump_to_bad_with_err(RISlod_sql_stmt);
+
+					view_header = RISlod_delete_from_view_list(view_header, node_ptr, pre_node_ptr);
+					node_ptr = post_node_ptr;
+					if (post_node_ptr != NULL)
+						post_node_ptr = post_node_ptr->link;
+				}
+			}
+			else
+			{		
+				RISlod_print_msg(MSG(RISUTL_E_LOADED_VIEW), 
+					node_ptr->view_name);
+				RISlod_construct_n_dump_to_log("\tView: %s loaded.\n", node_ptr->view_name);
+
+				RISlod_view_loaded++;
+				view_loaded = TRUE;
+
+				view_header = RISlod_delete_from_view_list(view_header, node_ptr, pre_node_ptr);
+				node_ptr = post_node_ptr;
+				if (post_node_ptr != NULL)
+					post_node_ptr = post_node_ptr->link;
+			}
+		}
+
+		if (! view_loaded)
+		{
+			for (node_ptr = view_header; node_ptr != NULL; node_ptr = post_node_ptr)
+			{
+				post_node_ptr = node_ptr->link; 
+				
+				if( RISlod_mode == EMBED )
+					if(RISlod_search_view(node_ptr->view_name) == DUMP)
+						continue; /* this sets RISlod_ptr_struct_ptr->bvnode_ptr */
+
+				fseek(view_tfp, node_ptr->offset, 0);
+				RISlod_view_from_tfile(view_tfp);
+				LOD_DBG(("RISlod_sql_stmt = <%s>\n", RISlod_sql_stmt));
+
+				nl_ptr = RISlod_sql_stmt + strlen(RISlod_sql_stmt) - 1;
+				*nl_ptr = '\0';
+				exec sql execute immediate :RISlod_sql_stmt;
+				*nl_ptr = '\n';
+
+				LOD_WARNING_CHECK(
+					RISlod_ptr_struct_ptr->bvnode_ptr->sqlwarnings); 
+				if( SQLCODE < 0 )
+				{
+					if( RISlod_mode == EMBED )
+					{
+						RISlod_ptr_struct_ptr->bvnode_ptr->ris_err_code = risca->sqlcode; 
+						RISlod_ptr_struct_ptr->bvnode_ptr->db_err_code = dbca->sqlcode; 
+					}
+					else
+					{
+						exec sql report error into :err_ptr;
+#if !defined(ULD_DLL)
+						PUTS(err_ptr);
+#endif
+					}
+	
+				    RISlod_construct_n_dump_to_log("\tView: %s not loaded.\n",node_ptr->view_name);
+					RISlod_dump_to_bad_with_err(RISlod_sql_stmt);
+					free(node_ptr);
+				}
+			}
+
+			break;
+		}
+	}
+
+	LOD_DBG(("1. RISlod_proc_view_list: end\n"));
+}
+
+
+extern view_node_type 	*RISlod_delete_from_view_list(
+	view_node_type	*view_header,
+	view_node_type	*node_ptr,
+	view_node_type	*pre_node_ptr)
+{
+
+	LOD_DBG(("RISlod_delete_from_view_list: view_header 0x%x node_ptr 0x%x pre_node_ptr 0x%x\n",
+						view_header, node_ptr, pre_node_ptr));
+
+	if (pre_node_ptr == NULL)
+		view_header = node_ptr->link;
+	else
+		pre_node_ptr->link = node_ptr->link;
+
+	LOD_DBG(("view_header = %d\n", view_header));	
+	LOD_DBG(("pre_node_ptr = %d\n", pre_node_ptr));	
+	LOD_DBG(("pre_node_ptr->link = %d\n", pre_node_ptr->link));	
+	LOD_DBG(("node_ptr = %d\n", node_ptr));	
+
+	free(node_ptr);
+
+	LOD_DBG(("1. RISlod_delete_from_view_list: end"));
+	return(view_header);
+}
+
+/* not required */
+extern void RISlod_free_view_header(
+	view_node_type *view_header)
+{
+	view_node_type *node_ptr;
+	view_node_type *post_node_ptr;
+
+	for(node_ptr = view_header; node_ptr != NULL; node_ptr = post_node_ptr)
+	{
+		post_node_ptr = node_ptr->link;
+		free(node_ptr);
+	}
+}

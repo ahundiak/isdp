@@ -1,0 +1,240 @@
+/*
+** Copyright 1993, Intergraph Corporation, All Rights Reserved
+*/
+
+/*
+**	================================================
+**
+**	File		: trasact.rc
+**	Purpose		: Transaction and Locking Mechanism
+**
+**	================================================
+*/
+
+#include <stdio.h>
+#include "ris.prt"
+
+extern void display_tools();
+
+extern void main()
+{
+	/*
+	**	Host variable declarations
+	*/
+    exec sql begin declare section;
+        char	*error_ptr;
+    exec sql end declare section;
+
+	/*
+	**	Define exception handlers
+	**	i.e., if SQL error detected goto label error
+	**		  if no more rows detected goto lable not_found
+	*/
+    exec sql whenever sqlerror goto :error;
+    exec sql whenever not found goto :not_found;
+
+    /*
+	**	Default to schema sch1 (static SQL with no parameters)
+	*/
+	printf("Default to schema sch1\n");
+    exec sql default schema sch1;
+
+	/*
+	** 	Set the autocommit off so that transactions are not committing until
+	**	and explicit commit statement is executed
+	*/
+	exec sql set transaction autocommit off;
+
+	/*
+	**	Lock the table in exclusive mode so that no one else can access it 
+	**	(static SQL without parameters)
+	*/
+	printf("Lock the table tools\n");
+	exec sql lock tables tools in exclusive mode;
+	
+    /*
+	**	Insert a row into the table tools (static SQL with no parameters)
+	*/
+	printf("Insert some more rows into table tools\n");
+    exec sql insert into tools values('screwdriver', 3000, 1.95);
+    exec sql insert into tools values('wrench', 3010, 5.90);
+    exec sql insert into tools values('file', 5210, 6.20);
+
+	/*
+	**	Commit the above transactions (static SQL without parameters)
+	*/
+	printf("Commit the transaction\n");
+	exec sql commit;
+
+	/*
+	**	select tools table
+	*/
+	display_tools();
+
+	/*
+	**	Though we have commited, we have still have autocommit off
+	*/
+
+	/*
+	**	Update prices for following products.
+	**	If any error is encountered or and price value is not updated, execute
+	**	rollback statement
+	*/
+	printf("Update some rows in the table tools\n");
+    exec sql update tools set price = 999.99 where item = 'screwdriver';
+    exec sql update tools set price = 999.99 where item = 'wrench';
+    exec sql update tools set price = 999.99 where item = 'file';
+
+	/*
+	**	select tools table
+	*/
+	display_tools();
+
+	/*
+	** This will cause a rollback as there is no item by the name of 'hitesh'
+	*/
+    exec sql update tools set price = 3.19 where item = 'hitesh';
+
+	/*
+	**	Commit the above transactions
+	**	This will also release the locks.
+	*/
+	printf("Commit the transaction\n");
+	exec sql commit;
+
+	/*
+	**	Set the autocommit to on (static SQL without parameters)
+	*/
+	exec sql set transaction autocommit on;
+
+    /*
+	**	select tools tables
+	*/
+	display_tools();
+
+	return;
+
+not_found:
+	/*
+	** This part of code is executed when no more data is found while executing
+	** DML statements such as insert or update.
+	** In this case, u would like to rollback the transaction
+	*/
+    exec sql whenever not found continue;
+    printf("No more data\n");
+
+	/*
+	** Rollback until last set commit point (static SQL without parameters)
+	*/
+	printf("Rollback the transaction\n");
+	exec sql rollback;
+
+    /*
+	**	select tools tables
+	*/
+	display_tools();
+
+    return;
+
+error:
+	/*
+	** This part of code is executed when error is detected
+	** In this case, u would like to rollback the transaction
+	*/
+
+	/*
+	** Ignore SQL error from onwards and continue processing
+	*/
+    exec sql whenever sqlerror continue;
+
+	/*
+	** Retreive the message string resulting form the last SQL error
+	*/
+    exec sql report error into :error_ptr;
+    puts(error_ptr);
+
+	/*
+	** Rollback until last set commit point
+	*/
+	exec sql rollback;
+
+    return;
+}
+
+extern void display_tools()
+{
+	/*
+	**	Host variable declarations
+	*/
+    exec sql begin declare section;
+        char	name[21];
+        int		amount;
+        long	amount_ind;
+		char	value[10];
+        char	*error_ptr;
+    exec sql end declare section;
+
+	/*
+	**	Define exception handlers
+	**	i.e., if SQL error detected goto label error
+	**		  if no more rows detected goto lable not_found
+	*/
+    exec sql whenever sqlerror goto :error;
+    exec sql whenever not found goto :not_found;
+
+    /*
+	**	Select multiple rows from the table using cursors
+	*/
+
+	/*
+	** Declare a cursor for select statement (static SQL with parameters)
+	*/
+	printf("Declare cursor for select from table tools\n");
+    exec sql declare c1 cursor for select * from tools;
+
+	/*
+	**	Open cursor c1 using parameter
+	*/
+	printf("Open cursor for select from table tools\n");
+    exec sql open c1;
+
+    for (;;)
+    {
+        exec sql fetch c1 into :name, :amount:amount_ind, :value;
+    	printf("name: %s amount: %d value: %s\n", 
+				name, amount_ind ? -1 : amount, value);
+    }
+
+not_found:
+	/*
+	** This part of code is executed when no more data is found
+	*/
+    exec sql whenever not found continue;
+    printf("No more data\n");
+
+	/*
+	** Close the cursor c1
+	*/
+    printf("Close cursor c1\n");
+	exec sql close c1;
+
+    return;
+
+error:
+	/*
+	** This part of code is executed when error is detected
+	*/
+
+	/*
+	** Ignore SQL error from onwards and continue processing
+	*/
+    exec sql whenever sqlerror continue;
+
+	/*
+	** Retreive the message string resulting form the last SQL error
+	*/
+    exec sql report error into :error_ptr;
+    puts(error_ptr);
+
+    return;
+}

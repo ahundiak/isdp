@@ -1,0 +1,326 @@
+/* Do not alter this SPC information: $Revision: 1.2.13.1 $ */
+/*
+**	NAME:				lodlogdp.rc								
+**	AUTHORS:			Jennifer Xia			
+**	CREATION DATE:		June 26, 1990			
+**	ABSTRACT:			It contains various functions which decides whet her to
+**						load a schema, table, view or privilege definition.
+**	
+**	REVISION HISTORY:	August 6th, 1991 Hitesh Patel
+*/
+ 
+/*
+**	DEFINES
+*/
+
+/*
+**	INCLUDES
+*/
+#ifdef MM
+#include "lod.h"
+#endif
+
+exec sql include "lod.h";
+
+/*
+**	VARIABLES
+*/
+
+/*
+**	FUNCTIONS
+*/
+
+/*
+**      FUNCTION PROTOTYPES
+*/
+#define lodlogdp_rc
+#include "sys.prt"
+#include "comwrap.prt"
+#include "comdebug.prt"
+#include "comjmp.prt"
+#include "comumsg.prt"
+#include "lodlogdp.prt"
+#include "lodmisc.prt"
+#include "lodermsg.prt"
+#include "lodtime.prt"
+
+
+
+/*	This routine dumps schema's info into bad file until END_of_SCH only
+	if there is an error otherwise that info is skipped. 
+*/
+extern void RISlod_dump_sch_info(
+	char *stmt)
+{
+	
+	char		*one_line;
+	
+	LOD_DBG(("RISlod_dump_sch_info: <%s> \n",stmt?stmt:"NULL"));
+
+	one_line = RISlod_sql_stmt;
+
+	for(;;)
+	{
+		if (RIScom_fgets(one_line, RIS_MAX_STMT_LEN - 1, RISlod_in_fp) == NULL)
+			UNEXPECTED_EOF(RISUTL_E_CANT_READ_INPUT_FILE);
+
+		if( stmt )
+			RISlod_dump_to_bad(one_line);
+		else
+			/* skip 'cause for interactive mode users says no */;
+
+		if (strncmp(one_line, "***RIS*** End of Schema ***RIS***", EOS_STR_LEN - 1) == 0)
+		{
+			break;
+		}
+	}
+	LOD_DBG(("1. RISlod_dump_sch_info: end"));
+}
+
+/*	This routine dumps the current schema stmt with corresponding error
+	to bad file.
+*/
+extern void RISlod_dump_sch_err_to_bad(
+	char	*stmt)
+{
+	LOD_DBG(("RISlod_dump_sch_err_to_bad: <%s> \n",stmt));
+	if( !RISlod_global_err_ind ) /* if no error in schema */
+	{
+		RISlod_global_err_ind = TRUE; 
+	}
+	
+	RISlod_dump_to_bad_with_err(stmt);
+	LOD_DBG(("1. RISlod_dump_sch_err_to_bad: end"));
+}
+
+
+/*	This routine dumps table info to bad file only if there is a error
+	and if BOTH selected.
+*/
+extern void RISlod_dump_tab_info(
+	char	*stmt)
+{
+	
+	char		*one_line;
+	
+	LOD_DBG(("RISlod_dump_tab_info: stmt<%s> \n", stmt?stmt:"NULL"));
+
+	/* 
+	** definition ONLY and until End of table is reached, 
+	** all stmts are discarded 
+	*/		
+	if (stmt == NULL)
+	{
+		one_line = RISlod_sql_stmt;
+
+		for(;;)
+		{
+			if (RIScom_fgets(one_line, RIS_MAX_STMT_LEN - 1, RISlod_in_fp) == NULL)
+				UNEXPECTED_EOF(RISUTL_E_CANT_READ_INPUT_FILE);
+	
+			if (strncmp(one_line, "***RIS*** End of Table ***RIS***", EOT_STR_LEN - 1) == 0)
+			{
+				break;
+			}
+			else if (strncmp(one_line, "***RIS*** End of Schema ***RIS***", EOS_STR_LEN - 1) == 0)
+			{
+				fseek(RISlod_in_fp, 0 - strlen(one_line), 1);
+				break;
+			}
+		}	/* for */
+	}	/* if */
+	/* 
+	** definition and data BOTH and 
+	** if there is an error then current stmt is logged 
+	*/
+	else	
+	{
+		one_line = RISlod_sql_stmt;
+
+		for(;;)
+		{
+			if (RIScom_fgets(one_line, RIS_MAX_STMT_LEN - 1, RISlod_in_fp) == NULL)
+				UNEXPECTED_EOF(RISUTL_E_CANT_READ_INPUT_FILE);
+	
+			if (strncmp(one_line, "***RIS*** End of Table ***RIS***", EOT_STR_LEN - 1) == 0)
+			{
+				RISlod_dump_to_bad(one_line);
+				break;
+			}
+			else if (strncmp(one_line, "***RIS*** End of Schema ***RIS***", EOS_STR_LEN - 1) == 0)
+			{
+				fseek(RISlod_in_fp, 0 - strlen(one_line), 1);
+				break;
+			}
+			else
+				 RISlod_dump_to_bad(one_line); 
+		}	/* for */
+	}	/* else */
+
+	LOD_DBG(("1. RISlod_dump_tab_info: end"));
+}
+
+
+/*	This routine dumps partial errors concerning a table. If error found
+	while, say, insert rows, then default, create table stmt are also
+	logged to bad file.
+*/
+extern void RISlod_dump_partial_tab(
+	int		create_stmt,
+	int		insert_stmt,
+	int		field_stmt)
+{
+
+	char		one_line[RIS_MAX_STMT_LEN];
+
+	LOD_DBG(("RISlod_dump_partial_tab: create %d insert %d field %d \n", create_stmt, insert_stmt, field_stmt)); 
+	
+	if( !RISlod_global_err_ind ) /* for tab,views,indxs,grants */
+	{
+		if (FPUTS(RISlod_default_sch_stmt, RISlod_bad_fp) == EOF) 
+			WRITING_FILE_ERR(RISUTL_E_CANT_WRITE_BAD_FILE)
+		RISlod_global_err_ind = TRUE; 
+	}
+
+	if( !RISlod_err_fnd_in_tab )	/* to avoid partially loading all for each bad row */
+	{
+		RISlod_err_fnd_in_tab = TRUE;
+		if( create_stmt )
+		{
+			LOD_DBG(("RISlod_create_stmt_spot %ld\n", RISlod_create_stmt_spot)); 
+			if (fseek(RISlod_in_fp,RISlod_create_stmt_spot,0) == 0)
+			{
+				
+				if (RIScom_fgets(one_line, RIS_MAX_STMT_LEN - 1, RISlod_in_fp) == NULL)
+					UNEXPECTED_EOF(RISUTL_E_CANT_READ_INPUT_FILE);
+				RISlod_dump_to_bad(one_line);
+			}
+		}
+		if( insert_stmt )
+		{
+			LOD_DBG(("RISlod_insert_stmt_spot %ld\n", RISlod_insert_stmt_spot)); 
+			if (fseek(RISlod_in_fp,RISlod_insert_stmt_spot,0) == 0)
+			{
+				
+				if (RIScom_fgets(one_line, RIS_MAX_STMT_LEN - 1, RISlod_in_fp) == NULL)
+					UNEXPECTED_EOF(RISUTL_E_CANT_READ_INPUT_FILE);
+				RISlod_dump_to_bad(one_line);
+			}
+		}
+		if( field_stmt )
+		{
+			LOD_DBG(("RISlod_field_stmt_spot %ld\n", RISlod_field_stmt_spot)); 
+			if (fseek(RISlod_in_fp,RISlod_field_stmt_spot,0) == 0)
+			{
+				
+				if (RIScom_fgets(one_line, RIS_MAX_STMT_LEN - 1, RISlod_in_fp) == NULL)
+					UNEXPECTED_EOF(RISUTL_E_CANT_READ_INPUT_FILE);
+				RISlod_dump_to_bad(one_line);
+			}
+		}
+		LOD_DBG(("RISlod_current_stmt_spot %ld\n", RISlod_current_stmt_spot)); 
+		fseek(RISlod_in_fp,RISlod_current_stmt_spot,0);
+	}
+
+	LOD_DBG(("1. RISlod_dump_partial_tab: end"));
+}
+
+
+/*	Dump current statement without error messages. For statement other than 
+	schema statements dump default schema statement also. 
+*/
+extern void RISlod_dump_to_bad(
+	char	*stmt)
+{
+
+	LOD_DBG(("RISlod_dump_to_bad: <%s> \n",stmt)); 
+	if( !RISlod_global_err_ind ) /* for tab,views,indxs,grants */
+	{
+		if (FPUTS(RISlod_default_sch_stmt, RISlod_bad_fp) == EOF) 
+			WRITING_FILE_ERR(RISUTL_E_CANT_WRITE_BAD_FILE)
+		RISlod_global_err_ind = TRUE; 
+	}
+
+	if (stmt)
+	{
+		if (FPUTS(stmt, RISlod_bad_fp) == EOF) 
+			WRITING_FILE_ERR(RISUTL_E_CANT_WRITE_BAD_FILE)
+	}
+	LOD_DBG(("1. RISlod_dump_to_bad: end"));
+}
+
+
+/* Dumps current statement with error messages */
+extern void RISlod_dump_to_bad_with_err(
+	char	*stmt)
+{
+	LOD_DBG(("RISlod_dump_to_bad_with: <%s> \n",stmt)); 
+
+	if( !RISlod_global_err_ind ) /* for tab,views,indxs,grants */
+	{
+		if (FPUTS(RISlod_default_sch_stmt, RISlod_bad_fp) == EOF) 
+			WRITING_FILE_ERR(RISUTL_E_CANT_WRITE_BAD_FILE)
+		RISlod_global_err_ind = TRUE; 
+	}
+
+	if (stmt)
+	{
+		if (FPUTS(stmt, RISlod_bad_fp) == EOF) 
+			WRITING_FILE_ERR(RISUTL_E_CANT_WRITE_BAD_FILE)
+		if( risca->sqlcode )
+		{
+			RISlod_construct_n_dump_to_bad("--RIS Error (%ld)\n",risca->sqlcode);
+			RISlod_construct_n_dump_to_bad("--%s\n",risca->sqlerrm.sqlerrmc);
+		}
+		if( dbca->sqlcode )
+		{
+			RISlod_construct_n_dump_to_bad("--DB Error (%ld)\n",dbca->sqlcode);
+			RISlod_construct_n_dump_to_bad("--%s",dbca->sqlerrm.sqlerrmc);
+		}
+	}
+	LOD_DBG(("1. RISlod_dump_to_bad_with_err: end"));
+}
+
+/*	Dump current statement to log file.
+*/
+extern void RISlod_dump_to_log(
+	char	*stmt)
+{
+
+	LOD_DBG(("RISlod_dump_to_log: <%s> \n",stmt)); 
+
+	if (stmt)
+	{
+		if (FPUTS(stmt, RISlod_log_fp) == EOF) 
+			WRITING_FILE_ERR(RISUTL_E_CANT_WRITE_LOG_FILE)
+	}
+	LOD_DBG(("1. RISlod_dump_to_log: end\n"));
+}
+
+
+/*	 Finally, dump END_of_SCH indicator. */
+extern void RISlod_dump_end_of_sch_to_log()
+{
+	if( RISlod_global_err_ind )
+		RISlod_construct_n_dump_to_bad("***RIS*** End of Schema ***RIS***\n");
+}
+
+
+extern void RISlod_general_info_to_log()
+{
+	RISlod_construct_n_dump_to_log("File mode\t\t: %c\n",RISlod_filemode);
+	RISlod_construct_n_dump_to_log("Input file\t\t: %s\n",RISlod_mfile);
+	RISlod_construct_n_dump_to_log("Bad file\t\t: %s\n",RISlod_bfile);
+	RISlod_construct_n_dump_to_log("Log file\t\t: %s\n",RISlod_lfile);
+	RISlod_construct_n_dump_to_log("Commit Interval\t: %d\n",RISlod_commit_interval);
+	RISlod_construct_n_dump_to_log("\n");
+}
+
+extern void RISlod_dump_summary_to_log()
+{
+	RISlod_construct_n_dump_to_log("\nSummarizing ...\n");
+	RISlod_construct_n_dump_to_log("\tTables (created)loaded\t: %d.\n",RISlod_tab_loaded);
+	RISlod_construct_n_dump_to_log("\tIndexes loaded\t\t\t: %d.\n",RISlod_indx_loaded);
+	RISlod_construct_n_dump_to_log("\tViews loaded\t\t\t: %d.\n",RISlod_view_loaded);
+	RISlod_construct_n_dump_to_log("\n");
+}

@@ -1,0 +1,842 @@
+/*
+**	NAME:			upgschem.rc
+**	AUTHORS:		Bhaskar R. Sayyaparaju
+**	CREATION DATE:		3/94
+**	ABSTRACT:		
+**		The functions that handle schemas for the RIS upgrade utility.	
+**	
+**	REVISION HISTORY:
+*/
+
+/*
+**	DEFINES
+*/
+
+/*
+**	INCLUDES
+*/
+#ifdef UPGRADE_GLOBAL_DEFINE
+#undef UPGRADE_GLOBAL_DEFINE
+#endif
+
+#ifdef MKMK_KLUDGE
+#include "upgrade.h"
+#endif
+
+exec sql include "upgrade.h";
+
+#include <signal.h>
+#if defined(unix)
+#include <sys/stat.h>
+#endif
+#include "ris_err.h"
+#include "riscom.h"
+#include "risupger.h"
+#include "risupg.h"
+#ifdef WIN32
+#include <windows.h>
+#endif
+
+/*
+**	FUNCTION PROTOTYPES
+*/
+#define	 upgschema_rc
+#include "sys.prt"
+#include "sysalloc.prt"
+#include "ris.prt"
+#include "comjmp.prt"
+#include "comdebug.prt"
+#include "comwrap.prt"
+#include "comumsg.prt"
+#include "cnvschfl.prt"
+#include "upgcolmn.prt"
+#if defined(WIN32)
+#include "upgmain.prt"
+#endif
+#include "upgbldsc.prt"
+#include "upgprvdf.prt"
+#include "upgmisc.prt"
+#include "upgschem.prt"
+#include "upgtable.prt"
+#include "upgview.prt"
+#include "upgpaswd.prt"
+#include "upgdictx.prt"
+
+/*
+**	VARIABLES
+*/
+#if defined (__Sol2__)
+# define NSIG	44
+#elif defined(Soli)
+# define NSIG	34
+#endif
+#if defined (WIN32)
+# define SIGSET(a,b) signal(a,b)
+#else
+# define SIGSET(a,b) sigset(a,b)
+#endif
+#ifndef _NSIG
+# define _NSIG NSIG
+#endif
+
+/*
+**	FUNCTIONS
+*/
+
+/******************************************************************************/
+static void reset_signal()
+{
+    int sig;
+
+    UPG_DBG(("reset_signal: begin\n"));
+    for (sig=1;sig < _NSIG;sig++)
+    {
+        switch(sig)
+        {
+		/*
+		** handle these signals
+		*/
+#ifdef SIGINT
+		case SIGINT:
+#endif
+#ifdef SIGQUIT
+		case SIGQUIT:
+#endif
+               	if (SIGSET(sig, SIG_IGN) == SIG_ERR)
+               	{
+			printf(MSG(RIS_E_UPG_ERR_SIGSET), sig);
+			no_change_exit();
+		}
+		break;
+
+		default:
+		break;
+        }
+    }
+    UPG_DBG(("reset_signal: end\n"));
+}
+/******************************************************************************/
+static void init_signal_again()
+{
+    int sig;
+
+    UPG_DBG(("init_signal_again: begin\n"));
+    for (sig=1;sig < _NSIG;sig++)
+    {
+        switch(sig)
+        {
+		/*
+		** handle these signals
+		*/
+#ifdef SIGINT
+		case SIGINT:
+#endif
+#ifdef SIGQUIT
+		case SIGQUIT:
+#endif
+		if (SIGSET(sig, &sig_handler) == SIG_ERR)
+		{
+			printf(MSG(RIS_E_UPG_ERR_SIGSET), sig);
+			no_change_exit();
+		}
+		break;
+
+		default:
+		break;
+        }
+    }
+    UPG_DBG(("init_signal_again: end\n"));
+}
+/******************************************************************************/
+extern void RISupg_find_if_dropped_not_created(
+	dropped_sch_info	**passed_drp_sch_list)
+{
+	risupg_inf_struct *tmp_inf_list;
+    risupg_sch_info   *tmp_sch_list;
+	dropped_sch_info	  *loc_drp_sch_list=0;
+
+	tmp_inf_list = risupg_cur_file;
+	tmp_sch_list = tmp_inf_list->sch_list;
+	
+	UPG_DBG(("RISupg_find_if_dropped_not_created: passed_drp_sch_list <0x%x>\n"
+					,passed_drp_sch_list));
+	while (tmp_sch_list)
+	{
+#if defined (WIN32)
+                if (INTERRUPTED())
+                {
+                        no_change_exit();
+                        CLEAR_INTERRUPT();
+                        LONGJMP(RIS_E_UPG_GOT_INTERRUPT);
+                }
+#endif
+		if (tmp_sch_list->drop_schema && !tmp_sch_list->cre_schema)
+		{
+			if (!loc_drp_sch_list)
+			{
+				loc_drp_sch_list = (dropped_sch_info *)malloc(sizeof(dropped_sch_info));
+				if (!loc_drp_sch_list)
+                {
+					UPG_DBG(("Cant allocate loc_drp_sch_list.\n"));
+					printf(MSG(RIS_E_UPG_CANNOT_ALLOCATE_MEMORY));
+                   	LONGJMP(RISupg_CANNOT_ALLOCATE_MEMORY);
+                }
+				*passed_drp_sch_list = loc_drp_sch_list;
+			}
+			else
+			{
+	       		loc_drp_sch_list->next = (dropped_sch_info *)malloc(sizeof(dropped_sch_info));
+				if (!loc_drp_sch_list->next)
+       		    {
+					UPG_DBG(("Cant allocate loc_drp_sch_list->next.\n"));
+					printf(MSG(RIS_E_UPG_CANNOT_ALLOCATE_MEMORY));
+                 	LONGJMP(RISupg_CANNOT_ALLOCATE_MEMORY);
+                }
+				loc_drp_sch_list = loc_drp_sch_list->next;
+			}	
+				
+			strcpy(loc_drp_sch_list->sch_name,tmp_sch_list->sch_name);
+			loc_drp_sch_list->next = 0;		
+		}
+		tmp_sch_list = tmp_sch_list->next;
+	}
+	UPG_DBG(("RISupg_find_if_dropped_not_created: end <0x%x>\n"
+					,passed_drp_sch_list));
+}
+/******************************************************************************/
+static int RISupg_upgraded_before(
+			char *sch_name_pwd,
+			char *sch_name,
+			char *sch_pass,
+			int	new_schema)
+{
+	risupg_inf_struct *tmp_inf_list;
+	risupg_sch_info   *tmp_sch_list;
+	int upgrade_stat=0;
+	int status=0;
+	
+	exec sql begin declare section;
+	exec sql end declare section;
+
+	UPG_DBG(("RISupg_upgraded_before: schema <%s> new_schema <%d>\n",sch_name,
+				new_schema));
+	tmp_inf_list = risupg_cur_file;
+	tmp_sch_list = risupg_cur_sch;
+	if (tmp_sch_list && !new_schema)
+	{
+		if (tmp_sch_list->tabunload != -1)
+			upgrade_stat |= TABUNLOAD;
+		if (tmp_sch_list->viewunload != -1)
+			upgrade_stat |= VIEWUNLOAD;
+		if (tmp_sch_list->colunload != -1)
+			upgrade_stat |= COLUNLOAD;
+		if (tmp_sch_list->grantunload != -1)
+			upgrade_stat |= PRIVUNLOAD;
+		if (tmp_sch_list->drop_schema == 1)
+			upgrade_stat |= DROPSCHEMA;
+		if (tmp_sch_list->cre_schema == 1)
+			upgrade_stat |= CREATESCHEMA;
+		if (tmp_sch_list->cre_tab == 1)
+			upgrade_stat |= TABCREATE;
+/*
+				if (!strncmp(tmp_sch_list->cre_view,"done",4))
+*/				
+		if (tmp_sch_list->cre_view == 1)
+			upgrade_stat |= VIEWCREATE;
+		if (tmp_sch_list->upd_col == 1)
+			upgrade_stat |= COLUPDATE;
+		if (tmp_sch_list->cre_grant == 1)
+			upgrade_stat |= PRIVCREATE;
+		if (upgrade_stat)
+			printf(MSG(RIS_I_UPG_SCHEMA_CONV_PARTIAL),
+						sch_name);
+		UPG_DBG(("RISupg_upgraded_before: returning %d\n",upgrade_stat));
+#ifdef DEBUG
+		printf("RISupg_upgraded_before: returning %d\n",upgrade_stat);
+#endif
+		return(upgrade_stat);
+	}
+	else
+	{
+		printf(MSG(RIS_I_UPG_UPGRADE_SCHEMA_FIRST),sch_name);
+	}
+	status = SETJMP();
+	if (status)
+	{
+		RESETJMP();
+		if ((SQLCODE != RIS_E_NO_SCHEMA_NO_ACCESS) &&
+			(SQLCODE != RIS_E_NO_SCHEMA_TABLES) &&
+			(SQLCODE != RIS_E_INV_SCHUSR_INSERT))
+		{
+			RISint_process_debug("+upgrade");
+			LONGJMP(SQLCODE);
+		}
+	}
+	else
+	{
+		RISint_process_debug("-upgrade");
+		printf(MSG(RIS_I_UPG_EXEC_DEFAULT_SCHEMA));
+		RISupg_exec_default_sch(sch_name_pwd,sch_name,sch_pass);
+		RESETJMP();
+	}
+    if ((SQLCODE == RIS_E_NO_SCHEMA_NO_ACCESS) ||
+		(SQLCODE == RIS_E_NO_SCHEMA_TABLES) ||
+		(SQLCODE == RIS_E_INV_SCHUSR_INSERT))
+    {
+      	 /*
+      	 **  Schema seems to be V4 Schema.
+      	 */
+    	 UPG_DBG(("1. RISupg_upgraded_before: returning 0\n"));
+#ifdef DEBUG
+       	 printf("1. RISupg_upgraded_before: returning 0\n");
+#endif
+		RISint_process_debug("+upgrade");
+       	 return(0);
+    }
+    else if (SQLCODE == RIS_SUCCESS)
+    {
+        UPG_DBG(("2. RISupg_upgraded_before: returning 1\n"));
+#ifdef DEBUG
+        printf("2. RISupg_upgraded_before: returning -1\n");
+#endif
+		RISint_process_debug("+upgrade");
+        return(-1);
+    }
+    else if (SQLCODE != RIS_SUCCESS)
+    {
+        RISupg_report_error(SQLCODE);
+        UPG_DBG(("3. RISupg_upgraded_before: LONGJMP\n"));
+#ifdef DEBUG
+        printf("3. RISupg_upgraded_before: LONGJMP\n");
+#endif
+		RISint_process_debug("+upgrade");
+		LONGJMP(SQLCODE);
+	}
+	return (-1);
+}
+/******************************************************************************/
+
+extern int RISupg_upgrade_schema(
+	char *sch_name_pwd,
+	ris_schema_info *schinfo,
+	ris_db_info		*dbinfo,
+	char *debugstring)
+{
+	char			sch_name[RIS_MAX_ID_SIZE]="";
+	char			sch_pass[RIS_MAX_ID_SIZE]="";
+	char			*sch_def_stmt;
+	char			cre_sch_stmt[2000];
+	int				status = 0;
+	int				upgrade_status = 0;
+	int				upgraded_before = 0;
+	int				new_schema = 0;
+	int				reset_done = 0;
+	risupg_sch_info	*tmp_sch_list=0;
+	char	dmp_filename[RIS_MAX_PATH_SIZE]="";
+	char	tab_filename[RIS_MAX_PATH_SIZE]="";
+	char	col_filename[RIS_MAX_PATH_SIZE]="";
+	char	view_filename[RIS_MAX_PATH_SIZE]="";
+	char	priv_filename[RIS_MAX_PATH_SIZE]="";
+	char	cre_filename[RIS_MAX_PATH_SIZE]="";
+	char	file_name[RIS_MAX_ID_SIZE]="";
+	FILE	*cre_fp;
+
+	UPG_DBG(("RISupg_upgrade_schema: <%s>\n",sch_name_pwd));
+
+	/*
+	**	Execute default schema (the schema created thru RIS 4.X.X)
+	**	This becomes a special stmt for client/server because of upg_flag
+	**	Here, client reads risschema file created thru RIS 2.1.4 and server
+	**	defaults to this old-versioned schema
+	*/
+	risupg_cur_sch = 0;
+/*
+	tmp_ptr = strtok(sch_name_pwd,".");
+	if (tmp_ptr == NULL)
+		strcpy(sch_name,sch_name_pwd);
+	else
+		strcpy(sch_name,tmp_ptr);
+*/
+	RISupg_separate_sch_name_pwd(sch_name_pwd,sch_name,sch_pass);
+#ifdef DEBUG
+	printf("SCHNAME %s\n",sch_name);
+#endif
+
+    strcpy(dmp_filename,RIS_dir);
+	strcpy(file_name,sch_name);
+#if defined (WIN32)
+    strcat(dmp_filename,"\\");
+	if (strlen(file_name) > 8)
+		file_name[8]='\0';
+#else
+    strcat(dmp_filename,"/");
+	if (strlen(file_name) > 10)
+		file_name[10] = '\0';
+#endif
+    strcat(dmp_filename,file_name);
+	strcpy(tab_filename,dmp_filename);
+	strcpy(view_filename,dmp_filename);
+	strcpy(col_filename,dmp_filename);
+	strcpy(priv_filename,dmp_filename);
+	strcpy(cre_filename,dmp_filename);
+    strcat(cre_filename,".cre");
+    strcat(tab_filename,".tab");
+    strcat(col_filename,".col");
+    strcat(view_filename,".vew");
+    strcat(priv_filename,".prv");
+	UPG_DBG(("Create schema filename: %s\n",cre_filename));
+	UPG_DBG(("Table dump filename: %s\n",tab_filename));
+	UPG_DBG(("View dump filename: %s\n",view_filename));
+	UPG_DBG(("Column dump filename: %s\n",col_filename));
+	UPG_DBG(("Grant dump filename: %s\n",priv_filename));
+
+	status = SETJMP();
+	if (status)
+	{
+		RESETJMP();
+		printf(MSG(RIS_E_UPG_UPGRADE_SCHEMA),sch_name);
+		return(1);
+	}
+#ifdef DEBUG
+	fprintf(stdout,"schema list 0x%x",risupg_cur_file->sch_list);
+#endif
+	fflush(stdout);
+#if defined (WIN32)
+                if (INTERRUPTED())
+                {
+                        no_change_exit();
+                        CLEAR_INTERRUPT();
+                        LONGJMP(RIS_E_UPG_GOT_INTERRUPT);
+                }
+#endif
+	if (risupg_cur_file->sch_list)
+	{
+		int i=0;
+		tmp_sch_list = risupg_cur_file->sch_list;
+#ifdef DEBUG
+		fprintf(stdout,"BEFORE WHILE 1:\n");
+#endif
+		while(tmp_sch_list)
+		{
+			if(!strcmp(tmp_sch_list->sch_name,sch_name))
+			{
+				risupg_cur_sch = tmp_sch_list;
+				break;
+			}
+			tmp_sch_list = tmp_sch_list->next;
+			i++;
+		}
+#ifdef DEBUG
+		fprintf(stdout,"AFTER WHILE 1:\n");
+#endif
+		if (!tmp_sch_list)
+		{
+			tmp_sch_list = risupg_cur_file->sch_list;
+#ifdef DEBUG
+			fprintf(stdout,"BEFORE WHILE 2:\n");
+#endif
+			while(tmp_sch_list->next)
+				tmp_sch_list = tmp_sch_list->next;
+#ifdef DEBUG
+			fprintf(stdout,"AFTER WHILE 2:\n");
+#endif
+			tmp_sch_list->next = (risupg_sch_info *)malloc(sizeof(risupg_sch_info));
+			if(!tmp_sch_list->next)
+			{
+				printf(MSG(RIS_E_UPG_CANNOT_ALLOCATE_MEMORY));
+				LONGJMP(RISupg_CANNOT_ALLOCATE_MEMORY);
+			}
+			tmp_sch_list = tmp_sch_list->next;
+			memset((char *)tmp_sch_list,0,sizeof(risupg_sch_info));
+		}
+	}
+	else
+	{
+		risupg_cur_file->sch_list = (risupg_sch_info *)malloc(sizeof(risupg_sch_info));
+		if(!risupg_cur_file->sch_list)
+		{
+			printf(MSG(RIS_E_UPG_CANNOT_ALLOCATE_MEMORY));
+			LONGJMP(RISupg_CANNOT_ALLOCATE_MEMORY);
+		}
+		tmp_sch_list = risupg_cur_file->sch_list;
+		memset((char *)tmp_sch_list,0,sizeof(risupg_sch_info));
+	}
+	if (!risupg_cur_sch)
+	{
+		new_schema = 1;
+		risupg_cur_sch = tmp_sch_list;
+		strcpy(risupg_cur_sch->sch_name,sch_name);
+		risupg_cur_sch->sch_passwd = 'N';
+		risupg_cur_sch->tabunload = -1;
+		risupg_cur_sch->viewunload = -1;
+		risupg_cur_sch->colunload = -1;
+		risupg_cur_sch->grantunload = -1; /*TR # 439502546 */
+		risupg_cur_sch->cre_tab = 0;
+		risupg_cur_sch->cre_view = 0;
+		risupg_cur_sch->upd_col = 0;
+		risupg_cur_sch->cre_grant = 0;
+	}
+
+	/*
+	** Check if this schema was upgraded before
+	*/
+	upgraded_before = RISupg_upgraded_before(
+			sch_name_pwd, sch_name,sch_pass, new_schema);
+	upgrade_status = upgraded_before;
+
+	/*
+	** Check if this schema was upgraded before
+	*/
+	if( upgraded_before == -1)
+	{
+		printf(MSG(RIS_I_UPG_SCHEMA_UPGRADE_MSG1));
+		printf(MSG(RIS_I_UPG_SCHEMA_UPGRADE_MSG2));
+		risupg_cur_sch->tabunload = 0;
+		risupg_cur_sch->viewunload = 0;
+		risupg_cur_sch->colunload = 0;
+		risupg_cur_sch->grantunload = 0;
+		risupg_cur_sch->drop_schema = 1;
+		risupg_cur_sch->cre_schema = 1;
+		risupg_cur_sch->cre_tab = 1;
+		risupg_cur_sch->cre_view = 1;
+		risupg_cur_sch->upd_col = 1;
+		risupg_cur_sch->cre_grant = 1;
+		return(2);
+	}
+#if defined (WIN32)
+        if (INTERRUPTED())
+        {
+                no_change_exit();
+                CLEAR_INTERRUPT();
+                LONGJMP(RIS_E_UPG_GOT_INTERRUPT);
+        }
+#endif
+
+	if (!(upgraded_before & PRIVUNLOAD))
+	{
+		printf(MSG(RIS_I_UPG_EXEC_DEFAULT_SCHEMA));
+		RISupg_exec_default_sch(sch_name_pwd,sch_name,sch_pass);
+	}
+
+	/*
+	**	Separate schname and schpass
+	RISupg_separate_sch_name_pwd(sch_name_pwd,sch_name,sch_pass);
+	*/
+
+	if(!(upgraded_before & CREATESCHEMA ))
+	{
+		/*
+		**	Build the create schema stmt for RIS 5.x.x using risschema file 
+		*/
+		if ((upgraded_before & DROPSCHEMA))
+		{
+			cre_fp = RIScom_fopen(cre_filename,"r");
+			if (!cre_fp)
+			{
+				printf(MSG(RIS_E_UPG_ERR_READ_CRESCH_STMT));
+				LONGJMP(RISupg_CANT_CREATE_SCHEMA);
+			}
+			if (RIScom_fgets(cre_sch_stmt,2000,cre_fp))
+			{
+				cre_sch_stmt[strlen(cre_sch_stmt)] = '\0';
+				sch_def_stmt = cre_sch_stmt;
+			}
+			else
+			{
+				printf(MSG(RIS_E_UPG_ERR_READ_CRESCH_STMT));
+				LONGJMP(RISupg_CANT_CREATE_SCHEMA);
+			}
+		}
+		else
+		{
+#ifdef DEBUG
+			printf("before build schema statement Schema name is %s:0x%x\n",
+					sch_name_pwd,sch_name_pwd);
+#endif
+			printf(MSG(RIS_I_UPG_BUILD_CREATE_SCHEMA_STMT));
+			if (sch_pass[0] == '\0' && risupg_cur_sch->sch_passwd == 'Y')
+			{
+				printf(MSG(RIS_I_UPG_NEED_PASSWD));
+				RISupg_get_password("schema password: ",sch_pass,RIS_MAX_PASSWD_SIZE);
+				sprintf(sch_name_pwd,"%s.%s",sch_name,sch_pass);
+			}
+			RISupg_build_sch_stmt(sch_name,sch_name_pwd,schinfo,dbinfo,
+								&sch_def_stmt);
+#ifdef DEBUG
+			printf("After build schema statement Schema name is %s 0x%x\n",
+				sch_name_pwd,sch_name_pwd);
+#endif
+		}
+		UPG_DBG(("sch_def_stmt = <%s>\n",sch_def_stmt));
+	}
+
+	/*
+	** Execute drop schema only if upgrading this schema for very first 
+	** time.  **	This becomes a special stmt for server because of 
+	** RIS_upgrade_flag. 
+	*/
+	if (!(upgraded_before & DROPSCHEMA))
+	{
+		status = 0;
+		if (!(upgraded_before & PRIVUNLOAD))
+		{
+			RISupg_declare_dic_tables(sch_name);
+			printf(MSG(RIS_I_UPG_EXTRACT_DATA_FROM_V4SCHEMA), sch_name);
+			status = RISupg_extract_dict_info(sch_name,tab_filename,
+						view_filename,col_filename,priv_filename);
+#if defined (WIN32)
+                if (INTERRUPTED())
+                {
+                        no_change_exit();
+                        CLEAR_INTERRUPT();
+                        LONGJMP(RIS_E_UPG_GOT_INTERRUPT);
+                }
+#endif
+		}
+		if (!status)
+		{
+			if (sch_pass[0] == '\0' && risupg_cur_sch->sch_passwd == 'Y')
+			{
+				printf(MSG(RIS_I_UPG_NEED_SCHEMA_PASSWD_FOR_DROP));
+				RISupg_get_password("schema password: ",
+							sch_pass,RIS_MAX_PASSWD_SIZE);
+				sprintf(sch_name_pwd,"%s.%s",sch_name,sch_pass);
+			}
+			printf(MSG(RIS_I_UPG_IGNORE_SIGNAL_MSG));
+			printf(MSG(RIS_I_UPG_IGNORE_SIGNAL_MSG1));
+			/*
+			** set the signal handler so that it will ignore Ctrl-C Ctrl-\
+			** during drop and create schema phase.
+			*/
+#if defined (WIN32)
+			SetConsoleCtrlHandler(NULL,TRUE);
+#else
+			reset_signal();
+#endif
+			reset_done = 1;
+			RISupg_exec_drop_sch(sch_name_pwd,sch_name);
+			risupg_cur_sch->drop_schema = 1;
+			upgraded_before |= DROPSCHEMA;
+		}
+	}
+
+	/*
+	** Going to create V5 schema. We need to do this only if the
+	** schema had not been created before.
+	*/
+	if (!(upgraded_before & CREATESCHEMA))
+	{
+		printf(MSG(RIS_I_UPG_CREATE_NEW_SCHEMA));
+		if (!reset_done)
+		{
+#if defined (WIN32)
+			SetConsoleCtrlHandler(NULL,TRUE);
+#else
+			reset_signal();
+#endif
+		}
+		RISupg_exec_create_sch(sch_def_stmt);
+		risupg_cur_sch->cre_schema = 1;
+		UNLINK(cre_filename);
+		upgraded_before |= CREATESCHEMA;
+	}
+
+	/*
+	** Reset the signals to initia state after create schema.
+	*/
+#if defined (WIN32)
+	RISupg_init_interrupt();
+#else
+	init_signal_again();
+#endif
+	reset_done = 0;
+
+	/*
+	**	Include user-defined tables and views listed in ristypes
+	**	WHY: include views if u r going to drop them later on??
+	**	ANS: if ris view strings are executed without including these tables
+	**	     then underlying table will complain about VIEW already exist. So
+	**		 include them, drop them and recreate them
+	*/
+
+	/*
+	**	SETJMP for including tables and views, and modifying datatypes only 
+	**	Continue if error detected while including
+	*/
+	upgrade_status = upgraded_before;
+	RISint_process_debug("-upgrade");
+	RISupg_exec_default_sch(sch_name_pwd,sch_name,sch_pass);
+#ifdef DEBUG
+	printf("DEBUG STRING: %s\n",debugstring);
+#else
+    debugstring=debugstring;
+#endif
+	RISint_process_debug("+upgrade");
+
+	if (!(upgrade_status & TABCREATE))
+	{
+		RISupg_table_fp = RIScom_fopen(tab_filename,"r");
+		if (!RISupg_table_fp)
+		{
+			printf(MSG(RIS_E_UPG_CANT_READ_SCHEMADUMPFILE));
+       		LONGJMP(RISupg_CANT_READ_SCHEMADUMPFILE);
+    	}
+		if( status = SETJMP() )
+		{
+/*
+			upgrade_status = -1;
+*/
+			fprintf(stderr,MSG(RIS_E_UPG_WARN_IGNORE_TABLES));
+			RIScom_fclose(RISupg_table_fp);
+		}
+		else
+		{
+		/*
+		**	Include RIS 4.X.X dictionary tables such as risprivs, risstrings and
+		**	ristypes tables
+		**	If error encountered, LONGJMP to above and continue to process
+		**	privileges
+		*/
+			printf(MSG(RIS_I_UPG_INCLUDE_TABS_AND_VIEWS));
+
+
+			RISupg_execute_table_info(sch_name_pwd,sch_name,
+										tab_filename);
+			RIScom_fclose(RISupg_table_fp);
+#if defined (WIN32)
+                	if (INTERRUPTED())
+                	{
+                        	no_change_exit();
+                        	CLEAR_INTERRUPT();
+                        	LONGJMP(RIS_E_UPG_GOT_INTERRUPT);
+                	}
+#endif
+		}
+		RESETJMP();
+	}
+	
+	if (!(upgrade_status & VIEWCREATE))
+	{
+		RISupg_view_fp = RIScom_fopen(view_filename,"r");
+		if (!RISupg_view_fp)
+		{
+			printf(MSG(RIS_E_UPG_CANT_READ_SCHEMADUMPFILE));
+       		LONGJMP(RISupg_CANT_READ_SCHEMADUMPFILE);
+    	}
+		status = SETJMP();
+		if(status)
+		{
+			fprintf(stderr,MSG(RIS_E_UPG_PROCESS_VIEWS));
+			fprintf(stderr,MSG(RIS_E_UPG_WARN_IGNORE_VIEWS));
+			RIScom_fclose(RISupg_view_fp);
+		}
+		/*
+		** if the views have not yet been included, do so and also update the
+		** ris_view_def column of risviews table.
+		*/
+	
+		/*
+		**	Execute user-defined view strings listed in risstrings
+		*/
+		else
+		{
+			printf(MSG(RIS_I_UPG_CREATE_VIEWS));
+			RISupg_process_views(sch_name_pwd,sch_name,view_filename);
+			RIScom_fclose(RISupg_view_fp);
+		}
+		RESETJMP();
+	
+	}
+	if (!(upgrade_status & COLUPDATE))
+	{
+		RISupg_col_fp = RIScom_fopen(col_filename,"r");
+		if (!RISupg_col_fp)
+		{
+			printf(MSG(RIS_E_UPG_CANT_READ_SCHEMADUMPFILE));
+       		LONGJMP(RISupg_CANT_READ_SCHEMADUMPFILE);
+    	}
+		status = SETJMP();
+		if (status)
+		{
+			fprintf(stderr,MSG(RIS_E_UPG_PROCESS_COLUMN));
+            fprintf(stderr,MSG(RIS_E_UPG_WARN_IGNORE_COLUMN));
+			RIScom_fclose(RISupg_col_fp);
+		}
+		/*
+		**	Modify ris_columns table to update data types using riscolumns table
+		*/
+		else
+		{
+			printf(MSG(RIS_I_UPG_MODIFY_DATATYPES));
+			RISupg_update_coldata(sch_name,col_filename);
+			UPG_DBG(("Returned from update_coldata\n"));
+			fflush(RISupg_col_fp);
+			UPG_DBG(("Closing the Column data file\n"));
+			RIScom_fclose(RISupg_col_fp);
+		}
+		RESETJMP();
+	}
+
+	/*
+	**	SETJMP for processing grants only Continue if error detected 
+	*/
+	if (!(upgrade_status & PRIVCREATE))
+	{
+		RISupg_priv_fp = RIScom_fopen(priv_filename,"r");
+		if (!RISupg_priv_fp)
+		{
+			printf(MSG(RIS_E_UPG_CANT_READ_SCHEMADUMPFILE));
+       		LONGJMP(RISupg_CANT_READ_SCHEMADUMPFILE);
+    	}
+	}
+	if( status = SETJMP() )
+	{
+		upgrade_status = -1;
+		fprintf(stderr,MSG(RIS_E_UPG_WARN_IGNORE_GRANT));
+		RIScom_fclose(RISupg_priv_fp);
+	}
+	else
+	{
+		/*
+		**	Execute grant stmts	grenerated above
+		*/
+		if (!(upgrade_status & PRIVCREATE))
+		{
+			printf(MSG(RIS_I_UPG_PROCESS_PRIV));
+			RISupg_process_privileges(sch_name_pwd,priv_filename);
+			RIScom_fclose(RISupg_priv_fp);
+		}
+	}
+	RESETJMP();
+
+	/*
+	**	While processing privileges default schema might have changed and
+	**	therefore default to current schema being upgraded 
+	*/
+	RISupg_exec_default_sch(sch_name_pwd,sch_name,sch_pass);
+
+	
+	/*
+	**	Close schema
+	**	No LONGJMPs in this routine
+	*/
+	printf(MSG(RIS_I_UPG_CLOSE_SCHEMA));
+	RISupg_exec_close_sch(sch_name);
+/*
+**	Cleaning up the files that are created if are done.
+*/
+    if(risupg_cur_sch->cre_tab == 1)
+		UNLINK(tab_filename);
+    if(risupg_cur_sch->cre_view == 1)
+		UNLINK(view_filename);
+    if(risupg_cur_sch->upd_col == 1)
+		UNLINK(col_filename);
+    if(risupg_cur_sch->cre_grant == 1)
+		UNLINK(priv_filename);
+
+	UPG_DBG(("2. RISupg_upgrade_schema: returning\n"));
+	RESETJMP();
+	return(0);
+}
+
+/******************************************************************************/

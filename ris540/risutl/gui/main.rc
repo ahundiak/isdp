@@ -1,0 +1,260 @@
+/* Do not alter this SPC information: $Revision: 1.6.9.1 $ */
+/*
+**	NAME:							main.c
+**	AUTHORS:						Terry McIntyre
+**	CREATION DATE:					2/90
+**	ABSTRACT:
+**		main() for Environ V & NT RIS GUI Interactive Utility.
+**		
+**	
+**	REVISION HISTORY:
+**
+**	11/94:	Added support for INTERNATIONALIZATION.  Rick Kramer
+**	01/30/95 Check return from SetLocale. Rick
+*/
+ 
+/*
+**	INCLUDES
+*/
+#include <stdio.h>
+#include "risver.h"
+#if defined(__clipper__)
+#include <tools.h>
+#elif defined(WIN32)
+#include <locale.h>
+#else
+ERROR -- NO CODE
+#endif
+#include "risstjmp.h"
+#include "rislimit.h"
+#include "gui.h"
+#include "ucommon.h"
+
+/*
+**	FUNCTION PROTOTYPES
+*/
+#define main_c
+#include "comjmp.prt"
+#include "fi.prt"
+#if defined(__clipper__)
+#include "env5.prt"
+#include "fi_env5.prt"
+#elif defined(WIN32)
+#include "fi_winnt.prt"
+#include "comparcl.prt"
+#else
+ERROR -- NO CODE
+#endif
+#include "ucoumsg.prt"
+#include "comumsg.prt"
+#include "guierror.prt"
+#include "guiin.prt"
+#include "guiinit.prt"
+#include "main.prt"
+#include "ucoerrbx.prt"
+#include "ris.prt"
+#include "sys.prt"
+
+
+/*
+**	DEFINES
+*/
+
+/*
+**	VARIABLES
+*/
+
+
+/*
+**	FUNCTIONS
+*/
+
+/******************************************************************************/
+static void local_error_handler()
+{
+exec sql begin declare section;
+	char *err;
+exec sql end declare section;
+
+	if (RIS_gui_error.error == RISUTL_E_RIS_ERROR)
+	{
+		exec sql report error into :err;
+	}
+	else
+	{
+		err = RISgui_generate_error_box();
+	}
+	RISgui_error_box(err);
+}
+
+/******************************************************************************/
+
+#if defined(__clipper__)
+extern int main(
+	int argc,
+	char *argv[])
+#elif defined(WIN32)
+extern int WINAPI WinMain(
+	HANDLE hInst,
+	HANDLE hPrevInst,
+	LPSTR lpCmdLn,
+	int nShowCmd)
+#else
+ERROR -- NO CODE
+#endif
+{
+	int				sts;
+	char 		buf[1024];	
+#if defined(__clipper__)
+	int				vs;
+	int				fixed_slots;
+	struct vlt_slot	*fixed_vlt;
+#elif defined(WIN32)
+	int				argc;
+	char			**argv;
+	HICON			icon;
+#else
+ERROR -- NO CODE
+#endif
+	if (RISload_dll()) return(1);
+#if defined(__clipper__)
+	Enter_tools();
+
+	Enable_events(FI_EVENT_MASK);
+
+	Inq_displayed_vs(&vs);
+	Get_fixed_vlt(&fixed_vlt, &fixed_slots);
+	Loadvlt(vs, fixed_vlt, fixed_slots);
+
+	FI_enter();
+#elif defined(WIN32)
+        if ( !setlocale(LC_ALL, ""))
+        {
+            MessageBox(NULL,"Cannot set Locale.","RISgui",MB_ICONSTOP | MB_OK | MB_TASKMODAL);
+            return(0);
+        }
+	argc = RIScom_parse_command_line(hInst, lpCmdLn, &argv);
+
+	FI_enter (hInst);
+	if ((icon = LoadIcon(hInst, "RisIcon")) != NULL)
+	{
+		FI_SetApplicationIcon(icon);
+	}
+#else
+ERROR -- NO CODE
+#endif
+
+	RISuco_initialize_ums(INIT_UTL_UMS_FILE|INIT_RIS_UMS_FILE);
+        if (argc == 2)
+        {
+           
+           /******************************************************************
+           /  /V and /? added to fix TR # 439502826.  GBF (9/27/95)                              
+           *******************************************************************/ 
+
+	   if ( (strcmp(argv[1], "-V") == 0) || (strcmp(argv[1], "/V") == 0) )
+           {
+                strcpy(buf,"Version ");
+                strcat(buf, (MSG(RISUTL_I_RISGUI_VERSION),
+                             RIS_version));
+                FI_message_box(FI_CURRENT_SCREEN, -1, -1,
+                     "RIS Interactive Utility", FI_BLUE, "dutch801b", 18.0, buf,
+                      FI_BLACK, "mono821b", 15.0, FI_LEFT_JUSTIFIED, 81);
+#if defined(__clipper__)
+                Exit_tools();
+#elif defined(WIN32)
+#else
+ERROR -- NO CODE
+#endif
+           	return(0);
+
+           }
+           else if ( (strcmp(argv[1], "-?") == 0) || (strcmp(argv[1], "/?") == 0) )
+           {
+                strcpy(buf, MSG(RISUTL_I_RISGUI_USAGE_1));
+                strcat(buf, MSG(RISUTL_I_RISGUI_USAGE_2));
+                strcat(buf, MSG(RISUTL_I_RISGUI_USAGE_5));
+                strcat(buf, MSG(RISUTL_I_RISGUI_USAGE_4));
+
+                FI_message_box(FI_CURRENT_SCREEN, -1, -1,
+                       "Usage", FI_BLUE, "dutch801b", 30.0, buf,
+                        FI_BLACK, "mono821b", 15.0, FI_LEFT_JUSTIFIED, 81);
+#if defined(__clipper__)
+                Exit_tools();
+#elif defined(WIN32)
+#else
+ERROR -- NO CODE
+#endif
+               	return(0);
+           }
+	   else if (strcmp(argv[1], "-db") == 0)
+	   {
+		RISgui_enable_debug();
+	   }
+           else
+           {
+                 RISgui_error_box(RIScom_umsg(RISUTL_I_RISGUI_USAGE_1));
+#if defined(__clipper__)
+                 Exit_tools();
+#elif defined(WIN32)
+#else
+ERROR -- NO CODE
+#endif
+                 return (1);
+           }
+        }
+
+
+	if ((sts = SETJMP()) != 0)
+	{
+		static char buffer[1072];
+
+		RESETJMP();
+
+		RISuco_char_error_box(buffer, RISUTL_I_RIS_ERROR, 0, sts, NULL, 0, 1);
+		RISgui_error_box(buffer);
+
+#if defined(__clipper__)
+		Exit_tools();
+#elif defined(WIN32)
+#else
+ERROR -- NO CODE
+#endif
+		return sts;
+	}
+	if ((sts = RISgui_initialize()) != RIS_SUCCESS)
+	{
+		local_error_handler();
+#if defined(__clipper__)
+		Exit_tools();
+#elif defined(WIN32)
+#else
+ERROR -- NO CODE
+#endif
+		return sts;
+	}
+
+	if ((sts = RISgui_display_in_form()) != RIS_SUCCESS)
+	{
+		local_error_handler();
+#if defined(__clipper__)
+		Exit_tools();
+#elif defined(WIN32)
+#else
+ERROR -- NO CODE
+#endif
+		return sts;
+	}
+
+	FI_process_forms();
+
+	RISterminate();
+
+#if defined(__clipper__)
+	Exit_tools();
+#elif defined(WIN32)
+#else
+ERROR -- NO CODE
+#endif
+	return RIS_SUCCESS;
+}

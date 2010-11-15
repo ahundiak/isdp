@@ -1,0 +1,712 @@
+/* Do not alter this SPC information: $Revision: 1.2.13.1 $ */
+/*
+**	NAME:						lodbatch.rc
+**	AUTHORS:					Jennifer Xia	
+**	CREATION DATE:				June 26, 1990	
+**	ABSTRACT:					It contains the batch mode function of RISload.
+**	REVISION HISTORY:			August 6th, 1991 Hitesh Patel
+*/
+ 
+#if defined(WIN32S) && defined(ULD_EXE)
+#include <windows.h>
+#include <windowsx.h>
+#include "winport.h"
+#include "winio.h"
+#include "winhan.h"
+#include "risutl.h"
+#include "prog32s.h"
+#endif 
+/*
+**	DEFINES
+*/
+
+exec sql define LOAD_GLOBAL_DEFINE;
+
+/*
+**	INCLUDES
+*/
+#ifdef MM 
+#include "lod.h"
+#endif
+exec sql include "lod.h";
+
+/*START_PRT_INCLUDE*/
+#include "risapi.h"
+/*STOP_PRT_INCLUDE*/
+
+#include "ris_err.h"
+
+/*
+**	VARIABLES
+*/
+
+/*
+**	FUNCTIONS
+*/
+
+/*
+**      FUNCTION PROTOTYPES
+*/
+#define lodbatch_rc
+#include "sys.prt"
+#include "ris.prt"
+#include "comdebug.prt"
+#include "comjmp.prt"
+#include "comumsg.prt"
+#include "lodmisc.prt"
+#include "lodbatch.prt"
+#include "loddsind.prt"
+#include "loddsprv.prt"
+#include "loddsprt.prt"
+#include "loddssch.prt"
+#include "loddstab.prt"
+#include "loddsvie.prt"
+#include "lodermsg.prt"
+#include "lodflddf.prt"
+#include "lodgtstm.prt"
+#include "lodinxdf.prt"
+#include "lodinsrt.prt"
+#include "lodlogdp.prt"
+#include "lodcmd.prt"
+#include "lodprvdf.prt"
+#include "lodprvls.prt"
+#include "lodschdf.prt"
+#include "lodstspc.prt"
+#include "lodtabdf.prt"
+#include "lodtabda.prt"
+#include "lodtime.prt"
+#include "lodviedf.prt"
+#include "lodwhat.prt"
+#include "ucodebug.prt"
+
+extern int RISAPI RISX_loader(
+	risloddes	*risloddes_ptr)
+{
+	int status;
+	if (RISload_dll())
+	{
+		RISlod_fatal_err_handler(RIS_E_DYNAMIC_LOADING_FAILED, FALSE);
+		return(FAILURE);
+	}
+
+	if ((status = SETJMP()) != 0)
+	{
+		RESETJMP();
+		RISlod_close_files();/* 7/23/93 rlk */
+		return(FAILURE);
+	}
+	else
+	{
+		RISuco_initialize_debug(RISlod_debug_info, RISlod_debug_count);
+
+		RISXlod_batch_load(0,NULL,EMBED,risloddes_ptr);
+		RESETJMP();
+		return(SUCCESS);
+	}
+}
+
+extern int RISAPI RISXlod_batch_load(
+	int			argc,
+	char		*argv[],
+	int			mode,
+	risloddes 	*risloddes_ptr)
+{
+
+	FILE				*indx_tfp;
+	FILE				*view_tfp;
+	FILE				*grant_tfp;
+	char				sch_name[RIS_MAX_ID_SIZE];
+	char				sch_pwd[RIS_MAX_ID_SIZE];
+	char				new_sch_name[RIS_MAX_ID_SIZE];	/* rename */
+	char				new_sch_pwd[RIS_MAX_ID_SIZE];	/* rename */
+	int					retn = SUCCESS;
+	int					sch_retn;
+	int					item_type;
+	char				rel_name[2 * RIS_MAX_ID_SIZE];
+	char				indx_name[RIS_MAX_ID_SIZE];
+	field_type			field_defs[RIS_MAX_TABLE_COLUMNS];
+	int					max_end_posi;
+	int					data_format;
+	indx_node_type		*indx_header;
+	view_node_type		*view_header;
+	grant_hnode_type	*grant_header;
+	batch_snode_type	*bsnode_ptr;
+
+	int					schindx = 0;	/* indx for risloddes */
+	int					num_tab = 0;	/* # of tables in a schema */
+	int					num_indx = 0;	/* # of indexes in a schema */
+	int					num_view = 0;	/* # of views in a schema */
+
+	int status = 0;
+
+
+	LOD_DBG(("RISXlod_batch_load: argc %d argv 0x%x indx_tfp 0x%x view_tfp 0x%x grant_tfp 0x%x\n", 
+						argc, argv, indx_tfp, view_tfp, grant_tfp));
+
+	RISlod_start_timer();
+
+	RISlod_initialize_ris();
+
+	RISlod_mode = mode;
+
+	RISlod_initial_ptr_struct_ptr();
+
+	RISlod_open_tmp_files(&indx_tfp,&view_tfp,&grant_tfp);
+
+
+	/* Get the options */
+	if( RISlod_mode == BATCH )
+	{
+		/* If in BATCH (command-line) mode, get the command-line options
+		   and copy into the batch_snode_type structure */
+		RISlod_print_msg(MSG(RISUTL_E_PARSING_CMD_LINE));
+		RISlod_parse_cmd_line(argc, argv);
+	}
+	else if( RISlod_mode == EMBED )
+	{
+		/* If in EMBED mode, copy info from the rislodsch structure
+		   into the batch_snode_type structure */
+
+		/* for general error */
+		RISlod_general_err = &(risloddes_ptr->lod_err_code);
+		RISlod_general_warn = risloddes_ptr->sqlwarnings;
+
+		RISlod_load_func(risloddes_ptr);
+	}
+
+	RISlod_print_msg(MSG(RISUTL_E_LOADING));
+	if (RISlod_debug)
+	{
+		RISlod_pri_batch_struct(RIScom_output_debug);
+	}
+
+	RISlod_general_info_to_log();
+
+	sch_name[0] = '\0';
+	sch_pwd[0] = '\0';
+	new_sch_name[0] = '\0';
+	new_sch_pwd[0] = '\0';
+	rel_name[0] = '\0';
+	indx_name[0] = '\0';
+	grant_header = (grant_hnode_type *) NULL;
+	
+	for(;;)	/* for each schema */
+	{
+		num_tab  = 0;
+		num_indx = 0;
+		num_view = 0;
+
+		RISlod_tab_loaded = 0;
+		RISlod_indx_loaded = 0;
+		RISlod_view_loaded = 0;
+		RISlod_grant_loaded = 0;
+
+		RISlod_err_fnd_in_sch = FALSE;
+		RISlod_global_err_ind = FALSE;
+
+		data_format = FIXED;
+
+		new_sch_name[0] = '\0';
+		new_sch_pwd[0] = '\0';
+
+		/* Execute the next schema statement from the dump file */
+		sch_retn = RISlod_proc_sch_def(sch_name, 
+									   sch_pwd, 
+									   new_sch_name,
+									   new_sch_pwd,
+									   SOME);
+
+		if (sch_retn == FAILURE)
+		{
+			if( RISlod_mode == EMBED )
+			{
+				/* for errors */
+				RISlod_sch_select_mode_post(risloddes_ptr,schindx); 
+			}
+			continue;
+		}
+
+		if (sch_retn == END_OF_MAIN_FILE)
+		{
+			break;
+		}
+
+		indx_header = (indx_node_type *) NULL;
+		view_header = (view_node_type *) NULL;
+
+		if ((RISlod_ptr_struct_ptr->bsnode_ptr->bthlink->tab_select == NONE) && 
+			(RISlod_ptr_struct_ptr->bsnode_ptr->bihlink->indx_select == NONE) && 
+			(RISlod_ptr_struct_ptr->bsnode_ptr->bvhlink->view_select == NONE) && 
+			(RISlod_ptr_struct_ptr->bsnode_ptr->bghlink->grant_select == NONE))
+		{
+			RISlod_dump_sch_info((char *) NULL); /* Do not dump to log file */
+			continue;
+		}
+		else
+		{
+			if ((RISlod_ptr_struct_ptr->bsnode_ptr->bghlink->grant_select != NONE) ||
+				(RISlod_ptr_struct_ptr->bsnode_ptr->bthlink->tab_select == SOME) ||
+				(RISlod_ptr_struct_ptr->bsnode_ptr->bvhlink->view_select == SOME))
+			{
+				grant_header = RISlod_create_grant_hnode(grant_header,
+														 sch_name,
+														 sch_pwd,
+														 new_sch_name,
+														 new_sch_pwd);
+			}
+
+			for(;;)
+			{
+				RISlod_err_fnd_in_tab = FALSE;
+
+				item_type = RISlod_get_tivgdef_stmt(sch_name, 
+												   rel_name, 
+												   indx_name);
+
+
+
+				if (item_type == END_OF_SCHEMA)
+					break;
+
+				if (item_type == FAILURE)
+					continue;
+
+				switch(item_type)
+				{
+					case CREATE_TABLE:	
+						max_end_posi = 0;
+						if( RISlod_mode == EMBED )
+						{
+							if(RISlod_ptr_struct_ptr->bsnode_ptr->bthlink->tab_select == ALL)
+							{
+								num_tab++;
+								RISlod_create_btnode(rel_name);
+							}
+						}
+						if (RISlod_proc_create_tab(sch_name, 
+							   rel_name, 
+							   RISlod_ptr_struct_ptr->bsnode_ptr->bthlink->tab_select,
+							   RISlod_ptr_struct_ptr->bsnode_ptr->bthlink->def_data_select,
+							   RISlod_ptr_struct_ptr->bsnode_ptr->bthlink->exist_tab_select) == SUCCESS)
+						{
+							if (RISlod_ptr_struct_ptr->bsnode_ptr->bthlink->def_data_select == BOTH)
+							{
+								if ((status = RISlod_proc_insert_into(rel_name,
+																	  field_defs)) == SUCCESS)
+								{
+									if (RISlod_proc_field_def(field_defs, 
+										  RISlod_in_desc.sqld, 
+										  &max_end_posi,
+										  &data_format) == SUCCESS)
+									{
+
+										if( (RISlod_ptr_struct_ptr->bthnode_ptr->exist_tab_select == RIS_IGNORE)
+										&&  (RISlod_ptr_struct_ptr->bthnode_ptr->clear_tab_select == YES) )
+										{
+											retn = SUCCESS;
+											retn = 
+											RISlod_delete_from_table(rel_name);
+										}
+
+										if( retn == SUCCESS )
+										{
+											RISlod_proc_tab_data( field_defs, 
+															 max_end_posi,
+															 data_format);
+										}
+										else
+										{
+											RISlod_construct_n_dump_to_log("\t\tWhile delete-ing rows an error occured.\n");
+										}
+									}
+									else
+									{
+										RISlod_construct_n_dump_to_log("\t\tField Definition Statement failed.\n");
+									}
+								}
+								else if (status != END_OF_TABLE)
+								{
+									RISlod_construct_n_dump_to_log("\t\tInsert Statement failed.\n");
+								}
+							}
+							else
+							{
+								RISlod_print_msg(MSG(RISUTL_E_LOADED_TABLE_DEF),
+												 rel_name);
+								RISlod_dump_tab_info((char *) NULL);
+							}
+						}
+						break;
+					case CREATE_INDEX:
+						indx_header = RISlod_proc_create_indx(sch_name, 
+															  rel_name, 
+															  indx_name,
+												   			  RISlod_ptr_struct_ptr->bsnode_ptr->bihlink->indx_select,
+															  indx_header, 
+															  indx_tfp); 
+						break;
+					case CREATE_VIEW:
+						if( RISlod_mode == EMBED )
+						{
+							if(RISlod_ptr_struct_ptr->bsnode_ptr->bvhlink->view_select == ALL)
+							{
+								num_view++;
+								RISlod_create_bvnode(rel_name);
+							}
+						}
+						view_header = RISlod_proc_create_view(sch_name, 
+															  rel_name, 
+												   			  RISlod_ptr_struct_ptr->bsnode_ptr->bvhlink->view_select,
+															  view_header, 
+															  view_tfp); 
+						break;
+					case GRANT:
+						RISlod_proc_grant_stmt(sch_name, 
+											   rel_name,
+											   RISlod_ptr_struct_ptr->bsnode_ptr->bghlink->grant_select,
+											   grant_header,
+											   grant_tfp);
+						break;
+					default:
+						break;
+				}
+			}
+		}
+
+		if (indx_header != NULL)
+		{
+			fseek(indx_tfp, 0L, 0);	
+			RISlod_proc_indx_list(indx_header,indx_tfp);
+			fseek(indx_tfp, 0L, 0);	
+
+			/* for both BATCH and EMBED */
+			RISlod_indx_select_mode_ALL(risloddes_ptr,
+										indx_header,
+										sch_name,
+										RISlod_ptr_struct_ptr->bsnode_ptr->bihlink->indx_select);
+		}
+
+		if (view_header != NULL)
+		{
+			fseek(view_tfp, 0L, 0);	
+			RISlod_proc_view_list(view_header, view_tfp);
+			fseek(view_tfp, 0L, 0);	
+		}
+
+		if( RISlod_mode == EMBED )
+		{
+			if((schindx = RISlod_get_schindx(risloddes_ptr,sch_name)) != -1)
+			{
+				if(RISlod_ptr_struct_ptr->bsnode_ptr->bthlink->tab_select == ALL)
+					RISlod_tab_select_mode_ALL(risloddes_ptr,schindx,num_tab);
+				if(RISlod_ptr_struct_ptr->bsnode_ptr->bthlink->tab_select == SOME)
+					RISlod_tab_mode_post(risloddes_ptr,schindx);
+				if(RISlod_ptr_struct_ptr->bsnode_ptr->bvhlink->view_select == ALL)
+					RISlod_view_select_mode_ALL(risloddes_ptr,schindx,num_view);
+				if(RISlod_ptr_struct_ptr->bsnode_ptr->bvhlink->view_select == SOME)
+					RISlod_view_mode_post(risloddes_ptr,schindx);
+				/* for schema level errors */
+				RISlod_sch_select_mode_post(risloddes_ptr,schindx); 
+			}
+			else
+			{
+				RISlod_load_err_handler(RISUTL_E_COULDNOT_FIND_SCH_RISLODDES, (char *) NULL);
+				TERMINATE_RISLOAD
+			}
+		}
+
+		RISlod_free_indx_header(indx_header);
+		RISlod_dump_end_of_sch_to_log();
+	} /* for each schema */
+	
+	if (grant_header != NULL)
+	{
+		fseek(grant_tfp, 0L, 0);	
+		RISlod_proc_grant_struct(grant_header, grant_tfp);
+
+		/* Also writes to log file */
+		RISlod_priv_select_mode_ALL(risloddes_ptr,grant_header,RISlod_ptr_struct_ptr->bsnode_ptr->bghlink->grant_select);
+
+		RISlod_free_grant_struct(grant_header);
+	}
+
+	if (RISlod_debug)
+	{
+		RISlod_pri_batch_struct(RIScom_output_debug);
+	}
+
+	/* Check to make sure specified schemas were processed */
+	if( RISlod_mode != INTERACT )
+	{
+		LOD_DBG(("Checking if schemas were unloaded.\n"));
+
+		for (bsnode_ptr = RISlod_ptr_struct_ptr->bshnode_ptr;
+			 bsnode_ptr != NULL;
+			 bsnode_ptr = bsnode_ptr->bslink)
+		{
+			LOD_DBG(("Checking schema <%s>, processed <%d>\n",
+					 bsnode_ptr->sch_name, (int)bsnode_ptr->processed));
+
+			if (! bsnode_ptr->processed)
+			{
+				/* Specified schema was not in main file */
+				RISlod_print_msg(MSG(RISUTL_E_LOADED_NO_SCHEMA), bsnode_ptr->sch_name);
+				RISlod_construct_n_dump_to_log((char *)MSG(RISUTL_E_LOADED_NO_SCHEMA),
+											   bsnode_ptr->sch_name);
+			}
+		}
+	}
+
+	RISlod_free_nodes();
+
+	RISlod_stop_timer();
+
+	RISlod_close_files();
+	RISlod_remove_tmp_files(indx_tfp,view_tfp,grant_tfp);
+
+	LOD_DBG(("1. RISXlod_batch_load: end"));
+	return(SUCCESS);
+}
+
+extern void RISAPI RISXlod_interactive_load(
+	int		mode)
+{
+
+	which_to_load_type	which_to_load;
+	FILE				*indx_tfp;
+	FILE				*view_tfp;
+	FILE				*grant_tfp;
+	char				sch_name[RIS_MAX_ID_SIZE];
+	char				sch_pwd[RIS_MAX_ID_SIZE];
+	char				new_sch_name[RIS_MAX_ID_SIZE]; /* rename */
+	char				new_sch_pwd[RIS_MAX_ID_SIZE]; /* rename */
+	int					retn;
+	int					sch_retn;
+	int					item_type;
+	char				rel_name[2 * RIS_MAX_ID_SIZE];
+	char				indx_name[RIS_MAX_ID_SIZE];
+	field_type			field_defs[RIS_MAX_TABLE_COLUMNS];
+	int					max_end_posi;
+	int					data_format;
+	indx_node_type		*indx_header;
+	view_node_type		*view_header;
+	grant_hnode_type	*grant_header;
+
+
+	LOD_DBG(("RISXlod_interactive_load: mode <%c>\n",mode ));
+#if defined(ULD_EXE)
+	winio_setbusy();
+#endif
+	RISlod_start_timer();
+
+
+	RISlod_initialize_ris();
+
+	RISlod_mode = mode;
+
+	RISlod_open_tmp_files(&indx_tfp,&view_tfp,&grant_tfp);
+
+	sch_name[0] = '\0';
+	sch_pwd[0] = '\0';
+	new_sch_name[0] = '\0';
+	new_sch_pwd[0] = '\0';
+	rel_name[0] = '\0';
+	indx_name[0] = '\0';
+	grant_header = (grant_hnode_type *) NULL;
+
+#if defined(ULD_EXE)
+	winio_resetbusy();
+#endif
+#if !defined(ULD_DLL)
+	RISlod_find_which_to_load(&which_to_load, TRUE, (char *) NULL);
+#endif
+	RISlod_general_info_to_log();
+	
+	for(;;)
+	{
+		RISlod_tab_loaded = 0;
+		RISlod_indx_loaded = 0;
+		RISlod_view_loaded = 0;
+		RISlod_grant_loaded = 0;
+
+		RISlod_err_fnd_in_sch = FALSE;
+		RISlod_global_err_ind = FALSE;
+
+		data_format = FIXED;
+
+		new_sch_name[0] = '\0';
+		new_sch_pwd[0] = '\0';
+
+		sch_retn = RISlod_proc_sch_def(sch_name, 
+									   sch_pwd, 
+									   new_sch_name,
+									   new_sch_pwd,
+									   which_to_load.schema);
+
+		if (sch_retn == FAILURE)
+			continue;
+
+		if (sch_retn == END_OF_MAIN_FILE)
+			break;
+
+		indx_header = (indx_node_type *) NULL;
+		view_header = (view_node_type *) NULL;
+#if !defined(ULD_DLL)
+		if (which_to_load.schema == PROMPTED)
+			RISlod_find_which_to_load(&which_to_load, FALSE, sch_name);
+#endif
+		if ((which_to_load.table == NONE) && 
+			(which_to_load.index == NONE) && 
+			(which_to_load.view == NONE) && 
+			(which_to_load.grant == NONE))
+		{
+			RISlod_dump_sch_info((char *) NULL); /* Do not dump to log file */
+			continue;
+		}
+		else
+		{
+			if (which_to_load.grant != NONE)
+				grant_header = RISlod_create_grant_hnode(grant_header,
+														 sch_name,
+														 sch_pwd,
+														 new_sch_name,
+														 new_sch_pwd);
+
+			for(;;)
+			{
+				RISlod_err_fnd_in_tab = FALSE;
+
+				RISlod_current_stmt_spot = RISlod_create_stmt_spot = ftell(RISlod_in_fp);
+				item_type = RISlod_get_tivgdef_stmt(sch_name, 
+												    rel_name, 
+													indx_name);
+				
+				if (item_type == END_OF_SCHEMA)
+					break;
+
+				if (item_type == FAILURE)
+					continue;
+
+				switch(item_type)
+				{
+					case CREATE_TABLE:	
+						max_end_posi = 0;
+						if (RISlod_proc_create_tab(sch_name, 
+												   rel_name, 
+												   which_to_load.table, 
+												   which_to_load.def_data, 
+												   which_to_load.exist_tab) == SUCCESS)
+						{
+							if (which_to_load.def_data == BOTH)
+							{
+								if (RISlod_proc_insert_into(rel_name, 
+															field_defs) == SUCCESS)
+								{
+									if (RISlod_proc_field_def(field_defs, 
+															  RISlod_in_desc.sqld, 
+															  &max_end_posi,
+															  &data_format) == SUCCESS)
+									{
+										retn = SUCCESS;
+										if( (which_to_load.exist_tab == RIS_IGNORE)
+										&&  (which_to_load.clear_tab == YES) )
+										{
+											retn =
+											RISlod_delete_from_table(rel_name);
+										}
+										if( retn == SUCCESS )
+										{
+											RISlod_proc_tab_data(field_defs,
+														 max_end_posi,
+														 data_format);
+										}
+										else
+										{
+											RISlod_construct_n_dump_to_log("\t\tWhile delete-ing rows an error occured.\n");
+										}
+									}
+									else
+									{
+										RISlod_construct_n_dump_to_log("\t\tField Definition Statement failed.\n");
+									}
+								}
+								else
+								{
+									RISlod_construct_n_dump_to_log("\t\tInsert Statement failed.\n");
+								}
+							}
+							else
+							{
+								RISlod_print_msg(
+									MSG(RISUTL_E_LOADED_TABLE_DEF),
+									rel_name);
+								RISlod_dump_tab_info((char *) NULL);
+							}
+						}
+						break;
+					case CREATE_INDEX:
+						indx_header = RISlod_proc_create_indx(sch_name, 
+															  rel_name, 
+															  indx_name,
+															  which_to_load.index,
+															  indx_header, 
+															  indx_tfp);
+						break;
+					case CREATE_VIEW:
+						view_header = RISlod_proc_create_view(sch_name, 
+															  rel_name, 
+															  which_to_load.view, 
+															  view_header, 
+															  view_tfp);
+						break;
+					case GRANT:
+						RISlod_proc_grant_stmt(sch_name, 
+											   rel_name,
+											   which_to_load.grant, 
+											   grant_header,
+											   grant_tfp);
+						break;
+					default:
+						break;
+				}
+			}
+		}
+
+		if (indx_header != NULL)
+		{
+			fseek(indx_tfp, 0L, 0);	
+			RISlod_proc_indx_list(indx_header,indx_tfp);
+			fseek(indx_tfp, 0L, 0);	
+			RISlod_indx_select_mode_ALL((risloddes *) NULL,
+											indx_header,
+											sch_name,0);
+		}
+
+		if (view_header != NULL)
+		{
+			fseek(view_tfp, 0L, 0);	
+			RISlod_proc_view_list(view_header, view_tfp);
+			fseek(view_tfp, 0L, 0);	
+		}
+
+
+		RISlod_dump_end_of_sch_to_log();
+	} /* for */
+
+	
+	if (grant_header != NULL)
+	{
+		fseek(grant_tfp, 0L, 0);	
+		RISlod_proc_grant_struct(grant_header, grant_tfp);
+		/* also writes to log file */
+		RISlod_priv_select_mode_ALL((risloddes *) NULL, grant_header, 0);
+	}
+
+	RISlod_stop_timer();
+
+	RISlod_close_files();
+	RISlod_remove_tmp_files(indx_tfp,view_tfp,grant_tfp);
+	
+	LOD_DBG(("1. RISXlod_interactive_load: end"));
+}
+

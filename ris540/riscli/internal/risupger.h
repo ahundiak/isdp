@@ -1,0 +1,60 @@
+/*
+**	NAME:							RISupg_err.h
+**	AUTHORS:						David Michal
+**	CREATION DATE:					6/90
+**	ABSTRACT:
+**		The upgrade utility status codes.	
+**	
+**	REVISION HISTORY:
+*/
+ 
+/*
+**	TYPES
+*/
+
+/*
+**	VARIABLES
+*/
+
+/*
+**	FUNCTIONS
+*/
+
+
+/*
+**	INCLUDES
+*/
+
+#ifndef RIS_ERROR_H
+#include "ris_err.h"
+#endif
+
+/*
+**	DEFINES
+*/
+
+#define RISupg_INTERNAL_ERROR			11	
+#define RISupg_CANNOT_ALLOCATE_MEMORY	12
+#define RISupg_LINE_TOO_BIG				13
+#define RISupg_SCHEMAFILE_CORRUPTED		14
+#define RISupg_INVALID_OPTION			15
+#define RISupg_CANT_GET_SCHEMA_FILE		16
+#define RISupg_CANT_LOCATE_SCHEMA_FILE	17
+#define RISupg_DONOT_UPGRADE_NOW		18
+#define RISupg_MISSING_LOCK_FILE		19
+#define RISupg_CANT_OPEN_TMPID			20
+#define RISupg_CANT_WRITE_TO_TMPID		21
+#define RISupg_CANT_WRITE_SCHEMAID_FILE	22
+#define RISupg_CANT_OPEN_SCHEMAFILE		23
+#define RISupg_TRY_LATER				24
+#define RISupg_CANT_WRITE_SCHEMAFILE	25
+#define RISupg_CANT_READ_SCHEMADUMPFILE	26
+#define RISupg_UPG_INFFILE_CORRUPTED	27
+#define RISupg_CANT_FIND_RISDIR			28
+#define RISupg_DATAFILE_CORRUPTED		29
+#define RISupg_CANT_CREATE_UPGINF_FILE	30
+#define RISupg_CANT_CONVERT_SCHEMAFILE	31
+#define RISupg_CANT_CREATE_CRESCH_FILE	32
+#define RISupg_CANT_CREATE_UPGDIR		33
+#define RISupg_CANT_CREATE_SCHEMA		34
+#define	RISupg_CANT_GET_CLIENT_LOC	35

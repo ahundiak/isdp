@@ -1,0 +1,979 @@
+/*******************************************************************************
+**  NAME:                           upgmain.rc
+**  AUTHORS:                        Bhaskar R. Sayyaparaju
+**  CREATION DATE:                  3/94
+**  ABSTRACT:
+**      Entry point for the upgrade utility.
+**
+**  REVISION HISTORY:
+*******************************************************************************/
+
+#include <stdio.h>
+#include <errno.h>
+#include <signal.h>
+#include "ris.h"
+#include "riscom.h"
+#include "rislimit.h"
+#include "risstjmp.h"
+#include "risver.h"
+#include "risprods.h"
+#include "schfile.h"
+#include "risupger.h"
+#include "risupg.h"
+
+#if defined(unix)
+#include <sys/stat.h>
+#endif
+
+exec sql define UPGRADE_GLOBAL_DEFINE;
+#ifdef MKMK_KLUDGE
+#include "upgrade.h"
+#endif
+
+exec sql include upgrade.h;
+
+#define upgmain_rc
+#include "comdebug.prt"
+#include "sys.prt"
+#include "sysalloc.prt"
+#include "ris.prt"
+#include "wrap.prt"
+#include "comwrap.prt"
+#include "comjmp.prt"
+#include "comgtdir.prt"
+#include "comumsg.prt"
+#include "cnvschfl.prt"
+#include "upgschem.prt"
+#include "upgmisc.prt"
+#include "upgmain.prt"
+
+
+/*
+**		DEFINES
+*/
+#if !defined (WIN32)
+#define	DEFAULT_OUTPUT_FILE	"/usr/tmp/risupg.out"
+#else
+#define	DEFAULT_OUTPUT_FILE	"c:\\tmp\\risupg.out"
+#endif
+#define WIN32PATHCHR '/'
+#define UNIXPATHCHR '/'
+#define UNIXPATHCHRSTR  "/"
+#define UNIX_FILENAME_LEN 10
+#define WIN32_FILENAME_LEN 8
+
+#if defined(unix)
+# define LOCPATHCHR  '/'
+# define LOCPATHCHRSTR   "/"
+# define LOCAL_FILENAME_LEN  UNIX_FILENAME_LEN
+# define CHECK_LOCAL_FILENAME_LEN    check_unix_filename_len
+#elif defined(WIN32)
+# define LOCPATHCHR  '\\'
+# define LOCPATHCHRSTR   "\\"
+# define LOCAL_FILENAME_LEN  WIN32_FILENAME_LEN
+# define CHECK_LOCAL_FILENAME_LEN    check_win32_filename_len
+#else
+	!!! ERROR -- NO CODE !!!
+#endif
+
+
+/*
+**		VARIABLES
+*/
+
+/* Variable to hold the schema names given on the command line */
+
+static struct Slist {
+		char schname[RIS_MAX_ID_SIZE];
+		struct Slist *next;
+		} *slist;
+
+static ris_schema_info	*schemap;
+static ris_db_info 	*dbp;
+static ris_grantee_info *granteep;
+static char		*schema_filenamep;
+
+/******************************************************************************/
+/*
+**      Function to initialize interrupt handler
+**	This function is added to handle interrupts on NT. This will fix
+**	TR# 249406595. On NT when LONGJMP is used from an exception handler
+**	the program will crash. This was found with the VC++ version of
+**	RIS upgrade utility. To work around this we have to return from
+**	the handler routine and then do a LONGJMP. Due to which we had
+**	to add checks to see if the program is interrupted in all the 
+**	loops all the way through the code.
+**	RAJU.
+*/
+#if defined (WIN32)
+extern void RISupg_init_interrupt()
+{
+	static int done=0;
+
+
+	UPG_DBG(("RISupg_init_interrupt: begin.\n"));
+	if (!done)
+		SetConsoleCtrlHandler(NULL,FALSE);
+        if (SetConsoleCtrlHandler(handle_int, TRUE) == FALSE)
+        {
+                LONGJMP(RIS_E_UPG_ERR_SIGSET);
+        }
+	UPG_DBG(("RISupg_init_interrupt: end.\n"));
+}
+#endif
+/******************************************************************************/
+
+/*
+**	Function to print the usage informatio of the command
+*/
+
+static void usage()
+{
+	printf(MSG(RIS_I_UPG_COMMAND_USAGE1));
+	printf(MSG(RIS_I_UPG_COMMAND_USAGE2));
+	LONGJMP(RISupg_INVALID_OPTION);
+}
+
+/******************************************************************************/
+
+/*
+**	Function to parse the command line for risupgrade utility.
+*/
+
+static void validate_options(
+		int argc,
+		char *argv[])
+{
+	int count;
+	char *scharg=0;
+	char *token = 0;
+	struct Slist *tempptr=0;
+
+	UPG_DBG(("validate_options: begin\n"));
+	for(count=1;count<argc;count++)
+		UPG_DBG(("argv[%d]: <%s>\n",count,argv[count]));
+	for(count=1;count < argc ; count ++)
+	{
+		if (argv[count][0] == '-')
+        {
+            if (argv[count][1] == 'g')
+            {
+                RISupg_debug = 1;
+                UPG_DBG(("\nmain argc = %d argv = 0x%x\n",argc,argv));
+            }
+            else
+            {
+                if (argv[count][1] == 's')
+				{
+					UPG_DBG(("found -s option\n"));
+					if (argv[count][2])
+					{
+						scharg = &argv[count][2];
+						UPG_DBG(("schemalist to upgrade <%s>\n",scharg));
+					}
+					else
+					{
+						scharg = argv[count+1];
+						UPG_DBG(("schemalist to upgrade <%s>\n",scharg));
+					}
+				}
+		else if(argv[count][1] == '?' )
+		{
+			UPG_DBG(("found -? or -V option\n"));
+			usage();
+		}
+		else if(argv[count][1] == 'V' )
+		{
+			UPG_DBG(("found -V option\n"));
+			/*printf(MSG(RIS_I_UPG_COPYRIGHT));*/
+			/* 1996.03.12:Alan Barksdale:TR439600483 */
+			printf(MSG(RIS_I_UPG_BEGIN_COPYRIGHT));
+			printf(" ");
+			printf(COPYRIGHTYEAR);
+			printf(", ");
+			printf(MSG(RIS_I_UPG_END_COPYRIGHT));
+			printf(MSG(RIS_I_UPG_UPGRADE_UTILITY),RIS_VERSION_STR);
+			exit(1);
+		}
+
+		
+				else
+				{
+					UPG_DBG(("found an invalid option\n"));
+					printf(MSG(RIS_E_UPG_INVALID_OPTION),
+						argv[count][1]);
+					usage();
+				}	
+			}
+		}
+		else
+		{
+			if (count <= 1)
+			{
+				UPG_DBG(("invalid argument specified\n"));
+				usage();
+			}
+		}
+	}
+	if (scharg)
+	{
+		if (!slist)
+		{
+			token = strtok(scharg," ");
+			slist = (struct Slist *)malloc (sizeof(struct Slist));
+			strcpy(slist->schname,token);
+			slist->next = 0;
+			tempptr = slist;
+		}
+		for(;;)
+		{
+			token = strtok(NULL," ");
+			if (token)
+			{
+				slist->next = (struct Slist *)malloc(sizeof(struct Slist));
+				slist = slist->next;
+				strcpy(slist->schname,token);
+				slist->next = 0;
+			}
+			else
+				break;
+		}
+		slist = tempptr;
+	}
+	UPG_DBG(("validate_options: end\n"));
+}
+
+/******************************************************************************/
+/*		
+**		Function to initilize the upgrade debug.
+*/
+
+extern void RISupg_initialize_debug(
+        debug_info_s    debug_info[],
+        int                             debug_count)
+{
+        char    debug_output_device[RIS_MAX_PATH_SIZE];
+        static int      initialized = 0;
+
+
+        if (initialized)
+        {
+                UPG_DBG(("RISupg_initialize_debug:already initialized:returning\
+"));
+                return;
+        }
+
+        strcpy(debug_output_device, DEFAULT_OUTPUT_FILE);
+
+        RIScom_set_debug_output_device(debug_output_device);
+
+        initialized = 1;
+
+        UPG_DBG(("RISupg_initialize_debug:returning\n"));
+}
+/******************************************************************************/
+
+/*		Function to initialize the risupg_inf_struct structure and
+**   	build the list from the upgrade information file.
+*/
+
+/******************************************************************************/
+
+static void RISupg_initialize()
+{
+	risupg_inf_struct	*tmp_inf_list=0;
+	risupg_sch_info		*tmp_sch_list=0;
+	char				buf[80];
+	char				*testnull;
+	int					line_num=0;
+
+	UPG_DBG(("RISupg_initialize: begin\n"));
+	testnull = RIScom_fgets(buf,80,RISupg_fp);
+	if (testnull == NULL)
+	{
+		printf(MSG(RIS_I_UPG_UPGINFO_FILE_EMPTY));
+		return;
+	}
+
+	buf[strlen(buf)-1]='\0';
+	if (strncmp(buf,"BEGIN SCHEMAFILE INFO",
+		sizeof("BEGIN SCHEMAFILE INFO")-1))
+	{
+		printf(MSG(RIS_E_UPG_UPG_INFFILE_CORRUPTED));
+		LONGJMP(RISupg_UPG_INFFILE_CORRUPTED);
+	}
+	line_num++;
+	risupg_inf_list=(struct RISupg_inf_struct *)malloc(sizeof(struct RISupg_inf_struct));
+	if (!risupg_inf_list)
+	{
+		printf(MSG(RIS_E_UPG_CANNOT_ALLOCATE_MEMORY));
+		LONGJMP(RISupg_CANNOT_ALLOCATE_MEMORY);
+	}
+	memset((char *)risupg_inf_list,0,sizeof(struct RISupg_inf_struct));
+	tmp_inf_list=risupg_inf_list;
+	while(RIScom_fgets(buf,80,RISupg_fp) != NULL)
+	{
+		line_num++;
+		buf[strlen(buf)-1]='\0';
+		UPG_DBG(("%d. %s\n",line_num,buf));
+		if (!strncmp(buf,"SCHEMAFILE_NAME:",sizeof("SCHEMAFILE_NAME:")-1))
+			strcpy(tmp_inf_list->sch_fil_name,
+					buf+sizeof("SCHEMAFILE_NAME:"));
+		else if (!strncmp(buf,"NEW_SCHEMAFILE_NAME:",
+				sizeof("NEW_SCHEMAFILE_NAME:")-1))
+			strcpy(tmp_inf_list->new_sch_fil_name,
+					buf+sizeof("NEW_SCHEMAFILE_NAME:"));
+		else if (!strncmp(buf,"SCHEMAFILE_PROTOCOL:",
+				sizeof("SCHEMAFILE_PROTOCOL:")-1))
+			tmp_inf_list->sch_fil_prot = *(buf+sizeof("SCHEMAFILE_PROTOCOL:"));
+		else if (!strncmp(buf,"SCHEMAFILE_ADDRESS:",
+				sizeof("SCHEMAFILE_ADDRESS:")-1))
+			strcpy(tmp_inf_list->sch_fil_address,
+					buf+sizeof("SCHEMAFILE_ADDRESS:"));
+		else if (!strncmp(buf,"END SCHEMAFILE INFO",
+				sizeof("END SCHEMAFILE INFO")-1))
+		{
+			while (RIScom_fgets(buf,80,RISupg_fp)!=NULL)
+			{
+				line_num++;
+				buf[strlen(buf)-1]='\0';
+				UPG_DBG(("%d. %s\n",line_num,buf));
+				if(!strncmp(buf,"BEGIN SCHEMA INFO",
+						sizeof("BEGIN SCHEMA INFO")-1))
+				{
+					if (!tmp_inf_list->sch_list)
+					{
+						tmp_inf_list->sch_list = (struct RISupg_sch_struct *)malloc(sizeof(struct RISupg_sch_struct));
+						if (!tmp_inf_list->sch_list)
+						{
+							printf(MSG(RIS_E_UPG_CANNOT_ALLOCATE_MEMORY));
+							LONGJMP(RISupg_CANNOT_ALLOCATE_MEMORY);
+						}
+						tmp_sch_list = tmp_inf_list->sch_list;
+					}
+					else
+					{
+						tmp_sch_list->next =  (struct RISupg_sch_struct *)malloc(sizeof(struct RISupg_sch_struct));
+						if(!tmp_sch_list->next)
+						{
+							printf(MSG(RIS_E_UPG_CANNOT_ALLOCATE_MEMORY));
+							LONGJMP(RISupg_CANNOT_ALLOCATE_MEMORY);
+						}
+						tmp_sch_list = tmp_sch_list->next;
+					}
+					memset((char *)tmp_sch_list,0,
+							sizeof(struct RISupg_sch_struct));
+					while(RIScom_fgets(buf,80,RISupg_fp) != NULL)
+					{
+						line_num++;
+						buf[strlen(buf)-1] = '\0';
+						UPG_DBG(("%d. %s\n",line_num,buf));
+						if(!strncmp(buf,"END SCHEMA INFO",
+								sizeof("END SCHEMA INFO")-1))	
+							break;
+						else if(!strncmp(buf,"SCHEMA_NAME: ",
+								sizeof("SCHEMA_NAME: ")-1))
+							strcpy(tmp_sch_list->sch_name,
+									buf+sizeof("SCHEMA_NAME:"));
+						else if(!strncmp(buf,"SCHEMA_PASSWD:",
+								sizeof("SCHEMA_PASSWD:")-1))
+							tmp_sch_list->sch_passwd =
+                                     *(buf+sizeof("SCHEMA_PASSWD:"));
+						else if(!strncmp(buf,"TABLEUNLOAD: ",
+                                 sizeof("TABLEUNLOAD: ")-1))
+							sscanf(buf+strlen("TABLEUNLOAD: "),"%d",
+									&tmp_sch_list->tabunload);
+						else if(!strncmp(buf,"VIEWUNLOAD: ",
+								sizeof("VIEWUNLOAD: ")-1))
+							sscanf(buf+strlen("VIEWUNLOAD: "),"%d",
+									&tmp_sch_list->viewunload);
+						else if(!strncmp(buf,"COLUMNUNLOAD: ",
+								sizeof("COLUMNUNLOAD: ")-1))
+							sscanf(buf+strlen("COLUMNUNLOAD: "),"%d",
+									&tmp_sch_list->colunload);
+						else if(!strncmp(buf,"GRANTUNLOAD: ",
+								sizeof("GRANTUNLOAD: ")-1))
+							sscanf(buf+strlen("GRANTUNLOAD: "),"%d",
+									&tmp_sch_list->grantunload);
+						else if(!strncmp(buf,"DROP SCHEMA: ",
+								sizeof("DROP SCHEMA: ")-1))
+							sscanf(buf+strlen("DROP SCHEMA: "),"%d",
+									&tmp_sch_list->drop_schema);
+						else if(!strncmp(buf,"CREATE SCHEMA: ",
+								sizeof("CREATE SCHEMA: ")-1))
+							sscanf(buf+strlen("CREATE SCHEMA: "),"%d",
+									&tmp_sch_list->cre_schema);
+						else if(!strncmp(buf,"TABLES: ",sizeof("TABLES: ")-1))
+							sscanf(buf+strlen("TABLES: "),"%d",
+									&tmp_sch_list->cre_tab);
+						else if(!strncmp(buf,"VIEWS: ",sizeof("VIEWS: ")-1))
+							sscanf(buf+strlen("VIEWS: "),"%d",
+									&tmp_sch_list->cre_view);
+						else if(!strncmp(buf,"COLUMNS: ",sizeof("COLUMNS: ")-1))
+							sscanf(buf+strlen("COLUMNS: "),"%d",
+									&tmp_sch_list->upd_col);
+						else if(!strncmp(buf,"PRIVS: ",sizeof("PRIVS: ")-1))
+							sscanf(buf+strlen("PRIVS: "),"%d",
+									&tmp_sch_list->cre_grant);
+/*
+							strcpy(tmp_sch_list->cre_grant,
+										buf+sizeof("PRIVS: "));
+*/
+						else
+						{
+							printf(MSG(RIS_E_UPG_INFFILE_CORRUPTED),
+ 										line_num);
+							printf("%s\n",buf);
+							LONGJMP(RISupg_UPG_INFFILE_CORRUPTED);
+						}
+					}
+				}
+						
+				else if(!strncmp(buf,"BEGIN SCHEMAFILE INFO",
+						sizeof("BEGIN SCHEMAFILE INFO")-1))
+				{
+					tmp_inf_list->next=(struct RISupg_inf_struct *)malloc(sizeof(struct RISupg_inf_struct));
+					if(!tmp_inf_list->next)
+					{
+						printf(MSG(RIS_E_UPG_CANNOT_ALLOCATE_MEMORY));
+						LONGJMP(RISupg_CANNOT_ALLOCATE_MEMORY);
+					}
+					memset((char *)tmp_inf_list->next,0,sizeof(struct RISupg_inf_struct));
+					tmp_inf_list=tmp_inf_list->next;
+					tmp_inf_list->next = 0;
+					break;
+				}
+				else
+				{
+					printf(MSG(RIS_E_UPG_INFFILE_CORRUPTED),
+ 								line_num);
+					printf("%s\n",buf);
+					LONGJMP(RISupg_UPG_INFFILE_CORRUPTED);
+				}
+			}
+		}
+		else
+		{
+			printf(MSG(RIS_E_UPG_INFFILE_CORRUPTED),
+ 						line_num);
+			printf("%s\n",buf);
+			LONGJMP(RISupg_UPG_INFFILE_CORRUPTED);
+		}
+	}
+	UPG_DBG(("RISupg_initialize: end\n"));
+}
+
+/******************************************************************************/
+
+extern void print_info()
+{
+	struct RISupg_inf_struct *tmp_inf_list=0;
+	struct RISupg_sch_struct *tmp_sch_list=0;
+
+	UPG_DBG(("print_info: begin\n"));
+	tmp_inf_list = risupg_inf_list;
+	UPG_DBG(("print_info: rissupg_inf_list 0x%x\n",risupg_inf_list));
+	while(tmp_inf_list)
+	{
+		if (strlen(tmp_inf_list->sch_fil_name) > 0)
+		{
+			UPG_DBG(("STRLEN: %d\n",strlen(tmp_inf_list->sch_fil_name)));
+			fprintf(RISupg_fp,"BEGIN SCHEMAFILE INFO\n");
+			fprintf(RISupg_fp,"SCHEMAFILE_NAME: %s\n",
+						tmp_inf_list->sch_fil_name);
+			fprintf(RISupg_fp,"NEW_SCHEMAFILE_NAME: %s\n",
+						tmp_inf_list->new_sch_fil_name);
+			fprintf(RISupg_fp,"SCHEMAFILE_PROTOCOL: %c\n",
+						tmp_inf_list->sch_fil_prot);
+			fprintf(RISupg_fp,"SCHEMAFILE_ADDRESS: %s\n",
+						tmp_inf_list->sch_fil_address);
+			fprintf(RISupg_fp,"END SCHEMAFILE INFO\n");
+		}
+		if (tmp_inf_list->sch_list)
+		{
+			tmp_sch_list = tmp_inf_list->sch_list;
+			while(tmp_sch_list)
+			{
+				fprintf(RISupg_fp,"BEGIN SCHEMA INFO\n");
+				fprintf(RISupg_fp,"SCHEMA_NAME: %s\n",tmp_sch_list->sch_name);
+				fprintf(RISupg_fp,"SCHEMA_PASSWD: %c\n"
+									,tmp_sch_list->sch_passwd);
+				fprintf(RISupg_fp,"TABLEUNLOAD: %d\n",tmp_sch_list->tabunload);
+				fprintf(RISupg_fp,"VIEWUNLOAD: %d\n",tmp_sch_list->viewunload);
+				fprintf(RISupg_fp,"COLUMNUNLOAD: %d\n",tmp_sch_list->colunload);
+				fprintf(RISupg_fp,"GRANTUNLOAD: %d\n"
+									,tmp_sch_list->grantunload);
+				fprintf(RISupg_fp,"DROP SCHEMA: %d\n"
+									,tmp_sch_list->drop_schema);
+				fprintf(RISupg_fp,"CREATE SCHEMA: %d\n"
+									,tmp_sch_list->cre_schema);
+				fprintf(RISupg_fp,"TABLES: %d\n",tmp_sch_list->cre_tab);
+				fprintf(RISupg_fp,"VIEWS: %d\n",tmp_sch_list->cre_view);
+				fprintf(RISupg_fp,"COLUMNS: %d\n",tmp_sch_list->upd_col);
+				fprintf(RISupg_fp,"PRIVS: %d\n",tmp_sch_list->cre_grant);
+				fprintf(RISupg_fp,"END SCHEMA INFO\n");
+				tmp_sch_list = tmp_sch_list->next;
+			}	
+		}
+		tmp_inf_list = tmp_inf_list->next;
+	}
+	UPG_DBG(("print_info: end\n"));
+}
+			
+/******************************************************************************/
+
+/*
+**	Function to check the schema list specified with the -s command line
+**	option exist in the schema file.
+*/
+
+extern int RISupg_check_schema_list(
+			char *sch_name,
+			ris_schema_info **argschemap)
+{
+	ris_schema_info *tmpschemap=0;
+
+	UPG_DBG(("RISupg_check_schema_list: begin\n"));
+	tmpschemap = schemap;
+	while(tmpschemap)
+	{
+		if (!strcmp(sch_name,tmpschemap->schname))
+		{
+			*argschemap = tmpschemap;
+			UPG_DBG(("RISupg_check_schema_list: end returning 0\n"));
+			return(0);
+		}
+		tmpschemap=tmpschemap->next;
+	}
+	*argschemap = 0;
+	UPG_DBG(("RISupg_check_schema_list: end returning 1\n"));
+	return(1);
+}	
+			
+/******************************************************************************/
+
+extern void RISupg_restart_client(
+	int upg_flag)
+{
+	UPG_DBG(("RISupg_restart_client: begin\n"));
+	RISterminate();
+	upgrade_flag = upg_flag;
+	UPG_DBG(("RISupg_restart_client: end\n"));
+}
+
+/******************************************************************************/
+
+static int RISupg_get_schema_info(
+		ris_schema_info		*lschemap,
+		ris_db_info			**ldbp)
+{
+	ris_db_info			*tmpdbp=0;
+
+	UPG_DBG(("RISupg_get_schema_info: schema <0x%x>, db <0x%x>\n",
+				lschemap,*ldbp));
+	tmpdbp = dbp;
+	while((lschemap->dbid != tmpdbp->dbid) && tmpdbp)
+		tmpdbp = tmpdbp->next; 	
+	if (tmpdbp)
+		*ldbp = tmpdbp;
+	else
+	{
+		printf(MSG(RIS_I_UPG_SCHEMA_NOTIN_SCHEMAFILE),lschemap->schname);
+		return 1;
+	}
+	UPG_DBG(("RISupg_get_schema_info: end\n"));
+	return 0;
+}
+
+/******************************************************************************/
+
+extern void main(
+	int argc,
+	char *argv[])
+{
+	char	debugstring[80]="";
+	int 	status=0;
+/*
+	rissqlca *dbca=0;
+*/
+	char 	upgfilename[RIS_MAX_PATH_SIZE];
+	int 	development=0;
+	int ret,exists;
+	int upg_stat=0,mdstat=0;
+	int upg_fil_mode=0;
+	int ok =0;
+	int confirm = 0;
+	char yesno[] = "YN";
+	struct Slist *tmplist;
+	ris_schema_info *tmpschemap;
+	ris_db_info 	*tmp_dbp=0;
+	char			sch_name_pwd[2*RIS_MAX_ID_SIZE]="";
+	char			sch_name[RIS_MAX_ID_SIZE]="";
+	char			sch_passwd[RIS_MAX_ID_SIZE]="";
+	dropped_sch_info 	*dropped_sch_list=0;
+	int	debug_count;
+	debug_info_s	debug_info[1]; 
+	char	tmp_file_name[L_tmpnam];
+#ifdef WIN32
+	char	return_char;
+#endif
+	exec sql begin declare section; 
+	char *ptr,*cp;
+	exec sql end declare section;
+
+	exec sql whenever sqlerror continue;
+
+	exists = 0;
+
+	risupg_inf_list = 0;
+	risupg_sch_list = 0;
+	risupg_cur_file = 0;
+	risupg_cur_sch = 0;
+	RISupg_got_signal = 0;
+
+	UPG_DBG(("Main: begin ARG#: %d ARG: 0x%x\n",argc,argv));
+	
+        debug_info[0].name = "upg";
+        debug_info[0].len = 3;
+        debug_info[0].flag = &RISupg_debug;
+        debug_count = 1;
+	status = SETJMP(); 
+	if (status) 
+	{ 
+		RESETJMP(); 
+		if (status != RISupg_INVALID_OPTION)
+		{
+		if (status != RISupg_DONOT_UPGRADE_NOW)
+		{
+			UPG_DBG(("risupgrade : got error %d, exiting\n",status)); 
+			printf(MSG(RIS_E_UPG_GOT_ERROR),status);
+		}
+		else
+		{
+			printf(MSG(RIS_I_UPG_DONOT_UPGRADE_SCHFILE_NOW));
+			UPG_DBG(("You chose not to upgrade the schema file now.exiting\n"));
+		}
+		print_info();
+		RIScom_fclose(RISupg_fp);
+		RISupg_put_file(tmp_file_name,upgfilename);
+		UNLINK(tmp_file_name);
+		}
+#ifdef WIN32
+		printf(MSG(RIS_I_UPG_HIT_RETURN));
+		return_char=getc(stdin);
+#endif
+		exit(-1);
+	}
+	RISinitialize(getenv("RIS_LANGUAGE"));
+	RISstart_client();
+	validate_options(argc,argv);
+	if (RISupg_debug)
+       	RISupg_initialize_debug(debug_info, debug_count);	
+	RISint_process_debug("+upgrade");
+#if defined (WIN32)
+        RISupg_init_interrupt();
+#endif
+	ret = RIScom_get_risdir(RIS_CLIENT_RUNTIME_PRODUCT,RIS_version_maj,
+		RIS_version_min,RIS_version_rel,MATCH_MAJOR_FEATURE,
+		0,RISCONFIG_FILE,RIS_dir,&development,0);
+	if (ret)
+	{
+		LONGJMP(RISupg_CANT_FIND_RISDIR);
+	}
+    cp = strrchr(RIS_dir, LOCPATHCHR);
+    if (cp)
+    {
+    	if ((strcmp("risccu",cp+1) == 0) ||
+            (strcmp("riscli",cp+1) == 0) ||
+            (strcmp("riscsu",cp+1) == 0))
+        {
+       		*cp = '\0';
+        }
+
+    }
+    else
+    {
+    	LONGJMP(RISupg_INTERNAL_ERROR);
+    }
+
+#ifdef WIN32
+	strcat(RIS_dir,"\\");
+#else
+	strcat(RIS_dir,"/");
+#endif
+	strcat(RIS_dir,"upgrade5");
+	UPG_DBG(("RISdir: %s\n",RIS_dir));
+#ifdef WIN32
+	mdstat = _mkdir(RIS_dir);
+	if (mdstat)
+	{
+		if (errno == ENOENT)
+		{
+			printf(MSG(RIS_E_UPG_CANT_FIND_RISDIR));
+			LONGJMP(RISupg_CANT_CREATE_UPGDIR);
+		}
+	}
+#else
+	mdstat = mkdir(RIS_dir,0777);
+	if (mdstat)
+	{
+		if (errno != EEXIST)
+		{
+			printf(MSG(RIS_E_UPG_CANT_FIND_RISDIR));
+			LONGJMP(RISupg_CANT_CREATE_UPGDIR);
+		}
+	}
+#endif
+	strcpy(upgfilename,RIS_dir);
+#ifdef WIN32
+	strcat(upgfilename,"\\");
+#else
+	strcat(upgfilename,"/");
+#endif
+	strcat(upgfilename,"risupg.inf");
+
+	UPG_DBG(("UPGRADE FILENAME : %s\n",upgfilename));
+#ifdef DEBUG
+	printf("UPGRADE FILENAME : %s\n",upgfilename);
+#endif
+	tmpnam(tmp_file_name);
+	UPG_DBG(("Main: %s\n",tmp_file_name));
+/*
+	RISupg_put_file(upgfilename,tmp_file_name);
+*/
+
+	RISupg_fp = RIScom_fopen(upgfilename,"r");
+	if (!RISupg_fp)
+	{
+		upg_fil_mode = 1;
+		UPG_DBG(("Tried to open the upgrade information file for reading.\n"));
+		printf(MSG(RIS_I_UPG_UPGUTIL_FIRST_RUN));
+        printf(MSG(RIS_I_UPG_CREATE_UPGINF_FILE));
+		RISupg_fp = RIScom_fopen(tmp_file_name,"w");
+		if (!RISupg_fp)
+		{
+			printf(MSG(RIS_E_UPG_CANT_CREATE_UPGINF_FILE));
+			LONGJMP(RISupg_CANT_CREATE_UPGINF_FILE);
+		}
+	}
+	if (!upg_fil_mode)
+	{
+		RISupg_initialize();
+		RIScom_fclose(RISupg_fp);
+		RISupg_fp = RIScom_fopen(tmp_file_name,"w");
+		if (!RISupg_fp)
+		{
+			printf(MSG(RIS_E_UPG_CANT_CREATE_UPGINF_FILE));
+			LONGJMP(RISupg_CANT_CREATE_UPGINF_FILE);
+		}
+	}
+	
+	ret = RISupg_convert_schfile();
+	if (ret)
+	{
+		printf(MSG(RIS_E_UPG_CANT_CONVERT_SCHEMAFILE));
+		LONGJMP(RISupg_CANT_CONVERT_SCHEMAFILE);
+	}
+	RISupg_find_if_dropped_not_created(&dropped_sch_list);
+	printf(MSG(RIS_I_UPG_GETTING_SCHFILE));
+	RISint_process_debug("-upgrade");
+	RISget_schema_file(&schema_filenamep,&dbp,&schemap,&granteep);
+#ifdef DEBUG
+	printf("SCHEMA FILE: %s\n",schema_filenamep);
+#endif
+	if (SQLCODE != RIS_SUCCESS)
+	 {
+		exec sql report error into :ptr;
+		printf("%s\n",ptr);
+		LONGJMP(SQLCODE);
+	}
+	RISint_process_debug("+upgrade");
+	tmplist = slist;
+	if (tmplist)
+		exists = 1;
+		
+	if (tmplist)
+	{
+		while (tmplist)
+		{
+			strcpy(sch_name,"");
+			strcpy(sch_passwd,"");
+			strcpy(sch_name_pwd,tmplist->schname);
+			RISupg_separate_sch_name_pwd(sch_name_pwd,sch_name,sch_passwd);
+			ok = RISupg_check_schema_list(sch_name,&tmpschemap);
+			if (ok)
+			{
+				if (dropped_sch_list)
+				{
+					dropped_sch_info *tmp_drp_list=0;
+					
+					tmp_drp_list = dropped_sch_list;
+					while (tmp_drp_list)
+					{
+						if (!strncmp(tmp_drp_list->sch_name,sch_name,
+										strlen(sch_name)))
+							break;
+						tmp_drp_list = tmp_drp_list->next;
+					}
+					if (tmp_drp_list)
+					{
+						strcpy(sch_name,"");
+						printf("%s schema had been dropped previously through the risupgrade\n",tmp_drp_list->sch_name);
+						printf(MSG(RIS_I_UPG_PROCESS_SCHEMA_MSG),
+									tmp_drp_list->sch_name);
+						confirm = get_answer(MSG(RIS_I_UPG_PROMPT_CONTINUE),
+												2, yesno,'Y');
+#ifdef DEBUG
+						printf("CONFIRM:%c\n",confirm);
+#endif
+						if (confirm == 'Y')
+						{
+							upg_stat = RISupg_upgrade_schema(sch_name_pwd,
+										tmpschemap,tmp_dbp,debugstring);
+							if (!upg_stat)
+								printf(MSG(RIS_I_UPG_UPGRADE_SCHEMA_SUCCESS),
+										sch_name);
+							else if (upg_stat ==2)
+								printf(MSG(RIS_I_UPG_UPGRADE_SKIP_SCHEMA),
+										sch_name);
+							else
+								printf(MSG(RIS_E_UPG_UPGRADE_SCHEMA_UNSUCCESS),
+										sch_name); 
+						}
+						else
+						{
+							printf(MSG(RIS_I_UPG_DONOT_UPGRADE_NOW),
+								tmplist->schname);
+							printf(MSG(RIS_I_UPG_WILL_PROCESS_NEXT_SCHEMA));
+						}
+				}
+				else
+					printf(MSG(RIS_E_UPG_NOT_A_VALID_SCHEMA),
+							tmplist->schname);
+				}
+				tmplist = tmplist->next;
+				continue;
+			}
+			else
+			{
+				strcpy(sch_name,"");
+				printf(MSG(RIS_I_UPG_PROCESS_SCHEMA_MSG),
+							tmplist->schname);
+				confirm = get_answer(MSG(RIS_I_UPG_PROMPT_CONTINUE),2,
+								yesno,'Y');
+#ifdef DEBUG
+				printf("CONFIRM:%c\n",confirm);
+#endif
+				if (confirm == 'Y')
+				{
+					RISupg_get_schema_info(tmpschemap,&tmp_dbp);
+					upg_stat = RISupg_upgrade_schema(sch_name_pwd,
+										tmpschemap,tmp_dbp,debugstring);
+					if (!upg_stat)
+						printf(MSG(RIS_I_UPG_UPGRADE_SCHEMA_SUCCESS),
+								sch_name);
+					else if (upg_stat ==2)
+						printf(MSG(RIS_I_UPG_UPGRADE_SKIP_SCHEMA),
+								sch_name);
+					else
+						printf(MSG(RIS_E_UPG_UPGRADE_SCHEMA_UNSUCCESS),
+								sch_name); 
+				}
+				else
+				{
+					printf(MSG(RIS_I_UPG_DONOT_UPGRADE_NOW),
+								tmplist->schname);
+					printf(MSG(RIS_I_UPG_WILL_PROCESS_NEXT_SCHEMA));
+				}
+				tmplist = tmplist->next;
+			}
+		}
+		printf(MSG(RIS_I_UPG_END_SCHEMA_LIST));
+	}
+	else
+	{
+		tmpschemap = schemap;
+#ifdef DEBUG
+		printf("SCHEMA LIST %x\n",schemap);
+#endif
+		UPG_DBG(("SCHEMA LIST %x\n",schemap));
+		while(dropped_sch_list)
+		{
+			strcpy(sch_name_pwd,"");
+			printf(MSG(RIS_I_UPG_SCHEMA_DROPPED_BEFORE),
+						dropped_sch_list->sch_name);
+			printf(MSG(RIS_I_UPG_PROCESS_SCHEMA_MSG),
+						dropped_sch_list->sch_name);
+			confirm = get_answer(MSG(RIS_I_UPG_PROMPT_CONTINUE),2,
+							yesno,'Y');
+#ifdef DEBUG
+			printf("CONFIRM:%c\n",confirm);
+#endif
+			if (confirm == 'Y')
+			{
+				strcpy(sch_name_pwd,dropped_sch_list->sch_name);
+				upg_stat = RISupg_upgrade_schema(sch_name_pwd,
+									0,0,debugstring);
+				if (!upg_stat)
+					printf(MSG(RIS_I_UPG_UPGRADE_SCHEMA_SUCCESS),
+							dropped_sch_list->sch_name);
+				else
+					printf(MSG(RIS_E_UPG_UPGRADE_SCHEMA_UNSUCCESS),
+							dropped_sch_list->sch_name); 
+			}
+			else
+			{
+				printf(MSG(RIS_I_UPG_DONOT_UPGRADE_NOW),
+							dropped_sch_list->sch_name);
+				printf(MSG(RIS_I_UPG_WILL_PROCESS_NEXT_SCHEMA));
+			}
+			dropped_sch_list = dropped_sch_list->next;
+		}
+		while(tmpschemap)
+		{
+			strcpy(sch_name_pwd,"");
+			printf(MSG(RIS_I_UPG_PROCESS_SCHEMA_MSG),tmpschemap->schname);
+			confirm = get_answer(MSG(RIS_I_UPG_PROMPT_CONTINUE),2,
+							yesno,'Y');
+#ifdef DEBUG
+			printf("CONFIRM:%c\n",confirm);
+#endif
+			if (confirm == 'Y')
+			{
+				RISupg_get_schema_info(tmpschemap,&tmp_dbp);
+				strcpy(sch_name_pwd,tmpschemap->schname);
+				upg_stat = RISupg_upgrade_schema(sch_name_pwd,
+									tmpschemap,tmp_dbp,debugstring);
+				if (!upg_stat)
+					printf(MSG(RIS_I_UPG_UPGRADE_SCHEMA_SUCCESS),
+							tmpschemap->schname);
+				else if (upg_stat ==2)
+					printf(MSG(RIS_I_UPG_UPGRADE_SKIP_SCHEMA),
+							tmpschemap->schname);
+				else
+					printf(MSG(RIS_E_UPG_UPGRADE_SCHEMA_UNSUCCESS),
+							tmpschemap->schname); 
+			}
+			else
+			{
+				printf(MSG(RIS_I_UPG_DONOT_UPGRADE_NOW),
+							tmpschemap->schname);
+				printf(MSG(RIS_I_UPG_WILL_PROCESS_NEXT_SCHEMA));
+			}
+			tmpschemap = tmpschemap->next;
+		}
+		printf(MSG(RIS_I_UPG_END_SCHEMA_LIST));
+	}
+    UPG_DBG(("You are before the reset jump\n"));
+	RESETJMP();
+	print_info();
+	RIScom_fclose(RISupg_fp);
+	RISupg_put_file(tmp_file_name,upgfilename);
+	UNLINK(tmp_file_name);
+	printf(MSG(RIS_I_UPG_TERM_NORMAL));
+#ifdef WIN32
+	printf(MSG(RIS_I_UPG_HIT_RETURN));
+	return_char=getc(stdin);
+#endif
+	UPG_DBG(("Main: end\n"));
+}

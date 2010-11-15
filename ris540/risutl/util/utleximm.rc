@@ -1,0 +1,107 @@
+/* Do not alter this SPC information: $Revision: 1.1.53.1 $ */
+/*
+**	NAME:							utleximm.rc
+**	AUTHORS:						Hitesh R. Patel
+**	CREATION DATE:					8/92
+**	ABSTRACT:
+**		Execute immediate a query.	
+**	
+**	REVISION HISTORY: 
+*/
+ 
+/*
+**	INCLUDES
+*/
+#include "risasync.h"
+#include "util.h"
+
+/*
+**	FUNCTION PROTOTYPES
+*/
+#define utleximm_rc
+#include "comdebug.prt"
+#include "comjmp.prt"
+#include "edtgtcmd.prt"
+#include "ris.prt"
+#include "utleximm.prt"
+#include "utlerror.prt"
+#include "sys.prt"
+
+
+/*
+**	DEFINES
+*/
+
+/*
+**	VARIABLES
+*/
+
+/*
+**	FUNCTIONS
+*/
+
+/******************************************************************************/
+
+extern void RISutl_execimm(
+	int execute_mode)
+{
+	int				i;
+	char			c;
+	char			buf[1000]; /* Is this enuff */
+
+	exec sql begin declare section;
+		int async_id;
+		virtual char *query as buf;
+	exec sql end declare section;
+
+	UTL_DBG(("RISutl_execimm(execute_mode:%d)\n", execute_mode));
+
+	printf("\nEnter a query to be executed immediately.\n");
+	if (RISutl_file_tos->file == stdin)
+	{
+		if (EDT_getcmd(buf, 1000, 0) == -1)
+		{
+			LONGJMP(RISUTL_E_INPUT_TOO_LONG);
+		}
+	}
+	else
+	{
+		while((c = getc(RISutl_file_tos->file)) == ' ' | c == '\n' | c == '\t');
+
+		for (buf[0]=c,i=1; (c = getc(RISutl_file_tos->file)) != ';'; i++)
+		{
+			buf[i]=c;
+		}
+		buf[i] = '\0';
+
+		/* to remove the newline char */
+
+		getc(RISutl_file_tos->file);
+	}
+
+	if( execute_mode == ASYNC_START_MODE )
+	{
+		exec sql async :async_id execute immediate :query;
+	}
+	else
+	{
+		exec sql execute immediate :query;
+	}
+	UTL_WARNING_CHECK();
+	UTL_ERROR_CHECK();
+
+	if (SQLCODE == END_OF_DATA)
+	{
+		printf("No rows updated.\n");
+	}
+
+	if (execute_mode == ASYNC_START_MODE)
+	{
+		printf("\nThe async id for this statement is %d\n", async_id);
+	}
+
+	UTL_DBG(("RISutl_execimm:returning\n"));
+}
+
+/******************************************************************************/
+

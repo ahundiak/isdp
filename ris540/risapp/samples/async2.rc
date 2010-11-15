@@ -1,0 +1,278 @@
+/*
+** Copyright 1993, Intergraph Corporation, All Rights Reserved
+*/
+
+/*
+**	================================================
+**
+**	File		: async2.rc
+**	Purpose		: Asynchronous Execution of SQL 
+**
+**	================================================
+*/
+
+#include <stdio.h>
+#include <stdlib.h>
+#include "ris.prt"
+
+/*
+**	Host variable declarations -- this is global
+*/
+exec sql begin declare section;
+	int	 async1;
+	int  async2;
+	char name_sch1[15];
+	char name_sch2[15];
+	char *error_ptr;
+exec sql end declare section;
+
+extern void setup();
+extern void default_sch1();
+extern void default_sch2();
+extern void declare();
+extern void open_cursor();
+extern void fetch_sch1();
+extern void fetch_sch2();
+extern int test_or_wait();
+extern void close_cursor();
+extern void clear();
+
+/* 
+
+	This particular program checks for:
+	asynchronous execution of fetch on two different schemas sch1 and sch2.
+
+	Two cursors are open on two schema sch1 and sch2 and asynchronous  fetching 
+	is done on these schemas.
+
+*/
+
+ERRCHK(sts)
+int sts;
+{
+	char *err_ptr;
+
+	if (SQLCODE == sts)
+	{
+		switch (SQLCODE)
+		{
+			case RIS_SUCCESS:
+			break;
+			case END_OF_DATA:
+				printf("\nEnd of data\n");
+			break;
+			default:
+				printf("Expected: %d", SQLCODE);
+				printf(" --> %s\n\n", risca->sqlerrm.sqlerrmc);
+			break;
+		} 
+	}
+	else
+	{
+		RISint_report_error(0, &err_ptr);
+		printf("Expected: %d   BUT RECIEVED  vvvvvvvvvvvv\n", sts);
+		printf("%s\n",err_ptr);
+	}
+}
+
+/***************************************************************************/
+
+extern void setup()
+{
+	exec sql set mode ansi on;
+	ERRCHK(RIS_SUCCESS);
+
+	default_sch1();
+
+	exec sql create table table3 (name1 char(30), college char(40));
+	ERRCHK(RIS_SUCCESS);
+
+	exec sql insert into table3 values ('Mike Jordan', 'University of North Carolina'); 
+	ERRCHK(RIS_SUCCESS);
+
+	exec sql insert into table3 values ('Magic Johnson', 'Michigan State University'); 
+	ERRCHK(RIS_SUCCESS);
+
+	
+	default_sch2();
+
+	exec sql create table table3 (name1 char(30), college char(40));
+	ERRCHK(RIS_SUCCESS);
+	exec sql insert into table3 values ('Larry Bird', 'Indiana University'); 
+	ERRCHK(RIS_SUCCESS);
+
+	exec sql insert into table3 values ('Shaq O Neal', 'Louisiana State University'); 
+	ERRCHK(RIS_SUCCESS);
+}
+
+/***************************************************************************/
+
+extern void default_sch1()
+{
+	exec sql default schema sch1;
+	ERRCHK(RIS_SUCCESS);
+}
+
+/***************************************************************************/
+
+extern void default_sch2()
+{
+	exec sql default schema sch2;
+	ERRCHK(RIS_SUCCESS);
+}
+
+/***************************************************************************/
+
+extern void declare()
+{
+	default_sch1();
+	exec sql declare curs1 cursor for select name1 from table3;
+	ERRCHK(RIS_SUCCESS);
+
+	default_sch2();
+	exec sql declare curs2 cursor for select name1 from table3;
+	ERRCHK(RIS_SUCCESS);
+}
+
+/***************************************************************************/
+
+extern void open_cursor()
+{
+	default_sch1();
+	exec sql open curs1;
+	ERRCHK(RIS_SUCCESS);
+
+	default_sch2();
+	exec sql open curs2;
+	ERRCHK(RIS_SUCCESS);
+}
+
+/***************************************************************************/
+
+extern void fetch_sch1()
+{
+	exec sql async :async1 fetch curs1 into :name_sch1;
+}
+
+/***************************************************************************/
+
+extern void fetch_sch2()
+{
+	exec sql async :async2 fetch curs2 into :name_sch2;
+}
+
+/***************************************************************************/
+
+extern int test_or_wait()
+{
+	int status;
+
+	exec sql test :async1, :async2 completion;
+
+	status = SQLCODE;
+
+	switch( status )
+	{
+		case RIS_SUCCESS:
+			printf("<<<<<<<< RIS_SUCCESS >>>>>>>>\n");
+    		printf("name_sch1 --> <%s>\n",name_sch1);
+    		printf("name_sch2 --> <%s>\n",name_sch2);
+			status = RIS_SUCCESS;
+		break;
+		case END_OF_DATA:
+			printf("<<<<<<<< END_OF_DATA >>>>>>>>\n");
+			status = END_OF_DATA;
+		break;
+		case STATEMENT_NOT_COMPLETE:
+			printf("<<<<<<<< STATEMENT_NOT_COMPLETE >>>>>>>>\n");
+			status = test_or_wait();
+		break;
+		case STATEMENT_FAILED:
+			printf("<<<<<<<< STATEMENT_FAILED >>>>>>>>\n");
+
+			exec sql report error for async :async1 into :error_ptr;
+			printf("error_ptr = %s\n",error_ptr);
+		
+			exec sql report error for async :async2 into :error_ptr;
+			printf("error_ptr = %s\n",error_ptr);
+		
+			ERRCHK(RIS_SUCCESS);
+			status = STATEMENT_FAILED;
+		break;
+		default:
+			printf("Illegal return from test_or_wait\n");
+			printf("EXITING FROM PROGRAM\n");
+			exit(1);
+		break;
+	}
+	return(status);
+}
+
+/***************************************************************************/
+
+extern void close_cursor()
+{
+    exec sql close curs1;
+	ERRCHK(RIS_SUCCESS);
+
+    exec sql close curs2;
+	ERRCHK(RIS_SUCCESS);
+}
+
+/***************************************************************************/
+
+extern void clear()
+{
+	exec sql clear cursor curs1;
+	ERRCHK(RIS_SUCCESS);
+
+	exec sql clear cursor curs2;
+	ERRCHK(RIS_SUCCESS);
+
+	exec sql clear async :async1;
+	ERRCHK(RIS_SUCCESS);
+
+	exec sql clear async :async2;
+	ERRCHK(RIS_SUCCESS);
+}
+
+/***************************************************************************/
+
+extern void main()
+{
+	int	status = -1;
+
+	setup();
+	declare();
+	open_cursor();
+
+   /*
+    **  Set the autocommit off so that transactions are not committing until
+    **  an explicit commit statement is executed
+    */
+    exec sql set transaction autocommit off;
+
+	exec sql set network verification response interval 20 for sch1, sch2;
+
+	while(1)
+	{
+		/*
+		**	Assuming both the tables have equal # of rows
+		*/
+		fetch_sch1(); 
+		fetch_sch2();
+		status = test_or_wait();
+
+		/*
+		**	If successfully fetched, fetch another one.
+		*/
+		if( status != RIS_SUCCESS )
+		{
+			break;
+		}
+	}
+	close_cursor();
+	clear();
+}
+
+/*****************************************************************************/

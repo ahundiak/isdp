@@ -1,0 +1,84 @@
+#!/bin/ksh
+# postinstall.sh script for IDNAME
+
+RISLOG=/usr/tmp/risinstl.log
+RISERR=/usr/tmp/risinstl.err
+
+RIS_PLATFORM=ris_platform
+
+LN=/bin/ln
+RM=/bin/rm
+CAT=/bin/cat
+GREP=/bin/grep
+
+RISCONFIG=/etc/risconfig
+RISTMP=/usr/tmp/risconfig
+RIS_ENTRY="$PRODNUMBER#IDNAME#IDTITLE#$PRODVERSION#PRODDATE#$DESTDIR#"
+
+print "\nExecuting postinstall.sh script ..."
+
+#----------------------------------------------------------------
+#  Create/Update /etc/risconfig file with product information
+#----------------------------------------------------------------
+
+if [ -f $RISCONFIG ]
+then
+	print "Updating $RISCONFIG file."
+	$CAT $RISCONFIG > $RISTMP
+	$GREP -v $DESTDIR $RISTMP > $RISCONFIG
+	print $RIS_ENTRY >> $RISCONFIG
+	$RM -f $RISTMP 2>>$RISERR
+else
+	print "Creating $RISCONFIG file."
+	print $RIS_ENTRY > $RISCONFIG
+fi
+
+#----------------------------------------------------------------
+# CLIX: link all files under lib/$CUR_ARCH to lib directory
+#----------------------------------------------------------------
+
+umask 133
+if [ $RIS_PLATFORM = "CLIX" ]
+then
+	cd $DESTDIR/lib
+	case $(inqcpuid) in
+		"C100"|"C300") CUR_ARCH=c100 ;;
+		"C400") CUR_ARCH=c400 ;;
+		*) print "Unknown CPU id"; exit 1 ;;
+	esac
+	print "Linking libraries to $CUR_ARCH directory"
+	for FILE in LIBRARIES
+	do
+		$LN -fs $CUR_ARCH/$FILE $FILE 2>>$RISERR
+	done	
+fi
+
+#----------------------------------------------------------------
+# Kludge: create symbolic links on CLIX, sco and SunOS4.
+#         so that users find the names they are used to.
+#----------------------------------------------------------------
+
+case $RIS_PLATFORM in (CLIX|SunOS4|sco)
+	cd $DESTDIR/lib
+	$LN -fs rislduld.a ris_loduld.a 2>>$RISERR
+	if [ $RIS_PLATFORM = "CLIX" ]
+	then
+		$LN -fs risforms.a ris_forms.a 2>>$RISERR
+	elif [ $RIS_PLATFORM = "SunOS4" ]
+	then
+		$LN -fs xrisforms.a ris_forms.a 2>>$RISERR
+	fi
+	cd $DESTDIR/include
+	if [ $RIS_PLATFORM = "CLIX" -o $RIS_PLATFORM = "SunOS4" ]
+	then
+		$LN -fs risforms.prt RISfrm_proto.h 2>>$RISERR
+		$LN -fs risforms.h RISforms.h 2>>$RISERR
+	fi
+	$LN -fs rislimit.h RISlimits.h 2>>$RISERR
+	$LN -fs ris.prt RISprototype.h 2>>$RISERR
+	$LN -fs rislduld.h RISloduld.h 2>>$RISERR
+	cd $DESTDIR/bin
+	$LN -fs risinstl.ksh risinstall 2>>$RISERR ;;
+esac
+
+exit 0

@@ -1,0 +1,397 @@
+/* Do not alter this SPC information: $Revision: 1.5.27.1 $ */
+/*
+**	NAME:							dldmain.c
+**	AUTHORS:						Terrence McIntyre,Rick Kramer
+**	CREATION DATE:					8/93
+**	ABSTRACT:
+**	
+**	REVISION HISTORY:
+*/
+#define DLD_GLOBAL_DEFINE
+ 
+/*
+**	INCLUDES
+*/
+#include <stdio.h>
+#if defined(unix)
+#if defined(VERSION_4_ONLY)
+#include "xc/dload.h"
+#endif
+#endif
+#if defined(WIN32)
+#include <windows.h>
+#endif
+#if defined(DOS)
+#endif
+#include "risver.h"
+#include "dloadld.h"
+#ifdef MM
+#include "unlod.h"
+#endif
+exec sql include "unlod.h";
+
+
+/*
+**	DEFINES
+*/
+
+#if defined(unix) || defined(DOS)
+#endif
+#if defined(WIN32)
+//For NT on currently
+#define VERSION_4_ONLY
+#endif
+
+
+/*
+**	TYPES
+*/
+
+/*
+**	FUNCTION PROTOTYPES
+*/
+#define dldmain_c
+#if defined(VERSION_4_ONLY)
+#include "dlderror.prt"
+#include "dldgtdir.prt"
+#else
+#endif
+#include "dldmain.prt"
+#if defined(WIN32)
+#include "dlddebug.prt"
+#endif
+
+#include "lodmisc.prt"
+#include "lodbatch.prt"
+#include "loddsprt.prt"
+#include "ulddsprt.prt"
+#include "uldmisc.prt"
+#include "uldbatch.prt"
+
+/*
+**	VARIABLES
+*/
+#if defined(VERSION_4_ONLY)
+/*STATIC STRUCT BEGIN*/
+static func_info_s func_info[] = 
+{
+	{ 0, 0 },
+	{ "RISX_loader", 0 },
+	{ "RISX_unloader", 0 },
+	{ "RISXlod_batch_load", 0 },
+	{ "RISXlod_interactive_load", 0 },
+	{ "RISXlod_get_RISlod_debug_addr", 0 },
+	{ "RISXuld_heart_of_unload", 0 },
+	{ "RISXuld_get_RISuld_debug_addr", 0 },
+	{ "RISXlod_fprint_risloddes", 0 },
+	{ "RISXuld_fprint_risulddes", 0 },
+};
+/*STATIC STRUCT END*/
+
+static int func_count =	sizeof(func_info)/sizeof(func_info_s); 
+#endif
+
+
+/*
+**	FUNCTIONS
+*/
+#if defined(unix)
+	char *handle; 
+#endif
+#if defined(WIN32)
+	HANDLE handle;
+#endif
+
+/******************************************************************************/
+
+#if defined(VERSION_4_ONLY)
+static int IsRISDynamicLoadDone()
+{
+
+	int 		index;
+	static int	called_but_failed = 0;
+	static int	dynamic_loaded = 0;
+	char 		ris_objects[RIS_MAX_PATH_SIZE]; 
+	char		RIS_dir[RIS_MAX_PATH_SIZE];
+	int			RIS_development = 0;
+
+
+	if(called_but_failed)
+	{
+		DLD_DBG(("IsRISDynamicLoadDone: called but failed\n"));
+		return(RIS_E_DYNAMIC_LOADING_FAILED);
+	}
+
+	if(!dynamic_loaded)
+	{ 
+
+		RISdldLDULD_initialize_debug();
+		if (RISdldLDULD_get_risdir("RIS", RIS_version_maj, RIS_version_min, 
+						RIS_version_rel, MATCH_COMPATIBLE, RIS_dir, 
+						&RIS_development, 0))
+		{
+			called_but_failed = 1;
+			RISdldLDULD_error_msg_box(RIS_COULD_NOT_GET_REGISTRY,RIS_version);
+			DLD_DBG(("IsRISDynamicLoadDone: RISdldLDULD_get_risdir failed\n"));
+			return(RIS_E_DYNAMIC_LOADING_FAILED);
+		}
+
+		RISdldLDULD_generate_path(ris_objects, RIS_dir, RIS_development);
+		DLD_DBG(("IsRISDynamicLoadDone: Loading <%s>\n", STRING(ris_objects)));
+
+		handle = DYNAMIC_LOAD_FUNCTION(ris_objects);
+		if( !handle ) 
+		{ 
+			DLD_DBG(("IsRISDynamicLoadDone: LoadLibrary return:%d\n",
+					GetLastError()));
+			called_but_failed = 1;
+			RISdldLDULD_error_msg_box(RIS_COULD_NOT_LOAD_RIS_DLL,ris_objects);
+			return(RIS_E_DYNAMIC_LOADING_FAILED); 
+		} 
+
+		DLD_DBG(("IsRISDynamicLoadDone: functions:%d\n", func_count-1));
+		for( index = 1; index < func_count; index++ ) 
+		{ 
+			DLD_DBG(("IsRISDynamicLoadDone: func_info[%d].name = <%s>\n", 
+				index, STRING(func_info[index].name)));
+			func_info[index].address =  
+				GET_FUNCTION_ADDRESS(func_info[index].name);
+			if(!func_info[index].address) 
+			{ 
+#if defined(WIN32)
+				FreeLibrary(handle);
+#endif
+				DLD_DBG(("IsRISDynamicLoadDone: GetProcAddress return:%d\n",
+						GetLastError()));
+				called_but_failed = 1;
+				RISdldLDULD_error_msg_box(RIS_COULD_NOT_FIND_RIS_FUNC,
+					func_info[index].name);
+				return(RIS_E_DYNAMIC_LOADING_FAILED); 
+			} 
+			DLD_DBG(("IsRISDynamicLoadDone: func_info[%d].address = 0x%x\n", 
+				index, func_info[index].address));
+		} 
+		dynamic_loaded = 1; 
+		DLD_DBG(("IsRISDynamicLoadDone: returning SUCCESS\n"));
+		return(0);
+	} 
+	else
+	{
+		DLD_DBG(("IsRISDynamicLoadDone: already dloaded.\n"));
+		return(0);
+	}
+}
+#endif
+
+
+
+/******************************************************************************/
+
+extern int RIS_loader(
+	risloddes	*risloddes_ptr)
+{
+#if defined(VERSION_4_ONLY)
+	if( IsRISDynamicLoadDone() ) 
+	{ 
+		SET_RISCA(RIS_E_DYNAMIC_LOADING_FAILED); 
+		return(RIS_E_DYNAMIC_LOADING_FAILED);
+	} 
+	return(FUNCTION_ADDRESS(DLD_loader)(risloddes_ptr));
+#else
+	return RISX_loader(risloddes_ptr);
+#endif
+}
+
+/******************************************************************************/
+
+extern int RISlod_batch_load(
+	int			argc,
+	char		*argv[],
+	int			mode,
+	risloddes 	*risloddes_ptr)
+{
+#if defined(VERSION_4_ONLY)
+	if( IsRISDynamicLoadDone() ) 
+	{ 
+		SET_RISCA(RIS_E_DYNAMIC_LOADING_FAILED); 
+		return(RIS_E_DYNAMIC_LOADING_FAILED);
+	} 
+	return(FUNCTION_ADDRESS(DLDlod_batch_load)(argc,argv,mode,risloddes_ptr));
+#else
+	return RISXlod_batch_load(argc, argv, mode, risloddes_ptr);
+#endif
+}
+
+/******************************************************************************/
+
+extern void RISlod_interactive_load(
+	int		mode)
+{
+#if defined(VERSION_4_ONLY)
+	if( IsRISDynamicLoadDone() ) 
+	{ 
+		SET_RISCA(RIS_E_DYNAMIC_LOADING_FAILED); 
+		return;
+	} 
+	FUNCTION_ADDRESS(DLDlod_interactive_load)(mode);
+#else
+	RISXlod_interactive_load(mode);
+#endif
+}
+
+/******************************************************************************/
+
+extern void RISlod_print_risloddes(
+	risloddes	*risloddes_ptr)
+{
+#if defined(VERSION_4_ONLY)
+	if( IsRISDynamicLoadDone() ) 
+	{ 
+		SET_RISCA(RIS_E_DYNAMIC_LOADING_FAILED); 
+		return;
+	} 
+	FUNCTION_ADDRESS(DLDlod_fprint_risloddes)(stdout, risloddes_ptr);
+#else
+	RISXlod_fprint_risloddes(stdout, risloddes_ptr);
+#endif
+}
+
+/******************************************************************************/
+
+extern void RISlod_fprint_risloddes(
+	FILE *fp,
+	risloddes	*risloddes_ptr)
+{
+#if defined(VERSION_4_ONLY)
+	if( IsRISDynamicLoadDone() ) 
+	{ 
+		SET_RISCA(RIS_E_DYNAMIC_LOADING_FAILED); 
+		return;
+	} 
+	FUNCTION_ADDRESS(DLDlod_fprint_risloddes)(fp, risloddes_ptr);
+#else
+	RISXlod_fprint_risloddes(fp, risloddes_ptr);
+#endif
+}
+
+/******************************************************************************/
+
+extern int *RISlod_get_RISlod_debug_addr()
+{
+#if defined(VERSION_4_ONLY)
+	if( IsRISDynamicLoadDone() ) 
+	{ 
+		SET_RISCA(RIS_E_DYNAMIC_LOADING_FAILED); 
+		return((int *)RIS_E_DYNAMIC_LOADING_FAILED);
+	} 
+	return((int *)FUNCTION_ADDRESS(DLDlod_get_RISlod_debug_addr)());
+#else
+	return (int *)RISXlod_get_RISlod_debug_addr();
+#endif
+}
+
+/******************************************************************************/
+
+extern int RIS_unloader(
+	risulddes	*risulddes_ptr)
+{
+#if defined(VERSION_4_ONLY)
+	if( IsRISDynamicLoadDone() ) 
+	{ 
+		SET_RISCA(RIS_E_DYNAMIC_LOADING_FAILED); 
+		return(RIS_E_DYNAMIC_LOADING_FAILED);
+	} 
+	return(FUNCTION_ADDRESS(DLD_unloader)(risulddes_ptr));
+#else
+	return RISX_unloader(risulddes_ptr);
+#endif
+}
+
+/******************************************************************************/
+
+extern void RISuld_heart_of_unload(
+	int			argc,
+	char		*argv[],
+	int			mode,
+	risulddes	*risulddes_ptr)
+{
+#if defined(VERSION_4_ONLY)
+	if( IsRISDynamicLoadDone() ) 
+	{ 
+		SET_RISCA(RIS_E_DYNAMIC_LOADING_FAILED); 
+		return;
+	} 
+	FUNCTION_ADDRESS(DLDuld_heart_of_unload)(argc,argv,mode,risulddes_ptr);
+#else
+	RISXuld_heart_of_unload(argc, argv, mode, risulddes_ptr);
+#endif
+}
+
+/******************************************************************************/
+
+extern void RISuld_print_risulddes(
+	risulddes	*risulddes_ptr)
+{
+#if defined(VERSION_4_ONLY)
+	if( IsRISDynamicLoadDone() ) 
+	{ 
+		SET_RISCA(RIS_E_DYNAMIC_LOADING_FAILED); 
+		return;
+	} 
+	FUNCTION_ADDRESS(DLDuld_fprint_risulddes)(stdout, risulddes_ptr);
+#else
+	RISXuld_fprint_risulddes(stdout, risulddes_ptr);
+#endif
+}
+
+/******************************************************************************/
+
+extern void RISuld_fprint_risulddes(
+	FILE *fp,
+	risulddes	*risulddes_ptr)
+{
+#if defined(VERSION_4_ONLY)
+	if( IsRISDynamicLoadDone() ) 
+	{ 
+		SET_RISCA(RIS_E_DYNAMIC_LOADING_FAILED); 
+		return;
+	} 
+	FUNCTION_ADDRESS(DLDuld_fprint_risulddes)(fp, risulddes_ptr);
+#else
+	RISXuld_fprint_risulddes(fp, risulddes_ptr);
+#endif
+}
+
+/******************************************************************************/
+
+extern int *RISuld_get_RISuld_debug_addr()
+{
+#if defined(VERSION_4_ONLY)
+	if( IsRISDynamicLoadDone() ) 
+	{ 
+		SET_RISCA(RIS_E_DYNAMIC_LOADING_FAILED); 
+		return((int *)RIS_E_DYNAMIC_LOADING_FAILED);
+	} 
+	return((int *)FUNCTION_ADDRESS(DLDuld_get_RISuld_debug_addr)());
+#else
+	return (int *)RISXuld_get_RISuld_debug_addr();
+#endif
+}
+
+/******************************************************************************/
+
+extern int RISlduld_load_dll()
+{
+#if defined(VERSION_4_ONLY)
+	if( IsRISDynamicLoadDone() ) 
+	{ 
+		SET_RISCA(RIS_E_DYNAMIC_LOADING_FAILED); 
+		return -1;
+	} 
+	return 0;
+#else
+	return 0;
+#endif
+}
+
+/******************************************************************************/

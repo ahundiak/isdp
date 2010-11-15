@@ -1,0 +1,22 @@
+#define RADIO_INFORMIX              102
+#define RADIO_SYBASE                103
+#define RADIO_INGRES                104
+#define RADIO_ORACLE                105
+#define RADIO_DB2                   106
+#define RADIO_MSSQL                 107
+#define REFRESH_BUTTON              600
+#define EXIT_BUTTON                 603 
+#define DIALOG_BOX                  110
+#define SERVER_HOST_NAME            111
+#define SERVER_HOST_TYPE            113
+#define LICENSE_USERS               117
+#define PEAK_BUTTON                 601
+
+#define PEAK_EXIT                   200
+#define PEAK_CLEAR                  201
+#define PEAK_SAVE                   202
+#define PEAK_PRINT                  203
+#define PEAK_LIST_BOX               204
+#define PEAK_TEXT                   205
+#define PEAK_TIME                   206
+#define HELP_BUTTON                 602

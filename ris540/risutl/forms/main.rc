@@ -1,0 +1,427 @@
+/* $Revision: 1.9.3.1 $ */
+/*
+**	NAME:						main.rc
+**	AUTHORS:					Terry McIntyre
+**	CREATION DATE:					2/90
+**	ABSTRACT:
+**		main() for Environ V and NT  RIS schema manager.
+**		
+**	
+**	REVISION HISTORY:
+**
+**	10/94:	Added which_language for INTERNATIONALIZATION support. Linda Wang
+**	01/30/95 Check return from SetLocale. Rick
+**	02/03/95 Removed which_language and NTJ specific changes. rlk
+**      04/17/96 added check for null pointer in local_error_handler().  Ashley B.
+**      6/96:   Fix for TR 439601389 Ashley 6/20/96
+**              WINNT 3.51 does not like double backslashes in help file names.
+*/
+
+/*
+**	INCLUDES
+*/
+#include <stdio.h>
+#include "risver.h"
+#if defined(__clipper__)
+#include <tools.h>
+#elif defined (WIN32)
+#include <windows.h>
+#include <locale.h>
+#include "riscom.h"
+#include "risprods.h"
+
+#else
+ERROR -- NO CODE
+#endif
+#include "risstjmp.h"
+#include "risforms.h"
+#include "risutl.h"
+#include "rislimit.h"
+#include "utl_inf.h"
+#include "utl_err.h"
+
+/*
+**	FUNCTION PROTOTYPES
+*/
+#define main_c
+#include "comjmp.prt"
+#include "comumsg.prt"
+#include "ucodebug.prt"
+#include "ucoerrbx.prt"
+#include "ucoumsg.prt"
+#include "dldmain.prt"
+#include "fi.prt"
+#if defined(__clipper__)
+# include "env5.prt"
+# include "fi_env5.prt"
+#elif defined (WIN32)
+# include "fi_winnt.prt"
+# include "comparcl.prt"
+# include "comgtdir.prt"
+# include "comlang.prt"
+#else
+ERROR -- NO CODE
+#endif
+#include "main.prt"
+#include "ris.prt"
+#include "sys.prt"
+
+/*
+**	DEFINES
+*/
+
+/*
+**	VARIABLES
+*/
+#if defined(WIN32)
+static int	help_initialized = 0;
+static char	help_path[RIS_MAX_PATH_SIZE] = "";
+static HWND	help_handle = 0;
+#endif
+
+/*
+**	FUNCTIONS
+*/
+
+/******************************************************************************/
+
+#if defined(__clipper__)
+static int error_handler(
+	int	error,
+	char	*str)
+{
+	if (error)
+	{
+		fputs(str, stderr);
+	}
+	return 1;
+}
+#endif /* clipper */
+
+
+/******************************************************************************/
+
+static void local_error_handler()
+{
+exec sql begin declare section;
+	char			*err;
+exec sql end declare section;
+
+/* Ashley B. - check for the abnormal case of when ris_forms_error is NULL
+** 4/17/96     This will happen when RIS_language is set to a value for 
+**             which the forms files cannot be found. This is a fix for   
+**	       TR 439600179.
+**/
+	if (ris_forms_error == NULL)
+	{
+		RISfrm_error_box(RIScom_umsg(RISUTL_E_RIS_ERROR));
+		return;
+	}
+	else
+	if (ris_forms_error->error == RISUTL_E_RIS_ERROR)
+	{
+		exec sql report error into :err;
+	}
+	else
+	{
+		err = RISfrm_generate_error_box();
+	}
+	RISfrm_error_box(err);
+}
+
+/******************************************************************************/
+
+#if defined(WIN32)
+static void initialize_help()
+{
+	int		sts;
+	int		lang_code;
+	int		development;
+	char		*lang_dir;
+	char		dir[256];
+
+	sts = RIScom_get_risdir(RIS_CLIENT_RUNTIME_PRODUCT, RIS_version_maj,
+		RIS_version_min, RIS_version_rel, MATCH_COMPATIBLE,
+		0, RISCONFIG_FILE, dir, &development, 0);
+	if (sts != 0)
+	{
+		return;
+	}
+
+ 	RISint_get_language_code(&lang_code);
+	lang_dir = RIScom_ris_lang_dir(lang_code);
+	if (development)
+	{
+		sprintf(help_path,"%s\\risutl\\config\\%s\\help\\risutl.hlp",
+			dir, lang_dir);
+	}
+	else
+	{
+/* Fix for TR 439601389 Ashley 6/20/96
+   WINNT 3.51 does not like double backslashes in help file names.
+
+   Fix for TR#439601759,60
+   Because RIScom_get_risdir() routine is modified and it's stripping
+   the ending backslash, we need to add the backslash again. Krishna(08/14/96)
+*/
+		sprintf(help_path,"%s\\config\\%s\\help\\risutl.hlp",
+			dir, lang_dir);
+	}
+
+	if (lang_code != 0) /* english */
+	{
+		/* test help_path */
+		if (_access(help_path, 00) != 0)
+		{
+			/* that help file doesn't exist, use english */
+			lang_dir = RIScom_ris_lang_dir(0);
+			if (development)
+			{
+				sprintf(help_path,"%s\\risutl\\config\\%s\\help\\risutl.hlp",
+					dir, lang_dir);
+			}
+			else
+			{
+				sprintf(help_path,"%s\\config\\%s\\help\\risutl.hlp", dir,
+					lang_dir);
+			}
+		}
+	}
+
+	help_initialized = 1;
+}
+#endif /* WIN32 */
+
+/******************************************************************************/
+
+#if defined(WIN32)
+static void help_notification_routine(
+	int		f_label,
+	int		g_label,
+	double		value,
+	Form		fp)
+{
+	if (g_label == FI_HELP)
+	{
+		if (!help_initialized)
+		{
+			initialize_help();
+		}
+		FIf_get_window(fp, &help_handle);
+		//WinHelp(help_handle, help_path, HELP_CONTENTS, 0);
+		WinHelp(help_handle, help_path, HELP_KEY, (unsigned long )"rismgr");
+	}
+}
+#endif /* WIN32 */
+
+/******************************************************************************/
+
+#if defined(__clipper__)
+extern int main(
+	int		argc,
+	char	*argv[])
+#elif defined(WIN32)
+extern int WINAPI WinMain(
+	HANDLE			hInst,
+	HANDLE			hPrevInst,
+	LPSTR			lpCmdLn,
+	int				nShowCmd)
+#else
+ERROR -- NO CODE
+#endif
+{
+	int					sts;
+	int					debug_count;
+	char				msgbuf[1072];
+	debug_info_s		debug_info[1];
+	RISfrm_init_parms	init_parms;
+	char 				buf[1024];
+
+#if defined(__clipper__)
+	int					i;
+	int					vs;
+	int					fixed_slots;
+	struct vlt_slot		*fixed_vlt;
+#elif defined(WIN32)
+	int				argc;
+	char			**argv;
+	HICON			icon;
+#else
+ERROR -- NO CODE
+#endif
+	if (RISfrm_load_dll()) return(1);
+	if (RISload_dll()) return(1); 
+#if defined(__clipper__)
+	Enter_tools();
+
+	Enable_events(FI_EVENT_MASK);
+
+	Inq_displayed_vs(&vs);
+	Get_fixed_vlt(&fixed_vlt, &fixed_slots);
+	Loadvlt(vs, fixed_vlt, fixed_slots);
+
+	FI_enter();
+#elif defined(WIN32)
+	if (!setlocale(LC_ALL, ""))
+	{
+            MessageBox(NULL,"Cannot set Locale.","RISmgr",MB_ICONSTOP | MB_OK | MB_TASKMODAL);
+            return(0);
+	}
+	argc = RIScom_parse_command_line(hInst, lpCmdLn, &argv);
+
+	FI_enter (hInst);
+
+	if ((icon = LoadIcon(hInst, "RisMgrIcon")) != NULL)
+	{
+		FI_SetApplicationIcon(icon);
+	}
+#endif
+
+	if ((sts = SETJMP()) != 0)
+	{
+		RESETJMP();
+
+		RISuco_char_error_box(msgbuf, RISUTL_I_MGR_ERROR, 0, sts, NULL, 0, 1);
+		RISfrm_error_box(msgbuf);
+
+#if defined(__clipper__)
+		Exit_tools();
+#endif
+ 		return sts;
+	}
+
+	debug_info[0].name = "frm";
+	debug_info[0].len = 3;
+	debug_info[0].flag = RISfrm_get_RISfrm_debug_addr();
+	debug_count = 1;
+	RISuco_initialize_debug(debug_info, debug_count);
+	RISuco_initialize_ums(INIT_UTL_UMS_FILE|INIT_RIS_UMS_FILE);
+
+	RESETJMP();
+
+	memset(&init_parms, 0, sizeof(init_parms));
+
+#if defined(WIN32)
+	init_parms.display_help_buttons = 1;
+	init_parms.pre_notification_routine = help_notification_routine;
+#endif
+
+#if defined(__clipper__)
+	for (i = 1; i < argc; i++)
+	{
+		if  (strcmp(argv[i], "-?") == 0) 
+		{
+			strcpy(buf, MSG(RISUTL_I_RISMGR_USAGE_1));
+			strcat(buf, MSG(RISUTL_I_RISMGR_USAGE_2));
+			strcat(buf, MSG(RISUTL_I_RISMGR_USAGE_3));
+			strcat(buf, MSG(RISUTL_I_RISMGR_USAGE_4));
+
+			FI_message_box(FI_CURRENT_SCREEN, -1, -1,
+               		 "Usage", FI_BLUE, "dutch801b", 30.0, buf, 
+			FI_BLACK, "mono821b", 15.0, FI_LEFT_JUSTIFIED, 81);
+
+			Exit_tools();
+ 			return (0);
+		}
+		else if (strcmp(argv[i], "-V") == 0)
+		{
+			strcpy(buf,"Version ");
+			strcat(buf, (MSG(RISUTL_I_RISMGR_VERSION), RIS_version));
+			FI_message_box(FI_CURRENT_SCREEN, -1, -1,
+               		 "RIS Schema Manager", FI_BLUE, "dutch801b", 18.0, buf,
+              	      FI_BLACK, "mono821b", 15.0, FI_LEFT_JUSTIFIED, 81);
+
+			Exit_tools();
+ 			return (0);
+		}
+		else if (strcmp(argv[i],"-db") == 0)
+		{
+			RISfrm_enable_debug_form();
+		}
+		else if (strcmp(argv[i],"-e") == 0)
+		{
+			init_parms.error_handler_routine = error_handler;
+		}
+		else
+		{
+			RISfrm_error_box(RIScom_umsg(RISUTL_I_RISMGR_USAGE_1));
+			Exit_tools();
+ 			return (1);
+		}
+	}
+#endif
+
+#if defined(WIN32)
+	if (argc == 2) 
+	{
+		if ( (strcmp(argv[1], "-?") == 0) || (strcmp(argv[1], "/?") == 0) )
+		{
+	        strcpy(buf, MSG(RISUTL_I_RISMGR_USAGE_NT));
+			strcat(buf, MSG(RISUTL_I_RISMGR_USAGE_2));
+			strcat(buf, MSG(RISUTL_I_RISMGR_USAGE_4));
+			FI_message_box(FI_CURRENT_SCREEN, -1, -1,
+           			 "Usage", FI_BLUE, "dutch801b", 30.0, buf, 
+					 FI_BLACK, "mono821b", 15.0, FI_LEFT_JUSTIFIED, 81);
+
+ 			return (0);
+		}
+		else if ( (strcmp(argv[1], "-V") == 0) || (strcmp(argv[1], "/V") == 0) )
+		{
+			strcpy(buf,"Version ");
+			strcat(buf, (MSG(RISUTL_I_RISMGR_VERSION), RIS_version));
+			FI_message_box(FI_CURRENT_SCREEN, -1, -1,
+               		 "RIS Schema Manager", FI_BLUE, "dutch801b", 18.0, buf,
+           	         FI_BLACK, "mono821b", 15.0, FI_LEFT_JUSTIFIED, 81);
+ 			return (0);
+		}
+		else if (strcmp(argv[1],"-db") == 0)
+		{
+			RISfrm_enable_debug_form();
+		}
+		else
+		{
+			strcpy(buf,"Usage: ");
+			strcat(buf, MSG(RISUTL_I_RISMGR_USAGE_NT));
+			FI_message_box(FI_CURRENT_SCREEN, -1, -1,
+           			"ERROR", FI_RED, "dutch801b", 18.0, buf,
+       	       		FI_BLACK, "mono821b", 15.0, FI_LEFT_JUSTIFIED, 81);
+ 			return (1);
+		}
+	}
+#endif
+
+	if ((sts = RISfrm_initialize(&init_parms)) != RIS_SUCCESS)
+	{
+		local_error_handler();
+#if defined(__clipper__)
+		Exit_tools();
+#endif
+		return sts;
+	}
+
+	if ((sts = RISfrm_display_schema_mgr_form()) != RIS_SUCCESS)
+	{
+		local_error_handler();
+#if defined(__clipper__)
+		Exit_tools();
+#endif
+		return sts;
+	}
+
+	FI_process_forms();
+
+	RISterminate();
+
+#if defined(WIN32)
+	if (help_initialized)
+	{
+		WinHelp(help_handle, help_path, HELP_QUIT, 0);
+	}
+#endif
+
+#if defined(__clipper__)
+	Exit_tools();
+#endif
+
+	return RIS_SUCCESS;
+}

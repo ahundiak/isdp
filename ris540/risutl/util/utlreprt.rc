@@ -1,0 +1,161 @@
+/* Do not alter this SPC information: $Revision: 1.1.53.1 $ */
+/*
+**	NAME:							utlreprt.rc
+**	AUTHORS:						Terry McIntyre
+**	CREATION DATE:					4/92
+**	ABSTRACT:
+**		Interactive functions to report errors. Called directly by 
+**		RISutl_command();
+**	
+**	REVISION HISTORY:
+**					Modified RISutl_report_ss_error() -- Hitesh on 8/27
+**					Added functions for warning mechanism -- Hitesh on 10/12
+*/
+ 
+/*
+**	INCLUDES
+*/
+#include "util.h"
+#ifdef MM
+#include "rislimit.h"
+#endif
+exec sql include rislimit.h;
+
+/*
+**	DEFINES
+*/
+
+/*
+**	TYPES
+*/
+
+/*
+**	FUNCTION PROTOTYPES
+*/
+#define utlreprt_rc
+#include "comdebug.prt"
+#include "comjmp.prt"
+#include "ris.prt"
+#include "utlid.prt"
+#include "utlreprt.prt"
+#include "utlerror.prt"
+#include "utloutpt.prt"
+#include "utlmisc.prt"
+#include "utlprint.prt"
+#include "sys.prt"
+
+/*
+**	VARIABLES
+*/
+/*
+**	FUNCTIONS
+*/
+
+/******************************************************************************/
+
+extern void RISutl_report_async_error(
+	void)
+{
+	exec sql begin declare section;
+		extern int	RISutl_async_id;
+		char		*errptr;
+	exec sql end declare section;
+
+	UTL_DBG(("RISutl_report_async_error()\n"));
+
+	if (RISutl_get_async_id())
+	{
+		UTL_DBG(("RISutl_report_async_error: returning\n"));
+		return;
+	}
+
+	exec sql report error for async :RISutl_async_id into :errptr;
+	/* No need to check for error, report error doesn't set SQLCODE */
+	/* No need to check for warning, report error doesn't set warnings */
+
+	/*
+	**	Output the error
+	*/
+	RISutl_output_ris_error(errptr);
+
+	/*
+	**	All async ids are maintained by the risapp and therefore utility
+	**	doesnot know which id is valid. All it checks is that async_id should
+	**	be >= 0 and <= RIS_MAX_TRANSACTIONS. So if risapp returns INV_ASYNC_ID
+	**	reset global RISutl_async_id
+	*/
+	if (SQLCODE == RIS_E_INV_ASYNC_ID)
+	{
+		RISutl_async_id = -1;
+	}
+
+	UTL_DBG(("RISutl_report_async_error:complete\n"));
+}
+
+/******************************************************************************/
+
+extern void RISutl_report_ss_error(
+	void)
+{
+	char	def_schname[RIS_MAX_ID_SIZE];
+
+	exec sql begin declare section;
+		char schname[RIS_MAX_ID_SIZE];
+	exec sql end declare section;
+
+	UTL_DBG(("RISutl_report_ss_error()\n"));
+
+	RISget_default_schema_name(def_schname);
+	UTL_WARNING_CHECK();
+	UTL_ERROR_CHECK();
+
+	CLEAR_INTERRUPT();
+
+	/*
+	**	Get the superschema name
+	*/
+	if (def_schname[0])
+	{
+		RISutl_printf("\nEnter the superschema name [%s]: ", def_schname);
+	}
+	else
+	{
+		RISutl_printf("\nEnter the superschema name: ");
+	}
+
+	RISutl_fgets(schname, RIS_MAX_ID_SIZE, RISutl_file_tos->file);
+	if (INTERRUPTED())
+	{
+		UTL_DBG(("RISutl_report_ss_error:interrupted:returning\n"));
+		return;
+	}
+
+	if (!schname[0])
+	{
+		if (def_schname[0])
+		{
+			strcpy(schname, def_schname);
+		}
+		else
+		{
+			UTL_DBG(("RISutl_report_ss_error:no name specified:returning\n"));
+			return;
+		}
+	}
+
+	/*
+	**	Get the superschema error
+	*/
+	exec sql report superschema error for :schname;
+	UTL_WARNING_CHECK();
+	UTL_ERROR_CHECK();
+
+	/*
+	**	Output the superschema error
+	*/
+	RISutl_output_ss_error(superschema_error);
+
+	UTL_DBG(("RISutl_report_ss_error:returning\n"));
+}
+
+/******************************************************************************/
