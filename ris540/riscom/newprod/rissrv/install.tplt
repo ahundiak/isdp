@@ -1,0 +1,648 @@
+#!/bin/ksh
+# install.DOT_EXTENSION script for IDNAME
+
+# define and timestamp log file
+export RISLOG=/usr/tmp/risinstl.log
+print "IDNAME installation log file" >$RISLOG
+date '+Date: %h %d, %Y   Time: %H:%M:%S' >>$RISLOG
+
+# define and timestamp error file
+export RISERR=/usr/tmp/risinstl.err
+print "IDNAME installation error file" >$RISERR
+date '+Date: %h %d, %Y   Time: %H:%M:%S' >>$RISERR
+
+export RIS_PLATFORM=ris_platform
+CUR_ARCH=cur_arch
+if [ $RIS_PLATFORM = "CLIX" ]
+then
+	case $(inqcpuid) in
+		"C100"|"C300") CUR_ARCH=c100 ;;
+		"C400") CUR_ARCH=c400 ;;
+		*) print "Unknown CPU id"; exit 1 ;;
+	esac
+fi
+
+#
+# Set up commands and files
+#
+
+LN=/bin/ln
+RM=/bin/rm
+CAT=/bin/cat
+CPIO=/bin/cpio
+MKDIR=/bin/mkdir
+CHMOD=/bin/chmod
+CHGRP=/bin/chgrp
+AWK=/usr/bin/awk
+CUT=/usr/bin/cut
+
+if [ $RIS_PLATFORM = "CLIX" ]
+then
+	GREP=/bin/grep
+	DNPSRV=/usr/lib/servers.reg
+	LINKSDIR=/usr/ip32/ris/links
+fi
+
+if [ $RIS_PLATFORM = "SunOS4" ]
+then
+	CHOWN=/usr/etc/chown
+	COMPRESS=/usr/ucb/compress
+	GROUP=bin
+else
+    CHOWN=/bin/chown
+	COMPRESS=/usr/bin/compress
+	GROUP=sys
+fi
+
+if [ $RIS_PLATFORM = "Solaris" ]
+then
+	: ${INGRHOME:=/opt/ingr}
+	export INGRHOME
+	export PATH=$PATH:$INGRHOME/bin
+	DATES=$INGRHOME/bin/dates
+	PRODDATA=$INGRHOME/bin/proddata
+	CONFIGFILE=$INGRHOME/ingrconfig
+else
+	DATES=/usr/bin/dates
+	PRODDATA=/usr/bin/proddata
+	CONFIGFILE=/usr/ip32/ingrconfig
+fi
+
+RISTMP=/usr/tmp/PRODNAME.tmp
+
+umask 022
+
+#
+# Display upgrade warning
+#
+
+if [ "$PREPROCESS" = "y" ]
+then
+	echo ""
+	echo "            *****  IMPORTANT RIS INFORMATION  *****"
+	echo ""
+
+	if [ $RIS_PLATFORM = "CLIX" -o $RIS_PLATFORM = "SunOS4" -o $RIS_PLATFORM = "sco" ]
+	then
+		if [ IDNAME != "RISOS4DS" ]
+		then
+			echo ""
+			if [ $RIS_PLATFORM = "sco" -a IDNAME = "RISINFDS" ]
+			then
+				echo "Installation of this product will overwrite the Version 4.*.*.*"
+			else
+				echo "Installation of this product will not remove the Version 4.*.*.*"
+			fi
+    		echo "product.  If you would like to have multiple versions on the"
+			echo "same machine, it is suggested that you place the different" 
+    		echo "versions in separate partitions (i.e /usr2,/usr3)."
+    		echo ""
+    		echo "+--------------------------IMPORTANT-----------------------------+"
+    		echo "|                                                                |"
+    		echo "|  Interoperability between Version 4.*.*.* and Version 5.*.*.*  |"
+    		echo "|                                                                |"
+    		echo "|  If Version 4.*.*.* is downloaded after Version 5.*.*.*,       |"
+    		echo "|  it MUST be done using the uppercase 'U' option in newprod     |"
+    		echo "|  and Version 5.*.*.* MUST be downloaded again.                 |"
+    		echo "|                                                                |"
+    		echo "+----------------------------------------------------------------+"
+			echo ""
+			echo "Enter <CR> to continue... \c"
+			read  ans
+			echo ""
+		fi
+		if [ "IDNAME" = "RISINGNS" -o "IDNAME" = "RISINGDS" ] && [ $RIS_PLATFORM != "sco" ]
+		then
+			echo ""
+			echo "-------------------  IMPORTANT ---------------------------"
+			echo ""
+			echo "This Version of RIS INGRES Dataserver/Netserver should ONLY"
+			echo "be used with INGRES Database Version 6.3."
+			echo ""
+		fi
+		echo ""
+		echo "Version 05.*.*.* of RIS contains significant changes. You must"
+		echo "read the README file and the new RIS reference manuals to"
+		echo "understand the effects of these changes."
+		echo ""
+	fi
+
+	INSTALL1
+	INSTALL2
+	INSTALL3
+	INSTALL4
+	INSTALL5
+	INSTALL6
+	INSTALL7
+	INSTALL8
+	echo ""
+	echo "For RIS Server products to be compatible with the RIS Client,"
+	echo "the server product's major number must be the same or greater"
+	echo "than that of the RIS Client."
+	echo ""
+	echo "The general format of a product version string is defined as:"
+	echo "            major.feature.fixes.sequence."
+	echo ""
+fi
+
+answer=$(getanswer "Do you wish to continue?" y yesno)
+case $answer in
+	y*|Y*) ;;
+		*) exit 1;;
+esac
+
+if [ $RIS_PLATFORM = "CLIX" ]
+then
+	if [ "$PREPROCESS" = "y" ]
+	then
+		echo
+		echo "We will be downloading executables targeted for your processor."
+		echo
+		echo "$CUR_ARCH executables will be installed."
+	fi
+fi
+
+#
+# Check if product is currently in use
+#
+for FILENAME in BIN_FILES
+do
+	if [ -w $DESTDIR/$FILENAME ]
+	then
+		(exec 2>/dev/null;>>$DESTDIR/$FILENAME)
+		if [ $? -eq 1 ]
+		then
+			echo "Could not update IDNAME, product is in use"
+			exit 1
+		fi
+	fi
+done
+
+if [ $RIS_PLATFORM = "CLIX" ]
+then
+	OLD_LINK_PREFIX=$(echo OLD_PRODUCT_NAME | $CUT -c1-5)
+	OLD_LINK_NAME=$OLD_LINK_PREFIX.4_3_X
+	NEW_LINK_NAME=PRODNAME.5_1_X
+	typeset -u OLD_DNP_PREFIX=$(echo OLD_PRODUCT_NAME | $CUT -c1-4)
+#
+	OLD_DNP_NAME=${OLD_DNP_PREFIX}_4_3_X
+	NEW_DNP_NAME=${OLD_DNP_PREFIX}_5_0_X
+fi
+
+CUT_MAJ="03"
+CUT_MIN="02"
+CUT_REL="01"
+let CUT_VS=${CUT_MAJ}*4096+${CUT_MIN}*256+${CUT_REL}
+
+#
+# Remove old 4.0 versions (upto 4.0.11).
+#
+let CUT_MISC_LO=4*4096+0*256+0
+let CUT_MISC_HI=4*4096+0*256+12
+
+CURR_MAJOR=$(echo $PRODVERSION | $CUT -d. -f1)
+CURR_MINOR=$(echo $PRODVERSION | $CUT -d. -f2)
+CURR_REL=$(echo $PRODVERSION | $CUT -d. -f3)
+
+#
+# Check to see if there are versions of RIS earlier than the cutoff version
+# defined. If so, remove them. The rules to be followed are:
+# 1) If we are installing a server, then remove ALL brands of servers older than
+#    cutoff version.
+# 2) If we are installing a client product, then remove ONLY older versions of
+#    that client product.
+#
+if [ "IDNAME" = "RISINFDS" -o \
+	 "IDNAME" = "RISINFNS" -o \
+	 "IDNAME" = "RISORADS" -o \
+	 "IDNAME" = "RISORANS" -o \
+	 "IDNAME" = "RISSYBDS" -o \
+	 "IDNAME" = "RISINGDS" -o \
+	 "IDNAME" = "RISINGNS" -o \
+	 "IDNAME" = "RISDB2DS" ]
+then
+#
+# Note kludge for RISDIL
+#
+	PREV_VERSIONS=`$PRODDATA +%v RISXC RISXS RISIC RISIS RISOC \
+              RISOS RISYS RISDIL RISDC RISOU RISIU RISXU RISYU`
+	PREV_NAMES=`$PRODDATA +%n RISXC RISXS RISIC RISIS RISOC \
+              RISOS RISYS RISDIL RISDC RISOU RISIU RISXU RISYU`
+	PREV_DIRS=`$PRODDATA +%p RISXC RISXS RISIC RISIS RISOC \
+              RISOS RISYS RISDIL RISDC RISOU RISIU RISXU RISYU`
+fi
+
+if [ -n "$PREV_VERSIONS" ]
+then
+	let sp=0
+	RMOLDPROD_FLAG=""
+	for COUNT in $PREV_VERSIONS
+	do
+		let sp=$sp+1
+	done
+	while (($sp > 0))
+	do
+		DELVERSION=$(echo $PREV_VERSIONS | $CUT -d" " -f$sp)
+		DELMAJ=$(echo $DELVERSION | $CUT -d. -f1)
+		DELMIN=$(echo $DELVERSION | $CUT -d. -f2)
+		DELREL=$(echo $DELVERSION | $CUT -d. -f3)
+		DELDIR=$(echo $PREV_DIRS | $CUT -d" " -f$sp)
+		DELNAME=$(echo $PREV_NAMES | $CUT -d" " -f$sp)
+
+		let DEL_VS=${DELMAJ}*4096+${DELMIN}*256+${DELREL}
+
+#JP________________JP_________________JP________________________JP___________
+#
+#   We no longer set up any links under /usr/ip32/ris/bin and this directory
+#   should no longer exist. If it exists then remove the directory and all
+#   files and links under it.
+#
+if [ -d /usr/ip32/ris/bin ]
+then
+    $RM -rf /usr/ip32/ris/bin
+fi
+#
+#JP________________JP_________________JP________________________JP___________
+
+#
+# Remove old 4.0.* versions (upto 4.0.11)
+#
+		if [ "${DEL_VS}" -ge "${CUT_MISC_LO}" -a \
+			 "${DEL_VS}" -lt "${CUT_MISC_HI}" ]
+		then
+			RMMISCPROD="ON"
+		fi
+
+		if [ "${DEL_VS}" -lt "${CUT_VS}" -o \
+			 "$RMMISCPROD" = "ON" ]
+		then
+			if [ "$RMOLDPROD_FLAG" != "ON" ]
+			then
+				if [ "$PREPROCESS" = "y" ]
+				then
+					echo ""
+					echo "List of products older than version $CUT_MAJ.$CUT_MIN.$CUT_REL.00"
+					if [ "$RMMISCPROD" = "ON" ]
+					then
+						echo "and products between versions 04.00.00.* and 04.00.11.*"
+					fi
+					echo ""
+				fi
+				RMOLDPROD_FLAG="ON"
+			fi
+			if [ "$PREPROCESS" = "y" ]
+			then
+				echo "    PRODUCT: $DELNAME VERSION: $DELVERSION DIR: <$DELDIR>"
+			fi 
+			if [ "$PREPROCESS" = "n" ]
+			then
+				echo "Removing PRODUCT: $DELNAME VERSION: $DELVERSION DIR: <$DELDIR> ..."
+				if [ -d "$DELDIR" ]
+				then
+					$DELDIR/remove.DOT_EXTENSION $DELNAME $DELDIR
+					[ $? != 0 ] && exit 1
+				fi
+#
+# We remove the entry from ingrconfig file. From DELTOOLS 6.5 onwards,
+# this is taken care of by the dates command.
+#
+				$CAT $CONFIGFILE > $RISTMP
+				$AWK "BEGIN{FS=\"#\"} { if (\$2 != \"$DELNAME\" || \$4 != \"$DELVERSION\") print }" $RISTMP > $CONFIGFILE
+				$RM -f $RISTMP 2>>$RISERR
+			fi
+			RMMISCPROD=""
+		fi
+		let sp=$sp-1
+	done
+fi
+
+#
+# Checking to make sure there arent any directory links under
+# /usr/ip32/ris left behind by the remove scripts of versions
+# older than the cutoff version.
+#
+if [ "$PREPROCESS" = "n" ]
+then
+	if [ "$RMOLDPROD_FLAG" = "ON" ]
+	then
+		$DATES > $NULL
+	fi
+	if [ -L /usr/ip32/ris/PRODNAME ]
+	then
+		echo "Removing link /usr/ip32/ris/$DIR"
+		$RM -f /usr/ip32/ris/$DIR >$RISLOG 2>$RISERR
+	fi
+fi
+
+#
+# Now remove compatible products...
+# We use $CUT to get the first 5 characters of the product
+# name assuming it is unique for client products.
+# For servers, both the network and local servers are pulled in.
+#
+COMP_VERSIONS=`$PRODDATA +%v $(echo IDNAME | $CUT -c1-8)`
+COMP_NAMES=`$PRODDATA +%n $(echo IDNAME | $CUT -c1-8)`
+COMP_DIRS=`$PRODDATA +%p $(echo IDNAME | $CUT -c1-8)`
+
+
+if [ -n "$COMP_VERSIONS" ]
+then
+	let sc=0
+	RMFLAG=""
+	COMPAT_FLAG=""
+	for COUNT in $COMP_VERSIONS
+	do
+		let sc=$sc+1
+	done
+
+	while (($sc > 0))
+	do
+		DELVERSION=$(echo $COMP_VERSIONS | cut -d" " -f$sc)
+		DELMAJ=$(echo $DELVERSION | cut -d. -f1)
+		DELMIN=$(echo $DELVERSION | cut -d. -f2)
+		DELREL=$(echo $DELVERSION | cut -d. -f3)
+		DELDIR=$(echo $COMP_DIRS | cut -d" " -f$sc)
+		DELNAME=$(echo $COMP_NAMES | cut -d" " -f$sc)
+#
+# We define versions of client products to be compatible if the major
+# values are same. For server products, major and minor values
+# have to be same for it to be defined compatible.
+#
+		if [ "$DELNAME" = "RISCCU" -o "$DELNAME" = "RISCSU" -o \
+			 "$DELNAME" = "RISPCUC" -o "$DELNAME" = "RISPSUC" ]
+		then
+			if [ "${DELMAJ}" -eq "${CURR_MAJOR}" ]
+			then
+				COMPAT_FLAG="ON"
+			fi
+		else
+			if [ "${DELMAJ}" -eq "${CURR_MAJOR}" -a \
+				 "${DELMIN}" -eq "${CURR_MINOR}" ]
+			then
+				COMPAT_FLAG="ON"
+			fi
+		fi
+
+		if [ "$COMPAT_FLAG" = "ON" ]
+		then
+			if [ "$RMFLAG" != "ON" ]
+			then
+				if [ "$PREPROCESS" = "y" ]
+				then
+					echo ""
+					echo "List of compatible products currently loaded:"
+				fi
+				RMFLAG="ON"
+			fi
+			if [ "$PREPROCESS" = "y" ]
+			then
+				echo "PRODUCT: $DELNAME VERSION: $DELVERSION DIR: <$DELDIR>"
+			elif [ "$PREPROCESS" = "n" ]
+			then
+				echo "Removing PRODUCT: $DELNAME VERSION: $DELVERSION DIR: <$DELDIR> ..."
+				if [ -d "$DELDIR" ]
+				then
+					$DELDIR/remove.DOT_EXTENSION $DELNAME $DELDIR
+					[ $? != 0 ] && exit 1
+				fi
+				$DATES > $NULL
+#
+# We remove the entry from ingrconfig file. From DELTOOLS 6.5 onwards,
+# this is taken care of by the dates command.
+#
+				$CAT $CONFIGFILE > $RISTMP
+				$AWK "BEGIN{FS=\"#\"} { if (\$2 != \"$DELNAME\" || \$4 != \"$DELVERSION\") print }" $RISTMP > $CONFIGFILE
+				$RM -f $RISTMP 2>>$RISERR
+			fi
+		fi
+		COMPAT_FLAG=""
+		let sc=$sc-1
+	done
+fi
+
+#
+# If preprocess is set remove old entries from the XNS and DNP system files.
+#
+# 1) If either a set of older versions of product(s) or compatible products
+#    exists on the system, prompt the user if (s)he wants to quit.
+# 2) Exit at this stage. newprod will execute the installation script once 
+#    again using the above settings. 
+#
+if [ "$PREPROCESS" = "y" ]
+then
+	if [ "$RMFLAG" = "ON" -o "$RMOLDPROD_FLAG" = "ON" ]
+	then
+		echo ""
+		echo "The above product(s) will be removed before installation !!"
+		echo ""
+		answer=$(getanswer "Do you wish to continue?" y yesno)
+		case $answer in
+			y*|Y*) ;;
+   				*) exit 1;;
+		esac
+	fi
+
+	#
+	# if there is an equivalent RIS V4 server already loaded on the
+	# the system, then for XNS we prompt the user if he wants to now
+	# use the V5 server from a remote client. If so, create a link in
+	# /usr/ip32/ris/links pointing to the new server (with the old name)
+	#
+	if [ $RIS_PLATFORM = "CLIX" ]
+	then
+		XNS_PROD=`$PRODDATA +%n XNSINGR`
+		DNP_PROD=`$PRODDATA +%n DNP`
+#		if [ -n "$XNS_PROD" -o -n "$DNP_PROD" ]
+#		then
+#			if [ IDNAME != "RISOS4DS" ]
+#			then
+#				echo ""
+#				echo "Via XNS or DNP, a remote RIS V4 client can access either a RIS V4 server, or"
+#				echo "the RIS V5 server that is currently being installed. To access the current"
+#				echo "V5 server, choose 'y'. If you choose this option, it will disable"
+#				echo "remote XNS/DNP connection to a V4 'OLD_PRODUCT_NAME' server on this machine."
+#				echo "If you wish to let the V4 RIS client continue to connect to the V4 server,"
+#				echo "choose 'n'. With this option, a V4 client will not be able to connect to"
+#				echo "V5 server via XNS or DNP."
+#				echo ""
+#				answerXNS=$(getanswer "Do you want a V4 client to access this server via XNS/DNP?" y yesno)
+#			fi # end if for != RISOS4DS
+#		fi
+	fi
+
+	exit 0
+fi
+
+#
+# Cleanup any previous installation if it exists
+#
+
+PROD_DIR=`$PRODDATA +%p IDNAME`
+if [ -n "$PROD_DIR" ]
+then
+   	for DIR in $PROD_DIR
+   	do
+       	if [ "$DIR" = "$DESTDIR" ]
+       	then
+			echo ""
+			echo "Removing currently installed product IDNAME from <$DIR>"
+			if [ -d "$DIR" ]
+			then
+				$DIR/remove.DOT_EXTENSION IDNAME $DIR
+				[ $? != 0 ] && exit 1
+			fi
+#
+# We remove the entry from ingrconfig file. From DELTOOLS 6.5 onwards,
+# this is taken care of by the dates command.
+#
+				$CAT $CONFIGFILE > $RISTMP
+				$AWK "BEGIN{FS=\"#\"} { if (\$2 != \"IDNAME\" || \$6 != \"$DIR\") print }" $RISTMP > $CONFIGFILE
+				$RM -f $RISTMP 2>>$RISERR
+       	fi
+   	done
+fi
+
+#
+# Get the IDNAME files
+#
+getfile postinst.prod | $COMPRESS -d | $CPIO -imudc >>$RISLOG 2>>$RISERR
+[ $? != 0 ] && echo "Could not download postinst.prod from source" && exit 1
+
+getfile PRODNAME.prod | $COMPRESS -d | $CPIO -imudc >>$RISLOG 2>>$RISERR
+[ $? != 0 ] && echo "Could not download IDNAME from source" && exit 1
+
+echo ""
+
+echo "Installing $RIS_PLATFORM executables ..."
+getfile ${CUR_ARCH}bin.prod | $COMPRESS -d | $CPIO -imudc >>$RISLOG 2>>$RISERR
+[ $? != 0 ] && echo "Could not download IDNAME from source" && exit 1
+
+echo "Changing file ownerships and permissions."
+
+for FILENAME in README product.def remove.DOT_EXTENSION NEW_FILES BIN_FILES
+do
+  	$CHOWN root $FILENAME >>$RISLOG 2>>$RISERR
+  	$CHGRP $GROUP $FILENAME >>$RISLOG 2>>$RISERR
+done
+
+$CHMOD 644 README product.def >>$RISLOG 2>>$RISERR
+$CHMOD 755 remove.DOT_EXTENSION >>$RISLOG 2>>$RISERR
+
+for FILENAME in NEW_FILES
+do
+  	$CHMOD 644 $FILENAME >>$RISLOG 2>>$RISERR
+done
+
+$CHMOD 755 bin/* >>$RISLOG 2>>$RISERR
+
+#
+# Change ownership of directories to 775
+# Note the Kludge for config config/english
+#
+for DIR in NEW_DIRS config config/english
+do
+	$CHMOD 775 $DIR >>$RISLOG 2>>$RISERR
+  	$CHOWN root $DIR >>$RISLOG 2>>$RISERR
+  	$CHGRP $GROUP $DIR >>$RISLOG 2>>$RISERR
+done
+
+#
+# Install the PRODNAME files
+#
+
+$TMPDIR/bin/risinstl.ksh IDNAME $DESTDIR $PRODVERSION $TMPDIR
+[ $? != 0 ] && exit 1
+
+if [ $RIS_PLATFORM = "CLIX" ]
+then
+	XNS_PROD=`$PRODDATA +%n XNSINGR`
+	DNP_PROD=`$PRODDATA +%n DNP`
+	if [ -n "$XNS_PROD" -o -n "$DNP_PROD" ]
+	then
+		if [ -n "$XNS_PROD" ]
+		then
+			echo "Creating XNS link for V4 and V5."
+                        if [ ! -d $LINKSDIR ]
+                        then
+                            echo "Creating $LINKSDIR."
+                            $MKDIR -p $LINKSDIR >>$RISLOG 2>>$RISERR
+                            $CHOWN root $LINKSDIR >>$RISLOG 2>>$RISERR
+                            $CHGRP $GROUP $LINKSDIR >>$RISLOG 2>>$RISERR
+                        fi
+			$LN -fs $DESTDIR/bin/PRODNAME $LINKSDIR/$OLD_LINK_NAME
+			$LN -fs $DESTDIR/bin/PRODNAME $LINKSDIR/$NEW_LINK_NAME
+		fi
+		if [ -n "$DNP_PROD" -a -s "$DNPSRV" ]
+		then
+			echo "Creating DNP entries for V4 and V5."
+#for V4
+			$CAT $DNPSRV > $RISTMP
+			$GREP -vi $OLD_DNP_NAME $RISTMP > $DNPSRV
+			print "0	$OLD_DNP_NAME	$DESTDIR/bin/PRODNAME" >> $DNPSRV
+			$RM -f $RISTMP 2>>$RISERR
+#for V5
+			$CAT $DNPSRV > $RISTMP
+			$GREP -vi $NEW_DNP_NAME $RISTMP > $DNPSRV
+			print "0	$NEW_DNP_NAME	$DESTDIR/bin/PRODNAME" >> $DNPSRV
+			$RM -f $RISTMP 2>>$RISERR
+		fi
+	fi
+fi
+
+#
+# create product directory
+#
+$MKDIR -p $DESTDIR >>$RISLOG 2>>$RISERR
+$CHOWN root $DESTDIR >>$RISLOG 2>>$RISERR
+$CHGRP $GROUP $DESTDIR >>$RISLOG 2>>$RISERR
+
+#
+# Change to RIS directory
+#
+
+cd $DESTDIR/..
+
+#
+# Make RIS directory readable and writeable by all
+# but owned by root/sys
+#
+
+$CHMOD 777 . >>$RISLOG 2>>$RISERR
+$CHOWN root . >>$RISLOG 2>>$RISERR
+$CHGRP $GROUP . >>$RISLOG 2>>$RISERR
+
+#
+# Interoperability KLUDGE
+#
+if [ $RIS_PLATFORM = "CLIX" -o $RIS_PLATFORM = "SunOS4" ]
+then
+	if [ "IDNAME" = "RISINFDS" -o \
+		 "IDNAME" = "RISINFNS" -o \
+		 "IDNAME" = "RISORADS" -o \
+		 "IDNAME" = "RISORANS" -o \
+		 "IDNAME" = "RISSYBDS" -o \
+		 "IDNAME" = "RISINGDS" -o \
+		 "IDNAME" = "RISINGNS" -o \
+		 "IDNAME" = "RISDB2DS" ]
+	then
+		typeset -u UP_PROD_NAME=OLD_PRODUCT_NAME
+		$MKDIR -p PRODNAME4 >>$RISLOG 2>>$RISERR
+		cd PRODNAME4
+		$LN -fs ../PRODNAME/bin bin >>$RISLOG 2>>$RISERR
+		$LN -fs ../PRODNAME/config config >>$RISLOG 2>>$RISERR
+		$LN -fs ../PRODNAME/README README >>$RISLOG 2>>$RISERR
+		echo "IDnumber=XXXXXXX" > product.def
+		echo "IDname=$UP_PROD_NAME" >> product.def
+		echo "IDtitle=\"V4 RIS Server\"" >> product.def
+		echo "IDversion=04.03.00.00" >> product.def
+		echo "IDdate=DATE" >> product.def
+		echo "IDclass=\"Nucleus Data Management\"" >> product.def
+		echo "IDassoc=\"0L\"" >> product.def
+		echo "DELdir=ip32/ris/PRODNAME4" >> product.def
+		$CAT /dev/null > remove.sh
+		$CHMOD 744 remove.sh
+		cd $DESTDIR/..
+	fi
+fi
+
+exit 0

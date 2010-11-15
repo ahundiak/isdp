@@ -1,0 +1,137 @@
+#!/bin/ksh
+# postinstall.sh script for IDNAME
+
+RISLOG=/usr/tmp/risinstl.log
+RISERR=/usr/tmp/risinstl.err
+
+RIS_PLATFORM=ris_platform
+
+LN=/bin/ln
+RM=/bin/rm
+CAT=/bin/cat
+GREP=/bin/grep
+
+RISCONFIG=/etc/risconfig
+RISTMP=/usr/tmp/risconfig
+RIS_ENTRY="$PRODNUMBER#IDNAME#IDTITLE#$PRODVERSION#PRODDATE#$DESTDIR#"
+
+if [ $RIS_PLATFORM = "Solaris" ]
+then
+	: ${INGRHOME:=/opt/ingr}
+	PRODDATA=$INGRHOME/bin/proddata
+	INSTALLHDOC=$INGRHOME/bin/installhdoc.sh
+else
+	PRODDATA=/usr/bin/proddata
+	INSTALLHDOC=/usr/bin/installhdoc.sh
+fi
+
+suggest ()
+{
+	print ""
+	print "The RIS Help files have been delivered under the "
+	print "$1 directory"
+	print "The following steps are suggested if you want this machine to be"
+	print "a Help server:"
+	print " - Download HELPRT choosing the optional servers, and then"
+	print " - Next, either execute:"
+	print "\t installhdoc.sh $1/online/HELPFILE"
+	print "\t installhdoc.sh $1/sqlref/HELPFILE"
+	print "\t installhdoc.sh $1/utlref/HELPFILE"
+	print "\t installhdoc.sh $1/prgref/HELPFILE"
+	print ""
+	print "  or download IDNAME again."
+	print ""
+}
+
+warn ()
+{
+	print "WARNING !!!!"
+	print "Installation of $1 was unsuccessful."
+	print "Help Files have not been removed."
+}
+
+print "\nExecuting postinstall.sh script ..."
+
+#----------------------------------------------------------------
+#  Create/Update /etc/risconfig file with product information
+#----------------------------------------------------------------
+
+if [ -f $RISCONFIG ]
+then
+	print "Updating $RISCONFIG file."
+	$CAT $RISCONFIG > $RISTMP
+	$GREP -v $DESTDIR $RISTMP > $RISCONFIG
+	print $RIS_ENTRY >> $RISCONFIG
+	$RM -f $RISTMP 2>>$RISERR
+else
+	print "Creating $RISCONFIG file."
+	print $RIS_ENTRY > $RISCONFIG
+fi
+
+#------------------------------------------------------------------------
+# remove the BOM kludge; not required anymore after RISCLI is installed
+#------------------------------------------------------------------------
+
+case $RIS_PLATFORM in
+	CLIX|SunOS4|Solaris|HP-UX) $RM -f $DESTDIR/components ;;
+esac
+
+#------------------------------------------------------------------------
+# Create/Update /usr/ip32/ingrconfig file with dummy product information
+#------------------------------------------------------------------------
+
+if [ $RIS_PLATFORM = "CLIX" -o $RIS_PLATFORM = "SunOS4" ]
+then
+	print "Adding an entry to $INGR_CONFIG file. "
+	INGR_CONFIG=/usr/ip32/ingrconfig
+	typeset -u FAKENAME=OLD_PROD_NAME
+	FAKEDESTDIR=\/`echo $DESTDIR |cut -d\/ -f2`/ip32/ris/riscli4
+	FAKE_ENTRY="XXXXXXX#$FAKENAME#RIS V4 Client#04.01.99.99#DATE#$FAKEDESTDIR#"
+	$CAT $INGR_CONFIG > $RISTMP
+	$GREP -v "$FAKE_ENTRY" $RISTMP > $INGR_CONFIG
+	print $FAKE_ENTRY >> $INGR_CONFIG
+	$RM -f $RISTMP 2>>$RISERR
+	#
+	# Kludge: so that a 4.3 see executables it knows in V5
+	#
+	$LN -fs $DESTDIR/bin/riscli.ksh $DESTDIR/bin/OLD_PROD_NAME.ksh 2>>$RISERR
+	$LN -fs $DESTDIR/bin/risinstl.ksh $DESTDIR/bin/risinstall 2>>$RISERR
+	$LN -fs $DESTDIR/bin/PRODNAME $DESTDIR/bin/OLD_PROD_NAME 2>>$RISERR
+fi
+
+#------------------------------------------------------------------------
+# Find out if this machine is a Help Server; then install the help files
+#------------------------------------------------------------------------
+
+if [ $RIS_PLATFORM != "sco" ]
+then
+	print "Delivering Help Files."
+	HELPDIR=`$PRODDATA +%p HELPRT`
+	if [ -d "$HELPDIR" ]
+	then
+		HELPBS=`$GREP helpbs /etc/inetd.conf`
+		HELPDS=`$GREP helpds /etc/inetd.conf`
+		if [ -n "$HELPBS" -a -n "$HELPDS" ]
+		then
+			print "Installing help files on help server."
+			ONL_HELP=$DESTDIR/config/english/help/online/HELPFILE
+			$INSTALLHDOC $ONL_HELP || warn $ONL_HELP
+			SQL_HELP=$DESTDIR/config/english/help/sqlref/HELPFILE
+			$INSTALLHDOC $SQL_HELP || warn $SQL_HELP
+			UTL_HELP=$DESTDIR/config/english/help/utlref/HELPFILE
+			$INSTALLHDOC $UTL_HELP || warn $UTL_HELP
+			PRG_HELP=$DESTDIR/config/english/help/prgref/HELPFILE
+			$INSTALLHDOC $PRG_HELP || warn $PRG_HELP
+		else
+			print "NOTE !!!"
+			print "This machine is not a Help server."
+			suggest $DESTDIR/config/english/help
+		fi
+	else
+		print "NOTE !!!!"
+		print "The baseline product HELPRT has not been installed on this machine"
+		suggest $DESTDIR/config/english/help
+	fi
+fi
+
+exit 0
