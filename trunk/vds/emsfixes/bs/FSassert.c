@@ -41,7 +41,10 @@
  *
  * So just override this function and have it do nothing
  */
-
+/* =====================================================
+ * SOL10 15 Nov 2010
+ * Remove from product now that we have control over font server
+ */
 _FSAssertion (expr, file, line)
 char	*expr;
 char	*file;

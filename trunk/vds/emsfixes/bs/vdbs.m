@@ -82,7 +82,7 @@ SOURCE
 #else
 VDdbg_glob.c 		/* for TR 179800857 */
 VDdbgFlags.c
-FSassert.c              /* fontserver assertions causing core dumps */
+                /* fontserver assertions causing core dumps */
 #endif
 
 LIB

@@ -39,3 +39,6 @@ target: mkfile
 
 mkfile: vdbs.m
 	grmakemake vdbs.m mkfile
+
+clean:
+	@rm -f mkfile *.o
