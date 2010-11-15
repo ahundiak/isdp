@@ -1,0 +1,207 @@
+/* Do not alter this SPC information: $Revision: 1.1.53.1 $ */
+/*
+**	NAME:							ulddsprv.rc
+**	AUTHORS:						Hitesh Patel
+**	CREATION DATE:					5/91
+**	ABSTRACT:
+**		This file has functions which maps batch mode structures to embedded
+**		mode structures.
+**	
+**	REVISION HISTORY:
+*/
+ 
+/*
+**	INCLUDES
+*/
+#ifdef MM
+#include "unlod.h"
+#endif
+
+exec sql include "unlod.h";
+
+/*
+**	DEFINES
+*/
+
+/*
+**	VARIABLES
+*/
+
+/*
+**	FUNCTIONS
+*/
+
+/*
+**      FUNCTION PROTOTYPES
+*/
+#define ulddsprv_rc
+#include "sys.prt"
+#include "comdebug.prt"
+#include "comjmp.prt"
+#include "comumsg.prt"
+#include "ulddsprv.prt"
+#include "uldermsg.prt"
+#include "uldstspc.prt"
+#include "uldtime.prt"
+
+/******************************************************************************/
+
+extern int RISuld_priv_select_mode_post(
+	risulddes			*risulddes_ptr,
+	int					schindx,
+	int					select_mode)	
+{
+	int					num_rels = 0;
+	int					privindx = 0;
+	risuldsch			*risuldsch_ptr;
+	risuldgrant			*risuldgrant_ptr;
+	batch_gnode_type	*bgnode_ptr;
+
+	ULD_DBG(("RISuld_priv_select_mode_post! risulddes_ptr: 0x%x schindx: <%d> select_mode <%c> \n",risulddes_ptr,schindx,select_mode));
+
+	num_rels = RISuld_get_num_of_relations();
+
+	risuldsch_ptr = risulddes_ptr->schemas+schindx;
+	risuldsch_ptr->granttabinfo.granttab_count = num_rels; 
+
+	if( num_rels == 0 )
+	{
+		ULD_DBG(("1. RISuld_priv_select_mode_post! END.\n"));
+		return(SUCCESS); 
+	}
+
+	if( select_mode == SOME )
+		free(risuldsch_ptr->granttabinfo.granttabs);
+
+	risuldgrant_ptr = (risuldgrant *) calloc(num_rels,sizeof(risuldgrant));
+	CHK_MEM_ALLOC_ERR(risuldgrant_ptr);
+
+	for( privindx = 0, bgnode_ptr = RISuld_ptr_struct_ptr->bghnode_ptr->bglink; 
+			(privindx < num_rels) && (bgnode_ptr != NULL); 
+				privindx++, bgnode_ptr = bgnode_ptr->bglink )
+	{
+		if (RISuld_debug)
+		{
+			RIScom_output_debug("@gtor: %s\n",bgnode_ptr->gnode_ptr->original_gtor);
+			RIScom_output_debug("@rel: %s\n",bgnode_ptr->gnode_ptr->rel_name);
+		}
+		strcpy(risuldgrant_ptr[privindx].table_owner,bgnode_ptr->gnode_ptr->original_gtor);
+		strcpy(risuldgrant_ptr[privindx].tabname,bgnode_ptr->gnode_ptr->rel_name);
+		risuldgrant_ptr[privindx].grants_unloaded = bgnode_ptr->gnode_ptr->priv_unloaded;
+		risuldgrant_ptr[privindx].err_grants 
+			= bgnode_ptr->gnode_ptr->total_priv - bgnode_ptr->gnode_ptr->priv_unloaded;
+		risuldgrant_ptr[privindx].uld_err_code = bgnode_ptr->gnode_ptr->lnd_err_code;
+		risuldgrant_ptr[privindx].ris_err_code = bgnode_ptr->gnode_ptr->ris_err_code;
+		risuldgrant_ptr[privindx].db_err_code = bgnode_ptr->gnode_ptr->db_err_code;
+		strncpy(risuldgrant_ptr[privindx].sqlwarnings,
+			bgnode_ptr->gnode_ptr->sqlwarnings, 8);
+	}
+
+	risuldsch_ptr->granttabinfo.granttabs = risuldgrant_ptr;
+
+	ULD_DBG(("2. RISuld_priv_select_mode_post! END.\n"));
+	return(SUCCESS);
+}
+
+/******************************************************************************/
+
+extern void RISuld_priv_select_mode_SOME(
+	risulddes		*risulddes_ptr,
+	int				schindx)
+{
+	int			privindx;
+	risuldsch	*risuldsch_ptr;
+
+	ULD_DBG(("RISuld_priv_select_mode_SOME! risulddes_ptr: 0x%x schindx: <%d>\n",risulddes_ptr,schindx));
+	risuldsch_ptr = risulddes_ptr->schemas+schindx;
+
+	for(privindx = 0; 
+			privindx < risuldsch_ptr->granttabinfo.granttab_count; 
+				privindx++)
+	{
+		if( !(risuldsch_ptr->granttabinfo.granttabs[privindx].table_owner[0]) )
+			strcpy(risuldsch_ptr->granttabinfo.granttabs[privindx].table_owner,
+					risuldsch_ptr->schname);
+
+		if( !CHECK_ID_SIZE_OK(
+			strlen(risuldsch_ptr->granttabinfo.granttabs[privindx].table_owner),
+			RIS_MAX_ID_SIZE) )	
+		{
+			risulddes_ptr->uld_err_code = RISUTL_E_INVALID_ID_SIZE;
+			TERMINATE_RISUNLOAD
+		}
+		if( !CHECK_ID_SIZE_OK(
+			strlen(risuldsch_ptr->granttabinfo.granttabs[privindx].tabname),
+			RIS_MAX_ID_SIZE) )	
+		{
+			risulddes_ptr->uld_err_code = RISUTL_E_INVALID_ID_SIZE;
+			TERMINATE_RISUNLOAD
+		}
+		RISuld_create_bgnode(
+			risuldsch_ptr->granttabinfo.granttabs[privindx].table_owner,
+			risuldsch_ptr->granttabinfo.granttabs[privindx].tabname);
+	}
+
+	ULD_DBG(("1. RISuld_priv_select_mode_SOME! END.\n"));
+}
+
+/******************************************************************************/
+
+extern int RISuld_get_num_of_relations()
+{
+	int					num_rel = 0;
+	batch_gnode_type	*bgnode_ptr;
+
+	for( bgnode_ptr = RISuld_ptr_struct_ptr->bghnode_ptr->bglink;
+			bgnode_ptr != NULL;
+				bgnode_ptr = bgnode_ptr->bglink )
+	{
+		num_rel++;
+	}
+	return num_rel;
+}
+
+/******************************************************************************/
+
+/************
+
+extern int RISuld_get_grant_relations(
+	batch_gnode_type *grant_header)
+{
+
+	int				 num_rels = 0;
+	batch_gnode_type *bgnode_ptr1;
+	batch_gnode_type *bgnode_ptr2;
+
+	ULD_DBG(("RISuld_get_grant_relations! grant_header: 0x%x\n",grant_header));
+	
+	for(bgnode_ptr1 = grant_header;
+			bgnode_ptr1 != NULL;
+				bgnode_ptr1 = bgnode_ptr1->bglink)
+	{
+		if( bgnode_ptr1->gnode_ptr->mark == YES )
+			continue;
+		
+		if( bgnode_ptr1->bglink != NULL )	
+		{
+			for(bgnode_ptr2 = bgnode_ptr1->bglink;
+					bgnode_ptr2 != NULL;
+						bgnode_ptr2 = bgnode_ptr2->bglink)
+			{
+				if( (strcmp(bgnode_ptr1->gnode_ptr->original_gtor,bgnode_ptr2->gnode_ptr->original_gtor) == 0)
+				&&	(strcmp(bgnode_ptr1->gnode_ptr->rel_name,bgnode_ptr2->gnode_ptr->rel_name) == 0) )
+				{
+					bgnode_ptr1->gnode_ptr->num_grant++;
+					bgnode_ptr2->gnode_ptr->mark = YES;
+				}
+
+			}
+		}
+		num_rels++;		
+	}
+
+	ULD_DBG(("1. RISuld_get_grant_relations! END.\n"));
+	return num_rels;
+}
+
+******/

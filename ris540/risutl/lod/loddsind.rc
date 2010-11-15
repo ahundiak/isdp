@@ -1,0 +1,213 @@
+/* Do not alter this SPC information: $Revision: 1.2.13.1 $ */
+/*
+**	NAME:						loddsind.rc
+**	AUTHORS:					Hitesh Patel	
+**	CREATION DATE:				30th May, 1991	
+**	ABSTRACT:					These functions pass information between 
+**								risloddes descriptor and RISlod_ptr_struct_ptr 
+**								related to indexes only.
+**		
+**	REVISION HISTORY:
+*/
+ 
+/*
+**	DEFINES
+*/
+
+/*
+**	INCLUDES
+*/
+#ifdef MM
+#include "lod.h"
+#endif
+
+exec sql include "lod.h";
+
+/*
+**	VARIABLES
+*/
+
+/*
+**	FUNCTIONS
+*/
+
+/*
+**      FUNCTION PROTOTYPES
+*/
+#define loddsind_rc
+#include "sys.prt"
+#include "comjmp.prt"
+#include "comdebug.prt"
+#include "comumsg.prt"
+#include "lodmisc.prt"
+#include "loddsind.prt"
+#include "lodermsg.prt"
+#include "loddsprt.prt"
+#include "lodstspc.prt"
+#include "lodtime.prt"
+
+
+/* This works for both as ALL and post */
+extern int RISlod_indx_select_mode_ALL(
+	risloddes			*risloddes_ptr,
+	indx_node_type		*indx_header,
+	char				*sch_name,
+	int					select_mode)
+{
+
+	int 				num_indxtabs;
+	int 				schindx = 0;
+	int 				indxindx;
+	rislodsch 			*rislodsch_ptr = (rislodsch *) NULL;
+	rislodindx 			*rislodindx_ptr = (rislodindx *) NULL;
+	indx_node_type		*inode_ptr;
+
+	LOD_DBG(("RISlod_indx_select_mode_ALL! risloddes_ptr: 0x%x indx_header: 0x%x sch_name: 0x%x select_mode <%c>\n",
+		risloddes_ptr,indx_header,sch_name,select_mode));
+
+	num_indxtabs = RISlod_get_indx_relations(indx_header);
+	if( num_indxtabs == 0 )
+		return(SUCCESS);
+
+	if( RISlod_mode == EMBED )
+	{
+		schindx = RISlod_get_schindx(risloddes_ptr,sch_name);
+		rislodsch_ptr = risloddes_ptr->schemas+schindx;
+		rislodsch_ptr->indxtabinfo.indxtab_count = num_indxtabs;
+
+		if( select_mode == SOME )
+			free(rislodsch_ptr->indxtabinfo.indxtabs);
+
+		rislodindx_ptr = (rislodindx *) calloc(num_indxtabs,sizeof(rislodindx));
+		CHK_MEM_ALLOC_ERR(rislodindx_ptr);
+	}
+
+	/* for log file */
+	if( indx_header != NULL )
+		RISlod_construct_n_dump_to_log("\tIndexes\n");
+
+	for( indxindx = 0, inode_ptr = indx_header;
+			(indxindx < num_indxtabs) && (inode_ptr != NULL);
+				inode_ptr = inode_ptr->link )
+	{
+		if( inode_ptr->processed == NO )
+		{
+			if( RISlod_mode == EMBED )
+			{
+				strcpy(rislodindx_ptr[indxindx].tabname,inode_ptr->indx_tab);
+				rislodindx_ptr[indxindx].indexes_loaded = inode_ptr->indxsdonewith;
+				rislodindx_ptr[indxindx].err_indexes 
+					= inode_ptr->no_of_indxs - inode_ptr->indxsdonewith;
+				rislodindx_ptr[indxindx].lod_err_code = inode_ptr->lnd_err_code;
+				rislodindx_ptr[indxindx].ris_err_code = inode_ptr->ris_err_code;
+				rislodindx_ptr[indxindx].db_err_code = inode_ptr->db_err_code;
+				strncpy(rislodindx_ptr[indxindx].sqlwarnings,
+					inode_ptr->sqlwarnings,8);
+			}
+			RISlod_construct_n_dump_to_log("\t\tTable: %s",
+				inode_ptr->indx_tab);
+			RISlod_construct_n_dump_to_log("\tindexes loaded: %d",
+				inode_ptr->indxsdonewith);
+			RISlod_construct_n_dump_to_log("\terror indexes: %d\n",
+				inode_ptr->no_of_indxs - inode_ptr->indxsdonewith);
+			indxindx++;
+		}
+	}
+
+	if( RISlod_mode == EMBED )
+		rislodsch_ptr->indxtabinfo.indxtabs = rislodindx_ptr;
+
+	LOD_DBG(("1. RISlod_indx_select_mode_ALL! END.\n"));
+	return(SUCCESS);
+}
+
+
+extern void RISlod_indx_select_mode_SOME(
+	risloddes		*risloddes_ptr,
+	int				schindx)
+{
+	int			indxindx;
+	rislodsch	*rislodsch_ptr;
+
+	LOD_DBG(("RISlod_indx_select_mode_SOME! risloddes_ptr: 0x%x schindx: <%d>\n",risloddes_ptr,schindx));
+
+	rislodsch_ptr = risloddes_ptr->schemas+schindx;
+
+	for(indxindx = 0; 
+			indxindx < rislodsch_ptr->indxtabinfo.indxtab_count; 
+				indxindx++)
+	{
+		if( !CHECK_ID_SIZE_OK(
+			strlen(rislodsch_ptr->indxtabinfo.indxtabs[indxindx].tabname),
+			RIS_MAX_ID_SIZE) )	
+		{ 	
+			rislodsch_ptr->lod_err_code = RISUTL_E_INVALID_ID_SIZE;
+			TERMINATE_RISLOAD
+		}
+		RISlod_create_binode(
+			rislodsch_ptr->indxtabinfo.indxtabs[indxindx].tabname);
+	}
+
+	LOD_DBG(("1. RISlod_indx_select_mode_SOME! END.\n"));
+}
+
+
+
+extern int RISlod_get_indx_relations(
+	indx_node_type *indx_header)
+{
+
+	int				 num_rels = 0;
+	indx_node_type	*binode_ptr1;
+	indx_node_type  *binode_ptr2;
+
+	LOD_DBG(("RISlod_get_indx__relations! indx_header: 0x%x\n",indx_header));
+	for(binode_ptr1 = indx_header;
+			binode_ptr1 != NULL;
+				binode_ptr1 = binode_ptr1->link)
+	{
+		binode_ptr1->processed = NO; /* now, its purpose is for counting */
+	}
+	
+	for(binode_ptr1 = indx_header;
+			binode_ptr1 != NULL;
+				binode_ptr1 = binode_ptr1->link)
+	{
+		(binode_ptr1->no_of_indxs)++;
+
+		if( !binode_ptr1->lnd_err_code && !binode_ptr1->ris_err_code )
+			(binode_ptr1->indxsdonewith)++;
+
+		if( binode_ptr1->processed == YES )
+			continue;
+		
+		if( binode_ptr1->link != NULL )	/* for last node */
+		{
+			for(binode_ptr2 = binode_ptr1->link;
+					binode_ptr2 != NULL;
+						binode_ptr2 = binode_ptr2->link)
+			{
+				if( strcmp(binode_ptr1->indx_tab,binode_ptr2->indx_tab) == 0 )
+				{
+					(binode_ptr1->no_of_indxs)++;
+					if( !binode_ptr2->lnd_err_code && !binode_ptr2->ris_err_code )
+						(binode_ptr1->indxsdonewith)++;
+					else	/* cp errors from ptr2 to ptr1 */
+					{
+						binode_ptr1->lnd_err_code = binode_ptr2->lnd_err_code;
+						binode_ptr1->ris_err_code = binode_ptr2->ris_err_code;
+						binode_ptr1->db_err_code = binode_ptr2->db_err_code;
+						strncpy(binode_ptr1->sqlwarnings, 
+							binode_ptr2->sqlwarnings,8);
+					}
+					binode_ptr2->processed = YES;
+				}
+
+			}
+		}
+		num_rels++;		
+	}
+
+	LOD_DBG(("1. RISlod_get_indx_relations! END.\n"));
+	return num_rels;
+}

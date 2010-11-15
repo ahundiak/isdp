@@ -1,0 +1,227 @@
+/* Do not alter this SPC information: $Revision: 1.1.53.1 $ */
+/*
+**	NAME:							uldgtvie.rc
+**	AUTHORS:						Jennifer Xia
+**	CREATION DATE:					7/90
+**	ABSTRACT:
+**		It contains a function which generates a list of views
+**		in a schema. It also contains two other functions which
+**		get a schema from either the user or the list.
+**	
+**	REVISION HISTORY:
+**		August 6th, 1991 Hitesh Patel
+*/
+ 
+/*
+**	DEFINES
+*/
+
+/*
+**	INCLUDES
+*/
+#if defined(WIN32S) && defined(ULD_EXE)
+#include <windows.h>
+#include <windowsx.h>
+#include "winport.h"
+#include "winio.h"
+#include "winhan.h"
+#include "risutl.h"
+#include "prog32s.h"
+#endif 
+
+#ifdef MM
+#include "unlod.h"
+#endif
+
+exec sql include "unlod.h";
+
+/*
+**	VARIABLES
+*/
+
+/*
+**	FUNCTIONS
+*/
+
+/*
+**      FUNCTION PROTOTYPES
+*/
+#define uldgtvie_rc
+#include "sys.prt"
+#include "comdebug.prt"
+#include "comjmp.prt"
+#include "comumsg.prt"
+#include "ris.prt"
+#include "uldermsg.prt"
+#include "uldgtvie.prt"
+#include "uldmisc.prt"
+#include "uldtime.prt"
+#include "ucoerrbx.prt"
+
+
+extern int RISuld_batch_get_views(
+	char			*sch_name,
+	view_node_type	**view_list_ptr)
+{
+
+	int					num_view;
+	int					view_indx;
+	batch_vnode_type	*pre_bvnode_ptr = (batch_vnode_type *) NULL;
+	batch_vnode_type	*bvnode_ptr;
+
+	ULD_DBG(("RISuld_batch_get_views:  sch_name <%s> *view_list_ptr 0x%x\n", sch_name, *view_list_ptr));
+
+	num_view = RISuld_get_all_view(sch_name, view_list_ptr);
+
+	if (num_view <= 0)
+	{
+		RISuld_ptr_struct_ptr->bvhnode_ptr->bvlink = (batch_vnode_type *) NULL;
+
+		ULD_DBG(("1. RISuld_batch_get_views: end"));
+		return(FAILURE);
+	}
+
+	for (view_indx = 0; view_indx < num_view; view_indx++)
+	{
+		
+		bvnode_ptr = (batch_vnode_type *) calloc (1, sizeof(batch_vnode_type));
+		CHK_MEM_ALLOC_ERR(bvnode_ptr)
+
+		if (view_indx == 0)
+			RISuld_ptr_struct_ptr->bvhnode_ptr->bvlink = bvnode_ptr;
+		else
+			pre_bvnode_ptr->bvlink = bvnode_ptr;
+
+		bvnode_ptr->vnode_ptr = (*view_list_ptr + view_indx);
+		bvnode_ptr->bvlink = (batch_vnode_type *)  NULL;
+			
+		pre_bvnode_ptr = bvnode_ptr;
+	}
+
+	ULD_DBG(("2. RISuld_batch_get_views: end"));
+	return(num_view);
+}
+
+extern int RISuld_get_all_view(
+	char			*sch_name,
+	view_node_type	**view_list_ptr)
+{
+
+	view_node_type	*view_list;
+	int				view_list_indx;
+
+	exec sql begin declare section;
+		int		num_view;
+		char	view_name[RIS_MAX_ID_SIZE];
+		char	*err_ptr;
+	exec sql end declare section;
+
+	ULD_DBG(("RISuld_get_all_view: sch_name <%s> *view_list_ptr 0x%x\n",
+sch_name, *view_list_ptr));
+
+	exec sql whenever sqlerror goto :GAV_error;
+
+	/* ris5views is now risview_strings which has only user-defined views */
+#ifdef OLD
+	exec sql
+		select 	count(distinct view_name)                      
+		into	:num_view
+		from	ris5views
+		where 	(ris_view_def is not null);
+#else
+ 	/* count distinct doesn't work for OS400. With the added
+ 	** condition, we don't need that - Shiva 4/18/84
+ 	*/
+ 
+ 	exec sql
+ 		select 	count(*)                      
+ 		into	:num_view
+ 		from	ris5views
+ 		where 	(sequence_id = 0) and (ris_view_def is not null);
+ 
+#endif
+
+	UNLOD_WARNING_CHECK(
+		RISuld_ptr_struct_ptr->bsnode_ptr->snode_ptr->vsqlwarnings);
+
+    if (num_view < 0)
+    {
+        *view_list_ptr = (view_node_type *) NULL;
+        ULD_DBG(("1. RISuld_get_all_view: end"));
+        return(FAILURE);
+    }
+
+	if (num_view == 0)
+	{
+		*view_list_ptr = (view_node_type *) NULL;
+		RISuld_print_msg(MSG(RISUTL_E_NO_VIEW_EXISTS));
+		ULD_DBG(("2. RISuld_get_all_view: end"));
+		return(num_view);
+	}
+
+	view_list = (view_node_type *) calloc (num_view, sizeof(view_node_type));
+	CHK_MEM_ALLOC_ERR(view_list)
+
+	/* ris5views is now risview_strings which has only user-defined views */
+	exec sql declare all_view_cursor cursor for
+		select 		distinct view_name
+		from		ris5views
+		where 		(ris_view_def is not null)
+		order by	view_name;
+
+	UNLOD_WARNING_CHECK(
+		RISuld_ptr_struct_ptr->bsnode_ptr->snode_ptr->vsqlwarnings);
+
+	exec sql open all_view_cursor;
+
+	UNLOD_WARNING_CHECK(
+		RISuld_ptr_struct_ptr->bsnode_ptr->snode_ptr->vsqlwarnings);
+
+	for (view_list_indx = 0; view_list_indx < num_view; view_list_indx++)
+	{
+		RISuld_assign_nulls(view_name, RIS_MAX_ID_SIZE);
+
+		exec sql fetch all_view_cursor into :view_name;
+
+		UNLOD_WARNING_CHECK(
+			RISuld_ptr_struct_ptr->bsnode_ptr->snode_ptr->vsqlwarnings);
+
+		RISuld_to_lower_case(view_name);
+		strncpy(view_list[view_list_indx].view_name, view_name, RIS_MAX_ID_SIZE);
+		view_list[view_list_indx].unloaded  = FALSE;
+	}
+	exec sql close all_view_cursor;
+
+	UNLOD_WARNING_CHECK(
+		RISuld_ptr_struct_ptr->bsnode_ptr->snode_ptr->vsqlwarnings);
+
+	exec sql clear cursor all_view_cursor;
+
+	UNLOD_WARNING_CHECK(
+		RISuld_ptr_struct_ptr->bsnode_ptr->snode_ptr->vsqlwarnings);
+
+	*view_list_ptr = view_list;
+
+	ULD_DBG(("3. RISuld_get_all_view: end"));
+	return(num_view);
+
+GAV_error:
+	exec sql whenever  sqlerror continue;
+
+	if( RISuld_mode == EMBED )
+	{
+		RISuld_ptr_struct_ptr->bsnode_ptr->snode_ptr->vris_err_code = risca->sqlcode;
+		RISuld_ptr_struct_ptr->bsnode_ptr->snode_ptr->vdb_err_code = dbca->sqlcode;
+	}
+	else
+	{
+		exec sql report error into :err_ptr;
+#if !defined(ULD_DLL)
+		PUTS(err_ptr);
+#endif
+	}
+
+	ULD_DBG(("4. RISuld_get_all_view: end"));
+	return(FAILURE);
+}
+

@@ -1,0 +1,285 @@
+/* Do not alter this SPC information: $Revision: 1.1.53.1 $ */
+/*
+**	NAME:							uldprvdf.rc
+**	AUTHORS:						Jennifer Xia
+**	CREATION DATE:					July 9, 1990
+**	ABSTRACT:
+**		It contains a function which unloads and forms all the
+**		grant statements on a schema.table or a schema.view.
+**	
+**	REVISION HISTORY:
+**		August 6th, 1991 Hitesh Patel
+*/
+ 
+/*
+**	DEFINES
+*/
+
+/*
+**	INCLUDES
+*/
+#include "riscom.h"
+#ifdef MM
+#include "unlod.h"
+#endif
+
+exec sql include "unlod.h";
+
+/*
+**	VARIABLES
+*/
+
+/*
+**	FUNCTIONS
+*/
+
+/*
+**      FUNCTION PROTOTYPES
+*/
+#define uldprvfm_rc
+#include "sys.prt"
+#include "comdebug.prt"
+#include "comjmp.prt"
+#include "comumsg.prt"
+#include "uldermsg.prt"
+#include "uldprvfm.prt"
+#include "uldtime.prt"
+
+
+
+extern void RISuld_form_grant_stmt(
+	int		stage,
+	char	*priv,
+	char	*col_name,
+	char	*sch_name,
+	char	*rel_name,
+	char	*gtee_name)
+{
+	
+	static  char	*without_opt_ptr;
+	static  char	*with_opt_ptr;
+	static  int	without_opt_col;
+	static  int	with_opt_col;
+
+	ULD_DBG(("RISuld_form_grant_stmt: stage %d priv <%s> sch_name <%s> rel_name <%s> gtee_name <%s>\n", 
+						stage, priv, sch_name, rel_name, gtee_name));
+
+
+	switch(stage)
+	{
+		case FORM_GRANT_CLAUSE:
+			without_opt_ptr = RISuld_sql_stmt1;
+			with_opt_ptr = RISuld_sql_stmt2;
+			strcpy(RISuld_sql_stmt1, "grant ");
+			strcpy(RISuld_sql_stmt2, "grant ");
+			without_opt_ptr += 6;
+			with_opt_ptr += 6;
+
+			without_opt_col = 0;
+			with_opt_col = 0;
+
+			ULD_DBG(("FORM_GRANT_CLAUSE: RISuld_sql_stmt1 <%s>\n", RISuld_sql_stmt1));
+			ULD_DBG(("FORM_GRANT_CLAUSE: RISuld_sql_stmt2 <%s>\n", RISuld_sql_stmt2));
+			break;
+		case FORM_TAB_PRIV:
+			if (priv[ACC_SELECT] == 's')
+			{
+				strcpy(without_opt_ptr, "select, ");
+				without_opt_ptr += 8;
+			}
+			else if (priv[ACC_SELECT] == 'S')
+			{
+				strcpy(with_opt_ptr, "select, ");
+				with_opt_ptr += 8;
+			}
+			if (priv[ACC_INSERT] == 'i')
+			{
+				strcpy(without_opt_ptr, "insert, ");
+				without_opt_ptr += 8;
+			}
+			else if (priv[ACC_INSERT] == 'I')
+
+			{
+				strcpy(with_opt_ptr, "insert, ");
+				with_opt_ptr += 8;
+			}
+			if (priv[ACC_DELETE] == 'd')
+			{
+				strcpy(without_opt_ptr, "delete, ");
+				without_opt_ptr += 8;
+			}
+			else if (priv[ACC_DELETE] == 'D')
+			{
+				strcpy(with_opt_ptr, "delete, ");
+				with_opt_ptr += 8;
+			}
+			if (priv[ACC_UPDATE] == 'u')
+			{
+				strcpy(without_opt_ptr, "update, ");
+				without_opt_ptr += 8;
+			}
+			else if (priv[ACC_UPDATE] == 'U')
+			{
+				strcpy(with_opt_ptr, "update, ");
+				with_opt_ptr += 8;
+			}
+			
+			ULD_DBG(("FORM_TAB_PRIV: RISuld_sql_stmt1 <%s>\n", RISuld_sql_stmt1));
+			ULD_DBG(("FORM_TAB_PRIV: RISuld_sql_stmt2 <%s>\n", RISuld_sql_stmt2));
+			break;
+		case FORM_COL_PRIV:
+			if (priv[ACC_UPDATE] == 'u')
+			{
+				if (! without_opt_col) 
+				{
+					strcpy(without_opt_ptr, "update(");
+					without_opt_ptr += 7;
+				}
+
+				strcpy(without_opt_ptr, col_name);
+				without_opt_ptr += strlen(col_name);
+				strcpy(without_opt_ptr, ", ");
+				without_opt_ptr += 2;
+
+				without_opt_col++;
+			}
+			else if (priv[ACC_UPDATE] == 'U')
+			{
+				if (! with_opt_col) 
+				{
+					strcpy(with_opt_ptr, "update(");
+					with_opt_ptr += 7;
+				}
+
+				strcpy(with_opt_ptr, col_name);
+				with_opt_ptr += strlen(col_name);
+				strcpy(with_opt_ptr, ", ");
+				with_opt_ptr += 2;
+
+				with_opt_col++;
+			}
+
+			ULD_DBG(("FORM_COL_PRIV: RISuld_sql_stmt1 <%s>\n", RISuld_sql_stmt1));
+			ULD_DBG(("FORM_COL_PRIV: RISuld_sql_stmt2 <%s>\n", RISuld_sql_stmt2));
+			break;
+		case FORM_ON_TO_CLAUSE:
+			if (without_opt_ptr != RISuld_sql_stmt1 + 6)
+			{
+				if (without_opt_col) *(without_opt_ptr - 2) = ')';
+				else *(without_opt_ptr-- - 2) = ' ';
+
+				if (sch_name[0] == '\0')
+				{
+					sprintf(without_opt_ptr, "on %s to %s\n", rel_name, gtee_name);
+				}
+				else
+				{
+					sprintf(without_opt_ptr, "on %s.%s to %s\n", sch_name, rel_name, gtee_name);
+				}
+			}
+			if (with_opt_ptr != RISuld_sql_stmt2 + 6)
+			{
+				if (with_opt_col) *(with_opt_ptr - 2) = ')';
+				else *(with_opt_ptr-- - 2) = ' ';
+
+				if (sch_name[0] == '\0')
+				{
+					sprintf(with_opt_ptr, "on %s to %s with grant option\n", rel_name, gtee_name);
+				}
+				else
+				{
+					sprintf(with_opt_ptr, "on %s.%s to %s with grant option\n", sch_name, rel_name, gtee_name);
+				}
+			}
+
+			ULD_DBG(("FORM_ON_TO_CLAUSE: RISuld_sql_stmt1 <%s>\n", RISuld_sql_stmt1));
+			ULD_DBG(("FORM_ON_TO_CLAUSE: RISuld_sql_stmt2 <%s>\n", RISuld_sql_stmt2));
+			break;
+	}
+}
+
+
+extern int RISuld_prnt_grant_stmt(
+	char	*sch_name,
+	char	*rel_name)
+{
+
+	int num_grant = 0;
+
+	ULD_DBG(("RISuld_prnt_grant_stmt: sch_name <%s> rel_name <%s> \n", 
+						sch_name, rel_name));
+
+	if (strcmp(RISuld_sql_stmt1, "grant "))	
+	{
+		if (FPUTS(RISuld_sql_stmt1, RISuld_out_fp) == EOF)
+			WRITING_FILE_ERR(RISUTL_E_CANT_WRITE_OUTPUT_FILE)
+
+		if (sch_name[0] == '\0')
+			RISuld_print_msg(MSG(RISUTL_E_UNLOADED_PRIVILEGE1), rel_name);
+		else
+			RISuld_print_msg(MSG(RISUTL_E_UNLOADED_PRIVILEGE2), sch_name, rel_name);
+
+		num_grant++;
+
+		ULD_DBG(("%s\n",RISuld_sql_stmt1));
+		ULD_DBG(("strlen = %d\n", strlen(RISuld_sql_stmt1) + 1)); 
+	}
+
+	if (strcmp(RISuld_sql_stmt2, "grant "))	
+	{
+		if (FPUTS(RISuld_sql_stmt2, RISuld_out_fp) == EOF)
+			WRITING_FILE_ERR(RISUTL_E_CANT_WRITE_OUTPUT_FILE)
+
+		if (sch_name[0] == '\0')
+			RISuld_print_msg(MSG(RISUTL_E_UNLOADED_PRIVILEGE1), rel_name);
+		else
+			RISuld_print_msg(MSG(RISUTL_E_UNLOADED_PRIVILEGE2), sch_name, rel_name);
+
+		num_grant++;
+
+		ULD_DBG(("%s\n", RISuld_sql_stmt2));
+		ULD_DBG(("strlen = %d\n", strlen(RISuld_sql_stmt2) + 1)); 
+	}
+
+
+	ULD_DBG(("1. RISuld_form_grant_stmt: end\n"));
+	return(num_grant);
+}
+
+
+extern void RISuld_prnt_priv_errmsg(
+	char	grant_select,
+	int		num_grant)
+{
+	ULD_DBG(("RISuld_prnt_priv_errmsg: grant_select <%c> num_grant %d\n", 
+						grant_select, num_grant));
+
+	if ((grant_select == ALL) || (grant_select == PROMPTED))
+	{
+		if (num_grant == 0)
+			RISuld_unload_err_handler(RISUTL_E_NO_PRIV_UNLOADED);
+		else
+		{
+			RISuld_unload_err_handler(RISUTL_E_PARTIAL_PRIV_UNLOADED);
+			if( RISuld_mode == EMBED )
+				RISuld_ptr_struct_ptr->bgnode_ptr->gnode_ptr->lnd_err_code = RISUTL_E_PARTIAL_PRIV_UNLOADED;
+		}
+	}
+	else
+	{
+		if (num_grant == 0)
+		{
+			RISuld_unload_err_handler(RISUTL_E_NO_PRIV_UNLOADED);
+		}
+		else
+		{
+			RISuld_unload_err_handler(RISUTL_E_PARTIAL_PRIV_UNLOADED);
+			if( RISuld_mode == EMBED )
+				RISuld_ptr_struct_ptr->bgnode_ptr->gnode_ptr->lnd_err_code = RISUTL_E_PARTIAL_PRIV_UNLOADED;
+		}
+	}
+
+	ULD_DBG(("1. RISuld_prnt_priv_errmsg: end\n")); 
+}
+
+

@@ -1,0 +1,1088 @@
+/* Do not alter this SPC information: $Revision: 1.3.9.1 $ */
+/*
+**	NAME:							usvdtype.rc
+**	AUTHORS:						Terrence D. McIntyre
+**	CREATION DATE:					2/94
+**	ABSTRACT:
+**	
+**	REVISION HISTORY:
+**		10/24/94 -Radha
+**			Added changes for MSSQL data server.
+*/
+ 
+/*
+**	INCLUDES
+*/
+#include "userver.h"
+#include "risutl.h"
+
+/*
+**	DEFINES
+*/
+
+/*
+**	TYPES
+*/
+
+/*
+**	FUNCTION PROTOTYPES
+*/
+#define usvdtype_rc
+#include "usvdtype.prt"
+#include "comdebug.prt"
+#include "ris.prt"
+#include "sys.prt"
+
+/*
+**	VARIABLES
+*/
+
+/*
+**	FUNCTIONS
+*/
+
+/******************************************************************************/
+
+static int valid_column_changes_IFX(
+	char			*type,
+	int				*change_possible,
+	unsigned short	*possible_datatypes,
+	int				*new_length_possible)
+{
+	int return_sts = 0;
+
+	USV_DBG(("valid_column_changes_IFX(type:<%s>)\n", STRING(type)));
+
+	/*
+	** The dbms_type_string can contain any of the following:
+	** "byte", "char", "date", "datetime", "decimal", "float", "integer",
+	** "interval", "real", "serial", "smallint", "text", "varchar"
+	*/
+	switch(*type)
+	{
+		case 'b':	/* byte */
+		case 't':	/* text */
+			/*
+			**
+			** Both of these can be taken as a character string or
+			** ris_blob or ris_text.
+			*/
+			*possible_datatypes = CHARACTER_BIT | RIS_BLOB_BIT |
+						RIS_TEXT_BIT | UNSUPPORTED_BIT ;
+			*change_possible = 1;
+			*new_length_possible = 1;
+			break;
+
+		case 'm':	/* "money" */
+		case 's':	/* "smallint" or "serial"  or "smallfloat" */
+		case 'r':	/* "real" */
+		case 'f':	/* "float" */
+		case 'v':	/* "varchar" */
+		case 'c':	/* "char" */
+			/*
+			**
+			** INFORMIX will tolerate a lot of conversions.
+			** Anything that makes sense for the data is possible,
+			** so it any datatype except timestamp is possible.
+			*/
+
+			*possible_datatypes = CHARACTER_BIT | DECIMAL_BIT |
+					INTEGER_BIT | SMALLINT_BIT | REAL_BIT | DOUBLE_BIT |
+					UNSUPPORTED_BIT ;
+			*change_possible = 1;
+			*new_length_possible = 1;
+			break;
+
+		case 'i':	/* "integer" or "interval" -- two different types */
+			if (!strcmp(type, "integer"))	/* integer */
+			{
+				/* 
+				** integer can be treated as everything except timestamp
+				*/
+				*possible_datatypes = CHARACTER_BIT | DECIMAL_BIT |
+					INTEGER_BIT | SMALLINT_BIT | REAL_BIT | DOUBLE_BIT ;
+				*change_possible = 1;
+				*new_length_possible = 1;
+			}
+			else if (!strcmp(type, "interval"))	/* interval */
+			{
+				/* 
+				** interval can only be treated as CHARACTER 
+				*/
+				*possible_datatypes = CHARACTER_BIT | UNSUPPORTED_BIT ;
+				*change_possible = 1;
+				*new_length_possible = 1;
+			}
+			else
+			{
+				return_sts = 1;
+			}
+			break;
+		
+		case 'd':	/* "date", "datetime", "decimal" -- very different */
+			if (!strcmp(type, "decimal"))
+			{
+				/*
+				** Decimal can be handled as any type except timestamp
+				*/
+
+				*possible_datatypes = CHARACTER_BIT | DECIMAL_BIT | INTEGER_BIT
+					| SMALLINT_BIT | REAL_BIT | DOUBLE_BIT | UNSUPPORTED_BIT;
+				*change_possible = 1;
+				*new_length_possible = 1;
+			}
+			else if (!strcmp(type, "datetime"))
+			{
+				/*
+				** If it is a full year-to-second, then timestamp
+				** is the right one, and char is an option.
+				** If it is hour-to-second or some other partial
+				** timestamp, then timestamp does not seem to work.
+				** Like the others, if you know what you are doing you
+				** will be okay.
+				*/
+				*possible_datatypes = CHARACTER_BIT | TIMESTAMP_BIT 
+					| UNSUPPORTED_BIT;
+				*change_possible = 1;
+				*new_length_possible = 1;
+			}
+			else if (!strcmp(type, "date"))
+			{
+				*possible_datatypes = CHARACTER_BIT | INTEGER_BIT 
+					| UNSUPPORTED_BIT;
+				*change_possible = 1;
+				*new_length_possible = 1;
+			}
+			else
+			{
+				return_sts = 1;
+			}
+			break;
+
+		case 'u':	/* unsupported, unknown */
+			/*
+			** let them try anything.
+			*/
+			*possible_datatypes = DECIMAL_BIT | INTEGER_BIT | SMALLINT_BIT 
+				| INTEGER_BIT | DOUBLE_BIT | REAL_BIT | CHARACTER_BIT 
+				| UNSUPPORTED_BIT | RIS_BLOB_BIT | RIS_TEXT_BIT;
+			*change_possible = 1;
+			*new_length_possible = 1;
+			break;
+						
+				
+		default:
+			return_sts = 1;
+			break;
+	}
+	USV_DBG(("valid_column_changes_IFX:returning %d\n", return_sts));
+	return return_sts;
+}
+
+/******************************************************************************/
+
+static int valid_column_changes_ORA(
+	char			*type,
+	int				*change_possible,
+	unsigned short	*possible_datatypes,
+	int				*new_length_possible)
+{
+	int return_sts = 0;
+
+	USV_DBG(("valid_column_changes_ORA(type:<%s>)\n", STRING(type)));
+
+	/*
+	** The dbms_type_string can contain any of the following:
+	** 	"char", "raw", "date", "long", "rowid", "number", "long raw"
+	**  "float(21)", maybe others
+	*/
+	switch(*type)
+	{
+		case 'c':	/* "char" */
+		case 'v':	/* "varchar2" */
+			/*
+			**
+			** ORACLE will tolerate a lot of conversions.
+			** If the column contains only representations of
+			** numbers, it will handle conversions to whatever
+			** makes sense.  In fact, an oracle char column
+			** can be interpreted as anything except a timestamp
+			** because we explicitly select to_char(x) for
+			** timestamp types, and that function applies only
+			** to a date type.
+			*/
+			*possible_datatypes = CHARACTER_BIT | DECIMAL_BIT | INTEGER_BIT
+				| SMALLINT_BIT | REAL_BIT | DOUBLE_BIT | UNSUPPORTED_BIT;
+			*change_possible = 1;
+			*new_length_possible = 1;
+			break;
+	
+		case 'd':	/* "date" */
+			/*
+			** 
+			** It would be rather stupid, but they can have
+			** date columns treated as RIS characters.
+			*/
+			*possible_datatypes = CHARACTER_BIT | TIMESTAMP_BIT;
+			*change_possible = 1;
+			*new_length_possible = 1;
+			break;
+
+		case 'f':	/* "float..." */
+		case 'n':	/* "number" */
+			/*
+			**
+			** Because of oracle's ability to convert types,
+			** anything goes except timestamp.
+			*/
+			*possible_datatypes = CHARACTER_BIT | DECIMAL_BIT |
+				INTEGER_BIT | SMALLINT_BIT | REAL_BIT | DOUBLE_BIT ;
+			*change_possible = 1;
+			*new_length_possible = 1;
+			break;
+
+		case 'r':	/* "raw" or "rowid" */
+			/*
+			**
+			** Both of these can only be taken as a character
+			** string.
+			*/
+			*possible_datatypes = CHARACTER_BIT | UNSUPPORTED_BIT ;
+			*change_possible = 1;
+			*new_length_possible = 1;
+			break;
+
+		case 'l': /* "long" or "long raw" */
+			/*
+			**
+			** Both of these can be taken as a character string or
+			** ris_blob or ris_text.
+			*/
+			*possible_datatypes = CHARACTER_BIT | RIS_BLOB_BIT |
+						RIS_TEXT_BIT | UNSUPPORTED_BIT ;
+			*change_possible = 1;
+			*new_length_possible = 1;
+			break;
+
+		case 'u':	/* unsupported, unknown */
+			*possible_datatypes = DECIMAL_BIT | INTEGER_BIT | SMALLINT_BIT 
+				| INTEGER_BIT | DOUBLE_BIT | REAL_BIT | CHARACTER_BIT 
+				| UNSUPPORTED_BIT | RIS_BLOB_BIT | RIS_TEXT_BIT;
+			*change_possible = 1;
+			*new_length_possible = 1;
+			break;
+						
+		default : 
+			return_sts = 1;
+			break;
+	}
+
+	USV_DBG(("valid_column_changes_ORA:returning %d\n", return_sts));
+	return return_sts;
+}
+
+/******************************************************************************/
+
+static int valid_column_changes_IGS(
+	char			*type,
+	int				*change_possible,
+	unsigned short	*possible_datatypes,
+	int				*new_length_possible)
+{
+	int return_sts = 0;
+
+	USV_DBG(("valid_column_changes_IGS(type:<%s>)\n", STRING(type)));
+
+	/*
+	** The dbms_type_string can contain any of the following:
+	** "date", "float4", "float8", "integer", "integer2", "integer4",
+	** "varchar", "char"
+	**
+	** Money gets lost in decimal, and decimal gets lost in float.
+	*/
+	switch(*type)
+	{
+		case 'd':	/* "date" */
+			/*
+			** timestamp is the right one, but char is an option.
+			** Like oracle, they can have char if they want but
+			** there is not much point to it.
+			*/
+			*possible_datatypes = CHARACTER_BIT | TIMESTAMP_BIT
+				| UNSUPPORTED_BIT;
+			*change_possible = 1;
+			*new_length_possible = 1;
+			break;
+
+		case 'f':	/* float4, float8 */
+		case 'i':	/* integer1, integer2, integer4 */
+			/*
+			** Ingres allows conversion between all arithmetic
+			** types, but they cannot be handled as character strings.
+			*/
+			*possible_datatypes = DECIMAL_BIT | INTEGER_BIT | SMALLINT_BIT
+				| REAL_BIT | DOUBLE_BIT | UNSUPPORTED_BIT;
+			*change_possible = 1;
+			*new_length_possible = 1;
+			break;
+
+		case 'v':	/* varchar */
+		case 'c':	/* varchar */
+			/*
+			** char/blob/text/unsupported --
+			*/
+			*possible_datatypes = CHARACTER_BIT | UNSUPPORTED_BIT 
+						| RIS_BLOB_BIT | RIS_TEXT_BIT;
+			*change_possible = 1;
+			*new_length_possible = 1;
+			break;
+
+		case 'u':	/* unsupported, unknown */
+			*possible_datatypes = DECIMAL_BIT | INTEGER_BIT | SMALLINT_BIT 
+				| INTEGER_BIT | DOUBLE_BIT | REAL_BIT | CHARACTER_BIT 
+				| UNSUPPORTED_BIT | RIS_BLOB_BIT | RIS_TEXT_BIT ;
+			*change_possible = 1;
+			*new_length_possible = 1;
+			break;
+						
+		default:
+			return_sts = 1;
+			break;
+	}
+
+	USV_DBG(("valid_column_changes_IGS:returning %d\n", return_sts));
+	return return_sts;
+}
+
+
+/******************************************************************************/
+
+static int valid_column_changes_RDB(
+	char			*type,
+	int				*change_possible,
+	unsigned short	*possible_datatypes,
+	int				*new_length_possible)
+{
+	int return_sts = 0;
+
+	USV_DBG(("valid_column_changes_RDB(type:<%s>)\n", STRING(type)));
+
+	/* NEEDS TO BE WRITTEN */
+
+	*change_possible = 0;
+	*possible_datatypes = 0;
+	*new_length_possible = 0;
+	return_sts = 1;
+
+	USV_DBG(("valid_column_changes_RDB:returning %d\n", return_sts));
+	return return_sts;
+}
+
+/******************************************************************************/
+
+static int valid_column_changes_SYB(
+	char			*type,
+	int				*change_possible,
+	unsigned short	*possible_datatypes,
+	int				*new_length_possible)
+{
+	int return_sts = 0;
+
+	USV_DBG(("valid_column_changes_SYB(type:<%s>)\n", STRING(type)));
+
+	switch(*type)
+	{
+		case 'b': /* binary, bit */
+			if (!strcmp(type, "bit"))
+			{
+				*possible_datatypes = CHARACTER_BIT | DECIMAL_BIT | INTEGER_BIT
+					| SMALLINT_BIT | REAL_BIT | DOUBLE_BIT | UNSUPPORTED_BIT;
+				*change_possible = 1;
+				*new_length_possible = 1;
+			}
+			else /* binary */
+			{
+				return_sts = 1;
+			}
+			break;
+			
+		case 'c':	/* char */
+			*possible_datatypes = CHARACTER_BIT | UNSUPPORTED_BIT;	
+			*change_possible = 1;
+			*new_length_possible = 1;
+			break;
+
+		case 'd':	/* datetime */
+			*possible_datatypes = TIMESTAMP_BIT | UNSUPPORTED_BIT;	
+			*change_possible = 1;
+			*new_length_possible = 0;
+			break;
+			
+		case 'f':	/* float */
+			*possible_datatypes = CHARACTER_BIT | DECIMAL_BIT | INTEGER_BIT |
+				SMALLINT_BIT | REAL_BIT | DOUBLE_BIT | UNSUPPORTED_BIT;	
+			*change_possible = 1;
+			*new_length_possible = 1;
+			break;
+
+		case 'i': /* image, int */
+			if (!strcmp(type, "int"))
+			{
+				*possible_datatypes = INTEGER_BIT | REAL_BIT | DOUBLE_BIT |
+					UNSUPPORTED_BIT;
+				*change_possible = 1;
+				*new_length_possible = 0;
+			}
+			else /* image */
+			{
+				return_sts = 1;
+			}
+			break;
+
+		case 'm': /* money */
+			*possible_datatypes = CHARACTER_BIT | DECIMAL_BIT | INTEGER_BIT |
+				SMALLINT_BIT | REAL_BIT | DOUBLE_BIT | UNSUPPORTED_BIT;
+			*change_possible = 1;
+			*new_length_possible = 0;
+			break;
+			
+		case 'r': /* real */
+			*possible_datatypes = CHARACTER_BIT | DECIMAL_BIT | INTEGER_BIT |
+				SMALLINT_BIT | REAL_BIT | DOUBLE_BIT | UNSUPPORTED_BIT;
+			*change_possible = 1;
+			*new_length_possible = 0;
+			break;
+
+		case 's': /* smalldatetime, smallint, smallmoney */
+			if (!strcmp(type, "smalldatetime"))
+			{
+				*possible_datatypes = TIMESTAMP_BIT | UNSUPPORTED_BIT;	
+				*change_possible = 1;
+				*new_length_possible = 0;
+			}
+			else if (!strcmp(type, "smallint"))
+			{
+				*possible_datatypes = INTEGER_BIT | SMALLINT_BIT | REAL_BIT |
+					DOUBLE_BIT | UNSUPPORTED_BIT;
+				*change_possible = 1;
+				*new_length_possible = 0;
+			}
+			else if (!strcmp(type, "smallmoney"))
+			{
+				*possible_datatypes = CHARACTER_BIT | DECIMAL_BIT | INTEGER_BIT
+					| SMALLINT_BIT | REAL_BIT | DOUBLE_BIT | UNSUPPORTED_BIT;
+				*change_possible = 1;
+				*new_length_possible = 0;
+			}
+			else
+			{
+				return_sts = 1;
+			}
+			break;
+
+		case 't': /* text, timestamp, tinyint */
+			if (!strcmp(type, "text"))
+			{
+				*possible_datatypes = CHARACTER_BIT | UNSUPPORTED_BIT;	
+				*change_possible = 1;
+				*new_length_possible = 1;
+			}
+			else if (!strcmp(type, "timestamp"))
+			{
+				*possible_datatypes = TIMESTAMP_BIT | UNSUPPORTED_BIT;	
+				*change_possible = 1;
+				*new_length_possible = 0;
+			}
+			else if (!strcmp(type, "tinyint"))
+			{
+				*possible_datatypes = DECIMAL_BIT | INTEGER_BIT | SMALLINT_BIT |
+					REAL_BIT | DOUBLE_BIT | UNSUPPORTED_BIT;
+				*change_possible = 1;
+				*new_length_possible = 0;
+			}
+			else
+			{
+				return_sts = 1;
+			}
+			break;
+
+
+		case 'v': /* varbinary, varchar*/
+			if (!strcmp(type, "varchar"))
+			{
+				*possible_datatypes = CHARACTER_BIT | UNSUPPORTED_BIT;	
+				*change_possible = 1;
+				*new_length_possible = 1;
+			}
+			else if (!strcmp(type, "varbinary"))
+			{
+				*possible_datatypes = 0;
+				*change_possible = 0;
+				*new_length_possible = 0;
+			}
+			else
+			{
+				return_sts = 1;
+			}
+			break;
+
+		case 'u':	/* unsupported, unknown */
+			*possible_datatypes = DECIMAL_BIT | INTEGER_BIT | SMALLINT_BIT |
+				INTEGER_BIT | DOUBLE_BIT | REAL_BIT | CHARACTER_BIT;
+			*change_possible = 1;
+			*new_length_possible = 1;
+			break;
+						
+		default:
+			return_sts = 1;
+			break;
+	}
+	USV_DBG(("valid_column_changes_SYB:returning %d\n", return_sts));
+	return return_sts;
+}
+
+/******************************************************************************/
+
+static int valid_column_changes_MSSQL(
+	char			*type,
+	int				*change_possible,
+	unsigned short	*possible_datatypes,
+	int				*new_length_possible)
+{
+	int return_sts = 0;
+
+	USV_DBG(("valid_column_changes_MSSQL(type:<%s>)\n", STRING(type)));
+
+	switch(*type)
+	{
+		case 'b': /* binary, bit */
+			if (!strcmp(type, "bit"))
+			{
+				*possible_datatypes = CHARACTER_BIT | DECIMAL_BIT | INTEGER_BIT
+					| SMALLINT_BIT | REAL_BIT | DOUBLE_BIT | UNSUPPORTED_BIT;
+				*change_possible = 1;
+				*new_length_possible = 1;
+			}
+			else /* binary */
+			{
+				return_sts = 1;
+			}
+			break;
+			
+		case 'c':	/* char */
+			*possible_datatypes = CHARACTER_BIT | UNSUPPORTED_BIT;	
+			*change_possible = 1;
+			*new_length_possible = 1;
+			break;
+
+		case 'd':	/* datetime */
+			*possible_datatypes = TIMESTAMP_BIT | UNSUPPORTED_BIT;	
+			*change_possible = 1;
+			*new_length_possible = 0;
+			break;
+			
+		case 'f':	/* float */
+			*possible_datatypes = CHARACTER_BIT | DECIMAL_BIT | INTEGER_BIT |
+				SMALLINT_BIT | REAL_BIT | DOUBLE_BIT | UNSUPPORTED_BIT;	
+			*change_possible = 1;
+			*new_length_possible = 1;
+			break;
+
+		case 'i': /* image, int */
+			if (!strcmp(type, "int"))
+			{
+				*possible_datatypes = INTEGER_BIT | REAL_BIT | DOUBLE_BIT |
+					UNSUPPORTED_BIT;
+				*change_possible = 1;
+				*new_length_possible = 0;
+			}
+			else /* image */
+			{
+				return_sts = 1;
+			}
+			break;
+
+		case 'm': /* money */
+			*possible_datatypes = CHARACTER_BIT | DECIMAL_BIT | INTEGER_BIT |
+				SMALLINT_BIT | REAL_BIT | DOUBLE_BIT | UNSUPPORTED_BIT;
+			*change_possible = 1;
+			*new_length_possible = 0;
+			break;
+			
+		case 'r': /* real */
+			*possible_datatypes = CHARACTER_BIT | DECIMAL_BIT | INTEGER_BIT |
+				SMALLINT_BIT | REAL_BIT | DOUBLE_BIT | UNSUPPORTED_BIT;
+			*change_possible = 1;
+			*new_length_possible = 0;
+			break;
+
+		case 's': /* smalldatetime, smallint, smallmoney */
+			if (!strcmp(type, "smalldatetime"))
+			{
+				*possible_datatypes = TIMESTAMP_BIT | UNSUPPORTED_BIT;	
+				*change_possible = 1;
+				*new_length_possible = 0;
+			}
+			else if (!strcmp(type, "smallint"))
+			{
+				*possible_datatypes = INTEGER_BIT | SMALLINT_BIT | REAL_BIT |
+					DOUBLE_BIT | UNSUPPORTED_BIT;
+				*change_possible = 1;
+				*new_length_possible = 0;
+			}
+			else if (!strcmp(type, "smallmoney"))
+			{
+				*possible_datatypes = CHARACTER_BIT | DECIMAL_BIT | INTEGER_BIT
+					| SMALLINT_BIT | REAL_BIT | DOUBLE_BIT | UNSUPPORTED_BIT;
+				*change_possible = 1;
+				*new_length_possible = 0;
+			}
+			else
+			{
+				return_sts = 1;
+			}
+			break;
+
+		case 't': /* text, timestamp, tinyint */
+			if (!strcmp(type, "text"))
+			{
+				*possible_datatypes = CHARACTER_BIT | UNSUPPORTED_BIT;	
+				*change_possible = 1;
+				*new_length_possible = 1;
+			}
+			else if (!strcmp(type, "timestamp"))
+			{
+				*possible_datatypes = TIMESTAMP_BIT | UNSUPPORTED_BIT;	
+				*change_possible = 1;
+				*new_length_possible = 0;
+			}
+			else if (!strcmp(type, "tinyint"))
+			{
+				*possible_datatypes = DECIMAL_BIT | INTEGER_BIT | SMALLINT_BIT |
+					REAL_BIT | DOUBLE_BIT | UNSUPPORTED_BIT;
+				*change_possible = 1;
+				*new_length_possible = 0;
+			}
+			else
+			{
+				return_sts = 1;
+			}
+			break;
+
+
+		case 'v': /* varbinary, varchar*/
+			if (!strcmp(type, "varchar"))
+			{
+				*possible_datatypes = CHARACTER_BIT | UNSUPPORTED_BIT;	
+				*change_possible = 1;
+				*new_length_possible = 1;
+			}
+			else if (!strcmp(type, "varbinary"))
+			{
+				*possible_datatypes = 0;
+				*change_possible = 0;
+				*new_length_possible = 0;
+			}
+			else
+			{
+				return_sts = 1;
+			}
+			break;
+
+		case 'u':	/* unsupported, unknown */
+			*possible_datatypes = DECIMAL_BIT | INTEGER_BIT | SMALLINT_BIT |
+				INTEGER_BIT | DOUBLE_BIT | REAL_BIT | CHARACTER_BIT;
+			*change_possible = 1;
+			*new_length_possible = 1;
+			break;
+						
+		default:
+			return_sts = 1;
+			break;
+	}
+	USV_DBG(("valid_column_changes_MSSQL:returning %d\n", return_sts));
+	return return_sts;
+}
+
+/******************************************************************************/
+static int valid_column_changes_DB2(
+	char			*type,
+	int				*change_possible,
+	unsigned short	*possible_datatypes,
+	int				*new_length_possible)
+{
+	int return_sts = 0;
+
+	USV_DBG(("valid_column_changes_DB2(type:<%s>)\n", STRING(type)));
+
+	/*
+	** The dbms_type_string can contain any of the following:
+	** "char" "date", "decimal", "double precision", "float", "graphic",
+	** "int ", "integer", "long varchar", "long graphic", "real ",
+	** "smallint", "time", "timestamp", "varchar", "vargraphic",
+	** "unknown ", "unsupported"
+	*/
+	switch(*type)
+	{
+		case 'd':	/* date, decimal, double precision */
+		case 'f':   /* int, integer */
+		case 'i':   /* int, integer */
+		case 'r':   /* real */
+		case 's':   /* smallint */
+			/*
+			** DB2 will tolerate conversion from any numeric type
+			** to any other numeric type.
+			** "date" is the exception here, which is 
+			** character only.
+			*/
+
+			if (strcmp(type, "date"))
+			{
+				*possible_datatypes = DECIMAL_BIT | INTEGER_BIT | 
+					SMALLINT_BIT | REAL_BIT | DOUBLE_BIT | UNSUPPORTED_BIT ;
+			}
+			else
+			{
+				/* it is date */
+				*possible_datatypes = CHARACTER_BIT | UNSUPPORTED_BIT;
+			}
+			*change_possible = 1;
+			*new_length_possible = 1;
+			break;
+
+		case 'c':	/* char */
+		case 'g':	/* graphic */
+		case 'l':	/* long char, long graphic */
+		case 'v':   /* varchar, vargraphic */
+			*possible_datatypes = CHARACTER_BIT | UNSUPPORTED_BIT ;
+			*change_possible = 1;
+			*new_length_possible = 1;
+			break;
+
+		case 'u':	/* unsupported, unknown */
+			*possible_datatypes = DECIMAL_BIT | INTEGER_BIT | SMALLINT_BIT 
+				| INTEGER_BIT | DOUBLE_BIT | REAL_BIT | CHARACTER_BIT 
+				| UNSUPPORTED_BIT ;
+			*change_possible = 1;
+			*new_length_possible = 1;
+			break;
+						
+		case 't':	/* time, timestamp */
+			/*
+			** time and timestamp are incompatible;
+			** time can only be char; timestamp can be either;
+			*/
+			if (!strcmp(type, "time"))
+			{
+				*possible_datatypes = CHARACTER_BIT | UNSUPPORTED_BIT ;
+				*change_possible = 1;
+				*new_length_possible = 1;
+			}
+			else if (!strcmp(type, "timestamp"))
+			{
+				*possible_datatypes = CHARACTER_BIT | UNSUPPORTED_BIT |
+					TIMESTAMP_BIT;
+				*change_possible = 1;
+				*new_length_possible = 1;
+			}
+			else
+			{
+				return_sts = 1;
+			}
+			break;
+
+		default:
+			return_sts = 1;
+	}
+
+	USV_DBG(("valid_column_changes_DB2:returning %d\n", return_sts));
+	return return_sts;
+}
+
+/******************************************************************************/
+
+/*
+**	This function takes an underlying database data type as input, and returns
+**	the valid RIS types for that database type.
+
+	Input:
+		dtype - database type.
+		type  - database data type.
+
+	Output:
+		change_possible - can this database type be changed to a RIS type.
+		possible_datatypes - a mask representing the possible RIS types.
+		new_length_possible	- does the RIS type require a length.
+
+	Return:
+		0 success
+		 1 unknown database
+		-1 unhandled datatype
+
+*/
+
+extern int RISusv_valid_column_changes(
+	char			dtype,
+	char			*type,
+	int				*change_possible,
+	unsigned short	*possible_datatypes,
+	int				*new_length_possible)
+{
+	int return_sts = 0;
+
+	USV_DBG(("RISusv_valid_column_changes(dtype:%c type:<%s>)\n",
+		dtype, STRING(type)));
+
+	/*
+	** If there is only one choice possible, we will skip
+	** offering them a choice.
+	*/
+	*change_possible = 0;
+	*possible_datatypes = 0;
+
+	/*
+	** If the length is fixed (char, rowid), we will skip
+	** offering them a choice.
+	*/
+	*new_length_possible = 0;
+
+	switch(dtype)
+	{
+		case 'X':
+			return_sts = valid_column_changes_IFX(type, change_possible,
+				possible_datatypes, new_length_possible) ? -1 : 0;
+			break;
+
+		case 'O':
+			return_sts = valid_column_changes_ORA(type, change_possible,
+				possible_datatypes, new_length_possible) ? -1 : 0;
+			break;
+
+		case 'I':
+			return_sts = valid_column_changes_IGS(type, change_possible,
+				possible_datatypes, new_length_possible) ? -1 : 0;
+			break;
+
+		case 'R':	
+			return_sts = valid_column_changes_RDB(type, change_possible,
+				possible_datatypes, new_length_possible) ? -1 : 0;
+			break;
+
+		case 'Y':
+			return_sts = valid_column_changes_SYB(type, change_possible,
+				possible_datatypes, new_length_possible) ? -1 : 0;
+			break;
+
+		case 'M':
+			return_sts = valid_column_changes_MSSQL(type, 
+				change_possible, possible_datatypes, 
+				new_length_possible) ? -1 : 0;
+			break;
+
+		case 'D':
+			return_sts = valid_column_changes_DB2(type, change_possible,
+				possible_datatypes, new_length_possible) ? -1 : 0;
+			break;
+
+		default:
+			return_sts = 1;
+			break;
+	}
+
+	USV_DBG(("RISusv_valid_column_changes_IGS:returning %d\n", return_sts));
+	return return_sts;
+}
+
+/******************************************************************************/
+
+/*
+**	This routine should fetch the ris dictionary column info for table
+**	'tabname'.
+**	You can assume the connection to the schema has already been established.
+**	You can also assume column_info has already been allocated and is
+**	large enough to RIS_MAX_TABLE_COLUMNS. 
+*/
+
+extern void RISusv_get_column_info(
+	char *schname,					/* schema name */
+	char dtype,						/* database type */
+	char *tabname,					/* table name */
+	column_info_s *column_info,		/* array to store column info */
+	int *column_count)				/* pointer to int to store # of columns */
+{
+	long not_null = 0;
+	sqlvar input_sqlvar[1];
+	sqlvar output_sqlvar[9];
+
+exec sql begin declare section;
+	sqlda in_sqlda;
+	sqlda out_sqlda;
+exec sql end declare section;
+
+	USV_DBG(("RISusv_get_column_info(schname:<%s> dtype:%c tabname:<%s>)\n",
+		STRING(schname), dtype, STRING(tabname)));
+
+	exec sql whenever sqlerror goto :get_table_error;
+	exec sql whenever not found goto :get_table_end;
+
+	exec sql prepare s1 from 
+			"select column_name, position, ris_type, ris_type_string, \
+			dbms_type_string, \
+			char_max_length, prec, scale, nullable \
+			from ris5columns \
+			where table_name = ? \
+			order by position" ;
+
+	in_sqlda.sqln = sizeof(input_sqlvar)/sizeof(sqlvar);
+	in_sqlda.sqlvar = input_sqlvar;
+
+	exec sql describe input s1 using descriptor in_sqlda;
+
+	out_sqlda.sqln = sizeof(output_sqlvar)/sizeof(sqlvar);
+	out_sqlda.sqlvar = output_sqlvar;
+	
+	exec sql describe output s1 using descriptor out_sqlda;
+
+	exec sql declare c1 cursor for s1;
+
+	input_sqlvar[0].sqldata = tabname;
+	input_sqlvar[0].sqlind  = &not_null;
+	exec sql open c1 using descriptor in_sqlda;
+
+	(*column_count) = 0;
+
+	while(1)
+	{
+		out_sqlda.sqlvar[0].sqldata = column_info->column_name;
+		out_sqlda.sqlvar[0].sqlind = &column_info->i_column_name;
+		out_sqlda.sqlvar[1].sqldata = (char *)&column_info->position;
+		out_sqlda.sqlvar[1].sqlind = &column_info->i_position;
+		out_sqlda.sqlvar[2].sqldata = (char *)&column_info->ris_type;
+		out_sqlda.sqlvar[2].sqlind = &column_info->i_ris_type;
+		out_sqlda.sqlvar[3].sqldata = column_info->ris_type_string;
+		out_sqlda.sqlvar[3].sqlind = &column_info->i_ris_type_string;
+		out_sqlda.sqlvar[4].sqldata = column_info->dbms_type_string;
+		out_sqlda.sqlvar[4].sqlind = &column_info->i_dbms_type_string;
+		out_sqlda.sqlvar[5].sqldata = (char *)&column_info->char_max_length;
+		out_sqlda.sqlvar[5].sqlind = &column_info->i_char_max_length;
+		out_sqlda.sqlvar[6].sqldata = (char *)&column_info->prec;
+		out_sqlda.sqlvar[6].sqlind = &column_info->i_prec;
+		out_sqlda.sqlvar[7].sqldata = (char *)&column_info->scale;
+		out_sqlda.sqlvar[7].sqlind = &column_info->i_scale;
+		out_sqlda.sqlvar[8].sqldata = column_info->nullable;
+		out_sqlda.sqlvar[8].sqlind = &column_info->i_nullable;
+		
+		exec sql fetch c1 using descriptor out_sqlda;
+
+		column_info->modified = 0;	/* initialize this value */
+
+		++(*column_count);
+		++column_info;
+	}
+
+get_table_end:
+	exec sql whenever not found continue;
+	exec sql close c1;
+
+	USV_DBG(("RISusv_get_column_info:returning\n"));
+	return;
+
+get_table_error:
+    exec sql whenever sqlerror continue;
+
+	USV_DBG(("RISusv_get_column_info:returning\n"));
+	return;
+}
+
+/******************************************************************************/
+
+/*
+**	This routine should modify the ris dictionary for table 'tabname' to
+**	reflect the information in column info.	 You can assume the connection
+**	to the schema has already been established.
+*/
+
+extern void RISusv_update_column_info(
+	char *schname,					/* schema name */
+	char dtype,						/* database type */
+	char *tabname,					/* table name to modify */
+	column_info_s *column_info,		/* array of column info struct */
+	int column_count)				/* number of elements in column_info */
+{
+	int i;
+	char number_buff_1[10];
+	char number_buff_2[10];
+	char number_buff_3[10];
+
+exec sql begin declare section;
+	char sqlstring[800];
+exec sql end declare section;
+
+	USV_DBG(("RISusv_update_column_info(schname:<%s> dtype:%c tabname:<%s>)\n",
+		STRING(schname), dtype, STRING(tabname)));
+
+	exec sql whenever sqlerror goto :update_table_error;
+
+	/* In version 5, we cannot do exec <database> update ris_columns
+    ** as we used to do in version 4. We need to update the base
+    ** dictionary table and go thru the client so that the correct
+    ** dictionary qualifier will be appended by the client. We just
+    ** need the client to let us modify the dictionary table. While
+    ** a special flag is the way to go, for now we will use the
+    ** upgrade flag
+    **
+    ** Shiva 3/23/94
+    */
+
+	RISint_process_debug ("+upgrade");
+	for (i=0; i<column_count; ++i)
+	{
+		if (column_info[i].modified)
+		{
+			/*
+			** there are some items that could be numbers
+			** or could be "null"; it is easier to sprintf
+			** the numbers into buffers as strings, and then
+			** sprintf the sql statement knowing that 
+			** we can treat everything as a string.
+			*/
+
+			if (column_info[i].i_char_max_length != -1)
+				sprintf(number_buff_1, "%d", column_info[i].char_max_length);
+			if (column_info[i].i_prec != -1)
+				sprintf(number_buff_2, "%d", column_info[i].prec);
+			if (column_info[i].i_scale != -1)
+				sprintf(number_buff_3, "%d", column_info[i].scale);
+
+			sprintf(sqlstring, "update ri05_t03 \
+set ris_type = %d, ris_type_string = '%s', char_max_length = %s, prec = %s, \
+scale = %s, nullable = '%s' where column_name = '%s' and table_id in \
+(select table_id from ri05_t02 where table_name = '%s' and schema_name \
+= '%s')",
+				column_info[i].ris_type,
+				column_info[i].ris_type_string,
+				column_info[i].i_char_max_length == -1 ? "null" : number_buff_1,
+				column_info[i].i_prec == -1 ? "null" : number_buff_2,
+				column_info[i].i_scale == -1 ? "null" : number_buff_3,
+				column_info[i].nullable, column_info[i].column_name,
+				tabname, schname);
+
+			exec sql execute immediate :sqlstring;
+		}
+	}
+	/* turn off upgrade
+	**
+	*/
+	RISint_process_debug ("-upgrade");
+
+	USV_DBG(("RISusv_update_column_info:returning\n"));
+	return;
+
+update_table_error:
+    exec sql whenever sqlerror continue;
+
+	USV_DBG(("RISusv_update_column_info:returning\n"));
+	return;
+}
+
+/******************************************************************************/

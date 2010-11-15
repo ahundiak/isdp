@@ -1,0 +1,583 @@
+/* Do not alter this SPC information: $Revision: 1.6.27.1 $ */
+/********************************************************************
+Name:		resmgr.h
+Authors:	Alan Barksdale
+Creation Date:	03/28/95
+Description:	Header file for Schema Manager utility Resources
+
+Revision History:
+	afb950328:	Filled in the prototype.
+********************************************************************/
+/********************************************************
+mgr
+********************************************************/
+
+// strings
+#define IDS_MGR_DESC		8000
+
+#define IDS_MGR_SCHEMA_NAME	8001
+#define IDS_MGR_SCHEMA_TYPE	8002
+#define IDS_MGR_DICTIONARY	8003
+#define IDS_MGR_REFRESH		8004
+
+/*_______________________*/
+/* Schema Manager Dialog */
+/*vvvvvvvvvvvvvvvvvvvvvVv*/
+
+// icon
+#define IDI_MGR				8000
+
+// dialog
+#define IDD_MGR				8001
+
+// menu
+
+#define IDM_MGR_SCH_INFO		8011
+#define IDM_MGR_CREATE_SCH		8012
+#define IDM_MGR_DROP_SCH		8013
+#define IDM_MGR_SECURE_SCH_ACCESS	8014
+#define IDM_MGR_DICT_ACCESS		8015
+#define IDM_MGR_MOD_SCH_PASSWD		8016
+#define IDM_MGR_MOD_NODE_INFO		8017
+#define IDM_MGR_MOD_DB2_PASSWD		8018
+
+#define IDM_MGR_TBL_INFO		8019
+#define IDM_MGR_CREATE_TBL		8020
+#define IDM_MGR_DROP			8021
+#define IDM_MGR_ALTER_TBL		8022
+#define IDM_MGR_INCLUDE			8023
+#define IDM_MGR_EXCLUDE			8024
+
+#define IDM_MGR_SCH_FILE		8025
+#define IDM_MGR_LOCATE_CLIENT		8026
+#define IDM_MGR_SET			8027
+
+// controls
+#define IDC_MGR_SCH_NAME_EDIT		8030
+#define IDC_MGR_SCH_TYPE_EDIT		8031
+#define IDC_MGR_DICT_EDIT		8032
+#define IDC_MGR_SCROLLBAR		8033
+#define IDC_MGR_REFRESH_BUTTON		8034
+
+/*^^^^^^^^^^^^^^^^^^^^^^^*/
+/* Schema Manager Dialog */
+/*_______________________*/
+
+/*_____*/
+/* Set */
+/*vvvvv*/
+
+// dialog
+#define IDD_MGR_SET			8040	
+
+
+// controls
+
+#define IDC_MGR_SET_CHECK13		8041
+#define IDC_MGR_SET_CHECK10		8042
+#define IDC_MGR_SET_CHECK3		8043
+#define IDC_MGR_SET_CHECK1		8044
+#define IDC_MGR_SET_CHECK14		8045
+
+#define IDC_MGR_SET_CHECK19		8046
+#define IDC_MGR_SET_CHECK18		8047
+#define IDC_MGR_SET_CHECK20		8048
+#define IDC_MGR_SET_CHECK22		8049
+#define IDC_MGR_SET_CHECK21		8050
+#define IDC_MGR_SET_CHECK23		8051
+#define IDC_MGR_SET_CHECK16		8052
+#define IDC_MGR_SET_CHECK15		8053
+#define IDC_MGR_SET_CHECK17		8054
+
+#define IDC_MGR_SET_APPLY_BUTTON	8055
+#define IDC_MGR_SET_RESET_BUTTON	8056
+
+/*^^^^^*/
+/* Set */
+/*_____*/
+
+/*____________________*/
+/* Schema Information */
+/*vvvvvvvvvvvvvvvvvvvv*/
+
+// dialog
+#define IDD_MGR_SCH_INFO				8070	
+
+// controls
+#define IDC_MGR_SCH_INFO_SCH_NAME_COMBO			8071
+#define IDC_MGR_SCH_INFO_SCH_TYPE_EDIT			8072
+#define IDC_MGR_SCH_INFO_NETWORK_PROTOCOL_COMBO1	8073
+#define IDC_MGR_SCH_INFO_NETWORK_PROTOCOL_COMBO2	8074
+#define IDC_MGR_SCH_INFO_NETWORK_PROTOCOL_COMBO3	8075
+#define IDC_MGR_SCH_INFO_NETWORK_PROTOCOL_COMBO4	8077
+#define IDC_MGR_SCH_INFO_EDIT3				8078
+#define IDC_MGR_SCH_INFO_EDIT4				8079
+#define IDC_MGR_SCH_INFO_EDIT17				8080
+#define IDC_MGR_SCH_INFO_EDIT18				8081
+#define IDC_MGR_SCH_INFO_EDIT6				8082
+#define IDC_MGR_SCH_INFO_EDIT7				8083
+#define IDC_MGR_SCH_INFO_EDIT9				8084
+#define IDC_MGR_SCH_INFO_EDIT10				8085
+#define IDC_MGR_SCH_INFO_EDIT11				8086
+#define IDC_MGR_SCH_INFO_EDIT12				8087
+#define IDC_MGR_SCH_INFO_EDIT13				8088
+#define IDC_MGR_SCH_INFO_RESET_BUTTON			8089
+
+/*^^^^^^^^^^^^^^^^^^^^*/
+/* Schema Information */
+/*____________________*/
+
+/*_______________*/
+/* Create Schema */
+/*vvvvvvvvvvvvvvv*/
+
+// dialog
+#define IDD_MGR_CREATE_SCH				8100
+
+// controls
+#define IDC_MGR_CREATE_SCH_SCH_NAME_EDIT		8101
+#define IDC_MGR_CREATE_SCH_SCH_NAME_PASSWD_ECHO_CHECK	8102
+#define IDC_MGR_CREATE_SCH_SCH_PASSWD_EDIT		8103
+#define IDC_MGR_CREATE_SCH_SCH_TYPE_COMBO		8104
+#define IDC_MGR_CREATE_SCH_GET_CLIENT_ADDR_BUTTON	8105
+#define IDC_MGR_CREATE_SCH_NETWORK_PROTOCOL_COMBO1	8106
+#define IDC_MGR_CREATE_SCH_ADDR_EDIT1			8107
+#define IDC_MGR_CREATE_SCH_NETWORK_PROTOCOL_COMBO2	8108
+#define IDC_MGR_CREATE_SCH_ADDR_EDIT2			8109
+#define IDC_MGR_CREATE_SCH_NETWORK_PROTOCOL_COMBO3	8110
+#define IDC_MGR_CREATE_SCH_ADDR_EDIT3			8111
+#define IDC_MGR_CREATE_SCH_NETWORK_PROTOCOL_COMBO4	8112
+#define IDC_MGR_CREATE_SCH_ADDR_EDIT4			8113
+#define IDC_MGR_CREATE_SCH_DB_USRNAME_EDIT		8114
+#define IDC_MGR_CREATE_SCH_DB_USRNAME_PASSWD_CHECK	8115
+#define IDC_MGR_CREATE_SCH_DB_USRNAME_PASSWD_EDIT	8116
+#define IDC_MGR_CREATE_SCH_INCLUDE_DB_UTV_CHECK		8117
+#define IDC_MGR_CREATE_SCH_OS_TYPE_COMBO		8118
+#define IDC_MGR_CREATE_SCH_UE_DICT_CHECK		8119
+#define IDC_MGR_CREATE_SCH_DICT_OWNER_EDIT		8120
+#define IDC_MGR_CREATE_SCH_DB_TYPE_COMBO		8121
+#define IDC_MGR_CREATE_SCH_DISP_DBS_BUTTON		8122
+#define IDC_MGR_CREATE_SCH_DB_NAME_EDIT			8123
+#define IDC_EDIT12					8124
+#define IDC_EDIT8					8125
+#define IDC_CHECK3					8126
+#define IDC_EDIT14					8127
+#define IDC_EDIT9					8128
+#define IDC_EDIT7					8129
+#define IDC_MGR_CREATE_SCH_FORCE_BUTTON			8130
+#define IDC_MGR_CREATE_SCH_APPLY_BUTTON			8131
+#define IDC_MGR_SCH_CREATE_SCH_CLOSE_BUTTON		8132
+
+/*^^^^^^^^^^^^^^^*/
+/* Create Schema */
+/*_______________*/
+
+/*___________*/
+/* Databases */
+/*vvvvvvvvvvv*/
+
+// dialog
+#define IDD_MGR_DBS		8150
+
+// controls
+#define IDC_MGR_DBS_EDIT11	8151
+#define IDC_MGR_DBS_EDIT1	8152
+#define IDC_MGR_DBS_EDIT12	8153
+#define IDC_MGR_DBS_SCROLLBAR2	8154
+
+/*^^^^^^^^^^^*/
+/* Databases */
+/*___________*/
+
+/*_____________*/
+/* Drop Schema */
+/*vvvvvvvvvvvvv*/
+
+// dialog
+#define IDD_MGR_DROP_SCH		8170
+
+// controls
+#define IDC_MGR_DROP_SCH_EDIT2		8171
+#define IDC_MGR_DROP_SCH_SCROLLBAR2	8172
+#define IDC_MGR_DROP_SCH_FORCE_BUTTON	8173
+#define IDC_MGR_DROP_SCH_APPLY_BUTTON	8174
+#define IDC_MGR_DROP_SCH_RESET_BUTTON	8175
+
+/*^^^^^^^^^^^^^*/
+/* Drop Schema */
+/*_____________*/
+
+/*______________________*/
+/* Secure Schema Access */
+/*vvvvvvvvvvvvvvvvvvvvvv*/
+
+// dialog
+#define IDD_MGR_SECURE_SCH_ACCESS			8190
+
+// controls
+#define IDC_MGR_SECURE_SCH_ACCESS_SCH_NAME_COMBO	8191
+#define IDC_MGR_SECURE_SCH_ACCESS_GRANT_RADIO		8192
+#define IDC_MGR_SECURE_SCH_ACCESS_REVOKE_RADIO		8193
+#define IDC_MGR_SECURE_SCH_ACCESS_RESOURCE_RADIO	8194
+#define IDC_MGR_SECURE_SCH_ACCESS_CONNECT_RADIO		8195
+#define IDC_MGR_SECURE_SCH_ACCESS_EDIT2			8196
+#define IDC_MGR_SECURE_SCH_ACCESS_EDIT5			8197
+#define IDC_MGR_SECURE_SCH_ACCESS_ACCESS_USRS_SCROLLBAR	8198
+#define IDC_MGR_SECURE_SCH_ACCESS_EDIT4			8199
+#define IDC_MGR_SECURE_SCH_ACCESS_ALL_USRS_SCROLLBAR	8200
+#define IDC_MGR_SECURE_SCH_ACCESS_SELECTED_USR_EDIT	8201
+#define IDC_MGR_SECURE_SCH_ACCESS_APPLY_BUTTON		8202
+
+/*^^^^^^^^^^^^^^^^^^^^^^*/
+/* Secure Schema Access */
+/*______________________*/
+
+/*___________________*/
+/* Dictionary Access */
+/*vvvvvvvvvvvvvvvvvvv*/
+
+// dialog
+#define IDD_MGR_DICT_ACCESS				8230
+
+// controls
+#define IDC_MGR_DICT_ACCESS_SCH_NAME_COMBO		8231
+#define IDC_MGR_DICT_ACCESS_GRANT_RADIO			8232
+#define IDC_MGR_DICT_ACCESS_REVOKE_RADIO		8233
+#define IDC_MGR_DICT_ACCESS_EDIT5			8234
+#define IDC_MGR_DICT_ACCESS_ACCESS_USRS_SCROLLBAR	8235
+#define IDC_MGR_DICT_ACCESS_EDIT4			8236
+#define IDC_MGR_DICT_ACCESS_ALL_USRS_SCROLLBAR		8237
+#define IDC_MGR_DICT_ACCESS_SELECTED_USR_EDIT		8238
+#define IDC_MGR_DICT_ACCESS_APPLY_BUTTON		8239
+
+/*^^^^^^^^^^^^^^^^^^^*/
+/* Dictionary Access */
+/*___________________*/
+
+/*________________________*/
+/* Modify Schema Password */
+/*vvvvvvvvvvvvvvvvvvvvvvvv*/
+
+// dialog
+#define IDD_MGR_MOD_SCH_PASSWD			8260
+
+// controls
+#define IDC_MGR_MOD_SCH_PASSWD_SCH_NAME_COMBO	8261
+#define IDC_MGR_MOD_SCH_PASSWD_OLD_PASSWD_CHECK	8262
+#define IDC_MGR_MOD_SCH_PASSWD_OLD_PASSWD_EDIT	8263
+#define IDC_MGR_MOD_SCH_PASSWD_NEW_PASSWD_CHECK	8264
+#define IDC_MGR_MOD_SCH_PASSWD_NEW_PASSWD_EDIT	8265
+#define IDC_MGR_MOD_SCH_PASSWD_APPLY_BUTTON	8266
+#define IDC_MGR_MOD_SCH_PASSWD_RESET_BUTTON	8267
+
+/*^^^^^^^^^^^^^^^^^^^^^^^^*/
+/* Modify Schema Password */
+/*________________________*/
+
+/*_________________________*/
+/* Modify Node Information */
+/*vvvvvvvvvvvvvvvvvvvvvvvvv*/
+
+// dialog
+#define IDD_MGR_MOD_NODE_INFO				8280
+
+
+// controls
+
+#define IDC_MGR_MOD_NODE_INFO_SCH_NAME_COMBO		8281
+#define IDC_MGR_MOD_NODE_INFO_GET_CLIENT_ADDR_BUTTON	8282
+#define IDC_MGR_MOD_NODE_INFO_NETWORK_PROTOCOL_COMBO1	8283
+#define IDC_MGR_MOD_NODE_INFO_ADDR_EDIT1		8284
+#define IDC_MGR_MOD_NODE_INFO_NETWORK_PROTOCOL_COMBO2	8285
+#define IDC_MGR_MOD_NODE_INFO_ADDR_EDIT2		8286
+#define IDC_MGR_MOD_NODE_INFO_NETWORK_PROTOCOL_COMBO3	8287
+#define IDC_MGR_MOD_NODE_INFO_ADDR_EDIT3		8288
+#define IDC_MGR_MOD_NODE_INFO_NETWORK_PROTOCOL_COMBO4	8289
+#define IDC_MGR_MOD_NODE_INFO_ADDR_EDIT4		8290
+
+#define IDC_MGR_MOD_NODE_INFO_DB_USRNAME		8291
+#define IDC_MGR_MOD_NODE_INFO_DB_PASSWD_CHECK		8292
+#define IDC_MGR_MOD_NODE_INFO_DB_PASSWD_EDIT		8293
+
+#define IDC_MGR_MODE_NODE_INFO_OS_USRNAME_EDIT		8294
+#define IDC_MGR_MOD_NODE_INFO_OS_PASSWD_CHECK		8295
+#define IDC_MGR_MOD_NODE_INFO_OS_PASSWD_EDIT		8296
+
+#define IDC_MGR_MOD_NODE_INFO_APPLY_BUTTON		8297
+#define IDC_MGR_MOD_NODE_INFO_RESET_BUTTON		8298
+
+/*^^^^^^^^^^^^^^^^^^^^^^^^^*/
+/* Modify Node Information */
+/*_________________________*/
+
+
+/*_____________________*/
+/* Modify DB2 Password */
+/*vvvvvvvvvvvvvvvvvvvvv*/
+
+// dialog
+#define IDD_MGR_MOD_DB2_PASSWD			8320
+
+// controls
+#define IDC_MGR_MOD_DB2_PASSWD_SCH_NAME_COMBO	8321
+#define IDC_MGR_MOD_DB2_PASSWD_OLD_PASSWD_CHECK	8322
+#define IDC_MGR_MOD_DB2_PASSWD_OLD_PASSWD_EDIT	8323
+#define IDC_MGR_MOD_DB2_PASSWD_NEW_PASSWD_CHECK	8324
+#define IDC_MGR_MOD_DB2_PASSWD_NEW_PASSWD_EDIT	8325
+#define IDC_MGR_MOD_DB2_PASSWD_APPLY_BUTTON	8326
+#define IDC_MGR_MOD_DB2_PASSWD_RESET_BUTTON	8327
+
+/*^^^^^^^^^^^^^^^^^^^^^*/
+/* Modify DB2 Password */
+/*_____________________*/
+
+/*___________________*/
+/* Table Information */
+/*vvvvvvvvvvvvvvvvvvv*/
+
+// dialog
+#define IDD_MGR_TBL_INFO			8340
+
+
+// controls
+
+#define IDC_MGR_TBL_INFO_LIST1			8341
+
+#define IDC_MGR_TBL_INFO_DBMS_TBL_NAME_EDIT	8342
+
+#define IDC_MGR_TBL_INFO_COL_NAME_SEARCH_EDIT	8343
+
+#define IDC_MGR_TBL_INFO_EDIT3			8344
+#define IDC_MGR_TBL_INFO_EDIT2			8345
+#define IDC_MGR_TBL_INFO_EDIT13			8346
+#define IDC_MGR_TBL_INFO_EDIT22			8347
+#define IDC_MGR_TBL_INFO_CHECK1			8348
+#define IDC_MGR_TBL_INFO_CHECK10		8349
+#define IDC_MGR_TBL_INFO_CHECK11		8350
+#define IDC_MGR_TBL_INFO_CHECK12		8351
+#define IDC_MGR_TBL_INFO_CHECK13		8352
+#define IDC_MGR_TBL_INFO_SCROLLBAR2		8353
+
+/*^^^^^^^^^^^^^^^^^^^*/
+/* Table Information */
+/*___________________*/
+
+/*______________*/
+/* Create Table */
+/*vvvvvvvvvvvvvv*/
+
+// dialog
+#define IDD_MGR_CREATE_TBL				8370
+
+
+// controls
+
+#define IDC_MGR_CREATE_TBL_RIS_TBL_NAME_EDIT		8371
+
+#define IDC_MGR_CREATE_TBL_DBMS_TBL_NAME_EDIT		8372
+
+#define IDC_MGR_CREATE_TBL_RADIO4			8373
+#define IDC_MGR_CREATE_TBL_RADIO12			8374
+#define IDC_MGR_CREATE_TBL_RADIO5			8375
+#define IDC_MGR_CREATE_TBL_RADIO6			8376
+#define IDC_MGR_CREATE_TBL_RADIO7			8377
+#define IDC_MGR_CREATE_TBL_RADIO8			8378
+#define IDC_MGR_CREATE_TBL_RADIO9			8379
+#define IDC_MGR_CREATE_TBL_RADIO10			8380
+#define IDC_MGR_CREATE_TBL_RADIO11			8381
+
+#define IDC_MGR_CREATE_TBL_RIS_COL_NAME_EDIT		8382
+#define IDC_MGR_CREATE_TBL_DBMS_COL_NAME_EDIT		8383
+
+#define IDC_MGR_CREATE_TBL_NULLS_ALLOWED_CHECK		8384
+
+#define IDC_MGR_CREATE_TBL_LENGTH_EDIT			8385
+#define IDC_MGR_CREATE_TBL_SCALE_EDIT			8386
+
+#define IDC_MGR_CREATE_TBL_RADIO1			8387
+#define IDC_MGR_CREATE_TBL_RADIO2			8388
+#define IDC_MGR_CREATE_TBL_RADIO3			8389
+
+#define IDC_MGR_CREATE_TBL_COL_ALTER_APPLY_BUTTON	8390
+#define IDC_MGR_CREATE_TBL_COL_ALTER_CANCEL_BUTTON	8391
+
+#define IDC_MGR_CREATE_TBL_COL_NAME_SEARCH_EDIT 	8392
+#define IDC_MGR_CREATE_TBL_EDIT3			8393
+#define IDC_MGR_CREATE_TBL_EDIT2			8394
+#define IDC_MGR_CREATE_TBL_EDIT13			8395
+#define IDC_MGR_CREATE_TBL_EDIT22			8396
+#define IDC_MGR_CREATE_TBL_CHECK1			8397
+#define IDC_MGR_CREATE_TBL_CHECK10			8398
+#define IDC_MGR_CREATE_TBL_CHECK11			8399
+#define IDC_MGR_CREATE_TBL_CHECK12			8400
+#define IDC_MGR_CREATE_TBL_CHECK13			8401
+#define IDC_MGR_CREATE_TBL_SCROLLBAR2			8402
+
+#define IDC_MGR_CREATE_TBL_APPLY_BUTTON			8403
+#define IDC_MGR_CREATE_TBL_RESET_BUTTON			8404
+
+/*^^^^^^^^^^^^^^*/
+/* Create Table */
+/*______________*/
+
+/*______*/
+/* Drop */
+/*vvvvvv*/
+
+// dialog
+#define IDD_MGR_DROP			8420
+
+// controls
+#define IDC_MGR_DROP_EDIT3		8421
+#define IDC_MGR_DROP_EDIT2		8422
+#define IDC_MGR_DROP_SCROLLBAR2		8423
+#define IDC_MGR_DROP_APPLY_BUTTON	8424
+#define IDC_MGR_DROP_RESET_BUTTON	8425
+
+/*^^^^^^*/
+/* Drop */
+/*______*/
+
+/*_____________*/
+/* Alter Table */
+/*vvvvvvvvvvvvv*/
+
+// dialog
+#define IDD_MGR_ALTER_TBL				8440
+
+// controls
+#define IDC_MGR_ALTER_TBL_RIS_TBL_NAME_LIST		8441
+#define IDC_MGR_ALTER_TBL_DBMS_TBL_NAME_EDIT		8442
+#define IDC_MGR_ALTER_TBL_RADIO4			8443
+#define IDC_MGR_ALTER_TBL_RADIO12			8444
+#define IDC_MGR_ALTER_TBL_RADIO5			8445
+#define IDC_MGR_ALTER_TBL_RADIO6			8446
+#define IDC_MGR_ALTER_TBL_RADIO7			8447
+#define IDC_MGR_ALTER_TBL_RADIO8			8448
+#define IDC_MGR_ALTER_TBL_RADIO9			8449
+#define IDC_MGR_ALTER_TBL_RADIO10			8450
+#define IDC_MGR_ALTER_TBL_RADIO11			8451
+#define IDC_MGR_ALTER_TBL_RIS_COL_NAME_EDIT		8452
+#define IDC_MGR_ALTER_TBL_DBMS_COL_NAME_EDIT		8453
+#define IDC_MGR_ALTER_TBL_NULLS_ALLOWED_CHECK		8454
+#define IDC_MGR_ALTER_TBL_LENGTH_EDIT			8455
+#define IDC_MGR_ALTER_TBL_SCALE_EDIT			8456
+#define IDC_MGR_ALTER_TBL_RADIO1			8457
+#define IDC_MGR_ALTER_TBL_RADIO2			8458
+#define IDC_MGR_ALTER_TBL_RADIO3			8459
+#define IDC_MGR_ALTER_TBL_COL_ALTER_APPLY_BUTTON	8460
+#define IDC_MGR_ALTER_TBL_COL_ALTER_CANCEL_BUTTON	8461
+#define IDC_MGR_ALTER_TBL_COL_NAME_SEARCH_EDIT		8462
+#define IDC_MGR_ALTER_TBL_EDIT3				8463
+#define IDC_MGR_ALTER_TBL_EDIT2				8464
+#define IDC_MGR_ALTER_TBL_EDIT13			8465
+#define IDC_MGR_ALTER_TBL_EDIT22			8466
+#define IDC_MGR_ALTER_TBL_CHECK1			8467
+#define IDC_MGR_ALTER_TBL_CHECK10			8468
+#define IDC_MGR_ALTER_TBL_CHECK11			8469
+#define IDC_MGR_ALTER_TBL_CHECK12			8470
+#define IDC_MGR_ALTER_TBL_CHECK13			8471
+#define IDC_MGR_ALTER_TBL_SCROLLBAR2			8472
+#define IDC_MGR_ALTER_TABLE_APPLY_BUTTON		8473
+#define IDC_MGR_ALTER_TBL_RESET_BUTTON			8474
+
+/*^^^^^^^^^^^^^*/
+/* Alter Table */
+/*_____________*/
+
+/*_________*/
+/* Include */
+/*vvvvvvvvv*/
+
+// dialog
+#define IDD_MGR_INCLUDE				8490
+
+// controls
+#define IDC_MGR_INCLUDE_COMBO6			8491
+#define IDC_MGR_INCLUDE_RADIO1			8492
+#define IDC_MGR_INCLUDE_RADIO2			8493
+#define IDC_MGR_INCLUDE_RADIO3			8494
+#define IDC_MGR_INCLUDE_RIS_NAME_EDIT		8495
+#define IDC_MGR_INCLUDE_DBMS_NAME_EDIT		8496
+#define IDC_MGR_INCLUDE_DBMS_NAME_SCROLLBAR	8497
+#define IDC_MGR_INCLUDE_RIS_COL_NAME_EDIT	8498
+#define IDC_MGR_INCLUDE_DBMS_COL_NAME_EDIT	8499
+#define IDC_MGR_INCLUDE_COL_NAME_SCROLLBAR	8500
+#define IDC_MGR_INCLUDE_APPLY_BUTTON		8501
+#define IDC_MGR_INCLUDE_RESET_BUTTON		8502
+
+/*^^^^^^^^^*/
+/* Include */
+/*_________*/
+
+/*_________*/
+/* Exclude */
+/*vvvvvvvvv*/
+
+// dialog
+#define IDD_MGR_EXCLUDE				8520
+
+// controls
+#define IDC_MGR_EXCLUDE_RADIO1			8521
+#define IDC_MGR_EXCLUDE_RADIO2			8522
+#define IDC_MGR_EXCLUDE_RADIO3			8523
+#define IDC_MGR_EXCLUDE_RIS_NAME_EDIT		8524
+#define IDC_MGR_EXCLUDE_DBMS_NAME_EDIT		8525
+#define IDC_MGR_EXCLUDE_DBMS_NAME_SCROLLBAR	8526
+#define IDC_MGR_EXCLUDE_APPLY_BUTTON		8527
+#define IDC_MGR_EXCLUDE_RESET_BUTTON		8528
+
+/*^^^^^^^^^*/
+/* Exclude */
+/*_________*/
+
+/*_____________*/
+/* Schema File */
+/*vvvvvvvvvvvvv*/
+
+// dialog
+#define IDD_MGR_SCH_FILE				8540
+
+// controls
+#define IDC_MGR_SCH_FILE_RADIO2				8541
+#define IDC_MGR_SCH_FILE_RADIO3				8542
+#define IDC_MGR_SCH_FILE_RADIO4				8543
+#define IDC_MGR_SCH_FILE_RADIO1				8544
+#define IDC_MGR_SCH_FILE_SCH_FILE_NAME_EDIT		8545
+#define IDC_MGR_SCH_FILE_NODENAME_OR_ADDR_EDIT		8546
+#define IDC_MGR_SCH_FILE_OS_USRNAME_EDIT		8547
+#define IDC_MGR_SCH_FILE_OS_USRNAME_PASSWD_CHECK	8548
+#define IDC_MGR_SCH_FILE_OS_USRNAME_PASSWD_EDIT		8549
+#define IDC_MGR_SCH_FILE_BUTTON11			8550
+#define IDC_MGR_SCH_FILE_APPLY_BUTTON			8551
+#define IDC_MGR_SCH_FILE_RESET_BUTTON			8552
+
+/*^^^^^^^^^^^^^*/
+/* Schema File */
+/*_____________*/
+
+/*_______________*/
+/* Locate Client */
+/*vvvvvvvvvvvvvvv*/
+
+// dialog
+#define IDD_MGR_LOCATE_CLIENT				8570
+
+// controls
+#define IDC_MGR_LOCATE_CLIENT_RADIO2			8571
+#define IDC_MGR_LOCATE_CLIENT_RADIO3			8572
+#define IDC_MGR_LOCATE_CLIENT_RADIO4			8573
+#define IDC_MGR_LOCATE_CLIENT_RADIO1			8574
+#define IDC_MGR_LOCATE_CLIENT_NODENAME_OR_ADDR_EDIT	8575
+#define IDC_MGR_LOCATE_CLIENT_OS_USRNAME_EDIT		8576
+#define IDC_MGR_LOCATE_CLIENT_OS_USRNAME_PASSWD_CHECK	8577
+#define IDC_MGR_LOCATE_CLIENT_OS_USRNAME_PASSWD_EDIT	8578
+#define IDC_MGR_LOCATE_CLIENT_RADIO5			8579
+#define IDC_MGR_LOCATE_CLIENT_RADIO6			8580
+#define IDC_MGR_LOCATE_CLIENT_VERSION_SPECIFY_EDIT	8581
+#define IDC_MGR_LOCATE_CLIENT_APPLY_BUTTON		8582
+#define IDC_MGR_LOCATE_CLIENT_RESET_BUTTON		8583
+
+/*^^^^^^^^^^^^^^^*/
+/* Locate Client */
+/*_______________*/

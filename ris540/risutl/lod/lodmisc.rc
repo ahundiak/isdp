@@ -1,0 +1,795 @@
+/* Do not alter this SPC information: $Revision: 1.3.9.1 $ */
+/*
+**	NAME:				lodmisc.rc								
+**	AUTHORS:			Jennifer Xia			
+**	CREATION DATE:		June 26, 1990			
+**	ABSTRACT:			It contains a number of miscellaneous functions.
+**		
+**	
+**	REVISION HISTORY:	August 6th, 1991 Hitesh Patel
+*/
+ 
+/*
+**	DEFINES
+*/
+
+/*
+**	INCLUDES
+*/
+#if defined(WIN32S) && defined(ULD_EXE)
+#include <windows.h>
+#include <windowsx.h>
+#include "winport.h"
+#include "winio.h"
+#include "winhan.h"
+#include "risutl.h"
+#include "prog32s.h"
+#endif 
+
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <ctype.h>
+#include "comisfn.prt"
+
+#ifdef MM
+#include "lod.h"
+#endif
+exec sql include "lod.h";
+
+/*START_PRT_INCLUDE*/
+#include "risapi.h"
+/*STOP_PRT_INCLUDE*/
+
+/*
+**	VARIABLES
+*/
+
+/*
+**	FUNCTIONS
+*/
+
+/*
+**      FUNCTION PROTOTYPES
+*/
+#define lodmisc_rc
+#include "sys.prt"
+#include "comwrap.prt"
+#include "comdebug.prt"
+#include "comjmp.prt"
+#include "comumsg.prt"
+#include "ris.prt"
+#include "lodermsg.prt"
+#include "lodlogdp.prt"
+#include "lodmisc.prt"
+#include "lodschst.prt"
+#include "lodtime.prt"
+#include "ucoerrbx.prt"
+#include "ucoumsg.prt"
+
+extern void RISlod_initialize_ris()
+{
+	int	sts;
+    char *language;
+
+    if ((language = getenv("RIS_LANGUAGE")) != NULL)
+    {
+        LOD_DBG(("found RIS_LANGUAGE environment variable:<%s>\n", language));
+    }
+    else
+    {
+        LOD_DBG(("RIS_LANGUAGE environment variable not found\n"));
+    }
+
+    RISinitialize(language);
+    if( SQLCODE != RIS_SUCCESS )
+    {
+#if defined(ULD_EXE)
+	winio_resetbusy();
+#endif
+        RISlod_fatal_err_handler(SQLCODE,FALSE);
+        TERMINATE_RISLOAD
+    }
+
+	/* 
+	** This is related to the bug fix: temporary files are not getting
+	** removed. Reason:On NT, risclient inherits all open handles and
+	** so loader (app) is trying remove them with risclient still running,
+	** it returns (other process accessing the files).
+	** Solution:start risclient before opening temp files so that they are
+	** not inherited. -Hitesh 10/26/93
+	*/
+    RISstart_client();
+    if( SQLCODE != RIS_SUCCESS )
+    {
+#if defined(ULD_EXE)
+	winio_resetbusy();
+#endif
+        RISlod_fatal_err_handler(SQLCODE,FALSE);
+        TERMINATE_RISLOAD
+    }
+
+	if ((sts = SETJMP()) != 0)
+	{
+		RESETJMP();
+#if defined(ULD_EXE)
+	winio_resetbusy();
+#endif
+        RISlod_fatal_err_handler(sts,FALSE);
+        TERMINATE_RISLOAD
+	}
+
+	RISuco_initialize_ums(INIT_UTL_UMS_FILE);
+
+	RESETJMP();
+}
+
+extern void RISlod_open_tmp_files(
+	FILE **indx_tfp_addr,
+	FILE **view_tfp_addr,
+	FILE **grant_tfp_addr)
+{
+	extern char	*tmpnam();
+	FILE		*indx_tfp;
+	FILE		*view_tfp;
+	FILE		*grant_tfp;
+
+
+	LOD_DBG(("RISlod_open_tmp_files: Begin\n"));
+
+	RIScom_tmpnam(RISlod_indx_tfname);
+	indx_tfp = RISlod_batch_open_file('t',RISlod_indx_tfname);
+	
+	RIScom_tmpnam(RISlod_view_tfname);
+	view_tfp = RISlod_batch_open_file('t',RISlod_view_tfname);
+
+	RIScom_tmpnam(RISlod_grant_tfname);
+	grant_tfp = RISlod_batch_open_file('t',RISlod_grant_tfname);
+
+	*indx_tfp_addr	= indx_tfp;
+	*view_tfp_addr 	= view_tfp;
+	*grant_tfp_addr = grant_tfp;
+
+	RISlodindx_tfpg = indx_tfp; /* globals in case of ungraceful exit! */
+	RISlodview_tfpg = view_tfp;
+	RISlodgrant_tfpg = grant_tfp;
+
+	LOD_DBG(("RISlod_open_tmp_files: End\n"));
+}
+
+extern void RISlod_remove_tmp_files(
+	FILE	*indx_tfp,
+	FILE	*view_tfp,
+	FILE	*grant_tfp)
+{
+	LOD_DBG(("RISlod_reomove_tmp_files: begin\n"));
+
+	RIScom_fclose(indx_tfp);
+	RIScom_fclose(view_tfp);
+	RIScom_fclose(grant_tfp);
+	LOD_DBG(("RISlod_remove_tmp_files: <%s>  <%s>  <%s> \n",
+	RISlod_indx_tfname, RISlod_view_tfname, RISlod_grant_tfname));
+
+	remove(RISlod_indx_tfname);
+	remove(RISlod_view_tfname);
+	remove(RISlod_grant_tfname);
+	LOD_DBG(("RISlod_reomove_tmp_files: End\n"));
+
+}
+
+
+/*	This executes default schema statement and writes the error msg
+	into ris_err_code and db_err_code (not used by grant stmt loader)
+*/
+extern int RISlod_default_new_sch(
+	char		*sch_name_pwd)
+{
+
+	char		sch_name[RIS_MAX_ID_SIZE];
+	char		sch_pwd[RIS_MAX_ID_SIZE];
+
+	exec sql begin declare section;
+		char 	default_sch_stmt[STRING_MAX_LEN];
+		char	*err_ptr;
+	exec sql end declare section;
+
+	sch_name[0] = '\0';
+	sch_pwd[0] = '\0';
+
+	LOD_DBG(("RISlod_default_new_sch: \n"));
+
+	exec sql whenever sqlerror goto :DS_error;
+	
+	strcpy(default_sch_stmt, "default schema ");
+	strcpy(default_sch_stmt + 15, sch_name_pwd);
+
+	if( RISlod_separate_sch_name_pwd(default_sch_stmt,sch_name_pwd,sch_name,sch_pwd) == FAILURE)
+	{
+		LOD_DBG(("1. RISlod_default_new_sch: end\n"));
+		return(FAILURE);
+	}
+
+	if( sch_pwd[0] == '\0' )
+		sprintf(RISlod_default_sch_stmt,"default schema %s\n", sch_name);
+	else
+		sprintf(RISlod_default_sch_stmt,"default schema %s.\n", sch_name);
+
+	exec sql execute immediate :default_sch_stmt;
+
+	LOD_WARNING_CHECK(RISlod_ptr_struct_ptr->bsnode_ptr->sqlwarnings);
+	LOD_DBG(("2. RISlod_default_new_sch: end\n"));
+	return(SUCCESS);
+
+DS_error:
+	exec sql whenever sqlerror continue;
+
+	/* Errors is written here */
+	if( RISlod_mode == EMBED )
+	{
+		RISlod_ptr_struct_ptr->bsnode_ptr->ris_err_code = risca->sqlcode;
+		RISlod_ptr_struct_ptr->bsnode_ptr->db_err_code = dbca->sqlcode;
+	}
+	else
+	{
+		exec sql report error into :err_ptr;
+#if !defined(ULD_DLL)
+		PUTS(err_ptr);
+#endif
+	}
+
+	RISlod_dump_sch_err_to_bad(RISlod_default_sch_stmt);
+	RISlod_dump_sch_info("TOBADFILE");
+
+	LOD_DBG(("3. RISlod_default_new_sch: end\n"));
+	return(FAILURE);
+}
+
+
+extern void RISlod_ansi_mode(
+	int ansi_mode)
+{
+	exec sql begin declare section;
+		char 	ansi_stmt[STRING_MAX_LEN];
+		char	*err_ptr;
+	exec sql end declare section;
+
+	LOD_DBG(("RISlod_ansi_mode: Begin\n"));
+
+	exec sql whenever sqlerror goto :NA_error;
+
+	sprintf(ansi_stmt, "set mode ansi %s", ansi_mode ? "on" : "off" );
+		
+	exec sql execute immediate :ansi_stmt;
+	
+	LOD_WARNING_CHECK(RISlod_general_warn);
+
+	/*
+	**	So that subsequent loader-parsing errors donot print this sql stmt
+	*/
+	if( risca->sqlstmt )
+	{
+		risca->sqlstmt[0] = '\0';
+	}
+
+	LOD_DBG(("1. RISlod_ansi_mode: End\n"));
+	return;
+
+NA_error:
+	exec sql whenever sqlerror continue;
+
+	if( RISlod_mode == EMBED )
+	{
+		/* Assuming that this stmt is not executed on a server */
+		*RISlod_general_err = risca->sqlcode;
+	}
+	else
+	{
+		exec sql report error into :err_ptr;
+#if !defined(ULD_DLL)
+		PUTS(err_ptr);
+#endif
+	}
+	TERMINATE_RISLOAD
+
+	LOD_DBG(("2. RISlod_ansi_mode: End\n"));
+	return;
+}
+
+
+extern void RISlod_blankstrip_mode(
+	int blankstrip_mode)
+{
+	exec sql begin declare section;
+		char 	blankstrip_stmt[STRING_MAX_LEN];
+		char	*err_ptr;
+	exec sql end declare section;
+
+	LOD_DBG(("RISlod_blankstrip_mode: Begin\n"));
+
+	exec sql whenever sqlerror goto :BS_error;
+
+	sprintf(blankstrip_stmt, "set mode blank strip %s",
+		blankstrip_mode ? "on" : "off" );
+		
+	exec sql execute immediate :blankstrip_stmt;
+	
+	LOD_WARNING_CHECK(RISlod_general_warn);
+
+	/*
+	**	So that subsequent loader-parsing errors donot print this sql stmt
+	*/
+	if( risca->sqlstmt )
+	{
+		risca->sqlstmt[0] = '\0';
+	}
+
+	LOD_DBG(("1. RISlod_blankstrip_mode: End\n"));
+	return;
+
+BS_error:
+	exec sql whenever sqlerror continue;
+
+	if( RISlod_mode == EMBED )
+	{
+		/* Assuming that this stmt is not executed on a server */
+		*RISlod_general_err = risca->sqlcode;
+	}
+	else
+	{
+		exec sql report error into :err_ptr;
+#if !defined(ULD_DLL)
+		PUTS(err_ptr);
+#endif
+	}
+	TERMINATE_RISLOAD
+
+	LOD_DBG(("2. RISlod_blankstrip_mode: End\n"));
+	return;
+}
+
+
+extern void RISlod_str_to_low(
+	char    *str)
+{
+
+    for(;*str != '\0';)
+    {
+        if (RIScom_isupper(*str))
+		{
+        	*str = RIScom_tolower(*str);
+		}
+        str++;
+    }
+}
+
+
+extern char	*RISlod_skip_space(
+	char	*str)
+{
+
+	for(;;str++)
+	{
+		if ((! RIScom_isspace(*str)) || (*str == '\0')) return(str);
+	}
+}
+
+
+extern char	*RISlod_reverse_skip_space(
+	char	*str)
+{
+
+	for(;;str--)
+	{
+		if ((! RIScom_isspace(*str)) || (*str == '\0')) return(str);
+	}
+}
+
+		
+extern char	*RISlod_skip_char(
+	char	*str)
+{
+
+	for(;;str++)
+	{
+		if (RIScom_isspace(*str) || (*str == '\0')) return(str);
+	}
+}
+
+
+extern char	*RISlod_reverse_skip_char(
+	char	*str)
+{
+
+	for(;;str--)
+	{
+		if (RIScom_isspace(*str) || (*str == '\0')) return(str);
+	}
+}
+
+
+/*
+** Opening log and bad file for INTERACTIVE mode
+*/
+extern FILE *RISlod_interactive_open_file(
+	char 	file_type,
+	char	*fname)
+{
+	char mode[2];
+#if defined(WIN32)
+	struct _stat status;
+#else
+	struct stat status;
+#endif
+	FILE 	*fp = (FILE *) NULL;
+
+	switch( RISlod_filemode )
+	{
+		case 'w':
+		case 'a':
+			mode[0] = RISlod_filemode;
+			mode[1] = '\0';
+			fp = RIScom_fopen(fname,mode);
+			if( !fp )
+			{
+				if( file_type == 'l' )
+				{
+					RISlod_fatal_err_handler(RISUTL_E_CANT_OPEN_LOG_FILE, FALSE);
+				}
+				else if( file_type == 'b' )
+				{
+					RISlod_fatal_err_handler(RISUTL_E_CANT_OPEN_BAD_FILE, FALSE);
+				}
+				else if( file_type == 'm' )
+				{
+					RISlod_fatal_err_handler(RISUTL_E_CANT_OPEN_INPUT_FILE, FALSE);
+				}
+				else if( file_type == 'd' )
+				{
+					RISlod_fatal_err_handler(RISUTL_E_CANT_OPEN_DATA_FILE, FALSE);
+				}
+				else if( file_type == 's' )
+				{
+					RISlod_fatal_err_handler(RISUTL_E_CANT_OPEN_SPEC_FILE, FALSE);
+				}
+				else if( file_type == 't' )
+				{
+					RISlod_fatal_err_handler(RISUTL_E_CANT_OPEN_TEMP_FILE, FALSE);
+				}
+			}
+			break;
+		case 'e':
+			if( RIScom_stat(fname, &status) == -1 )
+			{
+				fp = RIScom_fopen(fname,"w");
+			}
+			else
+			{
+				if( file_type == 'l' )
+					RISlod_fatal_err_handler(RISUTL_E_LOG_FILE_EXISTS, FALSE);
+				else if( file_type == 'b' )
+					RISlod_fatal_err_handler(RISUTL_E_BAD_FILE_EXISTS, FALSE);
+			}
+			break;
+		default :
+			RISlod_parse_err_handler(RISUTL_E_ILLEGAL_FILE_MODE);
+			TERMINATE_RISLOAD
+			
+	}
+	return(fp);
+}
+
+/*
+** Opening log and bad file for COMMAND LINE mode
+*/
+extern FILE *RISlod_batch_file_check(
+		char	file_type,
+		char	*fname)
+{
+	char mode[2];
+#if defined(WIN32)
+	struct _stat status;
+#else
+	struct stat status;
+#endif
+	FILE 	*fp = (FILE *) NULL;
+	
+	LOD_DBG(("RISlod_batch_file_check: file_type <%c> fname <%s>\n",file_type,fname));
+	switch( RISlod_filemode )
+	{
+		case 'w':
+		case 'a':
+			mode[0] = RISlod_filemode;
+			mode[1] = '\0';
+			fp = RIScom_fopen(fname,mode);
+			if( file_type == 'l' )
+			{
+				CHK_OPEN_FILE_ERR(fp, RISUTL_E_CANT_OPEN_LOG_FILE)
+			}
+			else if( file_type == 'b' )
+			{
+				CHK_OPEN_FILE_ERR(fp, RISUTL_E_CANT_OPEN_BAD_FILE)
+			}
+			break;
+		case 'e':
+			if( RIScom_stat(fname,&status) == -1 )
+			{
+				fp = RIScom_fopen(fname,"w");
+				if( file_type == 'l' )
+				{
+					CHK_OPEN_FILE_ERR(fp, RISUTL_E_CANT_OPEN_LOG_FILE)
+				}
+				else if( file_type == 'b' )
+				{
+					CHK_OPEN_FILE_ERR(fp, RISUTL_E_CANT_OPEN_BAD_FILE)
+				}
+			}
+			else
+			{
+				if( file_type == 'l' )
+					RISlod_fatal_err_handler(RISUTL_E_LOG_FILE_EXISTS, FALSE);
+				else if( file_type == 'b' )
+					RISlod_fatal_err_handler(RISUTL_E_BAD_FILE_EXISTS, FALSE);
+				TERMINATE_RISLOAD
+			}
+			break;
+		default :
+			RISlod_fatal_err_handler(RISUTL_E_ILLEGAL_FILE_MODE, FALSE);
+			TERMINATE_RISLOAD
+			
+	}
+	LOD_DBG(("1. RISlod_batch_file_check: end\n"));
+	return(fp);
+}
+
+extern FILE	*RISlod_batch_open_file(
+	char	file_type,
+	char	*token_buf)
+{
+	FILE	*fp = (FILE *) NULL;
+	FILE	*RIScom_fopen();
+
+	LOD_DBG(("RISlod_batch_open_file: file_type <%c> fname <%s>\n",file_type,token_buf));
+
+	if (file_type == 'm')	
+	{
+		fp = RIScom_fopen(token_buf, "r");
+		CHK_OPEN_FILE_ERR(fp, RISUTL_E_CANT_OPEN_INPUT_FILE)
+	}
+	if (file_type == 'd')	
+	{
+		fp = RIScom_fopen(token_buf, "r");
+		CHK_OPEN_FILE_ERR(fp, RISUTL_E_CANT_OPEN_DATA_FILE)
+	}
+	if (file_type == 'l' || file_type == 'b')
+	{
+		fp = RISlod_batch_file_check(file_type, token_buf);
+	}
+	if (file_type == 't')
+	{
+		fp = RIScom_fopen(token_buf, "w+");
+		CHK_OPEN_FILE_ERR(fp, RISUTL_E_CANT_OPEN_TEMP_FILE)
+	}
+	if (file_type == 's')
+	{
+		fp = RIScom_fopen(token_buf, "r");
+		CHK_OPEN_FILE_ERR(fp, RISUTL_E_CANT_OPEN_SPEC_FILE)
+	}
+	LOD_DBG(("1. RISlod_batch_open_file: end\n"));
+	return(fp);
+}
+
+extern void RISlod_close_files()
+{
+	RIScom_fclose(RISlod_in_fp);
+	RIScom_fclose(RISlod_log_fp);
+	RIScom_fclose(RISlod_bad_fp);
+	LOD_DBG(("RISlod_close_file\n"));
+}
+
+extern void RISlod_strip_off_dflt(
+	char		*dflt_sch,
+	char		*rel_spec1,
+	char		*rel_spec2)
+{
+
+	char	*period;
+
+	LOD_DBG(("RISlod_strip_off_dflt: dflt_sch <%s> rel_spec1 <%s> rel_spec2 <%s>\n",
+					dflt_sch, rel_spec1, rel_spec2));
+
+	if ((period = strchr(rel_spec1, '.')) == NULL)
+	{
+		strcpy(rel_spec2, rel_spec1);
+	}
+	else
+	{
+		*period = '\0';
+		if (strcmp(rel_spec1, dflt_sch))
+		{
+			*period = '.';
+			strcpy(rel_spec2, rel_spec1);
+		}
+		else
+		{
+			strcpy(rel_spec2, period + 1);
+		}
+	}
+
+	LOD_DBG(("1. RISlod_strip_off_dflt: end"));
+}
+
+
+extern void RISlod_prnt_word(
+	char	*ptr)
+{
+#if !defined(ULD_DLL)
+	for (; (! RIScom_isspace(*ptr)) && (*ptr != '\0'); ptr++)
+		PUTCHAR(*ptr);
+#endif
+}
+
+extern int RISlod_separate_gtor_rel(
+	char	*sch_rel_name,
+	char	*original_gtor,
+	char	*rel_name)
+{
+
+	char	*period;
+
+	LOD_DBG(("RISlod_separate_gtor_rel: sch_rel_name <%s> original_gtor <%s> rel_name <%s>\n",
+						sch_rel_name, original_gtor, rel_name));
+
+	if ((period = strchr(sch_rel_name, '.')) != NULL)
+	{
+		if ((period - sch_rel_name) >= RIS_MAX_ID_SIZE)
+		{
+			if( RISlod_mode == EMBED )
+				*RISlod_general_err = RISUTL_E_INVALID_ID_SIZE;
+
+			LOD_DBG(("1. RISlod_separate_gtor_rel: end"));
+			return(FAILURE);
+		}
+
+		*period = '\0';
+
+		if (strlen(period + 1) >= RIS_MAX_ID_SIZE)
+		{
+			*period = '.';
+
+			if( RISlod_mode == EMBED )
+				*RISlod_general_err = RISUTL_E_INVALID_ID_SIZE;
+
+			LOD_DBG(("2. RISlod_separate_gtor_rel: end"));
+			return(FAILURE);
+		}
+
+		strcpy(original_gtor, sch_rel_name);
+		strcpy(rel_name, (period + 1));
+		*period = '.';
+	}
+	else
+	{
+		original_gtor[0] = '\0';
+
+		if (strlen(sch_rel_name) >= RIS_MAX_ID_SIZE)
+		{
+			if( RISlod_mode == EMBED )
+				*RISlod_general_err = RISUTL_E_INVALID_ID_SIZE;
+
+			LOD_DBG(("3. RISlod_separate_gtor_rel: end"));
+			return(FAILURE);
+		}
+
+		strcpy(rel_name, sch_rel_name);
+	}
+
+	LOD_DBG(("4. RISlod_separate_gtor_rel: end"));
+	return(SUCCESS);
+}
+
+extern void RISlod_pri_batch_struct(
+	int (*output_func)(const char *, ...))
+{
+	batch_snode_type	*bsnode_ptr;
+	batch_tnode_type	*btnode_ptr;
+	batch_inode_type	*binode_ptr;
+	batch_vnode_type	*bvnode_ptr;
+	batch_gnode_type	*bgnode_ptr;
+
+	output_func("== Global information == \n");
+	output_func("mainfile: %s\n", RISlod_mfile);
+	output_func("logfile: %s\n",  RISlod_lfile);
+	output_func("badfile: %s\n",  RISlod_bfile);
+	output_func("delimiter: %c\n",RISlod_delimiter);
+	output_func("commit: %d\n",   RISlod_commit_interval);
+	output_func("err_buf: %s\n",   RISlod_err_buf);
+
+	for (bsnode_ptr = RISlod_ptr_struct_ptr->bshnode_ptr; 
+				bsnode_ptr != NULL; 
+						bsnode_ptr = bsnode_ptr->bslink)	
+	{
+		output_func(".bsnode = %d\n", bsnode_ptr);
+		output_func(".sch_name = <%s>\n", bsnode_ptr->sch_name);
+		output_func(".num_sch_pwd = %d\n", bsnode_ptr->num_sch_pwd);
+		output_func(".new_sch_name = <%s>\n", bsnode_ptr->new_sch_name);
+		output_func(".lnd_err = %ld\n", bsnode_ptr->lnd_err_code);
+		output_func(".ris_err = %ld\n", bsnode_ptr->ris_err_code);
+		output_func(".db_err  = %ld\n", bsnode_ptr->db_err_code);
+
+		output_func("..bthnode = %d\n", bsnode_ptr->bthlink);
+		output_func("..tab_select = <%c>\n", bsnode_ptr->bthlink->tab_select);
+		output_func("..def_data_select = %d\n", bsnode_ptr->bthlink->def_data_select);
+		output_func("..exist_tab_select = %d\n", bsnode_ptr->bthlink->exist_tab_select);
+		output_func("..clear_tab_select = %d\n", bsnode_ptr->bthlink->clear_tab_select);
+		for (btnode_ptr = bsnode_ptr->bthlink->btlink;
+					btnode_ptr != NULL;
+							btnode_ptr = btnode_ptr->btlink)
+		{
+			output_func("...btnode = %d\n", btnode_ptr);
+			output_func("...tab_name = <%s>\n", btnode_ptr->tab_name);
+			output_func("...lnd_err = %ld\n", btnode_ptr->lnd_err_code);
+			output_func("...ris_err = %ld\n", btnode_ptr->ris_err_code);
+			output_func("...db_err = %ld\n", btnode_ptr->db_err_code);
+		}
+
+		output_func("..bihnode = %d\n", bsnode_ptr->bihlink);
+		output_func("..indx_select = <%c>\n", bsnode_ptr->bihlink->indx_select);
+		for (binode_ptr = bsnode_ptr->bihlink->bilink;
+					binode_ptr != NULL;
+							binode_ptr = binode_ptr->bilink)
+		{
+			output_func("...binode = %d\n", binode_ptr);
+			output_func("...indx_tab = <%s>\n", binode_ptr->indx_tab);
+		}
+
+		output_func("..bvhnode = %d\n", bsnode_ptr->bvhlink);
+		output_func("..view_select = <%c>\n", bsnode_ptr->bvhlink->view_select);
+		for (bvnode_ptr = bsnode_ptr->bvhlink->bvlink;
+					bvnode_ptr != NULL;
+							bvnode_ptr = bvnode_ptr->bvlink)
+		{
+			output_func("...bvnode = %d\n", bvnode_ptr);
+			output_func("...view_name = <%s>\n", bvnode_ptr->view_name);
+			output_func("...lnd_err = %ld\n", bvnode_ptr->lnd_err_code);
+			output_func("...ris_err = %ld\n", bvnode_ptr->ris_err_code);
+			output_func("...db_err  = %ld\n", bvnode_ptr->db_err_code);
+		}
+
+		output_func("..bghnode = %d\n", bsnode_ptr->bghlink);
+		output_func("..grant_select = <%c>\n", bsnode_ptr->bghlink->grant_select);
+		for (bgnode_ptr = bsnode_ptr->bghlink->bglink;
+					bgnode_ptr != NULL;
+							bgnode_ptr = bgnode_ptr->bglink)
+		{
+			output_func("...bgnode = %d\n", bgnode_ptr);
+			output_func("...rel_spec = <%s>\n", bgnode_ptr->rel_spec);
+		}
+	}
+}
+
+extern void RISlod_strip_newline(
+	char *buffer)
+{
+	char *ptr;
+
+	if ((ptr = strchr(buffer,'\n')) != NULL)
+	{
+		*ptr = '\0';	
+	}
+}
+
+extern void RISlod_display_error()
+{
+	exec sql begin declare section;
+		char	*err_ptr;
+	exec sql end declare section;
+	
+	exec sql report error into :err_ptr;
+#if !defined(ULD_DLL)
+	PUTS(err_ptr);
+#endif
+}
+
+extern int * RISAPI RISXlod_get_RISlod_debug_addr()
+{
+	return &RISlod_debug;
+}

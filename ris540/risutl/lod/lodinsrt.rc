@@ -1,0 +1,210 @@
+/* Do not alter this SPC information: $Revision: 1.2.13.1 $ */
+/*
+**	NAME:				lodinsrt.rc									
+**	AUTHORS:			Jennifer Xia			
+**	CREATION DATE:		June 26, 1990			
+**	ABSTRACT:			It contains a function which processes insert into
+**						statement. It also contains two other functions which
+**						hide the statement identifier of insert into statement.
+**	REVISION HISTORY:	August 6th, 1991 Hitesh Patel
+*/
+ 
+/*
+**	DEFINES
+*/
+
+/*
+**	INCLUDES
+*/
+#if defined(WIN32S) && defined(ULD_EXE)
+#include <windows.h>
+#include <windowsx.h>
+#include "winport.h"
+#include "winio.h"
+#include "winhan.h"
+#include "risutl.h"
+#include "prog32s.h"
+#endif 
+
+#ifdef MM
+#include "lod.h"
+#endif
+
+exec sql include "lod.h";
+
+/*
+**	VARIABLES
+*/
+
+/*
+**	FUNCTIONS
+*/
+
+/*
+**      FUNCTION PROTOTYPES
+*/
+#define lodinsrt_rc
+#include "sys.prt"
+#include "comjmp.prt"
+#include "comdebug.prt"
+#include "comumsg.prt"
+#include "ris.prt"
+#include "lodmisc.prt"
+#include "lodermsg.prt"
+#include "lodgtstm.prt"
+#include "lodinsrt.prt"
+#include "lodlogdp.prt"
+#include "lodstfld.prt"
+#include "lodtime.prt"
+#include "ucoerrbx.prt"
+
+
+/* Returns SUCCESS, FAILURE, END_OF_TABLE, or END_OF_SCHEMA */
+extern int RISlod_proc_insert_into(
+	char		*tab_name,
+	field_type	*field_defs)
+{
+
+	int		stmt_type;
+	int		col_indx;
+
+	exec sql begin declare section;
+		char	*err_ptr;
+	exec sql end declare section;
+
+	LOD_DBG(("RISlod_proc_insert_into: tab_name <%s> field_defs 0x%x \n",
+						tab_name, field_defs));
+
+	RISlod_insert_stmt_spot = ftell(RISlod_in_fp);
+	stmt_type = RISlod_get_insert_into(tab_name);
+	RISlod_current_stmt_spot = ftell(RISlod_in_fp);
+
+	if (stmt_type == END_OF_TABLE)
+	{
+		/*
+		** THIS COULD BE NO_ROWS_FOUND instead
+		*/
+		RISlod_print_msg(MSG(RISUTL_E_NO_ROWS_LOADED));
+		LOD_DBG(("1. RISlod_proc_insert_into: end"));
+		return(stmt_type);
+	}
+
+	if (stmt_type == END_OF_SCHEMA)
+	{
+		RISlod_load_err_handler(RISUTL_E_END_SCH_PROCESS_INSERT,RISlod_sql_stmt); 
+		if( RISlod_mode == EMBED )
+			RISlod_ptr_struct_ptr->btnode_ptr->lnd_err_code = RISUTL_E_END_SCH_PROCESS_INSERT;
+
+		LOD_DBG(("2. RISlod_proc_insert_into: end"));
+		return(stmt_type);
+	}
+
+	if (stmt_type == FAILURE)
+	{
+		RISlod_dump_partial_tab(TRUE,FALSE,FALSE);
+		RISlod_load_err_handler(RISUTL_E_SYNTAX_ERROR_INSERT,RISlod_sql_stmt);
+		if( RISlod_mode == EMBED )
+			RISlod_ptr_struct_ptr->btnode_ptr->lnd_err_code = RISUTL_E_SYNTAX_ERROR_INSERT;
+
+		RISlod_dump_tab_info(RISlod_sql_stmt);
+
+		LOD_DBG(("3. RISlod_proc_insert_into: end"));
+		return(FAILURE);
+	}
+
+	LOD_DBG(("The insert into statement is <%s>\n", RISlod_sql_stmt));
+
+	exec sql whenever sqlerror goto :GIS_error;
+
+	exec sql prepare insert_into from :RISlod_sql_stmt;
+
+	LOD_WARNING_CHECK(RISlod_ptr_struct_ptr->btnode_ptr->sqlwarnings);
+	RISlod_in_desc.sqld = 0;
+	RISlod_in_desc.sqln = 0;
+	RISlod_in_desc.sqlvar = 0;
+
+	exec sql describe input insert_into using descriptor RISlod_in_desc;
+
+	LOD_WARNING_CHECK(RISlod_ptr_struct_ptr->btnode_ptr->sqlwarnings);
+
+	RISlod_in_desc.sqlvar = (sqlvar *) calloc(RISlod_in_desc.sqld, sizeof(sqlvar));
+	CHK_MEM_ALLOC_ERR(RISlod_in_desc.sqlvar)
+
+	RISlod_in_desc.sqln = RISlod_in_desc.sqld;
+	exec sql describe input insert_into using descriptor RISlod_in_desc;
+
+	LOD_WARNING_CHECK(RISlod_ptr_struct_ptr->btnode_ptr->sqlwarnings);
+
+	for (col_indx = 0; col_indx < RISlod_in_desc.sqld; col_indx++)
+	{
+		LOD_DBG(("size of column(%d) = %d\n", col_indx,
+				 RISlod_in_desc.sqlvar[col_indx].sqllen));
+
+		RISlod_in_desc.sqlvar[col_indx].sqldata =
+			calloc (RISlod_in_desc.sqlvar[col_indx].sqllen, sizeof(char));
+		CHK_MEM_ALLOC_ERR(RISlod_in_desc.sqlvar[col_indx].sqldata)
+
+		RISlod_in_desc.sqlvar[col_indx].sqlind =
+			(long *) calloc (1, sizeof(long));
+		CHK_MEM_ALLOC_ERR(RISlod_in_desc.sqlvar[col_indx].sqlind)
+	}
+
+	/*
+	**	Fill up global struct "field_defs" with the col_name(s) and its type.
+	**	Get this info from create table stmt.
+	**	start, end and format fields will be set later on after reading the
+	**	field definition.
+	*/
+	RISlod_set_col_info(field_defs);
+
+	if (RISlod_debug)
+	{
+		for (col_indx = 0; col_indx < RISlod_in_desc.sqld; col_indx++)
+		{
+			RIScom_output_debug("field_defs[%d].col_name = <%s>\n", col_indx, field_defs[col_indx].col_name);
+			RIScom_output_debug("field_defs[%d].start = %d\n", col_indx, field_defs[col_indx].start);
+			RIScom_output_debug("field_defs[%d].end = %d\n", col_indx, field_defs[col_indx].end);
+			RIScom_output_debug("field_defs[%d].col_type = %hd\n", col_indx, field_defs[col_indx].col_type);
+			RIScom_output_debug("field_defs[%d].format = %hd\n", col_indx, field_defs[col_indx].format);
+		}
+	}
+
+	LOD_DBG(("5. RISlod_proc_insert_into: end"));
+	return(SUCCESS);
+
+GIS_error:
+	exec sql whenever sqlerror continue;
+	exec sql report error into :err_ptr;
+
+	if( RISlod_mode == EMBED )
+	{
+		RISlod_ptr_struct_ptr->btnode_ptr->ris_err_code = risca->sqlcode;
+		RISlod_ptr_struct_ptr->btnode_ptr->db_err_code = dbca->sqlcode;
+	}
+	else
+#if !defined(ULD_DLL)
+		PUTS(err_ptr);
+#endif
+	RISlod_dump_partial_tab(TRUE,FALSE,FALSE);
+	RISlod_dump_to_bad_with_err(RISlod_sql_stmt);
+	RISlod_dump_tab_info(RISlod_sql_stmt);
+
+	LOD_DBG(("6. RISlod_proc_insert_into: end"));
+	return(FAILURE);
+}
+
+
+extern void RISlod_exec_insert_into()
+{
+	exec sql execute insert_into using descriptor RISlod_in_desc;
+
+	LOD_WARNING_CHECK(RISlod_ptr_struct_ptr->btnode_ptr->sqlwarnings);
+}
+
+
+extern void RISlod_clear_insert_into()
+{
+	exec sql clear insert_into;
+
+	LOD_WARNING_CHECK(RISlod_ptr_struct_ptr->btnode_ptr->sqlwarnings);
+}
