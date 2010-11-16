@@ -8,6 +8,5 @@ makeimp: imp.m
 	grmakemake imp.m makeimp
 
 clean:
-	@rm -f makespec makeimp *.o *.c
-	@svn update
+	@rm -f makespec makeimp *.o ASemsdrawing.c EMSbcstubs.c EMScvstubs.c
 

@@ -11,8 +11,8 @@ EMScvstubs.I
 /* COcvtype8788.I ah */
 /* RASTERstubs.c  ah */
 EMgetacdtm.c
-FIconfbox.c
-FIfsetorig.c
+/* FIconfbox.c   ah back in xfi */
+/* FIfsetorig.c  ah back in xfi */
 ASemsdrawing.I
 
 SPEC
