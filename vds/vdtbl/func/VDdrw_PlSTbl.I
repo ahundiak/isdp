@@ -1,4 +1,4 @@
-/* $Id: VDdrw_PlSTbl.I,v 1.24 2001/07/17 15:44:08 ylong Exp $  */
+/* $Id: VDdrw_PlSTbl.I,v 1.24.4.1 2003/05/12 19:29:09 ylong Exp $  */
 
 /* I/VDS
  * -------------------------------------------------------------------------
@@ -125,6 +125,7 @@ IGRstat VDdrw_getSelectList(struct ACrg_coll *rg_list,TGRid *rootNode,IGRchar *n
   {
     status = vd$trget_nodes( nodeID     = rootNode,
                              lookupType = VDTR_FIND_CHILD_NODE,
+			     frozen     = 1,
                              outID      = nodeList,
                              cnt        = nodeCnt ) ;
     
@@ -150,6 +151,7 @@ IGRstat VDdrw_getSelectList(struct ACrg_coll *rg_list,TGRid *rootNode,IGRchar *n
         status = vd$trget_nodes( nodeID     = rootNode,
                                  nodeType   = indexType,
                                  lookupType = VDTR_FIND_ALL_NODE,
+			         frozen     = 1,
                                  outID      = nodeList,
                                  cnt 	  = nodeCnt ) ;
       }
@@ -161,6 +163,7 @@ IGRstat VDdrw_getSelectList(struct ACrg_coll *rg_list,TGRid *rootNode,IGRchar *n
     {
       status = vd$trget_nodes( nodeID     = rootNode,
                                lookupType = VDTR_FIND_ALL_NODE,
+			       frozen     = 1,
 			       outID      = &tmpNodeList,
                                cnt 	  = &tmpNodeCount ) ;
 
