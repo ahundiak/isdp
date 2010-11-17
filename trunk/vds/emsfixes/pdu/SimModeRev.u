@@ -1,0 +1,156 @@
+/* $Id: SimModeRev.u,v 1.1.2.5 2003/05/06 15:55:30 anand Exp $  */
+
+/***************************************************************************
+ * I/VDS					vim600: fdm=indent
+ *
+ * File:	emsfixes/pdu/PduQryViaVDS.c
+ *
+ * Description:
+ *
+ * Dependencies:
+ *
+ * BELOW CODE IMPLIES DEPENDENCY ON VDS.  PDM/PDU FUNCTIONALITY THAT
+ * CALLS BELOW CODE MAY BE DELIVERED ONLY IN emsfixes/pdu OF ISDP.
+ *	
+ *
+ * History:
+ *   MM/DD/YY	AUTHOR	DESCRIPTION
+ *
+ *   26 Aug 02	Anand	Creation (motivation CRs 5913 & 5914)
+ *   30 Aug 02	Anand	Minor fixes for CRs 5913 and 5914.
+ *    6 Sep 02	Anand	Minor bug fixes.  Simulate carriage-return in New
+ *			Revision field; check for query returning null-string
+ *			despite being successful.
+ *    9 Sep 02	Anand	CR 5914. Archive must use existing part's revision
+ *			number, not the Current Highest revision.
+ *    6 May 03	Anand	CR 7592 (Archive nos start at 0 not 1).
+ *
+ ***************************************************************************/
+
+#include "VDppl.h"
+#include "VDrisc.h"
+#include "v_dbgmacros.h"
+
+char *catalog;
+char *itemname;
+int   nOldRevNum;
+char szNewRevNum[256];
+
+int GetCurrHighRev( nDBCurHiRev )
+    int *nDBCurHiRev;
+{
+    IGRint	i, status;
+    TVDrisInfo	ris;
+
+    SetProc( GetCurrHighRev ); Begin
+
+    sprintf( ris.sql,
+	 "select n_itemrev from %s where n_itemname='%s' and n_itemrev < 'A'",
+	     catalog, itemname );
+
+    status = VDrisQuery( &ris, NULL );
+    if( status == 0 || ris.rows < 1 )
+    {
+	*nDBCurHiRev = 0;
+	__CheckSTS( status, "Query to get revision numbers failed", wrapup );
+    }
+    else
+    {
+	/* Convert the string returned from DB query to number */
+	*nDBCurHiRev = atoi( ris.buf[0] );
+
+	for( i=1 ; i<ris.rows ; i=i+1 )
+	    if( *nDBCurHiRev < atoi( ris.buf[i] ) )
+		*nDBCurHiRev = atoi( ris.buf[i] );
+    }
+    __DBGpr_int("Current highest revision",*nDBCurHiRev);
+
+    End
+wrapup:
+    return status;
+}
+
+	 /**************************************************************
+	  * This will return the string to be used for a new revision  *
+	  * (currently implemented as one over the current highest     *
+	  * revision padded with zeros to be a three character string).*
+	  **************************************************************/
+SimModeNewRevision()
+{
+    IGRint	status;
+    TVDrisInfo	ris;
+
+    SetProc( SimModeNewRevision ); Begin;
+
+    nOldRevNum = -1;
+    szNewRevNum[0] = '\0';
+
+    /* Query from Database to find current highest revision */
+    status = GetCurrHighRev( &nOldRevNum );
+
+    if( status )
+    {
+	/* Increment by one and format to string with 3 digits */
+	nOldRevNum = nOldRevNum + 1;
+	sprintf( szNewRevNum, "%.3d", nOldRevNum );
+    }
+    else
+	strcpy(szNewRevNum,"Query failed!");
+
+    __DBGpr_str("New revision string",szNewRevNum);
+
+    End
+    return 1;
+}
+
+     /************************************************************************
+      * This will return the string to be used for a new archive (currently  *
+      * implemented to return a string of the format W###-A@@@ where, ### is *
+      * one more than the current highest revision left-padded with zeros to *
+      * be a three character string, and @@@ is one more than the most recent*
+      * archive stored with a revision number in the format W###-A@@@).      *
+      ************************************************************************/
+SimModeNewArchive()
+{
+    IGRint	status, nCurHiArc;
+    TVDrisInfo	ris;
+
+    SetProc( SimModeNewArchive); Begin
+
+    nCurHiArc = -1;
+    szNewRevNum[0] = '\0';
+
+    /* Revision number sent as input from form-handler.
+     * Ensure leading zeros padded for 3 digits in all */
+    sprintf( szNewRevNum, "%.3d", nOldRevNum );
+    __DBGpr_str("Existing part's revision",szNewRevNum);
+
+    /* Query from Database again to find string with format W###-A### */
+    sprintf( ris.sql,
+"select max(n_itemrev) from %s where n_itemname='%s' and n_itemrev like 'W%s-A%%'",
+	     catalog, itemname, szNewRevNum );
+
+    __DBGpr_str("SQL query for archives",ris.sql);
+    status = VDrisQuery( &ris, NULL );
+
+    /* Increment archive number */
+    if( status  && ris.rows == 1 && strlen(ris.buf[0]) )
+    {
+	__DBGpr_str("SQL result",ris.buf[0]);
+	sscanf( ris.buf[0], "W%d-A%d", &nOldRevNum, &nCurHiArc );
+	__DBGpr_int(" Current Highest revision",nOldRevNum);
+	nCurHiArc = nCurHiArc + 1;
+	__DBGpr_int(" Current Highest archive",nCurHiArc);
+	sprintf( szNewRevNum, "W%.3d-A%.3d", nOldRevNum, nCurHiArc );
+    }
+    else
+    {
+	/* For CR 7592.  Change from A001 to A000. */
+	sprintf( szNewRevNum, "W%.3d-A000", nOldRevNum );
+    }
+
+    __DBGpr_str("New archive string",szNewRevNum);
+
+    End
+    return 1;
+}

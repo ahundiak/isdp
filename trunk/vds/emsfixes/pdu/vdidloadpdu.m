@@ -62,16 +62,6 @@
 
 SOURCE
 #if ISDP_MAKE_SP
-PDUlf_form.C
-PDUdsgn_frm.c
-PDUmcf_list.C
-PDUpart_form.c
-PDUstate_frm.C
-VDaimStubs.c
-PDUverify.c
-PDUchg_part.c
-PDUadd_part.c
-PDUvd_refresh.c
 #else
 PDUbuffers.c	/* Combined & stripped 2 files : PDUbuffers.c & PDUdsp_att.c */
 PMdlprto.I
@@ -86,6 +76,7 @@ PDUverify.c
 PDUchg_part.c
 PDUadd_part.c
 PDUvd_refresh.c
+PDUhull_app.c
 #endif
 
 SPEC

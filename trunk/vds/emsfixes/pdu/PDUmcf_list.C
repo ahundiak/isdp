@@ -1,4 +1,4 @@
-/* $Id: PDUmcf_list.C,v 1.1 2001/09/07 18:30:59 jdsauby Exp $ */
+/* $Id: PDUmcf_list.C,v 1.1.4.2 2004/03/29 16:29:22 ahundiak Exp $ */
 /* -------------------------------------------------------------------
  * I/VDS
  *
@@ -10,6 +10,12 @@
  *
  * Revision History:
  *       $Log: PDUmcf_list.C,v $
+ *       Revision 1.1.4.2  2004/03/29 16:29:22  ahundiak
+ *       ah
+ *
+ *       Revision 1.1.4.1  2002/09/12 13:54:35  ahundiak
+ *       ah
+ *
  *       Revision 1.1  2001/09/07 18:30:59  jdsauby
  *       Final Checkin for AIM / PDU integration  - jds
  *
@@ -23,8 +29,9 @@
  *
  *
  * History:
- *       MM/DD/YY        AUTHOR          DESCRIPTION
- *       08/15/01	 js		 AIM integration
+ * MM/DD/YY  AUTHOR  DESCRIPTION
+ * 08/15/01  js	     AIM integration
+ * 10/12/02  ah      TR6809 Crash when using the retrieve F2 form
  * -------------------------------------------------------------------------*/
 
 
@@ -96,10 +103,10 @@ extern struct PDUrefresh        *refresh;
 extern int CheckAllowed();
 
 int mcf_list_notification_routine ( f_label, g_label, value, fp )
-  IGRint     f_label;       /* The label of the form   */
-  IGRint     g_label;       /* The label of the gadget */
-  IGRdouble  value;         /* The value of the gadget */
-  Form       fp;            /* Pointer to the form     */
+  int      f_label;       /* The label of the form   */
+  int      g_label;       /* The label of the gadget */
+IGRdouble  value;         /* The value of the gadget */
+  Form     fp;            /* Pointer to the form     */
 {
   int             status = PDM_S_SUCCESS;
 
@@ -108,8 +115,13 @@ int mcf_list_notification_routine ( f_label, g_label, value, fp )
   int   mcf_select = FALSE, response;
   char state[20], response_data[50];
 
+/* ----------------------------------------------
+ * TR6809 - ah
+ * These don't seem to be used and they end up
+ * causing a crash
+ *
   static char *text1, *text2, *text3;
-
+ */
   fp = forms.mcf_list_form_id;
   _pdm_debug("in mcf_list_notification_routine", 0);
 
@@ -169,11 +181,19 @@ int mcf_list_notification_routine ( f_label, g_label, value, fp )
 
     case FI_ACCEPT:     
 
+/* Seems like a good idea */
+num_rows = 0;
+*state = 0;
 
          /*printf("\nFI_ACCEPTING cat %s, part %s, rev %s",
             refresh->rev_catalog, refresh->rev_partid, refresh->rev_revision);*/
          FIfld_get_num_rows(forms.mcf_list_form_id, MCF_LIST, &num_rows);
-         __DBGpr_int("nos", num_rows);
+/* ----------------------------------------------
+ * 25 Feb 04 - Art
+ * For some unknown reason, this debug statement started
+ * crashing when setting up the lhar stuff
+ */
+         //__DBGpr_int("nos", num_rows);
          for(row = 0; row < num_rows; row++)
          {
            FIfld_get_select(forms.mcf_list_form_id, MCF_LIST,
@@ -298,7 +318,18 @@ int mcf_list_notification_routine ( f_label, g_label, value, fp )
                //                                &PDU_ret_bufr);
            // break;
            // }
-	    
+
+/* ----------------------------------------------
+ * TR6809 - ah
+ * My guess is that this code was some old debugging code
+ * The extracted fields don't seem to be used anywhere
+ * The problem is that when this form pops up before the user
+ * has brought up the local forms (i.e. the PDM Utilities) form
+ * it crashes because the form does not exist yet.
+ *
+ * So just comment out this entire section
+ */
+#if 0	    
 
 	FIfld_get_text_length(forms.local_files_form_id, CATALOG_FLD, 0, 0,
 	&length);
@@ -331,7 +362,7 @@ int mcf_list_notification_routine ( f_label, g_label, value, fp )
 	 FIfld_get_text(forms.mcf_list_form_id, MCF_LIST, row, 1, length,
 	               (unsigned char *)text3, &select, &pos);
 
-
+#endif
 
 if (end_move_to_state_btn_flag == FALSE)
   

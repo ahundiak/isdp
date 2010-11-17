@@ -1,4 +1,4 @@
-/* $Id: PDUpart_form.c,v 1.7 2002/05/14 15:06:35 jdsauby Exp $ */
+/* $Id: PDUpart_form.c,v 1.7.2.5 2002/12/03 21:34:02 anand Exp $ */
 /* -------------------------------------------------------------------
  * I/VDS
  *
@@ -10,6 +10,26 @@
  *
  * Revision History:
  *       $Log: PDUpart_form.c,v $
+ *       Revision 1.7.2.5  2002/12/03 21:34:02  anand
+ *       Crash on CR 5913 (In PDU, don't use strcpy; rather use
+ *       PDUfill_in_string or PDUfill_in_string1).  TRs for tracking
+ *       are TR 7229 and TR 7230.
+ *
+ *       Revision 1.7.2.4  2002/09/09 15:40:16  anand
+ *       CR 5914. Archive must use existing part's revision number,
+ *       not the Current Highest revision.
+ *
+ *       Revision 1.7.2.3  2002/09/06 20:18:41  anand
+ *       Minor bug fixes.  Simulate carriage-return in New Revision
+ *       field;  check for query returning null-string despite being
+ *       successful.
+ *
+ *       Revision 1.7.2.2  2002/08/30 20:46:30  anand
+ *       Minor fixes for CRs 5913 and 5914.
+ *
+ *       Revision 1.7.2.1  2002/08/26 19:19:21  anand
+ *       For CRs 5913 and 5914.
+ *
  *       Revision 1.7  2002/05/14 15:06:35  jdsauby
  *       JTS TR MP6350.
  *
@@ -44,10 +64,10 @@
 
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <FI.h>
 #include <tools.h>
-
 #include "PDUintdef.h"
 #include "MEMstruct.h"
 #include "MEMerrordef.h"
@@ -67,10 +87,14 @@
 #include <PDMproto.h>
 //#include "vadbgmacros.h"
 
-typedef int    IGRint;
-typedef double IGRdouble;
-
 /* The #DEFINES for the gadgets on this form are in part_gadgets.h */
+/* The below three #DEFINES added by Anand for CRs 5913 and 5914 (like the
+ * above comment indicates, they should really belong in part_gadgets.h). */
+#define HULLCFG_TGL	87
+#define SIMMODE_NEW_REV_BTN	104
+#define SIMMODE_ARCH_BTN	120
+#define SIMMODE_REV_GRP	121
+
 /* Globals */
 static char RevCat[50];
 static char RevPart[50];
@@ -97,8 +121,6 @@ extern int    PDU_check_filename;
 extern int    PDMdebug_on;
 extern int    PDU_refresh_gadgets[7];
 extern int    PDU_validate_access;
-extern char * calloc();
-extern char * realloc();
 extern char *** PDU_update_struct;
 extern int FIg_get_text_length();
 extern int FIg_get_text();
@@ -375,12 +397,12 @@ void PDUpart_operations_init()
 
      FIfld_pos_cursor(forms.part_operations_form_id,NP_CATALOG_FLD,0,0,0,0,0,0);
 }
-
+typedef double IGRdouble;
 int part_operations_notification_routine ( f_label, g_label, value, fp )
-  IGRint     f_label;       /* The label of the form   */
-  IGRint     g_label;       /* The label of the gadget */
-  IGRdouble  value;         /* The value of the gadget */
-  Form       fp;            /* Pointer to the form     */
+  int     f_label;       /* The label of the form   */
+  int     g_label;       /* The label of the gadget */
+IGRdouble value;         /* The value of the gadget */
+  Form    fp;            /* Pointer to the form     */
 {
     static char   * text = NULL_STRING;
     int             max_row_length = 0;
@@ -523,6 +545,20 @@ int part_operations_notification_routine ( f_label, g_label, value, fp )
     static char t_LpdtempDesc[2];
     int 		t_number=0, t_j=0;
 
+    /* Added by Anand for CRs 5913 and 5914 */
+    int			bGadgInOpModGrp = 0;
+    char		szCurHiRev[256];
+    extern unsigned long NULL_OBJID;
+    struct GRid {
+	int osnum;
+	int objid;
+    } pplID;
+    extern long		VDahPPL_Load(char *,struct GRid *),
+    			VDahPPL_Run(struct GRid *,char *, int *),
+			VDahPPL_SetValue(struct GRid *,char *,int,char *),
+			VDahPPL_GetValue(struct GRid *,char *,int,char *),
+			VDahPPL_Delete(struct GRid *);
+    			
 
     f_label = 0;
     PDU_form_id = forms.part_operations_form_id;
@@ -1733,6 +1769,8 @@ int part_operations_notification_routine ( f_label, g_label, value, fp )
 
 	  if (change_mode != TRUE)
 	      break;
+
+	  FIg_erase( fp, SIMMODE_REV_GRP );
 
 	  if ((strcmp(ep_catalog,"") == 0) || (strcmp(en_itemname,"") == 0) ||
 		  (strcmp(ep_rev,"") == 0))
@@ -3163,6 +3201,8 @@ int part_operations_notification_routine ( f_label, g_label, value, fp )
 
 	  _pdm_debug("Entering NEW_MODE_BTN",0);
 
+	  FIg_erase( fp, SIMMODE_REV_GRP );
+
 	  if (new_mode == TRUE)
 	      break;
 
@@ -3627,6 +3667,8 @@ int part_operations_notification_routine ( f_label, g_label, value, fp )
 
 	  if (similar_mode == TRUE)
 	      break;
+
+	  FIg_display( fp, SIMMODE_REV_GRP );
 
 	  PDUdismiss_subforms();
 
@@ -4932,6 +4974,8 @@ int part_operations_notification_routine ( f_label, g_label, value, fp )
 
 	  if (review_mode == TRUE)
 	      break;
+
+	  FIg_erase( fp, SIMMODE_REV_GRP );
 
 	  PDUdismiss_subforms();
 
@@ -7375,6 +7419,154 @@ int part_operations_notification_routine ( f_label, g_label, value, fp )
 	  }
 
 	  break;
+	  
+    /********************************************************************
+     * Below two cases (viz., SIMMODE_NEW_REV_BTN and SIMMODE_ARCH_BTN) *
+     * added by Anand for CRs 5913 and 5914 respectively.  Currently,   *
+     * they use routines implemented in VDS. In other words, below code *
+     * implies VDS-dependency by PDU and should therefore be delivered  *
+     * only through emsfixes/pdu in ISDP.                               *
+     ********************************************************************/
+
+      case SIMMODE_NEW_REV_BTN:
+
+	  if( nn_itemname == NULL || strlen( nn_itemname ) == 0 )
+	  {
+	      if( en_itemname == NULL || strlen( en_itemname ) == 0 )
+	      {
+		  FIfld_set_text( fp, FI_MSG_FIELD, 0, 0,
+			   "Enter part before entering New Revision number!!",
+				  0);
+		  break;
+	      }
+	      else
+	      {
+		  /* PDU uses this function to copy strings.  Using strcpy
+		   * actually causes a random crash.
+		   */
+		  PDUfill_in_string1( &nn_itemname, en_itemname );
+		  FIfld_set_text( fp, NP_PARTNUM_FLD, 0, 0, nn_itemname, 0 );
+		  status = PDUnp_part_fld();
+		  if( status == 0 )
+		      break;
+	      }
+	  }
+
+	  /* Load ppl */
+	  pplID.objid = NULL_OBJID; pplID.osnum = 0;
+	  VDahPPL_Load("SimModeRev", &pplID);
+
+	  if (pplID.objid == NULL_OBJID) 
+	  {
+	      FIfld_set_text( fp, FI_MSG_FIELD, 0, 0,
+			     "Command requires SimModeRev PPL - not found!",
+			      0);
+	      break;
+	  }
+	  /* Set the two input arguments in the ppl by calling setData */
+
+	  VDahPPL_SetValue( &pplID, "catalog",
+			    sizeof(char *), (char *)&np_catalog );
+
+	  VDahPPL_SetValue( &pplID, "itemname",
+			    sizeof(char *), (char *)&nn_itemname );
+
+	  /* Call function "SimModeNewRevision" in PPL SimModeRev. This will
+	   * return the string to be used for a new revision (currently
+	   * implemented as one over the current highest revision padded with
+	   * zeros to be a three character string. */
+	  VDahPPL_Run( &pplID, "SimModeNewRevision", &status );
+
+	  VDahPPL_GetValue( &pplID, "szNewRevNum", sizeof(char [256]),
+			    (char *)&szCurHiRev );
+
+	  VDahPPL_Delete(&pplID);
+
+	  /* Simulate key-in field */
+	  FIfld_set_text( fp, NP_REV_FLD, 0, 0, szCurHiRev, 0 );
+	  part_operations_notification_routine(f_label, NP_REV_FLD, value, fp);
+
+	  /* Set the other toggles */
+	  FIg_display( fp, SIMMODE_COPY_TGL );
+	  FIg_display( fp, SIMMODE_CHECKIN_TGL );
+	  FIg_set_state_on( fp, SIMMODE_CHECKIN_TGL );
+	  FIg_set_state_on( fp, SIMMODE_COPY_TGL );
+	  FIg_set_state_on( fp, HULLCFG_TGL );
+	  PDU_simmode_copy = TRUE;
+	  PDU_simmode_checkin = TRUE;
+
+	  break;
+
+      case SIMMODE_ARCH_BTN:
+
+	  if( nn_itemname == NULL || strlen( nn_itemname ) == 0 )
+	  {
+	      if( en_itemname == NULL || strlen( en_itemname ) == 0 )
+	      {
+		  FIfld_set_text( fp, FI_MSG_FIELD, 0, 0,
+			   "Enter part before entering Revision for Archive!!",
+				  0);
+		  break;
+	      }
+	      else
+	      {
+		  /* PDU uses this function to copy strings.  Using strcpy
+		   * actually causes a random crash.
+		   */
+		  PDUfill_in_string1( &nn_itemname, en_itemname );
+		  FIfld_set_text( fp, NP_PARTNUM_FLD, 0, 0, nn_itemname, 0 );
+		  status = PDUnp_part_fld();
+		  if( status == 0 )
+		      break;
+	      }
+	  }
+
+	  /* Load ppl */
+	  pplID.objid = NULL_OBJID; pplID.osnum = 0;
+	  VDahPPL_Load("SimModeRev", &pplID);
+
+	  if (pplID.objid == NULL_OBJID) 
+	  {
+	      FIfld_set_text( fp, FI_MSG_FIELD, 0, 0,
+			     "Command requires SimModeRev PPL - not found!",
+			      0);
+	      break;
+	  }
+	  /* Set the two input arguments in the ppl by calling setData */
+
+	  VDahPPL_SetValue( &pplID, "catalog",
+			    sizeof(char *), (char *)&np_catalog );
+
+	  VDahPPL_SetValue( &pplID, "itemname",
+			    sizeof(char *), (char *)&nn_itemname );
+
+	  status = atoi( ep_rev );
+	  VDahPPL_SetValue( &pplID, "nOldRevNum",
+			    sizeof(int), (char *)&status );
+
+	  /* Call function "SimModeNewArchive" in PPL SimModeRev. This will
+	   * return the string to be used for a new archive. */
+	  VDahPPL_Run( &pplID, "SimModeNewArchive", &status );
+
+	  VDahPPL_GetValue( &pplID, "szNewRevNum", sizeof(char [256]),
+			    (char *)&szCurHiRev );
+
+	  VDahPPL_Delete(&pplID);
+
+	  /* Simulate key-in field */
+	  FIfld_set_text( fp, NP_REV_FLD, 0, 0, szCurHiRev, 0 );
+	  part_operations_notification_routine(f_label, NP_REV_FLD, value, fp);
+
+	  /* Set the other toggles */
+	  FIg_display( fp, SIMMODE_COPY_TGL );
+	  FIg_display( fp, SIMMODE_CHECKIN_TGL );
+	  FIg_set_state_on( fp, SIMMODE_CHECKIN_TGL );
+	  FIg_set_state_on( fp, SIMMODE_COPY_TGL );
+	  FIg_set_state_off( fp, HULLCFG_TGL );
+	  PDU_simmode_copy = TRUE;
+	  PDU_simmode_checkin = TRUE;
+
+	  break;
 
     } /* END switch ( g_label ) */
 
@@ -7613,4 +7805,3 @@ void PDUclose_part_form_buffers()
     states_bufr = NULL;
     }
 }
-
