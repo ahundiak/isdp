@@ -1,4 +1,4 @@
-/* $Id: batch.I,v 1.4 2001/09/07 15:14:19 ramarao Exp $ */
+/* $Id: batch.I,v 1.4.4.1 2003/01/03 17:30:36 anand Exp $ */
 
 /* --------------------------------------------------------------------
  * I/VDS
@@ -11,6 +11,10 @@
  *
  * Revision History:
  * $Log: batch.I,v $
+ * Revision 1.4.4.1  2003/01/03 17:30:36  anand
+ * For TR 7319 (suppress ACpretend errors in backscreen) -
+ * "Crucial" TR (high priority) etcetera.
+ *
  * Revision 1.4  2001/09/07 15:14:19  ramarao
  * Implemented CR# 5346.
  *
@@ -426,11 +430,13 @@ IGRint mode;
 	   * a reference file
 	   */
 
-          if (status&1) {
+          if ( OM_Gf_verbose_warning && (status&1) ) {
 	    if( object.osnum == cur_os )
-	      printf("COMPUTE of %d,%d failed, %s \n",object.osnum,object.objid, obj_class);
-	    else if( OM_Gf_verbose_warning )
-	      printf("COMPUTE of %d,%d failed, %s \n", object.osnum, object.objid, obj_class);
+	      printf("IN CURRENT FILE: COMPUTE of %d,%d failed, %s \n",
+					object.osnum,object.objid, obj_class);
+	    else
+	      printf("REFERENCE FILE : COMPUTE of %d,%d failed, %s \n",
+				       object.osnum, object.objid, obj_class);
 	  }
 
 	  /* Name the element in error in an ERROR directory */
