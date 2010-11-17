@@ -1,4 +1,4 @@
-/* $Id: VDCmdAutxti.I,v 1.3 2001/03/22 20:17:05 ylong Exp $ */
+/* $Id: VDCmdAutxti.I,v 1.3.2.1 2002/07/09 16:01:19 ylong Exp $ */
 /*----------------------------------------------------------------
  * I/VDS
  *
@@ -9,6 +9,9 @@
  *
  * Revision History
  *	$Log: VDCmdAutxti.I,v $
+ *	Revision 1.3.2.1  2002/07/09 16:01:19  ylong
+ *	CR6014
+ *
  *	Revision 1.3  2001/03/22 20:17:05  ylong
  *	*** empty log message ***
  *	
@@ -32,7 +35,7 @@
  *										Box Ratio. CR179901299
  *      10/20/2000      Paul Noel               Modified to support defaults on form CR179900823
  *	02/22/2000	ylong			TR3885
- *
+ *	06/14/02	ylong			CR6014
  */
 /*============================================================================*/
 
@@ -70,6 +73,7 @@ class implementation VDCmdAutxt;
 #include "vdparmacros.h"
 #include "v_miscmacros.h"
 #include "v_dbgmacros.h"
+#include "VDobj.h"
 
 #define VD_DEBUG
 #include "VDdebug.h"
@@ -713,6 +717,7 @@ method notify_form(
  FIg_get_state ( me->form, VDLDRL_OPTION,  &FormData.Leader );
  // end load up FormData
 
+ __DBGpr_int("label ", label);
  switch( label ) 
  {
   case VDBOXOPT_NO:
@@ -1141,11 +1146,13 @@ method execute( int *response; char *response_data; int pos )
 {
 	long			sts, status = OM_S_SUCCESS;
 	long			msg;
-	int			token,i, index;
+	int			token,i, index, cnt;
 	IGRlong			size =   sizeof(struct GRevent);
 	struct GRobj_env	*VDobjs;
-	struct GRid      	macro;
+	struct GRid      	macro, macro_obj;
 	char			*c;
+	char			mac_name[TEXT_SIZE];
+	char			dis_name[TEXT_SIZE];
 	OM_S_CLASSLIST		classlist ;
 	OMuword			class[4] ;
 
@@ -1327,6 +1334,8 @@ do
 	if( me->obj_selected[0].obj_id.objid != NULL_OBJID ){
 
 	  /* get name of macro definition */
+
+	  /* CR6014, get name from VDSget_discipline
 	  status =
 	  om$send(msg = message ACcpx.find_macro(&macro),
 	      targetid = me->obj_selected[0].obj_id.objid,
@@ -1340,6 +1349,27 @@ do
 	  if( !(status&1)) goto quit;
 
 	  strcpy( me->macro_name, c );
+	  */
+
+	  VDSget_discipline( &me->obj_selected[0].obj_id, 0, dis_name );
+
+	  /* check if eqp_macro dir exists */
+	  status = 0;
+	  cnt = 0;
+	  if( !strncmp( dis_name, "equipment", 9 ) ) {
+	    VDSget_discipline( &me->obj_selected[0].obj_id, 1, mac_name );
+	    status = di$find(	start_dir	= me->dir_name,
+				regexp		= mac_name,
+				ptr		= &cnt);
+          }
+
+          if( status != DIR_S_SUCCESS ) {
+            strcpy( me->macro_name, dis_name );
+          }
+	  else {
+	    strcpy( me->macro_name, mac_name );
+          }
+
 	  me->HDR_OCC = me->obj_selected[0] ;
 
 	  __DBGpr_str(" PLace Form ", me->macro_name );

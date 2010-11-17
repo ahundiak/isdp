@@ -1,4 +1,4 @@
-/* $Id: VDCmdtxldri.I,v 1.3 2001/01/21 16:18:47 ramarao Exp $  */
+/* $Id: VDCmdtxldri.I,v 1.3.2.1 2002/07/09 16:01:19 ylong Exp $  */
 
 /* --------------------------------------------------------------------
  * I/VDS
@@ -11,6 +11,9 @@
  *
  * Revision History:
  *	$Log: VDCmdtxldri.I,v $
+ *	Revision 1.3.2.1  2002/07/09 16:01:19  ylong
+ *	CR6014
+ *
  *	Revision 1.3  2001/01/21 16:18:47  ramarao
  *	*** empty log message ***
  *	
@@ -96,9 +99,10 @@
  * History:
  *	MM/DD/YY	AUTHOR		DESCRIPTION
  *      05/07/96        yzhu            change all VDtxbox to VDfrmtxt 
- *      05/03/2000      Alwin			Modified the display_form and 
- *										notify_form method to implement the
- *										Box Ratio. CR179901299
+ *      05/03/2000      Alwin		Modified the display_form and 
+ *					notify_form method to implement the
+ *					Box Ratio. CR179901299
+ *	06/14/02	ylong		CR6014
  * -------------------------------------------------------------------*/
 
 class implementation VDCmdtxldr;
@@ -145,6 +149,7 @@ class implementation VDCmdtxldr;
 #include "FI.h"
 #include "VDSannot.h"
 #include "VDmsg.h"
+#include "VDobj.h"
 
 #include "form_env.h"
 #include "dimformdef.h"
@@ -187,13 +192,15 @@ extern			VDSinit_ldexpr();
  * global constant to get track of latest box_type.
  */
 
-//%safe
-  unsigned char VDannot_box_type;
-//%endsafe
-
-/**
-extern	unsigned char VDannot_box_type;
- */
+#if ISDP_MAKE_SP
+extern 
+#else
+%safe
+#endif
+unsigned char VDannot_box_type;
+#if !ISDP_MAKE_SP
+%endsafe
+#endif
 
 extern IGRdouble VDCmdtxldr_text_angle;
 extern unsigned char VDCmdtxldr_flag;
@@ -345,9 +352,10 @@ struct GRid null_grid;
 method LC_selection(IGRint *msg; struct GRlc_info *lc_info)
 {
 long 		sts, status = OM_S_SUCCESS;
-int             msg1;
+int             msg1, cnt = 0;
 struct GRid 	macro, obj_to_test, Format_Text, Params_Text;
 char 		*c;
+char		dis_name[TEXT_SIZE], mac_name[TEXT_SIZE], macro_dir[TEXT_SIZE];
 
   SetProc( VDCmdtxldri.LC_selection) ; Begin
 
@@ -458,6 +466,8 @@ char 		*c;
       }
 
       /* get name of macro definition */
+
+      /* CR6014, get name from VDSget_discipline 
       status =
       om$send(msg = message ACcpx.find_macro(&macro),
 	      targetid = obj_to_test.objid,
@@ -471,6 +481,29 @@ char 		*c;
       if( !(status&1)) return( OM_S_SUCCESS );
 
       strcpy( me->macro_name, c );
+      */
+
+      VDSget_discipline( &obj_to_test, 0, dis_name );
+
+      /* check if eqp_macro dir exists */
+      status = 0;
+      if( !strncmp( dis_name, "equipment", 9 ) ) {
+        VDSget_discipline( &obj_to_test, 1, mac_name );
+
+        sprintf( macro_dir, "%s:%s", me->dir_name, mac_name );
+
+        status = di$find(	start_dir	= me->dir_name,
+				regexp		= mac_name,
+				ptr		= &cnt );
+      }
+
+      if( status != DIR_S_SUCCESS ) {
+	  strcpy( me->macro_name, dis_name );
+      }
+      else {
+          strcpy( me->macro_name, mac_name );
+      }
+
       me->HDR_OCC.obj_id = obj_to_test;
 
       /*
@@ -918,6 +951,7 @@ IGRint	  attr_flag = 0;
 		if( row <= nb_formats ){
 
 		  VDSinit_ldexpr( &me->form_expr );
+
 		  row--;
 
 		  __DBGpr_int(" ActiveRow", row );
@@ -936,29 +970,29 @@ IGRint	  attr_flag = 0;
 		/* The gadget MACRO_LIST is only used as review to
 		/* show the macros definitions which have formattted 
 		/* text expressions.
-		/*
-		/* FIg_get_text( form, label, me->macro_name );
-		/* 
-		/* status =
-		/* om$send(msg = message VDCmdtxldr.get_exist_formats( &sts ),
-		/*	targetid = my_id );
-		/* as$status();
-		/*
-		/* status =
-		/* om$send(msg = message VDCmdtxldr.get_parent_formats( &sts ),
-		/*	targetid = my_id );
-		/* as$status();
-		/*
-		/* status =
-		/* om$send(msg = message VDCmdtxldr.get_global_formats( &sts ),
-		/*	targetid = my_id );
-		/* as$status();
-		/*
-		/* status =
-		/* om$send(msg=message VDCmdtxldr.disp_exist_formats(&sts,TRUE),
-		/*	targetid = my_id );
-		/* as$status();
-		/*
+		/* */
+		FIg_get_text( form, label, me->macro_name );
+		
+		status =
+		om$send(msg = message VDCmdtxldr.get_exist_formats( &sts ),
+		targetid = my_id );
+		as$status();
+		
+		status =
+		om$send(msg = message VDCmdtxldr.get_parent_formats( &sts ),
+		targetid = my_id );
+		as$status();
+		
+		status =
+		om$send(msg = message VDCmdtxldr.get_global_formats( &sts ),
+		targetid = my_id );
+		as$status();
+		
+		status =
+		om$send(msg=message VDCmdtxldr.disp_exist_formats(&sts,TRUE),
+		targetid = my_id );
+		as$status();
+		
 		/* ** ** ** ** ** ** ** ** ** ** ** ** ** ** ** ** ** ** ** */
 
 	    break;
@@ -1319,21 +1353,25 @@ int     i, n_rows;
     goto wrapup;
   }
 
+__DBGpr_com("VDCmdtxldr.get_exist_formats....");
   status =
   om$send(msg = message VDCmdtxldr.get_exist_formats( sts ),
           targetid = my_id );
   CheckRC( *sts, status );
 
+__DBGpr_com("VDCmdtxldr.get_parent_formats....");
   status =
   om$send(msg = message VDCmdtxldr.get_parent_formats( sts ),
           targetid = my_id );
   CheckRC( *sts, status );
 
+__DBGpr_com("VDCmdtxldr.get_global_formats....");
   status =
   om$send(msg = message VDCmdtxldr.get_global_formats( sts ),
           targetid = my_id );
   CheckRC( *sts, status );
 
+__DBGpr_com("VDCmdtxldr.disp_exist_formats");
   status =
   om$send(msg = message VDCmdtxldr.disp_exist_formats( sts, TRUE ),
           targetid = my_id );
@@ -1382,8 +1420,12 @@ char    *fm_ptr;
     sprintf( full_str,"%s: \"%s\", %s", me->ldexpr_list[i].formatname,
                                         me->ldexpr_list[i].string,
                                         me->ldexpr_list[i].params );
-    FIfld_set_list_default_text( fm_ptr, EXIST_FORMAT, i, 0, full_str, FALSE);
+    __DBGpr_str("formatname ", me->ldexpr_list[i].formatname );
+    __DBGpr_str("string ", me->ldexpr_list[i].string );
+    __DBGpr_str("params ", me->ldexpr_list[i].params );
     __DBGpr_str("Format ", full_str );
+
+    FIfld_set_list_default_text( fm_ptr, EXIST_FORMAT, i, 0, full_str, FALSE);
   }
 
   /*
@@ -1586,6 +1628,7 @@ DIint	dsts;
   status = om$vla_set_dimension( varray = me->ldexpr_list, size = 0 );
 
   sprintf( macro_dir, "%s:%s", me->dir_name, me->macro_name );
+
   __DBGpr_str(" MacroDir ", macro_dir );
   macro_obj.objid = NULL_OBJID;
   status = di$translate(objname = macro_dir,
@@ -1630,7 +1673,6 @@ DIint	dsts;
 				p_objid = &for_obj.objid,
 				p_osnum = &for_obj.osnum );
     if( status != DIR_S_SUCCESS ){
-      /*" expression %s:%s not found\n", exprs[i], VD_FTEXT_STRING  */
       continue;
     }
 
@@ -1676,12 +1718,16 @@ DIint	dsts;
     me->ldexpr_list[ii].expr_id.objid = expr_ids[i].objid;
     me->ldexpr_list[ii].expr_id.osnum = expr_ids[i].osnum;
 
+    __DBGpr_str("string ", me->ldexpr_list[ii].string);
+    __DBGpr_str("params ", me->ldexpr_list[ii].params);
     ii++;
   }
 
   if( ii < nb_exprs ){
     status = om$vla_set_dimension( varray = me->ldexpr_list, size = ii );
   }
+  __DBGpr_str("last string ", me->ldexpr_list[ii-1].string);
+  __DBGpr_str("last params ", me->ldexpr_list[ii-1].params);
 
   __DBGpr_int(" Found Expresssions", ii );
 
@@ -1705,16 +1751,16 @@ method	get_parent_formats( long * sts )
 	IGRlong			msg;
 	IGRchar			macro_dir[TEXT_SIZE];
 	IGRchar			for_exp[TEXT_SIZE], par_exp[TEXT_SIZE];
+	IGRchar			mac_name[TEXT_SIZE], dis_name[TEXT_SIZE];
 	struct	GRid		macro_obj, macDef, for_obj, par_obj;
 	struct	ret_struct	for_str, par_str;
 	IGRchar			*c;
-	GRname			macro_name;
 	VDpartAttr		Attr ;
 	IGRchar			**exprs = NULL;
 	DIgrid			*expr_ids = NULL;
 	IGRint			i,ii,
 				nb_exprs, tot_exprs,
-       				ld_size;
+       				ld_size, cnt = 0;
 	DIint			dsts;
 
  SetProc( VDCmdtxldri.get_parent_formats) ; Begin
@@ -1745,6 +1791,7 @@ method	get_parent_formats( long * sts )
 	  senderid = me->HDR_OCC.obj_id.objid );
   __CheckRC( *sts, status, "GRvg.GRgetattr", wrapup );
 
+  /* CR6014, get name from VDSget_discipline 
   status =
   om$send(msg = message ACcpx.find_macro(&macDef),
           targetid = Attr.obj._objid,
@@ -1757,20 +1804,44 @@ method	get_parent_formats( long * sts )
 	 targetos = macDef.osnum );
   __CheckRC( 1, status, "ACcpx_defn.ACgive_name", wrapup );
 
-  strcpy( macro_name, c );
   strcpy( me->macro_name , c );
+  */
+
   /* find the size of dynamic memory */
   status =
   ld_size = om$dimension_of( varray = me->ldexpr_list );
 
-  sprintf( macro_dir, "%s:%s", me->dir_name, macro_name );
+  /* check if eqp_macro exists */
+  VDSget_discipline( &me->HDR_OCC.obj_id, 0, dis_name );
+
+  status = 0;
+  if( !strncmp( dis_name, "equipment", 9 ) ) {
+    VDSget_discipline( &me->HDR_OCC.obj_id, 1, mac_name );
+
+    sprintf( macro_dir, "%s:%s", me->dir_name, mac_name );
+
+    status = di$find(	start_dir	= me->dir_name,
+			regexp		= mac_name,
+			ptr		= &cnt );
+    if( status == DIR_S_SUCCESS ) {
+      strcpy( me->macro_name, mac_name );
+    }
+  }
+
+  if( status != DIR_S_SUCCESS ) {
+    strcpy( me->macro_name, dis_name );
+  }
+  else {
+    strcpy( me->macro_name, mac_name );
+  }
+
+  sprintf( macro_dir, "%s:%s", me->dir_name, me->macro_name );
 
   macro_obj.objid = NULL_OBJID;
-  status = di$translate(objname = macro_dir,
-			p_objid = &macro_obj.objid,
-			p_osnum = &macro_obj.osnum );
-  if( status != DIR_S_SUCCESS ){
-    /*| No expression for this macro */
+  status = di$translate(	objname = macro_dir,
+				p_objid = &macro_obj.objid,
+				p_osnum = &macro_obj.osnum );
+  if( status != DIR_S_SUCCESS ) {
     goto wrapup;
   }
 
@@ -1979,6 +2050,9 @@ DIint	dsts;
     me->ldexpr_list[ii].expr_id.objid = expr_ids[i].objid;
     me->ldexpr_list[ii].expr_id.osnum = expr_ids[i].osnum;
 
+    __DBGpr_str("string ", me->ldexpr_list[ii].string);
+    __DBGpr_str("params ", me->ldexpr_list[ii].params);
+
     ii++;
   }
 
@@ -2096,8 +2170,10 @@ struct  GRid  null_grid;
   for( i=0; i<n_rows; i++ ) FIfld_set_text( me->form, TXT_OUTPUT, i, 0, "" );
 
   if(!me->dyn_info.info.text_string)
-	me->dyn_info.info.text_string =(unsigned char *) om$malloc(size = 2048);
-  if(!me->dyn_info.info.text_string) return OM_W_ABORT;
+  {
+      me->dyn_info.info.text_string =(unsigned char *) om$malloc(size = 2048);
+      if(!me->dyn_info.info.text_string) return OM_W_ABORT;
+  }
   me->dyn_info.info.text_buff_size = 2048;
   me->dyn_info.info.text_length = 0;
   me->dyn_info.info.text_string[0] = '\0';
