@@ -1,4 +1,4 @@
-/* $Id: VDXcre_dgn.u,v 1.6 2001/05/08 15:36:18 anand Exp $  */
+/* $Id: VDXcre_dgn.u,v 1.6.2.2 2003/05/27 14:00:21 ahundiak Exp $  */
 
 /***************************************************************************
  * I/VDS
@@ -11,6 +11,12 @@
  *
  * Revision History:
  *      $Log: VDXcre_dgn.u,v $
+ *      Revision 1.6.2.2  2003/05/27 14:00:21  ahundiak
+ *      ah
+ *
+ *      Revision 1.6.2.1  2003/04/29 16:10:18  anand
+ *      TR5982
+ *
  *      Revision 1.6  2001/05/08 15:36:18  anand
  *      Undoing fix for TR 5143 per customer's request.
  *
@@ -64,6 +70,7 @@
  * 08/03/2k  Anand   CR 179901735 - Added function ExtrDynEqptNozAttr
  * 09/28/2k  Anand   CR 179902056 - Added call for attribute dp_eqpt_parent_id
  * 11/27/2k  Anand   CR jts 4093 - Added call for attribute dp_eqpt_angle_rot
+ * 04/28/03  Anand   TR jts TR 5982 - Kludge for 'bend_sweep'.
  ****************************************************************************/
 
  
@@ -80,7 +87,7 @@
 #define	DEBUG		1
 #define	vdsDEBUG	1
 */
-#include "VDPdef.h"
+/* #include "VDPdef.h" */       /* Not needed */
 #include "VDmem_ppl.h"
 #include "vdrefmacros.h"
 #include "vdtree.h"		/* Assembly Tree production table */
@@ -150,6 +157,7 @@ extern	IGRint	VDPGetFileId();
 extern 		MEMclose();
 extern 		MEMbuild_array();
 extern  int	SQLquert();
+#define VDPOBID_LEN 25
 
 /* jvh added for chord height tol */
 #define	BSTOLCHRDHT	10
@@ -1909,140 +1917,157 @@ TGRid	  *DIR;
 TGRmd_env *mod_env;
 MYFILE	  *outfile;
 {
-	IGRdouble	count;
-	IGRchar		txt_buf[256], num[4];
-	IGRchar		comp_code[80];
-	IGRchar		ang_name[80], ang_value[80];
-	IGRchar		cnt_name[80];
-	IGRchar		pnt_name[80];
-	IGRchar		pnt_tail[12];
-	IGRstar		sts ;
-	IGRlong		status, msg ;
-	IGRint		i ;
+    IGRdouble	count;
+    IGRchar		txt_buf[256], num[4];
+    IGRchar		comp_code[80];
+    IGRchar		ang_name[80], ang_value[80];
+    IGRchar		cnt_name[80];
+    IGRchar		pnt_name[80];
+    IGRchar		pnt_tail[12];
+    IGRstar		sts ;
+    IGRlong		status, msg ;
+    IGRint		i ;
 
-	/* Below lines added by Anand for CR 179901735 */
-	IGRchar		ClassName[80];
+    /* Below lines added by Anand for CR 179901735 */
+    IGRchar		ClassName[80];
 
-	status = om$get_classname( objid	= DIR->objid,
-				   osnum	= DIR->osnum,
-				   classname	= ClassName );
-	__DBGpr_str("Class to which DIR belongs", ClassName );
+    status = om$get_classname( objid	= DIR->objid,
+			       osnum	= DIR->osnum,
+			       classname	= ClassName );
+    __DBGpr_str("Class to which DIR belongs", ClassName );
 
-	if( strcmp(ClassName,"VDequipment") == 0 && status == OM_S_SUCCESS )
-	{
-	    sts = ExtrDynEqptNozAttr( DIR, mod_env, outfile );
-	    return sts;
-	}
-	/* Above lines added by Anand for CR 179901735 */
+    if( strcmp(ClassName,"VDequipment") == 0 && status == OM_S_SUCCESS )
+    {
+	sts = ExtrDynEqptNozAttr( DIR, mod_env, outfile );
+	return sts;
+    }
+    /* Above lines added by Anand for CR 179901735 */
 
+    /* Below lines added by Anand as a kludge for TR 5982 */
 
-	// initialization
-	strcpy( ang_name, "dp_comp_angle_pos" );
-	strcpy( cnt_name, "dp_conn_pnt_count" );
-	strcpy( pnt_tail, "_xyz" );
-	comp_code[0] = '\0' ;
-	txt_buf[0] = '\0' ;
-	count = 0 ;
+	/*****************************************************
+	 * Get the 'bend_sweep' of component as a smart      *
+	 * attribute.  The sts is returned as false, but the *
+	 * value comes out correctly.  Report the same as    *
+	 * 'alt_bend_sweep'                                  *
+	 *****************************************************/
 
-	#ifdef DEBUG
-	printf("Obj = [%d, %d]\n", DIR->objid, DIR->osnum);
-	#endif
+    vdsa$GetStruct( objID  = DIR,
+		    objENV = mod_env,
+		    name   = "bend_sweep",
+		    dbl    = &count);
 
-	#ifdef DEBUG
-	// get comp_code
-	sts = vdsa$GetStruct(	objID  = DIR,
-				objENV = mod_env,
-				name   = "comp_code",
-				txt    = txt_buf);
+    fprintf(outfile,"alt_bend_sweep: %lf\n", count);
 
-	if( sts && strcmp(txt_buf, "") ) {
-		strcpy(comp_code, txt_buf) ;
-	}
-	else {
-		strcpy(comp_code, "Uknown_code") ;
-	}
-	#endif
+    /* Above lines added by Anand as a kludge for TR 5982 */
 
-	// get the angle of component
-	sts = vdsa$GetStruct(	objID  = DIR,
-				objENV = mod_env,
-				name   = ang_name,
-				txt    = txt_buf);
+    // initialization
+    strcpy( ang_name, "dp_comp_angle_pos" );
+    strcpy( cnt_name, "dp_conn_pnt_count" );
+    strcpy( pnt_tail, "_xyz" );
+    comp_code[0] = '\0' ;
+    txt_buf[0] = '\0' ;
+    count = 0 ;
 
-	if( sts ) {
-		strcpy(ang_value, txt_buf) ;
-		fprintf(outfile,"%s: %s\n", ang_name, ang_value);
-		#ifdef DEBUG
-		printf("%s  %s: %s\n", comp_code, ang_name, ang_value);
-		#endif
-	}
-
-	// get the number of connect points in a component
-	sts = vdsa$GetStruct(	objID  = DIR,
-				objENV = mod_env,
-				name   = cnt_name,
-				dbl    = &count);
-
-	if( !sts || (int)count == 0 ) {
-		fprintf(outfile,"%s: %s\n", cnt_name, "0");
-		sts = 0 ;
-		goto wrapup ;
-	}
-
-	fprintf(outfile,"%s: %d\n", cnt_name, (int)count);
-	#ifdef DEBUG
-	printf("%s  %s: %d\n", comp_code, cnt_name, (int)count);
-	#endif
-
-	// get connect point coordinates
-	for( i=0 ; i<(int)count ; i=i+1 ) {
-
-		if( i < 10 ) {
-			sprintf(num,"0%d", i);
-		}
-		else {
-			sprintf(num,"%d", i);
-		}
-
-		strcpy( pnt_name, "dp_conn_pnt_" );
-		strcat( pnt_name, num );
-		strcat( pnt_name, pnt_tail );
-
-		txt_buf[0] = '\0' ;
-		sts = vdsa$GetStruct(	objID  = DIR,
-					objENV = mod_env,
-					name   = pnt_name,
-					txt    = txt_buf);
-
-		if( sts && strcmp(txt_buf, "") )
-		{
-			fprintf(outfile,"%s: %s\n", pnt_name, txt_buf);
-			#ifdef DEBUG
-			printf("%s  %s: [%s]\n", comp_code, pnt_name, txt_buf);
-			#endif
-		}
-		else {
-			fprintf(outfile,"%s: %s\n", pnt_name, "unknown");
-		}
-	}
-	// Reference Point
-	*txt_buf = 0;
-	sts = vdsa$GetStruct(objID  = DIR,
-			     objENV = mod_env,
-			     name   = "dp_comp_ref_pnt",
-			     txt    = txt_buf);
-
-	if(sts && strcmp(txt_buf, "") )
-	{
-	  fprintf(outfile,"%s: %s\n", "dp_comp_ref_pnt", txt_buf);
 #ifdef DEBUG
-	  printf("%s  %s: [%s]\n", comp_code, "dp_comp_ref_pnt", txt_buf);
+    printf("Obj = [%d, %d]\n", DIR->objid, DIR->osnum);
 #endif
-	}
-	sts = 1 ;
+
+#ifdef DEBUG
+    // get comp_code
+    sts = vdsa$GetStruct(	objID  = DIR,
+			    objENV = mod_env,
+			    name   = "comp_code",
+			    txt    = txt_buf);
+
+    if( sts && strcmp(txt_buf, "") ) {
+	    strcpy(comp_code, txt_buf) ;
+    }
+    else {
+	    strcpy(comp_code, "Uknown_code") ;
+    }
+#endif
+
+    // get the angle of component
+    sts = vdsa$GetStruct(	objID  = DIR,
+			    objENV = mod_env,
+			    name   = ang_name,
+			    txt    = txt_buf);
+
+    if( sts ) {
+	    strcpy(ang_value, txt_buf) ;
+	    fprintf(outfile,"%s: %s\n", ang_name, ang_value);
+	    #ifdef DEBUG
+	    printf("%s  %s: %s\n", comp_code, ang_name, ang_value);
+	    #endif
+    }
+
+    // get the number of connect points in a component
+    sts = vdsa$GetStruct(	objID  = DIR,
+			    objENV = mod_env,
+			    name   = cnt_name,
+			    dbl    = &count);
+
+    if( !sts || (int)count == 0 ) {
+	    fprintf(outfile,"%s: %s\n", cnt_name, "0");
+	    sts = 0 ;
+	    goto wrapup ;
+    }
+
+    fprintf(outfile,"%s: %d\n", cnt_name, (int)count);
+#ifdef DEBUG
+    printf("%s  %s: %d\n", comp_code, cnt_name, (int)count);
+#endif
+
+    // get connect point coordinates
+    for( i=0 ; i<(int)count ; i=i+1 ) {
+
+	    if( i < 10 ) {
+		    sprintf(num,"0%d", i);
+	    }
+	    else {
+		    sprintf(num,"%d", i);
+	    }
+
+	    strcpy( pnt_name, "dp_conn_pnt_" );
+	    strcat( pnt_name, num );
+	    strcat( pnt_name, pnt_tail );
+
+	    txt_buf[0] = '\0' ;
+	    sts = vdsa$GetStruct(	objID  = DIR,
+				    objENV = mod_env,
+				    name   = pnt_name,
+				    txt    = txt_buf);
+
+	    if( sts && strcmp(txt_buf, "") )
+	    {
+		    fprintf(outfile,"%s: %s\n", pnt_name, txt_buf);
+#ifdef DEBUG
+		    printf("%s  %s: [%s]\n", comp_code, pnt_name, txt_buf);
+#endif
+	    }
+	    else {
+		    fprintf(outfile,"%s: %s\n", pnt_name, "unknown");
+	    }
+    }
+    // Reference Point
+    *txt_buf = 0;
+    sts = vdsa$GetStruct(objID  = DIR,
+			 objENV = mod_env,
+			 name   = "dp_comp_ref_pnt",
+			 txt    = txt_buf);
+
+    if(sts && strcmp(txt_buf, "") )
+    {
+      fprintf(outfile,"%s: %s\n", "dp_comp_ref_pnt", txt_buf);
+#ifdef DEBUG
+      printf("%s  %s: [%s]\n", comp_code, "dp_comp_ref_pnt", txt_buf);
+#endif
+    }
+    sts = 1 ;
 wrapup:
 
-	return sts ;
+    return sts ;
 }
 
 
