@@ -1,4 +1,4 @@
-/* $Id: VDrowOver2.I,v 1.3 2002/06/06 17:14:21 ylong Exp $  */
+/* $Id: VDrowOver2.I,v 1.3.2.2 2003/05/15 17:06:11 ylong Exp $  */
 /*--------------------------------------------------------------------------
 /* I/VDS
  *
@@ -35,6 +35,7 @@
  * 	11/27/97	vini 		Place cell in BOM table
  *	02/05/01	Rama Rao	Modification in ACconstruct_feet().
  *	06/05/02	ylong		CR6391
+ *  11/17/10  ah      SOL10
  * -------------------------------------------------------------------------
  */
 
@@ -237,6 +238,7 @@ method  ACconstruct_feet(       IGRlong         *msg;
 				myGrid,
 				ownerId,
 				csId,
+				cpyCollId,
 				prev_foot[2],
 				*lineIds = NULL,
 				*textIds = NULL;
@@ -254,6 +256,7 @@ method  ACconstruct_feet(       IGRlong         *msg;
 			
     SetProc( VDdrwTblRow.ACconstruct_feet ); Begin
     *msg = MSSUCC;
+    cpyCollId.objid = NULL_OBJID;
 
     __DBGpr_objlist( "List of roots", count, list );
 
@@ -336,7 +339,10 @@ method  ACconstruct_feet(       IGRlong         *msg;
     /* determine lineoutFlag */
 
     if( me->rowInfo & VD_ROW_LINEOUT )
+    {
+	VDtblSetRowCollFromFeet(&myGrid, &cpyCollId);
 	lineoutFlag = 1;
+    }
     __DBGpr_int( "Lineout flag ", lineoutFlag );
 
     /* Added by Rama Rao to give proper feet count */
@@ -555,7 +561,7 @@ method  ACconstruct_feet(       IGRlong         *msg;
 
 	goto wrapup;
     }
-#endif
+#endif	/* remove this part for CR6391, make lined out row editable */
 
     /* 
      * construct the row components  (comes here only when there is no lineout)
@@ -664,6 +670,16 @@ method  ACconstruct_feet(       IGRlong         *msg;
 
 	_FREE( datValue );
 	status = VDdrw_getAttFromColl(	msg, list[0], attName, &datValue );
+
+	if( lineoutFlag && (!(status & *msg & 1) || !datValue) )
+	{
+	    _FREE( datValue );
+	   status = VDdrw_getAttFromColl(msg, cpyCollId, attName, &datValue );
+	   if( (status&*msg&1) && datValue )
+	   {
+		status = VDputAttInColl( msg, list[0], attName, datValue );
+	   }
+	}
 
 	if( status & *msg & 1 )
 	{
@@ -1451,6 +1467,10 @@ wrapup :
 	_FREE( results );
     if( adsDatRecs != adsDatBuf )
 	_FREE( adsDatRecs );
+    if( cpyCollId.objid != NULL_OBJID )
+    {
+	gr$delete_object( msg = msg, object_id = &cpyCollId );
+    }
 
     End
     return status;
