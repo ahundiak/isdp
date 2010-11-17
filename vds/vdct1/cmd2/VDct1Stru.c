@@ -1,4 +1,4 @@
-/* $Id: VDct1Stru.c,v 1.2 2001/02/11 17:19:50 ahundiak Exp $  */
+/* $Id: VDct1Stru.c,v 1.2.4.1 2004/03/29 16:23:22 ahundiak Exp $  */
 
 /***************************************************************************
  * I/VDS
@@ -11,25 +11,20 @@
  *
  * Revision History:
  *      $Log: VDct1Stru.c,v $
+ *      Revision 1.2.4.1  2004/03/29 16:23:22  ahundiak
+ *      ah
+ *
  *      Revision 1.2  2001/02/11 17:19:50  ahundiak
  *      Renamed VDris2 to VDrisc
  *
  *      Revision 1.1  2001/01/14 16:21:13  art
  *      sp merge
  *
- * Revision 1.3  2000/12/07  13:41:14  pinnacle
- * ah
- *
- * Revision 1.2  2000/08/23  14:51:24  pinnacle
- * ah
- *
- * Revision 1.1  2000/08/09  13:07:12  pinnacle
- * ah
- *
  *
  * History:
  * MM/DD/YY  AUTHOR  DESCRIPTION
  * 08/08/00  ah      Creation
+ * 11/17/10  ah      SOL10 Cage Code fomr Ship
  ***************************************************************************/
 /* -----------------------------------------------
  * This is basically a quick debugging form for mapping
@@ -43,6 +38,7 @@
 #include "VDobj2.h"
 #include "VDrisc.h"
 #include "VDassert.h"
+#include "VDship.h"
 
 #include "VDct1Cmdx.h"
 #include "VDct1Forms.h"
@@ -145,7 +141,7 @@ IGRstat VDct1FillIOC(TGRobj_env *pieceOE, TVDct1IOC *ioc)
   
   // Xfer some info
   ioc->pieceOE = *pieceOE;
-  strcpy(ioc->cage_code,VDCT1_DEFAULT_CAGE_CODE);
+  VDshipGetCageCode(ioc->cage_code);
   
   if (isBeam) {
     ioc->isdp.isBeam = 1;

@@ -1,4 +1,4 @@
-/* $Id: VDct1Attr.c,v 1.4 2001/10/18 20:43:29 ahundiak Exp $  */
+/* $Id: VDct1Attr.c,v 1.4.4.1 2003/06/06 20:54:54 ahundiak Exp $  */
 
 /***************************************************************************
  * I/VDS
@@ -11,37 +11,15 @@
  *
  * Revision History:
  *      $Log: VDct1Attr.c,v $
- *      Revision 1.4  2001/10/18 20:43:29  ahundiak
+ *      Revision 1.4.4.1  2003/06/06 20:54:54  ahundiak
  *      ah
  *
- *      Revision 1.3  2001/05/02 16:17:39  ahundiak
- *      ah
- *
- *      Revision 1.2  2001/02/17 14:45:07  ahundiak
- *      *** empty log message ***
- *
- *      Revision 1.1  2001/01/14 16:21:13  art
- *      sp merge
- *
- * Revision 1.10  2000/12/07  13:41:14  pinnacle
- * ah
- *
- * Revision 1.9  2000/11/16  19:48:34  pinnacle
- * pn
- *
- * Revision 1.8  2000/10/11  20:29:04  pinnacle
- * js
- *
- * Revision 1.7  2000/09/20  21:08:34  pinnacle
- * js
- *
- * Revision 1.6  2000/08/25  16:45:20  pinnacle
- * js
  *
  * History:
  * MM/DD/YY  AUTHOR  DESCRIPTION
  * 07/25/00  ah      Creation
  * 05/02/01  ah      Initialized workID in deletedNode/Tree routines
+ * 11/17/10  ah      SOL10 Change tag version
  ***************************************************************************/
 #include "VDtypedefc.h"
 #include "VDctx.h"
@@ -452,6 +430,9 @@ static IGRstat updateAttributesForNodeAndChildren(TVDct1JD  *nodeJD,
   
   // Now update the node itself
   VDctxUpdAttrs(&nodeID,flds.cnt,flds.fld);
+
+  /* And change the tag ver */
+  som_change_tag_version(nodeID.osnum,nodeID.objid,NULL,1);
 
   // update the active node attributes
   _RTCJDC(nodeJD)->updateNodeAttributes(nodeJD);
