@@ -1,4 +1,4 @@
-/* $Id: VDsymbfrtrta.I,v 1.1.1.1 2001/01/04 21:09:12 cvs Exp $  */
+/* $Id: VDsymbfrtrta.I,v 1.1.1.1.2.1 2002/10/31 16:44:01 ylong Exp $  */
 
 /* --------------------------------------------------------------------
  * I/VDS
@@ -11,28 +11,16 @@
  *
  * Revision History:
  *	$Log: VDsymbfrtrta.I,v $
+ *	Revision 1.1.1.1.2.1  2002/10/31 16:44:01  ylong
+ *	*** empty log message ***
+ *
  *	Revision 1.1.1.1  2001/01/04 21:09:12  cvs
  *	Initial import to CVS
  *	
-# Revision 1.1  1998/04/29  16:27:20  pinnacle
-# VDS 2.5.1
-#
-# Revision 1.1  1997/05/08  13:20:44  pinnacle
-# New project VDS 250
-#
-# Revision 1.1  1996/07/19  20:33:52  pinnacle
-# Create VDS 241 project
-#
-# Revision 1.1  1994/11/14  22:42:32  pinnacle
-# Create vds.240 from vds.232
-#
-# Revision 1.1  1994/11/08  16:07:00  pinnacle
-# create vds.232
-#
  *
  * History:
- *	MM/DD/YY	AUTHOR		DESCRIPTION
- *
+ *	MM/DD/YY	AUTHOR  DESCRIPTION
+ *  11/17/10  ah      SOL10 TR
  * -------------------------------------------------------------------*/
 
 /*
@@ -123,6 +111,7 @@ struct GRid	*object ; {
 	char			cmd_name[DI_PATH_MAX],
 				prefix[DI_PATH_MAX],
 				tt_dir[DI_PATH_MAX],
+				oldName[DI_PATH_MAX],
 				name[DI_PATH_MAX] ;
 	short			tt_level ;
 	struct IGRdisplay	tt_display ;
@@ -263,13 +252,27 @@ struct GRid	*object ; {
 		printf( "\tName : %s\n", name ) ;
 #endif
 
-		sts = om$send( msg	= message VDSroot.GRputname( msg,
+		sts = om$send( msg      = message VDSroot.GRgetname( msg,
+								     oldName ),
+			       senderid = object->objid,
+			       targetid = object->objid,
+			       targetos = object->osnum ) ;
+		CHK_MSG( sts, *msg, "VDSroot.GRgetname" ) ;
+
+		/*
+		 * System should retain the previous name ( TR# 3387 ) - RR
+		 * 10/31/2002
+		 */
+		if( strlen( oldName ) == 0 )
+		{
+		     sts = om$send( msg	= message VDSroot.GRputname( msg,
 								     name ),
 			       senderid = object->objid,
 			       targetid = object->objid,
 			       targetos = object->osnum ) ;
 
-		CHK_MSG( sts, *msg, "VDSroot.GRputname" ) ;
+		     CHK_MSG( sts, *msg, "VDSroot.GRputname" ) ;
+		}
 
 	} else
 #ifdef DEBUG
