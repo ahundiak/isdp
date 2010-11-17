@@ -1,4 +1,4 @@
-/* $Id: VDrrvCmd.h,v 1.19 2002/06/07 20:14:48 ahundiak Exp $  */
+/* $Id: VDrrvCmd.h,v 1.19.2.3 2003/06/19 15:51:25 ylong Exp $  */
 
 /***************************************************************************
  * I/VDS
@@ -11,38 +11,12 @@
  *
  * Revision History:
  *      $Log: VDrrvCmd.h,v $
- *      Revision 1.19  2002/06/07 20:14:48  ahundiak
- *      ah
+ *      Revision 1.19.2.3  2003/06/19 15:51:25  ylong
+ *      CR7711, write comparison result to an ascii file
  *
- *      Revision 1.18  2002/06/04 14:04:25  ahundiak
- *      ah
+ *      Revision 1.19.2.2  2003/06/19 15:32:20  ahundiak
+ *      ah CR7705 Nav Event Buttons
  *
- *      Revision 1.17  2002/05/17 15:22:33  ahundiak
- *      ah
- *
- *      Revision 1.16  2002/05/10 19:34:03  ahundiak
- *      ah
- *
- *      Revision 1.15  2002/05/06 20:52:51  ahundiak
- *      ah
- *
- *      Revision 1.14  2002/05/01 19:59:24  ahundiak
- *      ah
- *
- *      Revision 1.13  2002/02/28 21:41:33  ahundiak
- *      ah
- *
- *      Revision 1.12  2002/01/08 20:30:29  ahundiak
- *      ah
- *
- *      Revision 1.11  2001/11/01 22:20:01  ylong
- *      Add Navigate and Event functionalities
- *
- *      Revision 1.10  2001/03/29 19:36:46  jdsauby
- *      Incorporation of Purpose Info
- *
- *      Revision 1.9  2001/03/19 22:06:18  jdsauby
- *      Added pdm_info and purp_info attributes to tree, moved post to create form
  *
  *      Revision 1.8  2001/03/16 19:05:34  jdsauby
  *      Modified to suit for Posting, File and Database Operations
@@ -51,6 +25,7 @@
  * History:
  * MM/DD/YY  AUTHOR  DESCRIPTION
  * 02/15/01  ah      Creation
+ * 11/17/10  ah      SOL10 Assosted enhancements
  ***************************************************************************/
 
 #ifndef VDrrvCmd_include
@@ -114,7 +89,9 @@
 #define VDRRV_FORM_CREATE_L_SCAN    27
 
 extern void    VDtestCreateSnapshot       __((TVDtestTestInfo *testInfo));
-extern IGRstat VDrrvCmdInitCreateSnapshot __((TVDtestTestInfo *testInfo, VDobjid pplObjid, VDosnum pplOsnum));
+extern IGRstat VDrrvCmdInitCreateSnapshot __((TVDtestTestInfo *testInfo, 
+                                              VDobjid pplObjid, 
+                                              VDosnum pplOsnum));
 
 extern void    VDrrvCmdKillCreateSnapshot __(());
 extern void    VDrrvCmdLoopCreateSnapshot __(());
@@ -125,6 +102,8 @@ extern IGRint  VDrrvCmdNotifyCreate    __((IGRint    f_label,
 					   Form      form));
 
 extern IGRint VDrrvCmdGetCreateTraceFlag __(());
+
+extern void   VDrrvCmdGetNavEventID __((TGRid *eventID));
 
 /* --------------------------------------------
  * Get the scan type flag
@@ -153,8 +132,9 @@ extern IGRstat VDrrvPostXmlSnapshotFile __((IGRchar *xmlFile,
 #define VDRRV_FORM_REVIEW_L_DOOMS_TS    2
 #define VDRRV_FORM_REVIEW_L_DOOMS_ID    3
 
-#define VDRRV_FORM_REVIEW_G_FILES      13
-#define VDRRV_FORM_REVIEW_B_LOAD_FILE  14
+#define VDRRV_FORM_REVIEW_B_NAVIGATE   13
+#define VDRRV_FORM_REVIEW_B_EVENT      14
+
 #define VDRRV_FORM_REVIEW_B_FILE_OPS   19
 #define VDRRV_FORM_REVIEW_B_DB_OPS     20
 
@@ -162,6 +142,7 @@ extern IGRstat VDrrvPostXmlSnapshotFile __((IGRchar *xmlFile,
 #define VDRRV_FORM_REVIEW_B_DELETE     17
 #define VDRRV_FORM_REVIEW_B_VIEW_XML   21
 #define VDRRV_FORM_REVIEW_B_POST_XML   22
+#define VDRRV_FORM_REVIEW_B_WRITE_FILE 24
 
 #define VDRRV_FORM_REVIEW_G_STAT       15
 #define VDRRV_FORM_REVIEW_G_SHOW       23
@@ -169,22 +150,28 @@ extern IGRstat VDrrvPostXmlSnapshotFile __((IGRchar *xmlFile,
 #define VDRRV_FORM_REVIEW_L_DIFFS         18
 #define VDRRV_FORM_REVIEW_L_DIFFS_NUM      0      
 #define VDRRV_FORM_REVIEW_L_DIFFS_TYPE     1   
-#define VDRRV_FORM_REVIEW_L_DIFFS_DESC     2   
-#define VDRRV_FORM_REVIEW_L_DIFFS_DIFF_ID  3 
-#define VDRRV_FORM_REVIEW_L_DIFFS_NODE_ID  4 
+#define VDRRV_FORM_REVIEW_L_DIFFS_MODEL_ID 2  
+#define VDRRV_FORM_REVIEW_L_DIFFS_DESC     3   
+#define VDRRV_FORM_REVIEW_L_DIFFS_DIFF_ID  4 
+#define VDRRV_FORM_REVIEW_L_DIFFS_NODE_ID  5 
 
 extern void    VDtestReviewSnapshot       __((TVDtestTestInfo *testInfo));
-extern IGRstat VDrrvCmdInitReviewSnapshot __((TVDtestTestInfo *testInfo));
+extern IGRstat VDrrvCmdInitReviewSnapshot __((TVDtestTestInfo *testInfo,
+                                              VDobjid pplObjid, 
+                                              VDosnum pplOsnum));
 
 extern void    VDrrvCmdKillReviewSnapshot __(());
 extern void    VDrrvCmdLoopReviewSnapshot __(());
 
-extern IGRint  VDrrvCmdReviewNotify    __((IGRint    f_label,
+extern IGRint  VDrrvCmdNotifyReview    __((IGRint    f_label,
 					   IGRint    gadget,
 					   IGRdouble value,
 					   Form      form));
 
 extern void VDrrvCmdFillDoomList __((Form form, IGRint gadget));
+
+extern void VDrrvCmdGetReviewNavEventID __((TGRid *eventID));
+
 
 /* -----------------------------------------------
  * File Operations form

@@ -1,4 +1,4 @@
-/* $Id: VDrrvReview.c,v 1.11 2002/06/07 20:14:49 ahundiak Exp $  */
+/* $Id: VDrrvReview.c,v 1.11.2.5 2003/06/19 20:54:50 ylong Exp $  */
 
 /***************************************************************************
  * I/VDS
@@ -11,6 +11,21 @@
  *
  * Revision History:
  *      $Log: VDrrvReview.c,v $
+ *      Revision 1.11.2.5  2003/06/19 20:54:50  ylong
+ *      yl
+ *
+ *      Revision 1.11.2.4  2003/06/19 19:54:00  ylong
+ *      TR7711, refined fix
+ *
+ *      Revision 1.11.2.3  2003/06/19 15:51:25  ylong
+ *      CR7711, write comparison result to an ascii file
+ *
+ *      Revision 1.11.2.2  2003/06/19 15:32:20  ahundiak
+ *      ah CR7705 Nav Event Buttons
+ *
+ *      Revision 1.11.2.1  2003/06/17 20:06:57  ahundiak
+ *      ah
+ *
  *      Revision 1.11  2002/06/07 20:14:49  ahundiak
  *      ah
  *
@@ -35,34 +50,12 @@
  *      Revision 1.4  2001/03/16 19:05:38  jdsauby
  *      Modified to suit for Posting, File and Database Operations
  *
- *      Revision 1.3  2001/03/13 00:19:32  ahundiak
- *      ah
- *
- *      Revision 1.2  2001/03/09 22:13:09  ahundiak
- *      *** empty log message ***
- *
- *      Revision 1.1  2001/03/09 15:16:42  ahundiak
- *      ah
- *
- *      Revision 1.5  2001/03/07 16:24:20  ahundiak
- *      ah
- *
- *      Revision 1.4  2001/02/26 15:47:18  ahundiak
- *      ah
- *
- *      Revision 1.3  2001/02/22 22:42:33  ahundiak
- *      *** empty log message ***
- *
- *      Revision 1.2  2001/02/20 15:21:32  ahundiak
- *      *** empty log message ***
- *
- *      Revision 1.1  2001/02/17 14:23:44  ahundiak
- *      *** empty log message ***
- *
  *
  * History:
  * MM/DD/YY  AUTHOR  DESCRIPTION
  * 02/15/01  ah      Creation
+ * 06/19/03  ah      CR7705 Added Nav/Event Buttons.
+ * 06/19/03  yl      CR7711, write comparison result to an ascii file
  ***************************************************************************/
 #include "VDtypedefc.h"
 #include "VDassert.h"
@@ -76,6 +69,7 @@
 #include "VDrrvCmd.h"
 
 #include <sys/types.h>
+#include <sys/stat.h>
 #include <dirent.h>
 
 VDASSERT_FFN("vdcty/rrv/VDrrvReview.c");
@@ -144,7 +138,10 @@ typedef struct
   TGRid diffsID;
 
   TVDctxNodeList diffList;
-  
+
+  TGRid eventID;
+  TGRid cmdID;
+
 } Ts_info;
 
 static Ts_info *s;
@@ -271,6 +268,8 @@ static void fillDiffListRow(Form   form,
   IGRint  changed = haveChangedAttributes(diffID);
 
   TGRid   nodeID;
+  TGRobj_env modelOE;
+
   TVDctxBaseInfo baseInfo;
 
   // Grab all changed attributes
@@ -324,6 +323,13 @@ static void fillDiffListRow(Form   form,
   // Get the tree node
   VDrrvGetNodefromDiff(diffID,&nodeID);
   VDfrmSetfID(form,gadget,i,VDRRV_FORM_REVIEW_L_DIFFS_NODE_ID,&nodeID);
+
+  // Model id */
+  VDctxGetModelObject(&nodeID,&modelOE);
+  if (modelOE.obj_id.objid != NULL_OBJID)
+  {
+    VDfrmSetfID(form,gadget,i,VDRRV_FORM_REVIEW_L_DIFFS_MODEL_ID,&modelOE.obj_id);
+  }
 
   // Need a description
   VDctxGetBaseInfo(&nodeID,&baseInfo);
@@ -743,7 +749,7 @@ static void notifyDiffList()
   IGRint row,sel;
   enum GRdpmode mode;
 
-  TGRid diffID,nodeID;
+  TGRid diffID,nodeID,modelID;
   
   IGRchar buf[256];
   IGRint  type;
@@ -765,18 +771,34 @@ static void notifyDiffList()
   else          mode = GRhdo;
 
   // Grab the objects
-  VDfrmGetfID(form,gadget,row,VDRRV_FORM_REVIEW_L_DIFFS_DIFF_ID,&diffID);
-  VDfrmGetfID(form,gadget,row,VDRRV_FORM_REVIEW_L_DIFFS_NODE_ID,&nodeID);
+  VDfrmGetfID(form,gadget,row,VDRRV_FORM_REVIEW_L_DIFFS_DIFF_ID, &diffID);
+  VDfrmGetfID(form,gadget,row,VDRRV_FORM_REVIEW_L_DIFFS_NODE_ID, &nodeID);
+  VDfrmGetfID(form,gadget,row,VDRRV_FORM_REVIEW_L_DIFFS_MODEL_ID,&modelID);
   VDASSERTW(nodeID.objid != NULL_OBJID);
 
   // VDlogPrintObject(VDLOG_INFO,1,"Display ",NULL,&nodeID);
   
   // Finally!!!
   VDctxDisplayNode(&nodeID,mode,0);
-  
-  // Thats it for unselected rows
+
+  /* Handle event id stuff */
+  if (sel) s->eventID       = modelID;
+  else     s->eventID.objid = NULL_OBJID;
+
+  if (s->eventID.objid == NULL_OBJID)
+  {
+    VIg_disable(form,VDRRV_FORM_REVIEW_B_NAVIGATE);
+    VIg_disable(form,VDRRV_FORM_REVIEW_B_EVENT);
+  }
+  else
+  {
+    VIg_enable(form,VDRRV_FORM_REVIEW_B_NAVIGATE);
+    VIg_enable(form,VDRRV_FORM_REVIEW_B_EVENT);
+  }
+ 
+  // Done with non-selected rows
   if (sel == 0) goto wrapup;
-  
+
   // Put out some info
   s->statusRow = 0;
   VDfrmSetNumRows(form,VDRRV_FORM_REVIEW_G_STAT,0);
@@ -816,6 +838,121 @@ static void notifyDiffList()
   
   // Done
  wrapup:
+  return;
+}
+
+/* -----------------------------------------------
+ * Write comparison to a file
+ */
+static void notifyWriteFile()
+{
+  VDASSERT_FN("notifyWriteFile");
+  
+  Form		form = s->form;
+  IGRint	gadget;
+  IGRint	i, row, rows=0, max = 0;
+  IGRchar	buf[256],txt0[80],txt1[80],txt2[80],txt3[80];
+  IGRchar	fileName[128];
+  IGRchar	preName[80];
+  IGRchar	*p = NULL;
+  IGRchab	ts1, ts2;
+  FILE		*fp = NULL;
+  DIR		*dir;
+  struct dirent	*dp;
+  struct stat	stBuf;
+  
+ 
+  TVDctxBaseInfo baseInfo1, baseInfo2;
+  
+  // assert
+  VDASSERTW(s->tree1ID.objid != NULL_OBJID);
+  VDASSERTW(s->tree2ID.objid != NULL_OBJID);
+
+  // get tree info
+  VDctxGetBaseInfo(&s->tree1ID, &baseInfo1);
+  VDctxGetBaseInfo(&s->tree2ID, &baseInfo2);
+  VDctxGetTxtAtr(&s->tree1ID,VDCTX_ATR_CREATION_TIMESTAMP,ts1);
+  VDctxGetTxtAtr(&s->tree2ID,VDCTX_ATR_CREATION_TIMESTAMP,ts2);
+
+  sprintf(preName,"%sreview_", baseInfo1.treeName);
+
+  // check existing files
+  if ( (dir = opendir("./")) == NULL ) { goto wrapup; }
+  while ( (dp = readdir ( dir )) ) 
+  {
+    strcpy(buf, dp->d_name);
+    if( !strncmp(buf,preName,strlen(preName)) )
+    {
+       p = strchr(buf, '.');
+       if(p) *p = '\0';
+       p = strchr(buf, '_');
+       if(p && (atoi(++p) > max)) max = atoi(p);
+       //printf("Existing file: %s\n", buf);
+    }
+  }
+  max++;
+  if( dir ) closedir(dir);
+  
+  // open file
+  sprintf(fileName, "%s%d.txt", preName, max);
+  fp = fopen( fileName, "w" );
+  if( !fp ) goto wrapup;
+
+#if 0
+  for( i = 1;  ; i++ )
+  {
+     sprintf(fileName, "%s%d.txt", preName, i);
+     if( stat( fileName, &stBuf ) )
+     {
+	fp = fopen( fileName, "w" );
+	if( !fp ) goto wrapup;
+	break;
+     }
+  }
+#endif
+
+  // 1. write gadget VDRRV_FORM_REVIEW_L_DOOMS to file
+  fprintf(fp, "%-18s%-18s%s\n",baseInfo1.treeType, baseInfo1.treeName, ts1);
+  fprintf(fp, "%-18s%-18s%s\n",baseInfo2.treeType, baseInfo2.treeName, ts2);
+  fprintf(fp, "\n\n");
+
+  // 2. write gadget VDRRV_FORM_REVIEW_G_SHOW to file
+  gadget = VDRRV_FORM_REVIEW_G_SHOW;
+  VDfrmGetfText(form,gadget,0,0,buf);
+  fprintf(fp, "%s\n", buf);
+  fprintf(fp, "\n\n");
+  
+  // 3. write gadget VDRRV_FORM_REVIEW_L_DIFFS to file
+  gadget = VDRRV_FORM_REVIEW_L_DIFFS;
+  VDfrmGetNumRows(form,gadget,&rows,NULL,NULL);
+  for(row = 0; row < rows; row++ )
+  {
+     VDfrmGetfText(form,gadget,row,0,txt0);
+     VDfrmGetfText(form,gadget,row,1,txt1);
+     VDfrmGetfText(form,gadget,row,2,txt2);
+     VDfrmGetfText(form,gadget,row,3,txt3);
+     fprintf(fp, "%-3s%-5s%-15s%s\n",txt0,txt1,txt2,txt3);
+  }
+  fprintf(fp, "\n\n");
+
+  // 4. write gadget VDRRV_FORM_REVIEW_G_STAT to file
+  gadget = VDRRV_FORM_REVIEW_G_STAT;
+  VDfrmGetNumRows(form,gadget,&rows,NULL,NULL);
+  for(row = 0; row < rows; row++ )
+  {
+     *buf = 0;
+     VDfrmGetfText(form,gadget,row,0,buf);
+     fprintf(fp, "%s\n",buf);
+  }
+
+  // Done
+  sprintf(buf, "Done writing to file %s", fileName);
+  VDfrmSetStatus(form,10,buf);
+
+ wrapup:
+  if( fp ) fclose(fp);
+  //sprintf(buf, "cat %s >> %s", s->logFileName, fileName);
+  //system(buf);
   return;
 }
 
@@ -980,12 +1117,6 @@ IGRint VDrrvCmdNotifyReview(IGRint    f_label,
                        &s->diffList);
       break;
 
-
-#if 0
-    case VDRRV_FORM_REVIEW_B_LOAD_FILE:
-      loadFromFile();
-      break;
-#endif
     case VDRRV_FORM_REVIEW_B_COMPARE:
       compareDooms();
       break;
@@ -1008,6 +1139,10 @@ IGRint VDrrvCmdNotifyReview(IGRint    f_label,
   
     case VDRRV_FORM_REVIEW_B_POST_XML:
       notifyPostXml();
+      break;
+  
+    case VDRRV_FORM_REVIEW_B_WRITE_FILE:
+      notifyWriteFile();
       break;
   
   }
@@ -1105,12 +1240,36 @@ void VDrrvCmdFillDoomList(Form form, IGRint gadget)
   
   return;
 }
+/* -----------------------------------------------
+ * Navigate and event sub system
+ */
+void VDrrvCmdGetReviewNavEventID(TGRid *objID)
+{
+  VDASSERT_FN("VDrrvGetReviewNavEventID");
+  
+  VDASSERTW(objID); objID->objid = NULL_OBJID;
+  VDASSERTW(s);
+  
+  *objID = s->eventID;
+  
+ wrapup:
+  return;
+}
+
+/* -----------------------------------------------
+ * Need this to hook to the ppl
+ */
+extern IGRint ci_notification(IGRint    f_label,
+			      IGRint    gadget,
+			      IGRdouble value,
+			      Form      form);
 
 /* -----------------------------------------------
  * Get the whole thing going
  *
  */
-IGRstat VDrrvCmdInitReviewSnapshot(TVDtestTestInfo *testInfo)
+IGRstat VDrrvCmdInitReviewSnapshot(TVDtestTestInfo *testInfo, 
+                                   VDobjid cmdObjid, VDosnum cmdOsnum)
 {
   VDASSERT_FN("VDrrvCmdReviewSnapshot");
   IGRstat retFlag = 0;
@@ -1143,25 +1302,41 @@ IGRstat VDrrvCmdInitReviewSnapshot(TVDtestTestInfo *testInfo)
   s->tree1ID.objid = NULL_OBJID;
   s->tree2ID.objid = NULL_OBJID;
   s->diffsID.objid = NULL_OBJID;
+  s->eventID.objid = NULL_OBJID;
 
+  s->cmdID.objid = cmdObjid;
+  s->cmdID.osnum = cmdOsnum;
+ 
   VDctxInitNodeList(&s->diffList);
   
-  // Create the form
-  sts = VDfrmNewForm(VDRRV_FORM_REVIEW_NUM,
-		     VDRRV_FORM_REVIEW_NAME,
-		     VDrrvCmdNotifyReview,1,&s->form);
+  // Link to ppl if have one
+  if (s->cmdID.objid != NULL_OBJID) {
+
+    sts = VDfrmCreateForm(VDRRV_FORM_REVIEW_NUM,
+			  VDRRV_FORM_REVIEW_NAME,
+			  ci_notification,
+			  s->cmdID.objid,
+			  s->cmdID.osnum,
+			  &s->form,1);
+
+  }
+  else {
+	
+    sts = VDfrmNewForm(VDRRV_FORM_REVIEW_NUM,
+		       VDRRV_FORM_REVIEW_NAME,
+		       VDrrvCmdNotifyReview,1,&s->form);
+  }  
   VDASSERTW(sts);
   VDASSERTW(s->form);
 
   // Display it
   VDfrmDisplayForm(s->form,1,NULL);
 
+  VIg_disable(s->form,VDRRV_FORM_REVIEW_B_NAVIGATE);
+  VIg_disable(s->form,VDRRV_FORM_REVIEW_B_EVENT);
+
   // Fill in default info
   VDrrvCmdFillDoomList(s->form, VDRRV_FORM_REVIEW_L_DOOMS);
-
-  //VDfrmFillListFiles(s->form, VDRRV_FORM_REVIEW_G_FILES,".",".xml");
-  VIg_erase(s->form, VDRRV_FORM_REVIEW_G_FILES);
-  VIg_erase(s->form, VDRRV_FORM_REVIEW_B_LOAD_FILE);
 
   // Done
   retFlag = 1;
@@ -1245,7 +1420,7 @@ void VDtestReviewSnapshot(TVDtestTestInfo *testInfo)
   testInfo->worked = 1;
 
   // Get started
-  sts = VDrrvCmdInitReviewSnapshot(testInfo);
+  sts = VDrrvCmdInitReviewSnapshot(testInfo,NULL_OBJID,NULL_OSNUM);
   VDASSERTW(sts & 1);
   
   // Push the compare button

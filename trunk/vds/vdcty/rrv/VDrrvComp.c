@@ -1,4 +1,4 @@
-/* $Id: VDrrvComp.c,v 1.1 2002/06/07 20:14:49 ahundiak Exp $  */
+/* $Id: VDrrvComp.c,v 1.1.2.1 2003/06/17 21:03:52 ahundiak Exp $  */
 
 /***************************************************************************
  * I/VDS
@@ -11,6 +11,9 @@
  *
  * Revision History:
  *      $Log: VDrrvComp.c,v $
+ *      Revision 1.1.2.1  2003/06/17 21:03:52  ahundiak
+ *      ah
+ *
  *      Revision 1.1  2002/06/07 20:14:49  ahundiak
  *      ah
  *
@@ -18,6 +21,7 @@
  * History:
  * MM/DD/YY  AUTHOR  DESCRIPTION
  * 06/05/02  ah      Creation
+ * 06/17/03  ah      CR7623 Show when user attributes are added or deleted
  ***************************************************************************/
 #include "VDtypedefc.h"
 #include "VDassert.h"
@@ -58,11 +62,27 @@ static void compareTwoCompAttributes(TVDrrvDiffInfo *info,
   IGRchab buf1,buf2;
   IGRchar *p;
 
+  IGRint len;
+
+  /* Init */
+  len = sizeof(buf1);
+
   // Cooridinate matrixes get special handling
   if (!strcmp(name,"matrix")) goto wrapup;
 
+  /* See if the second node even has the attribute */
+  sts = VDctxGetTxtAtrBuf(node2ID,name,len,buf2);
+  if (sts == 0)
+  {
+    VDctxGetTxtAtrBuf(node1ID,name,len,buf1);
+    snprintf(buf,sizeof(buf),"Added new attribute %s=%s\n",name,buf1);
+    VDrrvInitDiffNode(1,info);
+    VDctxAppTxtAtr(&info->diffID,name,"Added Attribute");
+    goto wrapup;
+  }
+
   // Get the attributes
-  sts = VDrrvGetTwoAttributes(node1ID,node2ID,name,sizeof(buf1),buf1,buf2);
+  sts = VDrrvGetTwoAttributes(node1ID,node2ID,name,len,buf1,buf2);
   if (sts == 0) goto wrapup;
   
   // Generic processor
@@ -95,9 +115,13 @@ static void compareTwoCompNodesAttributes(TVDrrvDiffInfo *info,
 {
   VDASSERT_FN("compareTwoCompNodesAttributes");
 
+  IGRint  sts;
+
   IGRint  cnt,i;
   TVDfld  flds[64];
-  
+
+  IGRchab buf1,buf2;
+   
   // Get the attribute names
   VDctxGetFldAtrs(node1ID,&cnt,flds);
 
@@ -106,6 +130,19 @@ static void compareTwoCompNodesAttributes(TVDrrvDiffInfo *info,
     compareTwoCompAttributes(info,
                              node1ID,node2ID,
                              flds[i].name);
+  }
+
+  /* Bounce the other way just to see if any are deleted */
+  VDctxGetFldAtrs(node2ID,&cnt,flds);
+
+  // Bounce em
+  for(i = 0; i < cnt; i++) {
+    sts = VDctxGetTxtAtrBuf(node1ID,flds[i].name,sizeof(buf1),buf1);
+    if (sts == 0)
+    {
+      VDrrvInitDiffNode(1,info);
+      VDctxAppTxtAtr(&info->diffID,flds[i].name,"Deleted Attribute");
+    }
   }
 
  wrapup:

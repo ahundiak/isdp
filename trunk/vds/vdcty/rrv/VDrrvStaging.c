@@ -1,4 +1,4 @@
-/* $Id: VDrrvStaging.c,v 1.7 2002/06/12 18:49:20 ahundiak Exp $  */
+/* $Id: VDrrvStaging.c,v 1.7.2.1 2004/02/12 14:55:55 ahundiak Exp $  */
 
 /***************************************************************************
  * I/VDS
@@ -11,6 +11,9 @@
  *
  * Revision History:
  *      $Log: VDrrvStaging.c,v $
+ *      Revision 1.7.2.1  2004/02/12 14:55:55  ahundiak
+ *      ah
+ *
  *      Revision 1.7  2002/06/12 18:49:20  ahundiak
  *      ah
  *
@@ -36,6 +39,7 @@
  * History:
  * MM/DD/YY  AUTHOR  DESCRIPTION
  * 04/13/01  ah      Creation
+ * 06/19/03  ah      CR 7704 Add bevels to staging report
  ***************************************************************************/
 #include "VDtypedefc.h"
 #include "VDassert.h"
@@ -680,6 +684,16 @@ void VDrrvCompareStagingTrees(TGRid *treeNewID, TGRid *treeOldID)
 
   // Do it
   VDat2CompareStagingTrees(&rootNewID,&rootOldID,1);
+  
+  /* --------------------------------------------
+   * CR7704 Add bevels to the report
+   */
+  VDctxGetNodeByType(treeNewID,VDCTX_NODE_TYPE_SS_OM_BEVELS,&rootNewID);
+  if (rootNewID.objid == NULL_OBJID) goto wrapup;  
+  VDctxGetNodeByType(treeOldID,VDCTX_NODE_TYPE_SS_OM_BEVELS,&rootOldID);
+  if (rootOldID.objid == NULL_OBJID) goto wrapup;
+
+  // VDrrvCompareTwoBevelTrees(&rootNewID, &rootOldID, diffsID);
   
  wrapup:
   if (logging) {  
