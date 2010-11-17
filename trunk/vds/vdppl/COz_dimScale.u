@@ -1,0 +1,120 @@
+/* $Id: COz_dimScale.u,v 1.1.2.1 2002/10/15 15:52:28 ylong Exp $ */ 
+
+/***************************************************************************
+ * I/VDS
+ *
+ * File:        vdppl/COz_dimScale.u
+ *
+ * Description: Set dimension scale by drawing view
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ * $Log: COz_dimScale.u,v $
+ * Revision 1.1.2.1  2002/10/15 15:52:28  ylong
+ * *** empty log message ***
+ *
+ *
+ * History:
+ * MM/DD/YY  AUTHOR  DESCRIPTION
+ * 10/15/02  ylong   Created for CR3937 
+ ***************************************************************************/
+
+#include "VDppl.h"
+#include "dimdef.h"
+#include "dim.h"
+#include "dimmacros.h"
+
+extern DMget_dim_param();
+extern DMput_dim_param();
+
+/* ---------------------------------------------
+ */
+main()
+{
+  IGRlong		sts, msg;
+  IGRint		response;
+  IGRchar		stsMsg[80], local_scale_string[80], txt[80], *p;
+  IGRdouble		scale_xyz[3], local_scale, val1, val2;
+  TGRobj_env		drwview;
+  struct DMenv_param	frm_env;
+
+  UI_message("Set Dimension Scale by Drawing View");
+  stsMsg[0] = '\0';
+
+  drwview.obj_id.objid = NULL_OBJID;
+
+  ci$locate (	obj		= &drwview.obj_id.objid,
+		osnum		= &drwview.obj_id.osnum,
+		response	= &response,
+		owner_action	= LC_RIGID_COMP | LC_RIGID_OWNER | LC_FLEX_COMP,
+		md_env		= &drwview.mod_env,
+		classes		= "GRdrawview",
+		prompt		= "Identify Drawing View");
+
+  if( drwview.obj_id.objid == NULL_OBJID )
+  {
+     strcpy( stsMsg, "Failed to locate Drawing View");
+     goto wrapup;
+  }
+
+  switch (response)
+  {
+        case DATA :
+                break;
+
+        default:
+                exit;
+  }
+
+  sts = ci$send(	msg	 = message GRdrawview.GRget_drawview_scale(
+                                        &msg,
+                                        &drwview.mod_env,
+                                        local_scale_string,
+                                        scale_xyz ),
+			targetid = drwview.obj_id.objid,
+			targetos = drwview.obj_id.osnum) ;
+
+  if( !(sts&msg&1) )
+  {
+     strcpy(stsMsg, "Failed to get Drawing View Scale");
+     goto wrapup;
+  }
+  //printf("local_scale_string = [%s]\n", local_scale_string);
+
+  strcpy(txt, local_scale_string);
+  p = NULL;
+  p = strchr( txt, ':' );
+  if( p != NULL )
+  {
+     *p = '\0';
+     val1 = atoi( txt );
+     p = p + 1;
+     val2 = atoi( p );
+     if( val2 < 0.000000001 )
+     {
+	strcpy(stsMsg, "Command failed due to Error Scale");
+	sts = 0;
+	goto wrapup;
+     }
+     local_scale = val1/val2;
+  }
+  else
+  {
+     strcpy( stsMsg, "command Failed due to Error Scale" );
+     sts = 0;
+     goto wrapup;
+  }
+
+  dm$get_dim_param(type = DM_ENV_PARAM, p_data = &frm_env);
+  frm_env.sca_fact = local_scale;
+  dm$put_dim_param(type = DM_ENV_PARAM, p_data = &frm_env);
+  sprintf( stsMsg, "Scale has been set to %g(%s) by Drawing View",
+			local_scale, local_scale_string);
+
+  sts = 1;
+wrapup:
+  UI_status(stsMsg);
+  return sts;
+}
+

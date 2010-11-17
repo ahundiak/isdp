@@ -1,0 +1,155 @@
+/* $Id: COz_svset.u,v 1.1.2.1 2002/09/20 15:46:16 ylong Exp $ */ 
+
+/***************************************************************************
+ * I/VDS
+ *
+ * File:        vdppl/COz_scan01.u
+ *
+ * Description: Stores ACpretnedin and ASsourcein data in a text file
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ * $Log: COz_svset.u,v $
+ * Revision 1.1.2.1  2002/09/20 15:46:16  ylong
+ * *** empty log message ***
+ *
+ * Revision 1.1.1.1  2001/01/04 21:09:02  cvs
+ * Initial import to CVS
+ *
+# Revision 1.1  1998/11/05  16:53:12  pinnacle
+# tags
+#
+ *
+ *
+ * History:
+ * MM/DD/YY  AUTHOR  DESCRIPTION
+ * 11/05/98  ah      Created for TR6614
+ ***************************************************************************/
+
+#include "VDppl.h"
+#include "VDobj.h"
+
+TGRid preID;  // GRsvset ID
+
+IGRint setCnt;
+IGRint delCnt;
+
+// Listener channel information
+#define chnName"GRcmpowner.to_components"
+OM_S_CHANSELECT chnSelect;
+
+extern VDclassid OPP_GRsvset_class_id;
+
+/* -----------------------------------------------
+ * Gets the component objects objects 
+ */
+IGRstar getComponents()
+{
+  IGRstat retFlag;
+  IGRstat sts;
+
+  OM_S_OBJECT_LINKAGE   chnLinks[16];
+  IGRuint               chnLinkCnt;
+  IGRuint               chnLinkSize;
+  IGRuint               i;
+
+  // Init
+  retFlag = 0;
+
+  /* Grab the objects */
+  chnLinkSize = sizeof(chnLinks);
+  chnLinkCnt  = 0;
+  sts  = om$get_channel_objects(
+    osnum = preID.osnum,
+    objid = preID.objid,
+    p_chanselect = &chnSelect,
+    list  =  chnLinks,
+    size  =  chnLinkSize,
+    count = &chnLinkCnt
+  );
+
+  if (chnLinkCnt < 1) {
+    ci$send(msg = message Root.delete(0),
+	    targetid = preID.objid,
+	    targetos = preID.osnum);
+    delCnt = delCnt + 1;
+  }
+
+  retFlag = 1;
+
+wrapup:
+  return retFlag;
+
+}
+
+
+/* --------------------------------------------
+ * Process each object
+ */
+IGRstar process()
+{
+  IGRstat retFlag;
+  IGRstat sts;
+
+  retFlag = 0;
+
+  // Filter all but ACpretendin and ASsourcein
+  sts = vdobj$IsAncestryValid(objID = &preID, 
+			      superClassID = OPP_GRsvset_class_id);
+  if (!(sts & 1)) goto wrapup;
+
+  setCnt = setCnt + 1;
+
+  getComponents();
+
+  // Done
+  retFlag = 1;
+
+wrapup:
+  return retFlag;
+}
+
+extern EX_findmod();
+
+/* ---------------------------------------------
+ * Cycles through os and process objects
+ */
+main()
+{
+  IGRstat sts;
+  IGRuint i,max;
+
+  IGRchar *p;
+  IGRchar  buf[128];
+
+  UI_status("Scanning...");
+  setCnt = 0;
+  delCnt = 0;
+
+  /* Make a channel selector */
+  sts = om$make_chanselect(
+    channame     =  chnName, 
+    p_chanselect = &chnSelect
+  );
+  if (!(sts & 1)) {
+    UI_status("Problem making channel selector");
+    return 0;
+  }
+
+  // Cycle through current os
+  ex$get_cur_mod(osnum = &preID.osnum);
+
+  // Cycle through
+  max = OM_GA_OSDs[preID.osnum]->CurSpaceMapSize;
+  for(i = 0; i < max; i = i + 1) {
+    preID.objid = i;
+    process();
+  }
+
+wrapup:
+  sprintf(buf,"Scan Complete, %d GRsvset objects, %d deleted",setCnt,delCnt);
+  UI_status(buf);
+  return 1;
+}
+
