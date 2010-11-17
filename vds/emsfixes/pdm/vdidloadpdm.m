@@ -21,13 +21,18 @@ SOURCE
 PDMcipart.c
 #else
 PDMcipart.c
+PDMloc_part1.c
+PDMcp_files.c
+PDMCheckOut.c
+/* PDMloc_part.c  For reference only */
+/* PDMrsearch.c   For reference only */
 #endif
 
 LIB
 #if ISDP_MAKE_SP
-$SPXV/lib/vdpdm.o
+$SPXV/lib/vdidloadpdm.o
 #else 
-$VDS/lib/vdpdm.o
+$VDS/lib/vdidloadpdm.o
 #endif
 
 SPEC
@@ -41,6 +46,7 @@ INCLUDE
 $SPXV/include
 $SPXV/vdinclude
 #endif
+$RIS/risdp/include
 $PDM/include
 $NFM/include
 $NFMDP/include
@@ -48,6 +54,7 @@ $PDU/include
 $PDUDP/include
 $BS/include
 $BS/include/prototypes
+$FORMS/include
 $EXNUC/include
 $GRNUC/include
 $MODEL/include
