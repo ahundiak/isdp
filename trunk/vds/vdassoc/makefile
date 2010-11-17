@@ -48,3 +48,7 @@ target: mkfile
 
 mkfile: vdassoc.m
 	grmakemake vdassoc.m mkfile
+
+clean:
+	@rm -f mkfile *.o *.c
+
