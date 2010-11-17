@@ -49,6 +49,7 @@
  *			values - _CALLOC(MX_ATTR_DFLTS, VDdefaultValues);
  *			also, load ppl file to get path of specific attri-
  *			bute files.
+ *	/08/05/02	ylong		TR6614, delete GRgrset/GRsvset
  ***************************************************************************/
 
 
@@ -86,6 +87,8 @@ class implementation VDCmdUsrAtt;
 #include "v_miscmacros.h"	/* vd_$is_ancestry_valid */
 
 extern  GRclassid       OPP_GRgrset_class_id ;
+
+from	GRgrset		import	GSdissolve;
 
 /*
 #define DEBUG
@@ -792,6 +795,13 @@ SetProc( process_locate ); Begin
 				response_data    = me->response_data);
 
        as$status();
+
+       if( setId.objid != NULL_OBJID ) /* TR6614 */
+       {
+          om$send (     msg      = message GRgrset.GSdissolve(&msg),
+                        targetid = setId.objid,
+                        targetos = setId.osnum);
+       }
 
        if( !(status & 1) )
        {
