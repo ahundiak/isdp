@@ -1,4 +1,4 @@
-/* $Id: VDhdrForm.I,v 1.36 2001/10/16 22:51:11 ylong Exp $ */
+/* $Id: VDhdrForm.I,v 1.36.4.1 2003/05/12 19:23:39 ylong Exp $ */
 
 /* --------------------------------------------------------------------
  * I/VDS
@@ -451,7 +451,8 @@ __DBGpr_int("------- me->mytype", me->mytype);
                   // lookup all the nodes per the treeID
                   selectionType = VDTR_FIND_ALL;
                   vd$trget_nodes(nodeID       = &treeID,
-			       lookupType   = selectionType,
+			         lookupType   = selectionType,
+				 frozen       = 1,
                                  outID        = &nodeIDs,
                                  cnt          = &cnt);
 		

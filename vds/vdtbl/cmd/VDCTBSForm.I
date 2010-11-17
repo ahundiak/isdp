@@ -1,4 +1,4 @@
-/* $Id: VDCTBSForm.I,v 1.29 2001/08/24 22:22:23 paul_noel Exp $ */
+/* $Id: VDCTBSForm.I,v 1.29.4.1 2003/05/12 19:23:39 ylong Exp $ */
 
 /* --------------------------------------------------------------------
  * I/VDS
@@ -14,8 +14,8 @@
  *
  * History:
  *
- *      01/10/01        pnoel           Creation
- *
+ * 01/10/01  pnoel  Creation
+ * 11/17/10  ah     SOL10 Frozen stuff
  * -------------------------------------------------------------------*/
 
 class implementation VDCmdPlHdr;
@@ -516,6 +516,7 @@ IGRstat VDctbsFillStagesList(char *form_ptr)
   selectionType = VDTR_FIND_ALL;
   vd$trget_nodes(nodeID       = &treeID,
                  lookupType   = selectionType,
+		 frozen	      = 1,
                  outID        = &nodeIDs,
                  cnt          = &cnt);
   if(cnt < 1) {
@@ -694,6 +695,7 @@ IGRstat VDctbsFillNamesList(char *form_ptr)
       selectionType = VDTR_FIND_ALL;
       vd$trget_nodes(nodeID       = &treeID,
                      lookupType   = selectionType,
+		     frozen       = 1,
                      outID        = &nodeIDs,
                      cnt          = &cnt);
 
@@ -1046,6 +1048,7 @@ IGRstat VDctbsFillIndexTypeList(char *form_ptr)
   selectionType = VDTR_FIND_ALL;
   vd$trget_nodes(nodeID       = &selNodeID,
                  lookupType   = selectionType,
+		 frozen       = 1,
                  outID        = &nodeIDs,
                  cnt          = &cnt);
   if (cnt < 1) {
@@ -1211,6 +1214,7 @@ IGRstat VDctbsFindNodeIDRow(char *form_ptr,TGRid *nodeID,IGRint *row)
   selectionType = VDTR_FIND_ALL;
   vd$trget_nodes(nodeID       = &treeID,
 		 lookupType   = selectionType,
+		 frozen       = 1,
 		 outID        = &nodeIDs,
 		 cnt          = &cnt);
   if(cnt < 1) goto wrapup;
@@ -1318,6 +1322,7 @@ IGRstat VDctbsFindRowNodeID(char *form_ptr,IGRint *row,TGRid *nodeID)
   /* get all the nodes for this treeID */
   vd$trget_nodes(nodeID       = &treeID,
 		 lookupType   = VDTR_FIND_ALL,
+		 frozen       = 1,
 		 outID        = &nodeIDs,
 		 cnt          = &cnt);
   if(cnt < 1) goto wrapup;

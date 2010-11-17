@@ -1,5 +1,5 @@
 
-/* $Id: VDTBX_exec.I,v 1.10 2002/04/23 14:17:38 ylong Exp $  */
+/* $Id: VDTBX_exec.I,v 1.10.2.2 2004/05/25 16:21:51 ahundiak Exp $  */
 
 /* --------------------------------------------------------------------
  * I/VDS
@@ -14,6 +14,12 @@
  *
  * Revision History:
  *      $Log: VDTBX_exec.I,v $
+ *      Revision 1.10.2.2  2004/05/25 16:21:51  ahundiak
+ *      ah
+ *
+ *      Revision 1.10.2.1  2003/05/12 19:23:39  ylong
+ *      TR7673 Filter out DELETED nodes/parts
+ *
  *      Revision 1.10  2002/04/23 14:17:38  ylong
  *      *** empty log message ***
  *
@@ -86,6 +92,7 @@
  *					MALLOC for table parts was at the
  *					wrong location.
  *	04/24/01	ylong		Dynamically allocate Outline
+ *      05/25/04        ah              TR9304 - Duplicating some rows
  * -------------------------------------------------------------------*/
 
 class implementation VDCmdTBX;
@@ -483,8 +490,7 @@ start_ascii_process:
     for (nRloop=nRstart; nRloop<(nbRows+nRstart); nRloop++)
     {  /*   loop through rows   */
 
-      sprintf(stsMsg, "Processing rows: %s%d", "%",
-			(100*(nRloop+1-nRstart))/nbRows);
+      sprintf(stsMsg, "Processing rows: %d%s", (100*(nRloop+1-nRstart))/nbRows,"%");
       UI_status( stsMsg );
       status =
       om$send (msg = message VDdrwTblHdr.VDrowNoToGRid
@@ -499,6 +505,14 @@ start_ascii_process:
       /*  Outline[0] = '\0'; */
       bGot       = FALSE;
 
+      /* ----------------------------------------
+       * TR9304 - 25 May 2004 - ah
+       * get-classid does not reset the value of pClass
+       * when passed an invalid object. 
+       *
+       * This in turn causes all sorts of fun things
+       */
+      Pclass = OM_K_NOTUSING_CLASSID;
       om$get_classid (objid = RowGRid.objid,
                       osnum = RowGRid.osnum,
                   p_classid = &Pclass);
