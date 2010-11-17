@@ -9,22 +9,16 @@
  *
  * Revision History:
  *      $Log: VDctxStage.c,v $
- *      Revision 1.4  2002/05/06 20:52:24  ahundiak
- *      ah
- *
- *      Revision 1.3  2001/10/19 18:21:34  ahundiak
- *      ah
- *
- *      Revision 1.2  2001/04/13 19:49:42  ahundiak
- *      ah
- *
- *      Revision 1.1  2001/04/06 12:43:21  ahundiak
- *      ah
- *
+ *      Revision 1.4.2.1  2003/03/13 16:20:54  ahundiak
+ *      ah TR7522
  *
  * History:
  * MM/DD/YY  AUTHOR  DESCRIPTION
  * 04/05/01  ah      Creation
+ * 03/13/03  ah      TR7522 Problem in VDctxCompareStagingTreeNodeTypeName
+ *                   Pieces with the same name but in different files 
+ *                   were being considered to be the same.
+ * 11/17/10  ah      SOL10
  ***************************************************************************/
 #include "VDtypedefc.h"
 #include "VDassert.h"
@@ -675,12 +669,33 @@ IGRint VDctxCompareStagingTreeNodeTypeName(const void *v1, const void *v2)
   IGRint nodeType2;
   IGRint nodeName1;
   IGRint nodeName2;
-  
+
   // Get the types
   VDctxGetStagingTreeNodeType(node1ID,baseInfo1.nodeType,&nodeType1);
   VDctxGetStagingTreeNodeType(node2ID,baseInfo1.nodeType,&nodeType2);
   if (nodeType1 < nodeType2) return -1;
   if (nodeType1 > nodeType2) return  1;
+
+  /* --------------------------------------------
+   * TR7522 For pieces need to check comp_name
+   * and tag since pieces in different files could 
+   * have the same node name
+   */
+  if (nodeType1 == 10)
+  {
+    IGRint cmp1,cmp2;
+
+    /* If the paths match then they are the same */
+    cmp1 = VDctxCompareCompPath(node1ID,node2ID);
+    if (cmp1 == 0) return 0;
+
+    /* If the tags match then they are the same */
+    cmp2 = VDctxCompareCompTag(node1ID,node2ID);
+    if (cmp2 == 0) return 0;
+
+    /* Use results from the path compare */
+    return cmp1;
+  }
   
   // Check the names
   VDctxGetNodeName(node1ID,baseInfo1.nodeName);
