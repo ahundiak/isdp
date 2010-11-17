@@ -24,7 +24,7 @@
  * 05/08/96  slj     moved vdb$risbuffer to free up memory
  * 03/01/04  ah      Adjusted VDValidateProject so as to not hit database
  *                   if not logged in
- * 11/17/10  ah      SOL10
+ * 11/17/10  ah      SOL10 - Had some #if 0???
  * -------------------------------------------------------------------*/
 
 class implementation Root;
@@ -69,7 +69,7 @@ class implementation Root;
 #include "v_dbgmacros.h"
 #include "v_miscmacros.h"
 
-#if 0
+#if 1
 %safe
 #include  "VX_FIproto.h"
 %endsafe
@@ -260,7 +260,7 @@ IGRint	 prj_units;
    if ( num == 0) ret_msg =  0;
    return (ret_msg);
 }
-#if 0
+#if 1
 int  VDGetProjectNumber( proj_nb)
 
 IGRchar	 *proj_nb; 		  /* [O] project number found     */
