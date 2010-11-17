@@ -1,4 +1,4 @@
-/* $Id: VDassert.h,v 1.3 2001/08/07 19:04:51 jdsauby Exp $  */
+/* $Id: VDassert.h,v 1.3.4.1 2004/03/29 16:25:21 ahundiak Exp $  */
 
 /***************************************************************************
  * I/VDS
@@ -10,6 +10,9 @@
  *
  * Revision History:
  *      $Log: VDassert.h,v $
+ *      Revision 1.3.4.1  2004/03/29 16:25:21  ahundiak
+ *      ah
+ *
  *      Revision 1.3  2001/08/07 19:04:51  jdsauby
  *      backed up a version for debug macro problems.  -jds
  *
@@ -25,6 +28,8 @@
  * MM/DD/YY  AUTHOR  DESCRIPTION
  * 07/21/00  ah      Created
  * 01/09/01  ah      sp merge
+ * 02/13/04  ah      Fixed abort macro
+ * 11/17/10  ah      SOL10 Check in
  ***************************************************************************/
 
 /* -----------------------------------------------
@@ -133,7 +138,7 @@ extern int VDassertPrint __((int type, int level, char *ffn, char *fn, int line,
 /* ---------------------------------------------
  * If assert fails, abort
  */
-#define VDASSERTA(f,label)                     \
+#define VDASSERTA(f)                           \
   if (f) NULL;                                 \
   else {                                       \
     VDassertPrint(0,0,ffn(),fn,__LINE__,NULL); \
