@@ -1,4 +1,4 @@
-/* $Id: VDtblLoc.I,v 1.4 2002/06/06 17:11:03 ylong Exp $ */
+/* $Id: VDtblLoc.I,v 1.4.2.1 2002/08/05 16:17:07 ylong Exp $ */
 
 /* --------------------------------------------------------------------
  * I/VDS
@@ -24,6 +24,7 @@
  * 	12/15/97	vini		CR-179526497
  *	07/30/99	Ming		tr179900784
  *	06/05/02	ylong		CR6391
+ *	08/05/02	ylong		TR6614, delete GRgrset/GRsvset
  * -------------------------------------------------------------------*/
 
 
@@ -114,6 +115,7 @@ from VDdrwTblHdr	import	VDgetRowInfo,
 from VDdrwTblRow	import	VDgetRowNumber,
 				VDisRowLinedOut;
 from GRgraphics		import	GRgetname;
+from GRgrset		import	GSdissolve;
 
 /*+me
  ---------------------------------------------------------------------------
@@ -869,6 +871,13 @@ method  process_locate ( long * sts )
 #endif
 
 wrapup :
+    if( setId.objid != NULL_OBJID ) /* TR6614 */
+    {
+        om$send ( msg      = message GRgrset.GSdissolve(&msg),
+                  targetid = setId.objid,
+                  targetos = setId.osnum);
+    }
+
     if( !(status & msg & 1) )
     {
 	*sts = VD_ERROR;
