@@ -17,28 +17,6 @@
  *      Revision 1.4  2001/05/25 14:56:53  jdsauby
  *      ETL 2235, Add HVAC tree to OTM
  *
- *      Revision 1.3  2001/03/11 18:37:01  ahundiak
- *      ah
- *
- *      Revision 1.2  2001/01/14 16:29:17  art
- *      sp merge
- *
- *      Revision 1.1  2001/01/12 15:14:11  art
- *      sp merge
- *
-# Revision 1.10  2000/12/08  15:49:54  pinnacle
-# ah
-#
-# Revision 1.9  2000/09/07  18:02:38  pinnacle
-# js
-#
-# Revision 1.8  2000/08/25  19:59:20  pinnacle
-# ah
-#
-# Revision 1.7  2000/08/10  13:23:02  pinnacle
-# js
-#
- *
  * History:
  * MM/DD/YY  AUTHOR  DESCRIPTION
  * 07/12/00  ah      Creation
@@ -69,6 +47,7 @@ VDct1WWayTree.c
 VDct1HvacTree.c
 VDct1Model.I
 VDct1DeltaTree.c
+VDct1GrpPlace.c
 
 LIB
 #if ISDP_MAKE_SP

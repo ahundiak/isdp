@@ -1,0 +1,77 @@
+22 Nov 2002
+
+For trXXXX had the case where standard assemblies were not updating
+their node names when the tree was recomputed.  The specific problem was
+for type 2 assemblies for wireways.
+
+wway.copyAttributesFromModelToNode
+I can put the code in here and it works for VRRway stuff.
+It does call it's parent method.
+
+engTree.copyAttributesFromModelToNode
+
+The function
+VDct1RootTreeM.getNodeNameForModelObject
+Is used to get the correct node name
+
+used in cmd2.node.createModelNode
+Only called in one spot, always called for model nodes.
+
+---
+The getNodeNameForModelObject esseintally ends up
+calling this customizible routine which returns specific
+information based on model type.
+
+This strongly implies that users will not be modifying
+the node name manually.
+VDitemdbGetMatIDForObject
+
+---
+The 64K$ question is: Can I assume the computed model object name
+should always be the node name for the parent object?
+Do I always have only one node node attached?
+Or should I check this?
+
+Should I limit this check to standard assemblies only?
+Should I limit it to wway trees?
+
+The other factor is that we have a stdAssemblyCompute function.
+This does not get called automatically from recompute.
+And if the std assy get's changed then it's probably a reasonable bet
+that some of it's parts may change.
+
+I guess the thing is, normally a standard assembly would be like a piece of equipment.
+The only way to change it would be to swap out the equipment which in turn
+would cause the tree to adjust.
+
+But for race ways, changing an internal attribute such as the number of tiers
+can change the standard assembly number while still staying connected to the tree.
+
+Since create node
+
+VDct1RootTree.reComputeStdAssy
+
+This function does not explicitly check node type before processing.
+First, it sees is the node is deleted and ignores.
+
+Then it calls
+VDct1RootTree.isStdAssyChanged
+which does filter for ASSY2 and ASSY6
+
+Then is calls 
+VDct1RootTree.getNewNodeTypeFromDB
+This queries the database for node type from node name;
+It check for ASSY2,ASSY6 and PART, otherwise, keeps the same node type.
+The node type is updated if there is a change.
+
+Then it does an explicit preExpandContractNode for ASSY2 and ASSY6
+Then process the kids.
+
+The implication is that it's safe to call this routine
+for all node types.  Especially those with a connected model type.
+
+---
+Conclusion:
+Check for name change in the eng level.
+If a name is changed, update std assemblies.
+

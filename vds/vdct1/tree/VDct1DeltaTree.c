@@ -1,4 +1,4 @@
- /* $Id: VDct1DeltaTree.c,v 1.2 2002/05/02 16:32:02 jdsauby Exp $  */
+/* $Id: VDct1DeltaTree.c,v 1.2.4.1 2003/06/06 20:58:15 ahundiak Exp $  */
 /***************************************************************************
  * I/VDS
  *
@@ -10,6 +10,9 @@
  *
  * Revision History:
  *      $Log: VDct1DeltaTree.c,v $
+ *      Revision 1.2.4.1  2003/06/06 20:58:15  ahundiak
+ *      ah
+ *
  *      Revision 1.2  2002/05/02 16:32:02  jdsauby
  *      TR 6326
  *
@@ -425,37 +428,7 @@ static IGRstat isCreateTreeValid(TVDct1JD *setJD,
   VDASSERT_FN("isCreateTreeValid");
   
   IGRstat retFlag = 0;
-#if 0
-  IGRstat sts;
-  
-  IGRchar pdm_catalog[64];
 
-  TVDpdmInfo pdmInfo;
-  
-  VDASSERTW(setJD);
-  VDASSERTW(setType != NULL);
-  
-  // say hi
-  if (traceFlag) printf(">>> %s %s %s\n",ffn(),fn,setType);
-  
-  // get pdm_catalog of active file
-  *pdmInfo.catalog = 0;
-  
-  VDpdmGetPdmInfo(OM_K_NOT_AN_OS,&pdmInfo);
-  if (*pdmInfo.catalog == 0) {
-    // not a pdm managed file, so access is OK
-    retFlag = 1;
-    goto wrapup;
-  }
-  
-  strcpy(pdm_catalog,pdmInfo.catalog);
-  if (traceFlag) printf("### pdm_catalog = %s\n",pdm_catalog);
-  
-  
-  // Check the access from file tm_access.tbl
-  sts = VDct1IsCreateTreeAccessAllowed(setType,pdm_catalog);
-  if (!(sts & 1)) goto wrapup;
-#endif
   // done
   retFlag = 1;
     
@@ -484,32 +457,9 @@ static IGRstat isDeleteTreeValid(TVDct1JD *treeJD)
   
   // say hi
   if (traceFlag) printf(">>> %s %s\n",ffn(),fn);
-#if 0  
-  // make sure we have the top node of the tree
-  _RTCJDB(treeJD)->getRootForNode(treeJD,&rootJD);
-  if (rootJD.id.objid == NULL_OBJID) goto wrapup;
-  
-  // If access to create a tree is not allowed, then deleting a tree is
-  // probably not allowed for the same reason.
 
-  // need baseInfo.setType
-  _RTCJDB(&rootJD)->getBaseInfo(&rootJD,&baseInfo);
-  if (baseInfo.setType == NULL) goto wrapup;
-  if (traceFlag) printf("BaseInfo.setType = %s\n",baseInfo.setType);
-  
-  
-  sts = _RTCJDC(&rootJD)->isCreateTreeValid(&rootJD,baseInfo.setType);
-  if (!(sts & 1)) goto wrapup;
-  
-  // need a fakeJD for delete node valid
-  fakeJD = rootJD;
-  
-  // No actual rules for deleting a tree, but if the tree contains
-  // nodes which cannot be deleted, then the tree should not be
-  // deleted.
-  retFlag = _RTCJDC(&rootJD)->isDeleteNodeValid(&rootJD,&fakeJD);
-#endif
   retFlag = 1;
+
  wrapup:
   if (traceFlag) printf("<<< %s %s %d\n",ffn(),fn,retFlag);
   

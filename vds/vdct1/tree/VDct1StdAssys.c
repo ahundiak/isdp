@@ -1,4 +1,4 @@
- /* $Id: VDct1StdAssys.c,v 1.2 2001/02/11 17:15:54 ahundiak Exp $  */
+/* $Id: VDct1StdAssys.c,v 1.2.4.1 2004/03/29 16:21:04 ahundiak Exp $  */
 /***************************************************************************
  * I/VDS
  *
@@ -10,6 +10,9 @@
  *
  * Revision History:
  *      $Log: VDct1StdAssys.c,v $
+ *      Revision 1.2.4.1  2004/03/29 16:21:04  ahundiak
+ *      ah
+ *
  *      Revision 1.2  2001/02/11 17:15:54  ahundiak
  *      Renamed VDris2 to VDrisc
  *
@@ -35,6 +38,7 @@
  ***************************************************************************/
 #include "VDtypedefc.h"
 #include "VDobj2.h"
+#include "VDship.h"
 #include "VDrisc.h"
 #include "VDos.h"
 #include "VDassert.h"
@@ -764,28 +768,6 @@ static IGRstat preExpandContractNode(TVDct1JD *nodeJD, IGRchar *op)
 		   VDCT1_ATTR_ITEM_QTY,
 		   ris.buf[ris.j+VDCT1_RIS_COLI_PS_QTY]);
 
-#if 0
-      VDjt1SetAttr(&itemJD,
-		   VDCT1_ATTR_ITEM_CAGE_NUM,
-		   ris2.buf[VDCT1_RIS_COLI_ITEMS_ITEM_CAGE_NUM]);
-
-      VDjt1SetAttr(&itemJD,
-		   VDCT1_ATTR_ITEM_REV,
-		   ris2.buf[VDCT1_RIS_COLI_ITEMS_ITEM_REV]);
-
-      VDjt1SetAttr(&itemJD,
-		   VDCT1_ATTR_ITEM_UM,
-		   ris2.buf[VDCT1_RIS_COLI_ITEMS_UNIT_OF_MEASURE]);
-
-      VDjt1SetAttr(&itemJD,
-		   VDCT1_ATTR_ITEM_DESC,
-		   ris2.buf[VDCT1_RIS_COLI_ITEMS_COPICS_SHORT_DESC]);
-
-      VDjt1SetAttr(&itemJD,
-		   VDCT1_ATTR_ITEM_DATE,
-		   ris2.buf[VDCT1_RIS_COLI_ITEMS_UPDATEDATE]);
-#endif
-
       // Free ris2 buffer
       VDrisFreeInfo(&ris2);
       
@@ -1149,7 +1131,10 @@ static IGRstat createNode(TVDct1JD *parentJD,
   TVDct1CommInfo commInfo;
   
   TVDrisInfo ris;
-  
+ 
+  IGRchar cageCode[32];
+  IGRchar projCode[32];
+ 
   // Say Hi
   if (traceFlag) {
     printf(">>> %s %s %s %s %s\n",
@@ -1173,15 +1158,18 @@ static IGRstat createNode(TVDct1JD *parentJD,
   // For StdAssys, default cage_code
   if (!strcmp(nodeType,VDCT1_NODE_TYPE_STD_ASSYS)) {
 
+    VDshipGetCageCode(cageCode);
+    VDshipGetProjCode(projCode);
+
     _RTCJDB(nodeJD)->
       setAttr(nodeJD,
 	      VDCT1_ATTR_ITEM_CAGE_CODE,
-	      VDCT1_DEFAULT_CAGE_CODE);
+	      cageCode);
 
     _RTCJDB(nodeJD)->
       setAttr(nodeJD,
 	      VDCT1_ATTR_PROJ_CODE,     
-	      VDCT1_DEFAULT_PROJ_CODE);
+	      projCode);
   }
 
   // For comm_codes, already have validated comm_code data

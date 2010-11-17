@@ -1,4 +1,4 @@
- /* $Id: VDct1RootTree2.c,v 1.9 2002/05/16 21:22:28 jdsauby Exp $  */
+/* $Id: VDct1RootTree2.c,v 1.9.2.2 2003/06/17 14:02:10 ahundiak Exp $  */
 /***************************************************************************
  * I/VDS
  *
@@ -10,6 +10,12 @@
  *
  * Revision History:
  *      $Log: VDct1RootTree2.c,v $
+ *      Revision 1.9.2.2  2003/06/17 14:02:10  ahundiak
+ *      ah
+ *
+ *      Revision 1.9.2.1  2003/06/06 20:58:15  ahundiak
+ *      ah
+ *
  *      Revision 1.9  2002/05/16 21:22:28  jdsauby
  *      JTSMP CR6359
  *
@@ -51,6 +57,8 @@
  * History:
  * MM/DD/YY  AUTHOR  DESCRIPTION
  * 07/10/00  ah      Creation
+ * 06/17/03  ah      TR7811 - System was allowing node.name to overfill
+ *                            Cleanup existing overfills by truncating
  ***************************************************************************/
 #include "VDtypedefc.h" 
 
@@ -414,31 +422,36 @@ static IGRstat getBaseInfo(TVDct1JD *nodeJD, TVDctBaseInfo *baseInfo)
   
   // Set Type
   p = strchr(q,':');
-  if (p == NULL) goto base_name; *p = 0; 
+  if (p == NULL) goto base_name; *p = 0;
+  if (strlen(q) >= VDCT_SET_TYPE_LEN) *(q+VDCT_SET_TYPE_LEN-1) = 0;
   strcpy(baseInfo->setType,q);
   q = p + 1 ;
   
   // Set Type Rev
   p = strchr(q,':');
   if (p == NULL) goto base_name; *p = 0;
+  if (strlen(q) >= VDCT_SET_TYPE_REV_LEN) *(q+VDCT_SET_TYPE_REV_LEN-1) = 0;
   strcpy(baseInfo->setTypeRev,q);
   q = p + 1 ;
 
   // Set Name
   p = strchr(q,':');
   if (p == NULL) goto base_name; *p = 0;
+  if (strlen(q) >= VDCT_SET_NAME_LEN) *(q+VDCT_SET_NAME_LEN-1) = 0;
   strcpy(baseInfo->setName,q);
   q = p + 1 ;
     
   // Node Type
   p = strchr(q,':');
   if (p == NULL) goto base_name; *p = 0;
+  if (strlen(q) >= VDCT_NODE_TYPE_LEN) *(q+VDCT_NODE_TYPE_LEN-1) = 0;
   strcpy(baseInfo->nodeType,q);
   q = p + 1 ;
 
   // Node Name
   p = strchr(q,':');
   if (p == NULL) goto base_name; *p = 0;
+  if (strlen(q) >= VDCT_NODE_NAME_LEN) *(q+VDCT_NODE_NAME_LEN-1) = 0;
   strcpy(baseInfo->nodeName,q);
   q = p + 1 ;
 
