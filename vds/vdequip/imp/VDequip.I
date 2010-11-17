@@ -1,4 +1,4 @@
-/* $Id: VDequip.I,v 1.2 2001/01/19 21:37:53 jayadev Exp $  */
+/* $Id: VDequip.I,v 1.2.2.1 2003/05/14 19:55:08 anand Exp $  */
 
 /* --------------------------------------------------------------------
  * I/VDS
@@ -11,63 +11,12 @@
  *
  * Revision History:
  *	$Log: VDequip.I,v $
+ *	Revision 1.2.2.1  2003/05/14 19:55:08  anand
+ *	Change a printf to a __DBGpr_com
+ *
  *	Revision 1.2  2001/01/19 21:37:53  jayadev
  *	changes in SP by andy
  *	
-# Revision 1.7  2001/01/03  18:50:08  pinnacle
-# ah
-#
-# Revision 1.6  2000/12/11  17:36:34  pinnacle
-# js
-#
-# Revision 1.5  2000/11/27  20:04:12  pinnacle
-# Replaced: vds/vdequip/imp/VDequip.I for:  by aharihar for Service Pack
-#
-# Revision 1.4  2000/10/25  21:47:52  pinnacle
-# Replaced: vds/vdequip/imp/VDequip.I for:  by jpulapar for Service Pack
-#
-# Revision 1.3  2000/09/28  16:40:32  pinnacle
-# Replaced: vds/vdequip/imp/VDequip.I for:  by aharihar for Service Pack
-#
-# Revision 1.2  2000/08/16  15:09:50  pinnacle
-# Replaced: vds/vdequip/imp/VDequip.I for:  by aharihar for Service Pack
-#
-# Revision 1.1  2000/07/26  20:31:04  pinnacle
-# Created: vds/vdequip/imp/VDequip.I by aharihar for Service Pack
-#
-# Revision 1.1  1998/04/29  16:27:20  pinnacle
-# VDS 2.5.1
-#
-# Revision 1.3  1998/04/07  13:43:50  pinnacle
-# CR179800928
-#
-# Revision 1.2  1998/03/24  14:23:02  pinnacle
-# Smart Attributes
-#
-# Revision 1.1  1997/05/08  13:20:44  pinnacle
-# New project VDS 250
-#
-# Revision 1.3  1997/02/28  10:33:38  pinnacle
-# Replaced: vdequip/imp/VDequip.I for:  by ksundar for vds.241
-#
-# Revision 1.2  1996/11/04  17:26:54  pinnacle
-# Replaced: vdequip/imp/VDequip.I for:  by msmanem for vds.241
-#
-# Revision 1.1  1996/07/19  20:33:52  pinnacle
-# Create VDS 241 project
-#
-# Revision 1.4  1995/08/25  20:37:40  pinnacle
-# Replaced: vdequip/imp/VDequip.I for:  by rmanem for vds.240
-#
-# Revision 1.3  1995/02/09  17:45:54  pinnacle
-# Replaced: vdequip/imp by azuurhou r#
-#
-# Revision 1.2  1994/12/14  21:59:14  pinnacle
-# Replaced:  vdequip/imp r#
-#
-# Revision 1.1  1994/11/08  16:07:00  pinnacle
-# create vds.232
-#
  *
  * History:
  * MM/DD/YY  AUTHOR  DESCRIPTION
@@ -78,6 +27,7 @@
  * Aug 2k    Anand   CR 179901735 Added Dynapipe related attributes
  * 27 Nov 2k Anand   CR 179902127 Added Dynapipe attribute 'dp_eqpt_angle_rot'
  * 01/03/01  ah      TR MP4390 - SA Broken
+ * 11/17/10  ah      SOL10 printf to dbg
  * -------------------------------------------------------------------*/
 
 /*
@@ -1200,7 +1150,7 @@ char                  cog_text[15],cog_text1[15],cog_text2[15];
 
 	if( NozzList==NULL )
 	{
-	    printf("\t**************\n\tNozzList EMPTY\n\t**************\n");
+	    __DBGpr_com("**************\n\tNozzList EMPTY\n\t**************");
 	    *rc=MSFAIL;
 	    if( TotNumNozzles )
 	    {
