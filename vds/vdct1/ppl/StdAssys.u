@@ -1,8 +1,9 @@
 #include "header.h"
 #include "VDct1Attrs.h"
 #include "compute.h"
-#include "VDris2.h"
+#include "VDrisc.h"
 #include "VDct1Part.h"
+#include "VDship.h"
 
 /* -------------------------------------------------
  * Individual stage information for NODE_INDEX
@@ -289,7 +290,10 @@ IGRstat createNode()
   IGRstat       sts;
   
   TVDfld        fld;
-  
+ 
+  IGRchar cageCode[32];
+  IGRchar projCode[32];
+ 
   // Init
   retFlag = 0;
   NODE_ID.objid = NULL_OBJID;
@@ -356,8 +360,10 @@ IGRstat createNode()
   
   // For StdAssys, default cage_code
   if (!strcmp(BASE_INFO.nodeType,VDCT1_NODE_TYPE_STD_ASSYS)) {
-    setAttribute(VDCT1_ATTR_ITEM_CAGE_CODE,VDCT1_DEFAULT_CAGE_CODE);
-    setAttribute(VDCT1_ATTR_PROJ_CODE,     VDCT1_DEFAULT_PROJ_CODE);
+    VDshipGetCageCode(cageCode);
+    VDshipGetProjCode(projCode);
+    setAttribute(VDCT1_ATTR_ITEM_CAGE_CODE,cageCode);
+    setAttribute(VDCT1_ATTR_PROJ_CODE,     projCode);
   }
 
   // For comm_codes, already have validated comm_code data
@@ -392,174 +398,6 @@ IGRstat createNode()
 wrapup:
   return retFlag;
 }
-
-#if 0
-/* --------------------------------------------------
- * Called when user tries to expand or contract
- */
-IGRstat preExpandContractNode()
-{
-  IGRstat retFlag;
-  IGRstat sts;
-
-  IGRint  rows,cols,i,j;
-  IGRchar **buf;
-  
-  IGRchar qry[256];
-  IGRchar msg[64];
-  
-  TGRid   nodeID;
-  TGRid   nounID;
-  TGRid   parentID;
-
-  IGRchar prev[2];
-  
-  TVDfld  fld;
-
-  // Init
-  retFlag = 0;
-  buf = NULL;
-
-  // printf("PreExpand Node %s '%c'\n",BASE_INFO.nodeType,*OP);
-
-  // Need to be logged in
-  sts = VDSverify_login();
-  if (!(sts & 1)) goto wrapup;
-
-  // Only process if not done before
-  if (*OP != ' ') goto wrapup;
-
-  // Becomes the parent
-  NODE_PARENT_ID = NODE_ID;
-
-  // For the top level
-  if (!strcmp(BASE_INFO.nodeType,"STD_PARTS")) {
-
-    // Make this
-    strcpy(NODE_TYPE,"NOUN_NAME");
-    UI_status("NOUN NAME Query...");
-
-    // Get the list
-    sprintf(qry,"Select distinct noun_name from tm_items where item_cur_rev = 1 and item_type = 4 order by noun_name;");
-  
-    rows = cols = 0; buf = NULL;
-    sts = VDSsql_query(qry, &cols, &rows, &buf);
-
-    // Verify got something
-    if (!(sts & 1) || (cols != 1) || (buf == NULL)) {
-      UI_status("Query for noun_names failed");
-      goto wrapup;
-    }
-    sprintf(msg,"Processing %d noun names",rows);
-    UI_status(msg);
-    
-    // Setup for nested nouns
-    parentID = NODE_PARENT_ID;
-    strcpy(prev," ");
-    
-    // Cycle through
-    for(i = 0; i < rows; i = i + 1) {
-
-      if (*buf[i] != *prev) {
-	*prev = *buf[i];
-	NODE_PARENT_ID = parentID;	
-	strcpy(NODE_NAME,prev);
-	createNode();
-	NODE_PARENT_ID = NODE_ID;
-      }
-      strcpy(NODE_NAME,buf[i]);
-      createNode();
-    }
-    NODE_PARENT_ID = parentID;	
-  
-    // Free the buffer
-    VdsRisFreeBuffer(buf, rows * cols);
-
-    // Done for this
-    strcpy(OP,"-");
-    sprintf(msg,"Processed %d noun names",rows);
-    UI_status(msg);
-    retFlag = 1;
-    goto wrapup;
-
-  }
-
-  // For a noun_name
-  if (!strcmp(BASE_INFO.nodeType,"NOUN_NAME")) {
-
-    // Make this
-    strcpy(NODE_TYPE,"STD_PART");
-    UI_status("STANDARD PART Query...");
-
-    // Get the list
-    sprintf(qry,"%s %s = '%s' %s;",
-	    "Select item_cage_num,unit_of_measure,copics_short_desc,updatedate ",
-            "From tm_items where item_cur_rev = 1 and item_type = 4 and noun_name ",
-             BASE_INFO.nodeName,
-            "Order by item_cage_num");
-  
-    rows = cols = 0; buf = NULL;
-    sts = VDSsql_query(qry, &cols, &rows, &buf);
-    
-    // Verify got something
-    if (!(sts & 1) || (cols != 4) || (buf == NULL)) {
-      UI_status("Query for standard parts failed");
-      goto wrapup;
-    }
-    sprintf(msg,"Processing %d parts",rows);
-    UI_status(msg);
-    
-    // Cycle through
-    for(i = 0; i < rows; i = i + 1) {
-
-      j = i * cols;
-      
-      strcpy(NODE_NAME,buf[j+0]);
-      createNode();
-
-      // Xfer Attributes
-      vdcol$GetAttr (objID = &NODE_ID, name = "part_cage_num", fld = &fld);
-      strcpy(fld.val.txt,buf[j+0]);
-      vdcol$UpdAttrs(objID = &NODE_ID, cnt = 1, fld = &fld);
-#if 0
-      vdcol$GetAttr (objID = &NODE_ID, name = "part_rev", fld = &fld);
-      strcpy(fld.val.txt,buf[j+1]);
-      vdcol$UpdAttrs(objID = &NODE_ID, cnt = 1, fld = &fld);
-#endif
-
-      vdcol$GetAttr (objID = &NODE_ID, name = "part_um", fld = &fld);
-      strcpy(fld.val.txt,buf[j+1]);
-      vdcol$UpdAttrs(objID = &NODE_ID, cnt = 1, fld = &fld);
-
-      vdcol$GetAttr (objID = &NODE_ID, name = "part_desc", fld = &fld);
-      strcpy(fld.val.txt,buf[j+2]);
-      vdcol$UpdAttrs(objID = &NODE_ID, cnt = 1, fld = &fld);
-
-      vdcol$GetAttr (objID = &NODE_ID, name = "part_date", fld = &fld);
-      strcpy(fld.val.txt,buf[j+3]);
-      vdcol$UpdAttrs(objID = &NODE_ID, cnt = 1, fld = &fld);
-
-    }
-  
-    // Free the buffer
-    VdsRisFreeBuffer(buf, rows * cols);
-
-    // Done for this
-    strcpy(OP,"-");
-    sprintf(msg,"Processed %d parts",rows);
-    UI_status(msg);
-    retFlag = 1;
-    goto wrapup;
-
-  }
-
-  // Done
-  retFlag = 1;
-
-wrapup:
-  return retFlag;
-}
-#endif
 
 /* --------------------------------------------------
  * Returns the part_cage_num (unique mino) in FLD
@@ -726,8 +564,8 @@ IGRstat computeNodeName()
   memset(&ris,0,sizeof(TVDrisInfo));
 
   strcpy(comm_code,"XX");
-  strcpy(cage_code,VDCT1_DEFAULT_CAGE_CODE);
-  strcpy(proj_code,VDCT1_DEFAULT_PROJ_CODE);
+  VDshipGetCageCode(cage_code);
+  VDshipGetProjCode(proj_code);
   seq_no = 0;
   
   // Only for StdAssy2 assemblies for now
