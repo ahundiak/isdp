@@ -1,4 +1,4 @@
-/* $Id: VDProjFn.I,v 1.1.1.1 2001/01/04 21:09:05 cvs Exp $  */
+/* $Id: VDProjFn.I,v 1.1.1.1.2.1 2004/03/29 15:36:11 ahundiak Exp $  */
 
 /* --------------------------------------------------------------------
  * I/VDS
@@ -11,44 +11,20 @@
  *
  * Revision History:
  *	$Log: VDProjFn.I,v $
+ *	Revision 1.1.1.1.2.1  2004/03/29 15:36:11  ahundiak
+ *	ah
+ *
  *	Revision 1.1.1.1  2001/01/04 21:09:05  cvs
  *	Initial import to CVS
  *	
-# Revision 1.1  1998/04/29  16:27:20  pinnacle
-# VDS 2.5.1
-#
-# Revision 1.1  1997/05/08  13:20:44  pinnacle
-# New project VDS 250
-#
-# Revision 1.1  1996/07/19  20:33:52  pinnacle
-# Create VDS 241 project
-#
-# Revision 1.7  1996/05/08  13:51:50  pinnacle
-# Replaced: vdproject/func/VDProjFn.I for:  by sljenks for vds.240
-#
-# Revision 1.6  1995/12/18  10:48:50  pinnacle
-# Replaced: vdproject/func/VDProjFn.I for:  by rgade for vds.240
-#
-# Revision 1.5  1995/12/15  23:29:26  pinnacle
-# Replaced: vdproject/func/VDProjFn.I for:  by hverstee for vds.240
-#
-# Revision 1.4  1995/12/06  20:03:52  pinnacle
-# Replaced: vdproject/func/VDProjFn.I for:  by yzhu for vds.240
-#
-# Revision 1.3  1995/12/06  19:43:04  pinnacle
-# Replaced: vdproject/func/VDProjFn.I for:  by yzhu for vds.240
-#
-# Revision 1.2  1995/09/25  22:56:42  pinnacle
-# Replaced: vdproject/func/VDProjFn.I for:  by sundar for vds.240
-#
-# Revision 1.1  1995/07/24  20:59:30  pinnacle
-# Created: vdproject/func/VDProjFn.I by hverstee for vds.240
-#
  *
  * History:
- *	MM/DD/YY	AUTHOR		DESCRIPTION
- *      12/06/95        yZHU            modify VdsSetProjectData for TR179528484
- *      05/08/96        slj		moved vdb$risbuffer to free up memory
+ * MM/DD/YY  AUTHOR  DESCRIPTION
+ * 12/06/95  yZHU    modify VdsSetProjectData for TR179528484
+ * 05/08/96  slj     moved vdb$risbuffer to free up memory
+ * 03/01/04  ah      Adjusted VDValidateProject so as to not hit database
+ *                   if not logged in
+ * 11/17/10  ah      SOL10
  * -------------------------------------------------------------------*/
 
 class implementation Root;
@@ -93,7 +69,7 @@ class implementation Root;
 #include "v_dbgmacros.h"
 #include "v_miscmacros.h"
 
-
+#if 0
 %safe
 #include  "VX_FIproto.h"
 %endsafe
@@ -230,6 +206,7 @@ int  VDSverify_project()
 
   return rtc;
 }
+#endif
 
 int VDValidateProject(project_num, project_ver, prj_units)
 
@@ -249,6 +226,8 @@ IGRint	 prj_units;
    table =  "VDS_PROJECT";
    select = "prj_no";
    ret_msg = 1;
+
+   if ( VDSverify_login() != PDM_S_SUCCESS ) return 1;
 
    /* Verify if project version is NULL or defined */
    if(!strcmp(project_ver,"NULL") || !strcmp(project_ver,""))
@@ -281,7 +260,7 @@ IGRint	 prj_units;
    if ( num == 0) ret_msg =  0;
    return (ret_msg);
 }
-
+#if 0
 int  VDGetProjectNumber( proj_nb)
 
 IGRchar	 *proj_nb; 		  /* [O] project number found     */
@@ -436,5 +415,5 @@ IGRlong            *msgnumb;            /* [O]  error message             */
    End
    return 1;
 }
-
+#endif
 end implementation Root;
