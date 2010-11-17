@@ -1,4 +1,4 @@
-/* $Id: ACpretendi.I,v 1.4 2001/04/03 15:22:09 ramarao Exp $  */
+/* $Id: ACpretendi.I,v 1.4.4.1 2004/03/29 16:27:39 ahundiak Exp $  */
 
 /***************************************************************************
  * I/VDS
@@ -11,6 +11,9 @@
  *
  * Revision History:
  *	$Log: ACpretendi.I,v $
+ *	Revision 1.4.4.1  2004/03/29 16:27:39  ahundiak
+ *	ah
+ *
  *	Revision 1.4  2001/04/03 15:22:09  ramarao
  *	Fixed TR# 4527
  *	
@@ -33,6 +36,7 @@
  *                   Added ACfind_parent with better error messages
  * 02/22/01  ah      Readded ASreturn_go with VDlog messages
  * 04/03/01  RR	     Fixed TR# 4527.
+ * 03/03/04  ah      Suppressed warning message
  ***************************************************************************/
 /*
   ACpretendi.I
@@ -155,7 +159,9 @@ method NDgive_structure(IGRlong *msg; struct ret_struct  *x;
       as$status( action = RET_STATUS ); 
       if(suc==0)
       {
-        if( strcmp( me->down_scan, "bend_sweep" ) ) {
+        if( strcmp( me->down_scan, "bend_sweep" ) &&
+            strcmp( me->down_scan, "memb_geom"  ) &&
+            strcmp( me->down_scan, "equiv_dia") ) {
 	  
 	  printf("%d,%d %d,%d ACpretend.ACgive_structure downscan %s\n",
 		 OM_Gw_current_OS,

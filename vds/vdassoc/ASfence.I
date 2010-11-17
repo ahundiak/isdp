@@ -1,4 +1,4 @@
-/* $Id: ASfence.I,v 1.2 2001/03/10 14:56:14 ad Exp $  */
+/* $Id: ASfence.I,v 1.2.2.2 2003/06/04 15:36:30 ylong Exp $  */
 
 /***************************************************************************
  * I/VDS
@@ -15,6 +15,12 @@
  *
  * Revision History:
  *	$Log: ASfence.I,v $
+ *	Revision 1.2.2.2  2003/06/04 15:36:30  ylong
+ *	TR7754
+ *
+ *	Revision 1.2.2.1  2002/09/20 14:19:39  ylong
+ *	*** empty log message ***
+ *	
  *	Revision 1.2  2001/03/10 14:56:14  ad
  *	Avoid crash when debug is active.
  *	
@@ -41,7 +47,9 @@
  *	MM/DD/YY	AUTHOR		DESCRIPTION
  *	06/06/95	adz		First override.
  *	03/10/01	adz		Change debug to avoid crash.
- *
+ *	09/20/02	ylong		TR6614, clean up GRgrset/GRsvset
+ *	06/04/03	ylong		TR7754, in some cases, GRgrset use may
+ *					be deferred, have to keep it alive.
  ***************************************************************************/
 
 class implementation COpara;
@@ -60,8 +68,12 @@ class implementation COpara;
 #include "madef.h"
 #include "OMmacros.h"
 #include "v_dbgmacros.h"
+#include "VDmem.h"
+#include "VDobj.h"
+#include "v_miscmacros.h"
 
 from GRgraphics import GRdisplay;
+from GRgrset	import GSdissolve;
 extern GRclassid OPP_GRgrset_class_id;
 
 
@@ -77,6 +89,118 @@ extern GRclassid OPP_GRgrset_class_id;
 static IGRchar *ptr = NULL;
 static struct GRobj_env direct_el;
 %endsafe
+
+/*
+ * This function is used to check GRgrset/GRsvset channel objects
+ * It is created during fixing TR6614
+ */
+AStrace_GRgrset( struct GRid *setId, IGRchar *filename )
+{
+	IGRlong			msg;
+	IGRint			i, j;
+	IGRint			svsetCnt = 0, cmpCnt = 0;
+	struct	GRid		objId;
+	OM_S_OBJECT_LINKAGE	*svsetList = NULL, *cmpList = NULL;
+	OM_S_CHANSELECT		to_sets, to_components;
+	FILE			*fp = NULL;
+	IGRchar			fname[80], txt[128];
+	
+	if( !setId || setId->objid == NULL_OBJID ) goto wrapup;
+        if( !vd_$is_ancestry_valid (	object  = setId ,
+					classid = OPP_GRgrset_class_id ))
+	{
+		goto wrapup;
+	}
+	
+	if( filename && filename[0] != '\0' )
+	{
+		strcpy( fname, filename );
+	}
+	else
+	{
+		sprintf(fname, "GRgrset_%d.txt", setId->objid);
+	}
+
+	fp = fopen( fname, "w+" );
+	if( !fp )
+	{
+		printf("Failed to open file\n\n");
+		goto wrapup;
+	}
+
+	fprintf(fp, "%s %d,%d: ", "GRgrset", setId->osnum,setId->objid);
+
+	to_sets.type = OM_e_name;
+	to_sets.u_sel.name = "GRgrset.to_sets";
+
+	msg = om$get_channel_count (	objid		= setId->objid,
+					osnum		= setId->osnum,
+					p_chanselect	= &to_sets,
+					count		= (uint *)&svsetCnt);
+	if( !(msg & 1) || !svsetCnt )
+	{
+		printf("\tNot connected to GRsvset\n\n");
+		goto wrapup;
+	}
+	fprintf(fp, "contains %d GRsvsets\n", svsetCnt);
+
+	if( !( svsetList = _MALLOC( svsetCnt, OM_S_OBJECT_LINKAGE )))
+		goto wrapup;
+
+	msg = om$get_channel_objects (	objid		= setId->objid,
+					osnum		= setId->osnum,
+					p_chanselect	= &to_sets,
+					size		= (uint)svsetCnt,
+					list		= svsetList,
+					count		= (uint*)&svsetCnt);
+	if( !(msg&1) ) goto wrapup;
+
+	to_components.type = OM_e_name;
+	to_components.u_sel.name = "GRcmpowner.to_components";
+
+	for( i = 0; i < svsetCnt; i++ )
+	{
+		cmpCnt = 0;
+		_FREE( cmpList );
+
+		msg = om$get_channel_count (
+				objid		= svsetList[i].S_objid,
+				osnum		= svsetList[i].osnum,
+				p_chanselect	= &to_components,
+				count		= (uint*)&cmpCnt);
+		if( !(msg & 1) || !cmpCnt ) continue;
+
+		if( !( cmpList = _MALLOC( cmpCnt, OM_S_OBJECT_LINKAGE ))) 
+			goto wrapup;
+
+		msg = om$get_channel_objects (
+					objid		= svsetList[i].S_objid,
+					osnum		= svsetList[i].osnum,
+					p_chanselect	= &to_components,
+					size		= (uint)cmpCnt,
+					list		= cmpList,
+					count		= (uint*)&cmpCnt);
+		if( !(msg&1) ) continue;
+
+		objId.objid = svsetList[i].S_objid;
+		objId.osnum = svsetList[i].osnum;
+		fprintf(fp, "\tGRsvset %d,%d contains %d components:\n",
+				objId.osnum,objId.objid, cmpCnt);
+
+		for( j = 0; j < cmpCnt; j++ )
+		{
+			objId.objid = cmpList[j].S_objid;
+			objId.osnum = cmpList[j].osnum;
+			vdobj$Get(objID = &objId, className = txt);
+			fprintf(fp, "\t\tComponents: %s %d,%d\n",
+					txt,objId.osnum,objId.objid);
+		}
+	}
+	
+wrapup:
+	if( fp ) fclose(fp);
+	return 1;
+}
 
 /* ASstart_fence is kept for existing call. Future developement must be
    done by modification of the function ASstart_var_fence and of the
@@ -136,6 +260,8 @@ char *macro_name;
   enum GRdpmode display = GRhd;
   char dummy_name[2];
 
+  SetProc(ASstart_var_fence); Begin
+
   if(p_obj && p_obj_info) return OM_W_ABORT;
 
   ex$get_cur_mod(id = &cur_mod.objid, osnum = &cur_mod.osnum);
@@ -145,7 +271,6 @@ char *macro_name;
 
   om$get_classid( osnum = set_grid->osnum, objid = set_grid->objid,
 		  p_classid = &obj_class);
-
 
   if(om$is_ancestry_valid( subclassid=obj_class,
                            superclassid=OPP_GRgrset_class_id) == OM_S_SUCCESS)
@@ -318,6 +443,7 @@ char *macro_name;
      else
 	{*nb_obj = 0;}
     }
+  End
   return OM_S_SUCCESS;
  }
 
@@ -329,6 +455,7 @@ ASend_fence()
     om$dealloc(ptr = ptr);
     ptr = NULL;
    }
+
  return 1;
  }
 end implementation COpara;

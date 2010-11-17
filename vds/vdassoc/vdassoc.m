@@ -17,60 +17,6 @@
  *	Revision 1.12  2001/09/07 14:58:29  ramarao
  *	Implemented CR# 5346.
  *	
- *	Revision 1.11  2001/08/24 20:25:44  ahundiak
- *	ah
- *	
- *	Revision 1.10  2001/08/15 22:04:10  ad
- *	*** empty log message ***
- *	
- *	Revision 1.9  2001/08/14 19:12:58  ahundiak
- *	ah
- *	
- *	Revision 1.8  2001/07/14 17:34:22  ramarao
- *	Fixed CR# 5346.
- *	
- *	Revision 1.7  2001/07/09 23:18:14  anand
- *	No TR.
- *	
- *	Revision 1.6  2001/05/20 18:25:39  ramarao
- *	Checked in for Ad.
- *	
- *	Revision 1.5  2001/04/16 19:18:42  ramarao
- *	Fixed TR# 5063.
- *	
- *	Revision 1.4  2001/04/03 15:22:13  ramarao
- *	Fixed TR# 4527
- *	
- *	Revision 1.3  2001/01/22 19:17:25  ahundiak
- *	ah
- *	
- *	Revision 1.2  2001/01/18 19:09:17  ramarao
- *	Merged Service Pack Files to 262 pload.
- *	
- *	Revision 1.1.1.1  2001/01/04 21:07:41  cvs
- *	Initial import to CVS
- *	
-# Revision 1.7  2000/03/03  21:33:22  pinnacle
-# Replaced: vdassoc/vdassoc.m for:  by impd252 for vds
-#
-# Revision 1.6  2000/02/10  16:42:42  pinnacle
-# Replaced: vdassoc/vdassoc.m for:  by impd252 for vds
-#
-# Revision 1.5  1999/04/10  16:40:20  pinnacle
-# Notify Intercept
-#
-# Revision 1.4  1999/04/01  23:01:20  pinnacle
-# tr179900455
-#
-# Revision 1.3  1998/09/27  14:21:44  pinnacle
-# tr179801268
-#
-# Revision 1.2  1998/06/11  20:51:08  pinnacle
-# TR_179701509
-#
-# Revision 1.1  1998/04/29  16:27:20  pinnacle
-# VDS 2.5.1
-#
  *
  * History:
  *	MM/DD/YY	AUTHOR		DESCRIPTION
