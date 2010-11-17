@@ -1,4 +1,4 @@
-/* $Id: VDvalStaging.c,v 1.3 2001/08/24 20:00:49 ahundiak Exp $  */
+/* $Id: VDvalStaging.c,v 1.3.4.1 2003/06/17 18:50:01 ahundiak Exp $  */
 
 /***************************************************************************
  * I/VDS
@@ -11,22 +11,14 @@
  *
  * Revision History:
  *      $Log: VDvalStaging.c,v $
- *      Revision 1.3  2001/08/24 20:00:49  ahundiak
- *      ah
- *
- *      Revision 1.2  2001/06/22 15:19:33  ahundiak
- *      ah
- *
- *      Revision 1.1  2001/06/03 15:02:59  ahundiak
- *      ah
- *
- *      Revision 1.1  2001/05/24 18:50:21  ahundiak
+ *      Revision 1.3.4.1  2003/06/17 18:50:01  ahundiak
  *      ah
  *
  *
  * History:
  * MM/DD/YY  AUTHOR  DESCRIPTION
  * 05/21/01  ah      Creation
+ * 11/17/10  ah      SOL10 Dup Checks
  ***************************************************************************/
 #include "VDtypedefc.h"
 #include "VDassert.h"
@@ -114,6 +106,68 @@ static void processStaging(TGRid *nodeID, void *data, IGRint *stopWalk)
   return;
 }
 
+static int compareID(const void *p1, const void *p2)
+{
+  TGRid *itemID1 = (TGRid*)p1;
+  TGRid *itemID2 = (TGRid*)p2;
+
+  if (itemID1->osnum < itemID2->osnum) return -1;
+  if (itemID1->osnum > itemID2->osnum) return  1;
+
+  if (itemID1->objid < itemID2->objid) return -1;
+  if (itemID1->objid > itemID2->objid) return  1;
+
+  return 0;
+}
+
+/* -----------------------------------------------
+ * Look for duplicate piece id's
+ */
+static void checkForDupPieces(TGRid *treeID)
+{
+  TVDctxNodeList nodeList;
+  IGRint i;
+  TGRid      lastID;
+  TGRid     *itemID;
+  TGRobj_env modelOE;
+
+  /* Init */
+  VDctxInitNodeList(&nodeList);
+
+  /* Grab list of pieces */
+  VDctxGetListPieces(treeID,&nodeList);
+  if (nodeList.cnt == 0) goto wrapup;
+
+  /* Have leafs, run through and get the actual pieces */
+  for(i = 0; i < nodeList.cnt; i++)
+  {
+    itemID = &nodeList.listIDs[i];
+
+    VDctxGetModelObject(itemID,&modelOE);
+
+    *itemID = modelOE.obj_id;
+  }
+  VDctxSortNodeList(&nodeList,compareID);
+
+  /* Look prev for dups */
+  lastID = nodeList.listIDs[0];
+  for(i = 1; i < nodeList.cnt; i++)
+  {
+    itemID = &nodeList.listIDs[i];
+    if ((itemID->osnum == lastID.osnum) &&
+        (itemID->objid == lastID.objid) &&
+        (itemID->objid != NULL_OBJID))
+    {
+      VDvalLogError("Duplicate piece in tree %d,%d",itemID->osnum,itemID->objid);
+    }
+    else lastID = *itemID;
+  }
+    
+wrapup:
+  VDctxFreeNodeList(&nodeList);
+  return;
+}
+
 /* -----------------------------------------------
  * The public interface to the staging tree validation
  * routine.
@@ -136,6 +190,9 @@ void VDvalValidateStagingTree(TGRid *treeID, IGRint *errorCnt)
    * fab data sets or else to limit to staging trees
    */
   if (treeID->objid == NULL_OBJID) goto wrapup;
+
+  /* Dup check */
+  checkForDupPieces(treeID);
   
   // Walk it
   VDctxWalkNode(treeID,1,processStaging,NULL,&stopWalk);
