@@ -1,4 +1,4 @@
-/* $Id: VDCmdExDri.I,v 1.5 2002/01/07 22:29:52 ylong Exp $ */
+/* $Id: VDCmdExDri.I,v 1.5.2.1 2002/08/05 13:51:54 ylong Exp $ */
 
 /*************************************************************************
  * I/VDS
@@ -12,69 +12,15 @@
  *
  * Revision History:
  *	$Log: VDCmdExDri.I,v $
+ *	Revision 1.5.2.1  2002/08/05 13:51:54  ylong
+ *	*** empty log message ***
+ *
  *	Revision 1.5  2002/01/07 22:29:52  ylong
  *	*** empty log message ***
  *	
  *	Revision 1.4  2002/01/04 21:58:29  ylong
  *	TR5637
  *	
- *	Revision 1.3  2001/10/19 16:49:35  ramarao
- *	Fixed TR# 5594.
- *	
- *	Revision 1.2  2001/10/08 21:53:32  ylong
- *	fix for CR# MP5631
- *	
- *	Revision 1.1.1.1  2001/01/04 21:08:36  cvs
- *	Initial import to CVS
- *	
-# Revision 1.1  1998/04/29  16:27:20  pinnacle
-# VDS 2.5.1
-#
-# Revision 1.3  1998/04/18  18:32:40  pinnacle
-# Replaced: vddraw/cmd/VDCmdExDri.I for:  by azuurhou for vds
-#
-# Revision 1.2  1997/12/05  19:10:40  pinnacle
-# Replaced: vddraw/cmd/VDCmdExDri.I for:  by v250_int for vds
-#
-# Revision 1.1  1997/05/08  13:20:44  pinnacle
-# New project VDS 250
-#
-# Revision 1.1  1996/07/19  20:33:52  pinnacle
-# Create VDS 241 project
-#
-# Revision 1.24  1996/03/01  05:17:26  pinnacle
-# Replaced: vddraw/cmd/VDCmdExDri.I for:  by rgade for vds.240
-#
-# Revision 1.23  1995/09/29  19:49:34  pinnacle
-# Replaced: ./vddraw/cmd/VDCmdExDri.I for:  by azuurhou for vds.240
-#
-# Revision 1.22  1995/08/31  21:44:50  pinnacle
-# Replaced: ./vddraw/cmd/VDCmdExDri.I for:  by azuurhou for vds.240
-#
-# Revision 1.21  1995/08/07  22:34:06  pinnacle
-# Replaced: vddraw/cmd/VDCmdExDri.I for:  by azuurhou for vds.240
-#
-# Revision 1.20  1995/07/25  21:00:12  pinnacle
-# Replaced: vddraw/cmd/VDCmdExDri.I for:  by azuurhou for vds.240
-#
-# Revision 1.17  1995/06/27  20:53:34  pinnacle
-# Replaced: vddraw/cmd/VDCmdExDri.I for:  by azuurhou for vds.240
-#
-# Revision 1.16  1995/06/27  19:19:18  pinnacle
-# Replaced: vddraw/cmd/VDCmdExDri.I for:  by azuurhou for vds.240
-#
-# Revision 1.14  1995/05/09  11:32:12  pinnacle
-# Replace: vddraw/cmd/VDCmdExDri.I by azuurhou for OPE
-#
-# Revision 1.13  1995/05/01  17:20:52  pinnacle
-# Replace: vddraw/cmd/VDCmdExDri.I by azuurhou for OPE
-#
-# Revision 1.12  1995/04/03  16:10:02  pinnacle
-# Replaced: vddraw/cmd/VDCmdExDri.I by azuurhou r#
-#
-# Revision 1.9  1995/03/21  21:09:36  pinnacle
-# Replace: by tlbriggs for OPE
-#
  *
  * History:
  *	MM/DD/YY	AUTHOR		DESCRIPTION
@@ -82,20 +28,20 @@
  *					  errors, setup file not found
  *					Add stop request processing
  *
- *	3/20/95		tlb		Change % complete to reflect total
- *						number processed.
+ *	3/20/95		tlb		Change % complete to reflect total number processed.
  *	3/20/95		adz		Modify process_locate to accept cells
  *	3/29/95		adz		Split the drawing preprocessing.
  *	04/29/95	adz		Transparentcy problem.
  *	05/04/95	adz		Transparentcy will be changed principle.
- *					The process method will be changed.
+ *					        The process method will be changed.
  *	06/05/95	adz		Add GRgrset checking list.
  *	06/06/95	adz		Split the method extract in functions.
  *	08/31/95	adz		TR 179527386. setup_file length.
- *	03/01/96        Ravi		TR#179600771
- *      10/08/01        Jayadev         CR# MP5631 - warn the user for change
- *                                      in setupFile; apply to all drawings
- *                                      in the view
+ *	03/01/96  Ravi  TR#179600771
+ *  10/08/01  Jay   CR# MP5631 - warn the user for changein setupFile; 
+ *                               apply to all drawings in the view
+ *	08/05/02	ylong TR6614, delete GRgrset & GRsvset after use
+ * 11/17/10   ah    SOL10
  *************************************************************************/
 
 class implementation VDCmdExDr;
@@ -158,6 +104,7 @@ from    IGEgragad   import	DPinrot, DPinquire;
 from    GRreffile   import	GRgetlevels, GRinquireref;
 from	VDcontext   import	VDget_osname;
 from	GRcontext   import	GRgetmodule_env;
+from	GRgrset	    import	GSdissolve;
 
 /*
  * the locate structure.
@@ -384,6 +331,12 @@ method process_locate ( long * sts )
 		option |= VD_K_set_Chk_Symbol ;
 	}
 
+#ifdef DEBUF
+	printf("F: %s, L: %d, me: %d,%d\n",
+		__FILE__,__LINE__,OM_Gw_current_OS, my_id );
+	printf("F: %s, L: %d, Module osnum: %d\n"
+		,__FILE__,__LINE__,me->ModuleInfo.md_id.osnum);
+#endif
 	status =
 	VD_MakeGRsetOfObject(	&msg,
 				&me->ModuleInfo,
@@ -455,6 +408,7 @@ method process_locate ( long * sts )
 						&Roots, 
 						&obj_to_print[i_obj].mod_env,
 						max_obj ));
+
 		__CheckRC( status, *sts, "addLocatedObject", wrapup );
 							
           }
@@ -517,8 +471,15 @@ method process_locate ( long * sts )
         /* changes for CR# MP 5631 end */
 
 wrapup:
-	End;
 	ASend_fence();
+    	if( setId.objid != NULL_OBJID ) /* TR6614 */
+	{
+	  om$send (	msg	 = message GRgrset.GSdissolve(&msg),
+			targetid = setId.objid,
+			targetos = setId.osnum);
+	}
+ 
+	End
 	return OM_S_SUCCESS;
 }
 
