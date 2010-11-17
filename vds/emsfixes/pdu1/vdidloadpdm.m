@@ -25,16 +25,11 @@ PDMCheckOut.c
 PDMcp_files.c
 
 INCLUDE
-$(PDM)/include
-$(PDMDP)/include
-$(PDM)/pdmapi/include
 $(PDU)/include
 $(PDUDP)/include
 $(NFM)/include
-$(PDUDP)/include
 $(NFMDP)/include
-$(RIS)/include
-$(RIS)/errmsg
+$(RIS)/risdp/include
 $(EXNUC)/include
 $(INGRHOME)/include
 
@@ -45,5 +40,4 @@ COPT
 $(COMP_OPT)
 
 LIB
-./Pdm.o
-
+$VDS/lib/vdidloadpdm.o
