@@ -28,7 +28,7 @@
 #
 # -------------------------------------------------------------------
 
-TGT = vdidloadgr
+TGT = vdidloadgrnuc
 
 include ${VDS_PATH}/etc/makefiles/lib_only.h
 
