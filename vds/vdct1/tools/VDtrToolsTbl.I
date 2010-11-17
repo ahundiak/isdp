@@ -1,4 +1,4 @@
-/* $Id: VDtrToolsTbl.I,v 1.30 2001/10/02 21:37:58 paul_noel Exp $  */
+/* $Id: VDtrToolsTbl.I,v 1.30.4.1 2003/05/12 19:35:32 ylong Exp $  */
 
 /***************************************************************************
  * I/VDS
@@ -8,99 +8,21 @@
  * Description: basic node tools additional
  *
  * Dependencies: $Log: VDtrToolsTbl.I,v $
+ * Dependencies: Revision 1.30.4.1  2003/05/12 19:35:32  ylong
+ * Dependencies: TR7673 Filter out DELETED nodes/parts
+ * Dependencies:
  * Dependencies: Revision 1.30  2001/10/02 21:37:58  paul_noel
  * Dependencies: *** empty log message ***
  * Dependencies:
  * Dependencies: Revision 1.29  2001/10/02 15:59:32  paul_noel
  * Dependencies: Update for new tools for ppls
  * Dependencies:
- * Dependencies: Revision 1.28  2001/08/11 17:13:31  paul_noel
- * Dependencies: Moved File opening manipulations to vdtvwtools.h
- * Dependencies:
- * Dependencies: Revision 1.27  2001/08/01 14:56:33  paul_noel
- * Dependencies: Add Item selection to processes
- * Dependencies:
- * Dependencies: Revision 1.26  2001/07/17 12:47:53  paul_noel
- * Dependencies: fix get trees/sets
- * Dependencies:
- * Dependencies: Revision 1.25  2001/05/30 16:10:57  paul_noel
- * Dependencies: Fix missing reference Trees TR5192
- * Dependencies:
- * Dependencies: Revision 1.24  2001/05/25 13:35:51  paul_noel
- * Dependencies: *** empty log message ***
- * Dependencies:
- * Dependencies: Revision 1.23  2001/05/17 18:11:51  paul_noel
- * Dependencies: Update vdtr$GetDelimitedStr function to allow unlimited size of input string used in CR5006
- * Dependencies:
- * Dependencies: Revision 1.22  2001/05/07 13:41:03  paul_noel
- * Dependencies: Append Named File option added
- * Dependencies:
- * Dependencies: Revision 1.21  2001/04/11 18:43:47  paul_noel
- * Dependencies: Add VDio_read_anyFile
- * Dependencies:
- * Dependencies: Revision 1.20  2001/03/21 18:37:41  paul_noel
- * Dependencies: Fixing _FREE issue
- * Dependencies:
- * Dependencies: Revision 1.19  2001/03/19 20:30:32  paul_noel
- * Dependencies: Fix _FREE problem
- * Dependencies:
- * Dependencies: Revision 1.18  2001/03/15 15:34:13  paul_noel
- * Dependencies: fix expression eval issue tr 4901
- * Dependencies:
- * Dependencies: Revision 1.17  2001/03/14 15:05:17  paul_noel
- * Dependencies: *** empty log message ***
- * Dependencies:
- * Dependencies: Revision 1.16  2001/03/09 16:47:53  paul_noel
- * Dependencies: Added functions vdtr$GetAllSets vdtr$IsSet vdtr$IsTree vdtr$IsNode
- * Dependencies:
- * Dependencies: Revision 1.15  2001/03/05 21:32:47  paul_noel
- * Dependencies: *** empty log message ***
- * Dependencies:
- * Dependencies: Revision 1.14  2001/03/02 13:12:58  paul_noel
- * Dependencies: *** empty log message ***
- * Dependencies:
- * Dependencies: Revision 1.13  2001/02/28 16:10:01  paul_noel
- * Dependencies: adjust get_nodeInfo
- * Dependencies:
- * Dependencies: Revision 1.12  2001/02/28 15:40:26  paul_noel
- * Dependencies: test function modified
- * Dependencies:
- * Dependencies: Revision 1.11  2001/02/27 14:05:19  paul_noel
- * Dependencies: Edits to make available tree/node selection on Paths
- * Dependencies:
- * Dependencies: Revision 1.10  2001/02/26 17:49:37  paul_noel
- * Dependencies: *** empty log message ***
- * Dependencies:
- * Dependencies: Revision 1.9  2001/02/26 12:42:26  paul_noel
- * Dependencies: Add generic ID process for table nodeList
- * Dependencies:
- * Dependencies: Revision 1.8  2001/02/25 21:31:53  paul_noel
- * Dependencies: Macros for general use on table nodeLists
- * Dependencies:
- * Dependencies: Revision 1.7  2001/02/23 16:47:23  paul_noel
- * Dependencies: Added new functionality for node Paths
- * Dependencies:
- * Dependencies: Revision 1.6  2001/02/20 15:44:54  ahundiak
- * Dependencies: ah
- * Dependencies:
- * Dependencies: Revision 1.5  2001/02/19 17:32:11  paul_noel
- * Dependencies: new tools added including a generic file opener
- * Dependencies:
- * Dependencies: Revision 1.4  2001/02/17 14:53:05  ahundiak
- * Dependencies: *** empty log message ***
- * Dependencies:
- * Dependencies: Revision 1.3  2001/02/13 15:20:07  jayadev
- * Dependencies: vd$exp_evaluate args changed
- * Dependencies:
- * Dependencies: Revision 1.2  2001/02/09 18:14:18  paul_noel
- * Dependencies: *** empty log message ***
- * Dependencies:
- *
  * History:
  * MM/DD/YY  AUTHOR  DESCRIPTION
  * 01/30/01  pn      Creation
  * 04/11/01  pn      added VDio_read_anyFile
  * 04/26/01  pn      added VDio_append_named_file
+ * 11/17/10  ah      SOL10 frozen stuff
  ***************************************************************************/
 
 // Generic node operations routines
@@ -676,6 +598,7 @@ IGRstat VDtrGetNodeListByEXP(TGRid *rootNode,IGRchar *attrExp,TGRid **nodeList,I
    // get all the nodes under the root node
   status = vd$trget_nodes( nodeID     = rootNode,
                            lookupType = VDTR_FIND_ALL_NODE,
+			   frozen     = 1,
                            outID      = &tmpNodeList,
                            cnt 	      = &tmpNodeCount ) ;
   if((tmpNodeCount == 0) || (tmpNodeList == NULL))
@@ -849,6 +772,7 @@ IGRstat VDtrGetTreeObjectsByProcessID(TGRid *nodeID, IGRchar *nodeProcess, IGRch
     if(traceFlag) printf("+++>Call: vd$trget_nodes VDTR_FIND_CHILD_NODE nodeList\n");
     status = vd$trget_nodes( nodeID     = &rootNode,
                              lookupType = VDTR_FIND_CHILD_NODE,
+			     frozen     = 1,
                              outID      = nodeList,
                              cnt        = nodeCnt ) ;
     
@@ -872,6 +796,7 @@ IGRstat VDtrGetTreeObjectsByProcessID(TGRid *nodeID, IGRchar *nodeProcess, IGRch
         status = vd$trget_nodes( nodeID     = &rootNode,
                                  nodeType   = indexType,
                                  lookupType = VDTR_FIND_ALL_NODE,
+			         frozen     = 1,
                                  outID      = nodeList,
                                  cnt 	  = nodeCnt ) ;
       }
@@ -884,6 +809,7 @@ IGRstat VDtrGetTreeObjectsByProcessID(TGRid *nodeID, IGRchar *nodeProcess, IGRch
       if(traceFlag) printf("+++>Call:  vd$trget_nodes VDTR_FIND_ALL_NODE tmpNodeList\n");
       status = vd$trget_nodes( nodeID     = &rootNode,
                                lookupType = VDTR_FIND_ALL_NODE,
+			       frozen     = 1,
 			       outID      = &tmpNodeList,
                                cnt 	  = &tmpNodeCount ) ;
 
