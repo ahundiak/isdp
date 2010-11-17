@@ -40,3 +40,6 @@ VDCmdProj.S : VDCmdProj.sl \
 mkfile : vdprojfc.m
 	grmakemake vdprojfc.m mkfile
 
+clean:
+	@rm -f mkfile *.o *.c
+

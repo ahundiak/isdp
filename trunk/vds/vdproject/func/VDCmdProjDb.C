@@ -13,7 +13,7 @@
  *	$Log: VDCmdProjDb.C,v $
  *	Revision 1.1.1.1  2001/01/04 21:09:05  cvs
  *	Initial import to CVS
- *	
+ *
  * Revision 1.1  1998/04/29  16:27:20  pinnacle
  * VDS 2.5.1
  *
