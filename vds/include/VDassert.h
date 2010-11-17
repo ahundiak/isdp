@@ -19,11 +19,6 @@
  *      Revision 1.1  2001/01/09 21:56:39  art
  *      ah
  *
- * Revision 1.1  2000/07/24  20:45:24  pinnacle
- * ah
- *
- * Revision 1.4  2000/07/20  20:18:26  pinnacle
- *
  * History:
  * MM/DD/YY  AUTHOR  DESCRIPTION
  * 07/21/00  ah      Created
