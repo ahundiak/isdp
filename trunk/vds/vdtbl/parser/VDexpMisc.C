@@ -1,4 +1,4 @@
-/* $Id: VDexpMisc.C,v 1.1.1.1 2001/01/04 21:09:28 cvs Exp $  */
+/* $Id: VDexpMisc.C,v 1.1.1.1.2.1 2002/10/25 18:52:36 ylong Exp $  */
 
 /*************************************************************************
  * I/VDS
@@ -12,6 +12,9 @@
  *
  * Revision History:
  *	$Log: VDexpMisc.C,v $
+ *	Revision 1.1.1.1.2.1  2002/10/25 18:52:36  ylong
+ *	*** empty log message ***
+ *
  *	Revision 1.1.1.1  2001/01/04 21:09:28  cvs
  *	Initial import to CVS
  *	
@@ -34,6 +37,7 @@
  * History:
  *	10/12/95	tlb	created
  *	05/30/96	tlb	Add VD_expStrncat
+ *	10/22/02	ylong	TR6980
  *
  *************************************************************************/
 #include "VDexpdef.h"
@@ -132,10 +136,10 @@ VD_expSwitchSexpr (	int	num_objs,
 	/* Here we create an argument list out of an SEXPR
 	 * This allows us to process the list in the same
 	 * way as a function.
-	    	 * For num_objs = 3, the input becomes:
+	 * For num_objs = 3, the input becomes:
 	 *  	'( sexpr, sexpr, sexpr ) '
 	 */
-	str = _MALLOC (6+ num_objs*(8 +strlen(*sexpr)), char);
+	str = _MALLOC (6+ num_objs*(12 +strlen(*sexpr)), char);
 	if (!str) {
 	 	VD_expReportError (*pos, &Str, "Out of memory");
 		return;
