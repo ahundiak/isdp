@@ -1,4 +1,4 @@
-/* $Id: VDtrTools.I,v 1.19 2002/05/20 22:27:51 ylong Exp $  */
+/* $Id: VDtrTools.I,v 1.19.2.2 2003/06/04 15:49:07 ylong Exp $  */
 
 /***************************************************************************
  * I/VDS
@@ -8,6 +8,12 @@
  * Description: basic node tools
  *
  * Dependencies: $Log: VDtrTools.I,v $
+ * Dependencies: Revision 1.19.2.2  2003/06/04 15:49:07  ylong
+ * Dependencies: Only filter out DELETED nodes, keep subtrees alive
+ * Dependencies:
+ * Dependencies: Revision 1.19.2.1  2003/05/12 19:35:32  ylong
+ * Dependencies: TR7673 Filter out DELETED nodes/parts
+ * Dependencies:
  * Dependencies: Revision 1.19  2002/05/20 22:27:51  ylong
  * Dependencies: *** empty log message ***
  * Dependencies:
@@ -22,64 +28,13 @@
  * Dependencies:
  * Dependencies: Revision 1.15  2001/03/08 12:29:18  paul_noel
  * Dependencies: TR 4835 checked. Fixed Node Path Issue
- * Dependencies:
- * Dependencies: Revision 1.14  2001/03/05 21:32:20  paul_noel
- * Dependencies: Fix VDct1 nodePath for Tree
- * Dependencies:
- * Dependencies: Revision 1.13  2001/03/02 13:12:56  paul_noel
- * Dependencies: *** empty log message ***
- * Dependencies:
- * Dependencies: Revision 1.12  2001/02/28 16:28:00  paul_noel
- * Dependencies: *** empty log message ***
- * Dependencies:
- * Dependencies: Revision 1.11  2001/02/28 16:09:59  paul_noel
- * Dependencies: adjust get_nodeInfo
- * Dependencies:
- * Dependencies: Revision 1.10  2001/02/28 15:39:16  paul_noel
- * Dependencies: modify get_nodeInfo to handle future available setType and setName
- * Dependencies:
- * Dependencies: Revision 1.9  2001/02/27 14:05:16  paul_noel
- * Dependencies: Edits to make available tree/node selection on Paths
- * Dependencies:
- * Dependencies: Revision 1.8  2001/02/24 22:56:18  paul_noel
- * Dependencies: Update nodePath routines
- * Dependencies:
- * Dependencies: Revision 1.7  2001/02/23 16:59:31  paul_noel
- * Dependencies: Added new functionality for node Paths
- * Dependencies:
- * Dependencies: Revision 1.6  2001/02/17 14:53:02  ahundiak
- * Dependencies: *** empty log message ***
- * Dependencies:
- * Dependencies: Revision 1.5  2001/02/09 18:14:16  paul_noel
- * Dependencies: *** empty log message ***
- * Dependencies:
- * Dependencies: Revision 1.3  2001/01/23 13:48:00  paul_noel
- * Dependencies: Some minor fixes
- * Dependencies:
- * Dependencies: Revision 1.2  2001/01/19 12:40:33  paul_noel
- * Dependencies: *** empty log message ***
- * Dependencies:
- * Dependencies: Revision 1.1  2001/01/12 15:08:18  art
- * Dependencies: sp merge
- * Dependencies:
-# Revision 1.6  2000/08/11  15:37:10  pinnacle
-# pn
-#
-# Revision 1.4  2000/08/08  18:29:58  pinnacle
-# pn
-#
-# Revision 1.2  2000/07/31  19:21:28  pinnacle
-# pn
-#
-# Revision 1.1  2000/07/31  13:35:04  pinnacle
-# pn
-#
  *
  * History:
  * MM/DD/YY  AUTHOR  DESCRIPTION
  * 07/21/00  pn      Creation
  * 01/05/01  pn      added a bunch of new helper routines
  * 05/20/02  ylong   TR6376, rewite VDtrget_stages
+ * 11/17/10  ah      SOL10 frozen stuff
  ***************************************************************************/
 
 // Generic node operations routines
@@ -2246,6 +2201,44 @@ wrapup:
     return retFlag;
 }
 
+/****************************************************************************
+ * Filter out node if its frozen matches status
+ * 
+ ****************************************************************************/
+IGRstat	VDtrFilterFrozenNode( TGRid **nodeIDs, IGRint *cnt )
+{
+  IGRstat       retFlag = 0;
+  IGRstat       sts;
+  IGRint	nodeCnt = 0, i, j;
+  Tret_struct   rs;
+
+  if( !nodeIDs || !(*cnt) ) goto wrapup;
+
+  nodeCnt = *cnt;
+  for( i = 0; i < nodeCnt;  )
+  {
+    sts = vdsa$GetStruct( objID = &(*nodeIDs)[i], name = "frozen", rs = &rs);
+    if( (sts & 1) && !strcmp( rs.var.text_st.text_string, "DELETED" ) )
+    {
+       for( j = i; j < nodeCnt-1; j++ ) (*nodeIDs)[j] = (*nodeIDs)[j+1];
+       nodeCnt--;
+    }
+    else i++;
+  }
+
+  if( nodeCnt < 1 )
+  {
+     *cnt = 0;
+     _FREE( *nodeIDs );
+  }
+  else *cnt = nodeCnt;
+
+  retFlag = 1;
+
+wrapup:
+  return retFlag;
+}
+
 /************************************************
  * Generic routine to get ParentID or children  *
  * for a node, or a specific child node         *
@@ -2258,6 +2251,7 @@ IGRstat VDtrget_nodes(IGRchar *nodeType,
 		      IGRchar *nodeName,
 		      TGRid   *nodeID,
 		      IGRint  lookupType,
+		      IGRint  frozen,
 		      IGRint  active_file,
 		      TGRid   **outID,
 		      IGRint  *cnt)
@@ -2274,7 +2268,6 @@ IGRstat VDtrget_nodes(IGRchar *nodeType,
     printf(">>> %s %s\n",ffn(),fn);
     if(nodeType) printf("nodeType: [%s]\n", nodeType);
   }
-
 
   // args and control check
   if((!nodeID) &&
@@ -2343,11 +2336,17 @@ IGRstat VDtrget_nodes(IGRchar *nodeType,
   }
  // get the list
   *cnt = 0;
-   vd$trget_treeNodeList(nodeID   = nodeID,
+  vd$trget_treeNodeList( nodeID   = nodeID,
 			 type     = nodeType,
 			 nodeList = outID,
 			 lookup   = lookupType,
 			 cnt      = cnt);
+
+  if( frozen )
+  {
+    VDtrFilterFrozenNode( outID, cnt );
+  }
+
 #if 0
    if(traceFlag) printf("the FINAL count is [%d]******\n",*cnt);
 	if(*cnt > 0) {
@@ -2638,6 +2637,7 @@ IGRstat	VDtrget_treeNodeList (TGRid		*nodeID,
                                  superClassName = "ACpretend")) continue;
         if(vdobj$IsAncestryValid(objID          = &childID,
                                  superClassName = "ACpretendin")) continue;
+
 	// if there is a filter
 	if(type) {
 	  VDatRDBGetNodeInfo(&childID, &vdatNodeInfo);
@@ -2721,6 +2721,7 @@ IGRstat	VDtrget_treeNodeList (TGRid		*nodeID,
       for(i = 0;vdct1$GetTree1Child(objID = nodeID,
 				    nth   = i,
 				    outID = &childID); i++) {
+
 	// get the baseInfo
 	VDctxGetBaseInfo(&childID,&baseInfo);
 	if(type) {
@@ -2757,6 +2758,7 @@ IGRstat	VDtrget_treeNodeList (TGRid		*nodeID,
       for(i = 0;vdct1$GetTree1Child(objID = nodeID,
 				    nth   = i,
 				    outID = &childID); i++) {
+
 	// get the baseInfo
 	VDctxGetBaseInfo(&childID,&baseInfo);
 	if(type) {
