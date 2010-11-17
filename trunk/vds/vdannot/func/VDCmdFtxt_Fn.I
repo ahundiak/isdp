@@ -1,5 +1,5 @@
 
-/* $Id: VDCmdFtxt_Fn.I,v 1.1.1.1 2001/01/04 21:07:40 cvs Exp $  */
+/* $Id: VDCmdFtxt_Fn.I,v 1.1.1.1.2.4 2003/06/24 16:55:56 ylong Exp $  */
 
 /* --------------------------------------------------------------------
  * I/VDS
@@ -12,6 +12,18 @@
  *
  * Revision History:
  *	$Log: VDCmdFtxt_Fn.I,v $
+ *	Revision 1.1.1.1.2.4  2003/06/24 16:55:56  ylong
+ *	Refined for TR7800 fix
+ *
+ *	Revision 1.1.1.1.2.3  2003/06/18 20:00:54  ylong
+ *	fix for tr7800
+ *	
+ *	Revision 1.1.1.1.2.2  2002/08/14 13:58:57  ylong
+ *	*** empty log message ***
+ *	
+ *	Revision 1.1.1.1.2.1  2002/07/03 18:44:58  ylong
+ *	*** empty log message ***
+ *	
  *	Revision 1.1.1.1  2001/01/04 21:07:40  cvs
  *	Initial import to CVS
  *	
@@ -69,6 +81,8 @@
  *					for expression objects.	
  *      10/11/99        ah              TR179900822 Crash when format is wrong type
  *                                      Users will still need to fix the format
+ *	06/14/02	ylong		CR6014
+ *	08/14/02	ylong		TR6661
  * -------------------------------------------------------------------*/
 
 /*
@@ -100,6 +114,7 @@ class implementation Root;
 #include "DIglob.h"
 #include "DIprims.h"
 #include "AS_status.h"
+#include "asbox.h"
 #include "igetypedef.h"
 #include "igrtypedef.h"
 #include "gr.h"
@@ -128,6 +143,9 @@ class implementation Root;
 #include "VDSannot.h"
 #include "vdparmacros.h"
 #include "v_miscmacros.h"
+#include "vddrwattr.h"
+#include "VDsa.h"
+#include "VDobj.h"
 
 /*
 #define vdserrDEBUG 1
@@ -140,10 +158,14 @@ class implementation Root;
 #include "vdtblmacros.h"
 #include "VDattrexp.h"
 
+from	NDnode		import	NDgive_structure;
 from	NDmacro		import	ACgive_structure;
+from	NDmacro		import	ACreturn_foot;
 from	expression	import	NDgive_value;
 from	ACcpx		import	ACfind_temp_obj;
 from	ACrg_collect	import	AClist_attribute, NDdelete;
+from	GRvg		import	GRgetattr;
+from	VDdrwObj	import	VDprint;
 
 #define AS_DEBUG	1
 
@@ -152,8 +174,209 @@ extern	EXP_create(), EXP_create_double();
 extern	EXP_delete_by_name(), EXP_delete_by_objid();
 extern	int EXP_modify_by_name(), EXP_modify_by_objid();
 extern	GRdpb_get();
-extern short	VRlocate_pattern();
+extern	short	VRlocate_pattern();
 
+extern	GRclassid	OPP_VDdrawing_class_id;
+extern	GRclassid	OPP_VDdrwObj_class_id;
+extern	GRclassid	OPP_VDdrw3d_class_id;
+
+
+/************************************************************************/
+/*	FUNCTION VDSget_discipline					*/
+/************************************************************************/
+
+VDSget_discipline( objId, equip_flag, discip_name )
+struct	GRid	*objId;
+IGRint		equip_flag;
+IGRchar		*discip_name;
+{
+  IGRlong		status, msg;
+  IGRint		sts = FALSE;
+  IGRint		isVDdrawing, isVDdrwObj;
+  IGRint		index;
+  IGRchar		mac_name[TEXT_SIZE];
+  IGRchar		category[TEXT_SIZE];
+  IGRchar		msgStr[TEXT_SIZE];
+  struct GRid		newObj, parent, collId;
+  struct GRmd_env	newEnv;
+  
+  SetProc( VDSget_discipline ); Begin
+
+  if( !objId || objId->objid == NULL_OBJID ) goto wrapup;
+  if( !discip_name ) goto wrapup;
+
+  newObj         = *objId;
+  discip_name[0] = '\0';
+  mac_name[0]    = '\0';
+  category[0]    = '\0';
+
+  vdobj$Get (	objID		= objId,
+		macName		= mac_name );
+
+  /*
+   * if input object is a drawing type object, try its model object
+   * else just use input object
+   */
+  isVDdrawing = vd_$is_ancestry_valid(  object  = objId,
+                                classid = OPP_VDdrawing_class_id );
+  isVDdrwObj  = vd_$is_ancestry_valid(  object  = objId,
+                                classid = OPP_VDdrwObj_class_id );
+
+  if ( isVDdrawing || isVDdrwObj )	
+  {
+     /*
+      * get it's parent object.
+      */
+     index = 0 ;
+
+     if( isVDdrwObj )
+     {
+       /*
+        * Parent Index is 2nd element.
+        */
+       index = 1;
+
+       /* 
+       status =
+       om$send(	msg	 = message VDdrwObj.VDprint( &msg ),
+			senderid = NULL_OBJID,
+			targetid = objId->objid,
+			targetos = objId->osnum );
+       */
+     }
+     
+     msg = 1;
+     status =
+     om$get_objid_at_index(	objid           = objId->objid,
+				osnum           = objId->osnum,
+				p_chanselect    = &ND_father,
+				index           = index,
+				objidaddr       = &parent.objid,
+				osnumaddr       = &parent.osnum);
+     if( !(status&1))
+     {
+	sprintf(msgStr, "%s <%d,%d> missing model object!",
+		mac_name, objId->osnum, objId->objid);
+	UI_status( msgStr );
+        newObj = *objId;
+	//goto wrapup;
+     }
+     else
+     {
+        status =
+        om$send(	msg	 = message NDmacro.ACreturn_foot(
+						&msg,
+						"",
+						&newObj,
+						&newEnv.md_env.matrix_type,
+						newEnv.md_env.matrix ),
+			senderid = NULL_OBJID,
+			targetid = parent.objid,
+			targetos = parent.osnum );
+
+        if( !(status&msg&1) ){
+	   sprintf(msgStr, "%s <%d,%d> missing model object !",
+		   mac_name, objId->osnum,objId->objid);
+	   UI_status( msgStr );
+           newObj = *objId;
+	   //goto wrapup;
+        }
+     }
+
+     /*
+      * TR7800, if the model file is not attached to drawing file, get
+      * model macro name from the internal instance of VDdrwObj, and
+      * then get discipline from it
+      */
+     if( !(status&msg&1) && isVDdrwObj )
+     {
+	VDpartAttr	attr ;
+	IGRchar		*ptr = NULL;
+
+	attr.Iwant = VD_I_drwMacroInfo ;
+	attr.aString[0] = '\0';
+        status =
+        om$send(	msg	 = message GRvg.GRgetattr( &msg,
+						(char *) &attr ),
+			senderid = NULL_OBJID,
+			targetid = objId->objid,
+			targetos = objId->osnum );
+	if( (status&msg&1) || *attr.aString )
+	{
+	   strcpy( mac_name, attr.aString );
+	   ptr = strchr(mac_name, '['); if( ptr ) *ptr = '\0';
+	   ptr = strchr(mac_name, ']'); if( ptr ) *ptr = '\0';
+	   if( *mac_name )
+	   {
+	      VD_compGetCompFromMacro ( mac_name,TEXT_SIZE,&discip_name );
+	      if(!strcmp(discip_name, "Macro")) strcpy(discip_name, mac_name);
+	      //printf(" category: [%s] from: [%s]\n", discip_name,mac_name);
+	      sts = TRUE;
+	      goto wrapup;
+	   }
+	}
+     }
+
+     /*
+      * TR7800, For drawing objects created by extract drawing, retrieve "macro"
+      * attribute first and then get discipline from it
+      */
+     if( !(status&msg&1) && isVDdrawing )
+     {
+	status = vdsa$GetStruct(objID = objId, name = "macro", txt = mac_name);
+	if( (status&1) && *mac_name )
+	{
+	   VD_compGetCompFromMacro(mac_name,TEXT_SIZE,&discip_name);
+	   if(!strcmp(discip_name, "Macro")) strcpy(discip_name, mac_name);
+	   //printf(" category: [%s] from: [%s]\n", discip_name,mac_name);
+	   sts = TRUE;
+	   goto wrapup;
+	}
+     }
+  }
+
+  /*
+   * get category name
+   */
+  status = vdobj$Get (	objID		= &newObj,
+			category	= category );
+
+  /*
+   * if category is valid, pick it. Otherwise pick macro name
+   */
+  if( (status&1) && category[0] != '\0' && strcasecmp(category,"Macro"))
+  {
+     strcpy( discip_name, category );
+  }
+  else 
+  {
+     vdobj$Get (	objID		= &newObj,
+			macName		= discip_name );
+  }
+
+  /*
+   * process equipments
+   */
+  if( !strcmp( discip_name, "equipment" ) && equip_flag )
+  {
+     status = vdsa$GetStruct(objID = &newObj, name = "p_macro", txt = mac_name);
+     if( (status&1) && mac_name[0] != '\0' )
+     {
+	sprintf( discip_name, "eqp_%s", mac_name );
+     }
+  }
+
+#if 0 
+  printf("FILE: %s, LINE: %d, category[%s], discip_name[%s], obj: ",
+	__FILE__,__LINE__,category,discip_name);
+  vdobj$Print(objID = &newObj );
+#endif
+
+  sts = TRUE;
+wrapup:
+  End
+  return sts;
+}
 
 /************************************************************************/
 /*	FUNCTION VDSsplit_buffer					*/
@@ -598,35 +821,29 @@ wrapup:
   return( status );
 }
 
+
 /************************************************************************/
-/*	FUNCTION VDSdelete_formats					*/
+/*	FUNCTION VDSdelete_old_formats					*/
+/*		delete all formats under macro name			*/
 /************************************************************************/
 
-VDSdelete_formats( for_name, macro )
-IGRchar		*for_name;
-IGRchar		*macro;
-/*.VDSwrite_formats*/
+VDSdelete_all_formats()
 {
-int	status = OM_S_SUCCESS;
-IGRchar	f_name[TEXT_SIZE];
-IGRchar	for_dir[TEXT_SIZE];
-IGRchar	dir_name[TEXT_SIZE];
-IGRchar	pwd_dir[TEXT_SIZE];
-GRspacenum cur_os;
-struct	GRid	f_obj,obj;
+IGRint		status = OM_S_SUCCESS;
+IGRint		suc;
+IGRint		i, f_cnt;
+IGRchar		dir_name[TEXT_SIZE];
+IGRchar		pwd_dir[TEXT_SIZE];
+IGRchar		**f_dirs = NULL;
+GRspacenum	cur_os;
+struct	GRid	obj;
+DIgrid		*f_ids = NULL;
 
 /*
- * This function delete a formattted text expression in the directory system.
- * It delete first the two expressions, followed by removing the 
- * sub-directory.
+ * This function delete all formattted text expressions and dirs
  */
 
   pwd_dir[0] ='\0';
-
-  if( macro == NULL || for_name == NULL ){
-    /*| no valid expression found */
-    return( OM_S_SUCCESS );
-  }
 
   /* get current directory */
   status = di$pwd( dirname = pwd_dir );
@@ -666,6 +883,115 @@ struct	GRid	f_obj,obj;
     goto wrapup;
   }
   
+  status =
+  di$dump(	lines	= &f_dirs,
+		ptr	= &f_cnt );
+
+  if( status != DIR_S_SUCCESS ){
+	goto wrapup;
+  }
+ 
+  for( i = 0; i < f_cnt; i++ ) {
+    di$split(	pathname	= f_dirs[i],
+		name		= f_dirs[i] );
+    if( f_dirs[i][strlen(f_dirs[i])-1] == ':' ){
+      f_dirs[i][strlen(f_dirs[i])-1] = '\0';
+    }
+    VDSdelete_formats( NULL, f_dirs[i] );
+  }
+
+wrapup:
+
+  /* goto the current directory */
+  if( pwd_dir[0] != '\0' ){
+    status = di$cd( dirname = pwd_dir );
+    if( status != DIR_S_SUCCESS ){
+      printf(" Can't change working directory to : %s\n", pwd_dir );
+    }
+  }
+
+  if( f_dirs ) di$free( lines = f_dirs, count = f_cnt );
+  _LOOPFREE( f_dirs, f_cnt );
+  return( status );
+}
+
+/************************************************************************/
+/*	FUNCTION VDSdelete_formats					*/
+/*		if for_name == NULL then delete all formats under macro */
+/*		else only delete for_name under macro			*/
+/************************************************************************/
+
+VDSdelete_formats( for_name, macro )
+IGRchar		*for_name;
+IGRchar		*macro;
+{
+IGRlong		msg;
+IGRint		status = OM_S_SUCCESS;
+IGRint		suc;
+IGRint		i, f_cnt;
+IGRchar		f_name[TEXT_SIZE];
+IGRchar		for_dir[TEXT_SIZE];
+IGRchar		dir_name[TEXT_SIZE];
+IGRchar		pwd_dir[TEXT_SIZE];
+IGRchar		**f_dirs = NULL;
+IGRlong		bytes, received;
+GRspacenum	cur_os;
+struct	GRid	f_obj,obj;
+struct	GRmd_env	md_env;
+struct	ret_struct	def_str;
+
+
+/*
+ * This function delete a formattted text expression in the directory system.
+ * It delete first the two expressions, followed by removing the 
+ * sub-directory.
+ */
+
+  pwd_dir[0] ='\0';
+
+  if( macro == NULL ){ //|| for_name == NULL ){
+    /*| no valid expression found */
+    goto wrapup;
+  }
+
+  /* get current directory */
+  status = di$pwd( dirname = pwd_dir );
+  if( status != DIR_S_SUCCESS ){
+    printf(" Can't get current workingi directory.\n");
+    goto wrapup;
+  }
+
+  /*" macro   : %s\n", macro  */
+  /*" for_name: %s\n", for_name */
+
+  ex$get_cur_mod( osnum = &cur_os );
+  status = di$give_pathname( osnum = cur_os, pathname = dir_name );
+  as$status( action = RET_STATUS );
+
+  status = di$cd( dirname = dir_name );
+  if( status != DIR_S_SUCCESS ){
+    printf(" Can't change working directory to : %s \n", dir_name );
+    goto wrapup;
+  }
+
+  strcat( dir_name, VD_FTEXT_DIR );
+
+  /* test if directory exists */
+  status = di$translate(objname = dir_name,
+			p_objid = &obj.objid,
+			p_osnum = &obj.osnum );
+  if( status != DIR_S_SUCCESS ){
+    printf("No directory <%s> ofund\n", dir_name);
+    goto wrapup;
+  }
+
+  /* goto directory formats */
+  status = di$cd( dirname = dir_name );
+  if( status != DIR_S_SUCCESS ){
+    printf(" Can't change working directory to : %s\n", dir_name );
+    goto wrapup;
+  }
+  
   sprintf( for_dir, "%s:%s", dir_name, macro );
 
   /* test if macro directory exist */
@@ -685,12 +1011,41 @@ struct	GRid	f_obj,obj;
   }
 
   if( for_name != NULL ){
+    sprintf( f_name, "%s:%s", for_dir, for_name );
+    f_cnt = 1;
 
-    strcpy( f_name, for_dir );
-    strcat( f_name, ":" );
-    strcat( f_name, for_name );
-    /* " f_name: %s\n", f_name */
+    f_dirs = _MALLOC( 1, IGRchar * );
+    if( !f_dirs ) goto wrapup;
+    f_dirs[0] = NULL;
+
+    f_dirs[0] =  _MALLOC( strlen(f_name) + 1, IGRchar );
+    if( !f_dirs[0] ) goto wrapup;
+    strcpy( f_dirs[0], f_name );
+  }
+  else {
+    status =
+    di$dump(	lines	= &f_dirs,
+		ptr	= &f_cnt );
+    if( status != DIR_S_SUCCESS ){
+	f_cnt = 0;
+	printf(" Can't dump directory : %s\n", for_dir );
+	//goto wrapup;
+    }
+  }
  
+  /*| get module environment */
+  bytes = sizeof( struct GRmd_env );
+  status = gr$get_module_env(	msg 	= &suc,
+				sizbuf	= &bytes,
+				buffer	= &md_env,
+				nret	= &received );
+
+  for( i = 0; i < f_cnt; i++ ) {
+
+    strcpy( f_name, f_dirs[i] );
+    /* " f_name: %s\n", f_name */
+
+    if( f_name[strlen(f_name)-1] == ':' ) f_name[strlen(f_name)-1] = '\0';
     obj.objid = NULL_OBJID;
     status = 
     di$translate(	objname = f_name,
@@ -698,17 +1053,6 @@ struct	GRid	f_obj,obj;
 			p_osnum = &f_obj.osnum );
     /*^di$report_error( sts = status ); */
     if( status == DIR_S_SUCCESS ){
-
-      IGRint		suc;
-      IGRlong		bytes, received;
-      struct GRmd_env	md_env;
-
-      /*| get module environment */
-      bytes = sizeof( struct GRmd_env );
-      status = gr$get_module_env(	msg 	= &suc,
-					sizbuf	= &bytes,
-					buffer	= &md_env,
-					nret	= &received );
 
       /* goto the formats directory */
       status = di$cd( dirname = f_name );
@@ -747,7 +1091,6 @@ struct	GRid	f_obj,obj;
           as$status( action = GOTO_VALUE, value = wrapup ) ;
 	  nd$exec_batch();
 	}
-
       }
       /* delete the format_expr directory */
       status = di$cd( dirname = for_dir );
@@ -758,11 +1101,95 @@ struct	GRid	f_obj,obj;
       status =
       di$rmdir(	dirname = f_name );
       if( status != DIR_S_SUCCESS ){
-	printf("Warning, problem removing directory %s\n", f_name );
-	goto wrapup;
+	printf("Warning 0, problem removing directory %s\n", f_name );
+	continue;
       }
       nd$exec_batch();
     }
+  }
+
+  /*
+   * process default macro
+   */
+  status = di$cd( dirname = for_dir );
+  if( status != DIR_S_SUCCESS ){
+    goto wrapup;
+  }
+
+  obj.objid = NULL_OBJID;
+  status =
+  di$translate(	objname = VD_FOR_DEFAULT,
+		p_objid = &obj.objid,
+		p_osnum = &obj.osnum );
+  if( status != DIR_S_SUCCESS ) {
+    obj.objid = NULL_OBJID; 
+  }
+
+  if( f_dirs ) {
+    di$free( lines = f_dirs, count = f_cnt );
+    f_cnt = 0;
+  }
+  status =
+  di$dump(	lines	= &f_dirs,
+		ptr	= &f_cnt );
+  if( status != DIR_S_SUCCESS ){
+     f_cnt = 0;
+  }
+
+  /* delete for_dir directory and mac_def */
+  if( !for_name || f_cnt == 0 ||			/* entire dir	*/
+      (f_cnt == 1 && strncmp(f_dirs[0],"mac_def",7)) )	/* only mac_def	*/
+  {
+    if( obj.objid != NULL_OBJID ) {
+      status = exp$delete(	exp_id  = obj.objid,
+				osnum   = obj.osnum,
+				p_md_env= &md_env );
+      if( (status&1) )  nd$exec_batch();
+    }
+
+    /* delete the format_expr directory */
+    status = di$cd( dirname = dir_name );
+    if( status != DIR_S_SUCCESS ){
+       printf(" Can't change working directory to : %s\n", dir_name );
+       goto wrapup;
+    }
+    status =
+    di$rmdir( dirname = for_dir );
+    if( status != DIR_S_SUCCESS ){
+      printf("Warning 1, problem removing directory %s at %s\n", for_dir,dir_name );
+      goto wrapup;
+    }
+    nd$exec_batch();
+  }
+  /* replace default format if needed */
+  else if( obj.objid != NULL_OBJID )
+  {
+    status =
+    om$send(msg = message NDnode.NDgive_structure(&msg, &def_str, &md_env ),
+          targetid = obj.objid,
+          targetos = obj.osnum,
+          senderid = NULL_OBJID );
+    if( !(status&msg&1) ) goto wrapup;
+
+    for( i = 0; i < f_cnt; i++ ) {
+      status = 
+      di$split(	pathname	= f_dirs[i],
+		name		= f_dirs[i] );
+      if( status != DIR_S_SUCCESS ) goto wrapup;
+
+      if( f_dirs[i][strlen(f_dirs[i])-1] == ':' ){
+        f_dirs[i][strlen(f_dirs[i])-1] = '\0';
+      }
+
+      if( !strcmp( f_dirs[i], def_str.var.text_st.text_string ) ) {
+	status = OM_S_SUCCESS;
+	goto wrapup;
+      }
+    }
+
+    exp$modify(	exp_name	= VD_FOR_DEFAULT,
+		exp_syntax	= f_dirs[0] );
+    nd$exec_batch();
   }
 
 wrapup:
@@ -775,6 +1202,7 @@ wrapup:
     }
   }
 
+  if( f_dirs ) di$free( lines = f_dirs, count = f_cnt );
   return( status );
 }
 
@@ -1124,16 +1552,16 @@ IGRchar *p;
 	  __DBGpr_dbl(" F1und Value ", coll.desc.value.att_exp );
 
 	  // TR179900822 Try to prevent crash when format is wrong
-	  p = strchr(tmp_c,'s');
-	  if (p) *p = 'f';
+	  for( ii = 0; ii < strlen(tmp_c) && !isalpha(tmp_c[ii]); ii++ );
+	  if( tmp_c[ii] == 's' ) tmp_c[ii] = 'f';
           sprintf( buf, tmp_c, coll.desc.value.att_exp );
         }
         else if( coll.desc.type == AC_ATTRIB_TEXT ){
 	  __DBGpr_str(" Found String", coll.desc.value.att_txt );
 
 	  // TR179900822 Try to prevent crash when format is wrong
-	  p = strchr(tmp_c,'f');
-	  if (p) *p = 's';	
+	  for( ii = 0; ii < strlen(tmp_c) && !isalpha(tmp_c[ii]); ii++ );
+	  if( tmp_c[ii] == 'f' ) tmp_c[ii] = 's';
 	  sprintf( buf, tmp_c, coll.desc.value.att_txt );
         }
         else{
@@ -1193,16 +1621,16 @@ IGRchar *p;
 		    __DBGpr_dbl(" F2und Value ", coll.desc.value.att_exp );
 
 		    // TR179900822 Try to prevent crash when format is wrong
-		    p = strchr(tmp_c,'s');
-		    if (p) *p = 'f';
+		    for( ii = 0; ii < strlen(tmp_c) && !isalpha(tmp_c[ii]); ii++ );
+		    if( tmp_c[ii] == 's' ) tmp_c[ii] = 'f';
 	            sprintf( buf, tmp_c, coll.desc.value.att_exp );
       		  }
    	          else if( coll.desc.type == AC_ATTRIB_TEXT ){
 	  	    __DBGpr_str(" Found String", coll.desc.value.att_txt );
 
 		    // TR179900822 Try to prevent crash when format is wrong
-		    p = strchr(tmp_c,'f');
-		    if (p) *p = 's';
+		    for( ii = 0; ii < strlen(tmp_c) && !isalpha(tmp_c[ii]); ii++ );
+		    if( tmp_c[ii] == 'f' ) tmp_c[ii] = 's';
 		    sprintf( buf, tmp_c, coll.desc.value.att_txt );
         	  }
 		  else{
