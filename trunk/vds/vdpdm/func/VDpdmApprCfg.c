@@ -1,4 +1,4 @@
- /* $Id: VDpdmApprCfg.c,v 1.18 2002/01/07 18:20:53 jdsauby Exp $  */
+ /* $Id: VDpdmApprCfg.c,v 1.18.2.1 2004/03/29 16:12:59 ahundiak Exp $  */
 /***************************************************************************
  * I/VDS
  *
@@ -10,6 +10,9 @@
  *
  * Revision History:
  *      $Log: VDpdmApprCfg.c,v $
+ *      Revision 1.18.2.1  2004/03/29 16:12:59  ahundiak
+ *      ah
+ *
  *      Revision 1.18  2002/01/07 18:20:53  jdsauby
  *      JTSMP CR 5952, new rules for hull applicability check and hull approval check.
  *
@@ -19,55 +22,12 @@
  *      Revision 1.16  2001/11/19 18:26:58  jdsauby
  *      did not free risInfo structure, resolved - jds
  *
- *      Revision 1.15  2001/11/08 20:11:10  jdsauby
- *      JTS MP TR 5764, added caching of DB queries into DOM tree - jds
- *
- *      Revision 1.14  2001/10/29 17:19:16  jdsauby
- *      performance upgrades for "Updating PDM Information" status msg - jds
- *
- *      Revision 1.13  2001/10/03 14:07:11  jdsauby
- *      JTS MP CR 5527
- *
- *      Revision 1.12  2001/07/26 13:33:33  jdsauby
- *      MP5447 - jds
- *
- *      Revision 1.11  2001/07/16 13:54:02  jdsauby
- *      VDassert working with Z D F
- *
- *      Revision 1.10  2001/04/12 20:42:42  jdsauby
- *      sp 11
- *
- *      Revision 1.9  2001/03/22 15:13:16  jdsauby
- *      Added Checks for catalogs w/o hull applicability attributes
- *
- *      Revision 1.8  2001/03/19 21:14:53  jdsauby
- *      Added verify table to get apprcfg for file key
- *
- *      Revision 1.7  2001/03/16 20:30:33  jdsauby
- *      Fixed a potential memory violation, AKA core dump.
- *
- *      Revision 1.6  2001/03/16 20:23:15  jdsauby
- *      Crash after ASSERT in VDpdmGetApprCfgForFilekey, fixed
- *
- *      Revision 1.5  2001/03/08 14:38:55  jdsauby
- *      Re - organization of VDpdm.h
- *
- *      Revision 1.4  2001/03/06 23:03:37  jdsauby
- *      Fixed crash for parts not having an approved config
- *
- *      Revision 1.3  2001/02/21 13:02:20  jdsauby
- *      CR4088
- *
- *      Revision 1.2  2001/02/11 17:09:23  ahundiak
- *      Renamed VDnfmx to VDnfmc
- *
- *      Revision 1.1  2001/02/05 16:38:42  jdsauby
- *      JTS MP CR4088
- *
  *
  * History:
  * MM/DD/YY  AUTHOR  DESCRIPTION
  * 12/11/00  js      Creation
+ * 02/18/04  ah      LHAR
+ * 11/17/10  ah      SOL10 VDship Enhancements
  ***************************************************************************/
   
 #include "VDtypedefc.h"
@@ -79,6 +39,7 @@
 #include "VDassert.h"
 #include "time.h"
 #include "VDDbDef.h"
+#include "VDship.h"
 
 VDASSERT_FFN("vdpdm/func/VDpdmApprCfg.c");
 
@@ -403,6 +364,9 @@ static IGRstat verifyCatalogType(IGRchar *a_catalog)
 
     TVDrisInfo ris;
 
+    IGRchar appColName[32];
+
+    // Init
     VDrisInitInfo( &ris );
 
     // Arg check
@@ -412,11 +376,15 @@ static IGRstat verifyCatalogType(IGRchar *a_catalog)
     strcpy(catalog,a_catalog);
     VDstrupr(catalog);
 
+    /* Build the hull app column name to query for */
+    VDshipGetFirstHull(appColName);
+    if (*appColName == 0) goto wrapup;
+
     // query ris5columns to see if there hull app attributes exist
-    // assume that if it has lpd17, the it has the rest.
+    // assume that if it has the first hull, then it has the rest.
     sprintf(ris.sql,
 	    "Select * from ris5columns where upper_table_name = '%s' and "
-	    "column_name = 'lpd17';", catalog);
+	    "column_name = '%s';", catalog,appColName);
 
     VDrisQuery( &ris, NULL );
     if (ris.rows < 1) goto wrapup;
@@ -443,6 +411,7 @@ static IGRstat qryHullAppForCPR(IGRchar   *catalog,
     IGRstat retFlag = 0;
     IGRstat sts;
     IGRchar sql[1024];
+    IGRchar hulls[256];
 
     // say hi
     traceFlag = VDdbgGetTraceFlag(VDPDM_TRACE_APP_CFG);
@@ -459,9 +428,11 @@ static IGRstat qryHullAppForCPR(IGRchar   *catalog,
     if (!(sts & 1)) goto wrapup;
 
     // build the qry
+    VDshipGetHulls(hulls);
+    if (*hulls == 0) goto wrapup;
     sprintf(sql,
             "Select %s from %s where n_itemname='%s' and n_itemrev='%s';",
-	    VDPDM_LIST_OF_HULLS, catalog, part, revision );
+	    hulls, catalog, part, revision );
 
     if (traceFlag) printf("SQL: <<%s>>\n",sql);
 
@@ -641,6 +612,10 @@ IGRstat VDpdmGetHullAppforFilekey(IGRint       *fileKey,
     TVDrisInfo  ris;
     IGRint      i;
 
+    IGRchar shipClassName[32];
+    IGRint  hullNumMin;
+
+    /* Init */
     VDrisInitInfo( &ris );
 
     // say hi
@@ -686,10 +661,13 @@ IGRstat VDpdmGetHullAppforFilekey(IGRint       *fileKey,
     ships->file_key = *fileKey;
     ships->cnt      = 0;
 
+    VDshipGetClassName(shipClassName); strupr(shipClassName);
+    VDshipGetMinHullNum(&hullNumMin);
+
     for (i = 0; i < ris.cols; i++) {
 
 	if ( (!strcmp(ris.buf[i],"Y")) || (!strcmp(ris.buf[i],"y")) ) {
-	    sprintf(buf,"LPD%d",i+17);
+	    sprintf(buf,"%s%d",shipClassName,i+hullNumMin);
 	    strcpy(ships->hulls[ships->cnt],buf);
 	    ships->cnt++;
 	}
@@ -904,5 +882,3 @@ wrapup:
     if (traceFlag) printf("<<< %s %s %d\n",ffn(),fn, retFlag);
     return retFlag;
 }
-    
-
