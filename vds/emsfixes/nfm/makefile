@@ -16,7 +16,7 @@
 #	06/10/01	jds		creation
 # -------------------------------------------------------------------
 
-TGT = vdnfm
+TGT = vdidloadnfm
 
 include ${VDS_PATH}/etc/makefiles/lib_only.h
 
