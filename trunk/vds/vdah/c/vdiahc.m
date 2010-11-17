@@ -14,26 +14,12 @@
  *      Revision 1.12  2002/04/01 15:31:50  ahundiak
  *      ah
  *
- *      Revision 1.11  2001/05/24 18:32:42  ahundiak
- *      ah
- *
- *      Revision 1.10  2001/03/11 18:34:04  ahundiak
- *      ah
- *
- *      Revision 1.9  2001/02/22 22:51:30  ahundiak
- *      *** empty log message ***
- *
- *      Revision 1.8  2001/02/17 13:58:14  ahundiak
- *      *** empty log message ***
- *
- *      Revision 1.7  2001/02/08 15:19:10  ahundiak
- *      *** empty log message ***
- *
  *
  * History:
  * MM/DD/YY  AUTHOR  DESCRIPTION
  * 12/05/00  ah      creation
  * 05/24/01  ah      Removed VDden, replace with VDval routine
+ * 11/17/10  ah      SOL10 Added VDship and VDdom2
  ***************************************************************************/
 
 SOURCE
@@ -49,6 +35,8 @@ VDvlaInfo.c
 VDsys.c
 VDtest.c
 VDwarn.c
+VDship.c
+VDdom2.c
 
 LIB
 #if ISDP_MAKE_SP
