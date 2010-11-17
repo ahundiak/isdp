@@ -1,3 +1,6 @@
+/* ========================================
+ * 11/17/10 ah   SOL10 Ref limit raised to 500
+ */
 class implementation  Root;
 
 /*+fe
@@ -79,7 +82,9 @@ static   int			ListSize;
 static   struct  GRmd_env 	*AllModEnv;
 static   GRspacenum 		*AllOsNums;
 static	 int			ref_os_count;
-static	 GRspacenum		ref_os_list[300];
+static	 GRspacenum		ref_os_listx[500];
+static	 GRspacenum	       *ref_os_list;
+
 
 
 /*+fe
@@ -341,6 +346,8 @@ char		  found,
         goto wrapup;
     }
 
+    /* This is controlled by MAX_REF_FILES */
+    ref_os_list = (GRspacenum*) malloc ( sizeof (GRspacenum) * EX_MAX_INVIS_MODULES);
     ref_os_count = 0;
     sts = VDget_ref_os ( msg, &mod_env );
 
@@ -425,8 +432,9 @@ char		  found,
 #endif
 
 wrapup:
-    if ( AllModEnv ) { free ( AllModEnv ); AllModEnv = NULL; }
-    if ( AllOsNums  ) { free ( AllOsNums ); AllOsNums = NULL; }
+    if (AllModEnv  ) { free(AllModEnv );  AllModEnv   = NULL; }
+    if (AllOsNums  ) { free(AllOsNums );  AllOsNums   = NULL; }
+    if (ref_os_list) { free(ref_os_list); ref_os_list = NULL; }
     NoOfAllOs = 0;
     ListSize = 0;
     return sts;
