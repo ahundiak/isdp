@@ -807,6 +807,8 @@ for check out file <%s>: status <0x%.8x>\n",dst_file,status));
       status1));
       return (status1);
    }
+// Just to get to compile
+#define NFM_MOVE_FIRST_TIME 666
 
  long NFMfs_src_send_clix ( buffer_ptr)
    MEMptr *buffer_ptr;

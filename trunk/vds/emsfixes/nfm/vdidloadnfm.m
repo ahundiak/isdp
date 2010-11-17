@@ -15,11 +15,16 @@
  *	MM/DD/YY	AUTHOR		DESCRIPTION
  *	06/11/01	jds		created
  * -------------------------------------------------------------------*/
-
+/* ====================================================
+ * SOL10 16 Nov 2010
+ * NDMtr_files is causing a core dump when retrieving a file
+ * Skip for now
+ */
 SOURCE
 #if ISDP_MAKE_SP
 VDnfmZip.c
 NFMfile_tr.c
+NFMtr_files.c
 #else
 VDnfmZip.c
 NFMfile_tr.c
@@ -27,9 +32,9 @@ NFMfile_tr.c
 
 LIB
 #if ISDP_MAKE_SP
-$SPXV/lib/vdnfm.o
+$SPXV/lib/vdidoladnfm.o
 #else 
-$VDS/lib/vdnfm.o
+$VDS/lib/vdidloadnfm.o
 #endif
 
 SPEC
