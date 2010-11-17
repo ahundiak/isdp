@@ -1,4 +1,4 @@
- /* $Id: VDct1RootTreeC.c,v 1.4 2002/05/16 21:22:29 jdsauby Exp $  */
+/* $Id: VDct1RootTreeC.c,v 1.4.2.1 2003/06/06 20:58:15 ahundiak Exp $  */
 /***************************************************************************
  * I/VDS
  *
@@ -10,6 +10,9 @@
  *
  * Revision History:
  *      $Log: VDct1RootTreeC.c,v $
+ *      Revision 1.4.2.1  2003/06/06 20:58:15  ahundiak
+ *      ah
+ *
  *      Revision 1.4  2002/05/16 21:22:29  jdsauby
  *      JTSMP CR6359
  *
@@ -145,7 +148,10 @@ static IGRstat isAttrUpdateValid(TVDct1JD  *nodeJD,
   if (!strcmp(attrName,VDCT1_ATTR_NODE_NUM))    goto wrapup;
   if (!strcmp(attrName,VDCT1_ATTR_NUM_NEXT))    goto wrapup;
   if (!strcmp(attrName,VDCT1_ATTR_MODEL_ID))    goto wrapup;
-  
+  if (!strcmp(attrName,VDCT1_ATTR_LOC_X))       goto wrapup;
+  if (!strcmp(attrName,VDCT1_ATTR_LOC_Y))       goto wrapup;
+  if (!strcmp(attrName,VDCT1_ATTR_LOC_Z))       goto wrapup;
+     
   // if attribute is propagatable, and parent has a value, then
   // the attribute cannot be updated.
   if ( _RTCJDC(nodeJD)->isAttrPropagateValid(nodeJD,attrName) ) {

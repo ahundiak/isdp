@@ -1,4 +1,4 @@
- /* $Id: VDct1RootTree.c,v 1.10 2002/05/16 21:22:27 jdsauby Exp $  */
+/* $Id: VDct1RootTree.c,v 1.10.2.1 2002/11/22 17:07:58 ahundiak Exp $  */
 /***************************************************************************
  * I/VDS
  *
@@ -10,6 +10,9 @@
  *
  * Revision History:
  *      $Log: VDct1RootTree.c,v $
+ *      Revision 1.10.2.1  2002/11/22 17:07:58  ahundiak
+ *      ah TR7049
+ *
  *      Revision 1.10  2002/05/16 21:22:27  jdsauby
  *      JTSMP CR6359
  *
@@ -341,7 +344,6 @@ static IGRstat reComputeStdAssy(TVDct1JD *nodeJD)
   VDASSERTW(*baseInfo.nodeType != 0);
 
   // say hi
-  traceFlag = 1;
   if (traceFlag) printf(">>> %s %s [%s %s]\n",ffn(),fn,baseInfo.nodeType,baseInfo.nodeName);
   
   // by default, do not re-expand

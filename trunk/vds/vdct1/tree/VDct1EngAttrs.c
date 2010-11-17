@@ -1,4 +1,4 @@
-/* $Id: VDct1EngAttrs.c,v 1.8 2001/10/03 15:15:46 jdsauby Exp $  */
+/* $Id: VDct1EngAttrs.c,v 1.8.4.3 2003/06/06 20:58:15 ahundiak Exp $  */
 
 /***************************************************************************
  * I/VDS
@@ -11,6 +11,15 @@
  *
  * Revision History:
  *      $Log: VDct1EngAttrs.c,v $
+ *      Revision 1.8.4.3  2003/06/06 20:58:15  ahundiak
+ *      ah
+ *
+ *      Revision 1.8.4.2  2003/05/27 22:54:02  ylong
+ *      Resume previous version, override getNodeAttrName in VDct1GrpPlace.c
+ *
+ *      Revision 1.8.4.1  2003/05/23 19:18:32  ylong
+ *      Modified for Placement Group Tree - yl
+ *
  *      Revision 1.8  2001/10/03 15:15:46  jdsauby
  *      JTS MP CR 5571
  *
@@ -844,6 +853,25 @@ IGRstat VDct1EngTreeGetAttrInfo(IGRchar       *name,
     VDctxSetAttrInfo(name,48,"RESERVED","RESERVED",info);
     goto wrapup;
   }
+
+  /* -------------------------------------------- */
+  if (!strcmp(name,VDCT1_ATTR_LOC_X)) {
+    VDctxSetAttrInfo(name,12,"LOC_X","LOC_X",info);
+    goto wrapup;
+  }
+  /* -------------------------------------------- */
+  if (!strcmp(name,VDCT1_ATTR_LOC_Y)) {
+    VDctxSetAttrInfo(name,12,"LOC_Y","LOC_Y",info);
+    goto wrapup;
+  }
+  /* -------------------------------------------- */
+  if (!strcmp(name,VDCT1_ATTR_LOC_Z)) {
+    VDctxSetAttrInfo(name,12,"LOC_Z","LOC_Z",info);
+    goto wrapup;
+  }
+
+
+
 
   // No Match
   retFlag = 0;

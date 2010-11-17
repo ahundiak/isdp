@@ -1,4 +1,4 @@
- /* $Id: VDct1Init.c,v 1.7 2002/01/07 18:53:32 jdsauby Exp $  */
+ /* $Id: VDct1Init.c,v 1.7.2.1 2003/05/23 19:18:32 ylong Exp $  */
 /***************************************************************************
  * I/VDS
  *
@@ -11,6 +11,9 @@
  *
  * Revision History:
  *      $Log: VDct1Init.c,v $
+ *      Revision 1.7.2.1  2003/05/23 19:18:32  ylong
+ *      Modified for Placement Group Tree - yl
+ *
  *      Revision 1.7  2002/01/07 18:53:32  jdsauby
  *      JTSMP CRs 4045,4048,4053,4054
  *
@@ -81,6 +84,8 @@ typedef struct
   TVDct1WWayTreeClass     wwayTree;
   TVDct1HvacTreeClass     hvacTree;
 
+  TVDct1GrpPlaceTreeClass grpPlaceTree;
+
 } Ttrees;
 
 
@@ -115,6 +120,7 @@ void *VDct1GetTreeClassForNth(IGRint nth)
     case 6: return &s->wwayTree;
     case 7: return &s->hvacTree;
     case 8: return &s->deltaTree;
+    case 9: return &s->grpPlaceTree;
   }
   
   // None left
@@ -149,6 +155,7 @@ void *VDct1GetTreeClassForSetType(IGRchar *setType)
   if (!strcmp(setType,VDCT1_TREE_TYPE_WWAY_TREE))   return &s->wwayTree;
   if (!strcmp(setType,VDCT1_TREE_TYPE_HVAC_TREE))   return &s->hvacTree;
   if (!strcmp(setType,VDCT1_TREE_TYPE_DELTA_TREE))  return &s->deltaTree;
+  if (!strcmp(setType,VDCT1_TREE_TYPE_GRP_PLACE))   return &s->grpPlaceTree;
   
   VDASSERTW(NULL);
   
@@ -207,6 +214,8 @@ IGRstat VDct1InitSystem(IGRint cnt)
   VDct1InitCableTreeClass (&s->engTree,&s->cableTree);
   VDct1InitWWayTreeClass  (&s->engTree,&s->wwayTree);
   VDct1InitHvacTreeClass  (&s->engTree,&s->hvacTree);
+
+  VDct1InitGrpPlaceTreeClass  (&s->engTree,&s->grpPlaceTree);
 
   // Done
   retFlag = 1;

@@ -1,4 +1,5 @@
- /* $Id: VDct1EngTree.c,v 1.17 2002/05/16 21:22:23 jdsauby Exp $  */
+
+/* $Id: VDct1EngTree.c,v 1.17.2.2 2004/03/29 16:21:04 ahundiak Exp $  */
 /***************************************************************************
  * I/VDS
  *
@@ -10,6 +11,12 @@
  *
  * Revision History:
  *      $Log: VDct1EngTree.c,v $
+ *      Revision 1.17.2.2  2004/03/29 16:21:04  ahundiak
+ *      ah
+ *
+ *      Revision 1.17.2.1  2002/11/22 17:07:58  ahundiak
+ *      ah TR7049
+ *
  *      Revision 1.17  2002/05/16 21:22:23  jdsauby
  *      JTSMP CR6359
  *
@@ -79,6 +86,7 @@
  * MM/DD/YY  AUTHOR  DESCRIPTION
  * 07/10/00  ah      Creation
  * 03/07/02  ylong   TR5997
+ * 11/22/02  ah      TR7049 Update node name during recompute
  ***************************************************************************/
 #include "VDtypedefc.h" 
 #include "VDobj2.h"
@@ -991,7 +999,7 @@ static IGRstat calculatePerMino(IGRchar *copSize,
 
   
 /* ------------------------------------------------
- * Helper function to get 1CC97 out of copics number
+ * Helper function to get cage code out of copics number
  */
 static IGRstat cleanCopicsNum(IGRchar *oldNum,
 			      IGRchar *copNum)
@@ -1254,7 +1262,10 @@ static IGRstat copyAttributesFromModelToNode(TVDct1JD   *nodeJD,
   IGRchar attrCompt[128],buf[32];
 
   TGRid   objID;
-  
+
+  TVDctNodeName nodeName;
+  TVDctBaseInfo baseInfo;
+   
   // Arg check
   VDASSERTW(nodeJD->id.objid != NULL_OBJID);
   VDASSERTW((modelOE->obj_id.objid != 0) && (modelOE->obj_id.objid != NULL_OBJID));
@@ -1271,7 +1282,28 @@ static IGRstat copyAttributesFromModelToNode(TVDct1JD   *nodeJD,
   VDobjGetClassName(modelOE,NULL,buf);
     
   if (traceFlag) printf("### className = %s\n",buf);
-  
+
+  /* -------------------------------------------------
+   * TR7049 22 Nov 2002
+   * It's possible that a change in the model object's
+   * attributes may trigger a chamnge in the node name,
+   * especially for standard assemblies
+   */
+  _RTCJDB(nodeJD)->getBaseInfo(nodeJD,&baseInfo);
+  _RTCJDB(nodeJD)->getNodeNameForModelObject(nodeJD,modelOE,nodeName);
+  if (*nodeName && strcmp(baseInfo.nodeName,nodeName)) {
+
+    /* Change the name */
+    if (traceFlag) {
+      printf("Changed node name from %s to %s\n",baseInfo.nodeName,nodeName);
+    }
+    strcpy(baseInfo.nodeName,nodeName);
+    _RTCJDB(nodeJD)->setBaseInfo(nodeJD,&baseInfo);
+
+    /* Recompute standard assembly structures */
+    _RTCJDB(nodeJD)->reComputeStdAssy(nodeJD);
+  }
+   
   // unit_number
   VDjt1CopyAttributeFromModelToNode(nodeJD,VDCT1_ATTR_UNIT,
 				    modelOE,VDCT1_ISDP_ATTR_UNIT);  
@@ -1725,6 +1757,8 @@ static IGRstat computeNodeEA2(TVDct1JD      *nodeJD,
   IGRstat retFlag = 0;
   IGRstat sts;
   
+  IGRchar code[128];
+
   VDASSERTW(nodeJD);
   VDASSERTW(parentJD);
   VDASSERTW(baseInfo);
@@ -1739,8 +1773,9 @@ static IGRstat computeNodeEA2(TVDct1JD      *nodeJD,
   // the MINO is identical to the name
   VDjt1SetAttr(nodeJD,VDCT1_ATTR_MINO,baseInfo->nodeName);
 
-  // Set the CAGE 
-  VDjt1SetAttr(nodeJD,VDCT1_ATTR_CAGE,VDCT1_DEFAULT_CAGE_CODE); 
+  // Set the CAGE
+  VDshipGetCageCode(code);
+  VDjt1SetAttr(nodeJD,VDCT1_ATTR_CAGE,code); 
   
   // set the COMM_CODE, COMMODITY, and COST_CODE are set
   setCommInfoForEA(nodeJD,baseInfo);
