@@ -1,4 +1,4 @@
-/* $Id: VDobj.I,v 1.4 2001/10/24 15:52:49 jayadev Exp $  */
+/* $Id: VDobj.I,v 1.4.4.1 2002/09/19 20:52:32 jayadev Exp $  */
 
 /***************************************************************************
  * I/VDS
@@ -11,6 +11,9 @@
  *
  * Revision History:
  *      $Log: VDobj.I,v $
+ *      Revision 1.4.4.1  2002/09/19 20:52:32  jayadev
+ *      fix for TR# 6466
+ *
  *      Revision 1.4  2001/10/24 15:52:49  jayadev
  *      *** empty log message ***
  *
@@ -51,6 +54,8 @@
  * 05/26/99  ejm     VDobjGetParent: moved "retFlag=1" inside IsAncestryValid
  *			check for ACpretendin parent (found during 
  *			CR_179900195 work)
+ * 09/18/02  Jayadev cloned VDobjGetPretendParent() as VDobjGetPretendParent1()
+ *                   to select AScompcurve apart from ACncpx as pretend Macro
  ***************************************************************************/
 class implementation ACncpx;
 
@@ -113,7 +118,82 @@ IGRstat VDobjIsObjectAParent(TGRobj_env *childOE, TGRobj_env *parentOE, IGRint n
 wrapup:
   return retFlag;
 }
+/*
+ * This function also gets the AScompcurve type parents apart from
+ * ACncpx types
+ */
+IGRlong VDobjGetPretendParent1(TGRid *pretendID, TGRid *parentID)
+{
+  
+  IGRstat retFlag = 0;
+  IGRstat sts;
+  
+  IGRchar className[128];
 
+  IGRint  i;
+  
+  // Init
+  if (parentID == NULL) goto wrapup;
+  parentID->objid = NULL_OBJID;
+  if (pretendID == NULL) goto wrapup;
+
+  // Check if a source
+  vdobj$Get(objID = pretendID, className = className);
+
+  // ACpretend connects via father channel
+  if (!strcmp(className,"ACpretend")) {
+    
+    vdchn$Get2(objID  = pretendID,
+	       chnIDx = VDCHN_IDX_FATHER,
+	       nth    = 0,
+	       outID  = parentID);
+
+    if (parentID->objid != NULL_OBJID) retFlag = 1;
+    goto wrapup;
+    
+  }
+
+  // ACpretendin connects via listener channel
+  if (!strcmp(className,"ACpretendin")) {
+
+    TVDvlaID lstVLA;
+    TGRid    tryID;
+    
+    VDvlaID_Construct(&lstVLA);
+    
+    // Unordered channels suck!
+    vdchn$Get2(objID  = pretendID,
+	       chnIDx = VDCHN_IDX_LISTENER,
+	       outVLA = &lstVLA);
+    
+    for(i = 0; VDvlaID_GetAt(&lstVLA,&tryID,i); i++) {
+
+	if (vdobj$IsAncestryValid(objID = &tryID, superClassName = "ACncpx") ||
+	    vdobj$IsAncestryValid(objID = &tryID, superClassName = "AScompcurve")) {
+
+	    *parentID = tryID;
+
+	    VDvlaID_Delete(&lstVLA);
+	    retFlag = 1;
+	    goto wrapup;
+
+	} 
+    }
+
+    VDvlaID_Delete(&lstVLA);
+    goto wrapup;
+  }
+
+  // Verify it's a pretend
+  sts = vdobj$IsAncestryValid(objID        = pretendID,
+			      superClassID = OPP_ACpretend_class_id);
+
+  if (!(sts & 1)) goto wrapup;
+  
+wrapup:
+
+  return retFlag;
+}
 /* --------------------------------------------
  * Gets the actual parent of a pretend object
  * possibly going through a reference file
