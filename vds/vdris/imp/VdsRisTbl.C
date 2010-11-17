@@ -1,4 +1,4 @@
-/* $Id: VdsRisTbl.C,v 1.1.1.1 2001/01/04 21:09:12 cvs Exp $  */
+/* $Id: VdsRisTbl.C,v 1.1.2.1 2004/03/29 15:40:03 ahundiak Exp $  */
 
 /* --------------------------------------------------------------------
  * I/VDS
@@ -13,6 +13,9 @@
  *
  * Revision History:
  *	$Log: VdsRisTbl.C,v $
+ *	Revision 1.1.2.1  2004/03/29 15:40:03  ahundiak
+ *	ah
+ *
  *	Revision 1.1.1.1  2001/01/04 21:09:12  cvs
  *	Initial import to CVS
  *	
@@ -45,8 +48,9 @@
  *	MM/DD/YY	AUTHOR	DESCRIPTION
  *	02/29/96	adz	Change ristables -> ris5tables.
  *	04/10/96	tlb	Use VDS memory allocation checking
- *				Add prototypes
- *
+ *                Add prototypes
+ *  03/01/04  ah  Add login check
+ *  11/17/10  ah  SOL10
  * -------------------------------------------------------------------*/
 
 #include	<stdio.h>
@@ -56,6 +60,7 @@
 #include	"VDSris_def.h"
 #include	"VDmem.h"
 #include	"v_risproto.h"
+#include	"PDUerror.h"
 
 /*--------------------------------------------------------------------------
   Doc :  VdsDelTrailBlanks
@@ -203,6 +208,8 @@ char	*table_name;
 	char	*ristables="ris5tables";
 	char	where[200];
 	int	count=0;
+
+	if(VDSverify_login() != PDM_S_SUCCESS ) return  VDS_DBTABLE_NOT_FOUND;
 
 	sprintf(where,"table_name = '%s' ",table_name );
 
