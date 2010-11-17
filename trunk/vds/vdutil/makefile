@@ -48,6 +48,9 @@ $(VDS)/ppl/bin/COlayers.e : COlayers.u
 	mv COlayers.e $(VDS)/ppl/bin/COlayers.e
 
 clean:
-	@rm -f mkfile *.e *.o *.c
-	@svn update
+	@rm -f mkfile *.e *.o
+	@rm -f VDIdManage.c VDSLoadLay.c VDtrim.c VDdumpGeom.c VDSequip_ut.c VDerrHndlr.c VDSunits.c VDFindObjs.c
+	@rm -f VDGetCodList.c VDchk_child.c VDmsgkey2str.c VDFitObj.c VDgetattsym.c VDusrAttrs.c VDMgmTagNum.c
+	@rm -f VDfixRT.c VDSColUtil.c VDut_time.c VDrefList.c VDgetcdlst.c VDref_util.c VDMngShName.c VDDbParams.c
+	@rm -f VDcompAttr.c VDprdMacFn.c VDget_name.c VDSequtil.c VDSPartAtt.c VDparameters.c
 
