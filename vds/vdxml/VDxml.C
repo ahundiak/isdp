@@ -1,4 +1,4 @@
-/* $Id: VDxml.C,v 1.5 2001/09/14 19:23:12 ahundiak Exp $  */
+/* $Id: VDxml.C,v 1.5.4.1 2003/08/18 21:08:29 ahundiak Exp $  */
 
 /***************************************************************************
  * I/VDS
@@ -11,33 +11,8 @@
  *
  * Revision History:
  *      $Log: VDxml.C,v $
- *      Revision 1.5  2001/09/14 19:23:12  ahundiak
- *      ah
- *
- *      Revision 1.4  2001/05/22 15:47:36  ahundiak
- *      *** empty log message ***
- *
- *      Revision 1.3  2001/03/07 20:53:54  ahundiak
- *      ah
- *
- *      Revision 1.2  2001/01/11 21:30:18  art
- *      sp merge
- *
- * Revision 1.2  2000/07/17  18:34:06  pinnacle
- * ah
- *
- * Revision 1.1  2000/04/25  16:20:48  pinnacle
- * ah
- *
- * Revision 1.3  2000/03/24  15:20:54  pinnacle
- * bsp
- *
- * Revision 1.2  2000/02/18  16:26:22  pinnacle
- * sms
- *
- * Revision 1.1  2000/01/26  15:36:20  pinnacle
- * ah
- *
+ *      Revision 1.5.4.1  2003/08/18 21:08:29  ahundiak
+ *      TR7927
  *
  * History:
  * MM/DD/YY  AUTHOR  DESCRIPTION
@@ -46,13 +21,16 @@
  * 01/26/00  ah      Changed to .C for stand alone programs
  * 03/20/00  ah      Added buffer for output
  * 09/14/01  ah      Fixed a crash in IsXmlFile
+ * 08/18/03  ah      TR7927 Removed doc_type dependency in IsXmlFile
+ * 11/17/10  ah      SOL10
  ***************************************************************************/
 
 #include "VDtypedef.h"
 #include "VDxml.h"
 
 #include <sys/types.h>
-#include "dirent.h"
+#include <dirent.h>
+#include <string.h>
 
 /* ---------------------------------------------------------
  * Convert to upper case
@@ -126,9 +104,17 @@ IGRstar VDxmlIsXMLFile(IGRchar         *fileName,
   *buf = 0;
   fgets(buf,sizeof(buf),file);
 
+  /* TR 7927 Check root node or doc type */
+  VDstrlwr(buf);
+  strcpy(cmp,docType);
+  VDstrlwr(cmp);
+  if (!strstr(buf,cmp)) goto wrapup;
+
+#if 0
   // Check the doc type
   sprintf(cmp,"<!DOCTYPE %s",docType);
   if (strncasecmp(buf,cmp,strlen(cmp))) goto wrapup;
+#endif
 
   // Append
   if ((fileInfos) && (fileInfos->cnt < fileInfos->max)) {
