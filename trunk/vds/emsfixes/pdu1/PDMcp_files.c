@@ -17,6 +17,8 @@
  */
 #include "NFMerrordef.h"
 #include <stdio.h>
+#include <fcntl.h>
+#include <sys/types.h>
 #include <sys/stat.h>
 #include "PDMexec.h"
 #include "PDUstorage.h"
@@ -49,7 +51,7 @@ long PDMreview_checkout_process ()
   int 		i_catno, i_itemnum, i_type, i_fileno, i_filenum, i_fileversion,
 		i_filetype, i_fileco, i_cifilename, i_cofilename,
 		i_cisano, i_status1;
-  int		x
+  int		x;
 
 
     struct stat			file_stat;
@@ -203,13 +205,16 @@ long PDMreview_checkout_process ()
 	return (status);
     }
  **/
-
+/* =========================================================
+ * SOL10 copy_bufr not defined
+ * Just skip for now
+ */
     free(format);
 
     i_catno = 0; i_itemnum = 1; i_type = 2; i_fileno = 3; i_filenum = 4;
     i_fileversion = 5; i_filetype = 6; i_fileco = 7; i_cisano = 8;
     i_cifilename = 9; i_cofilename = 10; i_status1 = 11;
-
+#if 0
 /* copy_bufr should be prepared */
     for( x=0 ; x<copy_bufr->rows ; x++ )
     {
@@ -239,6 +244,7 @@ long PDMreview_checkout_process ()
 	    }
 	}
     }
+#endif
 }
 
 
