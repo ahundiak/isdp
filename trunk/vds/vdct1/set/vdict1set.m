@@ -14,21 +14,6 @@
  *      Revision 1.3  2001/01/12 14:53:35  art
  *      sp merge
  *
-# Revision 1.5  2000/07/25  18:39:26  pinnacle
-# ah
-#
-# Revision 1.4  2000/07/17  19:51:08  pinnacle
-# ah
-#
-# Revision 1.3  2000/05/08  19:54:40  pinnacle
-# Replaced: vds/vdct1/set/vdict1set.m for:  by jdsauby for Service Pack
-#
-# Revision 1.2  2000/05/05  16:15:52  pinnacle
-# Replaced: vds/vdct1/set/vdict1set.m for:  by impd252 for Service Pack
-#
-# Revision 1.1  2000/04/20  18:44:10  pinnacle
-# Created: vds/vdct1/set/vdict1set.m by pnoel for Service Pack
-#
  * History:
  * MM/DD/YY  AUTHOR  DESCRIPTION
  * 05/28/99  ah      creation
@@ -50,6 +35,7 @@ VDct1Base.I
 VDct1Defn.I
 VDct1Model.I
 VDct1CSMat.I
+VDct1SirGrp.C
 
 LIB
 #if ISDP_MAKE_SP
