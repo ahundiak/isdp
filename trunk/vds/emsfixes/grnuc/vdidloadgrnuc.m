@@ -296,7 +296,7 @@ $VDS/etc/needed_dload/dloadgr.o
 #if ISDP_MAKE_SP
 $SPXV/lib/vdgr.o
 #else 
-$VDS/lib/vdidloadgr.o
+$VDS/lib/vdidloadgrnuc.o
 #endif
 
 SPEC
