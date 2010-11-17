@@ -1,4 +1,4 @@
-/* $Id: VDatPktTreeF.I,v 1.2 2001/05/25 17:04:58 ylong Exp $  */
+/* $Id: VDatPktTreeF.I,v 1.2.4.1 2002/08/13 14:20:48 ylong Exp $  */
 
 /***************************************************************************
  * I/VDS
@@ -11,6 +11,9 @@
  *
  * Revision History:
  *      $Log: VDatPktTreeF.I,v $
+ *      Revision 1.2.4.1  2002/08/13 14:20:48  ylong
+ *      *** empty log message ***
+ *
  *      Revision 1.2  2001/05/25 17:04:58  ylong
  *      CR5067 and CR3986
  *
@@ -52,6 +55,7 @@
  * 08/22/00  ah      Set form status when hiliting
  * 09/28/00  ylong   CR179902008 sort loose pieces by pcmk
  * 02/09/01  ylong   cpoied from vdat/cmd and rename functions to --PKT--
+ * 08/13/02  ylong   TR5966, trigger vertical scroll responding to click
  ***************************************************************************/
 
 /* Tree Specific Forms Routines */
@@ -364,6 +368,10 @@ IGRstat VDatPKTFormExpandTreeAttrRow(Form form, IGRint gadget, IGRint row)
     row++;
   }
    
+  // trigger scroll bar to respond
+  VIfld_get_num_rows(form,gadget,&cnt);
+  VIfld_set_num_rows(form,gadget,cnt);
+
   retFlag = 1;
 
 wrapup:
@@ -404,6 +412,11 @@ IGRstat VDatPKTFormContractTreeAttrRow(Form form, IGRint gadget, IGRint row)
   rowCnt = rowX - row - 1;
   if (rowCnt > 0) {
     VIfld_delete_rows(form,gadget,row,rowCnt);
+
+    // trigger scroll bar to respond
+    VIfld_get_num_rows(form,gadget,&rowMax);
+    VIfld_set_num_rows(form,gadget,rowMax);
+
   }
 
   retFlag = 1;
@@ -539,6 +552,7 @@ IGRstat VDatPKTFormExpandTreeRow(Form form, IGRint gadget, IGRint row)
 {
   IGRstat retFlag = 0;
   IGRint  level;
+  IGRint  rowMax = 0;
   IGRchar buf[128];
   TGRid   rootID,nodeID;
   IGRuint i;
@@ -573,6 +587,10 @@ IGRstat VDatPKTFormExpandTreeRow(Form form, IGRint gadget, IGRint row)
 
   // Sort inserted rows based on pcmk, added by ylong for CR179902008
   VDatPKTFormSortRows(form, gadget, level, row, i);
+
+  // trigger scroll bar to respond
+  VIfld_get_num_rows(form,gadget,&rowMax);
+  VIfld_set_num_rows(form,gadget,rowMax);
 
   retFlag = 1;
 
@@ -624,6 +642,10 @@ IGRstat VDatPKTFormContractTreeRow(Form form, IGRint gadget, IGRint row)
   rowCnt = rowX - row - 1;
   if (rowCnt > 0) {
     VIfld_delete_rows(form,gadget,row,rowCnt);
+
+    // trigger scroll bar to respond
+    VIfld_get_num_rows(form,gadget,&rowMax);
+    VIfld_set_num_rows(form,gadget,rowMax);
   }
 
   retFlag = 1;

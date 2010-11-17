@@ -1,4 +1,4 @@
-/* $Id: VDct1PktTreeF.I,v 1.9 2001/11/09 16:28:23 ahundiak Exp $  */
+/* $Id: VDct1PktTreeF.I,v 1.9.4.1 2002/08/13 14:20:48 ylong Exp $  */
 
 /***************************************************************************
  * I/VDS
@@ -11,6 +11,9 @@
  *
  * Revision History:
  *      $Log: VDct1PktTreeF.I,v $
+ *      Revision 1.9.4.1  2002/08/13 14:20:48  ylong
+ *      *** empty log message ***
+ *
  *      Revision 1.9  2001/11/09 16:28:23  ahundiak
  *      ah
  *
@@ -65,6 +68,7 @@
  * 05/31/00  pn      installed form view controls
  * 10/18/01  ah      Removed VDdoM code
  * 11/09/01  ah      Removed some class pointer code
+ * 08/13/02  ylong   TR5966, trigger vertical scroll responding to click
  ***************************************************************************/
 
 class implementation Root;
@@ -686,6 +690,12 @@ IGRstat VDct1PKTFormExpandTreeAttrRow(Form form, IGRint gadget, IGRint row)
     row++;
   }
 
+  if( cnt > 0 ) {
+    IGRint	rowMax = 0;
+    VDfrmGetNumRows(form,gadget,&rowMax,NULL,NULL);
+    VDfrmSetNumRows(form,gadget,rowMax);
+  }
+
   // Done
   retFlag = 1;
 
@@ -732,7 +742,12 @@ IGRstat VDct1PKTFormContractTreeAttrRow(Form form, IGRint gadget, IGRint row)
   rowCnt = rowX - row - 1;
   if (rowCnt > 0) {
     VDfrmDeleteRows(form,gadget,row,rowCnt);
+
+    // trigger scroll bar to respond
+    VDfrmGetNumRows(form,gadget,&rowMax,NULL,NULL);
+    VDfrmSetNumRows(form,gadget,rowMax);
   }
+
 
   retFlag = 1;
 
@@ -749,7 +764,7 @@ IGRstat VDct1PKTFormExpandTreeRow(Form form, IGRint gadget, IGRint row)
   VDASSERT_FN("VDct1PKTFormExpandTreeRow");
   
   IGRstat retFlag = 0;
-  IGRint  level;
+  IGRint  level, rowMax;
   IGRchar buf[128];
   TGRid   rootID,nodeID;
   IGRuint i;
@@ -811,6 +826,10 @@ IGRstat VDct1PKTFormExpandTreeRow(Form form, IGRint gadget, IGRint row)
     }
     
   }
+
+  // trigger scroll bar to respond
+  VDfrmGetNumRows(form,gadget,&rowMax,NULL,NULL);
+  VDfrmSetNumRows(form,gadget,rowMax);
 
   // Done
   retFlag = 1;
@@ -884,6 +903,10 @@ IGRstat VDct1PKTFormContractTreeRow(Form form, IGRint gadget, IGRint row)
   rowCnt = rowX - row - 1;
   if (rowCnt > 0) {
     VDfrmDeleteRows(form,gadget,row,rowCnt);
+
+    // trigger scroll bar to respond
+    VDfrmGetNumRows(form,gadget,&rowMax,NULL,NULL);
+    VDfrmSetNumRows(form,gadget,rowMax);
   }
 
   // Done
