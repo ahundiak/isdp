@@ -1,4 +1,4 @@
-/* $Id: VDct1Node.c,v 1.8 2002/05/24 17:46:58 jdsauby Exp $  */
+/* $Id: VDct1Node.c,v 1.8.2.2 2003/06/17 14:02:39 ahundiak Exp $  */
 
 /***************************************************************************
  * I/VDS
@@ -11,45 +11,18 @@
  *
  * Revision History:
  *      $Log: VDct1Node.c,v $
- *      Revision 1.8  2002/05/24 17:46:58  jdsauby
- *      Added isConnectModelObjectValid per CR6383, JDS
+ *      Revision 1.8.2.2  2003/06/17 14:02:39  ahundiak
+ *      ah
  *
- *      Revision 1.7  2002/05/16 21:22:48  jdsauby
- *      JTSMP CR6359
+ *      Revision 1.8.2.1  2003/05/30 16:54:44  ylong
+ *      Initialized buf failedList.
  *
- *      Revision 1.6  2002/01/07 18:55:23  jdsauby
- *      JTSMP CRs 4045,4048,4053,4054
- *
- *      Revision 1.5  2001/05/14 20:49:08  jdsauby
- *      CR5180 Update Nodes
- *
- *      Revision 1.4  2001/04/30 12:31:05  jdsauby
- *      CR 5097, Cable crash when cable is bad, plus get rid of "No GetBaseInfo errors"  - jds
- *
- *      Revision 1.3  2001/03/09 19:28:54  jdsauby
- *      TR 4841, connect and disconnect model node
- *
- *      Revision 1.2  2001/01/25 16:04:54  jdsauby
- *      SP beta merge, wway tree was crashing
- *
- *      Revision 1.1  2001/01/14 16:21:13  art
- *      sp merge
- *
- * Revision 1.16  2000/12/07  13:41:14  pinnacle
- * ah
- *
- * Revision 1.15  2000/10/24  14:05:06  pinnacle
- * js
- *
- * Revision 1.14  2000/10/11  20:29:04  pinnacle
- * js
- *
- * Revision 1.13  2000/09/25  20:42:06  pinnacle
- * js
  *
  * History:
  * MM/DD/YY  AUTHOR  DESCRIPTION
  * 07/25/00  ah      Creation
+ * 06/17/03  ah      TR7811 - prevent overflow on node.name
+ * 11/17/10  ah      SOL10
  ***************************************************************************/
 #include "VDtypedefc.h"
 #include "VDfrmc.h"
@@ -556,7 +529,8 @@ static IGRstat notifyMoveNode()
     printf(">>> %s %s\n",ffn(),fn); 
   }
 
-   sprintf(failedMsg,"All Nodes not moved\nReview the list?\n");
+  *failedList = 0;
+  sprintf(failedMsg,"All Nodes not moved\nReview the list?\n");
 
   // Need a destination
   parentNodeJD.cl = VDct1GetTreeClassForNode(&parentNodeID);
@@ -1162,7 +1136,9 @@ static IGRstat notifyRenameNode()
   
   
   // pull the new node name from the "Node" form 
-  VDfrmGetgText(formInfo->form,VDCT_FORM_NODE_G_EDIT_NODE_NAME,newBaseInfo.nodeName);
+  VDfrmGetgText(formInfo->form,VDCT_FORM_NODE_G_EDIT_NODE_NAME,buf);
+  *(buf + VDCT_NODE_NAME_LEN - 1) = 0;
+  strcpy(newBaseInfo.nodeName,buf);
 
   // Set to a good node name
   sts = _RTCJDC(&activeNodeJD)->
@@ -1643,7 +1619,9 @@ static IGRstat notifyCreateNode()
   
   // Pull the node type,name 
   VDfrmGetgText(formInfo->form,VDCT_FORM_NODE_G_EDIT_NODE_TYPE,baseInfo.nodeType);
-  VDfrmGetgText(formInfo->form,VDCT_FORM_NODE_G_EDIT_NODE_NAME,baseInfo.nodeName);
+  VDfrmGetgText(formInfo->form,VDCT_FORM_NODE_G_EDIT_NODE_NAME,buf);
+  *(buf + VDCT_NODE_NAME_LEN - 1) = 0;
+  strcpy(baseInfo.nodeName,buf);
 
   /* ------------------------------------------------
    * Need to do some checks and balances before 
