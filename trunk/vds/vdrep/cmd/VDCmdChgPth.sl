@@ -1,4 +1,4 @@
-/* $Id: VDCmdChgPth.sl,v 1.3 2001/10/24 21:12:04 ylong Exp $  */
+/* $Id: VDCmdChgPth.sl,v 1.3.4.1 2003/08/25 17:57:07 ylong Exp $  */
 /*-------------------------------------------------------------------------*
  * I/VDS
  *
@@ -13,6 +13,9 @@
  *
  * Revision History:
  *	$Log: VDCmdChgPth.sl,v $
+ *	Revision 1.3.4.1  2003/08/25 17:57:07  ylong
+ *	Fix for TR7926
+ *
  *	Revision 1.3  2001/10/24 21:12:04  ylong
  *	*** empty log message ***
  *	
@@ -1095,8 +1098,12 @@ action run_process
 
         	  status = vdobj$ChgName( msg     = &msg,
                  	                  objID   = &tempsymb_id,
-                                          name    = myBuf,
+                                          name    = grname,
+                                          keepDir = 0 );
+                                          /*
+					  name    = myBuf,
                                           keepDir = 1 );
+					  */
         	  /*
            	    status =
                 	gr$put_name( msg       = &msg,
