@@ -1,4 +1,4 @@
-/* $Id: VDvalPiece.c,v 1.10 2002/05/03 13:41:55 ahundiak Exp $  */
+/* $Id: VDvalPiece.c,v 1.10.2.1 2003/06/17 15:28:08 ahundiak Exp $  */
 
 /***************************************************************************
  * I/VDS
@@ -14,6 +14,8 @@
  * History:
  * MM/DD/YY  AUTHOR  DESCRIPTION
  * 02/15/01  ah      Creation, started with vdcty/rrv/VDrrvTree.c
+ * 06/17/03  ah      CR5144 Add plate/web area tolerances for snapshot
+ * 11/17/10  ah      SOL10
  ***************************************************************************/
 #include "VDtypedefc.h"
 #include "VDassert.h"
@@ -78,7 +80,8 @@ static void addPlateAreaAtr(TGRobj_env *modelOE, TGRid *pieceID, IGRint *errCnt)
 
   TGRobj_env srfOE;
   
-  IGRdouble area = 2000.0;
+  IGRdouble area    = 2000.0;
+  IGRdouble areaMin = 500.0;
   IGRint    isPlanar;
   IGRpoint  centerPt;
   
@@ -100,9 +103,10 @@ static void addPlateAreaAtr(TGRobj_env *modelOE, TGRid *pieceID, IGRint *errCnt)
   VDgeomGetSurfaceAreaProps(&srfOE,&area,centerPt,NULL);
   VDctxAppDblAtr(pieceID,VDCTX_ATR_SS_PLATE_AREA,area);
 
-  if (area < 1000.0) {
+  VDvalGetTolerance(VDTOL_MIN_PLATE_AREA,&areaMin);
+  if (area < areaMin) {
     logModelErrHeader(modelOE,errCnt);
-    VDlogPrintFmt(VDLOG_WARN,1,"    Small plate area %f",area);
+    VDlogPrintFmt(VDLOG_WARN,1,"    Small plate area %f, min is %f",area,areaMin);
   }
   
   // Center, reduce accuracy since only need this for comparision
@@ -207,17 +211,19 @@ IGRstat VDvalAddPlateAttributes(TGRobj_env *modelOE, TGRid *pieceID, IGRint *err
 
 /* -------------------------------------------------
  * Add's a beam cut length make sure it's at least
- * 10 mm long
+ * VDTOL_MIN_CUT_LENGTH long.
  */
 static void addBeamLengthAtr(TGRobj_env *modelOE, TGRid *pieceID, IGRint *errCnt)
 {
   IGRchab buf;
-  
+  IGRdouble minCutLength = 10.0;
+
   VDoeGetTxtAtr(modelOE,"memb_cut_leng",buf);
 
   VDctxAppTxtAtr(pieceID,VDCTX_ATR_SS_BEAM_CUT_LENGTH,buf);
 
-  if (atof(buf) >= 10.0) goto wrapup;
+  VDvalGetTolerance(VDTOL_MIN_CUT_LENGTH,&minCutLength);
+  if (atof(buf) >= minCutLength) goto wrapup;
     
   logModelErrHeader(modelOE,errCnt);
   VDlogPrintFmt(VDLOG_WARN,1,"    Invalid beam length %s",buf);
@@ -279,6 +285,7 @@ IGRstat VDvalAddBeamAttributes(TGRobj_env *modelOE, TGRid *pieceID, IGRint *errC
   TGRobj_env srfOE;
   IGRint     isPlanar;
   IGRdouble  area;
+  IGRdouble  minArea = 500.0;
   IGRpoint   centerPt;
   
   // Arg check
@@ -315,9 +322,10 @@ IGRstat VDvalAddBeamAttributes(TGRobj_env *modelOE, TGRid *pieceID, IGRint *errC
   VDgeomGetSurfaceAreaProps(&srfOE,&area,centerPt,NULL);
   VDctxAppDblAtr(pieceID,VDCTX_ATR_SS_BEAM_AREA,area);
 
-  if (area < 500.0) {  
+  VDvalGetTolerance(VDTOL_MIN_WEB_AREA,&minArea);
+  if (area < minArea) {  
     logModelErrHeader(modelOE,errCnt);
-    VDlogPrintFmt(VDLOG_WARN,1,"    Small beam left web area %f",area);
+    VDlogPrintFmt(VDLOG_WARN,1,"    Small beam left web area %f, min is %f",area,minArea);
   }
 
   // Center, reduce accuracy since only need this for comparision

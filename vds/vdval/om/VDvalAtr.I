@@ -9,6 +9,17 @@
  *
  * Revision History:
  *      $Log: VDvalAtr.I,v $
+ *      Revision 1.3.2.1  2003/10/16 16:56:24  anand
+ *      Support additional attributes for snapshot.  User specifies
+ *      what attributes, for what class of components, and provides
+ *      a way for classifying these attributes - all in a XML file
+ *      (that will be located in config/xml/ as ss_custom.xml).
+ *
+ *      User may optionally also specify the name of the attribute
+ *      that should appear in the snapshot output file (which is
+ *      typically different from what the attribute goes by, in the
+ *      ISDP world).
+ *
  *      Revision 1.3  2002/03/08 17:03:09  ahundiak
  *      ah
  *
@@ -22,6 +33,8 @@
  * History:
  * MM/DD/YY  AUTHOR  DESCRIPTION
  * 08/03/01  ah      Creation
+ * 10/16/03  Anand   Added VDvalAddCustomAttributes
+ * 11/17/10  ah      SOL10
  ***************************************************************************/
 class implementation Root;
 
@@ -98,6 +111,76 @@ IGRstat VDvalAddModelClassNameAttribute(TGRobj_env *modelOE, TGRid *nodeID)
   
  wrapup:
   return retFlag;
+}
+
+/* -----------------------------------------
+ * Add custom attributes
+ */
+void VDvalAddCustomAttributes(TGRobj_env *modelOE, TGRid *DomID)
+{
+    VDASSERT_FN("VDvalAddCustomAttribute");
+
+    TGRid classID, nodeID;
+    TGRid attrID, ParTypeID;
+    int i,j;
+
+    char name[128], xmlname[128];
+    char buf [128];
+
+    VDobjGetClassName(modelOE,NULL,name);
+
+    // Arg check
+    VDASSERTW(modelOE && modelOE->obj_id.objid != NULL_OBJID);
+    VDASSERTW(DomID   && DomID->objid          != NULL_OBJID);
+
+    VDvalGetCustomAttrClassNode(name,&classID);
+    if (classID.objid == NULL_OBJID)
+	 /* No custom attribute file or (if indeed exists) no entry
+	  * corresponding to class id of Isdp Object.
+	  */
+	goto wrapup;
+
+    /* Since we have a proper class, now iterate for each classification
+     * of custom attributes ("parent_type" for the collector).
+     */
+    for(j = 0; VDctxGetNthTreeChild(&classID,j,&ParTypeID); j++)
+    {
+	if (ParTypeID.objid == NULL_OBJID )	// Paranoia
+	    continue;
+
+	if (!VDctxGetTxtAtr(&ParTypeID,"type",name))
+	{
+	    /* Child element of "<class>" does not have an attribute
+	     * called "type".
+	     */
+	    name[0] = '\0';
+	    continue;
+	}
+
+	// Create a node for custom attributes
+	nodeID.objid = NULL_OBJID;
+	VDctxCreateNode( DomID, VDCTX_NODE_TYPE_SS_OM_COLLECTOR,
+			 NULL, &nodeID );
+	if (nodeID.objid == NULL_OBJID )
+	    continue;
+
+	// Qualify the custom attribute collection.
+	VDctxAppTxtAtr(&nodeID,"parent_type",name);
+
+	for(i = 0; VDctxGetNthTreeChild(&ParTypeID,i,&attrID); i++)
+	{
+	    VDctxGetTxtAtr(&attrID,"isdp_name",name);
+	    // Smart attribute should suffice for most cases.
+	    VDobjGetTxtAtr(modelOE,NULL,name,buf);
+	    if (VDctxGetTxtAtr(&attrID,"xml_name",xmlname))
+		VDctxAppTxtAtr(&nodeID,xmlname,buf);
+	    else
+		VDctxAppTxtAtr(&nodeID,name,buf);
+	}
+    }
+
+wrapup:
+    return;
 }
 
 /* -------------------------------------------------

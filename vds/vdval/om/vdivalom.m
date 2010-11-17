@@ -51,6 +51,7 @@ VDgeomoSurf.I
 VDvalCompStdPc.c
 VDvalPiece.c
 VDvalStdPc.c
+VDvalCustomAttr.c
 
 LIB
 #if ISDP_MAKE_SP
