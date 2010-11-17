@@ -49,3 +49,5 @@ ${VDS}/config/commands/VDMdUsrAtt: VDCmdUsrAtt.S VDCmdUsrAtt.t \
 mkfile: vdattrib.m
 	grmakemake vdattrib.m mkfile
 
+clean:
+	@rm -f mkfile *.o *.c
