@@ -1,4 +1,4 @@
-/* $Id: VDreportproc.I,v 1.1.1.1 2001/01/04 21:07:43 cvs Exp $ */
+/* $Id: VDreportproc.I,v 1.1.1.1.2.1 2002/08/05 15:17:28 ylong Exp $ */
 
 /* --------------------------------------------------------------------
  * I/VDS
@@ -14,7 +14,7 @@
  * History:
  *	10/23/97	adz		Creation Date.
  *	12/30/97	ah		moved to vdat
- *
+ *	08/05/02	ylong		TR6614, delete GRgrset/GRsvset
  * -------------------------------------------------------------------*/
 
 
@@ -45,6 +45,8 @@ class implementation VDCmdReport;
 #include "FEI.h"
 
 #include "coparamac.h"
+
+from	GRgrset		import	GSdissolve;
 
 /*+me
  ---------------------------------------------------------------------------
@@ -161,6 +163,13 @@ wrapup :
 	_FREE( listObjs );
 
         me->ret = *sts & 1 ? VD_K_ACT_SUCCESS : VD_K_RESTART_CMD ;
+
+	if( setId.objid != NULL_OBJID ) /* TR6614 */
+        {
+          om$send (     msg      = message GRgrset.GSdissolve(&msg),
+                        targetid = setId.objid,
+                        targetos = setId.osnum);
+        }
 
 	End
 	return OM_S_SUCCESS;
