@@ -32,3 +32,8 @@
 
 TGT = vdixml
 include ${VDS_PATH}/etc/makefiles/lib_only.h
+
+clean:
+	@rm -f mkfile *.o
+	@rm -f VDxmlBsp.c VDpdfChr.c VDpdfVerify.c VDxml.c VDpdf.c VDhttp.c
+	@rm -f VDdxf.c VDpdfAttrs.c VDxmlDom.c
