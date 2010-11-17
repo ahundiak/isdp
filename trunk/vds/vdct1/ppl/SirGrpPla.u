@@ -1,0 +1,875 @@
+/* $Id: SirGrpPla.u,v 1.1.2.7 2003/06/13 23:31:42 ylong Exp $  */
+
+/***************************************************************************
+ * I/VDS
+ *
+ * File:        vdxxx/xxx/SirGrpPla.u
+ *
+ * Description: Placement group attribute Routines
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ * $Log: SirGrpPla.u,v $
+ * Revision 1.1.2.7  2003/06/13 23:31:42  ylong
+ * TR7799
+ *
+ * Revision 1.1.2.6  2003/06/13 17:39:51  ahundiak
+ * ah
+ *
+ * Revision 1.1.2.5  2003/06/11 12:56:22  ahundiak
+ * ah
+ *
+ * Revision 1.1.2.4  2003/06/06 20:51:07  ahundiak
+ * ah
+ *
+ * Revision 1.1.2.3  2003/05/30 16:58:11  ylong
+ * *** empty log message ***
+ *
+ * Revision 1.1.2.2  2003/05/29 15:25:35  ylong
+ * *** empty log message ***
+ *
+ * Revision 1.1.2.1  2003/05/28 21:49:23  ylong
+ * Query table to get criteria
+ *
+ * Revision 1.1  2003/05/23 20:13:14  ylong
+ * Created for Placement Group Tree
+ *
+ *
+ * History:
+ * MM/DD/YY  AUTHOR  DESCRIPTION
+ * 05/10/03  yl      Created
+ *
+ ***************************************************************************/
+#include "VDppl.h"
+#include "VDobj.h"
+#include "VDsa.h"
+#include "VDct1Attrs.h"
+#include "VDrisc.h"
+#include "VDctx.h"
+
+extern isdigit();
+
+/*--------------------------------------------------
+ * Use Review Smart Attribute Globals
+ */
+
+TGRid		OBJECT_ID;
+TGRmd_env	OBJECT_ENV;
+IGRchar		OBJECT_DATA[128];
+Tret_struct	OBJECT_RS;
+OM_S_CLASSLIST	CLASS_LIST;
+
+/*--------------------------------------------------
+ * tree node
+ */
+TGRid	NODE_ID;
+
+/*--------------------------------------------------
+ * define lazy writing
+ */
+#define output_smart_txt_attr() { \
+	OBJECT_RS.type = text_type; \
+	sprintf(OBJECT_RS.var.text_st.text_string, result); \
+}
+	//printf("ACTION_OK: %d, val: %s\n", retFlag, result); \
+
+#define init_smart_txt_attr() { \
+	strcpy(result, "Unknown"); \
+	objOE.obj_id  = OBJECT_ID; \
+	objOE.mod_env = OBJECT_ENV; \
+	if (objOE.obj_id.objid == NULL_OBJID) { \
+		retFlag = 0; \
+		goto wrapup; \
+	} \
+}
+
+extern VDobjGetTxtAtr(), VDobjGetName(), VDobjGetPath();
+
+
+/* ---------------------------------------------------------------
+ * Main routine is not required but putting in some print statements
+ * will allow you to document what the ppl is for.
+ */ 
+main()
+{
+  printf("SirGrpPla.isGroupPlaceable\n");
+  printf("SirGrpPla.getPartType\n");
+  printf("SirGrpPla.getCompartment\n");
+  printf("SirGrpPla.getGroupName\n");
+  printf("SirGrpPla.getDesc\n");
+  printf("SirGrpPla.getCopicsDesc\n");
+  printf("...\n");
+}
+
+/* -------------------------------------------------
+ * Class filters
+ */
+IGRstat getFilter()
+{
+  om$get_classid(classname = "VDequipment",
+                 p_classid = &CLASS_LIST.p_classes[0]);
+  om$get_classid(classname = "VRPComp",
+                 p_classid = &CLASS_LIST.p_classes[1]);
+  CLASS_LIST.w_count = 2;
+
+  return 1;
+}
+
+/* -----------------------------------------------------------------
+ * Returns part type for a group placement item
+ */
+IGRstat getPartType()
+{
+  IGRstat	retFlag;
+  IGRstat	sts;
+  
+  IGRchar	txt[128];
+  IGRchar	result[128];
+  IGRchar	*p;
+  TGRobj_env	objOE;
+
+  // Unknown is the default
+  strcpy(result,"Unknown");
+
+  // Init
+  retFlag = OM_S_SUCCESS;
+  init_smart_txt_attr();
+
+  sts = vdsa$GetStruct(objOE = &objOE, name = "mat_id_key", txt = txt);
+  if( (sts&1) )
+  {
+     strcpy( result, txt );
+     goto wrapup;
+  }
+
+  sts = vdsa$GetStruct(objOE = &objOE, name = "eqp_partno", txt = txt);
+  if( (sts&1) )
+  {
+     strcpy( result, txt );
+     goto wrapup;
+  }
+
+  sts = vdsa$GetStruct(objOE = &objOE, name = "cage", txt = txt);
+  if( (sts&1) ) 
+  {
+     strcpy(result, txt);
+     sts = vdsa$GetStruct(objOE = &objOE, name = "mino", txt = txt);
+     if( (sts&1) ) 
+     {
+	strcat(result, "_");
+	strcat(result, txt);
+        goto wrapup;
+     }
+  }
+
+  retFlag = 0;
+wrapup:
+  output_smart_txt_attr();
+  return retFlag;
+}
+extern VDPaimGetComptNumberForObject();
+/* -----------------------------------------------------------------
+ * Returns a compartment attribute
+ */
+IGRstat getCompartment()
+{
+  IGRstat	retFlag;
+  IGRstat	sts;
+  
+  IGRchar	txt[128];
+  IGRchar	result[128];
+  TGRobj_env	objOE;
+
+  // Init
+  retFlag = 1;
+  init_smart_txt_attr();
+
+  /* Lookup in database */
+  VDPaimGetComptNumberForObject(&objOE.obj_id,txt);
+  if (*txt)
+  {
+    strcpy(result,txt);
+    goto wrapup;
+  }
+
+  /* Fall back to attribute */
+  sts = vdsa$GetStruct(objOE = &objOE, name = "compt_number", txt = txt );
+  if( sts&1 )
+  {
+     strcpy(result, txt);
+     goto wrapup;
+  }
+  
+  retFlag = 0;
+wrapup:
+  output_smart_txt_attr();
+  return retFlag;
+}
+
+/* -----------------------------------------------------------------
+ * Returns group name. Currently just MINO
+ */
+IGRstat getGroupName()	// What is name ???
+{
+  IGRstat	retFlag;
+  IGRstat	sts;
+  
+  IGRchar	txt[128];
+  IGRchar	result[128];
+  TGRobj_env	objOE;
+
+  // Init
+  retFlag = 1;
+  init_smart_txt_attr();
+
+  sts = vdsa$GetStruct(objOE = &objOE, name = "mat_id_key", txt = txt);
+  if( (sts&1) ) 
+  {
+     strcpy(result, txt);
+     goto wrapup;
+  }
+  
+  sts = vdsa$GetStruct(objOE = &objOE, name = "eqp_partno", txt = txt);
+  if( (sts&1) ) 
+  {
+     strcpy(result, txt);
+     goto wrapup;
+  }
+  
+  sts = vdsa$GetStruct(objOE = &objOE, name = "cage", txt = txt);
+  if( (sts&1) ) 
+  {
+     strcpy(result, txt);
+     sts = vdsa$GetStruct(objOE = &objOE, name = "mino", txt = txt);
+     if( (sts&1) ) 
+     {
+	strcat(result, "_");
+	strcat(result, txt);
+        goto wrapup;
+     }
+  }
+  
+  retFlag = 0;
+  
+wrapup:
+  output_smart_txt_attr();
+  return retFlag;
+}
+
+/* -----------------------------------------------------------------
+ * Returns cage
+ */
+
+IGRstat getCage()
+{
+  IGRstat	retFlag;
+  IGRstat	sts;
+  
+  IGRchar	txt[128];
+  IGRchar	result[128];
+  IGRchar	*p;
+  TGRobj_env	objOE;
+  
+  // Init
+  retFlag = 1;
+  init_smart_txt_attr();
+  p = NULL;
+  
+  
+  sts = vdsa$GetStruct(objOE = &objOE, name = "cage", txt = txt );
+  if( sts&1 )
+  {
+     strcpy(result,txt);
+     goto wrapup;
+  }
+
+  sts = vdsa$GetStruct(objOE = &objOE, name = "mat_id_key", txt = txt );
+  if( sts&1 )
+  {
+     p = strchr( txt, '-' );
+     if( p ) *p = '\0';
+     strcpy(result, txt);
+     goto wrapup;
+  }
+  
+  sts = vdsa$GetStruct(objOE = &objOE, name = "eqp_partno", txt = txt );
+  if( sts&1 )
+  {
+     p = strchr( txt, '-' );
+     if( p ) *p = '\0';
+     strcpy(result, txt);
+     goto wrapup;
+  }
+  
+  retFlag = 0;
+  
+wrapup:
+  output_smart_txt_attr();
+  return retFlag;
+}
+
+/* -----------------------------------------------------------------
+ * Returns mino 
+ */
+
+IGRstat getMino()
+{
+  IGRstat	retFlag;
+  IGRstat	sts;
+  
+  IGRchar	txt[128];
+  IGRchar	result[128];
+  IGRchar	*p;
+  TGRobj_env	objOE;
+  
+  // Init
+  retFlag = 1;
+  init_smart_txt_attr();
+  p = NULL;
+
+  // 1. Try mino directly
+  sts = vdsa$GetStruct(objOE = &objOE, name = "mino", txt = txt );
+  if( sts&1 )
+  {
+     strcpy(result,txt);
+     goto wrapup;
+  }
+
+  // 2. Try mat_id_key directly
+  sts = vdsa$GetStruct(objOE = &objOE, name = "mat_id_key", txt = txt );
+  if( sts&1 )
+  {
+     p = strchr( txt, '-' );
+     if( p )	p = p + 1;
+     else	p = txt;
+     strcpy(result, p);
+     goto wrapup;
+  }
+  
+  // 3. Try eqp_partno directly
+  sts = vdsa$GetStruct(objOE = &objOE, name = "eqp_partno", txt = txt );
+  if( sts&1 )
+  {
+     p = strchr( txt, '-' );
+     if( p )	p = p + 1;
+     else	p = txt;
+     strcpy(result, p);
+     goto wrapup;
+  }
+  
+  retFlag = 0;
+  
+wrapup:
+  output_smart_txt_attr();
+  return retFlag;
+}
+
+/* -----------------------------------------------------------------
+ * Returns model object id
+ */
+
+IGRstat getModelId()
+{
+  IGRstat	retFlag;
+  IGRstat	sts;
+  TGRobj_env	objOE;
+  
+  IGRchar	result[128];
+  
+  // Init
+  retFlag = 1;
+  init_smart_txt_attr();
+
+  sprintf(result, "%d,%d", objOE.obj_id.osnum,objOE.obj_id.objid);
+  
+wrapup:
+  output_smart_txt_attr();
+  return retFlag;
+}
+
+/* -----------------------------------------------------------------
+ * Returns isdp_name
+ */
+
+IGRstat getIsdpName()
+{
+  IGRstat	retFlag;
+  IGRstat	sts;
+  TGRobj_env	objOE;
+  
+  IGRchar	result[256];
+  IGRchar	family[128], partNum[128], partRev[128], objName[128], objPath[128];
+  
+  // Init
+  retFlag = 1;
+  init_smart_txt_attr();
+ 
+  // get in the data
+  VDobjGetTxtAtr(&objOE,NULL,VDCT1_ISDP_ATTR_EQP_FAMILY, family);
+  VDobjGetTxtAtr(&objOE,NULL,VDCT1_ISDP_ATTR_EQP_PARTNO, partNum);
+  VDobjGetTxtAtr(&objOE,NULL,VDCT1_ISDP_ATTR_EQP_PARTREV,partRev);
+  VDobjGetName  (&objOE,NULL,objName);
+  if( objName[0] == '\0' ) sprintf(objName, "%d", objOE.obj_id.objid);
+
+  // make the isdp_name
+  sprintf(result,"%s:%s:%s:%s",family,partNum,partRev,objName);
+
+wrapup:
+  output_smart_txt_attr();
+  return retFlag;
+}
+
+/* -----------------------------------------------------------------
+ * Returns object path 
+ */
+
+IGRstat getIsdpPath()
+{
+  IGRstat	retFlag;
+  IGRstat	sts;
+  TGRobj_env	objOE;
+  
+  IGRchar result[256];
+  
+  // Init
+  retFlag = 1;
+  init_smart_txt_attr();
+  
+  VDobjGetPath(&objOE,NULL, result);
+  
+wrapup:
+  output_smart_txt_attr();
+  return retFlag;
+}
+
+
+/* -----------------------------------------------------------------
+ * Returns the number of categories
+ */
+IGRstat getCategoryCount()
+{
+  IGRstat	retFlag;
+  IGRstat	sts;
+  TGRobj_env	objOE;
+  
+  IGRchar	result[128];
+  TVDrisInfo	ris;
+  
+  // Init
+  retFlag = 0;
+  init_smart_txt_attr();
+  
+  sprintf(ris.sql, "select count(*) from GRP_CAT");
+
+  VDrisQueryCache(VDRIS_CACHE_VDS, &ris,NULL);
+  if( ris.rows < 1) goto wrapup;
+ 
+  strcpy(result,ris.buf[0]);
+
+  retFlag = 1;
+  
+wrapup:
+  VDrisFreeInfo( &ris );
+  output_smart_txt_attr();
+  return retFlag;
+}
+
+/* -----------------------------------------------------------------
+ * Returns the number of categories
+ */
+IGRstat getNthCategory()
+{
+  IGRstat	retFlag;
+  IGRstat	sts;
+  TGRobj_env	objOE;
+  
+  IGRint	nth;
+  IGRchar	result[128];
+  TVDrisInfo	ris;
+  
+  // Init
+  retFlag = 0;
+  nth = -1;
+  sprintf(result, "%d", nth);
+  
+  if( *OBJECT_DATA == 0 || !isdigit(OBJECT_DATA[0]) ) goto wrapup;
+
+  sprintf(ris.sql, "select category_id from GRP_CAT");
+
+  VDrisQueryCache(VDRIS_CACHE_VDS, &ris,NULL);
+  if( ris.rows < 1) goto wrapup;
+
+  nth = atoi( OBJECT_DATA );
+
+  if( nth < 0 || nth > ris.rows ) goto wrapup;
+  strcpy(result,ris.buf[nth]);
+
+  retFlag = 1;
+  
+wrapup:
+  VDrisFreeInfo( &ris );
+  output_smart_txt_attr();
+  return retFlag;
+}
+
+/* -----------------------------------------------------------------
+ * Returns the number of categories
+ */
+IGRstat getCategoryId()
+{
+  IGRstat	retFlag;
+  IGRstat	sts;
+  TGRobj_env	objOE;
+  
+  IGRchar	result[128], cage[40], mino[40];
+  TVDrisInfo	ris;
+  
+  // Init
+  retFlag = 0;
+  output_smart_txt_attr();
+  strcpy( result, "0" );
+  
+  sts = getCage();
+  if( !sts ) goto wrapup;
+  strcpy(cage, OBJECT_RS.var.text_st.text_string);
+
+  sts = getMino();
+  if( !sts ) goto wrapup;
+  strcpy(mino, OBJECT_RS.var.text_st.text_string);
+
+  sprintf(ris.sql,
+	"select %s from %s where cage='%s' and mino='%s'",
+	"category_id",
+	"VDS_GRPENABLE",
+  	 cage,
+	 mino );
+
+  VDrisQueryCache(VDRIS_CACHE_VDS, &ris,NULL);
+  if( ris.rows < 1) goto wrapup;
+ 
+  strcpy(result,ris.buf[0]);
+
+  retFlag = 1;
+  
+wrapup:
+  VDrisFreeInfo( &ris );
+  output_smart_txt_attr();
+  return retFlag;
+}
+
+/* -----------------------------------------------------------------
+ * Returns description
+ */
+IGRstat getDesc()
+{
+  IGRstat	retFlag;
+  IGRstat	sts;
+  TGRobj_env	objOE;
+  
+  IGRchar	cage[128];
+  IGRchar	mino[128];
+  IGRchar	result[128];
+  TVDrisInfo	ris;
+  
+  // Init
+  retFlag = 0;
+  init_smart_txt_attr();
+  
+  sts = getCage();
+  if( !sts ) goto wrapup;
+  strcpy(cage, OBJECT_RS.var.text_st.text_string);
+
+  sts = getMino();
+  if( !sts ) goto wrapup;
+  strcpy(mino, OBJECT_RS.var.text_st.text_string);
+
+  sprintf(ris.sql,
+	"select %s from %s, %s where cage='%s' and mino='%s' and %s",
+	"description",
+	"VDS_GRPENABLE",
+	"GRP_CAT",
+  	 cage,
+	 mino,
+	"VDS_GRPENABLE.category_id = GRP_CAT.category_id");
+
+  VDrisQueryCache(VDRIS_CACHE_VDS, &ris,NULL);
+  if( ris.rows < 1) goto wrapup;
+ 
+  strcpy(result,ris.buf[0]);
+
+  retFlag = 1;
+  
+wrapup:
+  VDrisFreeInfo( &ris );
+  output_smart_txt_attr();
+  return retFlag;
+}
+
+/* -----------------------------------------------------------------
+ * Returns Copics description
+ */
+IGRstat getCopicsDesc()
+{
+  IGRstat	retFlag;
+  IGRstat	sts;
+  TGRobj_env	objOE;
+  
+  IGRchar	txt[128];
+  IGRchar	result[128];
+  
+  // Init
+  retFlag = 0;
+  init_smart_txt_attr();
+  
+  // currently, just return desc
+  sts = getDesc();
+  if( !sts ) goto wrapup;
+  strcpy( result, OBJECT_RS.var.text_st.text_string);
+  
+  retFlag = 1;
+  
+wrapup:
+  output_smart_txt_attr();
+  return retFlag;
+}
+
+/* -----------------------------------------------------------------
+ * Returns zone
+ */
+IGRstat getZone()
+{
+  IGRstat	retFlag;
+  IGRstat	sts;
+  
+  IGRchar	result[128], txt[128];
+  TGRobj_env	objOE;
+  
+  // Init
+  retFlag = 0;
+  init_smart_txt_attr();
+  
+  sts = vdsa$GetStruct(objOE = &objOE, name = "zone_number", txt = txt);
+  if( !(sts&1) ) goto wrapup;
+
+  strcpy( result, txt );
+  retFlag = 1;
+  
+wrapup:
+  output_smart_txt_attr();
+  return retFlag;
+}
+
+/* -----------------------------------------------------------------
+ * Returns unit
+ */
+IGRstat getUnit()
+{
+  IGRstat	retFlag;
+  IGRstat	sts;
+  
+  IGRchar	result[128], txt[128];
+  TGRobj_env	objOE;
+  
+  // Init
+  retFlag = 0;
+  init_smart_txt_attr();
+  
+  sts = vdsa$GetStruct(objOE = &objOE, name = "unit_number", txt = txt);
+  if( !(sts&1) ) goto wrapup;
+
+  strcpy( result, txt );
+  retFlag = 1;
+  
+wrapup:
+  output_smart_txt_attr();
+  return retFlag;
+}
+
+/* -----------------------------------------------------------------
+ * Returns item name, can be used as ITEM node name
+ */
+IGRstat getItemName()
+{
+  IGRstat	retFlag;
+  IGRstat	sts;
+  
+  IGRchar	*p;
+  IGRchar	result[128];
+  TGRobj_env	objOE;
+  
+  // Init
+  retFlag = 0;
+  p = NULL;
+  init_smart_txt_attr();
+  
+  sts = getDesc();
+  if( !sts ) goto wrapup;
+  strcpy(result, OBJECT_RS.var.text_st.text_string);
+
+  p = strchr( result, ' ');
+  if( p ) *p = '\0';
+  
+  retFlag = 1;
+  
+wrapup:
+  output_smart_txt_attr();
+  return retFlag;
+}
+
+/* -----------------------------------------------------------------
+ * Returns item node name, can be used as ITEM node name
+ */
+IGRstat getItemNodeName()
+{
+  IGRstat	retFlag;
+  IGRstat	sts;
+  
+  IGRint	cnt, i, j;
+  IGRchar	*p;
+  IGRchar	result[128], name[80], txt[40], nodeName[40];
+  TGRobj_env	objOE;
+  TGRid		nodeID, treeID, *nodeIDs;
+  TVDctxBaseInfo baseInfo;
+  
+  // Init
+  retFlag = 0;
+  nodeIDs = NULL;
+  cnt     = 0;
+  p       = NULL;
+  init_smart_txt_attr();
+  nodeID = objOE.obj_id;
+  if( nodeID.objid == NULL_OBJID ) goto wrapup;
+
+  // Check node type and tree type
+  VDctxGetBaseInfo(&nodeID, &baseInfo); 
+  if(strcmp(baseInfo.nodeType, "ITEM" ))       goto wrapup;
+  if(strcmp(baseInfo.treeType, "SirGrpPlace")) goto wrapup;
+ 
+  // Get tree
+  VDctxGetTree( &nodeID,&treeID );
+  if( treeID.objid == NULL_OBJID ) goto wrapup;
+
+  // Get model from node
+  VDctxGetModelObject( &nodeID, &objOE );
+  if( objOE.obj_id.objid == NULL_OBJID ) goto wrapup;
+  OBJECT_ID  = objOE.obj_id;
+  OBJECT_ENV = objOE.mod_env;
+
+  // Get item name as prefix
+  sts = getItemName();
+  if( !sts ) goto wrapup;
+  strcpy(name, OBJECT_RS.var.text_st.text_string);
+
+  // Append category id to item name
+  sts = getCategoryId();
+  if( !sts ) goto wrapup;
+  sprintf(txt, " %s-", OBJECT_RS.var.text_st.text_string);
+  strcat(name, txt);
+
+  // Get all ITEM nodes
+  VDctxGetNodeTypeIDs( &treeID, baseInfo.nodeType, &cnt, &nodeIDs );
+  if( !cnt || nodeIDs == NULL ) goto wrapup;
+  
+  // Appen a proper order number to node name
+  for( i = 1;   ; i = i+1 )
+  {
+     sprintf(txt, "%s%d", name, i); 
+     for( j = 0; j < cnt; j = j+1 )
+     {
+        VDctxGetNodeName(&nodeIDs[j], nodeName);
+	if( !strcmp(txt, nodeName) ) break;
+     }
+
+     if( j == cnt )
+     {
+        strcpy( result, txt );
+        break;
+     }
+  }    
+
+  retFlag = 1;
+  
+wrapup:
+  output_smart_txt_attr();
+  if(nodeIDs) free( nodeIDs );
+  return retFlag;
+}
+
+/* -----------------------------------------------------------------
+ * Returns yes if this meets the groupable criteria
+ */
+IGRstat isGroupPlaceable()
+{
+  IGRstat	retFlag;
+  IGRstat	sts;
+  TGRobj_env	objOE;
+  IGRchar	cage[128], mino[128];
+  IGRchar	result[128];
+  TVDrisInfo	ris;
+
+  // Init
+  retFlag = 0;
+  init_smart_txt_attr();
+  strcpy(result,"No");
+
+  // Check if class is eligible
+  if( vdobj$IsAncestryValid(objOE = &objOE, superClassName = "VDequipment") ||
+      vdobj$IsAncestryValid(objOE = &objOE, superClassName = "VRPComp")
+    ) { }
+  else   goto wrapup;
+
+  sts = getCage();
+  if( !sts ) goto wrapup;
+  strcpy(cage, OBJECT_RS.var.text_st.text_string);
+
+  sts = getMino();
+  if( !sts ) goto wrapup;
+  strcpy(mino, OBJECT_RS.var.text_st.text_string);
+
+  sprintf(ris.sql,
+	"select %s from %s where cage='%s' and mino='%s'",
+	"category_id",
+	"VDS_GRPENABLE",
+  	 cage,
+	 mino );
+
+  VDrisQueryCache(VDRIS_CACHE_VDS, &ris,NULL);
+  if( ris.rows < 1) goto wrapup;
+
+  strcpy(result, "Yes");
+
+  retFlag = 1;
+
+wrapup:
+  VDrisFreeInfo( &ris );
+  output_smart_txt_attr();
+  return retFlag;
+}
+/* -----------------------------------------------------------------
+ * Generates a new sirid
+ * Basically used to avoid order dependencies with aim
+ */
+extern VDPaimGetNextSirid();
+
+IGRstat genSirID()
+{
+  IGRstat retFlag;
+  IGRstat sts;
+  IGRchar result[128];
+  TGRobj_env objOE;
+
+  /* Init */
+  retFlag = 0;
+  init_smart_txt_attr();
+  strcpy(result,"");
+
+  VDPaimGetNextSirid(NULL_OSNUM, 2, result);
+
+  retFlag = 1;
+
+wrapup:
+  output_smart_txt_attr();
+  return retFlag;
+}
+
