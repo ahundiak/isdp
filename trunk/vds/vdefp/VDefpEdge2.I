@@ -1,4 +1,4 @@
-/* $Id: VDefpEdge2.I,v 1.7 2001/06/16 17:27:38 ramarao Exp $  */
+/* $Id: VDefpEdge2.I,v 1.7.4.1 2002/07/16 16:58:32 ramarao Exp $  */
 
 /***************************************************************************
  * I/VDS
@@ -11,54 +11,15 @@
  *
  * Revision History:
  *      $Log: VDefpEdge2.I,v $
+ *      Revision 1.7.4.1  2002/07/16 16:58:32  ramarao
+ *      Fixed TR# 6547.
+ *
  *      Revision 1.7  2001/06/16 17:27:38  ramarao
  *      Fixed TR# 5288.
  *
  *      Revision 1.6  2001/04/26 21:56:43  ramarao
  *      Fixed ETL# 7962.
  *
- *      Revision 1.5  2001/03/16 16:49:00  ahundiak
- *      ah
- *
- *      Revision 1.4  2001/03/10 19:24:26  ramarao
- *      Created Neat Edge Function for BSPmath.
- *
- *      Revision 1.3  2001/02/09 00:32:25  ramarao
- *      Fixed TR# 4581.
- *
- *      Revision 1.2  2001/01/11 19:04:49  art
- *      sp merge
- *
-# Revision 1.8  2000/11/27  16:55:16  pinnacle
-# ah
-#
-# Revision 1.7  2000/10/18  18:27:58  pinnacle
-# ah
-#
-# Revision 1.6  2000/05/22  14:57:32  pinnacle
-# ah
-#
-# Revision 1.5  2000/05/22  14:32:06  pinnacle
-# ah
-#
-# Revision 1.4  2000/05/19  21:42:54  pinnacle
-# ah
-#
-# Revision 1.3  2000/04/28  19:40:10  pinnacle
-# ah
-#
-# Revision 1.2  2000/04/25  16:13:32  pinnacle
-# ah
-#
-# Revision 1.1  2000/04/11  17:15:46  pinnacle
-# ah
-#
-# Revision 1.4  2000/03/31  16:58:26  pinnacle
-# ah
-#
-# Revision 1.3  2000/03/28  17:18:08  pinnacle
-# ah
-#
  *
  * History:
  * MM/DD/YY  AUTHOR  DESCRIPTION
@@ -67,6 +28,7 @@
  * 05/19/00  ah      No knuckle processing for single line string plates.
  * 05/22/00  ah      Filter out points in edge geometries
  * 10/18/00  ah      TR179902030 Increase the nat edge limit from 100 to 200
+ * 11/17/10  ah      SOL10 - TR
  ***************************************************************************/
 class implementation Root;
 
@@ -779,6 +741,29 @@ IGRstat VDefpGetSurfaceEdgeBspsBS( TGRobj_env     *srfOE,
   BStstcvscsp( edge.cnt, edge.bsps, TRUE, 1, 0.01, tol,
                &numRealCvs, &realCvs, &rc );
   if( rc != BSSUCC || numRealCvs == 0 ) goto wrapup;
+
+  /*
+   * Make sure that BStstcvscsp is returning less than VDEFP_NEAT_EDGES_MAX.
+   */
+  if( numRealCvs > VDEFP_NEAT_EDGES_MAX )
+  {
+      /*
+       * Free the memory.
+       */
+       if( realCvs )
+       {
+          for( i=0; i<numRealCvs; ++i ){
+              if( realCvs[i] ) BSfreecv( &rc, realCvs[i] );
+          }
+          _FREE( realCvs );
+       }
+       for( i=0; i<VDEFP_NAT_EDGES_MAX; ++i )   _FREE( edge.bsps[i] );
+       /*
+	* Call art's routine.
+	*/
+       sts = VDefpGetSurfaceEdgeBsps( srfOE, edgeMax, tol, edgeCnt, edgeBsps );
+       return sts;
+  }
 
   *edgeCnt = numRealCvs;
 
