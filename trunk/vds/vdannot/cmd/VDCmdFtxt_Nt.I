@@ -1,4 +1,4 @@
-/* $Id: VDCmdFtxt_Nt.I,v 1.1.1.1 2001/01/04 21:07:40 cvs Exp $  */
+/* $Id: VDCmdFtxt_Nt.I,v 1.1.1.1.2.2 2002/08/16 13:51:53 ylong Exp $  */
 
 /* --------------------------------------------------------------------
  * I/VDS
@@ -11,6 +11,12 @@
  *
  * Revision History:
  *	$Log: VDCmdFtxt_Nt.I,v $
+ *	Revision 1.1.1.1.2.2  2002/08/16 13:51:53  ylong
+ *	Allow any format name
+ *
+ *	Revision 1.1.1.1.2.1  2002/07/09 16:01:19  ylong
+ *	CR6014
+ *	
  *	Revision 1.1.1.1  2001/01/04 21:07:40  cvs
  *	Initial import to CVS
  *	
@@ -20,30 +26,6 @@
 # Revision 1.1  1998/04/29  16:27:20  pinnacle
 # VDS 2.5.1
 #
-# Revision 1.3  1997/11/06  06:43:18  pinnacle
-# Replaced: vdannot/cmd/VDCmdFtxt_Nt.I for:  by ksundar for vds
-#
-# Revision 1.2  1997/11/05  09:11:28  pinnacle
-# Replaced: vdannot/cmd/VDCmdFtxt_Nt.I for:  by ksundar for vds
-#
-# Revision 1.1  1997/05/08  13:20:44  pinnacle
-# New project VDS 250
-#
-# Revision 1.1  1996/07/19  20:33:52  pinnacle
-# Create VDS 241 project
-#
-# Revision 1.3  1996/04/15  13:46:52  pinnacle
-# Replaced: vdannot/cmd/VDCmdFtxt_Nt.I for:  by yzhu for vds.240
-#
-# Revision 1.2  1996/03/28  20:19:16  pinnacle
-# Replaced: vdannot/cmd/VDCmdFtxt_Nt.I for:  by yzhu for vds.240
-#
-# Revision 1.1  1994/11/21  20:11:58  pinnacle
-# delete by mistake
-#
-# Revision 1.1  1994/11/08  16:07:00  pinnacle
-# create vds.232
-#
  *
  * History:
  *	MM/DD/YY	AUTHOR		DESCRIPTION
@@ -52,6 +34,7 @@
  *	11/05/97	Sundar		Changed form_notification by adding
  *					gadgets EXP_TYP_FIELD & EXP_NAM_FIELD
  *      05/05/99	Ming		TR179900036
+ *      06/30/02	ylong		CR6014
  * -------------------------------------------------------------------*/
 
 /*****************************************************************************
@@ -192,7 +175,9 @@ IGRint		row = 0;
 IGRint		act_row = 0;	/* parameter row selected for inclusion */
 IGRint		col = 0;
 IGRint		pos = 0;
+IGRint		eqp_opt = 0;
 IGRchar		para_text[TEXT_SIZE], my_msg[TEXT_SIZE];
+IGRchar		del_opt[TEXT_SIZE];
 int 		len1;
 char 		Feet_Name[DI_PATH_MAX];
 struct ACrg_coll	coll;
@@ -292,6 +277,7 @@ int             printf_state = 0;
       /*
        * get the existing formatted text expressions
        */
+
       status =
       om$send(msg = message VDCmdFtxt.get_exist_formats( &sts ),
 	      targetid = my_id );
@@ -654,23 +640,40 @@ int             printf_state = 0;
 
     case DELETE_FORMAT:
 
-      if( me->form_expr.string[0] == '\0' ){
-	ex$message( msgnumb = VD_E_NoFormat );
-	FIg_set_state_off( form_ptr, gadget_label );
-	break;
-      }
-      /* test for an empty string */
-      len = strlen( me->form_expr.string );
-      for(i=0;i<len;i++) if( me->form_expr.string[i] != ' ' ) break;
-      if( i == len ){
-	ex$message( msgnumb = VD_E_NoFormat );
-	FIg_set_state_off( form_ptr, gadget_label );
-	break;
-      }
+      /* check delete option */
+      FIg_get_text( form_ptr, DELETE_OPTION, del_opt );
 
-      /* delete current format from sub directory system. */
-      VDSdelete_formats( me->form_expr.formatname,
-			 me->macro_name );
+      if( del_opt[0] == 'A' ) {
+	/* delete all existing formats */
+
+	if(!GRconfirm_box("Delete all existing formats ?")) break;
+
+	VDSdelete_all_formats();
+      }
+      else if( del_opt[0] == 'D' ) {
+	/* delete all formats under macro_name */
+	VDSdelete_formats( NULL, me->macro_name );
+      }
+      else if( del_opt[0] == 'C' )  {
+	/* delete specified format */
+
+	if( me->form_expr.string[0] == '\0' ) {
+	  ex$message( msgnumb = VD_E_NoFormat );
+	  FIg_set_state_off( form_ptr, gadget_label );
+	  break;
+	}
+        /* test for an empty string */
+        len = strlen( me->form_expr.string );
+        for(i=0;i<len;i++) if( me->form_expr.string[i] != ' ' ) break;
+        if( i == len ){
+	  ex$message( msgnumb = VD_E_NoFormat );
+	  FIg_set_state_off( form_ptr, gadget_label );
+	  break;
+        }
+
+        /* delete current format from sub directory system. */
+        VDSdelete_formats( me->form_expr.formatname, me->macro_name );
+      }
 
       FIg_set_state_off( form_ptr, gadget_label );
 
@@ -680,6 +683,21 @@ int             printf_state = 0;
 				form_label, FI_RESET, value, form_ptr ),
 	      targetid = my_id );
       as$status( action = RET_STATUS );
+
+      break;
+
+    case EQP_NAME_OPT:
+
+      /* check delete option */
+      FIg_get_state( form_ptr, gadget_label, &eqp_opt );
+
+      status =
+      om$send(msg = message VDCmdFtxt.form_notification(
+				form_label, FI_RESET, value, form_ptr ),
+	      targetid = my_id );
+      as$status( action = RET_STATUS );
+
+      break;
 
   } /* END switch ( gadget_label ) */
 
@@ -781,9 +799,8 @@ char	*fm_ptr;
     VDcreate_text2( me->form_expr.string,
 		    me->form_expr.params,
 		    &me->mod_env,
-		    &me->hdr,		/* Input_macro */
+		    &me->hdr,		// Input_macro
 		    output );
-
 
      if( ! (status&1)){
 
@@ -900,21 +917,29 @@ IGRchar	tmp_name[TEXT_SIZE];
     sprintf( expr_name, "%s_", me->macro_name );
   }
   else{
-    if( strncmp( def_name, me->macro_name, strlen( me->macro_name )) == 0 ){
-      /*| names are equal */
+    /*
+    if( strncmp( def_name, me->macro_name, strlen( me->macro_name )) == 0 )
+    {
+      // | names are equal
       sprintf( expr_name, "%s_", me->macro_name );
     }
-    else{
+    else
+    {
+    */
       strcpy( expr_name, def_name );
       /* check existing one */
       for(i=0;i<size;i++)
 	if( strcmp( me->ldexpr_list[i].formatname, expr_name ) == 0 ) break;
-      if(i == size ){
+      if(i == size )
+      {
 	/*| It's a unique name, so don't have to generate one */
 	return( OM_S_SUCCESS );
       }
-      else strcat( expr_name, "_" );
-    }
+      else 
+      {
+	strcat( expr_name, "_" );
+      }
+    /*}*/
     /*" check name: %s\n", expr_name */
   }
 

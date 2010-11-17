@@ -1,4 +1,4 @@
-/* $Id: VDCmdFtxt_Pr.I,v 1.1.1.1 2001/01/04 21:07:40 cvs Exp $  */
+/* $Id: VDCmdFtxt_Pr.I,v 1.1.1.1.2.1 2002/07/09 16:01:19 ylong Exp $  */
 
 /* --------------------------------------------------------------------
  * I/VDS
@@ -11,6 +11,9 @@
  *
  * Revision History:
  *	$Log: VDCmdFtxt_Pr.I,v $
+ *	Revision 1.1.1.1.2.1  2002/07/09 16:01:19  ylong
+ *	CR6014
+ *
  *	Revision 1.1.1.1  2001/01/04 21:07:40  cvs
  *	Initial import to CVS
  *	
@@ -59,6 +62,7 @@
  *	04/15/96	adz	Change vd$get_parameters to vd$get_params 
  *	11/05/97	Sundar	Added one function VDfill_in_exprs
  *	05/05/99	Ming    TR179900036
+ *	06/14/02	ylong	CR6014
  * -------------------------------------------------------------------*/
 
 class implementation VDCmdFtxt;
@@ -106,6 +110,7 @@ class implementation VDCmdFtxt;
 #include "VDdrwlo.h"      
 #include "vdtblmacros.h"      
 #include "VDmem.h"      
+#include "VDobj.h"
 
 #include "AS_status.h"
 
@@ -131,16 +136,16 @@ method	fill_in_params( long * sts )
 {
 int	status = OM_S_SUCCESS;
 int	msg;
-IGRint	i, num_row;
+IGRint	i, num_row, eqp_flag = 0;
 char	*c;
 
 /*
  * variables for dump
  */
-DIchar	**collns;
-DIgrid	*colln_ids;		/* ids of these collections	*/
-DIint	nb_colln;		/* number of format collections */
-GRclassid   classid;
+DIchar		**collns;
+DIgrid		*colln_ids;		/* ids of these collections	*/
+DIint		nb_colln;		/* number of format collections */
+GRclassid	classid;
 
 SetProc( MTD.fill_in_params); Begin 
 /*
@@ -163,6 +168,7 @@ SetProc( MTD.fill_in_params); Begin
     return( OM_S_SUCCESS );
   }
 
+  /* CR6014, get name from VDSget_discipline 
   status =
   om$send(msg = message ACcpx_defn.ACgive_name( &c ),
 	  targetid = me->macro_id.objid,
@@ -170,6 +176,18 @@ SetProc( MTD.fill_in_params); Begin
   as$status();
 
   strcpy(me->macro_name,c);
+  */
+
+  VDSget_discipline( &me->hdr, 0, me->macro_name );
+  if( !strncmp( me->macro_name, "equipment", 9 ) ) {
+    FIg_display( me->forms[0].form_ptr, EQP_NAME_OPT );
+    FIg_get_state( me->forms[0].form_ptr, EQP_NAME_OPT, &eqp_flag );
+    if( eqp_flag ) VDSget_discipline( &me->hdr, eqp_flag, me->macro_name );
+  }
+  else {
+    FIg_erase( me->forms[0].form_ptr, EQP_NAME_OPT );
+  }
+
   /*" macro name is %s\n", me->macro_name */
 
   FIg_set_text( me->forms[0].form_ptr, EXIST_FORMAT, me->macro_name );
@@ -327,7 +345,7 @@ char            *form_ptr;      /* active form pointer  */
 {
 	IGRlong 	msg,status;
 	IGRshort 	count=0;
-	IGRint 		i;
+	IGRint 		i, row;
 	GRspacenum 	cur_os;
 	IGRchar 	*Tabtyp=NULL;
 
@@ -348,8 +366,10 @@ char            *form_ptr;      /* active form pointer  */
 			 p_typs = Tabtyp);
 
 	FIfld_set_num_rows( form_ptr, EXP_TYP_FIELD, count );
+	row = 0;
 	for (i=0; i<count; i++){
-		VDfld_set_list_text( form_ptr,EXP_TYP_FIELD,i,0,
+		if( Tabtyp[i*VD_CREXP_CHR_TYPE] == '\0' ) continue;
+		VDfld_set_list_text( form_ptr,EXP_TYP_FIELD,row++,0,
 			&Tabtyp[i*VD_CREXP_CHR_TYPE],FALSE);
 	}
 
