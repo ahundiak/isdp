@@ -1,4 +1,4 @@
-/* $Id: SMCritSel.I,v 1.1.1.1 2001/01/04 21:07:39 cvs Exp $  */
+/* $Id: SMCritSel.I,v 1.1.1.1.2.1 2003/05/02 14:59:27 ylong Exp $  */
 
 /* --------------------------------------------------------------------
  * I/VDS
@@ -11,28 +11,19 @@
  *
  * Revision History:
  *	$Log: SMCritSel.I,v $
+ *	Revision 1.1.1.1.2.1  2003/05/02 14:59:27  ylong
+ *	TR5836, enlarge the number of the reference files, MAX_REF_FILES, from 100 to 500
+ *
  *	Revision 1.1.1.1  2001/01/04 21:07:39  cvs
  *	Initial import to CVS
  *	
 # Revision 1.1  1998/04/29  16:27:20  pinnacle
 # VDS 2.5.1
 #
-# Revision 1.1  1997/05/08  13:20:44  pinnacle
-# New project VDS 250
-#
-# Revision 1.1  1996/07/19  20:33:52  pinnacle
-# Create VDS 241 project
-#
-# Revision 1.1  1994/11/14  22:42:32  pinnacle
-# Create vds.240 from vds.232
-#
-# Revision 1.1  1994/11/08  16:07:00  pinnacle
-# create vds.232
-#
  *
  * History:
  *	MM/DD/YY	AUTHOR		DESCRIPTION
- *
+ *  11/17/10  ah        SOL10 - Reference file increase
  * -------------------------------------------------------------------*/
 
 class implementation Root;
@@ -59,6 +50,7 @@ class implementation Root;
 
 #include "AS_status.h"
 
+#define MAX_REF_FILES	500
 
 from OMObjSpace import pass;
 from SMmgr	import SMGetList, SMClearTag;
@@ -143,12 +135,12 @@ IGRboolean	   tag       /* I : TRUE if it tags the objects		  */
 
  if(options & SM_REF_FILE)
   {
-   GRspacenum	ref_os[100];
+   GRspacenum	ref_os[MAX_REF_FILES];
    IGRint	nb_ref;
    OM_S_OBJID 	md_id;
   
    nb_ref = 0;
-   status = VDfind_ref_files(ref_os, 100, &nb_ref);
+   status = VDfind_ref_files(ref_os, MAX_REF_FILES, &nb_ref);
 
    for(i=0;i<nb_ref;i++)
     {
