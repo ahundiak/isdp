@@ -1,4 +1,4 @@
-/* $Id: VDct1Data.c,v 1.4 2001/02/11 17:24:16 ahundiak Exp $  */
+/* $Id: VDct1Data.c,v 1.4.2.1 2004/03/29 16:22:30 ahundiak Exp $  */
 /***************************************************************************
  * I/VDS
  *
@@ -10,35 +10,20 @@
  *
  * Revision History:
  *      $Log: VDct1Data.c,v $
+ *      Revision 1.4.2.1  2004/03/29 16:22:30  ahundiak
+ *      ah
+ *
  *      Revision 1.4  2001/02/11 17:24:16  ahundiak
  *      Renamed VDris2 to VDrisc
  *
  *      Revision 1.3  2001/02/02 19:02:36  jdsauby
  *      JS, JTS CR4087.  Changed to use same function to generate mat_id_key for a model object.
  *
- *      Revision 1.2  2001/01/25 16:05:16  jdsauby
- *      SP beta merge, wway tree was crashing
- *
- *      Revision 1.1  2001/01/12 14:35:59  art
- *      sp merge
- *
- * Revision 1.1  2000/12/07  17:39:48  pinnacle
- * ah
- *
-# Revision 1.14  2000/10/24  14:27:08  pinnacle
-# js
-#
-# Revision 1.13  2000/10/24  14:05:50  pinnacle
-# js
-#
-# Revision 1.12  2000/09/14  20:32:18  pinnacle
-# js
-#
  *
  * History:
  * MM/DD/YY  AUTHOR  DESCRIPTION
  * 06/01/00  ah      Creation
- *
+ * 11/17/10  ah      SOL10 Removed unused cage code block
  ***************************************************************************/
 #include "VDtypedefc.h"
 #include "VDassert.h"
@@ -781,109 +766,7 @@ IGRstat VDct1GetPartCageNumForModelObject(TGRobj_env *a_objOE,
    * ***/
   sts = VDitemdbGetMatIDForObject(&objID,part_cage_num);
   if (!(sts & 1)) goto wrapup;
-
-#if 0
-  // For anything, ask and accept mino and cage
-  VDobjGetTxtAtr(NULL,&objID,"mino",part_num);
-  if (*part_num != 0) {
-    VDobjGetTxtAtr(NULL,&objID, "cage", cage_code);
-    if (*cage_code == 0) strcpy(cage_code,VDCT1_DEFAULT_CAGE_CODE);
-    sprintf(part_cage_num,"%s-%s",cage_code,part_num);
-    retFlag = 1;
-    goto wrapup;
-  }
-  // Default
-  strcpy(cage_code,VDCT1_DEFAULT_CAGE_CODE);
-  
-  // For equipment
-  sts = VDobjIsAncestryValid(NULL,&objID,OM_K_NOTUSING_CLASSID,"VDequipment");
-  if (sts & 1) {
-    // It's own attribute
-    VDobjGetTxtAtr(NULL,&objID,"eqp_partno",part_cage_num);
-    retFlag = 1;
-    goto wrapup;  
-  }
-
-  // For Beams, Build one
-  sts = VDobjIsAncestryValid(NULL,&objID,OM_K_NOTUSING_CLASSID,"VSbeam");
-  if (sts & 1) {
-
-    // Need grade
-    VDobjGetTxtAtr(NULL,&objID,"grade",grade);
-
-    // Need isdp part_num
-    VDobjGetTxtAtr(NULL,&objID,"part_num",part_num);
-
-    // Build It
-    VDct1GenerateIsdpCageNum(cage_code,"BM",grade,part_num,part_cage_num);
     
-    retFlag = 1;
-    goto wrapup;
-    
-  }
-
-  // For Plates
-  sts = VDobjIsAncestryValid(NULL,&objID,OM_K_NOTUSING_CLASSID,"VSplate");
-  if (sts & 1) {
-
-    // Need grade
-    VDobjGetTxtAtr(NULL,&objID,"grade",grade);
-
-    // Need thickness
-    VDobjGetDblAtr(NULL,&objID,"plate_thk",&thk);
-
-    // Need isdp part_num
-    VDobjGetTxtAtr(NULL,&objID,"part_num",part_num);
-
-    // Build It
-    /* -------------------------------------------
-     * 18 Aug 2000 - Modified to use part_num instead of
-     * thickness, now matches the beam format
-     * part_num is what the IOC translation table will use
-     */
-    VDct1GenerateIsdpCageNum(cage_code,"PL",grade,part_num,part_cage_num);
-
-    //sprintf(part_cage_num,"%s-PL_%s_%.1f",cage_code,grade,thk);
-  
-    retFlag = 1;
-    goto wrapup;
-    
-  }
-  
-  // For pid equipment
-  sts = VDobjIsAncestryValid(NULL,&objID,OM_K_NOTUSING_CLASSID,"VREquipment");
-  if (sts & 1) {
-    // It's own attribute
-    VDobjGetTxtAtr(NULL,&objID,"eqp_partno",part_cage_num);
-    retFlag = 1;
-    goto wrapup;  
-  }
-
-  // For all cable stuff
-  sts = VDobjIsAncestryValid(NULL,&objID,OM_K_NOTUSING_CLASSID,"VCRoot");
-  if (sts & 1) {
-    // Need catalog_num
-    VDobjGetTxtAtr(NULL,&objID,"catalog_num",catalog_num);
-    
-    // build it
-    sprintf(part_cage_num,"%s-%s",cage_code,catalog_num);
-    
-    retFlag = 1;
-    goto wrapup;  
-  }
-
-  // For RaceWays
-  sts = VDobjIsAncestryValid(NULL,&objID,OM_K_NOTUSING_CLASSID,"VRRway");
-  if (sts & 1) {
-    VDct1ComputePartCageNumForWWayObject(&objID,cage_code,part_cage_num);
-    if (*part_cage_num == 0) goto wrapup;
-    // printf("### part_cage_num = %s\n",part_cage_num);
-    
-    retFlag = 1;
-    goto wrapup;
-  }
-  /*       End of stuff for JTS MP 4087      */
-#endif    
   // Done
   retFlag = 1;
   
