@@ -1,4 +1,4 @@
-/* $Id: PDUlf_form.C,v 1.2 2002/01/07 18:33:37 jdsauby Exp $ */
+/* $Id: PDUlf_form.C,v 1.2.2.3 2003/07/07 19:38:26 ahundiak Exp $ */
 /* -------------------------------------------------------------------
  * I/VDS
  *
@@ -10,6 +10,15 @@
  *
  * Revision History:
  *       $Log: PDUlf_form.C,v $
+ *       Revision 1.2.2.3  2003/07/07 19:38:26  ahundiak
+ *       ah TR7675
+ *
+ *       Revision 1.2.2.2  2003/06/24 21:15:32  ahundiak
+ *       ah
+ *
+ *       Revision 1.2.2.1  2003/03/12 20:23:47  ahundiak
+ *       ah CR7415
+ *
  *       Revision 1.2  2002/01/07 18:33:37  jdsauby
  *       JTSMP CR 5924
  *
@@ -27,9 +36,11 @@
  *
  *
  * History:
- *       MM/DD/YY        AUTHOR          DESCRIPTION
- *       10/17/00        ylong           TR179900971.
- *       08/15/01	 js		 AIM integration
+ * MM/DD/YY  AUTHOR  DESCRIPTION
+ * 10/17/00  ylong   TR179900971.
+ * 08/15/01  js      AIM integration
+ * 06/24/03  ah      CR7701 Add LPD17AF flag to part's list
+ * 07/07/03  ah      TR7675 Crash caused by TR7222
  * -------------------------------------------------------------------------*/
 
 /* for sp15 compilation
@@ -99,7 +110,9 @@
 #define SELECT_ALL               80
 #define DESELECT_ALL             81
 #define EDIT_ASSEMBLY_TGL        87
-//#define REVISE_ASSEMBLY_BTN      89
+#define PICK_HULL_APP            90
+#define CLEAR_CACHE_BTN         94
+//#define REVISE_ASSEMBLY_BTN    89
 #if 1
 #define REVISE_ASSEMBLY_BTN      89
 #define ASSY_STRUCTURE_BTN       58
@@ -242,10 +255,10 @@ extern void PDUvd_GetLFVDrefreshData();
 *********************************************************/
 
 int local_files_notification_routine ( f_label, g_label, value, fp )
-  IGRint     f_label;       /* The label of the form   */
-  IGRint     g_label;       /* The label of the gadget */
-  IGRdouble  value;         /* The value of the gadget */
-  Form       fp;            /* Pointer to the form     */
+  int     f_label;       /* The label of the form   */
+  int     g_label;       /* The label of the gadget */
+IGRdouble value;         /* The value of the gadget */
+  Form    fp;            /* Pointer to the form     */
 {
   static char   * text;
   int             status = PDM_S_SUCCESS;
@@ -1441,6 +1454,10 @@ int local_files_notification_routine ( f_label, g_label, value, fp )
 
          break;
 
+    case CLEAR_CACHE_BTN:
+      VDrisDeleteCache();
+      break;
+
     case LIST_PARTS_IN_CAT_BTN:
 
          FIg_disable(forms.local_files_form_id, DELETE_LOCAL_BTN);
@@ -1476,10 +1493,19 @@ int local_files_notification_routine ( f_label, g_label, value, fp )
 
          PDU_dyn_cat_search = NULL_STRING;
          PDU_dyn_part_search = NULL_STRING;
+
+         /* CR7415 Builds PDU_dyn_part_search */
+         PDUfill_hull_app_search(fp, PICK_HULL_APP);
+
          status = PDMsearch_parts_in_catalog(refresh->rev_catalog,
                                              &PDU_parts_list_bufr);
          _pdm_status("PDMsearch_parts_in_catalog", status);
 
+         if (PDU_dyn_part_search)
+         {
+           PDUfree_string(&PDU_dyn_part_search);
+           PDU_dyn_part_search = NULL_STRING;
+         }
          if (status != PDM_S_SUCCESS)
            {
            PDUmessage(status, 's');
@@ -2664,6 +2690,8 @@ int local_files_notification_routine ( f_label, g_label, value, fp )
          status = PDUdisplay_review_structure(PDU_parts_list_bufr);
          _pdm_status("PDUdisplay_review_structure", status);
 
+         PDUfill_parts_list_hull_app(forms.local_files_form_id,STRUCTURE_MCF);
+
          FIg_disable(forms.local_files_form_id, DELETE_LOCAL_BTN);
 
          break;
@@ -3066,7 +3094,6 @@ int PDUsetup_env()
    return(PDM_S_SUCCESS);
 }
 
-
 /* This function loads/creates, initializes, and displays the local files
    form. */
 
@@ -3085,6 +3112,18 @@ int PDUlocal_files_form()
   PDU_structure_list = FALSE;
   PDU_list_files = FALSE;
   PDU_perm_window = FALSE;
+  /* --------------------------------------------
+   * 07 Jul 2003 - Art Hundiak
+   * TR7222 basically wanted to get rid of the permenant window
+   * feature in pdm.  This was actually accomplished by setting a toggle
+   * using form builder.  But I also set PDU_local_perm_window to true
+   * since that's what the notification routine does.
+   *
+   * TR7675 complained that pdm was crashing when first selecting the catalog field
+   * then popping up and dismissing the catalog pick form.  Setting this back to 
+   * false fixed the problem.  and the original complaint for 7222 
+   * (show hull app not working) still works.  Go figure.
+   */
   PDU_local_perm_window = FALSE;
   PDU_assy_perm_window = FALSE;
   PDU_where_used_perm_window = FALSE;
@@ -3155,6 +3194,11 @@ int PDUlocal_files_form()
     FIg_erase(forms.local_files_form_id, 22); /* file operations text */
     FIg_erase(forms.local_files_form_id, 84); /* edit assy text */
     }
+
+  /* --------------------------------------------
+   * CR7415 Fill in Hull App Pick List
+   */
+  PDUfill_hull_app_pick_list(forms.local_files_form_id,PICK_HULL_APP);
 
   /* set position of local files form */
   xpos = 0;
@@ -3271,6 +3315,9 @@ char          type[5];
                      PDU_parts_list_bufr->rows);
 
   FIfld_set_active_row(forms.local_files_form_id, LIST_MCF, 0, 0);
+
+  /* Display hull_app info */
+  PDUfill_parts_list_hull_app(forms.local_files_form_id, LIST_MCF);
 
   /* delete text on rows with multiple files */
   PDUblank_out_multiple_files();
