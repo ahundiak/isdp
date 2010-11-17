@@ -1,4 +1,4 @@
-/* $Id: VDct1IOC.c,v 1.2 2001/02/11 17:24:16 ahundiak Exp $  */
+/* $Id: VDct1IOC.c,v 1.2.2.1 2004/03/29 16:22:30 ahundiak Exp $  */
 /***************************************************************************
  * I/VDS
  *
@@ -10,32 +10,24 @@
  *
  * Revision History:
  *      $Log: VDct1IOC.c,v $
+ *      Revision 1.2.2.1  2004/03/29 16:22:30  ahundiak
+ *      ah
+ *
  *      Revision 1.2  2001/02/11 17:24:16  ahundiak
  *      Renamed VDris2 to VDrisc
- *
- *      Revision 1.1  2001/01/12 14:35:59  art
- *      sp merge
- *
- * Revision 1.1  2000/12/07  17:39:48  pinnacle
- * ah
- *
- * Revision 1.2  2000/08/23  14:50:00  pinnacle
- * ah
- *
- * Revision 1.1  2000/08/15  18:01:56  pinnacle
- * ah
  *
  *
  * History:
  * MM/DD/YY  AUTHOR  DESCRIPTION
  * 08/18/00  ah      Creation
- *
+ * 11/17/10  ah      Cage code fomr ship
  ***************************************************************************/
 
 #include "VDtypedefc.h"
 #include "VDassert.h"
 
 #include "VDrisc.h"
+#include "VDship.h"
 
 #include "VDct1Ris.h"
 #include "VDct1Part.h"
@@ -359,7 +351,7 @@ IGRstat VDct1LoadIOCFromCSVFileBuf(IGRchar *buf)
   
   // Init
   memset(&ioc,0,sizeof(TVDct1RisIOC));
-  strcpy(cage_code,VDCT1_DEFAULT_CAGE_CODE);
+  VDshipGetCageCode(cage_code);
   
   // First field indicats data
   getCSVFld(buf,fld);
