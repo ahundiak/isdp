@@ -1,4 +1,4 @@
-/* $Id: VDdrw_edLnOut.I,v 1.1 2002/06/06 17:02:20 ylong Exp $  */
+/* $Id: VDdrw_edLnOut.I,v 1.1.2.5 2003/07/29 16:50:44 ylong Exp $  */
 
 /***************************************************************************
  * I/VDS
@@ -11,6 +11,16 @@
  *
  * Revision History:
  *      $Log: VDdrw_edLnOut.I,v $
+ *      Revision 1.1.2.5  2003/07/29 16:50:44  ylong
+ *      Fix for TR7750
+ *
+ *      Revision 1.1.2.4  2003/05/15 17:08:02  ylong
+ *      *** empty log message ***
+ *
+ *      Revision 1.1.2.3  2003/05/14 22:53:11  ylong
+ *      TR6391/ETL11862
+ *
+ *
  *      Revision 1.1  2002/06/06 17:02:20  ylong
  *      *** empty log message ***
  *
@@ -60,11 +70,28 @@ from	VDdrwTblHdr	import	VDgetRowInfo,
 				VDrowNoToGRid;
 
 from	VDdrwTblRow	import	VDisRowLinedOut,
+				VDgetTableHeader,
+				VDgetQtyExpr,
+				VDgetItemNumber,
+				VDputItemNumber,
 				VDgetParentObjectList;
 
 from	GRowner		import	GRget_number_components;
 from	GRgencs		import	GRgetmatrix;
 from	GR3dtext	import	GRgetrang;
+
+IGRlong	VDdrw_setCritRecs (	struct VDdrwlo_smatch	*lMatch,
+				IGRshort		nbMatch,
+				struct VDdrwlo_data	*datRecs,
+				IGRshort		*nbDatRecs );
+
+%safe
+static  FILE    *LOUT_fp = stdout;
+static  int     LOUT_dbg = 0;
+%endsafe
+
+#define LOUT_INFO( info ) \
+        if( LOUT_dbg ) printf(" Line: %d - %s failed\n", __LINE__, (info) );
 
 /*--------------------------------------------------------
  * Input row id, print row attributes
@@ -149,13 +176,16 @@ wrapup:
 
 /*-------------------------------------------------------------------
  * Set row attrbutes from feet
+ * If cpyCollId is NULL then set collector of rowId, otherwise, return
+ * cpyCollId and not set collector of rowId.
  */
 IGRint	VDtblSetRowAttFromFeet
 (
 		TGRid		*rowId,		// in, row id
 		IGRint		nbCols,		// in, number of columns
 		IGRdouble	*xcor,		// in, column positions, local
-		IGRdouble	*trMatrix	// in, transfermation matrix
+		IGRdouble	*trMatrix,	// in, transfermation matrix
+		TGRid		*cpyCollId	// out, opt, copy of collector
 )						//    from world to table local
 {
     IGRlong	status = 0, msg ;
@@ -236,6 +266,14 @@ IGRint	VDtblSetRowAttFromFeet
 		targetid = rowId->objid,
 		targetos = rowId->osnum );
     if( !(status&msg&1) ) goto wrapup;
+
+    if( cpyCollId )
+    {
+	gr$copy_object(	msg		= &msg,
+			object_id	= &collId,
+			new_id		= cpyCollId );
+	collId = *cpyCollId;
+    }
 
     // check actual boundary in local coordinate system for row
     for( i = 0; i < cnt; i++ ) {
@@ -337,7 +375,12 @@ IGRint	VDtblSetRowAttFromFeet
 	    if( datValue[0] != '\0' ) continue;
 	}
 	
-	buf = _MALLOC( strlen( attValues[i] ), IGRchar );
+	if( strlen( attValues[i] ) < 1 ) {
+	    i++;
+	    continue;
+	}
+
+	buf = _MALLOC( strlen( attValues[i] ) + 1, IGRchar );
 	if( !buf ) goto wrapup;
 
 	strcpy( buf, attValues[i] );
@@ -653,7 +696,7 @@ IGRint	VDtblSetAttrForLnOutRows ( TGRid	*tblId )
 	    if( isLinedOut )
 	    {
 		// real work
-		VDtblSetRowAttFromFeet ( &rowId, nbCols, xcor, trMatrix );
+		VDtblSetRowAttFromFeet ( &rowId, nbCols, xcor, trMatrix, NULL );
 	    }
 	}
     }
@@ -665,6 +708,882 @@ wrapup:
     _FREE(hdrs);
     _FREE(fixRecs);
     return status;
+}
+
+/*---------------------------------------------------------------------------
+ * Input table row, attributes will be set from feet to row collector
+ */
+IGRint	VDtblSetRowCollFromFeet ( TGRid	*rowId, TGRid *cpyCollId )
+{
+    IGRlong		status = 0, msg ;
+    IGRdouble		matrix[16], trMatrix[16];
+    IGRpoint		pt;
+    IGRint		i, j, rowNo;
+    IGRint		startRowNo = 0;
+    IGRint		nbCols = 0, nbObjs = 0;
+    TGRid		csId, tblId, hdrId;
+    TGRobj_env		*objOEs = NULL;
+    IGRchar		tblLoName[VD_DRWLO_CHR_IDFLD];
+    IGRshort		nbFixRecs = 0, isLinedOut = 0;
+    IGRdouble		*xcor = NULL, height;
+
+    struct VDdrwlo_apifix	*fixRecs = NULL;
+
+    if( !rowId || rowId->objid == NULL_OBJID ) {
+		//printf("Inout table is null\n");
+		goto wrapup;
+    }
+
+    UI_status("Processing ....");
+
+    status =
+    om$send( msg      = message VDdrwTblRow.VDgetTableHeader(&msg,&hdrId,&tblId),
+                 senderid = NULL_OBJID,
+                 targetid = rowId->objid,
+                 targetos = rowId->osnum );
+    if( !(status&msg&1) || hdrId.objid == NULL_OBJID ) {
+                //printf("VDdrwTbl.VDgetTableHeader failed. Quit cmd\n");
+                goto wrapup;
+    }
+
+    // get table layout
+    status =
+    om$send (msg = message VDdrwTblHdr.VDgetTableInfo (
+                                                &msg,
+                                                tblLoName,
+                                                NULL, NULL),
+            senderid = NULL_OBJID,
+            targetid = hdrId.objid,
+            targetos = hdrId.osnum);
+    if( !(status&msg&1) ) {
+	//printf("VDdrwTblHdr.VDgetTableInfo failed\n");
+	goto wrapup;
+    }
+
+    /* get the number of fixed components */
+    status = VD_drwlo_gfix( &msg,
+                            tblLoName,
+                            VD_DRWLO_EN_DATA,
+                            (double)0,
+                            (double)0,
+                            (short)0,
+                            NULL,
+                            &height,
+                            &nbFixRecs,
+                            NULL );
+
+    if( nbFixRecs < 1 ) goto wrapup;
+
+    fixRecs = _MALLOC( nbFixRecs, struct VDdrwlo_apifix );
+    if( !fixRecs ) goto wrapup;
+
+    xcor = _MALLOC( nbFixRecs, IGRdouble );
+    if( !xcor ) goto wrapup;
+
+    status = VD_drwlo_gfix( &msg,
+                            tblLoName,
+                            VD_DRWLO_EN_DATA,
+                            (double)0,
+                            (double)0,
+                            (short)0,
+                            NULL,
+                            &height,
+                            &nbFixRecs,
+                            fixRecs );
+    __CheckRC( status, msg, "VD_drwlo_gfix", wrapup );
+
+    /* retain texts only */
+
+    for( i = 0 ; i < nbFixRecs ; i++ )
+    {
+        if( fixRecs[i].rectyp == VD_DRWLO_EN_TEXT ) {
+	    //printf("fixRecs[%d]: %s\n", i, fixRecs[i].VD.tx.Text);
+	}
+
+	if( fixRecs[i].rectyp == VD_DRWLO_EN_LINE &&
+	    fabs( fixRecs[i].VD.ln.x1 - fixRecs[i].VD.ln.x2) < EPS)
+	{
+	    for( j = 0; j < nbCols; j++ )
+	    {
+		if( fabs( fixRecs[i].VD.ln.x1 - xcor[j] ) < EPS )
+		{
+		    break;
+		}
+	    }
+	    if( j == nbCols ) xcor[nbCols++] = fixRecs[i].VD.ln.x1;
+	}
+    }
+
+#ifdef DEBUG
+    for( i = 0; i < nbCols; i++ )
+    {
+	    printf("xcor[%d]: %g\n", i, xcor[i]);
+    }
+#endif
+
+    nbCols--;
+    if( nbCols < 2 ) goto wrapup;
+
+    // get table orient, header corner and cs
+    status =
+    om$send( msg      = message VDdrwTblHdr.VDgetRowConstructInfo
+                                                    (	&msg,
+							0,	// rowNo
+							NULL,	// layout
+							NULL,	// orient
+							&csId,
+							NULL,
+							NULL),
+            senderid = NULL_OBJID,
+            targetid = hdrId.objid,
+            targetos = hdrId.osnum );
+    if( !(status&msg&1)) {
+    	//printf("Failed to get construct info for header %d\n", i);
+    	goto wrapup;
+    }
+
+		
+    // get cs matrix
+    status =
+    om$send( msg      = message GRgencs.GRgetmatrix ( &msg, matrix),
+             senderid = NULL_OBJID,
+             targetid = csId.objid,
+             targetos = csId.osnum );
+    if( !(status&msg&1)) {
+    	//printf("Failed to get cs matrix for header %d\n", i);
+    	goto wrapup;
+    }
+
+#ifdef DEBUG
+	printf("csId: "); vdobj$Print(objID = &csId);
+		
+	for( j = 0; j < 4; j++ )
+	{
+	    printf("cs matrix: [%g,%g,%g,%g]\n",
+			matrix[4*j+0],
+			matrix[4*j+1],
+			matrix[4*j+2],
+			matrix[4*j+3] );
+	}
+#endif
+
+    // get inverse matrix from cs matrix
+    BSinv_mat( 4, matrix, trMatrix, &msg );
+    if( msg != BSSUCC ) {
+    	//printf("BSinv_mat failed for header %d\n", i);
+    	goto wrapup;
+    }
+
+#ifdef DEBUG
+	for( j = 0; j < 4; j++ )
+	{
+	    printf("cs inverse matrix: [%g,%g,%g,%g]\n",
+			trMatrix[4*j+0],
+			trMatrix[4*j+1],
+			trMatrix[4*j+2],
+			trMatrix[4*j+3] );
+	}
+#endif
+
+    // real work
+    VDtblSetRowAttFromFeet ( rowId, nbCols, xcor, trMatrix, cpyCollId );
+
+    status = 1;
+wrapup:
+    UI_status("");
+    _FREE(xcor);
+    _FREE(fixRecs);
+    return status;
+}
+
+/*---------------------------------------------------------------------
+ * Replace lined out row with the row having the same sum criteria
+ * for TR7750
+ */
+IGRlong	VDdrw_sumCrit (	IGRchar	*layoutName )
+{
+  IGRlong		status = 0, msg = 0;
+  IGRint		i, j, k, l;
+  IGRdouble		height;
+  IGRshort		nbMatch   = 0,
+			nbCrit    = 0,
+			nbCritCol = 0,
+			nbDatRecs = 0,
+			nbNewRows = 0;
+  struct GRid		tblHdrId, collId;
+  struct VDdrw_listInfo	*lmInfo  = NULL;
+  struct VDdrwlo_sqty	*lCrit   = NULL;
+  struct VDdrwlo_smatch	*lMatch  = NULL;
+  struct VDdrwlo_data   *datRecs = NULL;
+  struct VDdrwlo_tab	tblRec;
+
+
+  SetProc( VDdrw_replaceLinedOut ); Begin
+
+  if( !layoutName || *layoutName == 0 )
+  {
+     printf("No layoutName input\n");
+     goto wrapup;
+  }
+
+  status = VD_drwlo_gtab( &msg, layoutName, &tblRec );
+  if( !(status&msg&1) )
+  {
+     printf("Failed to get table record data\n");
+     goto wrapup;
+  }
+
+  status = VDdrw_getSumCriteria(	tblRec.SumFil,
+					&nbCrit,
+					&lCrit,
+					&lmInfo,
+					&nbMatch,
+					&lMatch );
+  if( !(status&1) || !nbCrit || !nbMatch )
+  {
+     fprintf( LOUT_fp, "\tThis table definition has no sum criteria !\n\n");
+     printf("Failed to get sum table\n");
+     goto wrapup;
+  }
+
+  if( LOUT_dbg )
+  {
+    fprintf( LOUT_fp, "\tSum table name: %s\n", tblRec.SumFil );
+    for( i = 0; i < nbCrit; i++ )
+    {
+       fprintf( LOUT_fp, "lCrit[%d]:  szCat=[%s], szSub=[%s], szExp=[%s], nSflag=[%d]\n",
+		i, lCrit[i].szCat,lCrit[i].szSub,lCrit[i].szExp,lCrit[i].nSflag);
+       fprintf( LOUT_fp, "lmInfo[%d]: startIndex=[%d], count=[%d]\n",
+		i, lmInfo[i].startIndex, lmInfo[i].count);
+    }
+
+    for( i = 0; i < nbMatch; i++ )
+    {
+       fprintf( LOUT_fp, "lMatch[%d]: szCat=[%s], szSub=[%s], szAtt=[%s], szExp=[%s], nsIndex=[%d], nnREL=[%d], nDattyp=[%d]\n",
+		i, lMatch[i].szCat,  lMatch[i].szSub,lMatch[i].szAtt,lMatch[i].szExp,
+		   lMatch[i].nsIndex,lMatch[i].nnREL,lMatch[i].nDattyp);
+    }
+  }
+
+  /*
+  ** get the list of data records
+  */
+  status = VD_drwlo_gdata(   &msg,
+                             layoutName,
+                             (short) VD_DRWLO_EN_DATA,
+                             (double) 0, 
+			     (double) 0,
+                             (short) 0, 
+			     NULL,
+                             &height,
+                             &nbDatRecs,
+                             NULL );
+  if( !(status&msg&1) )
+  {
+	printf("Failed to get table record data\n");
+	goto wrapup;
+  }
+
+  if( nbDatRecs > 0 )
+  {
+    datRecs = _MALLOC( nbDatRecs, struct VDdrwlo_data );
+    if( datRecs == NULL ) goto wrapup;
+  }
+  else goto wrapup;
+
+  if( nbDatRecs )
+  {
+     status = VD_drwlo_gdata( &msg,
+                               layoutName,
+                               (short) VD_DRWLO_EN_DATA,
+                               (double) 0, 
+			       (double) 0,
+                               (short) 0, 
+			       NULL,
+                               &height,
+                               &nbDatRecs,
+                               datRecs );
+    if( !(status&msg&1) )
+    {
+	goto wrapup;
+    }
+  }
+
+  if( LOUT_dbg )
+  {
+    for( i = 0; i < nbDatRecs; i++ )
+    {
+       fprintf( LOUT_fp, 
+	"datRecs[%d]: grptyp=%d, rectyp=%d, datatyp=%d, colno=%d, lineno=%d, Text=%s, ExAtt=%s\n",
+		i,	datRecs[i].grptyp,
+			datRecs[i].rectyp,
+			datRecs[i].datatyp,
+			datRecs[i].colno,
+			datRecs[i].lineno,
+			datRecs[i].Text,
+			datRecs[i].ExAtt);
+    }
+  }
+
+  VDdrw_setCritRecs (lMatch, nbMatch, datRecs, &nbDatRecs );
+
+  if( LOUT_dbg )
+  {
+    fprintf( LOUT_fp,  "%s", "------- After reset datRecs: \n");
+    for( i = 0; i < nbDatRecs; i++ )
+    {
+       fprintf( LOUT_fp, 
+	"datRecs[%d]: grptyp=%d, rectyp=%d, datatyp=%d, colno=%d, lineno=%d, Text=%s, ExAtt=%s\n",
+		i,	datRecs[i].grptyp,
+			datRecs[i].rectyp,
+			datRecs[i].datatyp,
+			datRecs[i].colno,
+			datRecs[i].lineno,
+			datRecs[i].Text,
+			datRecs[i].ExAtt);
+    }
+  }
+
+  status = 1;
+wrapup:
+  _FREE( lCrit );
+  _FREE( lmInfo );
+  _FREE( lMatch );
+  _FREE( datRecs );
+  End
+  return status;
+}
+
+/*-------------------------------------------------------------------------
+ * Check all tables
+ */
+int	VDdrw_allTbls()
+{
+  long	status, msg;
+  short	nbTbls = 0;
+  int	idsp, output, dbgFlag, i;
+  char	*tbls = NULL;
+
+  dbgFlag = LOUT_dbg;
+  LOUT_dbg = 1;
+  LOUT_fp = fopen( "tbl_def.txt", "w" );
+
+  vd$tbldlo_idx ( msg     = &msg,
+                  osnum   = 2,
+                  p_count = &nbTbls);
+  if( !(msg&1) || nbTbls < 1 ) goto wrapup;
+
+  tbls = _MALLOC ((nbTbls + 1) * VD_DRWLO_CHR_IDFLD, IGRchar);
+  if ( tbls == NULL) goto wrapup;
+
+  vd$tbldlo_idx ( msg     = &msg,
+                  osnum   = 2,
+                  p_nams  = tbls,
+                  p_count = &nbTbls);
+  if( !(msg&1) ) goto wrapup;
+
+  for( i = 0; i < nbTbls; i++ )
+  {
+	idsp = i * VD_DRWLO_CHR_IDFLD;
+	fprintf(LOUT_fp, "======= %s ============\n", &tbls[idsp]);
+	VDdrw_sumCrit( &tbls[idsp] );
+	fprintf(LOUT_fp, "\n\n");
+  }
+
+wrapup:
+  _FREE( tbls );
+  if( LOUT_fp ) fclose( LOUT_fp );
+  LOUT_dbg = dbgFlag;
+  return 1;
+}
+
+/*---------------------------------------------------------------------
+ * Replace lined out row with the row having the same sum criteria
+ * for TR7750
+ */
+IGRlong	VDdrw_setCritRecs (	struct VDdrwlo_smatch	*lMatch,
+				IGRshort		nbMatch,
+				struct VDdrwlo_data	*datRecs,
+				IGRshort		*nbDatRecs )
+{
+  IGRlong		status = 0, msg = 0;
+  IGRint		i, j, k, l;
+  IGRint		nbPars = 0;
+  IGRchar		buf[VD_DRWLO_CHR_TEXT];
+  IGRchar		expName[VD_DRWLO_CHR_TEXT];
+  IGRchar		sumAttName[VD_DRWLO_CHR_TEXT];
+  IGRchar		c[2] = " ";
+  IGRchar		*ptr = NULL, *pchr = NULL;
+  IGRchar		**pars      = NULL;
+  struct VDdrwlo_tab	tblRec;
+  struct VDdrwlo_qtyExp	qty;
+
+
+  SetProc( VDdrw_replaceLinedOut ); Begin
+
+  if( !nbMatch   || !lMatch )  goto wrapup;
+  if( !nbDatRecs || !datRecs ) goto wrapup;
+  if( !(*nbDatRecs) ) goto wrapup;
+
+  for( j = 0; j < *nbDatRecs; j++ )
+  {
+     _LOOPFREE( pars, nbPars );
+     nbPars = 0;
+     *expName = 0;
+
+     switch( datRecs[j].rectyp )
+     {
+	case VD_DRWLO_EN_ATTRIBUTE :
+
+	   strcpy( buf, datRecs[j].ExAtt );
+           ptr = strtok( buf, c );
+           while( ptr )
+           {
+	      nbPars++;
+              ptr = strtok( NULL, c );
+           }
+
+	   if( nbPars )
+	   {
+	      pars = _MALLOC( nbPars, IGRchar * );
+	      if( !pars ) goto wrapup;
+
+	      nbPars = 0;
+	      strcpy( buf, datRecs[j].ExAtt );
+	      ptr = strtok( buf, c );
+              while( ptr )
+              {
+		 pars[nbPars] = _MALLOC( strlen(ptr)+1, IGRchar );
+		 if( !pars[nbPars] ) goto wrapup;
+		 strcpy( pars[nbPars], ptr );
+                 nbPars++;
+                 ptr = strtok( NULL, c );
+              }
+	   }
+	   break;
+
+	case VD_DRWLO_EN_FORMTEXT :
+
+	   VDSsplit_par_str( datRecs[j].Text, &nbPars, &pars );
+
+	   break;
+
+	case VD_DRWLO_EN_EXPRESSION :
+
+	   strcpy( buf, datRecs[j].Text );
+	   ptr = strchr( buf, '%' );
+	   while( ptr )
+	   {
+	       pchr = strchr( buf, ')' );
+	       if( pchr ) *pchr = '\0';
+	       pchr = strchr( buf, ']' );
+	       if( pchr ) *pchr = '\0';
+	       nbPars++;
+	       ptr++;
+	       ptr = strchr( ptr, '%' );
+	   }
+
+	   if( nbPars )
+	   {
+	      pars = _MALLOC( nbPars, IGRchar * );
+	      if( !pars ) goto wrapup;
+	      ptr = strchr( buf, '%' );
+	      nbPars = 0;
+	      while( ptr )
+	      {
+		 pars[nbPars] = _MALLOC( strlen(ptr)+1, IGRchar );
+		 if( !pars[nbPars] ) goto wrapup;
+		 ptr++;
+		 strcpy( pars[nbPars], ptr );
+		 nbPars++;
+		 ptr = strchr( ptr, '%' );
+	      }
+	   }
+
+	   break;
+
+	case VD_DRWLO_EN_EXPR_TABLE :
+
+	   ptr = strchr( datRecs[j].Text, ',' );
+	   if( ptr ) ptr++;
+	   else	 ptr = datRecs[j].Text;
+	   strcpy( expName, ptr );
+
+	   break;
+
+	case VD_DRWLO_EN_ITEMNO :
+	case VD_DRWLO_EN_QUANTITY :
+	case VD_DRWLO_EN_OVERFLOW :
+	case VD_DRWLO_EN_AUTOWRAP :
+	case VD_DRWLO_EN_USERDEFINED :
+	   break;
+
+	default :
+	   break;
+     }
+
+     if( !*expName && !nbPars )
+     {
+	datRecs[j].colno = 0;
+	continue;
+     }
+
+     // Check against criteria list
+     for( i = 0; i < nbMatch; i++ )
+     {
+        ptr = strchr( lMatch[i].szAtt, ':' );
+        if( ptr )	ptr++;
+        else	ptr = lMatch[i].szAtt;
+        strcpy( sumAttName, ptr );
+
+        if( *expName && !strcmp( expName, sumAttName ) )
+	{
+	   // found match
+	   break;
+	}
+	else if( nbPars )
+	{
+	   for( k = 0; k < nbPars; k++ )
+	   {
+	      if( !strcmp( sumAttName, pars[k] ) ) break;
+	   }
+	   if( k < nbPars ) break;
+	}
+     }
+
+     if( i == nbMatch )
+     { //no match found
+	datRecs[j].colno = 0;
+     }
+  }
+
+  for( j = 0 ; j < *nbDatRecs;  )
+  {
+     if( !datRecs[j].colno )
+     {
+	for( i = j+1; i < *nbDatRecs; i++ )
+	{
+	   memcpy(	(char *) &datRecs[i-1],
+			(char *) &datRecs[i],
+			sizeof( struct VDdrwlo_data ) ) ;
+	}
+	(*nbDatRecs)--;
+     }
+     else j++;
+  }
+
+  status = 1;
+wrapup:
+  _LOOPFREE( pars, nbPars );
+  End
+  return status;
+}
+/*---------------------------------------------------------------------
+ * Replace lined out row with the row having the same sum criteria
+ * for TR7750
+ */
+IGRlong	VDdrw_replaceLinedOut (	IGRchar			*layoutName,
+				struct GRid		*gridList,
+				struct VDdrw_rowInfo	*rows, 
+				IGRint			*nbRows )
+{
+  IGRlong		status = 0, msg = 0;
+  IGRint		i, j, k, l;
+  IGRint		size;
+  IGRchar		attName[VD_DRWLO_CHR_TEXT];
+  IGRchar		itemNo[VD_DRWLO_CHR_TEXT];
+  IGRchar		*ptr = NULL;
+  IGRchar		**datValues = NULL;
+  IGRchar		**objValues = NULL;
+  IGRdouble		height;
+  IGRshort		isLinedOut;
+  IGRshort		nbMatch   = 0,
+			nbCrit    = 0,
+			nbCritCol = 0,
+			nbDatRecs = 0,
+			nbNewRows = 0;
+  struct GRid		collId;
+  struct VDdrw_listInfo	*lmInfo  = NULL;
+  struct VDdrwlo_sqty	*lCrit   = NULL;
+  struct VDdrwlo_smatch	*lMatch  = NULL;
+  struct VDdrwlo_data   *datRecs = NULL;
+  struct VDdrwlo_qtyExp	qty;
+  struct VDdrwlo_tab	tblRec;
+
+
+  SetProc( VDdrw_replaceLinedOut ); Begin
+
+  if( !rows || *nbRows < 1 ) goto wrapup;
+  if( !layoutName || *layoutName == 0 )   goto wrapup;
+  if( !gridList ) goto wrapup;
+
+  status = VD_drwlo_gtab( &msg, layoutName, &tblRec );
+  if( !(status&msg&1) )
+  {
+     goto wrapup;
+  }
+
+  status = VDdrw_getSumCriteria(	tblRec.SumFil,
+					&nbCrit,
+					&lCrit,
+					&lmInfo,
+					&nbMatch,
+					&lMatch );
+  if( !(status&1) || !nbCrit || !nbMatch )
+  {
+     LOUT_INFO("VDdrw_getSumCriteria");
+     goto wrapup;
+  }
+
+  if( LOUT_dbg )
+  {
+    for( i = 0; i < nbCrit; i++ )
+    {
+       fprintf( LOUT_fp, "lCrit[%d]:  szCat=[%s], szSub=[%s], szExp=[%s], nSflag=[%d]\n",
+		i, lCrit[i].szCat,lCrit[i].szSub,lCrit[i].szExp,lCrit[i].nSflag);
+       fprintf( LOUT_fp, "lmInfo[%d]: startIndex=[%d], count=[%d]\n",
+		i, lmInfo[i].startIndex, lmInfo[i].count);
+    }
+
+    for( i = 0; i < nbMatch; i++ )
+    {
+       fprintf( LOUT_fp, "lMatch[%d]: szCat=[%s], szSub=[%s], szAtt=[%s], szExp=[%s], nsIndex=[%d], nnREL=[%d], nDattyp=[%d]\n",
+		i, lMatch[i].szCat,  lMatch[i].szSub,lMatch[i].szAtt,lMatch[i].szExp,
+		   lMatch[i].nsIndex,lMatch[i].nnREL,lMatch[i].nDattyp);
+    }
+  }
+
+  /*
+  ** get the list of data records
+  */
+  status = VD_drwlo_gdata(   &msg,
+                             layoutName,
+                             (short) VD_DRWLO_EN_DATA,
+                             (double) 0.0, 
+			     (double) 0.0,
+                             (short) 0, 
+			     NULL,
+                             &height,
+                             &nbDatRecs,
+                             NULL );
+  if( !(status&msg&1) )
+  {
+	LOUT_INFO("VD_drwlo_gdata");
+	goto wrapup;
+  }
+
+  if( nbDatRecs > 0 )
+  {
+    datRecs = _MALLOC( nbDatRecs, struct VDdrwlo_data );
+    if( datRecs == NULL ) goto wrapup;
+  }
+  else goto wrapup;
+
+  if( nbDatRecs )
+  {
+     status = VD_drwlo_gdata( &msg,
+                               layoutName,
+                               (short) VD_DRWLO_EN_DATA,
+                               (double) 0, 
+			       (double) 0,
+                               (short) 0, 
+			       NULL,
+                               &height,
+                               &nbDatRecs,
+                               datRecs );
+    if( !(status&msg&1) )
+    {
+	LOUT_INFO("VD_drwlo_gdata");
+	goto wrapup;
+    }
+  }
+
+  if( LOUT_dbg )
+  {
+    for( i = 0; i < nbDatRecs; i++ )
+    {
+       fprintf( LOUT_fp, 
+	"datRecs[%d]: grptyp=%d, rectyp=%d, datatyp=%d, colno=%d, lineno=%d, Text=%s, ExAtt=%s\n",
+		i,	datRecs[i].grptyp,
+			datRecs[i].rectyp,
+			datRecs[i].datatyp,
+			datRecs[i].colno,
+			datRecs[i].lineno,
+			datRecs[i].Text,
+			datRecs[i].ExAtt);
+    }
+  }
+
+  // Reset datRecs so that only columns corresponding to sum criteria left
+
+  status = VDdrw_setCritRecs( lMatch, nbMatch, datRecs, &nbDatRecs );
+  if( !(status&1) || !nbDatRecs ) goto wrapup;
+
+  if( LOUT_dbg )
+  {
+    fprintf( LOUT_fp, "%s\n", "--- After reset datRecs:");
+    for( i = 0; i < nbDatRecs; i++ )
+    {
+       fprintf( LOUT_fp, 
+	"datRecs[%d]: grptyp=%d, rectyp=%d, datatyp=%d, colno=%d, lineno=%d, Text=%s, ExAtt=%s\n",
+		i,	datRecs[i].grptyp,
+			datRecs[i].rectyp,
+			datRecs[i].datatyp,
+			datRecs[i].colno,
+			datRecs[i].lineno,
+			datRecs[i].Text,
+			datRecs[i].ExAtt);
+    }
+  }
+
+  datValues = _MALLOC( nbDatRecs, IGRchar * );
+  if( !datValues ) goto wrapup;
+  for( i = 0; i < nbDatRecs; i++ ) datValues[i] = NULL;
+
+  objValues = _MALLOC( nbDatRecs, IGRchar * );
+  if( !objValues ) goto wrapup;
+  for( i = 0; i < nbDatRecs; i++ ) objValues[i] = NULL;
+
+  nbNewRows = *nbRows;
+  for( i = 0; i < *nbRows; i++ )
+  {
+     if( rows[i].rowId.objid == NULL_OBJID ) continue;
+
+     // Only check lined out row
+     isLinedOut = 0;
+     status =
+     om$send( msg      = message VDdrwTblRow.VDisRowLinedOut
+						( &msg, &isLinedOut),
+              senderid = NULL_OBJID,
+              targetid = rows[i].rowId.objid,
+              targetos = rows[i].rowId.osnum );
+     if( !isLinedOut ) continue;
+
+     // Get attribute values from lined out row
+     collId.objid = NULL_OBJID ;
+     status =
+     om$send(	msg      = message VDdrwTblRow.ACfind_temp_obj
+					((int *)&msg, "coll", &collId),
+		senderid = NULL_OBJID,
+		targetid = rows[i].rowId.objid,
+		targetos = rows[i].rowId.osnum );
+     if( !(status&msg&1) || collId.objid == NULL_OBJID ) continue;
+
+     for( j = 0; j < nbDatRecs; j++ )
+     {
+	_FREE( datValues[j] );
+	sprintf(attName, "%d %d", datRecs[j].colno, datRecs[j].lineno);
+        status = VDdrw_getAttFromColl( &msg, collId, attName, &datValues[j] );
+	if( !(status&msg&1) || !datValues[j] ) goto wrapup;
+	if( LOUT_dbg ) fprintf( LOUT_fp, "datValue = [%s]\n", datValues[j]);
+     }
+
+     // Get attribute values from objects and find match
+     for( k = 0; k < *nbRows; k++ )
+     {
+	if( rows[k].rowId.objid == NULL_OBJID ) continue;
+
+	isLinedOut = 0;
+	status =
+	om$send(msg      = message VDdrwTblRow.VDisRowLinedOut
+						( &msg, &isLinedOut),
+		senderid = NULL_OBJID,
+		targetid = rows[k].rowId.objid,
+		targetos = rows[k].rowId.osnum );
+	if( isLinedOut ) continue;
+
+        status =
+	om$send(msg      = message  VDdrwTblRow.VDgetQtyExpr( &msg, &qty ),
+		senderid = NULL_OBJID,
+                targetid = rows[k].rowId.objid,
+                targetos = rows[k].rowId.osnum );
+
+	nbMatch = 0;
+	for( j = 0; j < nbDatRecs; j++ )
+	{
+	    _FREE( objValues[j] );
+            status = VDdrw_getFldValue( &msg,
+                                        1, //rows[k].nbObjs,
+                                        &gridList[rows[k].startIndex],
+                                        datRecs[j],
+                                        qty,
+                                        &rows[k].rowId,
+                                        &objValues[j] );
+	    if( !(status&msg&1) || !objValues[j] ) continue;
+	    if( LOUT_dbg ) 
+	    {
+		fprintf( LOUT_fp, "objValues[%d] = %s for row: ", j,objValues[j] );
+		vdobj$Print(objID=&rows[k].rowId);
+	    }
+
+	    if( !strcmp( datValues[j], objValues[j]) ) nbMatch++;
+	}
+
+	if( nbMatch == nbDatRecs )
+	{
+	    //printf("Match found for row %d: ", k); vdobj$Print(objID = &rows[k].rowId);
+	    status =
+            om$send( msg      = message VDdrwTblRow.VDgetItemNumber(
+                                                        &msg, 
+							&size,
+							itemNo),
+		    senderid = NULL_OBJID,
+		    targetid = rows[i].rowId.objid,
+		    targetos = rows[i].rowId.osnum );
+	    if( (status&msg&1) )
+	    {
+		status =
+		om$send (	msg      = message VDdrwTblRow.VDputItemNumber
+									( &msg, itemNo),
+				senderid = NULL_OBJID,
+				targetid = rows[k].rowId.objid,
+				targetos = rows[k].rowId.osnum );
+	    }
+
+	    gr$delete_object( msg = &msg, object_id = &rows[i].rowId );
+	    rows[i].rowId.objid = NULL_OBJID;
+
+	    nbNewRows--;
+
+	    break;
+        }
+     }
+  }
+
+  for( i = 0; i < *nbRows;  )
+  {
+     if( rows[i].rowId.objid == NULL_OBJID )
+     {
+	for( j = i+1; j < *nbRows; j++ )
+	{
+	   memcpy(	(char *) &rows[j-1],
+			(char *) &rows[j],
+			sizeof( struct VDdrw_rowInfo ) ) ;
+	}
+	(*nbRows)--;
+     }
+     else i++;
+  }
+
+  *nbRows = nbNewRows;
+
+  /*
+  qsort ( (char *)rows,
+           *nbRows,
+           sizeof(struct VDdrw_rowInfo),
+           (int (*)())setRowsByItemNo );
+  */
+
+  status = 1;
+wrapup:
+  _FREE( lCrit );
+  _FREE( lmInfo );
+  _FREE( lMatch );
+  _FREE( datRecs );
+  _LOOPFREE( datValues, nbDatRecs );
+  _LOOPFREE( objValues, nbDatRecs );
+  End
+  return status;
 }
 
 end implementation Root;

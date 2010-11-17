@@ -1,4 +1,4 @@
-/* $Id: VDdrw_tblfunc.I,v 1.36 2002/06/06 17:01:57 ylong Exp $  */
+/* $Id: VDdrw_tblfunc.I,v 1.36.2.3 2003/07/29 16:50:44 ylong Exp $  */
 
 /* I/VDS
  * -------------------------------------------------------------------------
@@ -4647,6 +4647,7 @@ wrapup:
    return status;
 }
 
+
 #define MAX_NUM	1e10
 /*---------------------------------------------------------------------
  * Set item number for each row
@@ -4686,7 +4687,7 @@ IGRlong	VDdrw_setItemNo (	struct	GRid		*xtblId,
 
     if( UTAD_dbg )
     {
-       fprintf( UTAD_fp, "Item - startNo: [%d], itemNo: [%d]\n",startNo,itemNo);
+       fprintf( UTAD_fp, "Item - startNo: [%d], itemNo: [%s]\n",startNo,itemNo);
     }
 
     /*
@@ -4750,7 +4751,7 @@ IGRlong	VDdrw_setItemNo (	struct	GRid		*xtblId,
        newRows[i].flag		= rows[i].flag;
        newRows[i].itemNo	= -1;
        nbNewObjs += rows[i].nbObjs;
-       if( newRows[i].nbObjs == 0 )
+       if( newRows[i].nbObjs == 0 || newRows[i].flag == VD_DRW_ROW_NEW )
        {
 	   /*
 	    * the number of objects is 0 means the row is lined out, so
@@ -4764,7 +4765,7 @@ IGRlong	VDdrw_setItemNo (	struct	GRid		*xtblId,
 		    senderid = NULL_OBJID,
 		    targetid = newRows[i].rowId.objid,
 		    targetos = newRows[i].rowId.osnum );
-	   if( (status&msg&1) ) newRows[i].itemNo = atoi(itemNo);
+	   if( (status&msg&1) && isdigit(*itemNo) ) newRows[i].itemNo = atoi(itemNo);
        }
     }
 
@@ -4921,7 +4922,8 @@ IGRlong	VDdrw_setItemNo (	struct	GRid		*xtblId,
     else max = startNo; /* usrOpt & VD_TBL_ITEMNO_MANUAL */
     
     *itemNo = 0;
-    for( i = 0; i < (nbNewRows - nbAddRows); i++ )
+    //for( i = 0; i < (nbNewRows - nbAddRows); i++ )
+    for( i = 0; i < nbNewRows; i++ )
     {
 	if( newRows[i].itemNo > 0 || !newRows[i].nbObjs ) continue;
 
@@ -4933,10 +4935,10 @@ IGRlong	VDdrw_setItemNo (	struct	GRid		*xtblId,
 	while( nb < maxNo && !itemFlag ) 
 	{
 	    for(j = 0; 
-		j < (nbNewRows - nbAddRows) && nb != newRows[j].itemNo; 
+		j < nbNewRows && nb != newRows[j].itemNo; 
 		j++ );
 	    
-	    if( j == (nbNewRows - nbAddRows) ) 
+	    if( j == nbNewRows ) 
 	    {
 	 	itemFlag = 1;
 	    }
@@ -4975,19 +4977,6 @@ IGRlong	VDdrw_setItemNo (	struct	GRid		*xtblId,
 	   sprintf( itemNo, "%d", max++ );
 	}
 	status =
-        om$send( msg      = message VDdrwTblRow.VDputItemNumber(
-                                                        &msg, 
-							itemNo),
-		 senderid = NULL_OBJID,
-		 targetid = newRows[i].rowId.objid,
-		 targetos = newRows[i].rowId.osnum );
-    }
-
-    for( i = (nbNewRows - nbAddRows); i < nbNewRows; i++ )
-    {
-	if( newRows[i].itemNo > 0 || !newRows[i].nbObjs ) continue;
-
-	sprintf( itemNo, "%d", max++ );
         om$send( msg      = message VDdrwTblRow.VDputItemNumber(
                                                         &msg, 
 							itemNo),
@@ -5861,7 +5850,21 @@ IGRlong VDdrw_processTableObjects( IGRlong	  *msg,
                  targetos = hdrId[i].osnum );
         if( !(status&*msg&1) ) continue;
 
+	/* default = not delete */
 	delFlag = 0;
+
+	/* check if rowId is in rows list, if so, do not delete */
+	if( rowId.objid != NULL_OBJID )
+	{
+	  for( k = 0; k < nbRows && !IF_EQ_GRID(rows[k].rowId, rowId ); k++ ); 
+	  if ( k == nbRows )
+	  {
+	     printf("Warning: row id[%d,%d] rowNo[%d] is obsolete and deleted!\n",
+			rowId.osnum, rowId.objid, rowNo);
+	     delFlag = 1;
+	  }
+	}
+
 
         status =
         om$send( msg      = message VDdrwTblHdr.VDremoveRow(msg,
@@ -6230,6 +6233,26 @@ IGRlong VDdrw_processTableObjects( IGRlong	  *msg,
 	{
 	   VDtblPrintRowInfo( &rows[i] );
 	}
+    }
+
+
+    /*
+    ** Review Lined out rows for TR7750
+    */
+    if( usrOpt & VD_TBL_REV_LINED_OUT )
+    {
+        IGRchar	layoutName[VD_DRWLO_CHR_IDFLD],
+
+        status =
+        om$send( msg      = message VDdrwTbl.VDgetTableLayoutName(msg,
+                                                              layoutName),
+                 senderid = NULL_OBJID,
+                 targetid = tblId->objid,
+                 targetos = tblId->osnum );
+        if( (status&*msg&1) )
+        {
+            VDdrw_replaceLinedOut (layoutName, gridList, rows, &nbRows );
+        }
     }
 
     /*

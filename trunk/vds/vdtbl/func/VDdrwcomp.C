@@ -1,4 +1,4 @@
-/* $Id: VDdrwcomp.C,v 1.2 2001/01/19 12:23:23 paul_noel Exp $ */
+/* $Id: VDdrwcomp.C,v 1.2.2.4 2003/07/15 15:48:33 ylong Exp $ */
 
 /*************************************************************************
  * I/VDS
@@ -17,6 +17,18 @@
  *
  * Revision History:
  *	$Log: VDdrwcomp.C,v $
+ *	Revision 1.2.2.4  2003/07/15 15:48:33  ylong
+ *	Should be "r-equipment", "marking-line"
+ *
+ *	Revision 1.2.2.3  2003/07/07 17:04:43  ylong
+ *	Added "r_equipment" to the initial list
+ *	
+ *	Revision 1.2.2.2  2003/06/27 22:25:36  ylong
+ *	added "marking" to the initial list
+ *	
+ *	Revision 1.2.2.1  2003/06/23 22:17:50  ylong
+ *	*** empty log message ***
+ *	
  *	Revision 1.2  2001/01/19 12:23:23  paul_noel
  *	*** empty log message ***
  *	
@@ -62,6 +74,7 @@
  *				beam, stiffener and plate.
  *	07/20/00    Ming	Added "stage" which covers stage nodes.
  *	07/24/00    Ming	Added "Macro" which covers ACconst objects.
+ *	06/24/03    yl		Added "compartment", related to tr7800 fix.
  *
  *************************************************************************/
 
@@ -76,7 +89,7 @@
 #include "v_drwproto.h"
 
 /*============================================================================*/
-#define COMP_NUM   	17	/* number of components */
+#define COMP_NUM   	20	/* number of components */
 #define COMP_LEN	20
 
 /* Component table
@@ -107,13 +120,16 @@ VD_compInit ()
 			"beam",
 			"cable",
 			"connect-comp",
+			"compartment",
 			"equipment",
 			"guide",
 			"hvac",
 			"joint",
+			"marking-line",
 			"nozzle",
 			"pipe",
 			"plate",
+			"r-equipment",
 			"rway",
 			"stiffener",
 			"struct-surf",
@@ -160,8 +176,8 @@ VD_compInit ()
 		fprintf (stderr, 
 		"\tError: Cannot create component table \t at line %d of %s\n",
 						__LINE__, __FILE__);
-	return (!VDnumComp);
 	End
+	return (!VDnumComp);
 }
 
 /*---------------------------------------------------------------------*/

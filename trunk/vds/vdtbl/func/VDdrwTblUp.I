@@ -1,4 +1,4 @@
-/* $Id: VDdrwTblUp.I,v 1.42 2002/05/20 22:26:46 ylong Exp $  */
+/* $Id: VDdrwTblUp.I,v 1.42.2.2 2003/07/29 16:50:44 ylong Exp $  */
 
 /***************************************************************************
  * I/VDS
@@ -11,6 +11,12 @@
  *
  * Revision History:
  *	$Log: VDdrwTblUp.I,v $
+ *	Revision 1.42.2.2  2003/07/29 16:50:44  ylong
+ *	Fix for TR7750
+ *
+ *	Revision 1.42.2.1  2003/05/12 19:29:09  ylong
+ *	TR7673 Filter out DELETED nodes/parts
+ *	
  *	Revision 1.42  2002/05/20 22:26:46  ylong
  *	*** empty log message ***
  *	
@@ -336,6 +342,7 @@ IGRlong	VDdrwTblCMD_getNodeFromModel (	TGRid	*treeID,
 
 	vd$trget_nodes (	nodeID		= treeID,
 				lookupType	= VDTR_FIND_ALL_NODE,
+				frozen		= 1,
 				outID		= &nodeIDs,
 				cnt		= &nodeCnt);
 	if( nodeCnt < 1 || !nodeIDs ) goto wrapup;
@@ -534,6 +541,7 @@ IGRlong VDdrwTblCMD_fillNameList ( TVDdrwTblInfo *info )
 	vd$trget_nodes(	nodeType	= info->stage,
 			nodeID		= &info->treeID,
 			lookupType	= VDTR_FIND_ALL_NODE,
+			frozen		= 1,
 			outID		= &nodeIDs,
 			cnt		= &nodeCnt);
 
@@ -583,6 +591,7 @@ IGRlong	VDdrwTblCMD_getNodeList (
 	
 	vd$trget_nodes (	nodeID		= rootID,
 				lookupType	= VDTR_FIND_ALL_NODE,
+				frozen		= 1,
 				outID		= &nodeIDs,
 				cnt		= &cnt);
 
@@ -1835,6 +1844,8 @@ IGRlong	VDdrwTblCMD_getNewList( TVDdrwTblInfo *info )
 		vdsa$GetStruct(	objID	= &nodeIDs[i], 
 				name	= "SA_AST:StagingTree:0:pcmk", 
 				txt	= info->newList[i].pcmk);
+		//printf("node %d: ", i);
+		//vdobj$Print(objID=&info->newList[i].model.obj_id);
 	}
 
 	// clean up outList and rvwList
@@ -2166,7 +2177,7 @@ IGRlong	VDdrwTblCMD_reviewOut( TVDdrwTblInfo *info )
 	for(i = 0; i < info->outCnt; i++ ) {
 		percent = 1 + 100*i/info->outCnt;
 		if( !(percent%10) ) {
-		  sprintf( szmsg, "Processing Review List: i = %d", i );
+		  sprintf( szmsg, "Processing Review List: %d%s", percent,"%" );
 		  UI_status( szmsg );
 		}
 
@@ -2870,8 +2881,6 @@ IGRlong VDdrwTblCMD_getUsrOpt( TVDdrwTblInfo *info )
 	 */
 	FIg_get_state( form, APPEND_CHK, &sel );
 	if( sel ) info->usrOpt |= VD_TBL_APP_NEW;
-	else info->usrOpt &= ~VD_TBL_APP_NEW;
-
 
 	/*
 	 * get item number options
@@ -2894,6 +2903,12 @@ IGRlong VDdrwTblCMD_getUsrOpt( TVDdrwTblInfo *info )
 		break;
 	};
 	
+	/*
+	 * get review lined out option
+	 */
+	FIg_get_state( form, REV_LINED_OUT_CHK, &sel );
+	if( sel ) info->usrOpt |= VD_TBL_REV_LINED_OUT;
+
 	if( !VDdrwTblCMD_chkStartItemNo ( info ) ) goto wrapup;
 
 	retFlag = 1;
