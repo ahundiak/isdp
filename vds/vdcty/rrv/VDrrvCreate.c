@@ -1,4 +1,4 @@
-/* $Id: VDrrvCreate.c,v 1.21 2002/05/10 19:34:04 ahundiak Exp $  */
+/* $Id: VDrrvCreate.c,v 1.21.2.1 2004/02/12 14:55:55 ahundiak Exp $  */
 
 /***************************************************************************
  * I/VDS
@@ -11,6 +11,9 @@
  *
  * Revision History:
  *      $Log: VDrrvCreate.c,v $
+ *      Revision 1.21.2.1  2004/02/12 14:55:55  ahundiak
+ *      ah
+ *
  *      Revision 1.21  2002/05/10 19:34:04  ahundiak
  *      ah
  *
@@ -725,6 +728,11 @@ void VDtestCreateSnapshot(TVDtestTestInfo *testInfo)
   
   // The actual test
   VDrrvCmdNotifyCreate(0,VDRRV_FORM_CREATE_B_CREATE,0.0,NULL);
+
+  // Save any tree 
+  if (s->treeID.objid != NULL_OBJID) {
+    VDctxSaveTreeToXmlFile(&s->treeID,s->xmlFileName);
+  }
 
   // See if it worked
   //sts = testResults();
