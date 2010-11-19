@@ -376,9 +376,10 @@ data[FTO_PATHNAME],data[count1+FTO_COFILENAME]));
 
 
 
-
-                  switch ( connect_status)
-		  {
+         g_assert(connect_status == FTP_MC);
+         switch ( connect_status)
+		     {
+#if 0
 		    case TLI_MC_CONN_LESS :
                    	status = NFMconnect (data [count + FTO_NODENAME],
                             data [count + FTO_USERNAME], dec_pass,NFM_TCP_PORT,
@@ -457,7 +458,10 @@ data[FTO_PATHNAME],data[count1+FTO_COFILENAME]));
 
 		      continue ;
                       }
+
 		      break;
+#endif
+#if 0
                     case FMU_MC :
 		     status = NETfmu_receive(src_file, dst_file,
                               data [count1 + FTO_FILETYPE], (int *)&size);
@@ -491,94 +495,76 @@ status = NFMset_buf_stat ( *buffer_ptr,y+1,FTO_STATUS2+1,status2);
 		      continue ;
                       }                     
                      break;
-                    case FTP_MC:
-		    default:
-                     status = NFMftp_receive (data [count1 + FTO_NODENAME],
-                              data [count1 + FTO_USERNAME], dec_pass, src_file, dst_file,
-                              data [count1 + FTO_FILETYPE], &size);
-                     if (status != NFM_S_SUCCESS)
-                      {
-			switch(status)
-			{
-				case NFM_E_NO_FILENAME:
-					status1 = NFM_E_NO_CO_FILENAME;
-					break;
-				case  NFM_E_FTP_FOPEN_WRITE_F_SHELL:
-					status1 = status;
-					break;
-				case  NFM_E_FTP_FOPEN_WRITE_F_SCRIPT:
-					status1 = status;
-					break;
-				case  NFM_E_FTP_FWRITE_F_SHELL:
-					status1 = status;
-NFMset_buf_stat ( *buffer_ptr,y+1,FTO_STATUS2+1,xfer_buf_status.status2);
-NFMset_buf_stat ( *buffer_ptr,y+1,FTO_STATUS3+1,xfer_buf_status.status3);
-					break;
-				case  NFM_E_FTP_FWRITE_F_SCRIPT:
-					status1 = status;
-NFMset_buf_stat ( *buffer_ptr,y+1,FTO_STATUS2+1,xfer_buf_status.status2);
-NFMset_buf_stat ( *buffer_ptr,y+1,FTO_STATUS3+1,xfer_buf_status.status3);
-					break;
-				case  NFM_E_STAT:
-					status1 = NFM_E_STAT_CO_FILENAME;
-					break;
-				default:
-		      			status1 = NFM_E_FTP_REC_CO_FILENAME;
-			}
-                        _NFMdebug ((fname,"FTP Rec File: status = <0x%.8x>\n",
-                        status));
-/* Load the error  for n_status and continue with next buffer */
-              	      NFMset_buf_stat ( *buffer_ptr,y+1,FTO_STATUS1+1,status1);
-		      NFMchmod(dst_file,fbuff.st_mode);
-		      continue ;
-                      }                     
-		      break;
-                   }
-		  if ( n_status1 == NFM_NFS_MOVE || n_status1 == NFM_LFM_NFS_MOVE)
-		  {
-			status = NFMchmod(dst_file,0444);
-			if(status != NFM_S_SUCCESS)
-			{
-				_NFMdebug((fname,"Cannot change mode to 0444 \
-for check out file <%s>: status <0x%.8x>\n",dst_file,status));
-			}	
-
-                  }
-		  
-                  if (size < 0)
-                   {
-                     status1=	status = NFM_E_BAD_CO_FILE_SIZE;
-		     status2 = size ;
-                     _NFMdebug ((fname,"Bad File Size: status =<0x%.8x>\n",
-                     status));
-                     ERRload_struct (NFM, status, "%d", size);
-/* Load the error  for n_status and continue with next buffer */
-              	      NFMset_buf_stat ( *buffer_ptr,y+1,FTO_STATUS1+1,status1);
-              	      NFMset_buf_stat ( *buffer_ptr,y+1,FTO_STATUS2+1,status2);
-		      continue ;
-                   }
-
-                  n_status1 = NFM_TRANSFERED ;
-                  NFMset_buf_stat(*buffer_ptr,y+1,FTO_CIFILESIZE+1,size);
-                  NFMset_buf_stat(*buffer_ptr,y+1,FTO_STATUS1+1,n_status1);
-                }
-             }
+#endif
+          /* =======================================
+           * Should always come here
+           */
+          case FTP_MC:
+		      default:
+            status = NFMftp_receive (
+              data [count1 + FTO_NODENAME],
+              data [count1 + FTO_USERNAME], dec_pass, src_file, dst_file,
+              data [count1 + FTO_FILETYPE], &size);
+            if (status != NFM_S_SUCCESS)
+            {
+			        switch(status)
+			        {
+				        case NFM_E_NO_FILENAME:
+					        status1 = NFM_E_NO_CO_FILENAME;
+					        break;
+				        case  NFM_E_FTP_FOPEN_WRITE_F_SHELL:
+					        status1 = status;
+					        break;
+				        case  NFM_E_FTP_FOPEN_WRITE_F_SCRIPT:
+					        status1 = status;
+					        break;
+				        case  NFM_E_FTP_FWRITE_F_SHELL:
+					        status1 = status;
+                  NFMset_buf_stat ( *buffer_ptr,y+1,FTO_STATUS2+1,xfer_buf_status.status2);
+                  NFMset_buf_stat ( *buffer_ptr,y+1,FTO_STATUS3+1,xfer_buf_status.status3);
+					        break;
+				        case  NFM_E_FTP_FWRITE_F_SCRIPT:
+					        status1 = status;
+                  NFMset_buf_stat ( *buffer_ptr,y+1,FTO_STATUS2+1,xfer_buf_status.status2);
+                  NFMset_buf_stat ( *buffer_ptr,y+1,FTO_STATUS3+1,xfer_buf_status.status3);
+					        break;
+				        case  NFM_E_STAT:
+					        status1 = NFM_E_STAT_CO_FILENAME;
+					        break;
+				        default:
+		      			  status1 = NFM_E_FTP_REC_CO_FILENAME;
+			        } // Status switch statement
+              NFMset_buf_stat ( *buffer_ptr,y+1,FTO_STATUS1+1,status1);
+		          NFMchmod(dst_file,fbuff.st_mode);
+		          continue ;
+            } // NFMftp_receive status check
+		        break;
+         } // connect_status switch
+		     if ( n_status1 == NFM_NFS_MOVE || n_status1 == NFM_LFM_NFS_MOVE)
+		     {
+			     status = NFMchmod(dst_file,0444);
+			     if(status != NFM_S_SUCCESS)
+			     {
+			     }
+         }
+         if (size < 0)
+         {
+           status1=	status = NFM_E_BAD_CO_FILE_SIZE;
+		       status2 = size ;
+           NFMset_buf_stat ( *buffer_ptr,y+1,FTO_STATUS1+1,status1);
+           NFMset_buf_stat ( *buffer_ptr,y+1,FTO_STATUS2+1,status2);
+		       continue ;
           }
+          n_status1 = NFM_TRANSFERED ;
+          NFMset_buf_stat(*buffer_ptr,y+1,FTO_CIFILESIZE+1,size);
+          NFMset_buf_stat(*buffer_ptr,y+1,FTO_STATUS1+1,n_status1);
+        }
       }
+    } // Should be the test for NFM_MOVE
+  } // Master loop for each row
 
-      status=NFMswitch_disconnect (connect_status,FILE_SOCK);
-/* The transfer is complete
-*/
-      if (status != NFM_S_SUCCESS)
-       {
-         _NFMdebug ((fname,"NFMswitch_disconnect: status = <0x%.8x>\n",
-         status));
-         return (status);
-       }
-
-      
-      _NFMdebug ((fname," SUCCESSFUL : status = <0x%.8x>\n",
-      status1));
-      return (status1);
-   }
+  // connect_status should always be three, no need to disconnect
+  g_assert(connect_status == FTP_MC);
+  return (status1);
+}
 
