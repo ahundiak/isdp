@@ -85,119 +85,21 @@ long NFMfs_dest_recv_clix ( MEMptr *buffer_ptr)
       /* Close a previous connection is open */
 		  connect_status = 0;
 
-/* set the protocol value based on the existence of TCPIP and or XNS */
-/* Check the source node also */
-              if    (! strcmp (data [count+FTO_TCPIP], "Y")  && 
-                     ! strcmp (data [FTO_TCPIP], "Y"))
-                 protocol = NET_TCP;
-              else if    (! strcmp (data [count+FTO_XNS], "Y")  && 
-                          ! strcmp (data [FTO_XNS], "Y"))
-                 protocol = NET_XNS;
-              else   
-              {
-                 _NFMdebug((fname,"<WARNING> Source and destination have no match on \
-protocol. Proceeding ....\n"));
+      /* set the protocol value based on the existence of TCPIP and or XNS */
+      protocol = NET_TCP;
 
-                 protocol = NULL;
-	      }
+      /* Decrypt the password */
+      status = NFMdecrypt (data [count + FTO_PASSWD], dec_pass);
+      if (status != NFM_S_SUCCESS)
+      { 
+		    status  = NFM_E_NET_DECRYPT;
+        status1 = NFM_E_NET_DECRYPT_CI_LOCATION ;
+		    NFMset_buf_stat ( *buffer_ptr,x+1,FTO_STATUS1+1,status1);
+		    continue ;
+      }
 
-/* Decrypt the password */
-
-              status = NFMdecrypt (data [count + FTO_PASSWD], dec_pass);
-              if (status != NFM_S_SUCCESS)
-               { 
-                  _NFMdebug ((fname," Net Decrypt : status = <0x%.8x>\n", status));
-		  status=NFM_E_NET_DECRYPT;
-		  ERRload_struct(NFM,status,"%s","Password");
-/* Load the error NFM_MOVE_FAILURE for n_status and continue with next buffer */
-                  status1 = NFM_E_NET_DECRYPT_CI_LOCATION ;
-		  NFMset_buf_stat ( *buffer_ptr,x+1,FTO_STATUS1+1,status1);
-		  continue ;
-                }
-
-/* Check the source location operating system . Use the appropriate method
-   to establish connection and transfer files */
-
-               if ((! strcmp (data [count + FTO_OPSYS], "CLIX")) || (! strcmp (data [count + FTO_OPSYS], "UNIX")))
-                {
-		   connect_status = TLI_MC_CONN_LESS;
-/* SAVE THE CONNECTION FOR LATER USE JUST IN CASE NFS IS
-   THE ONLY OPERATION */
-		 if(data[count + FTO_PLATTERNAME][0] != NULL) 
-		 {
-                   status = NFMconnect (data [count + FTO_NODENAME],
-                            data [count + FTO_USERNAME], dec_pass,NFM_TCP_PORT,
-                            NFM_XNS_PORT,FILE_SOCK, protocol);
-                   if (status != NFM_S_SUCCESS)
-                    {
-                      NFMdisconnect (FILE_SOCK);
-                      _NFMdebug ((fname,"File_connect : status = <0x%.8x>\n",
-                      status));
-		      status3 =  status2 = 0;
-		      switch(status)
-		      {
-				case NET_E_UNKNOWN_NODE:
-					status1=NFM_E_UNKNOWN_CI_NODENAME;
-					break;
-				case NET_E_TLI_BAD_PORT:
-					status1= NFM_E_BAD_TLI_PORT_FS1_FS2 ;
-					status2= net_buf_status.status2; 
-					break;
-				case NET_E_UNKNOWN_PROTOCOL:
-					status1= NFM_E_UNKNOWN_PROTOCOL_FS1_FS2;
-					status2 = net_buf_status.status2;
-					break;
-				case NET_E_TLI_CONNECT:
-					status1 = NFM_E_TLI_CONNECT_FS1_FS2;
-					status2 = net_buf_status.status2;
-					status3 = net_buf_status.status3;
-					break;
-				case NET_E_TLI_SEND:
-					status1 = NFM_E_TLI_SEND_FS1_FS2;
-					status2 = net_buf_status.status2;
-					status3 = net_buf_status.status3;
-				case NET_E_TLI_RECEIVE_SIZE:
-					status1 = NFM_E_TLI_RECEIVE_SIZE_FS1_FS2;
-					status2 = net_buf_status.status2;
-					status3 = net_buf_status.status3;
-				case NET_E_TLI_RECEIVE:
-					status1 = NFM_E_TLI_RECEIVE_FS1_FS2;
-					status2 = net_buf_status.status2;
-					status3 = net_buf_status.status3;
-				default:
-/* Load the errors returned by load_user_info ################### */
-					status1 = NFM_E_LOAD_USER_INFO_FS2;
-					status2 = status;
-				}
-/* Load the error  for n_status and continue with next buffer */
-              	      NFMset_buf_stat ( *buffer_ptr,x+1,FTO_STATUS1+1,status1);
-              	      NFMset_buf_stat ( *buffer_ptr,x+1,FTO_STATUS2+1,status2);
-              	      NFMset_buf_stat ( *buffer_ptr,x+1,FTO_STATUS3+1,status3);
-		      continue ;
-                    }
-                    connect_status = TLI_MC ;
-		   }
-                }
-               else if ((! strcmp (data [count + FTO_OPSYS], "VMS")) &&
-                        (protocol == NET_XNS)) /* VAX - IGI */ 
-                {
-                   status = NETfmu_connect (data [count + FTO_NODENAME],
-                            data [count + FTO_USERNAME],dec_pass);
-                   if (status != NET_S_SUCCESS)
-                    {
-                      NETfmu_disconnect();
-                      _NFMdebug ((fname,"fmu_connect : status = <0x%.8x>\n",
-                      status));
-/* Load the error for n_status and continue with next buffer */
-		      status1 = NFM_E_FMU_CONNECT_FS1_FS2;
-              	      NFMset_buf_stat ( *buffer_ptr,x+1,FTO_STATUS1+1,status1);
-		      continue ;
-                    }
-                    connect_status = FMU_MC ;
-                }
-               else
-                    connect_status = FTP_MC ;
-
+      /* Check the source location operating system . Use the appropriate method to establish connection and transfer files */
+      connect_status = FTP_MC ;
 		
             for (y = x; y < (*buffer_ptr) -> rows; ++y)
              {
