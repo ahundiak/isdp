@@ -262,7 +262,7 @@ node_name,user_name,"IS NOT PRINTED",f_stdout,status));
       return (NFM_S_SUCCESS);
    }
 
-
+#if 0
  long NFMftp_receive (node_name, user_name, passwd, 
                       src_file, dst_file, type, size)
    char     *node_name, *user_name, *passwd;
@@ -451,7 +451,7 @@ node_name,user_name,"IS NOT PRINTED",f_stdout,status));
       _NFMdebug ((fname,"SUCCESSFUL : status = <0x%.8x>\n", NFM_S_SUCCESS));
       return (NFM_S_SUCCESS);
    }
-
+#endif
  long NFMftp_send (node_name, user_name, passwd, 
                       src_file, dst_file, type, size)
    char     *node_name, *user_name, *passwd;
