@@ -130,6 +130,7 @@ long NFMfs_dest_recv_clix ( MEMptr *buffer_ptr)
           size = 0;
 
           /* Verify that file is not there locally */
+          // A return of 0 means the file was found
           dst_stat_status = stat (dst_file, &fbuff);
 
           /* For local file manager transfers do the lfm check */
@@ -145,81 +146,12 @@ long NFMfs_dest_recv_clix ( MEMptr *buffer_ptr)
 		          continue ;
             }
           }
-/* If the file exists locally change mode to   0777 
-   Now the file can be written to */
-		if(dst_stat_status == 0)
-		{
-			status = NFMchmod(dst_file,0777);
-/* CHMOD Failed OK 
-   FOPEN WRITE WILL FAIL IF FILE IS NOT WRITABLE BY USER
-   PROCEED ANYWAY
-			if(status != NFM_S_SUCCESS )
-			{
-				_NFMdebug((fname,"Cannot change mode to 0777 \
-for check out file <%s>: status <0x%.8x>\n",dst_file,status));
-                		NFMset_buf_stat ( *buffer_ptr,y+1,FTO_STATUS1+1,NFM_E_CHMOD_CO_FILENAME);
-                		NFMset_buf_stat ( *buffer_ptr,y+1,FTO_STATUS2+1,
-                                  0777);
-				continue;
-			}	
-*/
-		}
-
-/* If it is a TLI_MC 
-   Check if NFS is specified, mountpoint is given and
-   TCP/IP is set to 'Y' on both the machines 
-*/
-		if((connect_status == TLI_MC || connect_status == TLI_MC_CONN_LESS)  && 
-		   !strcmp(data[FTO_NFS],"Y")  &&
-		   !strcmp(data[count1+FTO_NFS],"Y"))
-		{
-/* If a file was transfered using NFS remove it anyway
-   as a new nfs_file_transfer will be performed
-*/
-/*
-			if((n_status1 == NFM_MOVE || n_status1 == NFM_LFM_MOVE))
-			{
-*/
-				status = NFMnfs_file_remove(data[FTO_NODENAME]
-,data[count1+FTO_NODENAME],data[count1+FTO_PATHNAME],data[count1+FTO_CIFILENAME],
-data[count1+FTO_COFILENAME],NFS_CO_DIR,data[count1+FTO_MOUNTPOINT], 0);
-				if(status != NFM_S_SUCCESS)
-				{
-_NFMdebug((fname,"Unable to remove NFS mounted/linked file <%s/%s>\n",
-data[FTO_PATHNAME],data[count1+FTO_COFILENAME]));
-                                  NFMset_buf_stat(*buffer_ptr,y+1,FTO_STATUS1+1,NFM_E_NFS_REMOVE_FILE);
-
-				}
-/*
-			}
-*/
-			if(n_status1 == NFM_NFS_MOVE || n_status1 == NFM_LFM_NFS_MOVE)
-			{
-				status = NFMnfs_file_transfer(data[FTO_NODENAME]
-,data[count1+FTO_NODENAME],data[count1+FTO_PATHNAME],data[count1+FTO_CIFILENAME],
-data[count1+FTO_COFILENAME],NFS_CO_DIR,data[count1+FTO_MOUNTPOINT],NO_LFM_CHECK);
-				if(status == NFM_S_SUCCESS)
-				{
-
-/* Set size to 0 for NFSED files */
-
-				  size = 0;
-                                  NFMset_buf_stat(*buffer_ptr,y+1,FTO_CIFILESIZE+1,size);
-
-                                  NFMset_buf_stat(*buffer_ptr,y+1,FTO_STATUS1+1,NFM_NFSED);
-				 _NFMdebug((fname,"NFS Used for file <%s/%s>\n",
-data[FTO_PATHNAME],data[count1+FTO_COFILENAME]));
-				  continue;
-		
-				}
-				else
-				{
-/* reset the mountpoint and n_nfs fields */
-					MEMwrite_data(*buffer_ptr,"",y+1,FTO_MOUNTPOINT+1);
-					MEMwrite_data(*buffer_ptr,"",y+1,FTO_NFS+1);
-				}
-			}
-		}
+          /* If the file exists locally change mode to   0777  Now the file can be written to */
+          // Other code kicks in to control overwrites???
+		      if(dst_stat_status == 0)
+		      {
+			      status = NFMchmod(dst_file,0777);
+		      }
 
           // Always ftp
           g_assert(connect_status == FTP_MC);
@@ -257,7 +189,7 @@ data[FTO_PATHNAME],data[count1+FTO_COFILENAME]));
 		      	    status1 = NFM_E_FTP_REC_CO_FILENAME;
 			      } // Status switch statement
             NFMset_buf_stat ( *buffer_ptr,y+1,FTO_STATUS1+1,status1);
-		        NFMchmod(dst_file,fbuff.st_mode);
+		        NFMchmod(dst_file,fbuff.st_mode); // This I don't like
 		        continue ;
           } // NFMftp_receive status check
 		      if ( n_status1 == NFM_NFS_MOVE || n_status1 == NFM_LFM_NFS_MOVE)
@@ -276,10 +208,10 @@ data[FTO_PATHNAME],data[count1+FTO_COFILENAME]));
           n_status1 = NFM_TRANSFERED ;
           NFMset_buf_stat(*buffer_ptr,y+1,FTO_CIFILESIZE+1,size);
           NFMset_buf_stat(*buffer_ptr,y+1,FTO_STATUS1+1,n_status1);
-        }
-      }
-    } // Should be the test for NFM_MOVE
-  } // Master loop for each row
+        } // n_status1 loop
+      } // Y Loop
+    } // n_status loop
+  } // X loop
 
   // connect_status should always be three, no need to disconnect
   g_assert(connect_status == FTP_MC);
