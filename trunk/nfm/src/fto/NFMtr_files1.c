@@ -100,69 +100,51 @@ long NFMfs_dest_recv_clix ( MEMptr *buffer_ptr)
 
       /* Check the source location operating system . Use the appropriate method to establish connection and transfer files */
       connect_status = FTP_MC ;
-		
-            for (y = x; y < (*buffer_ptr) -> rows; ++y)
-             {
-               count1 = (*buffer_ptr) -> columns * y;
-               n_status1 = atol(data [ count1 + FTO_STATUS1]);
 
-               if((n_status1 == NFM_MOVE || n_status1 == NFM_LFM_MOVE || n_status1 == NFM_NFS_MOVE || n_status1 == NFM_LFM_NFS_MOVE) &&
+      // Still not sure about this loop
+      for (y = x; y < (*buffer_ptr) -> rows; ++y)
+      {
+        count1 = (*buffer_ptr) -> columns * y;
+        n_status1 = atol(data [ count1 + FTO_STATUS1]);
 
-	              (! strcmp (data [count + FTO_SANO],data[count1+FTO_SANO])))
-                {
-                  status = NFMappend_path_file (data [count1 + FTO_OPSYS],
-                           data [count1 + FTO_PATHNAME], data [count1 + FTO_CIFILENAME], 
-                           src_file);
-                  if (status != NFM_S_SUCCESS)
-                   {
-                     _NFMdebug ((fname,"Append path failed : opsys <%s> pathname <%s>\n\
-filename <%s> : status = <0x%.8x>\n",data[count1 + FTO_OPSYS],data[count1 + FTO_PATHNAME],
-data[count1 + FTO_CIFILENAME], status));
-/* Load the error  for n_status and continue with next buffer */
-		      status1 = NFM_E_APPEND_CI ;
-              	      NFMset_buf_stat ( *buffer_ptr,y+1,FTO_STATUS1+1,status1);
-		      continue ;
-                   }
+        if((n_status1 == NFM_MOVE || n_status1 == NFM_LFM_MOVE || n_status1 == NFM_NFS_MOVE || n_status1 == NFM_LFM_NFS_MOVE) &&
+           (! strcmp (data [count + FTO_SANO],data[count1+FTO_SANO])))
+        {
+          // Always does this
+          status = NFMappend_path_file (data [count1 + FTO_OPSYS],data [count1 + FTO_PATHNAME], data [count1 + FTO_CIFILENAME], src_file);
+          if (status != NFM_S_SUCCESS)
+          {
+            /* Load the error  for n_status and continue with next buffer */
+		        status1 = NFM_E_APPEND_CI ;
+            NFMset_buf_stat ( *buffer_ptr,y+1,FTO_STATUS1+1,status1);
+		        continue ;
+          }
+          status = NFMappend_path_file (data [FTO_OPSYS],data [FTO_PATHNAME], data [count1 + FTO_COFILENAME], dst_file);
+          if (status != NFM_S_SUCCESS)
+          {
+            /* Load the error NFM_MOVE_FAILURE for n_status and continue with next buffer */
+		        status1 = NFM_E_APPEND_CO ;
+            NFMset_buf_stat ( *buffer_ptr,y+1,FTO_STATUS1+1,status1);
+		        continue ;
+          }
+          size = 0;
 
-                  status = NFMappend_path_file (data [FTO_OPSYS],
-                           data [FTO_PATHNAME], data [count1 + FTO_COFILENAME], dst_file);
-                  if (status != NFM_S_SUCCESS)
-                   {
-                     _NFMdebug ((fname,"Append path failed : opsys <%s> pathname <%s>\n\
-filename <%s> : status = <0x%.8x>\n",data[FTO_OPSYS],data[FTO_PATHNAME],
-data[count1 + FTO_COFILENAME], status));
-/* Load the error NFM_MOVE_FAILURE for n_status and continue with next buffer */
-		      status1 = NFM_E_APPEND_CO ;
-              	      NFMset_buf_stat ( *buffer_ptr,y+1,FTO_STATUS1+1,status1);
-		      continue ;
-                   }
- 
-                  size = 0;
-/* Verify that file is not there locally */
+          /* Verify that file is not there locally */
+          dst_stat_status = stat (dst_file, &fbuff);
 
-/* 12/9/92 - KT - Replace 'Stat' with stat
-                 dst_stat_status = Stat (dst_file, &fbuff);
-*/
-                 dst_stat_status = stat (dst_file, &fbuff);
-/* For local file manager transfers do the lfm check */
-	         if(n_status1 == NFM_LFM_MOVE || n_status1 == NFM_LFM_NFS_MOVE )
-                 {
-/* Make sure it is not "/usr/tmp" as we use this for temporary transfer */
-		    if(strncmp(dst_file,"/usr/tmp", 8 ) == 0 )
-                     dst_stat_status = NFM_S_SUCCESS ;
-                    if (dst_stat_status == 0 ) 
-                    {
-                     ERRload_struct (NFM, NFM_E_LFM_FILE_EXISTS, "%s%s", dst_file,data[FTO_NODENAME]);
-                     _NFMdebug((fname,"File <%s> exists locally on <%s>: status = <0x%.8x>\n",dst_file,data[FTO_NODENAME], NFM_E_LFM_FILE_EXISTS));
-/* Load the error NFM_EXIST_LOCALLY for n_status and continue with next buffer */
-		      if(n_status1 == NFM_LFM_MOVE )
-              	      NFMset_buf_stat ( *buffer_ptr,y+1,FTO_STATUS1+1,NFM_E_LFM_EXISTS_LOCALLY);
-                      else
-              	      NFMset_buf_stat ( *buffer_ptr,y+1,FTO_STATUS1+1,NFM_E_LFM_NFS_EXISTS_LOCALLY);
-                      status1= NFM_E_LFM_FILE_EXISTS ;
-		      continue ;
-                    }
-                 }
+          /* For local file manager transfers do the lfm check */
+	        if(n_status1 == NFM_LFM_MOVE || n_status1 == NFM_LFM_NFS_MOVE )
+          {
+            /* Make sure it is not "/usr/tmp" as we use this for temporary transfer */
+		        if(strncmp(dst_file,"/usr/tmp", 8 ) == 0 )dst_stat_status = NFM_S_SUCCESS ;
+            if (dst_stat_status == 0 ) 
+            {
+		          if(n_status1 == NFM_LFM_MOVE ) NFMset_buf_stat ( *buffer_ptr,y+1,FTO_STATUS1+1,NFM_E_LFM_EXISTS_LOCALLY);
+              else                           NFMset_buf_stat ( *buffer_ptr,y+1,FTO_STATUS1+1,NFM_E_LFM_NFS_EXISTS_LOCALLY);
+              status1= NFM_E_LFM_FILE_EXISTS ;
+		          continue ;
+            }
+          }
 /* If the file exists locally change mode to   0777 
    Now the file can be written to */
 		if(dst_stat_status == 0)
