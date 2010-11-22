@@ -44,7 +44,7 @@ extern NFMuser_info_struct NFMuser_info ;
 
 long NFMfs_dest_recv_clix ( MEMptr *buffer_ptr)
 {
-  char *fname="NFMfs_dest_recv_clix";
+  char    *fname="NFMfs_dest_recv_clix";
   long     status,status1,status2,status3,dst_stat_status;
   char     **data;
   long     connect_status = 0;
