@@ -213,8 +213,7 @@ long NFMfs_dest_recv_clix ( MEMptr *buffer_ptr)
     } // n_status loop
   } // X loop
 
-  // connect_status should always be three, no need to disconnect
-  g_assert(connect_status == FTP_MC);
+  // No need to disconnect
   return (status1);
 }
 
