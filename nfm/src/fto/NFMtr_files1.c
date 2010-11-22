@@ -42,85 +42,48 @@ extern NFMuser_info_struct NFMuser_info ;
 *	many files as possible						*
 ************************************************************************/
 
- long NFMfs_dest_recv_clix ( buffer_ptr)
-   MEMptr *buffer_ptr;
-   {
-      char *fname="NFMfs_dest_recv_clix";
-      long     status,status1,status2,status3,dst_stat_status;
-      char     **data;
-      long     connect_status = 0;
-      long     x, y, count, count1;
-      char     dec_pass [NFM_PASSWD],NFS_CO_DIR[NFM_FILENAME+1];
-      char     src_file [512], dst_file [512];
-      long     size, protocol,n_status,n_status1;
-      struct   stat  fbuff;
-      int     *FILE_SOCK,FILE_SOCK_VAL;
+long NFMfs_dest_recv_clix ( MEMptr *buffer_ptr)
+{
+  char *fname="NFMfs_dest_recv_clix";
+  long     status,status1,status2,status3,dst_stat_status;
+  char     **data;
+  long     connect_status = 0;
+  long     x, y, count, count1;
+  char     dec_pass [NFM_PASSWD],NFS_CO_DIR[NFM_FILENAME+1];
+  char     src_file [512], dst_file [512];
+  long     size, protocol,n_status,n_status1;
+  struct   stat  fbuff;
+  int     *FILE_SOCK,FILE_SOCK_VAL;
 
+  /* Initialize variables */
+  connect_status = 0;
+  FILE_SOCK = &FILE_SOCK_VAL;
+  *FILE_SOCK = -1 ;
+  n_status = n_status1 = status2 = status3 = 0;
+  status1 = NFM_S_SUCCESS ;
 
-      _NFMdebug ((fname,"Entry MEMptr *buffer_ptr = <%x>\n",*buffer_ptr));
+  /* MEMbuild array to access data in the buffer Return on failure */
+  status = MEMbuild_array (*buffer_ptr);
+  g_return_val_if_fail(status == MEM_S_SUCCESS,NFM_E_MEM_BUILD_ARRAY_BUFFER);
 
-/* Initialize variables */
-      connect_status = 0;
-      FILE_SOCK = &FILE_SOCK_VAL;
-      *FILE_SOCK = -1 ;
-      n_status = n_status1 = status2 = status3 = 0;
-      status1 = NFM_S_SUCCESS ;
+  data    = (char **) (*buffer_ptr) -> data_ptr;
+  if(strlen(data[FTO_PATHNAME]) > 0 ) strncpy(NFS_CO_DIR,data[FTO_PATHNAME],NFM_FILENAME);
+  else                                strncpy(NFS_CO_DIR,NFMuser_info.dir,NFM_FILENAME);
+  NFS_CO_DIR[NFM_FILENAME] = '\0';
 
-/* MEMbuild array to access data in the buffer Return on failure */
+  for (x = 1; x < (*buffer_ptr) -> rows; ++x)
+  {
+    /* Extract n_status from the second position onwards. First position is the "check out location"  */
 
-      status = MEMbuild_array (*buffer_ptr);
-      if (status != MEM_S_SUCCESS)
-       {
-         ERRload_struct (NFM, NFM_E_MEM_ERR,"%s%s%s%x", "MEMbuild_array for *buffer_ptr",fname,"status",status);
+    /* Process All the rows even if error occurs in processing */
+    count = (*buffer_ptr) -> columns * x;
+    n_status = atol(data [ count + FTO_STATUS1]);
 
-         _NFMdebug ((fname,"MEM Build Array for *buffer_ptr : status = <0x%.8x>\n", status));
-         return (NFM_E_MEM_BUILD_ARRAY_BUFFER);
-       }
-
-
-      data    = (char **) (*buffer_ptr) -> data_ptr;
-      if(strlen(data[FTO_PATHNAME]) > 0 )
-	strncpy(NFS_CO_DIR,data[FTO_PATHNAME],NFM_FILENAME);
-      else
-	strncpy(NFS_CO_DIR,NFMuser_info.dir,NFM_FILENAME);
-      NFS_CO_DIR[NFM_FILENAME] = '\0';
-
-
-      for (x = 1; x < (*buffer_ptr) -> rows; ++x)
-       {
-/* Extract n_status from the second position onwards. First position is the
-   "check out location"  */
-
-/* Process All the rows even if error occurs in processing */
-
-         count = (*buffer_ptr) -> columns * x;
-         n_status = atol(data [ count + FTO_STATUS1]);
-/* If the  status is *_MOVE move the files */
-
-         if(n_status == NFM_MOVE || n_status == NFM_LFM_MOVE || 
-            n_status == NFM_NFS_MOVE || n_status == NFM_LFM_NFS_MOVE)
-          {
-/* Close a previous connection is open */
-
-            if (connect_status > 0 )
-             {
-               switch ( connect_status )
-		{
-			case TLI_MC:
-			
-		               status = NFMdisconnect (FILE_SOCK);
-                               break;
-			case FMU_MC:
-		               status = NETfmu_disconnect ();
-                               break;
-			case FTP_MC:
-				break;
-			default:
-		               status = NFMdisconnect (FILE_SOCK);
-                               break;
-                 }
-		connect_status = 0;
-	      }
+    /* If the  status is *_MOVE move the files */
+    if(n_status == NFM_MOVE || n_status == NFM_LFM_MOVE || n_status == NFM_NFS_MOVE || n_status == NFM_LFM_NFS_MOVE)
+    {
+      /* Close a previous connection is open */
+		  connect_status = 0;
 
 /* set the protocol value based on the existence of TCPIP and or XNS */
 /* Check the source node also */
