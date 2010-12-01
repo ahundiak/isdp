@@ -186,7 +186,7 @@ static void init_globals(void)
 	RIS_def_schname[0] = '\0';
 	RIS_parms_filename[0] = '\0';
 
-	memset(&RIS_client_parms, 0, sizeof(RIS_client_parms));
+	memset(&RIS_client_parms,  0, sizeof(RIS_client_parms));
 	memset(&RIS_schfile_parms, 0, sizeof(RIS_schfile_parms));
 
 	RIS_stmt = 0;
@@ -195,9 +195,9 @@ static void init_globals(void)
 
 	RIS_net = 0;
 	RIS_net_finish_mode = DEALLOCATE;
-	RIS_read = 0;
+	RIS_read  = 0;
 	RIS_write = 0;
-	RIS_save_read = 0;
+	RIS_save_read  = 0;
 	RIS_save_write = 0;
 
 	memset(&RISsuperschema_error, 0, sizeof(RISsuperschema_error));
