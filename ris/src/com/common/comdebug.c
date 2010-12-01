@@ -128,8 +128,8 @@ static flag_info_s debug_info[] =
  { "usr",    3, USR_DBG_BIT,     &RISusr_debug,     0, 1, 0, 1, 1, 1, 0 },
  { "tcpsrv", 6, TCPSRV_DBG_BIT,  &RIStcpsrv_debug,  0, 0, 0, 0, 1, 1, 0 },
  { "cpp",    3, CPP_DBG_BIT,     &RIScpp_debug,     0, 0, 0, 0, 1, 1, 0 },
- { "remote", 6, REMOTE_BIT, 	 &RIS_remote_test,  0, 1, 0, 1, 1, 0, 0 },
- { "upgrade",7, UPGRADE_BIT,	 &RIS_upgrade_flag, 1, 1, 1, 0, 1, 1, 0 },
+ { "remote", 6, REMOTE_BIT,      &RIS_remote_test,  0, 1, 0, 1, 1, 0, 0 },
+ { "upgrade",7, UPGRADE_BIT,     &RIS_upgrade_flag, 1, 1, 1, 0, 1, 1, 0 },
  { "upg",    3, UPG_DBG_BIT,     &RISupg_debug,     1, 0, 0, 0, 1, 1, 0 },
 #if defined(WIN32)
  { "odbc",   4, ODBC_DBG_BIT,    &RISodbc_debug,    1, 0, 0, 1, 1, 1, 0 },
@@ -147,8 +147,7 @@ static  FILE     *debug_fp = NULL;
 
 /******************************************************************************/
 
-extern void RIScom_initialize_debug(
-	void)
+extern void RIScom_initialize_debug(void)
 {
 	char    *ptr;
 	char    buf[RIS_MAX_PATH_SIZE];
@@ -246,19 +245,14 @@ extern void RIScom_initialize_debug(
 
 /******************************************************************************/
 
-extern void RIScom_set_debug_output_device(
-	char    *output_device)
+extern void RIScom_set_debug_output_device(char *output_device)
 {
 	strcpy(debug_output_device, output_device);
 }
 
 /******************************************************************************/
 
-extern char *RIScom_debug_flags(
-	char    *s,
-	int             *applicationp,
-	int             *clientp,
-	int             *serverp)
+extern char *RIScom_debug_flags(char *s, int *applicationp, int *clientp, int *serverp)
 {
 	int     i;
 	int toggle = 1;
@@ -337,8 +331,7 @@ extern char *RIScom_debug_flags(
 
 /******************************************************************************/
 
-extern unsigned int RIScom_debug_flags_to_mask(
-	void)
+extern unsigned int RIScom_debug_flags_to_mask(void)
 {
 	int i;
 	unsigned int mask = 0;
@@ -359,8 +352,7 @@ extern unsigned int RIScom_debug_flags_to_mask(
 /*
 **      This routine will set or clear the flags as indicated by the mask
 */
-static void set_and_clear_mask_to_flags(
-	unsigned int mask)
+static void set_and_clear_mask_to_flags(unsigned int mask)
 {
 	int i;
 
@@ -377,8 +369,7 @@ static void set_and_clear_mask_to_flags(
 **      is used to set new flags and at the same time leave previously set
 **      flags still set.
 */
-static void set_only_mask_to_flags(
-	unsigned int mask)
+static void set_only_mask_to_flags(unsigned int mask)
 {
 	int i;
 
@@ -391,9 +382,7 @@ static void set_only_mask_to_flags(
 
 /******************************************************************************/
 
-extern int RIScom_debug_mask_to_flags(
-	unsigned int    mask,
-	unsigned int    mode)
+extern int RIScom_debug_mask_to_flags(unsigned int mask, unsigned int mode)
 {
 	int	status;
 
@@ -418,8 +407,7 @@ extern int RIScom_debug_mask_to_flags(
 
 /******************************************************************************/
 
-extern void RIScom_get_debug_flags(
-	char *s)
+extern void RIScom_get_debug_flags(char *s)
 {
 	int	i;
 	char *sp;
@@ -438,8 +426,7 @@ extern void RIScom_get_debug_flags(
 
 /******************************************************************************/
 
-extern void RIScom_output_debug_flags(
-	int     (* output_func)(const char *, ...))
+extern void RIScom_output_debug_flags(int (* output_func)(const char *, ...))
 {
 	int		i;
 	char    need_newline = 0;
@@ -470,9 +457,7 @@ extern void RIScom_output_debug_flags(
 
 /******************************************************************************/
 
-extern void RIScom_get_output_device_name(
-	char *input,
-	char *output_device)
+extern void RIScom_get_output_device_name(char *input, char *output_device)
 {
 	char *ptr;
 #if defined(__clipper__) || defined(__hpux__) 
@@ -527,9 +512,7 @@ extern void RIScom_get_output_device_name(
 
 /******************************************************************************/
 
-extern int RIScom_output_debug(
-	const char *fmt,
-	...)
+extern int RIScom_output_debug(const char *fmt, ...)
 {
 	int                     sts;
 	va_list         args;
@@ -586,10 +569,7 @@ extern int RIScom_voutput_debug(
 
 /******************************************************************************/
 
-extern void RIScom_backup_and_reset_flags(
-	int		application,
-	int		client,
-	int		server)
+extern void RIScom_backup_and_reset_flags(int application, int client, int server)
 {
 	int		i;
 
@@ -620,5 +600,3 @@ extern void RIScom_restore_flags()
 		}
 	}
 }
-
- 

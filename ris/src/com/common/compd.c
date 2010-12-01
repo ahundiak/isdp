@@ -301,27 +301,21 @@ static void com_depd(
 
 /******************************************************************************/
 
-extern void RIScom_pd(
-	char *pd,
-	char *crpt)
+extern void RIScom_pd(char *pd, char *crpt)
 {
 	com_pd(pd, crpt, RIS_PD_KEYS);
 }
 
 /******************************************************************************/
 
-extern void RIScom_depd(
-	char *crpt,
-	char *decrpt)
+extern void RIScom_depd(char *crpt, char *decrpt)
 {
 	com_depd(crpt, decrpt, RIS_PD_KEYS);
 }
 
 /**************************************************************************/
 
-extern int RIScom_pd_same(
-	char *pd,
-	char *crpt)
+extern int RIScom_pd_same(char *pd, char *crpt)
 {
 	char dcrpt[RIS_MAX_ID_SIZE];
 	int i, st;
@@ -346,9 +340,7 @@ extern int RIScom_pd_same(
 
 /**************************************************************************/
 
-extern int RIScom_pdcmp(
-	char *crpt1,
-	char *crpt2)
+extern int RIScom_pdcmp(char *crpt1, char *crpt2)
 {
 	char dcrpt1[RIS_MAX_ID_SIZE];
 	char dcrpt2[RIS_MAX_ID_SIZE];
@@ -373,18 +365,14 @@ extern int RIScom_pdcmp(
 
 /**************************************************************************/
 
-extern void RIScom_rap_pd(
-	char *pd,
-	char *crpt)
+extern void RIScom_rap_pd(char *pd, char *crpt)
 {
 	com_pd(pd, crpt, RIS_PD_KEYS-1);
 }
 
 /******************************************************************************/
 
-extern void RIScom_rap_depd(
-	char *crpt,
-	char *decrpt)
+extern void RIScom_rap_depd(char *crpt, char *decrpt)
 {
 	com_depd(crpt, decrpt, RIS_PD_KEYS-1);
 }

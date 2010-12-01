@@ -18,8 +18,7 @@
 
 /******************************************************************************/
 
-extern int RIScom_leap_year(
-	unsigned int year)
+extern int RIScom_leap_year(unsigned int year)
 {
 	/*
 	**	Before 1752 leap years were incorrectly calculated.  In September 1752
@@ -45,9 +44,7 @@ extern int RIScom_leap_year(
 
 /******************************************************************************/
 
-extern unsigned int RIScom_days_in_month(
-	unsigned int month,
-	unsigned int year)
+extern unsigned int RIScom_days_in_month(unsigned int month, unsigned int year)
 {
 	unsigned int days;
 	static unsigned int month_day[13] = {0,31,28,31,30,31,30,31,31,30,31,30,31};
@@ -62,8 +59,7 @@ extern unsigned int RIScom_days_in_month(
 
 /******************************************************************************/
 
-extern int RIScom_invalid_date(
-	datetime *date)
+extern int RIScom_invalid_date(datetime *date)
 {
 	unsigned int days;
 
@@ -92,8 +88,7 @@ extern int RIScom_invalid_date(
 
 /******************************************************************************/
 
-extern unsigned int RIScom_calc_doy(
-	datetime *date)
+extern unsigned int RIScom_calc_doy(datetime *date)
 {
 	unsigned int days;
 	static unsigned int month_tot[12] = { 0,31,59,90,120,151,181,212,243,273,304,334 };
@@ -118,9 +113,7 @@ extern unsigned int RIScom_calc_doy(
 
 /******************************************************************************/
 
-extern int RIScom_days_between(
-	datetime *date1,
-	datetime *date2)
+extern int RIScom_days_between(datetime *date1, datetime *date2)
 {
 	/*
 	**	returns positive days if date1 greater than date2
@@ -187,8 +180,7 @@ extern int RIScom_days_between(
 
 /******************************************************************************/
 
-extern int RIScom_calc_dow(
-	datetime *date)
+extern int RIScom_calc_dow(datetime *date)
 {
 	int dow;
 	int days;
@@ -209,8 +201,7 @@ extern int RIScom_calc_dow(
 
 /******************************************************************************/
 
-extern char RIScom_dtseparator(
-	char index)
+extern char RIScom_dtseparator(char index)
 {
 	static char separators[DT_COUNT] =
 	{
@@ -223,9 +214,7 @@ extern char RIScom_dtseparator(
 
 /******************************************************************************/
 
-extern int RIScom_char_to_datetime(
-	char *source,
-	dtime *dest)
+extern int RIScom_char_to_datetime(char *source, dtime *dest)
 {
 	/*
 	**	Returns 0 if source string is a valid datetime string
