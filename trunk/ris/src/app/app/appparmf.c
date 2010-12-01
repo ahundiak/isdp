@@ -180,29 +180,31 @@
 #define CL_PROTOCOL_SIZE		(sizeof(CL_PROTOCOL)-1)
 #define CL_PROTOCOL_SPEC		"%c"
 
-#if defined(unix) || defined(WIN32)
-#define CL_PROTOCOL_DEFAULT     'M'
+#if 1
+#define CL_PROTOCOL_DEFAULT   'M'
+#define CL_ADDRESS_DEFAULT		""
+#define CL_USERNAME_DEFAULT		""
+#define CL_PASSWORD_DEFAULT		""
 #endif
-#ifdef THINK_N_FIX
-#if defined(DOS)
-#define CL_PROTOCOL_DEFAULT     'T'
+
+#if 0
+#define CL_PROTOCOL_DEFAULT   'T'
+#define CL_ADDRESS_DEFAULT		"lpd"
+#define CL_USERNAME_DEFAULT		"nfmadmin"
+#define CL_PASSWORD_DEFAULT		"something"
 #endif
-#endif
-	
+
 #define CL_ADDRESS				"CLIENT_ADDRESS"
 #define CL_ADDRESS_SIZE			(sizeof(CL_ADDRESS)-1)
 #define CL_ADDRESS_SPEC			"%s"
-#define CL_ADDRESS_DEFAULT		""
 	
 #define CL_USERNAME				"CLIENT_USERNAME"
 #define CL_USERNAME_SIZE		(sizeof(CL_USERNAME)-1)
 #define CL_USERNAME_SPEC		"%s"
-#define CL_USERNAME_DEFAULT		""
 	
 #define CL_PASSWORD				"CLIENT_PASSWORD"
 #define CL_PASSWORD_SIZE		(sizeof(CL_PASSWORD)-1)
 #define CL_PASSWORD_SPEC		"%s"
-#define CL_PASSWORD_DEFAULT		""
 
 #define CL_VERSION				"CLIENT_VERSION"
 #define CL_VERSION_SIZE			(sizeof(CL_VERSION)-1)
