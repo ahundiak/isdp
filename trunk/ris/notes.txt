@@ -1,0 +1,373 @@
+netlocal core dumps when add to PDUimage.
+
+NET_connect_local
+NET_connect
+RISapp_start_client
+RISXlocate_schema
+RISlocate_schema
+
+Which sort of makes sense, locate schema needs to connect to the ris server.
+
+Basic problm is with #ifdef
+
+DOS,vms,__clipper__,sco,__hpux__
+
+unix,__unix
+
+sun || __Sol2__
+
+WIN32 || Soli
+
+Soli appears to be used for PC arch while Sun is more sparc oriented
+
+But sun,__sun are pretty basic
+
+dev04 has __Sol2__
+-D__i386
+
+change sun to sunx when we want to sparc skip
+
+Find solaris 8 build enviroment
+
+
+typedef struct net_mem_info_s in risnet.h
+
+ris.h              okay
+ris_err.h          okay
+ris_inf.h          okay
+risap_cl.h         okay
+risapi.h           okay
+risapp.h           fixed - show prototypes
+risapp_interface.h okay
+risapp_rap.h       okay
+risarch.h          fixed
+risasync.h         okay
+riscl_sr.h         fixed ris_attr_info structure
+riscom.h           okay
+riscom_macro.h     okay
+risdebug.h         okay
+risdict.h          okay but see note below
+risflags.h         okay
+risinsql.h         okay
+rislang.h          okay
+rislimit.h         okay
+rismem.h           okay
+risnet.h           fixed net_mem_info_s
+risnet_err.h       okay
+risnet_shmem.h     fixed
+risnet_stubs.h     okay
+rispath.h          fixed
+risprods.h         okay
+risrap.h           okay
+risstjmp.h         okay
+rissttyp.h         okay
+ristypes.h         okay
+risums.h           okay
+risver.h           okay
+
+
+For risdict.h, use RISDICT_GLOBAL_DEFINE to build RIScom_dict_tables
+Have a different size than PDUimage
+Uses ris_attr_info which may account for some of the differences
+Should be able to write something to cycle through
+
+========================================
+app - app
+appbufto.c  okay
+appclear.c  okay
+appcli.c    okay
+appcrsr.c   okay
+appcnv.c    okay
+appdcml.c   okay
+appgetfl.c  okay
+appglobs.c  okay
+appid.c     okay
+appinit.c   okay
+appmisc.c   okay
+appparmf.c  okay
+appparms.c  okay
+appschf.c   okay
+appsig.c    okay
+appsndrc.c  okay
+appsqlca.c  okay
+appterm.c   okay
+apptobuf.c  okay - but includes macros which use LOCAL_ARCH, PC or SUN???
+appver.c    okay
+
+
+app - interface
+interror.c  okay
+intgtnme.c  okay
+intrap.c    okay
+intlocfl.o  okay
+
+=========================================
+com - arch
+arcerrcd.c  okay
+arcglobs.c  okay
+arcgnerc.c  fixed ARCH_funcs - no conversions needed
+
+com - common
+comalloc.c  fixed, forced it to use system malloc/calloc/realloc, verified they get used
+comarch.c   okay
+comdate.c   okay
+comdcml.c   okay
+comdebug.c  okay
+comexmod.c  okay
+comfree.c   okay
+comlang.c   okay
+comisfn.c   okay
+comglobs.c  okay
+comgtdir.c  okay - bunch of nonsense
+comgtnme.c  okay
+comjmp.c    okay
+commem.c    okay
+comoutpt.c  okay
+compath.c   okay
+compd.c     okay
+comrap.c    okay
+comstcmi.c  okay
+comstrcp.c  okay
+comsttyp.c  okay
+comsqlca.c  okay
+comstmt.c   okay
+comsyser.c  okay
+comumsg.c   okay
+comuni.c    okay
+comver.c    okay
+comwrap.c   okay, added trace for ioctl
+
+com - network
+nettcp.c    okay - added some __i386, lots of low level stuff in here but mostly unix based
+netgnerc.c  okay - Has NET_realloc/alloc which always does buffer alignment nonsense
+                   Added tracex, seems to be allocing a bunch of 65552 blocks
+                   Lots of NET_freeS called as well
+netglobs.c  okay
+netlen.c    okay
+netmem.c    okay - relies on sun
+netpopen.c  okay
+netshare.c  okay
+netstubs.c  okay
+netumsg.c   okay
+netwrap.c   okay
+netwrapt.c  okay
+
+netlocal.c
+Started with a fresh copy, did not crash at least but could not locate schema file
+Took out NET_connect and instant core dump
+
+Stay with sun only or go with Soli???
+The answer determines the size of net_mem_info_s
+
+Connect Local starts up riscli process and (one assumes) links up shared memory
+NET_write_local writes two bytes
+NET_write_no_len
+RIScom_send_arch
+RISapp_start_client
+RISXlocate_schema_file
+RISlocate_schema_file
+NFMwrite_ris_parameters
+NFMsun_get_schema_info
+NFMunix_log_in
+PDMlogin
+PDMrlogin
+PDUprocess_login
+login_notification_routine
+
+Why are we using local routines instead of TCP routines?
+Ris params file???
+
+Try to memcpy into shared memory and get a longjmp presumbably indicating it did not work.
+==================================
+RIS application init
+
+RISapp_initialize
+  Tells everyone I'm a application
+  Sets up debuggers
+  if (!RIS_mem
+    sets a break point(RIScom_setjmp) which does some kind of stack thing in conjunction with reset jump
+  init_globals
+    just resets some stuff
+  RISapp_init_version
+  RIScom_get_risdir
+    RIS_dir ends up /opt/ingr/ris/riscli
+  RISapp_check_alignment
+  RIScom_get_mem
+    RIS_mem ris_mem_info, all cleared
+  RIScom_initialize_langs
+    RIS_dir/config
+  RIS_lan_code_used based on RISdir and passed language name, interacts with ums system
+  verify_language
+  RISapp_read_parms_file
+    load_defaults
+      RIS_params
+      RIS_schfile_params Schema file protocol defaults to M
+      RIS_client_params  Client protocol defaults to M as well
+    open parms file, create one if it does not exist, think it will actually be created by the nfm process
+       based on NFMenv.dat, that would be how it's gets the address of the schema file server
+       Actually looking for /usr/tmp/parameters
+       RIS_parms_filename set??? getenv(RIS_PARAMETERS) is returning /usr/tmp/parameters
+         Set by the NFM process???
+         If not it would end up with /opt/ingr/ris/riscli/parms
+   Net result is just setting things to default values. not using /opt/ingr/ris/params here at all
+   Allocates memory for RIS_stmts using RIScom_alloc, PERMANENT_MEMORY, mark = 0, does some block setting nonsense
+
+
+RISXlocate_schema_file
+RISlocate_schema_file
+
+NFMwrite_ris_parameters
+NFMsun_get_schema_info
+NFMunix_log_in
+PDMlogin
+PDMrlogin
+PDUprocess_login
+login_notification_routine
+
+ris parms file
+SCHEMA file location
+
+CLIENT location, this is where the shared memory comes in
+
+# The RIS client is an intermediate process that accepts SQL statements from
+# an application built with RIS.  It parses and translates the statements
+# and passes them on to the appropriate RIS data server.
+
+Goal would be to make the ris client internal instead of using riscli
+Also have the ability to connect via tcpip to maybe fake it that way?
+
+===================================================================
+NFMwrite_ris_parameters
+RISlocate_schema_file - Where exactly does this come from?  some sort of dload nonsense?
+RISXlocate_schema_file
+  parms T nfmadmin schemas
+  RISapp_initialize
+  RISapp_start_client with no arguments
+  resets net-connect 9stack variable)
+  RIS_net - allocated
+  RIS_arc - allocated
+  RIS_client_parms.protocol - currently set to M
+    Does all the shared memory nonsense
+
+    if it was T then use RIS_client_parms.address
+Hardcoded T as the default protocol along with the nfm server address
+It appeared to coneect okay and to sent 8 bytes, thinks it is a ris client server (I hope)
+RISapp_init_signal
+RISapp_check_client
+RIScom_send_arch
+RIScom_rec_arch
+RISapp_restore_signal     Somewhere around here get thrown out
+RISapp_client_init_to_buf
+RISapp_send_rec
+
+===================================================================
+Divert and add some more files, especially the app ones
+Skiping netlocal
+
+===================================================================
+All functions have now been added. default client is tcp
+NET_connect
+NET_connect_tcp
+connect
+     solaris -> lpd          TCP D=180 S=34739 Syn Seq=3135439142 Len=0 Win=49640 Options=<mss 1460,nop,wscale 0,nop,nop,sackOK>
+
+           0: 001f caba 55e1 0010 1835 a33e 0800 4500    ....U....5.>..E.
+          16: 0034 a830 4000 4006 0000 ac1f 4048 ac1f    .4.0@.@.....@H..
+          32: 1090 87b3 00b4 bae3 0126 0000 0000 8002    .........&......
+          48: c1e8 0000 0000 0204 05b4 0103 0300 0101    .￿..............
+          64: 0402                                       ..
+
+         lpd -> solaris      TCP D=34739 S=180 Syn Ack=3135439143 Seq=1851655793 Len=0 Win=64240 Options=<mss 1380,nop,wscale 0,nop,nop,sackOK>
+
+           0: 0010 1835 a33e 001f caba 55e1 0800 4500    ...5.>....U...E.
+          16: 0034 550a 0000 7b06 41a3 ac1f 1090 ac1f    .4U...{.A.......
+          32: 4048 00b4 87b3 6e5e 0671 bae3 0127 8012    @H....n^.q...'..
+          48: faf0 120f 0000 0204 0564 0103 0300 0101    .........d......
+          64: 0402                                       ..
+
+     solaris -> lpd          TCP D=180 S=34739 Ack=1851655794 Seq=3135439143 Len=0 Win=49680
+
+           0: 001f caba 55e1 0010 1835 a33e 0800 4500    ....U....5.>..E.
+          16: 0028 a831 4000 4006 0000 ac1f 4048 ac1f    .(.1@.@.....@H..
+          32: 1090 87b3 00b4 bae3 0127 6e5e 0672 5010    .........'n^.rP.
+          48: c210 0000 0000                             ......
+
+setsocketopt
+
+Send a C which is supposed to tell ristcpsrv to kick off a client process,
+
+    solaris -> lpd          TCP D=180 S=34739 Push Ack=1851655794 Seq=3135439143 Len=8 Win=49680
+
+           0: 001f caba 55e1 0010 1835 a33e 0800 4500    ....U....5.>..E.
+          16: 0030 a832 4000 4006 0000 ac1f 4048 ac1f    .0.2@.@.....@H..
+          32: 1090 87b3 00b4 bae3 0127 6e5e 0672 5018    .........'n^.rP.
+          48: c210 0000 0000 0000 0005 4305 0400         ..........C...
+
+         lpd -> solaris      TCP D=34739 S=180 Ack=3135439151 Seq=1851655794 Len=0 Win=64232
+
+           0: 0010 1835 a33e 001f caba 55e1 0800 4500    ...5.>....U...E.
+          16: 0028 13c1 4000 7b06 42f8 ac1f 1090 ac1f    .(..@.{.B.......
+          32: 4048 00b4 87b3 6e5e 0672 bae3 012f 5010    @H....n^.r.../P.
+          48: fae8 528a 0000 0000 0000 0000              .￿R.........
+
+=====================================================================
+RISapp_init_signal - just inits a signal handler
+RISapp_check_client - nothing for tcp
+RIScom_send_architecture
+
+     solaris -> lpd          TCP D=180 S=34739 Push Ack=1851655794 Seq=3135439151 Len=2 Win=49680
+
+           0: 001f caba 55e1 0010 1835 a33e 0800 4500    ....U....5.>..E.
+          16: 002a c833 4000 4006 0000 ac1f 4048 ac1f    .*.3@.@.....@H..
+          32: 1090 87b3 00b4 bae3 012f 6e5e 0672 5018    ........./n^.rP.
+          48: c210 0000 0000 080c                        ........
+
+         lpd -> solaris      TCP D=34739 S=180 Push Ack=3135439153 Seq=1851655794 Len=2 Win=64230
+
+           0: 0010 1835 a33e 001f caba 55e1 0800 4500    ...5.>....U...E.
+          16: 002a 42f6 4000 7b06 13c1 ac1f 1090 ac1f    .*B.@.{.........
+          32: 4048 00b4 87b3 6e5e 0672 bae3 0131 5018    @H....n^.r...1P.
+          48: fae6 4974 0000 090c 0000 0000              ..It........
+
+     solaris -> lpd          lsTCP D=180 S=34739 Ack=1851655796 Seq=3135439153 Len=0 Win=49680
+
+           0: 001f caba 55e1 0010 1835 a33e 0800 4500    ....U....5.>..E.
+          16: 0028 c834 4000 4006 0000 ac1f 4048 ac1f    .(.4@.@.....@H..
+          32: 1090 87b3 00b4 bae3 0131 6e5e 0674 5010    .........1n^.tP.
+          48: c210 0000 0000                             ......
+=====================================================
+RIScom_rec_architecture
+Did a receive and it looked like it came back with a 9 which makes sense
+
+====================================================
+Tried to send client parameters, go back a big buffer with error status
+Change arch to PC
+Still get a bad status.
+
+Question is: do I really need to init the client since it not really a client?
+---
+Used the ris server, nothing is sent when it starts up or when RISapp_client_init_to_buf is sent
+So RISapp_start_client completes still not using netlocal.c
+
+RISapp_locate_schfile_to_buf
+Kicks off a bunch of traffic between the client server and the ris server.
+
+Starts right off with some ftp requests for /etc/risconfig, all fail
+Little bit of startup code
+-------------------
+Kind of a bummer, a ris application is designed to talk to a ris client which in turn connects to the ris server
+
+All have their own interface.  The ris app appears to really only want to use shared memory to talk to the ris client
+though there is some code to suggest that tcp could be used.
+Then it appears to send a request for the schema file location and gets it back.
+
+Looks like need to research the whole shared memory issue and possibly rebuild riscli.
+Or really get dangerous and rewrite from stratch.
+
+unixodbc looks promising
+RISlocate_schema_file
+  protocol,server,nfmadmin,password,schemas
+
+Not really necessary.  But interesting to trace what happens next.
+
+
