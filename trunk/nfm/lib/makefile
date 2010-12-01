@@ -1,5 +1,4 @@
 objects = \
-	$(NFM10)/lib/net.o      \
 	$(NFM10)/lib/fto.o      \
 	$(NFM10)/lib/mem.o      \
 	$(NFM10)/lib/systools.o \
