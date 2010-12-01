@@ -223,7 +223,7 @@ extern void NET_connect_tcp(net_s *net, net_connect_s *connect_info)
 		return;
 	}
 #endif
-#if defined(sun) || defined(__Sol2__) || defined(Soli) || defined(__hpux__)
+#if defined(sun) || defined(__Sol2__) || defined(Soli) || defined(__hpux__) || defined(__i386)
 	/*
 	** Set socket option TCP_NODELAY to true; disable Nagle algorithm 
 	*/
@@ -326,10 +326,9 @@ extern void NET_connect_tcp(net_s *net, net_connect_s *connect_info)
 
 /******************************************************************************/
 
-extern void NET_accept_tcp(
-	net_s *net)
+extern void NET_accept_tcp(net_s *net)
 {
-#if defined(sun) || defined(__Sol2__) || defined(Soli) || defined(__hpux__) || defined(__clipper__)
+#if defined(sun) || defined(__Sol2__) || defined(Soli) || defined(__hpux__) || defined(__clipper__) || defined(__i386)
 	int					optval;
 #endif
 #if defined(WIN32) || defined(sco)
@@ -359,7 +358,7 @@ extern void NET_accept_tcp(
 		return;
 	}
 #endif
-#if defined(sun) || defined(__Sol2__) || defined(Soli) || defined(__hpux__)
+#if defined(sun) || defined(__Sol2__) || defined(Soli) || defined(__hpux__) || defined(__i386)
 	/*
 	** Set socket option TCP_NODELAY to true; disable Nagle algorithm 
 	*/
@@ -405,7 +404,7 @@ extern void NET_accept_tcp(
 		return;
 	}
 #endif
-#if defined(sun) || defined(__Sol2__) || defined(Soli) || defined(__hpux__) || defined(__clipper__) || defined(sco)
+#if defined(sun) || defined(__Sol2__) || defined(Soli) || defined(__hpux__) || defined(__clipper__) || defined(sco) || defined(__i386)
 	NET_DBG(("%s,%d:NET_connect_tcp:before 1st setsockopt SO_KEEPALIVE\n",
 		__FILE__,__LINE__));
 	/*

@@ -38,19 +38,3 @@ void NET_put_file_lu62()      { g_assert_not_reached(); }
 void NET_get_lock_file_lu62() { g_assert_not_reached(); }
 void NET_put_lock_file_lu62() { g_assert_not_reached(); }
 void NET_remove_file_lu62()   { g_assert_not_reached(); }
-
-// These get hit
-#if 0
-void NET_connect_local()       { g_assert_not_reached(); }
-void NET_accept_local()        { g_assert_not_reached(); }
-void NET_write_local()         { g_assert_not_reached(); }
-void NET_read_local()          { g_assert_not_reached(); }
-void NET_close_local()         { g_assert_not_reached(); }
-void NET_addr_local()          { g_assert_not_reached(); }
-void NET_node_local()          { g_assert_not_reached(); }
-void NET_get_file_local()      { g_assert_not_reached(); }
-void NET_put_file_local()      { g_assert_not_reached(); }
-void NET_get_lock_file_local() { g_assert_not_reached(); }
-void NET_put_lock_file_local() { g_assert_not_reached(); }
-void NET_remove_file_local()   { g_assert_not_reached(); }
-#endif

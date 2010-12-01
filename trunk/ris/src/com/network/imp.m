@@ -1,11 +1,13 @@
 SOURCE
-nettcp.c
 netgnerc.c
 netglobs.c
 netlen.c
+/* netlocal.c */
+netmem.c
 netpopen.c
 netshare.c
 netstubs.c
+nettcp.c
 netumsg.c
 netwrap.c
 netwrapt.c

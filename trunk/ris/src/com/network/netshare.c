@@ -231,11 +231,9 @@ extern void NET_execute_command(
 	if (found_error)
 	{
 		int alt_error_found = 0;
-#if defined(Soli)
+
 		int alt_size = (alt_string == 0 ) ? 0:strlen(alt_string);
-#else
-		int alt_size = strlen(alt_string);
-#endif
+
 		char *str = 0;
 
 		if (alt_string)

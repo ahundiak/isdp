@@ -21,9 +21,6 @@
 
 #include "risnet.h"
 
-extern int  sighold (int sig);
-extern int  sigrelse(int sig);
-extern void (*sigset(int sig, void (*disp)(int)))(int);
 
 /******************************************************************************/
 extern int NET_chmod(char *path, int mode)
