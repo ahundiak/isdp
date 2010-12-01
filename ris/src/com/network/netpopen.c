@@ -20,11 +20,6 @@
 
 #include "risnet.h"
 
-// These really should be in stdio
-FILE *fdopen(int fildes, const char *mode);
-int fileno(FILE *stream);
-void (*sigset(int sig, void (*disp)(int)))(int);
-
 // Let the system define this
 // #define _NFILE  128
 

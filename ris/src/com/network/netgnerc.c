@@ -21,6 +21,7 @@
 #include "UMS.h"
 #include "pums_pub.h"
 
+static int tracex = 0;
 
 #define NET_CLEAR_ERROR(net) \
 net->error_code = NET_SUCCESS;\
@@ -723,6 +724,8 @@ extern char *NET_alloc(int size)
 	net_buffer_s    		*buffer=NULL;
 
 	NET_DBG(("NET_alloc(size:%d)\n", size));
+  
+  if (tracex) printf(">>> NET_alloc %d\n",size);
 
 		/*
 		** SCO_PROBLEM
@@ -827,6 +830,8 @@ extern char *NET_realloc(char *user_buffer, int size)
 
 	NET_DBG(("NET_realloc(user_buffer:0x%x size:%d)\n", user_buffer, size));
 
+  if (tracex) printf(">>> NET_realloc %d\n",size);
+
 		/*
 		** HYDRA_PROBLEM
 		** See description above.
@@ -902,6 +907,7 @@ extern void NET_free(char *user_buffer)
 	int				offset;
 
 	NET_DBG(("NET_free(user_buffer:0x%x)\n", user_buffer));
+  if (tracex) printf(">>> NET_free\n");
 #ifdef OLD
 		/*
 		** HYDRA_PROBLEM
