@@ -23,11 +23,11 @@
 #define UMS_SUPPORTED
 
 #ifdef NET_DEFINE
-# define NET_EXTERN
-# define NET_INIT(x)    = x
+#define NET_EXTERN
+#define NET_INIT(x)    = x
 #else
-# define NET_EXTERN             extern
-# define NET_INIT(x)
+#define NET_EXTERN             extern
+#define NET_INIT(x)
 #endif
 #ifndef STRING
 #define STRING(s)       ((s)?(s):"NULL")
@@ -262,7 +262,7 @@ typedef struct net_block_info_s
 **      Note: net_mem_info must be 8 byte aligned.
 */
 
-#if defined(WIN32) || defined(__Sol2__) || defined(Soli)
+#if defined(WIN32) || defined(__Sol2__) || defined(Soli) || defined(__i386)
 /*
 **  FOR NT only:
 **              Make pointers self-relative offsets so virtual memory can be
@@ -307,9 +307,6 @@ typedef struct net_mem_info_s
 #if defined(unix)
 	int                     shmid;                  /* shared memory id */
 #endif
-#if defined(WIN32)
-	HANDLE                  hMapObject;             /* shared memory handle */
-#endif
 	unsigned int            avail;                  /* amount of available shared memory */
 	char                    *pos;                   /* pointer to available shared memory */
 
@@ -317,14 +314,6 @@ typedef struct net_mem_info_s
 	int                     semid;                  /* semaphore set id */
 	unsigned int            sem_alloc;              /* semaphore set mask */
 	unsigned int            sem_cnt;                /* semaphore set count */
-#endif
-#if defined(WIN32)
-	HANDLE                  hClient;                /* Client Process's Duped Handle */
-													/* Synchronization Rules: */
-													/*  Only set own event    */
-													/*  Only wait on partner's event */
-	HANDLE                  hEventC;    			/* client process's event */
-	HANDLE                  hEventS;    			/* server process's event */
 #endif
 	int                     attach_count;   		/* process attach count */
 	net_block_info_s        *free;      			/* pointer of free block list */
@@ -462,8 +451,14 @@ extern void NET_set_debug_handler(int (*debug_handler)(const char *, ...));
 extern int Net_Error_Return_Function (net_s *net);
 
 /* netmem.c */
+extern void NET_alloc_shmem(net_s *net, net_shmem_info_s *shmem_info);
 extern void NET_dealloc_shmem(net_s *net);
 extern void NET_detach_shmem (net_s *net);
+extern void NET_attach_shmem (net_s *net);
+
+extern void NET_free_blocks(net_s *net, net_block_info_s * block);
+
+extern net_block_info_s * NET_get_block(net_s *net, int size);
 
 /* netumsg.c */
 extern int   NET_init_error_msg();
@@ -520,7 +515,7 @@ extern void NET_get_lock_file_tcp(net_s *net, net_connect_s *connect_info, char 
 extern void NET_put_lock_file_tcp(net_s *net, net_connect_s *connect_info, char *remote_file);
 extern void NET_remove_file_tcp  (net_s *net, net_connect_s *connect_info, char *remote_file);
 
-extern int NET_tcp_getpeer(int sock);
+extern int  NET_tcp_getpeer(int sock);
 extern void NET_error_tcp(net_s *net, int code, char *string);
 
 /* netwrap.c */
@@ -546,6 +541,39 @@ extern char *NET_tmpnam(char *st);
 extern int             NET_socket(int domain,int type,int protocol);
 extern struct hostent *NET_gethostbyname(char *name);
 extern int             NET_gethostname   (char *name,int len);
+
+/* netlocal.c */
+extern void NET_connect_local(net_s *net, net_connect_s *connect_info);
+extern void NET_accept_local (net_s *net);
+
+extern void NET_write_local(
+	net_s   *net,
+	char    *user_buffer,
+	int     *user_lenp,
+	int      blocking,
+	int      send_length_flag);
+
+extern void NET_read_local(
+	net_s   *net,
+	char    *user_buffer,
+	int     *user_lenp,
+	int      blocking,
+	int      receive_length_flag);
+
+extern void NET_close_local(net_s *net);
+extern void NET_addr_local (net_s *net, char *nodename, char *netaddr, int *len);
+extern void NET_node_local (net_s *net, char *nodename, int *len);
+
+extern void NET_get_file_local(net_s *net, net_connect_s *connect_info, char *remote_file, char *local_file);
+extern void NET_put_file_local(net_s *net, net_connect_s *connect_info, char *local_file, char *remote_file);
+
+extern void NET_get_lock_file_local(net_s *net, net_connect_s *connect_info, char *remote_file);
+extern void NET_put_lock_file_local(net_s *net, net_connect_s *connect_info, char *remote_file);
+extern void NET_remove_file_local  (net_s *net, net_connect_s *connect_info, char *remote_file);
+
+extern void NET_error_local(net_s *net, int code, char *string);
+extern void NET_lock_sem   (net_s *net, int blocking);
+extern void NET_unlock_sem (net_s *net, int blocking);
 
 // Close up
 #ifdef __cplusplus

@@ -311,10 +311,10 @@ typedef struct ris_attr_info_4
         ushort          len;
         struct
         {
-#if defined(sun) || defined(__Sol2__) || defined(__hpux__)
+#if defined(sunx) || defined(__Sol2__) || defined(__hpux__)
             uchar       prec;
             uchar       scale;
-#elif defined(__clipper__) || defined(sco) || defined(WIN32) || defined(DOS) || defined(vms) || defined(Soli)
+#elif defined(__clipper__) || defined(sco) || defined(WIN32) || defined(DOS) || defined(vms) || defined(Soli) || defined(__i386)
             uchar       scale;
             uchar       prec;
 #else
@@ -338,12 +338,12 @@ typedef struct ris_attr_info
 		uint			len;
 		struct
 		{
-#if defined(sun) || defined(__Sol2__) || defined(__hpux__)
+#if defined(sunx) || defined(__Sol2__) || defined(__hpux__)
 			uchar		dum1;
 			uchar		dum2;
 			uchar		prec;
 			uchar		scale;
-#elif defined(__clipper__) || defined(sco) || defined(WIN32) || defined(DOS) || defined(vms) || defined(Soli)
+#elif defined(__clipper__) || defined(sco) || defined(WIN32) || defined(DOS) || defined(vms) || defined(Soli) || defined(__i386)
 			uchar		scale;
 			uchar		prec;
 			uchar		dum1;

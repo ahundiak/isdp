@@ -8,8 +8,8 @@
 **	REVISION HISTORY:
 */
  
-#ifndef RIS_RAP_H
-#define RIS_RAP_H
+#ifndef RIS_APP_RAP_H
+#define RIS_APP_RAP_H
 
 #ifdef RAP_GLOBAL_DEFINE
 # define RAP_EXTERN
@@ -141,8 +141,18 @@ RAP_EXTERN struct tms			RIS_RAP_buffer;
 RAP_EXTERN  ris_rap_options		RIS_RAP_options;
 
 /* =======================================================================
- * Prototypes
+ * Prototypes intrap.c
  */
 extern void RISAPI RISXrap_initialize();
+
+extern void RISAPI RISXrap_print_input_sqlda      (FILE *fp, sqlda *input);
+extern void RISAPI RISXrap_print_output_sqlda     (FILE *fp, sqlda *output);
+extern void RISAPI RISXrap_print_describe_sqlda   (FILE *fp, sqlda *data);
+extern void RISAPI RISXrap_print_test_sqlda       (FILE *fp, sqlda *input);
+extern void RISAPI RISXrap_print_client_parms     (FILE *fp, client_parms *parms);
+extern void RISAPI RISXrap_print_schema_file_parms(FILE *fp, schema_file_parms *parms);
+
+extern int RISAPI RISXrap_compare_fetch(int id, sqlda *output, int one_row_only);
+extern void intrap_free();
 
 #endif /* RIS_RAP_H */

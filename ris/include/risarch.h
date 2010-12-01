@@ -14,13 +14,14 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 #ifdef ARC_DEFINE
-# define ARC_EXTERN
-# define ARC_INIT(x)	= x
+#define ARC_EXTERN
+#define ARC_INIT(x)	= x
 #else
-# define ARC_EXTERN		extern
-# define ARC_INIT(x)
+#define ARC_EXTERN		extern
+#define ARC_INIT(x)
 #endif
 
 #define ARC_MAX_PRECISION 15
@@ -102,7 +103,7 @@ typedef struct arc_s
 #define LOCAL_ARCH CLIPPER
 #endif
 
-#if defined(sun) || defined(__Sol2__)
+#if defined(sunx) || defined(__Sol2__)
 #define LOCAL_ARCH SUN
 #endif
 
@@ -110,8 +111,8 @@ typedef struct arc_s
 # define LOCAL_ARCH VAX
 #endif
 
-#if defined(WIN32) || defined(Soli)
-# define LOCAL_ARCH  PC
+#if defined(WIN32) || defined(Soli) || defined(__i386)
+#define LOCAL_ARCH  PC
 #endif
 
 #if defined(DOS)
@@ -364,5 +365,12 @@ if (arc->remote_arch != LOCAL_ARCH) ARC_CONVERT_DOUBLE(arc, FROM_NET, d);
 
 ARC_EXTERN  int	ARC_debug								ARC_INIT(0);
 ARC_EXTERN  int	(*ARC_debug_handler)(const char *, ...)	ARC_INIT(0);
+
+/* arcgenrc.c */
+extern char *ARC_error_msg(int code);
+extern void  ARC_set_conversion_flags(arc_s * arc);
+extern int   ARC_convert(arc_s	*arc, int mode, int convert, void *data, int len);
+extern void  ARC_cpy(int len, char *src, char *dst);
+extern void  ARC_set_debug_handler(int (*debug_handler)(const char *, ...));
 
 #endif /* ARCH_H */

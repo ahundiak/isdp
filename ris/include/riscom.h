@@ -32,12 +32,20 @@ TDM:11/10/93:	Added ODBC flag to RIS_process
 #endif
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <setjmp.h>
+#include <fcntl.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+
+
 #include "ris.h"
 #include "rislimit.h"
 #include "rislang.h"
 #include "rismem.h"
 #include "risrap.h"
+#include "risnet.h"
+#include "risarch.h"
 
 /* Values for RIS_process */
 #define SET_APPLICATION    RIS_process |= 0x1
@@ -177,6 +185,33 @@ extern int   RIScom_fputc (int   c,  FILE *fd);
 extern int   RIScom_fputs (char *st, FILE *fd);
 extern int   RIScom_fread (char *ptr, int size, int nitems, FILE *stream);
 
+
+extern FILE *RIScom_freopen(char *fname, char *type, FILE *stream);
+extern int   RIScom_fwrite (char *ptr, int size, int nitems, FILE *stream);
+
+extern int   RIScom_getc(FILE *stream);
+extern int   RIScom_getchar(void);
+extern char *RIScom_gets(char *st);
+extern int   RIScom_ioctl(int fd, int req, ...) ;
+extern int   RIScom_isatty(int fd);
+extern int   RIScom_putc(int c, FILE *fd);
+extern int   RIScom_putchar(int c);
+extern int   RIScom_puts(char *st);
+extern int   RIScom_write(int fd, char *buf, unsigned n);
+extern int   RIScom_read(int fd, char *buf, unsigned n);
+extern int   RIScom_remove(char *path);
+extern int   RIScom_sighold(int sig);
+extern int   RIScom_sigrelse(int sig);
+extern void (*RIScom_sigset(int sig, void (*func)(int)))(int);
+extern int   RIScom_stat(char *path, struct stat *buffer);
+extern int   RIScom_system(char *st);
+extern char *RIScom_tmpnam(char *st);
+extern int   RIScom_ungetc(int c, FILE *stream);
+extern int   RIScom_unlink(char *fname);
+
+extern struct passwd *RIScom_getpwuid(uid_t uid);
+extern struct passwd *RIScom_getpwnam(char *name);
+
 /* comisfn.c */
 extern int RIScom_isspace(int c);
 extern int RIScom_isdigit(int c);
@@ -197,11 +232,24 @@ extern int RIScom_toascii(int c);
 /* comdebug.c */
 extern void  RIScom_initialize_debug(void);
 
-extern void  RIScom_get_output_device_name(char *input, char *output_device);
+extern void  RIScom_get_output_device_name (char *input, char *output_device);
+extern void  RIScom_set_debug_output_device(             char *output_device);
 
 extern char *RIScom_debug_flags(char *s, int *applicationp,int *clientp, int *serverp);
 
+extern unsigned int RIScom_debug_flags_to_mask(void);
+
+extern int RIScom_debug_mask_to_flags(unsigned int mask, unsigned int mode);
+
 extern int   RIScom_output_debug(const char *fmt, ...);
+
+extern void RIScom_output_debug_flags(int (* output_func)(const char *, ...));
+
+extern void RIScom_get_debug_flags(char *s);
+
+extern void RIScom_backup_and_reset_flags(int application, int client, int server);
+
+extern void RIScom_restore_flags();
 
 /* comjmp.c */
 extern void     RIScom_longjmp (int st, char *file, int line);
@@ -250,6 +298,11 @@ extern          int  RIScom_char_to_datetime(char *source,dtime *dest);
 extern int RIScom_read_rap_file(ris_rap_options *rap_options,int expand_pid_flag);
 
 /* compd.c */
+extern void RIScom_pd     (char  *pd,   char *crpt);
+extern void RIScom_depd   (char *crpt,  char *decrpt);
+extern int  RIScom_pd_same(char  *pd,   char *crpt);
+extern int  RIScom_pdcmp  (char *crpt1, char *crpt2);
+
 extern void RIScom_rap_depd(char *crpt, char *decrpt);
 extern void RIScom_rap_pd(  char *pd,   char *crpt);
 
@@ -260,6 +313,7 @@ extern char *RIScom_ris_lang_dir (int code);
 extern char *RIScom_default_ris_langname();
 extern int   RIScom_get_code_page(int RIS_language_code);
 extern void  RIScom_initialize_langs(char *path);
+extern void RIScom_term_langs();
 
 /* comstcmi.c */
 extern int RIScom_strcmp_ic (char *s1, char *s2);
@@ -287,6 +341,61 @@ extern int RIScom_get_risdir(
   char     *risdir,
   int      *developmentp,
   rissqlca *dbcap);
+
+/* comexmod.c */
+extern char *RIScom_get_execute_mode_name(unsigned char execute_mode);
+
+/* comsqlca.c */
+extern void RIScom_copy_sqlca (rissqlca *dest, rissqlca *src);
+extern void RIScom_clear_sqlca(rissqlca *sqlca);
+
+/* comsttyp.c */
+extern char  RIScom_tok_to_stmt_type  (int  tok);
+extern char *RIScom_get_stmt_type_name(char stmt_type);
+
+/* comgtnme.c */
+extern char * RIScom_get_token_name(int token);
+
+/* comoutpt.c */
+extern void RIScom_output_acc             (int (* output_func)(const char *, ...), void *ptr, int indent);
+extern void RIScom_output_acc_info        (int (* output_func)(const char *, ...), void *ptr, int indent);
+extern void RIScom_output_schema          (int (* output_func)(const char *, ...), void *ptr, int indent);
+extern void RIScom_output_schema_info     (int (* output_func)(const char *, ...), void *ptr, int indent);
+extern void RIScom_output_superschema_stmt(int (* output_func)(const char *, ...), void *ptr, int indent);
+extern void RIScom_output_superschema_info(int (* output_func)(const char *, ...), void *ptr, int indent);
+extern void RIScom_output_db              (int (* output_func)(const char *, ...), void *ptr, int indent);
+extern void RIScom_output_db_info         (int (* output_func)(const char *, ...), void *ptr, int indent);
+extern void RIScom_output_table_info      (int (* output_func)(const char *, ...), void *ptr, int indent);
+extern void RIScom_output_table(int (* output_func)(const char *, ...), void *ptr, int indent);
+extern void RIScom_output_attr(int (* output_func)(const char *, ...), void *ptr, int indent);
+extern void RIScom_output_attr_info(int (* output_func)(const char *, ...), void *ptr, int indent);
+extern void RIScom_output_sqlvar(int (* output_func)(const char *, ...), void *ptr, int indent);
+extern void RIScom_output_sql_query(int (* output_func)(const char *, ...), void *ptr, int indent);
+extern void RIScom_output_datetime(int (* output_func)(const char *, ...), void *ptr);
+extern void RIScom_output_blob(int (* output_func)(const char *, ...), void *ptr);
+extern void RIScom_output_tree(int (* output_func)(const char *, ...), void *ptr);
+extern void RIScom_output_alloc_info(int (* output_func)(const char *, ...), void *ptr, int indent);
+extern void RIScom_output_block_info(int (* output_func)(const char *, ...), void *ptr, int indent);
+extern void RIScom_output_data(int (* output_func)(const char *, ...), int count, void *ptr, char *data, int indent);
+extern void RIScom_output_server(int (* output_func)(const char *, ...), void *ptr, int indent);
+extern void RIScom_output_rissqlca(int (* output_func)(const char *, ...), void *ptr, int indent);
+
+/* comdcml.c */
+extern void RIScom_get_prec_scale(char *s, int s_len, int *precp, int *scalep);
+extern int  RIScom_set_prec_scale(char *s, int s_len, char *d, int d_len, int d_prec, int d_scale);
+
+/* comstmt.c */
+extern int RIScom_is_ddl(unsigned char stmt_type);
+extern int RIScom_is_update(unsigned char stmt_type);
+extern int RIScom_default_schema_required(unsigned char stmt_type);
+extern int RIScom_can_change_dflt_schema(unsigned char stmt_type);
+
+/* compath.c */
+extern void RIScom_generate_local_exe_path(char *path, char *risdir, int development, char *subdir, char *exe);
+
+/* comarch.c */
+extern void RIScom_send_architecture(net_s *net, arc_s *arc, int send_flag);
+extern void RIScom_rec_architecture (net_s *net, arc_s *arc, int rec_flag, int blocking);
 
 // Close up
 #ifdef __cplusplus

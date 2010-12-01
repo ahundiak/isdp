@@ -8,8 +8,8 @@
 **	REVISION HISTORY:
 */
  
-#ifndef RIS_INTERFACE_H
-#define RIS_INTERFACE_H
+#ifndef RIS_APP_INTERFACE_H
+#define RIS_APP_INTERFACE_H
 
 #ifdef INT_GLOBAL_DEFINE
 # define INT_EXTERN
