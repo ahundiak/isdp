@@ -17,7 +17,7 @@
 #define SHARED_MEMORY_MAX      0x400000
 #define SHARED_MEMORY_DEFAULT  0x200000
 #endif
-#if defined(__sun)
+#if defined(__sunx)
 #define SHARED_MEMORY_MIN      0x50000
 #define SHARED_MEMORY_MAX      0x100000
 #define SHARED_MEMORY_DEFAULT  0x100000
@@ -27,7 +27,7 @@
 #define SHARED_MEMORY_MAX      0x200000
 #define SHARED_MEMORY_DEFAULT  0x200000
 #endif
-#if defined(Soli)
+#if defined(Soli) || defined(__i386)
 #define SHARED_MEMORY_MIN      0x50000
 #define SHARED_MEMORY_MAX      0x100000
 #define SHARED_MEMORY_DEFAULT  0x100000

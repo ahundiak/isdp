@@ -21,7 +21,7 @@
 #define	SYSTEM_NAME	"c400"
 #endif
 
-#if defined(sun)
+#if defined(sunx)
 #define	SYSTEM_NAME	"sun"
 #endif
 
@@ -33,7 +33,7 @@
 #define SYSTEM_NAME	"Sol2"
 #endif
 
-#if defined(Soli)
+#if defined(Soli) || defined(__i386)
 #define SYSTEM_NAME	"Soli"
 #endif
 

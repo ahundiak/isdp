@@ -20,6 +20,12 @@
 #include "risap_cl.h"
 #include "rislang.h"
 #include "risstjmp.h"
+#include "risdebug.h"
+#include "ris_err.h"
+
+#include "risapp_app.h"
+#include "risapp_rap.h"
+#include "risapp_interface.h"
 
 /* Modes for RISapp_process_parms() */
 #define OUTPUT  0
@@ -375,56 +381,56 @@ extern void RISint_report_error(
 	char **ptrp)
 ;
 extern void RISint_show_app_memory(
-#if defined(sun)
+#if defined(sunx)
 	int (* output_func)())
 #elif defined(unix) || defined(WIN32) || defined(DOS)
 	int (* output_func)(const char *, ...))
 #endif 
 ;
 extern void RISint_show_app_stmts(
-#if defined(sun)
+#if defined(sunx)
 	int (* output_func)())
 #elif defined(unix) || defined(WIN32) || defined(DOS)
 	int (* output_func)(const char *, ...))
 #endif 
 ;
 extern void RISint_show_async_stmts(
-#if defined(sun)
+#if defined(sunx)
 	int (* output_func)())
 #elif defined(unix) || defined(WIN32) || defined(DOS)
 	int (* output_func)(const char *, ...))
 #endif 
 ;
 extern void RISint_show_cli_memory(
-#if defined(sun)
+#if defined(sunx)
 	int (* output_func)())
 #elif defined(unix) || defined(WIN32) || defined(DOS)
 	int (* output_func)(const char *, ...))
 #endif 
 ;
 extern void RISint_show_cli_stmts(
-#if defined(sun)
+#if defined(sunx)
 	int (* output_func)())
 #elif defined(unix) || defined(WIN32) || defined(DOS)
 	int (* output_func)(const char *, ...))
 #endif 
 ;
 extern void RISint_show_cli_hash_table(
-#if defined(sun)
+#if defined(sunx)
 	int (* output_func)())
 #elif defined(unix) || defined(WIN32) || defined(DOS)
 	int (* output_func)(const char *, ...))
 #endif 
 ;
 extern void RISint_show_cli_servers(
-#if defined(sun)
+#if defined(sunx)
 	int (* output_func)())
 #elif defined(unix) || defined(WIN32) || defined(DOS)
 	int (* output_func)(const char *, ...))
 #endif 
 ;
 extern void RISint_show_cli_struct_mgrs(
-#if defined(sun)
+#if defined(sunx)
 	int (* output_func)())
 #elif defined(unix) || defined(WIN32) || defined(DOS)
 	int (* output_func)(const char *, ...))
@@ -527,6 +533,8 @@ extern void RISapp_update_client_spec(
 /* appparmf.c */
 extern void RISapp_read_parms_file();
 extern void RISapp_write_parms_file();
+extern void RISapp_save_parameters();
+extern void RISapp_restore_parameters();
 
 /* appschf.c */
 extern void RISapp_validate_schfile_spec(
@@ -547,6 +555,8 @@ extern void RISapp_update_schfile_spec(
 extern void RISapp_check_alignment();
 extern void RISapp_net_errhandle(struct net_s *net);
 extern void RISapp_arc_errhandle(struct arc_s *arc);
+extern void RISapp_process_eot_schname_list(int count, char *data);
+extern void RISapp_process_clear_stmt_list (int count, char *data);
 
 /* appver.c */
 extern int RISapp_init_version();
@@ -556,6 +566,116 @@ extern void RISapp_initialize(char *language_name);
 
 /* interror.c */
 extern int RISAPI RISXint_error_msg(int	errcode, char *buf, char *errname);
+
+/* appclear.c */
+extern void RISapp_clear(short *id, int set_sqlcode, int client_flag, unsigned char execute_mode);
+
+extern void RISapp_clear_all(int client_flag);
+
+extern void RISapp_clear_async(int *async_id, int set_sqlcode);
+
+extern void RISapp_clear_all_async(void);
+
+/* appsqlca.c */
+extern void RISapp_push_risca_dbca();
+extern void RISapp_pop_risca_dbca();
+extern void RISapp_empty_risca_dbca_stack();
+
+/* appcrsr.c */
+extern void RISapp_alloc_cursor(short id);
+extern void RISapp_close_cursor(short id);
+extern void RISapp_close_all_cursors(void);
+extern void RISapp_close_all_cursors_for_schema(char *schname);
+
+/* appterm.c */
+extern void RISapp_terminate(void);
+
+/* apptobuf.c */
+extern void RISapp_opcode_to_buf(unsigned char	opcode, unsigned char	execute_mode);
+extern void RISapp_client_init_to_buf();
+extern void RISapp_debug_to_buf(int server_flag);
+extern void RISapp_locate_schfile_to_buf(char protocol,char *address, char *username, char *password, char *filename);
+extern void RISapp_prep_to_buf(int len, char *query);
+extern void RISapp_execute_to_buf(sqlda	*in_sqlda, unsigned char execute_mode);
+extern void RISapp_fetch_to_buf(unsigned int row_count, unsigned char execute_mode);
+extern void RISapp_fetch_blob_to_buf();
+extern void RISapp_clear_to_buf(int set_sqlcode, unsigned char execute_mode);
+extern void RISapp_schema_mgr_to_buf(char mode, char *data, char * str);
+extern void RISapp_grow_buf_to_buf(unsigned char opcode);
+extern void RISapp_get_ss_def_to_buf(char *ss_name);
+extern void RISapp_report_ss_error_to_buf(char *ss_name);
+
+extern void RISapp_execute_blob_to_buf(
+  sqlvar        *input_blob_sqlvar,
+  int            text_type,
+  unsigned char  execute_mode,
+  unsigned char *blobinfo);
+
+/* appid.c */
+extern short RISapp_new_stmt(int clear_flag, int static_flag);
+
+/* appcnv.c */
+extern void RISapp_init_to_net              (arc_s *arc, struct ris_appcli_buf_client_init *init);
+extern void RISapp_debug_to_net             (arc_s *arc, struct ris_appcli_buf_debug *debug);
+extern void RISapp_locate_sch_file_to_net   (arc_s *arc, struct ris_appcli_buf_locate_schfile *locate_schfile);
+extern void RISapp_prepare_to_net           (arc_s *arc, struct ris_appcli_buf_prep *prep);
+extern void RISapp_execute_to_net           (arc_s *arc, sqlda *in_sqlda, struct ris_appcli_buf_exec *exec);
+extern void RISapp_clear_to_net             (arc_s *arc, struct ris_appcli_buf_clear *clear);
+extern void RISapp_grow_buf_to_net          (arc_s *arc, struct ris_appcli_buf_grow_buf *grow_buf);
+extern void RISapp_grow_buf_from_net        (arc_s *arc, struct ris_appcli_buf_grow_buf *grow_buf);
+extern void RISapp_prepare_from_net         (arc_s *arc, struct ris_cliapp_buf_prep *prep);
+extern void RISapp_execute_from_net         (arc_s *arc, struct ris_cliapp_buf_exec *exec);
+extern void RISapp_fetch_from_net           (arc_s *arc, ris_app_stmt *stmt, struct ris_cliapp_buf_fetch *fetch);
+extern void RISapp_close_from_net           (arc_s *arc, struct ris_cliapp_buf_close *close);
+extern void RISapp_clear_from_net           (arc_s *arc, struct ris_cliapp_buf_clear *clear);
+extern void RISapp_string_from_net          (arc_s *arc, struct ris_cliapp_buf_string *string);
+extern void RISapp_get_flags_from_net       (arc_s *arc, struct ris_cliapp_buf_get_flags *get_flags);
+extern void RISapp_report_ss_error_from_net (arc_s *arc, struct ris_cliapp_buf_report_ss_error *error);
+extern void RISapp_get_ss_names_from_net    (arc_s *arc, struct ris_cliapp_buf_get_ss_names *get_ss_names);
+extern void RISapp_get_ss_def_from_net      (arc_s *arc, struct ris_cliapp_buf_get_ss_def *get_ss_def);
+extern void RISapp_get_sch_in_trans_from_net(arc_s *arc, struct ris_cliapp_buf_get_sch_in_trans *get_sch_in_trans);
+extern void RISapp_error_from_net           (arc_s *arc, struct ris_cliapp_buf_error *error);
+extern void RISapp_execute_blob_to_net      (arc_s *arc, struct ris_appcli_buf_exec_blob *exec_blob);
+extern void RISapp_fetch_blob_to_net        (arc_s *arc, struct ris_appcli_fetch_blob *fetch_blob);
+extern void RISapp_net_to_fetch_blob        (arc_s *arc, struct ris_cliapp_fetch_blob *fetch_blob);
+extern void RISapp_blob_struct_to_net       (arc_s *arc, ris_blob *blob_struct);
+extern void RISapp_execute_deferred_to_net  (arc_s *arc, sqlda *in_sqlda, struct ris_appcli_buf_exec *exec_deferred);
+extern void RISapp_fetch_buf_to_net         (arc_s *arc, struct ris_appcli_buf_fetch *fetch);
+
+/* appgetfl.c */
+extern void RISapp_get_schfile(char **filenamep, ris_db_info **dbp, ris_schema_info **schemap, ris_grantee_info **granteep, int mem_mode);
+extern void RISapp_get_schema(char     *schname, ris_schema_info **schemap, ris_db_info **dbp, ris_grantee_info **granteep, int mem_mode);
+extern void RISapp_get_db(int dbid, ris_db_info **dbp, int mem_mode);
+
+/* appsndrc.c */
+extern void RISapp_send_rec();
+
+/* appsig.c */
+extern void RISapp_sighandle(int signo);
+extern void RISapp_init_signal();
+extern void RISapp_restore_signal();
+
+/* appparms.c */
+extern void RISapp_move_to_next_row();
+extern void RISapp_adjust_parms(sqlda *parms, char *buf);
+extern void RISapp_fill_blob_parms(sqlvar *output_sqlvar, int text_type, int *array_full);
+extern void RISapp_process_parms(sqlda *source, sqlda *dest, int input);
+extern void RISapp_process_one_parm(sqlda *source, sqlda *dest, int input, int iparam);
+extern void RISapp_process_blob_parms(sqlvar *input_blob_sqlvar, int text_type, char *dest, unsigned char *blobinfo);
+
+/* appdcml.c */
+extern void RISapp_char_to_decimal(char s[], int s_len, char d[], int d_len, int d_scale);
+extern void RISapp_int_to_decimal(int s, char d[], int d_len, int d_scale);
+extern void RISapp_double_to_decimal(double s, char *d, int d_len, int d_scale);
+
+/* appbufto.c */
+extern void RISapp_buf_to_err    (void);
+extern void RISapp_buf_to_execute(void);
+extern void RISapp_buf_to_fetch  (void);
+extern void RISapp_buf_to_close  (void);
+extern void RISapp_buf_to_clear  (void);
+extern  int RISapp_buf_to_report_ss_error(ris_schema_error_info *ss_error);
+extern void RISapp_map_warnings(char warning_flag);
 
 #ifdef __cplusplus
 }

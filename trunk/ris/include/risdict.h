@@ -469,24 +469,24 @@ Revision History:
 **   VIEWTEXT points to the create view statement if the object is a view
 */
 
-	typedef struct dict_tabdef {
-		char			*name;
-		char			*ext_name;		/* for renaming functionality */
-		char			tabtype;
-		int				tabid;
-		char			version;
-		char			load_object;
-		int				compression;
-		unsigned int	id_bit;
-		unsigned int			failure_error;
-		unsigned int			missing_error;
-		unsigned int			modify_error;
-		int				column_count;
-		ris_attr_info	attr[DICTIONARY_MAX_COLUMNS];
-		int				index_count;
-		dict_idxdef		idx[DICTIONARY_MAX_INDEXES];
-		char			*viewtext;
-	} dict_tabdef;
+typedef struct dict_tabdef {
+  char         *name;
+  char         *ext_name;		/* for renaming functionality */
+  char          tabtype;
+  int           tabid;
+  char          version;
+  char          load_object;
+  int           compression;
+  unsigned int  id_bit;
+  unsigned int  failure_error;
+  unsigned int  missing_error;
+  unsigned int  modify_error;
+  int           column_count;
+  ris_attr_info	attr[DICTIONARY_MAX_COLUMNS];
+  int           index_count;
+  dict_idxdef   idx[DICTIONARY_MAX_INDEXES];
+  char         *viewtext;
+} dict_tabdef;
 
 
 /*******************************************************************

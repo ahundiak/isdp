@@ -40,6 +40,7 @@ extern void NET_get_lock_file_lu62();
 extern void NET_put_lock_file_lu62();
 extern void NET_remove_file_lu62();
 
+#if 0
 extern void NET_connect_local();
 extern void NET_accept_local();
 extern void NET_write_local();
@@ -52,5 +53,6 @@ extern void NET_put_file_local();
 extern void NET_get_lock_file_local();
 extern void NET_put_lock_file_local();
 extern void NET_remove_file_local();
+#endif
 
 #endif

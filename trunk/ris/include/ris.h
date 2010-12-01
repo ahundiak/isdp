@@ -302,7 +302,7 @@ typedef struct ris_parameters       /* structure representing parms of parameter
 **  The following are defined strictly for Interoperability.  Any platform
 **  that does not have a version 4 should not have the following list defined.
 */
-#if defined(__clipper__) || defined(sun) || defined(vms) || defined(sco)
+#if defined(__clipper__) || defined(sunx) || defined(vms) || defined(sco)
 #define UNKNOWN_TYPE        RIS_UNKNOWN_TYPE
 #define CHARACTER           RIS_CHARACTER
 #define NUMERIC             RIS_NUMERIC
@@ -348,12 +348,7 @@ typedef struct ris_parameters       /* structure representing parms of parameter
 #define RIS_FREE_SCHEMA_FILE_MEMORY		2
 #define RIS_FREE_REPORT_ERROR_MEMORY 	3
 
-#if defined(WIN32)
-#define IS_WIN32    	-1
-#define IS_DAYTONA 	-2
-#define IS_CHICAGO  	1
-#define IS_WIN32S   	2
-#endif
+
 /******************************************************************************
 
                     SQL Datatypes and Equivalences
