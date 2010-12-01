@@ -21,22 +21,14 @@
 /*
 **	INCLUDES
 */
-// Need this for isascii stuff
-#define __EXTENSIONS__
-
 #include <ctype.h>
 #include "riscom.h"
 
 /******************************************************************************/
 
-extern int RIScom_isspace(
-	int c)
+extern int RIScom_isspace(int c)
 {
-#if defined(WIN32)
-        return (RIScom_uisspace((char *)&c)) ;
-#else
 	return(isspace(c));
-#endif
 }
 
 /******************************************************************************/

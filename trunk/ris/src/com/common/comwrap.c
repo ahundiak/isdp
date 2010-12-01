@@ -14,8 +14,6 @@
 
 #define NO_COM_DBG
 
-#define __EXTENSIONS__
-
 #include <errno.h>
 #include <stdio.h>
 #include <stdarg.h>
@@ -29,6 +27,8 @@
 
 #include "risdebug.h"
 #include "riscom.h"
+
+static int tracex = 1;
 
 /******************************************************************************/
 
@@ -398,11 +398,7 @@ extern int RIScom_fputs(
 /******************************************************************************/
 
 #if defined(unix) || defined(vms) || defined(WIN32) || defined(DOS)
-extern int RIScom_fread(
-	char *ptr,
-	int size,
-	int nitems,
-	FILE *stream)
+extern int RIScom_fread(char *ptr, int size, int nitems, FILE *stream)
 {
 	int status;
 
@@ -429,10 +425,7 @@ extern int RIScom_fread(
 **  WARNING: no COM_DBG allowed because this function is used in SRVmain()
 **            before the output device is initialized.
 */
-extern FILE *RIScom_freopen(
-    char *fname,
-	char *type,
-	FILE *stream)
+extern FILE *RIScom_freopen(char *fname, char *type, FILE *stream)
 {
 	FILE *status;
 
@@ -450,11 +443,7 @@ extern FILE *RIScom_freopen(
 /******************************************************************************/
 
 #if defined(unix) || defined(vms) || defined(WIN32) || defined(DOS)
-extern int RIScom_fwrite(
-	char *ptr,
-	int size,
-	int nitems,
-	FILE *stream)
+extern int RIScom_fwrite(char *ptr, int size, int nitems, FILE *stream)
 {
 	int status;
 
@@ -478,8 +467,7 @@ extern int RIScom_fwrite(
 /******************************************************************************/
 
 #if defined(unix) || defined(vms) || defined(WIN32)
-extern int RIScom_getc(
-	FILE *stream)
+extern int RIScom_getc(FILE *stream)
 {
 	int status;
 
@@ -502,8 +490,7 @@ extern int RIScom_getc(
 /******************************************************************************/
 
 #if defined(unix) || defined(vms) || defined(WIN32)
-extern int RIScom_getchar(
-	void)
+extern int RIScom_getchar(void)
 {
 	int status;
 
@@ -526,8 +513,7 @@ extern int RIScom_getchar(
 /******************************************************************************/
 
 #if defined(unix)
-extern struct passwd *RIScom_getpwuid(
-	uid_t uid)
+extern struct passwd *RIScom_getpwuid(uid_t uid)
 {
 	struct passwd *status;
 
@@ -550,8 +536,7 @@ extern struct passwd *RIScom_getpwuid(
 /******************************************************************************/
 
 #if defined(unix)
-extern struct passwd *RIScom_getpwnam(
-	char *name)
+extern struct passwd *RIScom_getpwnam(char *name)
 {
 	struct passwd *status;
 
@@ -574,8 +559,7 @@ extern struct passwd *RIScom_getpwnam(
 /******************************************************************************/
 
 #if defined(unix) || defined(vms) || defined(WIN32)
-extern char *RIScom_gets(
-	char *st)
+extern char *RIScom_gets(char *st)
 {
 	char *status;
 
@@ -621,10 +605,7 @@ extern struct utmp *RIScom_getutent()
 /******************************************************************************/
 
 #if defined(unix) && !defined(sco)
-extern int RIScom_ioctl(
-	int fd,
-	int req,
-	...) 
+extern int RIScom_ioctl(int fd, int req, ...)
 {
     int status;
 	va_list pvar;
@@ -633,6 +614,8 @@ extern int RIScom_ioctl(
 	va_start(pvar, req);
 	pvar_int = va_arg(pvar, int);
 	va_end(pvar);
+
+  if (tracex) printf(">>> RIScom_ioctl %d\n",req);
 
 	COM_DBG(("RIScom_ioctl(fd: %d req: %d pvar_int: %d)\n",fd, req, pvar_int));
 	do
@@ -653,8 +636,7 @@ extern int RIScom_ioctl(
 /******************************************************************************/
 
 #if defined(unix) && !defined(sco) || defined(vms) || defined(WIN32)
-extern int RIScom_isatty(
-	int fd)
+extern int RIScom_isatty(int fd)
 {
 	int status;
 
@@ -677,9 +659,7 @@ extern int RIScom_isatty(
 /******************************************************************************/
 
 #if defined(unix) && !defined(sco) || defined(vms) || defined(WIN32)
-extern int RIScom_putc(
-	int c,
-	FILE *fd)
+extern int RIScom_putc(int c, FILE *fd)
 {
 	int status;
 
@@ -702,8 +682,7 @@ extern int RIScom_putc(
 /******************************************************************************/
 
 #if defined(unix) && !defined(sco) || defined(vms) || defined(WIN32) || defined(DOS)
-extern int RIScom_putchar(
-	int c)
+extern int RIScom_putchar(int c)
 {
 	int status;
 
@@ -726,8 +705,7 @@ extern int RIScom_putchar(
 /******************************************************************************/
 
 #if defined(unix) && !defined(sco) || defined(vms) || defined(WIN32) || defined(DOS)
-extern int RIScom_puts(
-	char *st)
+extern int RIScom_puts(char *st)
 {
 	int status;
 
@@ -750,10 +728,7 @@ extern int RIScom_puts(
 /******************************************************************************/
 
 #if defined(unix) || defined(vms) || defined(WIN32)
-extern int RIScom_write(
-	int fd,
-	char *buf,
-	unsigned n)
+extern int RIScom_write(int fd, char *buf, unsigned n)
 {
 	int status;
 
@@ -781,10 +756,7 @@ extern int RIScom_write(
 /******************************************************************************/
 
 #if defined(unix) || defined(vms) || defined(WIN32)
-extern int RIScom_read(
-	int fd,
-	char *buf,
-	unsigned n)
+extern int RIScom_read(int fd, char *buf, unsigned n)
 {
 	int status;
 
@@ -811,8 +783,7 @@ extern int RIScom_read(
 /******************************************************************************/
 
 #if defined(unix) || defined(vms) || defined(WIN32) || defined(DOS)
-extern int RIScom_remove(
-	char *path)
+extern int RIScom_remove(char *path)
 {
 	int status;
 
@@ -834,8 +805,7 @@ extern int RIScom_remove(
 /******************************************************************************/
 
 #if defined(unix)
-extern int RIScom_sighold(
-	int sig)
+extern int RIScom_sighold(int sig)
 {
 	int status;
 
@@ -857,8 +827,7 @@ extern int RIScom_sighold(
 /******************************************************************************/
 
 #if defined(unix)
-extern int RIScom_sigrelse(
-	int sig)
+extern int RIScom_sigrelse(int sig)
 {
 	int status;
 
@@ -880,10 +849,7 @@ extern int RIScom_sigrelse(
 /******************************************************************************/
 
 #if defined(unix)
-extern void (*RIScom_sigset(
-	int sig,
-	void (*func)(int))
-	)(int)
+extern void (*RIScom_sigset(int sig, void (*func)(int)))(int)
 {
 	void (*sig_handler)(int);
 
@@ -905,13 +871,7 @@ extern void (*RIScom_sigset(
 /******************************************************************************/
 
 #if defined(unix) || defined(vms) || defined(WIN32) || defined(DOS)
-extern int RIScom_stat(
-	char *path,
-#if defined(WIN32)
-	struct _stat *buffer)
-#else
-	struct stat *buffer)
-#endif
+extern int RIScom_stat(char *path, struct stat *buffer)
 {
 	int status;
 
@@ -939,8 +899,7 @@ extern int RIScom_stat(
 /******************************************************************************/
 
 #if defined(unix) || defined(vms) || defined(WIN32)
-extern int RIScom_system(
-	char *st)
+extern int RIScom_system(char *st)
 {
 	int status;
 
@@ -963,8 +922,7 @@ extern int RIScom_system(
 /*****************************************************************************/
 
 #if defined(unix) || defined(vms)
-extern char *RIScom_tmpnam(
-	char *st)
+extern char *RIScom_tmpnam(char *st)
 {
 	char *status;
 
@@ -1049,9 +1007,7 @@ ERROR -- NO CODE
 /******************************************************************************/
 
 #if defined(unix) && !defined(sco) || defined(vms) || defined(WIN32)
-extern int RIScom_ungetc(
-	int c,
-	FILE *stream)
+extern int RIScom_ungetc(int c, FILE *stream)
 {
 	int status;
 
@@ -1072,8 +1028,7 @@ extern int RIScom_ungetc(
 #endif
 
 #if defined(unix) || defined(vms) || defined(WIN32) || defined(DOS)
-extern int RIScom_unlink(
-    char *fname)
+extern int RIScom_unlink(char *fname)
 {
 	int status;
 

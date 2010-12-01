@@ -1,6 +1,10 @@
 /* ============================================================================
  * SOL10 23 Nov 2010
  *
+ * 29 Nov 2010
+ * Sun really does imply sparc
+ * It seems that Sun x86 malloc always returns 8-byte boundaries
+ *
  * The 8-byte vs 4-byte comes up again
  * Parts of this code key on sco/win32 while other parts include Soli
  *
@@ -44,6 +48,8 @@
 #include "risdebug.h"
 #include "rismem.h"
 #include "risstjmp.h"
+
+static int tracex = 0;
 
 static ris_block_info * create_ris_block(int size);
 
@@ -175,30 +181,6 @@ extern char *RIScom_alloc(
 				RIS_BLOCK_SIZE;
 			mem->pos = (char *)(mem->blk) + sizeof(ris_block_info);
 
-#if defined(sco) || defined (WIN32)
-			/*
-			** align position for any type
-			*/
-			temppos = mem->pos;
-			mem->pos +=
-				(ALIGN - 1) - (((int)mem->pos - 1) &(ALIGN - 1));
-			if ((unsigned int)(mem->pos) < (unsigned int)temppos)
-			{
-				COM_DBG(("RIScom_alloc: mem->pos(0x%x) < temppos(0x%x)\n",
-					mem->pos, temppos));
-				LONGJMP(RIS_E_INTERNAL_ERROR);
-			}
-			avail = (unsigned int)(mem->pos) - (unsigned int)temppos;
-			if (avail < mem->avail)
-			{
-				mem->avail -= avail;
-			}
-			else
-			{
-				mem->avail = 0;
-			}
-
-#endif /* sco */
 			mem->blk->mark = (char) mark;
 		}
 		else
@@ -240,30 +222,6 @@ extern char *RIScom_alloc(
 					mem->end->count * (RIS_BLOCK_SIZE+sizeof(ris_block_info)) +
 					RIS_BLOCK_SIZE;
 				mem->pos = (char *)(mem->end) + sizeof(ris_block_info);
-
-#if defined(sco) || defined (WIN32)	
-				/*
-				** align position for any type
-				*/
-				temppos = mem->pos;
-				mem->pos +=
-					(ALIGN - 1) - (((int)mem->pos - 1) &(ALIGN - 1));
-				if ((unsigned int)(mem->pos) < (unsigned int)temppos)
-				{
-					COM_DBG(("RIScom_alloc: mem->pos(0x%x) < temppos(0x%x)\n",
-						mem->pos, temppos));
-					LONGJMP(RIS_E_INTERNAL_ERROR);
-				}
-				avail = (unsigned int)(mem->pos) - (unsigned int)temppos;
-				if (avail < mem->avail)
-				{
-					mem->avail -= avail;
-				}
-				else
-				{
-					mem->avail = 0;
-				}
-#endif /* sco */
 
 				mem->end->mark = (char) mark; /* DEFAULT_MARK */
 			}
@@ -318,14 +276,6 @@ extern char *RIScom_alloc(
         mem->end->mark = (char) mark;
 		temppos = (char *)(mem->end) + sizeof(ris_block_info);
 
-#if defined (sco) || defined (WIN32)
-		/*
-		** Added to fix alignment problem on sco.
-		** - Sunil 2/5/94
-		*/
-		temppos += (ALIGN - 1) - (((int)temppos - 1) &(ALIGN - 1));
-#endif
-
 #ifndef NO_COM_DBG
 		if (RIScom_debug)
 		{
@@ -345,8 +295,7 @@ extern char *RIScom_alloc(
 ** get a new or used or new/used block
 */
 
-extern ris_block_info *RIScom_get_block(
-	int size)
+extern ris_block_info *RIScom_get_block(int size)
 {
 	int				i;
 	int				num_blocks;
@@ -357,18 +306,6 @@ extern ris_block_info *RIScom_get_block(
 
 	COM_DBG(("RIScom_get_block(size:%d)\n",size));
 
-#if defined(sco)   || defined (WIN32)
-		/* 
-		** In case we end up adjusting the return data pointer to
-		** get things 8-byte aligned, add 4 here so that we do
-		** not allocate x bytes, use up 4, and then find we are
-		** 4 short.
-		*/
-
-	size += 4;
-	COM_DBG(("RIScom_get_block(size modified to :%d)\n",size));
-#endif
-
 	nextblockp = (ris_block_info **)0;	/* shut up the compiler */
 	tempblockp = (ris_block_info **)0;	/* shut up the compiler */
 
@@ -376,10 +313,9 @@ extern ris_block_info *RIScom_get_block(
 ** calculate the number of blocks needed
 */
 
-	num_blocks = (size + sizeof(ris_block_info)) / (RIS_BLOCK_SIZE +
-	 sizeof(ris_block_info));
-	if ((size + sizeof(ris_block_info)) % (RIS_BLOCK_SIZE + 
-	 sizeof(ris_block_info)))
+	num_blocks = (size + sizeof(ris_block_info)) / (RIS_BLOCK_SIZE + sizeof(ris_block_info));
+
+	if ((size + sizeof(ris_block_info)) % (RIS_BLOCK_SIZE + sizeof(ris_block_info)))
 	{
 		num_blocks++;
 	}
@@ -390,7 +326,7 @@ extern ris_block_info *RIScom_get_block(
 ** calculate total size of the blocks
 */
 
-	total_block_size = num_blocks * (RIS_BLOCK_SIZE+sizeof(ris_block_info));
+	total_block_size = num_blocks * (RIS_BLOCK_SIZE + sizeof(ris_block_info));
 
 	COM_DBG(("total size of blocks = %d\n",total_block_size));
 
@@ -487,21 +423,23 @@ static ris_block_info * create_ris_block(
 
 /******************************************************************************/
 
-extern char *RIScom_sys_calloc(
-	unsigned int nelem,
-	unsigned int size)
+extern char *RIScom_sys_calloc(unsigned int nelem, unsigned int size)
 {
 	char                    *ptr;
 	ris_buffer_s    		*buffer=NULL;
 
 	COM_DBG(("RIScom_sys_calloc(size:%d)\n", size));
 
-#if defined (__clipper__) || defined (sun) || defined (vms)  || defined (__Sol2__) || defined(__hpux__)
+#if defined (__clipper__) || defined (sun) || defined (vms)  || defined (__Sol2__) || defined(__hpux__) || defined(__i386)
+
 
 	buffer = (ris_buffer_s *)calloc(nelem, size);
 	ptr = (char *)buffer;
 
-#elif defined (sco) || defined (WIN32) || defined (DOS) || defined (Soli)
+  if (tracex) printf(">>> RIScom_sys_calloc %d %d\n",nelem,size);
+  if (0x4 & (unsigned)ptr) printf("*** RIScom_sys_calloc 4-byte alignment");
+  
+#elif defined (sco) || defined (WIN32) || defined (DOS) || defined (Solix)
 	/*
 	** SCO_PROBLEM
 	** intel chip does not require doubles to be 8-byte aligned, so
@@ -589,12 +527,15 @@ extern char *RIScom_sys_malloc(
 
 	COM_DBG(("RIScom_sys_malloc(size:%d)\n", size));
 
-#if defined (__clipper__) || defined (sun) || defined (vms)  || defined (__Sol2__) || defined(__hpux__)
+#if defined (__clipper__) || defined (sun) || defined (vms)  || defined (__Sol2__) || defined(__hpux__) || defined(__i386)
 
 	buffer = (ris_buffer_s *)malloc(size);
 	ptr = (char *)buffer;
 
-#elif defined (sco) || defined (WIN32) || defined (DOS) || defined (Soli)
+  if (tracex) printf(">>> RIScom_sys_malloc %d\n",size);
+  if (0x4 & (unsigned)ptr) printf("*** RIScom_sys_malloc 4-byte alignment");
+
+#elif defined (sco) || defined (WIN32) || defined (DOS) || defined (Solix)
 	/*
 	** SCO_PROBLEM
 	** intel chip does not require doubles to be 8-byte aligned, so
@@ -690,12 +631,15 @@ extern char *RIScom_sys_realloc(
 	COM_DBG(("RIScom_sys_realloc(user_buffer:0x%x size:%d)\n",
 		user_buffer, size));
 
-#if defined (__clipper__) || defined (sun) || defined (vms)  || defined (__Sol2__) || defined(__hpux__)
+#if defined (__clipper__) || defined (sun) || defined (vms)  || defined (__Sol2__) || defined(__hpux__) || defined(__i386)
 	buffer = (ris_buffer_s *)(user_buffer);
 	buffer = (ris_buffer_s *)realloc((char *)buffer, size);
 	ptr = (char *)buffer;
 
-#elif defined (sco) || defined (WIN32) || defined (DOS) || defined (Soli)
+  if (tracex) printf(">>> RIScom_sys_realloc %d\n",size);
+  if (0x4 & (unsigned)ptr) printf("*** RIScom_sys_realloc 4-byte alignment");
+
+#elif defined (sco) || defined (WIN32) || defined (DOS) || defined (Solix)
 	/*
 	** SCO_PROBLEM
 	** See description above.
@@ -761,11 +705,11 @@ extern void RIScom_sys_free(
 
 	COM_DBG(("RIScom_sys_free(user_buffer:%#x)\n", user_buffer));
 
-#if defined (__clipper__) || defined (sun) || defined (vms)  || defined (__Sol2__) || defined(__hpux__)
+#if defined (__clipper__) || defined (sun) || defined (vms)  || defined (__Sol2__) || defined(__hpux__) || defined(__i386)
 	buffer = (ris_buffer_s *)(user_buffer);
 	free((char *)buffer);
 
-#elif defined (sco) || defined (WIN32) || defined (DOS) || defined (Soli)
+#elif defined (sco) || defined (WIN32) || defined (DOS) || defined (Solix)
 	buffer = (ris_buffer_s *)(user_buffer);
 
 	/*

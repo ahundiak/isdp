@@ -35,8 +35,7 @@ static  struct
 #define NULL 0
 #endif
 
-static char *get_filename(
-	char *path)
+static char *get_filename(char *path)
 {
 	char *ptr;
 	char *return_sts;
