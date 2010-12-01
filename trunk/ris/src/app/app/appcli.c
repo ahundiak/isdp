@@ -32,8 +32,6 @@
 static  char stopping_client = 0;
 static  int match_flag;
 
-int kill(pid_t pid, int sig);
-
 extern void RISapp_start_client()
 {
 	int				sts;
