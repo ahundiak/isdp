@@ -1,4 +1,4 @@
-/* $Id: vdtr_macros.h,v 1.24 2001/10/15 17:32:21 ylong Exp $  */
+/* $Id: vdtr_macros.h,v 1.24.4.2 2003/06/04 15:51:08 ylong Exp $  */
 
 /***************************************************************************
  * I/VDS
@@ -15,69 +15,12 @@
  *
  * Revision History:
  *      $Log: vdtr_macros.h,v $
- *      Revision 1.24  2001/10/15 17:32:21  ylong
- *      *** empty log message ***
+ *      Revision 1.24.4.2  2003/06/04 15:51:08  ylong
+ *      Modify macro prototypes
  *
- *      Revision 1.23  2001/10/15 15:23:11  paul_noel
- *      *** empty log message ***
+ *      Revision 1.24.4.1  2003/05/12 20:55:29  ylong
+ *      TR7673 Filter out DELETED nodes/parts
  *
- *      Revision 1.22  2001/10/02 15:55:14  paul_noel
- *      Update for new XML abilities
- *
- *      Revision 1.21  2001/08/12 02:19:12  paul_noel
- *      File Browser Updates for files
- *      Many Tools Added or moved
- *
- *      Revision 1.20  2001/05/07 13:39:09  paul_noel
- *      Append Any File option
- *
- *      Revision 1.19  2001/04/11 18:41:29  paul_noel
- *      *** empty log message ***
- *
- *      Revision 1.18  2001/03/22 19:08:06  paul_noel
- *      Add Exclusive search to review ppl programs
- *
- *      Revision 1.17  2001/03/21 18:40:40  paul_noel
- *      Updating Review PPL Programs command
- *
- *      Revision 1.16  2001/03/20 12:27:41  paul_noel
- *      *** empty log message ***
- *
- *      Revision 1.15  2001/03/15 12:11:13  paul_noel
- *      PPL controls
- *
- *      Revision 1.14  2001/03/14 15:04:22  paul_noel
- *      *** empty log message ***
- *
- *      Revision 1.13  2001/03/09 16:49:04  paul_noel
- *      Added functions vdtr$GetAllSets vdtr$IsSet vdtr$IsTree vdtr$IsNode
- *
- *      Revision 1.12  2001/02/28 15:41:08  paul_noel
- *      test function modified
- *
- *      Revision 1.11  2001/02/26 16:46:37  ahundiak
- *      ah
- *
- *      Revision 1.10  2001/02/26 12:59:54  paul_noel
- *      add another table macro
- *
- *      Revision 1.9  2001/02/26 12:38:08  paul_noel
- *      add generic ID macro for finding nodeList
- *
- *      Revision 1.8  2001/02/25 21:39:34  paul_noel
- *      Supply some general use macros for nodeLists for tables
- *
- *      Revision 1.7  2001/02/23 16:27:55  paul_noel
- *      Add several macros
- *
- *      Revision 1.5  2001/02/09 19:20:10  paul_noel
- *      *** empty log message ***
- *
- *      Revision 1.4  2001/02/02 17:26:23  jayadev
- *      changes made by pnoel for table creation by stage
- *
- *      Revision 1.3  2001/01/22 18:46:56  paul_noel
- *      *** empty log message ***
  *
  *      Revision 1.2  2001/01/19 15:15:26  paul_noel
  *      Tools added to
@@ -91,21 +34,14 @@
  *      sp merge
  *
  *
- * Revision 1.4  2000/08/09  19:04:42  pinnacle
- * pn
- *
- * Revision 1.3  2000/08/04  17:25:12  pinnacle
- * pn
- *
- * Revision 1.2  2000/07/31  19:10:18  pinnacle
- * pn
- *
+
  *
  * History:
  * MM/DD/YY  AUTHOR  DESCRIPTION
  * 07/28/00  pn      Creation
  * 01/10/01  ah      sp merge
  * 04/11/01  pn      add readAnyFile
+ * 11/17/10  ah      SOL10 Added frozen to trget_nodes
  ***************************************************************************/
 
 /***************************************************************************
@@ -472,6 +408,8 @@ VDtrget_stages((treeType),
    * Inputs:  
    *    Optional: nodeType: filters on either setType or nodeType (see LookupType)
    *              nodeName: filters on either setName or nodeName (see LookupType)
+   *              frozen: filter out the node, defined by VDtrFilterFrozenNode
+
    *    Required: nodeID:   gives the node to base the lookup from
    *              lookupType: 
    *             <VDTR_FIND_CHILD>      finds children of a setType and/or setName
@@ -492,6 +430,7 @@ extern IGRstat VDtrget_nodes __((IGRchar *nodeType,
 				 IGRchar *nodeName,
 				 TGRid   *nodeID,
 				 IGRint  lookupType,
+				 IGRint  frozen,
 				 IGRint  active_file,
 				 TGRid   **outID,
 				 IGRint  *cnt));
@@ -501,6 +440,7 @@ extern IGRstat VDtrget_nodes __((IGRchar *nodeType,
 		      nodeName   = NULL,
 		      nodeID,
 		      lookupType = 0,
+		      frozen	 = 0,
 		      active_file= 1,
 		      outID      = NULL,
 		      cnt        = NULL)
@@ -509,6 +449,7 @@ VDtrget_nodes((nodeType),
 	      (nodeName),
 	      (nodeID),
 	      (lookupType),
+	      (frozen),
 	      (active_file),
 	      (outID),
 	      (cnt))

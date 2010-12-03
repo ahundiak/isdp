@@ -1,4 +1,4 @@
-/* $Id: VDct1Attrs.h,v 1.12 2002/01/07 18:51:59 jdsauby Exp $  */
+/* $Id: VDct1Attrs.h,v 1.12.2.2 2003/06/06 20:50:08 ahundiak Exp $  */
 
 /***************************************************************************
  * I/VDS
@@ -11,107 +11,11 @@
  *
  * Revision History:
  *      $Log: VDct1Attrs.h,v $
- *      Revision 1.12  2002/01/07 18:51:59  jdsauby
- *      JTSMP CRs 4045,4048,4053,4054
- *
- *      Revision 1.11  2001/10/03 14:10:17  jdsauby
- *      JTSMP CR 5571
- *
- *      Revision 1.10  2001/08/24 15:10:26  jdsauby
- *      CR 5541, added eqpt_weight attribute - jds
- *
- *      Revision 1.9  2001/07/18 19:44:51  jdsauby
- *      CR 5290
- *
- *      Revision 1.8  2001/06/08 12:45:57  jdsauby
- *      CR5298, Added EQPT_MINO
- *
- *      Revision 1.7  2001/06/07 18:11:50  jdsauby
- *      CR3931, HVAC Tree, completed - jds
- *
- *      Revision 1.6  2001/05/25 18:55:59  jdsauby
- *      ETL 2235, Need an HVAC tree
- *
- *      Revision 1.5  2001/03/06 21:25:30  paul_noel
- *      patch TR 4795 added attribute for parent_tree_index selection
- *
- *      Revision 1.4  2001/02/14 16:48:06  paul_noel
- *      Added CHG_AUTH attribute to OutfitTree for CR MP#4621
- *
- *      Revision 1.2  2001/02/07 16:06:47  jdsauby
- *      CR 4491, added cable length attributes.
- *
- *      Revision 1.1  2001/01/09 22:17:56  art
+ *      Revision 1.12.2.2  2003/06/06 20:50:08  ahundiak
  *      ah
  *
- * Revision 1.14  2000/12/15  18:19:16  pinnacle
- * js
- *
- * Revision 1.13  2000/09/14  20:30:48  pinnacle
- * js
- *
- * Revision 1.12  2000/09/04  14:37:14  pinnacle
- * js
- *
- * Revision 1.11  2000/08/25  16:44:00  pinnacle
- * js
- *
- * Revision 1.10  2000/08/23  19:28:06  pinnacle
- * ah
- *
- * Revision 1.9  2000/08/16  18:56:52  pinnacle
- * ah
- *
- * Revision 1.8  2000/08/14  15:10:00  pinnacle
- * ah
- *
- * Revision 1.7  2000/08/10  13:16:46  pinnacle
- * js
- *
- * Revision 1.4  2000/08/04  19:20:56  pinnacle
- * js
- *
- * Revision 1.3  2000/07/24  19:54:30  pinnacle
- * js
- *
- * Revision 1.2  2000/07/20  13:16:38  pinnacle
- * js
- *
- * Revision 1.1  2000/07/17  18:55:50  pinnacle
- * ah
- *
- * Revision 1.12  2000/06/30  18:52:26  pinnacle
- * pn
- *
- * Revision 1.11  2000/06/06  20:29:18  pinnacle
- * ah
- *
- * Revision 1.10  2000/06/05  15:15:16  pinnacle
- * ah
- *
- * Revision 1.9  2000/05/17  15:57:46  pinnacle
- * Replaced: vds/vdct1/ppl/*.h for:  by jdsauby for Service Pack
- *
- * Revision 1.8  2000/05/17  12:19:34  pinnacle
- * Replaced: vds/vdct1/ppl/*.h for:  by jdsauby for Service Pack
- *
- * Revision 1.7  2000/05/16  14:35:28  pinnacle
- * Replaced: vds/vdct1/ppl/VDct1Attrs.h for:  by pnoel for Service Pack
- *
- * Revision 1.5  2000/05/10  19:22:20  pinnacle
- * Replaced: vds/vdct1/ppl/VDct1Attrs.h for:  by jdsauby for Service Pack
- *
- * Revision 1.4  2000/05/09  19:10:06  pinnacle
- * Replaced: vds/vdct1/ppl/VDct1Attrs.h for:  by pnoel for Service Pack
- *
- * Revision 1.1  2000/04/20  18:48:20  pinnacle
- * Created: vds/vdct1/ppl/VDct1Attrs.h by pnoel for Service Pack
- *
- * Revision 1.5  2000/03/30  18:41:10  pinnacle
- * pn.
- *
- * Revision 1.3  2000/03/24  20:35:06  pinnacle
- * ah
+ *      Revision 1.12.2.1  2003/05/23 20:30:47  ylong
+ *      Modified for Placement Group Tree - yl
  *
  *
  * History:
@@ -120,6 +24,7 @@
  * 03/28/00  pn      Additional Data Types added
  * 06/30/00  pn      some new attributes added
  * 02/14/01  pn      Added CHG_AUTH attribute
+ * 11/17/10  ah      SOL10 Additional attributes
  ***************************************************************************/
 /* ---------------------------------------------------
  * Consolidate all the attribute name information here
@@ -165,7 +70,12 @@
 #define VDCT1_ENG_NODE_TYPE_CABLETREE "CABLE_TREE"
 #define VDCT1_ENG_NODE_TYPE_WWAYTREE  "WWAY_TREE"
 #define VDCT1_ENG_NODE_TYPE_HVACTREE  "HVAC_TREE"
-//#define VDCT1_ENG_NODE_TYPE_CS      "CS"
+#define VDCT1_ENG_NODE_TYPE_PLGRPTREE "GROUP_TREE"
+#define VDCT1_ENG_NODE_TYPE_COMPART   "COMPARTMENT"
+#define VDCT1_ENG_NODE_TYPE_PART_TYPE "PART_TYPE"
+#define VDCT1_ENG_NODE_TYPE_NOT_IN_GRP "NOT_IN_GROUP"
+#define VDCT1_ENG_NODE_TYPE_ITEM       "ITEM"
+//#define VDCT1_ENG_NODE_TYPE_CS       "CS"
 
 
 #define VDCT1_ATTR_CONT_HULL        "contracthull"
@@ -233,7 +143,11 @@
 #define VDCT1_ATTR_MAT4             "mat4"
 #define VDCT1_ATTR_STOCK            "stock"
 #define VDCT1_ATTR_PCT_MINO         "pct_mino"
+
+#define VDCT1_ATTR_LOC_X            "loc_x"
+#define VDCT1_ATTR_LOC_Y            "loc_y"
 #define VDCT1_ATTR_LOC_Z            "loc_z"
+
 #define VDCT1_ATTR_NOMENCLATURE     "nomenclature"   //added by jdsauby
 #define VDCT1_ATTR_MBOM_ASSY        "tmbom_assy"
 #define VDCT1_ATTR_FROZEN           "frozen"
@@ -336,3 +250,10 @@
 #define VDCT1_ATTR_DEPTH_4          "depth_4"
 #define VDCT1_ATTR_COATING          "coating"
 #define VDCT1_ATTR_MAKE_BUY         "make_buy"
+
+// Placement Group
+#define VDCT1_ATTR_SIR_ID           "sirid"
+#define VDCT1_ATTR_SIR_TAG          "SrTagNum"
+#define VDCT1_ATTR_GROUP_NAME       "group_name"
+#define VDCT1_ATTR_ITEM_NAME        "item_name"
+#define VDCT1_ATTR_ITEM_COPICS_DESC "copics_decs"
