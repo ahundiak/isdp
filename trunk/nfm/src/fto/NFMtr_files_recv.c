@@ -163,15 +163,9 @@ long NFMfs_dest_recv_clix ( MEMptr *buffer_ptr)
           {
 			      switch(status)
 			      {
-				      case NFM_E_NO_FILENAME:
-			          status1 = NFM_E_NO_CO_FILENAME;
-                break;
-  				    case  NFM_E_FTP_FOPEN_WRITE_F_SHELL:
-	  		        status1 = status;
-                break;
-			  	    case  NFM_E_FTP_FOPEN_WRITE_F_SCRIPT:
-				  	    status1 = status;
-					      break;
+				      case  NFM_E_NO_FILENAME:              status1 = NFM_E_NO_CO_FILENAME; break;
+  				    case  NFM_E_FTP_FOPEN_WRITE_F_SHELL:  status1 = status; break;
+			  	    case  NFM_E_FTP_FOPEN_WRITE_F_SCRIPT: status1 = status; break;
 				      case  NFM_E_FTP_FWRITE_F_SHELL:
 					      status1 = status;
                 NFMset_buf_stat ( *buffer_ptr,y+1,FTO_STATUS2+1,xfer_buf_status.status2);

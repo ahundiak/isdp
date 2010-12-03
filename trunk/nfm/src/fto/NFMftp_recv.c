@@ -20,12 +20,9 @@
 #include "SYSTproto.h"
 #include "NETstruct.h"
 
-static int tracex = 1;
+static int tracex = 0;
 
 #define OS_SOLARIS
-
-// ah - Added this in, really should have come out in the inclyde files
-extern char *mktemp(char *);
 
 long NFMunzip(char *file);
 
@@ -87,7 +84,7 @@ long NFMftp_receive (node_name, user_name, passwd, src_file, dst_file, type, siz
            user_name, passwd, modified_src_file, modified_file_name);
 
   infile = fopen (f_script, "w");
-      if (! infile) return (NFM_E_FTP_FOPEN_WRITE_F_SCRIPT);
+  if (! infile) return (NFM_E_FTP_FOPEN_WRITE_F_SCRIPT);
 
   size1 = strlen(tmp_str);
   status = fwrite (tmp_str, sizeof (char), size1, infile);
