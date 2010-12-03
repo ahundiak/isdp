@@ -1,13 +1,68 @@
 target: $(VDS)/lib/vds.o
 
-$(VDS)/lib/vds.o : $(objects)
+$(VDS)/lib/vds.o : makefile $(objects)
 	@ld -r -o $(VDS)/lib/vds.o $(objects)
 	@ls    -l $(VDS)/lib/vds.o
 
 clean:
 	@rm -f vds.o
 
+objects_patch = \
+	$(VDS)/lib/vdversion.o    \
+	$(VDS)/lib/vdcrecluscmd.o \
+	$(VDS)/lib/vdcdetlcmd.o   \
+	$(VDS)/lib/vdcannotcmd.o  \
+	$(VDS)/lib/vdiannotimp.o  \
+	$(VDS)/lib/vdiannotdim.o  \
+	$(VDS)/lib/vdiintfimp.o   \
+	$(VDS)/lib/vdidrawve_gl.o \
+	$(VDS)/lib/vdirap.o       \
+	$(VDS)/lib/vdidrwimp.o    \
+	$(VDS)/lib/vditag.o       \
+	$(VDS)/lib/vdiudpfc.o     \
+	$(VDS)/lib/vdcvisucmd.o   \
+	$(VDS)/lib/vdiweldimp.o   \
+	$(VDS)/lib/vdintersect.o  \
+	$(VDS)/lib/smiutil.o      \
+	\
+	$(VDS)/lib/vdidloadassoc.o\
+	$(VDS)/lib/vdidloadbsp.o  \
+	$(VDS)/lib/vdidloadexnuc.o\
+	$(VDS)/lib/vdidloadgr.o   \
+	$(VDS)/lib/vdidloadmodel.o\
+	\
+	$(VDS)/lib/vdidloadnfm.o  \
+	$(VDS)/lib/vdidloadpdu.o  \
+	$(VDS)/lib/vdidloadpdm.o  \
+	$(VDS)/lib/vdigtk.o
+
 objects = \
+	$(VDS)/lib/vdversion.o    \
+	$(VDS)/lib/vdcrecluscmd.o \
+	$(VDS)/lib/vdcdetlcmd.o   \
+	$(VDS)/lib/vdiaimimp.o    \
+	$(VDS)/lib/vdcannotcmd.o  \
+	$(VDS)/lib/vdiannotimp.o  \
+	$(VDS)/lib/vdiannotdim.o  \
+	$(VDS)/lib/vdiintfimp.o   \
+	$(VDS)/lib/vdidrawve_gl.o \
+	$(VDS)/lib/vdirap.o       \
+	$(VDS)/lib/vdidrwimp.o    \
+	$(VDS)/lib/vditag.o       \
+	$(VDS)/lib/vdiudpfc.o     \
+	$(VDS)/lib/vdcvisucmd.o   \
+	$(VDS)/lib/vdiweldimp.o   \
+	$(VDS)/lib/vdintersect.o  \
+	$(VDS)/lib/smiutil.o      \
+	\
+	$(VDS)/lib/vdidloadassoc.o\
+	$(VDS)/lib/vdidloadbsp.o  \
+	$(VDS)/lib/vdidloadexnuc.o\
+	$(VDS)/lib/vdidloadgrnuc.o\
+	$(VDS)/lib/vdidloadmodel.o\
+	\
+	$(VDS)/lib/vdigtk.o       \
+	\
 	$(VDS)/lib/smccompcmd.o   \
 	$(VDS)/lib/smcdrwcpcmd.o  \
 	$(VDS)/lib/smcdrwtxtcmd.o \
@@ -46,17 +101,14 @@ objects = \
 	$(VDS)/lib/smispacevol.o  \
 	$(VDS)/lib/smistrsfimp.o  \
 	$(VDS)/lib/smisurfimp.o   \
-	$(VDS)/lib/smiutil.o      \
 	$(VDS)/lib/smiwindimp.o   \
 	$(VDS)/lib/vdannotfc.o    \
-	$(VDS)/lib/vdcannotcmd.o  \
 	$(VDS)/lib/vdcattribcmd.o \
 	$(VDS)/lib/vdcbatchcmd.o  \
 	$(VDS)/lib/vdcbro.o       \
 	$(VDS)/lib/vdcchkcmd.o    \
 	$(VDS)/lib/vdccollcmd.o   \
 	$(VDS)/lib/vdcdbarepcmd.o \
-	$(VDS)/lib/vdcdetlcmd.o   \
 	$(VDS)/lib/vdcdgnprcmd.o  \
 	$(VDS)/lib/vdcdrawcmd.o   \
 	$(VDS)/lib/vdcdrwcmd.o    \
@@ -73,7 +125,6 @@ objects = \
 	$(VDS)/lib/vdcprojcmd.o   \
 	$(VDS)/lib/vdcptscmd.o    \
 	$(VDS)/lib/vdcpzoncmd.o   \
-	$(VDS)/lib/vdcrecluscmd.o \
 	$(VDS)/lib/vdcrepcmd.o    \
 	$(VDS)/lib/vdcrepsrf.o    \
 	$(VDS)/lib/vdcrvpmcmd.o   \
@@ -82,7 +133,6 @@ objects = \
 	$(VDS)/lib/vdctablecmd.o  \
 	$(VDS)/lib/vdctblcmd.o    \
 	$(VDS)/lib/vdcudpcmd.o    \
-	$(VDS)/lib/vdcvisucmd.o   \
 	$(VDS)/lib/vdcvvolcmd.o   \
 	$(VDS)/lib/vdcweldcmd.o   \
 	$(VDS)/lib/vdczup.o       \
@@ -90,8 +140,6 @@ objects = \
 	$(VDS)/lib/vddrawimp.o    \
 	$(VDS)/lib/vdiahc.o       \
 	$(VDS)/lib/vdiahom.o      \
-	$(VDS)/lib/vdiannotdim.o  \
-	$(VDS)/lib/vdiannotimp.o  \
 	$(VDS)/lib/vdiasreport.o  \
 	$(VDS)/lib/vdiatcmd.o     \
 	$(VDS)/lib/vdiatimp.o     \
@@ -133,16 +181,8 @@ objects = \
 	$(VDS)/lib/vdicvrtcmd.o   \
 	$(VDS)/lib/vdidetlfnc.o   \
 	$(VDS)/lib/vdidgnfc.o     \
-	$(VDS)/lib/vdidloadassoc.o\
-	$(VDS)/lib/vdidloadbsp.o  \
-	$(VDS)/lib/vdidloadexnuc.o\
-	$(VDS)/lib/vdidloadgr.o   \
-	$(VDS)/lib/vdidloadmodel.o\
-	$(VDS)/lib/vdidloadpdu.o  \
 	$(VDS)/lib/vdidrawdrw.o   \
 	$(VDS)/lib/vdidrawstr.o   \
-	$(VDS)/lib/vdidrawve_gl.o \
-	$(VDS)/lib/vdidrwimp.o    \
 	$(VDS)/lib/vdiefp.o       \
 	$(VDS)/lib/vdieqbuf.o     \
 	$(VDS)/lib/vdieqimp.o     \
@@ -151,9 +191,7 @@ objects = \
 	$(VDS)/lib/vdigeom2.o     \
 	$(VDS)/lib/vdigraphfc.o   \
 	$(VDS)/lib/vdigraphimp.o  \
-	$(VDS)/lib/vdigtk.o       \
 	$(VDS)/lib/vdihldbgfc.o   \
-	$(VDS)/lib/vdiintfimp.o   \
 	$(VDS)/lib/vdiio.o        \
 	$(VDS)/lib/vdilocapi.o    \
 	$(VDS)/lib/vdiloccmd.o    \
@@ -166,7 +204,6 @@ objects = \
 	$(VDS)/lib/vdimeasfc.o    \
 	$(VDS)/lib/vdimeasimp.o   \
 	$(VDS)/lib/vdinbimp.o     \
-	$(VDS)/lib/vdintersect.o  \
 	$(VDS)/lib/vdipen.o       \
 	$(VDS)/lib/vdipenbimp.o   \
 	$(VDS)/lib/vdipockfc.o    \
@@ -179,7 +216,6 @@ objects = \
 	$(VDS)/lib/vdiprotos.o    \
 	$(VDS)/lib/vdipzonimp.o   \
 	$(VDS)/lib/vdiqryfunc.o   \
-	$(VDS)/lib/vdirap.o       \
 	$(VDS)/lib/vdireclusfc.o  \
 	$(VDS)/lib/vdireffunc.o   \
 	$(VDS)/lib/vdirelhdr.o    \
@@ -195,7 +231,6 @@ objects = \
 	$(VDS)/lib/vdisup.o       \
 	$(VDS)/lib/vdisupcmd.o    \
 	$(VDS)/lib/vdisymbhold.o  \
-	$(VDS)/lib/vditag.o       \
 	$(VDS)/lib/vditblfc.o     \
 	$(VDS)/lib/vditblimp.o    \
 	$(VDS)/lib/vditblmgr.o    \
@@ -206,7 +241,6 @@ objects = \
 	$(VDS)/lib/vditools.o     \
 	$(VDS)/lib/vditrimp.o     \
 	$(VDS)/lib/vditvwcmd.o    \
-	$(VDS)/lib/vdiudpfc.o     \
 	$(VDS)/lib/vdiunwrap.o    \
 	$(VDS)/lib/vdiutil.o      \
 	$(VDS)/lib/vdivalom.o     \
@@ -218,14 +252,11 @@ objects = \
 	$(VDS)/lib/vdivvolfc.o    \
 	$(VDS)/lib/vdivvolimp.o   \
 	$(VDS)/lib/vdiweldfnc.o   \
-	$(VDS)/lib/vdiweldimp.o   \
 	$(VDS)/lib/vdixdom.o      \
 	$(VDS)/lib/vdixfunc.o     \
 	$(VDS)/lib/vdixml.o       \
 	$(VDS)/lib/vdmacrimp.o    \
 	$(VDS)/lib/vdmisc.o       \
-	$(VDS)/lib/vdnfm.o        \
-	$(VDS)/lib/vdpdm.o        \
 	$(VDS)/lib/vdpdmcmd.o     \
 	$(VDS)/lib/vdpdmfunc.o    \
 	$(VDS)/lib/vdpdmppl.o     \
