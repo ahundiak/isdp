@@ -73,7 +73,7 @@ extern struct PDUrefresh        *refresh;
 %safe
 static int      pme_enabled=0;
 static int	aimserver = 3;
-static char	aimsernam[25];
+ // static char	aimsernam[25];
 %endsafe
 
 /*+fi
@@ -796,7 +796,7 @@ IGRint  WhichAim()
 {
     return aimserver;
 }
-
+#if 0
  VDPPutAimName( char *server_name)
 {
  strcpy( aimsernam , server_name );
@@ -806,6 +806,7 @@ IGRint  WhichAim()
 {
  strcpy ( server_name, aimsernam );
 }
+#endif
 
  IGRint  VDPGetFileState( IGRlong  *msg, OMuword curOs, IGRint  *fileState )
 {

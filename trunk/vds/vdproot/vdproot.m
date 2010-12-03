@@ -3,7 +3,6 @@ VDPRoot.S
 VDPutil.I
 VDPOccTmp.I
 VDPquerydm2.I
-VDpostman.c
 VDPostCmd.c
 
 LIB
