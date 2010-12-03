@@ -1,3 +1,9 @@
+/* ================================================================
+ * SOL10 09 Nov 2010
+ * Really not sure what this does or even if it is really used
+ * IPCL_init does get called but at least initial tracing did not
+ * indicate that any otherroutines were being called
+ */
 #include <assert.h>
 #include <unistd.h>
 #include <sys/ipc.h>

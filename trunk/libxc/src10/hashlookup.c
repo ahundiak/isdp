@@ -18,7 +18,7 @@ char      *findkey;
   int     hashindex;
 
   /* a hashlookup cancels linear mode */
-  printf("hashlookup %s\n",findkey);
+  // printf("hashlookup %s\n",findkey);
 
   table->linear = 0;
   table->delete = 0;
