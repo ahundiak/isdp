@@ -146,7 +146,8 @@ int NFMdisconnect (int *NETid)
   buffer_info.size = 0;
   buffer_info.request = EXIT;
 
-  g_return_val_if_fail(!(*NETid < 0),NFM_S_SUCCESS);
+  if (*NETid < 0) return NFM_S_SUCCESS;
+
   length = sizeof (NFMbuffer_info);
 
   /* KT - 1/5/92 - SUN Port */

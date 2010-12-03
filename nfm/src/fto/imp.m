@@ -1,11 +1,16 @@
 SOURCE
 NFMaccept.c
-NFMfile_tr.c
-NFMftp.c
-NFMftp1.c
 NFMloc_sa.c
-NFMtr_files1.c
 
+NFMfile_tr.c
+
+NFMtr_files_recv.c
+NFMtr_files_send.c
+
+NFMftp.c
+NFMftp_recv.c
+NFMftp_send.c
+        
 LIB
 $NFM10/lib/fto.o
 
