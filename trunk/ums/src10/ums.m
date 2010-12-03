@@ -1,13 +1,15 @@
 SOURCE
-UMSinitm.c
 UMSfile.c
+UMSgbkey.c
+UMSgbnum.c
+UMSinitm.c
+UMSkeyby.c
+UMSmsgfm.c
 UMSrbnum.c
 UMSrbkey.c
-UMSgbnum.c
-UMSmsgfm.c
 
 LIB
-ums.o
+$UMS/lib/ums.o
 
 INCLUDE
 $UMS/include
