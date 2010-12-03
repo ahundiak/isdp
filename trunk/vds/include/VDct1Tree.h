@@ -1,4 +1,4 @@
-/* $Id: VDct1Tree.h,v 1.10 2002/05/24 17:48:24 jdsauby Exp $  */
+/* $Id: VDct1Tree.h,v 1.11 2003/05/23 20:28:53 ylong Exp $  */
 
 /***************************************************************************
  * I/VDS
@@ -10,52 +10,20 @@
  *
  * Revision History:
  *      $Log: VDct1Tree.h,v $
+ *      Revision 1.11  2003/05/23 20:28:53  ylong
+ *      Modified for Placement Group Tree - yl
+ *
  *      Revision 1.10  2002/05/24 17:48:24  jdsauby
  *      Added isConnectModelObjectValid per CR6383, JDS
  *
  *      Revision 1.9  2002/05/16 21:23:22  jdsauby
  *      JTSMP CR6359
  *
- *      Revision 1.8  2002/01/07 18:51:41  jdsauby
- *      JTSMP CR 5832 and CRs 4045,4048,4053,4054
- *
- *      Revision 1.7  2001/12/03 16:46:36  jdsauby
- *      JTS MP CR 5832
- *
- *      Revision 1.6  2001/11/05 16:12:29  jdsauby
- *      JTS CR MP 5646 -jds
- *
- *      Revision 1.5  2001/10/03 14:10:21  jdsauby
- *      JTSMP CR 5571
- *
- *      Revision 1.4  2001/06/05 18:43:12  jdsauby
- *      Added a Pipe Tree for future use.
- *
- *      Revision 1.3  2001/05/25 18:56:01  jdsauby
- *      ETL 2235, Need an HVAC tree
- *
- *      Revision 1.2  2001/05/14 20:50:08  jdsauby
- *      CR5180 Update Nodes
- *
- *      Revision 1.1  2001/01/09 22:17:57  art
- *      ah
- *
- * Revision 1.30  2000/12/15  18:19:38  pinnacle
- * js
- *
- * Revision 1.29  2000/12/08  15:36:58  pinnacle
- * ah
- *
- * Revision 1.28  2000/11/16  20:18:22  pinnacle
- * pn
- *
- * Revision 1.27  2000/09/25  20:21:48  pinnacle
- * js
- *
  *
  * History:
  * MM/DD/YY  AUTHOR  DESCRIPTION
  * 07/12/00  ah      Created
+ * 11/17/10  ah      SOL10 Group Tree
  ***************************************************************************/
 
 #ifndef VDct1Tree_include
@@ -100,6 +68,8 @@ extern "C" {
 #define VDCT1_TREE_TYPE_WWAY_TREE   "WWayTree"
 #define VDCT1_TREE_TYPE_HVAC_TREE   "HvacTree"
 #define VDCT1_TREE_TYPE_PIPE_TREE   "PipeTree"
+
+#define VDCT1_TREE_TYPE_GRP_PLACE   "SirGrpPlace"
 
 /* -------------------------------------------------
  * Abstract tree types
@@ -638,6 +608,9 @@ typedef struct
 #define VDCT1_CLASSN_ELEC3D_TREE    "TVDct1Elec3dTree"
 #define VDCT1_CLASSI_ELEC3D_TREE    19
 
+#define VDCT1_CLASSN_GRP_PLACE_TREE "TVDct1GrpPlaceTree"
+#define VDCT1_CLASSI_GRP_PLACE_TREE 20
+
 /* ---------------------------------------------
  * Actual tree classes
  */
@@ -740,6 +713,15 @@ typedef struct
   TVDct1EngInterface  eng;
 } TVDct1HvacTreeClass;
 
+typedef struct
+{
+  TVDct1BaseInterface base;
+  TVDct1XmlInterface  xml;
+  TVDct1CmdInterface  cmd;
+  TVDct1ProdInterface prod;
+  TVDct1EngInterface  eng;
+} TVDct1GrpPlaceTreeClass;
+
 
 // Save some typing
 typedef TVDct1RootTreeClass TVDct1RTC;
@@ -827,6 +809,9 @@ extern IGRstat VDct1InitWWayTreeClass __((TVDct1EngTreeClass    *eng,
 
 extern IGRstat VDct1InitHvacTreeClass __((TVDct1EngTreeClass    *eng, 
 					  TVDct1HvacTreeClass *tree));
+
+extern IGRstat VDct1InitGrpPlaceTreeClass __((TVDct1EngTreeClass      *eng, 
+					      TVDct1GrpPlaceTreeClass *tree));
 
 extern IGRstat VDct1CopyRootImps __((void *parent, void *child));
 

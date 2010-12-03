@@ -1,4 +1,4 @@
-/* $Id: VDct1Part.h,v 1.2 2001/02/11 17:30:40 ahundiak Exp $  */
+/* $Id: VDct1Part.h,v 1.2.2.1 2004/03/29 16:25:21 ahundiak Exp $  */
 
 /***************************************************************************
  * I/VDS
@@ -11,41 +11,21 @@
  *
  * Revision History:
  *      $Log: VDct1Part.h,v $
+ *      Revision 1.2.2.1  2004/03/29 16:25:21  ahundiak
+ *      ah
+ *
  *      Revision 1.2  2001/02/11 17:30:40  ahundiak
  *      ah
  *
  *      Revision 1.1  2001/01/09 22:17:57  art
  *      ah
  *
- * Revision 1.14  2000/12/07  18:14:24  pinnacle
- * ah
- *
- * Revision 1.13  2000/12/07  17:33:08  pinnacle
- * ah
- *
- * Revision 1.12  2000/08/24  14:50:24  pinnacle
- * js
- *
- * Revision 1.11  2000/08/23  17:19:00  pinnacle
- * js
- *
- * Revision 1.10  2000/08/23  14:47:54  pinnacle
- * ah
- *
- * Revision 1.9  2000/07/17  19:06:28  pinnacle
- * ah
- *
- * Revision 1.8  2000/07/17  14:14:02  pinnacle
- * Replaced: vds/include/VDct1Part.h for:  by jdsauby for Service Pack
- *
- * Revision 1.7  2000/07/13  12:31:06  pinnacle
- * Replaced: vds/include/VDct1Part.h for:  by jdsauby for Service Pack
- *
  * History:
  * MM/DD/YY  AUTHOR  DESCRIPTION
  * 05/23/00  ah      Creation
  * 07/17/00  ah      Move ris stuff to VDct1Ris.h
  * 12/07/00  ah      c friendlf
+ * 11/17/10  ah      SOL10 - Cage Code now in ship config file
  ***************************************************************************/
 
 #ifndef VDct1Part_include
@@ -75,9 +55,8 @@
 
 /* -----------------------------------------------
  * Some useful defaults
+ * cage code and proj num now in ship config file
  */
-#define VDCT1_DEFAULT_CAGE_CODE "1CC97"
-#define VDCT1_DEFAULT_PROJ_CODE "LPOFA"
 
 /* -----------------------------------------------
  * Main Part structure

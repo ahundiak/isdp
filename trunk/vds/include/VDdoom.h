@@ -1,4 +1,4 @@
-/* $Id: VDdoom.h,v 1.7 2001/11/16 14:25:43 ahundiak Exp $  */
+/* $Id: VDdoom.h,v 1.7.4.1 2004/02/12 14:47:09 ahundiak Exp $  */
 
 /***************************************************************************
  * I/VDS
@@ -11,6 +11,9 @@
  *
  * Revision History:
  *      $Log: VDdoom.h,v $
+ *      Revision 1.7.4.1  2004/02/12 14:47:09  ahundiak
+ *      ah
+ *
  *      Revision 1.7  2001/11/16 14:25:43  ahundiak
  *      ah
  *
@@ -28,6 +31,7 @@
  * MM/DD/YY  AUTHOR  DESCRIPTION
  * 02/15/01  ah      Created
  * 09/04/01  ah      Remove the VDctx include to preclude include order problems
+ * 11/17/10  ah      SOL10 - Added some externs
  ***************************************************************************/
 
 #ifndef VDdoom_include
@@ -84,8 +88,8 @@ extern IGRstat VDdoomTest1 __(());
 #define VDdoomGetCnt(cnt) \
 	VDdoomGetCntOS(OM_K_NOT_AN_OS,(cnt))
 
-void VDdoomCreateFromTree __((TGRid *treeID, TGRid *doomID));
-void VDdoomCreateTree     __((TGRid *doomID, IGRint rootOnly, TGRid *treeID));
+extern void VDdoomCreateFromTree __((TGRid *treeID, TGRid *doomID));
+extern void VDdoomCreateTree     __((TGRid *doomID, IGRint rootOnly, TGRid *treeID));
   
 typedef struct 
 {

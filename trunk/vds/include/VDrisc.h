@@ -1,4 +1,4 @@
-/* $Id: VDrisc.h,v 1.7 2002/06/14 13:59:59 ahundiak Exp $ */
+/* $Id: VDrisc.h,v 1.7.2.1 2002/08/26 19:19:21 anand Exp $ */
 
 /* --------------------------------------------------------------------
  * I/VDS
@@ -13,39 +13,11 @@
  *
  * Revision History:
  *	$Log: VDrisc.h,v $
+ *	Revision 1.7.2.1  2002/08/26 19:19:21  anand
+ *	For CRs 5913 and 5914.
+ *
  *	Revision 1.7  2002/06/14 13:59:59  ahundiak
  *	ah
- *	
- *	Revision 1.6  2002/05/31 19:22:51  jdsauby
- *	Changed Tinfo to TVDrisCacheInfo.  JDS
- *	
- *	Revision 1.5  2002/05/31 16:12:27  jdsauby
- *	Added ci=COz_risCache for debug tool for VDrisCache.c, JDS
- *	
- *	Revision 1.4  2002/05/24 17:50:08  jdsauby
- *	Added VDRIS_CACHE_ROUTE 4, per TR5586
- *	
- *	Revision 1.3  2002/05/09 17:45:45  ahundiak
- *	ah
- *	
- *	Revision 1.2  2001/02/17 14:06:12  ahundiak
- *	ah
- *	
- *	Revision 1.1  2001/02/11 17:30:41  ahundiak
- *	ah
- *	
- *	Revision 1.3  2001/02/01 21:24:40  ahundiak
- *	ah
- *	
- *	Revision 1.2  2001/01/10 16:11:30  art
- *	sp merge
- *	
- *	Revision 1.1.1.1  2001/01/04 21:07:30  cvs
- *	Initial import to CVS
- *
- * Revision 1.7  2000/10/15  12:49:08  pinnacle
- * ah
- *
  *
  * History:
  * MM/DD/YY  AUTHOR  DESCRIPTION
@@ -56,6 +28,7 @@
  * 01/10/01  ah      sp merge
  * 02/11/01  ah      Renamed to VDrisc.h
  * 05/09/02  ah      Added cache
+ * 08/09/02  Anand   Added VDRIS_CACHE_PDU for CR 5913-4
  * -------------------------------------------------------------------*/
 #ifndef VDrisc_include
 #define VDrisc_include
@@ -367,6 +340,7 @@ extern void VDrisDeleteCache __(());
 
 #define VDRIS_CACHE_VDS 3
 #define VDRIS_CACHE_ROUTE 4
+#define VDRIS_CACHE_PDU 5
 
 //Cleanup
 #if defined(__cplusplus)

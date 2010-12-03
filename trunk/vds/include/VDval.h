@@ -1,4 +1,4 @@
-/* $Id: VDval.h,v 1.13 2002/06/07 14:46:37 ahundiak Exp $  */
+/* $Id: VDval.h,v 1.13.2.1 2003/06/17 15:28:31 ahundiak Exp $  */
 
 /***************************************************************************
  * I/VDS
@@ -11,6 +11,9 @@
  *
  * Revision History:
  *      $Log: VDval.h,v $
+ *      Revision 1.13.2.1  2003/06/17 15:28:31  ahundiak
+ *      ah
+ *
  *      Revision 1.13  2002/06/07 14:46:37  ahundiak
  *      ah
  *
@@ -20,40 +23,11 @@
  *      Revision 1.11  2002/02/27 16:37:18  ahundiak
  *      ah
  *
- *      Revision 1.10  2001/11/09 18:10:12  ahundiak
- *      ah
- *
- *      Revision 1.9  2001/11/09 15:36:57  ahundiak
- *      ah
- *
- *      Revision 1.8  2001/11/09 14:17:55  ahundiak
- *      ah
- *
- *      Revision 1.7  2001/08/02 15:34:09  ahundiak
- *      ah
- *
- *      Revision 1.6  2001/07/29 16:59:02  ahundiak
- *      ah
- *
- *      Revision 1.5  2001/07/28 17:30:34  ahundiak
- *      ah
- *
- *      Revision 1.4  2001/07/23 16:01:13  ahundiak
- *      ah
- *
- *      Revision 1.3  2001/06/22 15:00:37  ahundiak
- *      ah
- *
- *      Revision 1.2  2001/06/03 14:40:53  ahundiak
- *      ah
- *
- *      Revision 1.1  2001/05/24 18:35:35  ahundiak
- *      ah
- *
- *
  * History:
  * MM/DD/YY  AUTHOR  DESCRIPTION
  * 05/23/01  ah      Created
+ * 06/17/03  ah      CR5144 Add plate/web area tolerances for snapshot
+ * 11/17/10  ah      SOL10 
  ***************************************************************************/
 
 #ifndef VDval_include
@@ -270,6 +244,10 @@ extern IGRstat VDvalGetTolerance __((IGRchar *name, IGRdouble *value));
 #define VDTOL_MIN_DIS_HOLE_HOLE        "min_dis_hole_hole"
 #define VDTOL_MIN_HOLE_DIMENSION       "min_hole_dimension"
 #define VDTOL_MIN_LINE_ARC_SEG_LEN     "min_line_arc_seg_len"
+
+#define VDTOL_MIN_PLATE_AREA           "min_plate_area"
+#define VDTOL_MIN_WEB_AREA             "min_web_area"
+#define VDTOL_MIN_CUT_LENGTH           "min_cut_length"
 
 #define VDTOL_MIN_COG_CHANGED          "min_cog_changed"
 #define VDTOL_MIN_ORG_CHANGED          "min_org_changed"
