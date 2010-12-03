@@ -1,0 +1,160 @@
+/* $Id: VDpostconn.u,v 1.3.2.2 2003/06/04 18:14:10 ahundiak Exp $ */
+/* --------------------------------------------------------------------
+ * I/AIMSIR
+ *
+ * File:        aim/src/ppl/VDpostconn.u
+ *
+ * Description:
+ *
+ * Dependencies:
+ *
+ * Revision History:
+ *      MM/DD/YY        AUTHOR          DESCRIPTION
+ *      10/12/98        Shailesh        TR # 179801814
+ *      09/24/98        Shailesh        TR # 179801686 Connection to AIM not allowed 
+ *                                      for READ ONLY files.
+ *      09/24/98        Shailesh        TR # 179801685 Connection to AIM not allowed 
+ *                                      for files not managed by PDM.
+ *      09/01/98        Shailesh        TR # 179801481 Added some UI_status
+ *      08/21/98        Shailesh        TR # 179801451 Disconnect every time before connecting.
+ *      08/19/98        Shailesh        TR # 179801466 
+ *                                      Added warning message for wrong server name.
+ *		08/06/98		Shailesh		Modified GUI, added form, set the defult
+ *										AIM server to SIR
+ *      12/1/95         msm             Creation
+ *	10/23/96	msm		removed putenv PROXY_CLIENT_ADDRESS
+ *					instead pass the server address as
+ *					inbuf.
+ *
+ * -------------------------------------------------------------------*/
+
+#include "VDppl.h"
+#include "PDUstr.h"
+#include "PDUuser.h"
+
+
+// extern AIMlogin();
+extern VDPGetAimName();
+extern UI_status();
+extern EnablePME();
+extern int IsPmeEnabled();
+extern VdsRetrievePartAttributes();
+extern int POSTMAN_REQUEST_ON_CLIX ();
+
+extern struct PDUrefresh	*refresh;
+extern struct PDUuser		*user;
+
+#define CLIX_CONNECT	-1
+#define CLIX_DISCONNECT -2
+
+extern getenv();
+
+main()
+{
+    IGRchar ser[80];
+    IGRchar err_msg[80];
+    IGRstat status;
+    IGRchar *errmsg;
+    IGRchar io_status[10], 
+            checkin_user[30], 
+            checkout_user[30],
+	    checkout_node[62],
+	    checkout_dir[162];
+    IGRchar cr_flag[10];
+
+    IGRchar *p;
+    IGRint   noco;
+
+    // check to see if already logged in
+    if ( IsPmeEnabled() )
+    {
+	VDPGetAimName( ser );
+	sprintf(err_msg, "Already connected to Aim Server %s", ser );
+	UI_status(err_msg);
+	ci$get ( prompt = "Want to Disconnect (Y/N) ?",
+		string = cr_flag,
+		rc = status ); 
+	if(!strcmp(cr_flag,"Y") || !strcmp(cr_flag,"y")) 
+	{
+	    status = POSTMAN_REQUEST_ON_CLIX( CLIX_DISCONNECT,
+		    NULL,
+		    NULL,
+		    NULL,
+		    NULL,
+		    &errmsg);
+
+	    if ( !status)
+		EnablePME(0);
+	    UI_status("Disconnected From AIM server");
+	    goto wrapup;
+	}
+	goto wrapup;
+    }
+
+    // verify that the part is PDM managed
+#if 0
+    if(refresh->act_catalog[0] == '\0' ||
+      refresh->act_partid[0] == '\0' ||
+      refresh->act_revision[0] == '\0' )
+  {
+    UI_status ( "File not managed by PDM; Can not connect to AIM" );
+    return 0;
+  } 
+#endif
+
+/* ----------------------------------------------
+ * Allow by passing the part checked out function
+ */
+  noco = 1;
+  p = getenv("ISDP_SIR_NOCO");
+  if (p)
+  {
+    if (*p == '1') noco = 1;
+  }
+  if (noco == 0)
+  {
+    // verify that the part is checked out
+    if ( VdsRetrievePartAttributes (refresh->act_catalog,
+	refresh->act_partid, 
+	refresh->act_revision, 
+	io_status, 
+	checkin_user, 
+	checkout_user, 
+	checkout_node, 
+	checkout_dir, 
+	err_msg) != SUCCESS )
+
+    if ( io_status[0] != NULL )
+    {
+      // O = checked out can be another user!
+      // // I = review
+       if ( strcmp ( io_status, "O" ) &&  strcmp ( io_status, "S" ) )
+       {
+	 sprintf ( err_msg, "Part %s rev %s is not checked out",
+	     refresh->act_partid,
+	     refresh->act_revision );
+	 UI_status ( err_msg );
+	 goto wrapup;
+       } //  end if
+
+       else if ( strcmp ( checkout_node, user->wrkst_node ) ||
+	   strcmp ( checkout_dir, user->wrkst_cwd ) )
+       {
+	 sprintf ( err_msg, "Part %s rev %s is checked out by %s to node %s",
+	     refresh->act_partid, 
+	     refresh->act_revision, 
+	     checkout_user, 
+	     checkout_node );
+	 UI_status ( err_msg );
+	 goto wrapup;
+       } // end else if
+
+    } // end if io_status[0] != NUL
+  }
+    // finally, bring up the form, and login
+    // AIMlogin();
+  printf("AIMlogin comes next\n");
+
+wrapup:
+    exit;
+}
