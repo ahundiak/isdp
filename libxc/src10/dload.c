@@ -25,8 +25,8 @@ struct tagdef {
 };
 #define  ADDR            unsigned int
 
-static initialized = 0;
-static dload_startup()
+static int initialized = 0;
+static int dload_startup()
 {
   initialized = 1;
 }
@@ -108,7 +108,7 @@ void *dload (char *path, int options)
 {
   // If path is null then return handle to global symbol objects
 
-  if (DLOAD_TRACE) 
+  if (DLOAD_TRACE)
   {
     if (path) printf("XC dload %s %d\n", path, options);
     else      printf("XC dload %s %d\n","NULL",options);
@@ -131,12 +131,18 @@ void *dload_address_lookup (char *name)
   // printf("XC dload_address_lookup %s\n",name);
   // return NULL;
 }
+struct symdef {
+   char *name;      /* the name of the symbol            */
+   void *value;     /* the value (address) of the symbol */
+   int   flags;     /* flags (see below)                 */
+};
+
 int dload_symbol_lookup(void *handle, char *name, struct symdef **buf)
 {
   if (DLOAD_TRACE || 1)
   {
     if (name) printf("XC dload_symbol_lookup %s\n",name);
-    else      printf("XC dload_symbol_lookup NULL\n");
+  //else      printf("XC dload_symbol_lookup NULL\n");
   }
   return 0;
 }
