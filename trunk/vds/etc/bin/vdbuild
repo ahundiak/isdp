@@ -1,0 +1,48 @@
+#!/bin/ksh
+
+# Set permissions
+cd $VDS
+find . -print | xargs chmod a+wx
+
+# message stuff
+# will get one warning
+msgbuild
+
+# initializes command files
+cd $VDS/config
+make init_cmd_files
+cd $VDS
+
+# Initial spec file link
+cd $VDS
+rm -f spec/*.S
+find ./vd*  -name '*.S' -exec ln {} spec \;
+find ./sm*  -name '*.S' -exec ln {} spec \;
+
+# Slic processor
+sequence="vdlocate vdequip smglob/imp vdvvol/imp vdmdlv/imp vdpocket"
+sequence="$sequence vdtbl/mgr vdtbl/imp vdtbl/set vdtbl"
+sequence="$sequence smmgr vd* sm*"
+cd $VDS
+for dir in `find $sequence -type d -print | uniq`
+do
+  cd $VDS/$dir
+  if /bin/ls *.sl > /dev/null 2>&1 || /bin/ls *.t > /dev/null 2>&1 ;then
+    echo "---------: $dir grmake sl -------------"
+    grmake sl
+		ln $VDS/$dir/*.S $VDS/spec > /dev/null 2>&1
+  fi
+done
+
+# Compiling
+sequence="vd* sm* ems*"
+cd $VDS
+for dir in `find $sequence -type d -print`
+do
+  if [ -f $VDS/$dir/makefile ] ; then
+	  echo "---------------------------- $dir compile ----------------------------"
+	  cd $VDS/$dir
+	  grmake -r -k
+  fi
+done
+
