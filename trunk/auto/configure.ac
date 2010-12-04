@@ -15,15 +15,15 @@ AM_INIT_AUTOMAKE([1.9 foreign])
 AC_CONFIG_HEADERS([config.h:config-h.in])
 
 # Indicates want support for dlopen
-# AC_LIBTOOL_DLOPEN
+AC_LIBTOOL_DLOPEN
 
 AC_PROG_CC
-# AC_PROG_CC_STDC
+AC_PROG_CC_STDC
 
 AC_PROG_LIBTOOL
 
-# AC_PROG_YACC
-# AM_PROG_LEX
+AC_PROG_YACC
+AM_PROG_LEX
 
 # Syntax is wrong
 # AC_DEFINE([ISDP],[1])
