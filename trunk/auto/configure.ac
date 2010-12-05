@@ -14,13 +14,16 @@ AM_INIT_AUTOMAKE([1.9 foreign])
 # Changed from AC for automake, AM does not work
 AC_CONFIG_HEADERS([config.h:config-h.in])
 
-# Indicates want support for dlopen
-AC_LIBTOOL_DLOPEN
-
 AC_PROG_CC
 AC_PROG_CC_STDC
 
-AC_PROG_LIBTOOL
+# Shared library support
+# These two are depreciated
+# AC_LIBTOOL_DLOPEN
+# AC_PROG_LIBTOOL
+#
+LT_PREREQ([2.2.6])
+LT_INIT([dlopen win32-dll pic-only disable-static])
 
 AC_PROG_YACC
 AM_PROG_LEX
