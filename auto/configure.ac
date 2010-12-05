@@ -38,7 +38,9 @@ AC_CHECK_FUNCS([strrchr])
 
 PKG_CHECK_MODULES([DEPS], [glib-2.0 >= 2.24.1])
 
-AC_CONFIG_FILES([exec/Makefile glib/Makefile glib/basic/Makefile])
+AC_CONFIG_FILES([exec/Makefile])
+
+AC_CONFIG_FILES([glib/Makefile glib/lib/Makefile glib/basic/Makefile])
 
 AC_CONFIG_FILES([Makefile])
 
