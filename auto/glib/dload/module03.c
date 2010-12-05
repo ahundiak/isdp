@@ -16,7 +16,7 @@ const gchar *g_module_check_init(GModule *module)
 {
   // g_message("Module UnLoaded: %s",g_module_name(module));
 }
- void module02_hello(gint *result,gint *count)
+ void module03_hello(gint *result,gint *count)
  {
    *result = 2 * public_var;
    s_count++;
