@@ -36,7 +36,8 @@ AC_CHECK_HEADERS([string.h strings.h], [break])
 
 AC_CHECK_FUNCS([strrchr])
 
-PKG_CHECK_MODULES([DEPS], [glib-2.0 >= 2.24.1])
+PKG_CHECK_MODULES([glib_DEPS],        [glib-2.0        >= 2.24.1])
+PKG_CHECK_MODULES([gmodule_DEPS], [gmodule-2.0 >= 2.24.1])
 
 AC_CONFIG_FILES([exec/Makefile])
 
