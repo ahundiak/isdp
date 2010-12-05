@@ -1,1 +1,1 @@
-SUBDIRS   = basic
+SUBDIRS = lib basic
