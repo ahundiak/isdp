@@ -1,5 +1,6 @@
 #include "config.h"
 #include <glib.h>
+#include "../lib/hash.h"
 #include "tests.h"
 
 /* ========================
@@ -73,26 +74,6 @@ void test_hash2(void)
     g_assert(art_was_destroyed);
 
 }
-/* ============================
- * Use integers for indexes
- * For some reason, g_int_hash core dumps, wanted uint anyways
- */
-static guint isdp_g_uint_hash(gconstpointer v)
-{
-    return GPOINTER_TO_UINT(v);
-}
-static guint isdp_g_int_hash(gconstpointer v)
-{
-    return GPOINTER_TO_INT(v);
-}
-static gboolean isdp_g_uint_equal(gconstpointer v1, gconstpointer v2)
-{
-    return (GPOINTER_TO_UINT(v1) == GPOINTER_TO_UINT(v2)) ? TRUE : FALSE;
-}
-static gboolean isdp_g_int_equal(gconstpointer v1, gconstpointer v2)
-{
-    return (GPOINTER_TO_INT(v1) == GPOINTER_TO_INT(v2)) ? TRUE : FALSE;
-}
 void test_hash3(void)
 {
     GHashTable *table;
@@ -117,25 +98,6 @@ void test_hash3(void)
 
     g_hash_table_destroy(table);
 
-}
-/* =========================================
- * Write my own simpilified interface for integer hashes
- */
-GHashTable *isdp_g_hash_table_int_new(GDestroyNotify destroyFunc)
-{
-     return g_hash_table_new_full(isdp_g_int_hash,isdp_g_int_equal,NULL,destroyFunc);
-}
-void isdp_g_hash_table_int_insert(GHashTable *table, gint key, gpointer value)
-{
-    g_hash_table_insert(table,GINT_TO_POINTER(key),value);
-}
-gpointer isdp_g_hash_table_int_lookup(GHashTable *table, guint key)
-{
-    return g_hash_table_lookup(table,GINT_TO_POINTER(key));
-}
-gboolean isdp_g_hash_table_int_remove(GHashTable *table, guint key)
-{
-    return g_hash_table_remove(table,GINT_TO_POINTER(key));
 }
 void test_hash4(void)
 {
