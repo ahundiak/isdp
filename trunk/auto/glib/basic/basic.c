@@ -17,11 +17,6 @@ void test_number_assertion (void)
    g_assert_cmpint (4, ==, 2 + 2);
 }
 
-typedef struct
-{
-    gchar *string;
-} StringTestFixture;
-
 void test_string_setup(StringTestFixture *fix, gconstpointer tdata)
 {
     fix->string = g_strdup("cerad");
@@ -50,7 +45,7 @@ void test_sizeof()
     g_assert_cmpint(4,==,sizeof(glong));
     g_assert_cmpint(8,==,sizeof(gdouble));
 }
-static void test_system()
+void test_system()
 {
 #ifndef G_OS_UNIX
     g_assert(0);
@@ -89,22 +84,6 @@ static void test_system()
 
     g_assert_cmpstr("test_system",==,G_STRFUNC);
     
-}
-int main (int   argc, char *argv[])
-{
-  int i = 42;
-
-  g_test_init (&argc, &argv, NULL);
-   
-  g_test_add_func ("/basic/number assertion", test_number_assertion);
-
-  g_test_add("/basic/string test", StringTestFixture, &i, test_string_setup, test_string, test_string_teardown);
-
-  g_test_add_func("/basic/version",test_version);
-  g_test_add_func("/basic/sizeof",  test_sizeof);
-  g_test_add_func("/basic/system",  test_system);
-
-  return g_test_run();
 }
 
 
