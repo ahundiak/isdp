@@ -28,7 +28,7 @@ AM_PROG_LEX
 # Syntax is wrong
 # AC_DEFINE([ISDP],[1])
 
-# ENV variable available as @DIDPLAY@
+# ENV variable available as @DISPLAY@
 # AC_SUBST([DISPLAY])
 
 AC_CHECK_HEADERS([math.h])
@@ -36,6 +36,10 @@ AC_CHECK_HEADERS([string.h strings.h], [break])
 
 AC_CHECK_FUNCS([strrchr])
 
-AC_CONFIG_FILES([exec/Makefile Makefile])
+PKG_CHECK_MODULES([DEPS], [glib-2.0 >= 2.24.1])
+
+AC_CONFIG_FILES([exec/Makefile glib/Makefile glib/basic/Makefile])
+
+AC_CONFIG_FILES([Makefile])
 
 AC_OUTPUT
