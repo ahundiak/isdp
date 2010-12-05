@@ -168,7 +168,12 @@ int main (int   argc, char *argv[])
   g_test_add_func ("/dload/load03", test_load_module03);
 
   // Module 5 overrides a regular function
+  // That does not seem to be happening
   g_test_add_func ("/dload/load05", test_load_module05);
+
+  // Write a test in which a function is loaded from a regular linked library
+  // Then dload a module with a new version
+  // And see if it overwrites
 
   // This is a toughie, reload the same module but with differences made
   // Maybe look at the code to see what it does
