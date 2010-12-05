@@ -1,1 +1,1 @@
-SUBDIRS = lib basic
+SUBDIRS = lib basic dload

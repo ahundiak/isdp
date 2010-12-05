@@ -44,7 +44,7 @@ PKG_CHECK_MODULES([gmodule_DEPS], [gmodule-2.0 >= 2.24.1])
 
 AC_CONFIG_FILES([exec/Makefile])
 
-AC_CONFIG_FILES([glib/Makefile glib/lib/Makefile glib/basic/Makefile])
+AC_CONFIG_FILES([glib/Makefile glib/lib/Makefile glib/basic/Makefile glib/dload/Makefile])
 
 AC_CONFIG_FILES([Makefile])
 
