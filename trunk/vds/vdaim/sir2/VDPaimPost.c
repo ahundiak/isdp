@@ -12,39 +12,6 @@
  *      Revision 1.3.2.9  2004/03/29 17:26:53  ahundiak
  *      ah
  *
- *      Revision 1.3.2.8  2004/02/27 15:00:07  ahundiak
- *      ah
- *
- *      Revision 1.3.2.7  2003/09/30 14:27:24  ahundiak
- *      ah
- *
- *      Revision 1.3.2.6  2003/09/04 15:17:35  ahundiak
- *      TR8027
- *
- *      Revision 1.3.2.5  2003/06/11 13:31:19  ahundiak
- *      ah
- *
- *      Revision 1.3.2.4  2003/06/06 20:44:19  ahundiak
- *      ah
- *
- *      Revision 1.3.2.3  2003/06/05 16:45:17  ahundiak
- *      ah
- *
- *      Revision 1.3.2.2  2003/06/04 18:13:42  ahundiak
- *      ah
- *
- *      Revision 1.3.2.1  2003/05/30 19:08:54  ahundiak
- *      ah
- *
- *      Revision 1.3  2003/05/30 13:33:25  ahundiak
- *      ah
- *
- *      Revision 1.2  2003/05/27 13:35:15  ahundiak
- *      ah
- *
- *      Revision 1.1  2003/05/16 14:39:34  ahundiak
- *      ah
- *
  *
  * History:
  * MM/DD/YY  AUTHOR  DESCRIPTION
@@ -513,7 +480,7 @@ domNode VDPaimGetPostObjectData(domNode fileInfoNode,
   for(i = 0; objAttrNode = domGetNthChildNode(objNode,i); i++)
   {
     domGetAttrNodeValue(objAttrNode,buf);
-    if (!strcasecmp("NULL"))
+    if (!strcasecmp("NULL",buf))
     {
       domSetAttrNodeValue(objAttrNode,"");
     }
