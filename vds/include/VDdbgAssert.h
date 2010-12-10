@@ -19,8 +19,9 @@
 
 #define DBG_PROD	0x0000001
 
-extern long 	DBG_Gb_dbg;
-extern FILE 	*DBG_Gb_Fp;
+extern long  DBG_Gb_dbg;
+extern FILE *DBG_Gb_Fp;
 
-extern		VDdbg_Gb_Set(), VDdbg_Gb_Unset();
+extern long  VDdbg_Gb_Set();
+extern long  VDdbg_Gb_Unset();
 
