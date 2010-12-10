@@ -51,7 +51,12 @@ void test_system()
     g_assert(0);
 #endif
     g_assert_cmpstr("/",==,G_DIR_SEPARATOR_S);
-    g_assert_cmpint(8,==,G_MEM_ALIGN);
+
+    // On solaris x86 this comes back as 4
+    // Evne though tests seem to indicate that always get 8
+    g_assert((G_MEM_ALIGN == 4) || (G_MEM_ALIGN == 8));
+
+    // g_assert_cmpint(8,==,G_MEM_ALIGN);
 
     {
         typedef struct { gdouble d1; gint i1; gdouble d2; } T1;

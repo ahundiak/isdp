@@ -39,13 +39,14 @@ AC_CHECK_HEADERS([string.h strings.h], [break])
 
 AC_CHECK_FUNCS([strrchr])
 
-PKG_CHECK_MODULES([glib_DEPS],        [glib-2.0        >= 2.24.1])
-PKG_CHECK_MODULES([gmodule_DEPS], [gmodule-2.0 >= 2.24.1])
+PKG_CHECK_MODULES([glib_DEPS],   [glib-2.0 >= 2.24.1])
+PKG_CHECK_MODULES([gmodule_DEPS],[glib-2.0 >= 2.24.1 gmodule-2.0 >= 2.24.1])
+PKG_CHECK_MODULES([gio_DEPS],    [gio-2.0 >= 2.24.1])
+
+AC_CONFIG_FILES([Makefile])
 
 AC_CONFIG_FILES([exec/Makefile])
 
 AC_CONFIG_FILES([glib/Makefile glib/lib/Makefile glib/basic/Makefile glib/dload/Makefile])
-
-AC_CONFIG_FILES([Makefile])
 
 AC_OUTPUT

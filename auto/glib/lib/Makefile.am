@@ -6,7 +6,8 @@ lib_LTLIBRARIES              = libisdp_glib.la
 
 libisdp_glib_la_SOURCES  = hash.c
 
-libisdp_glib_la_LDFLAGS   = -no-undefined -version-info 0:0:0
+# libisdp_glib_la_LDFLAGS   = -no-undefined -version-info 0:0:0 $(gmodule_DEPS_LIBS)
+libisdp_glib_la_LDFLAGS   = -version-info 0:0:0
 	
 libisdp_glib_la_CFLAGS     = $(gmodule_DEPS_CFLAGS)
 
