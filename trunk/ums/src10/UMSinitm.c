@@ -1,13 +1,15 @@
+#include <stdlib.h>
 #include <sys/types.h>
 #include <string.h>
 #include <malloc.h>
 #include <stdarg.h>
 
-#include <UMS.h>
-#include <UMSpriv.h>
-#include <UMSfile.h>
-#include <pums_pub.h>
-#include <pums_pri.h>
+#include "UMS.h"
+#include "UMSpriv.h"
+#include "UMSfile.h"
+#include "pums_pub.h"
+#include "pums_pri.h"
+
 /**********************************************************************/
 /***  Must not initialize this !  ( Something to do with dynamic    ***/
 /***  loading errors if you do initialize it )  JAJ:05/17/91	    ***/
