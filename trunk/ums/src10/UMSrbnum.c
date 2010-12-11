@@ -1,4 +1,7 @@
 #include <stdarg.h>
+#include <stdlib.h>
+#include <memory.h>
+
 #include <UMS.h>
 #include <UMSpriv.h>
 #include <UMSfile.h>

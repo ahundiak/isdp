@@ -1,10 +1,8 @@
+#include <stdio.h>
+#include <unistd.h>
+
 #include <fcntl.h>
-#if defined(SCO)
-#include <sys/errno.h>
-#else
 #include <errno.h>
-#endif
-/* sml:10-07-91		add stdarg.h to make pums_all.h work */
 #include <stdarg.h>
 
 #include <UMS.h>
