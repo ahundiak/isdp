@@ -1,10 +1,11 @@
 #include <stdio.h>
-
-#include <UMS.h>
-/*	sml:10-07-91	need to include stdarg.h (to replace varargs.h)
-					for ansi C */
 #include <stdarg.h>
-#include <pums_pub.h>
+
+#include "UMS.h"
+#include "UMSpriv.h"
+#include "UMSfile.h"
+#include "pums_pub.h"
+#include "pums_pri.h"
 
 /***********************************************************************
 

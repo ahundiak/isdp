@@ -62,7 +62,7 @@ Return Status:
 int UMSInitMsg ( char *msgFile, int optFlag )
 {
   int		sts;
-  UMSHeader	*newHdr, *lastHdr, *_UMSHdrByFile();
+  UMSHeader	*newHdr, *lastHdr;
   static  int	done_init = 0;
 
 //printf("UMSInitMsg %s\n",msgFile);
@@ -563,7 +563,7 @@ Return Status:
 
 int UMSClearMsg ( char *msgFile )
 {
-  UMSHeader	*msgHdr, *prevHdr, *_UMSHdrByFile();
+  UMSHeader	*msgHdr, *prevHdr;
 
   msgHdr = _UMSHdrByFile( msgFile );
   if ( ! msgHdr )
