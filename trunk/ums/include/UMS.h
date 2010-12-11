@@ -53,4 +53,32 @@
 
 #define UMS_E_COMPILE	0x80		/* input file in wrong format */
 
+/* ==================================================================== */
+#if defined(__cplusplus)
+extern "C" {
+#endif
+
+#if defined(__STDC__) || defined(__cplusplus)
+#define UMS_PROTO(s) s
+#else
+#define UMS_PROTO(s) ()
+#endif
+
+extern int UMSGetByKey UMS_PROTO((char msgBuf[], char *msgKey, char *msgFmt, ...));
+extern int UMSGetByNum UMS_PROTO((char msgBuf[], long  msgNum, char *msgFmt, ...));
+
+extern int UMSInitMsg     UMS_PROTO((char *msgFile, int optFlag));
+extern int UMSClearMsg    UMS_PROTO((char *msgFile));
+extern int UMSGetKeyByNum UMS_PROTO((char *msgKey, char *msgKey2, long msgNum));
+extern int UMSMsgCode     UMS_PROTO((char codeBuf[], long msgNum, int supFlag, char *newComp, char *newType, char *newExt));
+extern int UMSGetNumByKey UMS_PROTO((long *msgNum, char *msgKey));
+extern int UMSRetPtrByKey UMS_PROTO((char **msgPtr, int *msgLen, char *msgKey));
+extern int UMSRetPtrByNum UMS_PROTO((char **msgPtr, int *msgLen, long msgNum));
+
+#undef UMS_PROTO
+
+#if defined(__cplusplus)
+}
+#endif
+
 #endif
