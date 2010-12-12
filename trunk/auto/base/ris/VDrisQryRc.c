@@ -29,6 +29,8 @@
 #include "VDrisc.h"
 #include "risapp.h"
 
+extern int VDrisGetDataFromSqlvar(sqlvar *var, char *data);
+
 static short RIScpp_stmt_id0 = -1;
 static short RIScpp_stmt_id1 = -1;
 static short RIScpp_stmt_id2 = -1;
