@@ -32,7 +32,8 @@ AM_PROG_LEX
 # AC_DEFINE([ISDP],[1])
 
 # ENV variable available as @DISPLAY@
-# AC_SUBST([DISPLAY])
+AC_SUBST([RIS])
+AC_SUBST([VDS])
 
 AC_CHECK_HEADERS([math.h])
 AC_CHECK_HEADERS([string.h strings.h], [break])
@@ -47,7 +48,7 @@ AC_CONFIG_FILES([Makefile])
 
 AC_CONFIG_FILES([exec/Makefile])
 
-AC_CONFIG_FILES([base/Makefile base/ris/Makefile])
+AC_CONFIG_FILES([base/Makefile base/ris/Makefile base/ums/Makefile])
 
 AC_CONFIG_FILES([glib/Makefile glib/lib/Makefile glib/basic/Makefile glib/dload/Makefile])
 
