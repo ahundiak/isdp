@@ -1,1 +1,1 @@
-SUBDIRS = ris
+SUBDIRS = ums
