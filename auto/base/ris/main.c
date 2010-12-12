@@ -101,6 +101,7 @@ int main(int argc, char** argv)
   g_test_init (&argc, &argv, NULL);
 
   g_test_add_func("/base/ris open_schema", test_open_schema);
+  
   g_test_add_func("/base/ris  get_schema", test_get_schema);
   g_test_add_func("/base/ris  query node", test_query_nodes);
   g_test_add_func("/base/ris  query sas ", test_query_storage_areas);
