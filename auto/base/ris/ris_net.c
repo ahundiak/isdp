@@ -57,15 +57,6 @@ typedef struct ris_sch_intern_info
   struct  ris_sch_intern_info *next;
 } ris_sch_intern_info;
 
-typedef struct ris_clisrv_header
-{
-  guint   len;
-  guchar  opcode;				/* current opcode */
-	gchar   response_flag;
-	short   stmt_id;			/* current stmt_id */
-	guint   timestamp_interval;
-} ris_clisrv_header;
-
 typedef struct ris_clisrv_buf
 {
   ris_clisrv_header hdr;
@@ -77,6 +68,21 @@ typedef struct ris_clisrv_buf
       char tabuser[RIS_MAX_ID_SIZE];      /* table owner */
       char tabname[RIS_MAX_ID_SIZE];      /* table name */
     } get_tab;
+
+    // Based on snoop
+    struct ris_clisrv_buf_get_tabx
+    {
+      guint    max_rows;
+      guint    max_buf_size;
+      guint    debug;
+      guchar   maj;
+      guchar   min;
+      guchar   rel;
+      guchar   lang;
+      char schname[RIS_MAX_ID_SIZE_16];
+      char tabname[RIS_MAX_ID_SIZE_16];
+      char tabuser[RIS_MAX_ID_SIZE_16];
+    } get_tabx;
 
     struct ris_clisrv_buf_schema_db
     {
@@ -101,12 +107,6 @@ typedef struct ris_clisrv_buf
   } buf;
 } ris_clisrv_buf;
 
-typedef struct ris_srvcli_header
-{
-  guint  status;				/* return status */
-  guint  timestamp_count;
-} ris_srvcli_header;
-
 typedef struct ris_srvcli_buf
 {
   ris_srvcli_header hdr;
@@ -127,6 +127,16 @@ typedef struct ris_srvcli_buf
       char    login_dbusr [RIS_MAX_ID_SIZE];
       char    privilege;      /*  version 5--for returning privilege */
     } open_schema;
+
+    struct ris_srvcli_buf_get_tab
+    {
+      guint   count;          /* # of attr structures */
+      gint    tabid;
+      gchar   tabname [32];
+      gchar   tabowner[32];      /* table owner */
+      guchar  pad[16];        /* future usage , 8 byte aligned */
+      guchar  data[1];
+    } get_tab;
 	} buf;
 } ris_srvcli_buf;
 
@@ -144,7 +154,7 @@ int ris_net_open_schema()
   send.hdr.len = sizeof(send.hdr) + sizeof(send.buf.schema_db);
   g_assert_cmpint(1624,==,send.hdr.len);
 
-  send.hdr.opcode = 49;
+  send.hdr.opcode = RIS_OPEN_SCHEMA_CODE;
 
   g_assert_cmpint(1624,==,send.hdr.len);
 
@@ -182,16 +192,15 @@ int ris_net_open_schema()
 
   send.buf.schema_db.db.ostype       = 'N'; // schemas
 
-  len = g_output_stream_write(connOut,&send,send.hdr.len,NULL,NULL);
-  g_assert_cmpint(send.hdr.len,==,len);
-
+  ris_net_write(&send,send.hdr.len,NULL);
+  
   len = sizeof(recv.hdr) + sizeof(recv.buf.open_schema);
   g_assert_cmpint(264,==,len);
 
-  g_input_stream_read(connInn,&len,4,NULL,NULL);
+  ris_net_read(&len,4,NULL);
   g_assert_cmpint(268, ==, len);
 
-  g_input_stream_read(connInn,&recv,len - 4,NULL,NULL);
+  ris_net_read(&recv,len-4,NULL);
 
 //g_assert_cmpint(recv.buf.open_schema.pid,         ==, 1581280); // Changes eash login
   g_assert_cmpint(recv.buf.open_schema.warning,     ==, 0x00);
@@ -201,13 +210,22 @@ int ris_net_open_schema()
   g_assert_cmpstr(recv.buf.open_schema.login_dbusr, ==, "NFMADMIN");
   g_assert_cmpint(recv.buf.open_schema.privilege,   ==, 'D');
 
-
   return RIS_SUCCESS;
 }
 
 int ris_net_get_table_info()
 {
-  ris_clisrv_buf send;
+  ris_clisrv_buf  send;
+  ris_srvcli_buf *recv = NULL;
+
+  typedef struct
+  {
+    gchar colname [32];
+    gchar colnamex[32];
+    gchar pad[16];
+  } Column;
+
+  Column *columns;
 
   gint len;
 
@@ -215,23 +233,43 @@ int ris_net_get_table_info()
 
   memset(&send,0,sizeof(send));
 
-  send.hdr.len = sizeof(send.hdr) + sizeof(send.buf.get_tab);
+  send.hdr.len = sizeof(send.hdr) + sizeof(send.buf.get_tabx);
   g_assert_cmpint(76,==,send.hdr.len);
 
-  send.hdr.opcode = 50;
+  send.hdr.opcode = RIS_GET_TABLE_CODE;
 
-  strcpy(send.buf.get_tab.tabuser,"NFMADMIN");
-  strcpy(send.buf.get_tab.tabname,"NFMCATALOGS");
+  strcpy(send.buf.get_tabx.schname,"isdptst");
+  strcpy(send.buf.get_tabx.tabname,"nfmcatalogs");
+  strcpy(send.buf.get_tabx.tabuser,"NFMADMIN");
 
-  len = g_output_stream_write(connOut,&send,send.hdr.len,NULL,NULL);
-  g_assert_cmpint(send.hdr.len,==,len);
+  ris_net_write(&send,send.hdr.len,NULL);
+ 
+  ris_net_read(&len,4,NULL);
+  g_assert_cmpint(1220, ==, len);
+  len -= 4;
 
+  recv = g_malloc0(len);
+  ris_net_read(recv,len,NULL);
+
+  g_assert_cmpint(14,           ==, recv->buf.get_tab.count);
+  g_assert_cmpstr("NFMCATALOGS",==, recv->buf.get_tab.tabname );
+  g_assert_cmpstr("NFMADMIN",   ==, recv->buf.get_tab.tabowner);
+
+  columns = (Column*)&recv->buf.get_tab.data[0];
+
+  g_assert_cmpstr("n_catalogno",==,columns[0].colname );
+  g_assert_cmpstr("N_CATALOGNO",==,columns[0].colnamex);
+  
+  g_assert_cmpstr("n_catalogname",==,columns[1].colname);
+  g_assert_cmpstr("n_creator", ==,columns[7].colname);
+
+  g_free(recv);
+  
   return RIS_SUCCESS;
   
 }
 int ris_net_check_arch()
 {
-  gint  count;
   gint  bufLen;
 
   gchar buf[256];
@@ -250,19 +288,16 @@ int ris_net_check_arch()
 
   // No response expected, none gotten
   bufLen = 8;
-  count = g_output_stream_write(connOut,buf,bufLen,NULL,NULL);
-  g_assert_cmpint(bufLen,==,count);
+  ris_net_write(buf,bufLen,NULL);
 
   // Think check the actual arch
   buf[0] = 0x09;
   buf[1] = 0x0C;
   bufLen = 2;
-  count = g_output_stream_write(connOut,buf,bufLen,NULL,NULL);
-  g_assert_cmpint(bufLen,==,count);
+  ris_net_write(buf,bufLen,NULL);
 
   bufLen = 2;
-  count = g_input_stream_read(connInn,buf,bufLen,NULL,NULL);
-  g_assert_cmpint(bufLen,==,count);
+  ris_net_read(buf,bufLen,NULL);
 
   g_assert_cmpint(0x09,==,buf[0]);
   g_assert_cmpint(0x0C,==,buf[1]);
@@ -296,11 +331,11 @@ int ris_net_get_ris_server_path(char *path)
   buf[7] = 0x00;
   
   bufLen = 8;
-  count = g_output_stream_write(connOut,buf,bufLen,NULL,NULL);
+  count = ris_net_write(buf,bufLen,NULL);
   g_assert_cmpint(bufLen,==,count);
 
   bufLen = 241;
-  count = g_input_stream_read(connInn,buf,bufLen,NULL,NULL);
+  count = ris_net_read(buf,bufLen,NULL);
   g_assert_cmpint(bufLen,==,count);
 
   strcpy(path,buf);
@@ -348,4 +383,34 @@ int ris_net_disconnect()
   client  = NULL;
 
   return RIS_SUCCESS;
+}
+gint ris_net_read (gpointer buf, gint bufLen, GError **error)
+{
+  gint count;
+
+  if (!client) return -1;
+  g_assert(connInn);
+
+  if (bufLen == 0) return 0;
+  g_assert(buf);
+
+  count = g_input_stream_read(connInn,buf,bufLen,NULL,error);
+  g_assert_cmpint(bufLen,==,count);
+
+  return count;
+}
+gint ris_net_write (gpointer buf, gint bufLen, GError **error)
+{
+  gint count;
+
+  if (!client) return -1;
+  g_assert(connOut);
+
+  if (bufLen == 0) return 0;
+  g_assert(buf);
+
+  count = g_output_stream_write(connOut,buf,bufLen,NULL,error);
+  g_assert_cmpint(bufLen,==,count);
+
+  return count;
 }

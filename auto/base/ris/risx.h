@@ -14,6 +14,7 @@
 
 /* rislimit.h */
 #define RIS_MAX_ID_SIZE      32
+#define RIS_MAX_ID_SIZE_16   16
 #define RIS_MAX_NODE_SIZE    29
 #define RIS_MAX_PASSWD_SIZE  38
 
@@ -155,6 +156,34 @@ extern int RIS_client_died ;
 extern int RIS_mem;
 extern int RIS_net;
 
+/* ================================================================================
+ * Client server interactions
+ */
+#define RIS_OPEN_SCHEMA_CODE         0x31
+#define RIS_CLOSE_SCHEMA_CODE        0x03
+
+#define RIS_PREP_EXEC_CODE           0x14
+#define RIS_PREP_DESC_DECL_OPEN_CODE 0x16
+
+#define RIS_FETCH_BUF_CODE           0x44
+
+#define RIS_GET_TABLE_CODE           0x32
+
+typedef struct ris_clisrv_header
+{
+  guint  len;
+  guchar opcode;             /* current opcode */
+  gchar  response_flag;
+  short  stmt_id;            /* current stmt_id */
+  guint  timestamp_interval;
+} ris_clisrv_header;
+
+typedef struct ris_srvcli_header
+{
+  guint  status;             /* return status */
+  guint  timestamp_count;
+} ris_srvcli_header;
+
 #ifdef	__cplusplus
 extern "C" {
 #endif
@@ -168,6 +197,11 @@ extern void RISint_set_sqlcode(int code);
 
 extern int ris_net_connect();
 extern int ris_net_disconnect();
+extern int ris_net_read (gpointer buf, gint bufLen, GError **error);
+extern int ris_net_write(gpointer buf, gint bufLen, GError **error);
+
+extern int ris_query(gchar *sql);
+extern int ris_query_fetch();
 
 #ifdef	__cplusplus
 }
