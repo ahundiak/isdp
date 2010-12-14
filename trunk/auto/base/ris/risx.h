@@ -13,8 +13,9 @@
 #include <string.h>
 
 /* rislimit.h */
-#define RIS_MAX_ID_SIZE   32
-#define RIS_MAX_NODE_SIZE 29
+#define RIS_MAX_ID_SIZE      32
+#define RIS_MAX_NODE_SIZE    29
+#define RIS_MAX_PASSWD_SIZE  38
 
 /* risflags.c */
 #define RIS_STATIC_STMT      1
@@ -165,6 +166,8 @@ extern short RISapp_new_stmt(int clear_flag, int static_flag);
 extern int  RISget_sqlcode();
 extern void RISint_set_sqlcode(int code);
 
+extern int ris_net_connect();
+extern int ris_net_disconnect();
 
 #ifdef	__cplusplus
 }
