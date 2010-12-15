@@ -59,7 +59,7 @@ int main(int argc, char** argv)
 
   g_test_add_func("/base/ris nothing", test_nothing);
   g_test_add_func("/base/ris init",    test_ris_net_init);
-  g_test_add_func("/base/ris query",   test_ris_query);
+//g_test_add_func("/base/ris query",   test_ris_query);
 //g_test_add_func("/base/ris connect", test_ris_net_connect);
 
   return g_test_run();
