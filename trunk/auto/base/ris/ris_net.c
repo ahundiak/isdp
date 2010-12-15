@@ -345,11 +345,13 @@ int ris_net_get_ris_server_path(char *path)
 }
 int ris_net_connect()
 {
+  gchar server[] = "pink"; // avd_isdp_test
+
   if (client) return RIS_SUCCESS;
 
   client = g_socket_client_new();
 
-  conn = (GIOStream *)g_socket_client_connect_to_host(client,"avd_isdp_test",180,NULL,NULL);
+  conn = (GIOStream *)g_socket_client_connect_to_host(client,server,180,NULL,NULL);
   g_assert(conn);
 
   g_tcp_connection_set_graceful_disconnect((GTcpConnection*)conn,TRUE);
