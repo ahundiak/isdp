@@ -1955,56 +1955,53 @@ IGRdouble value;         /* The value of the gadget */
          PDU_command = PDC_M_CHECKOUT_ACTIVATE;
          PDU_form_id = forms.local_files_form_id;
 
-	 // SAUBY, added for JTSMP CR 4008
-	 PDUvd_SetLFVDrefreshData(forms.local_files_form_id);
+	       // SAUBY, added for JTSMP CR 4008
+	       PDUvd_SetLFVDrefreshData(forms.local_files_form_id);
 
          /* format the buffer */
          if (PDU_part_file_buffer)
-           {
+         {
            MEMclose(&PDU_part_file_buffer);
            PDU_part_file_buffer = NULL;
-           }
+         }
 
-	 /* call function to loop through the rows */
+	       /* call function to loop through the rows */
          if (PDU_selected_rows > 1)
-           {
+         {
            _pdm_debug("entering design for multiple part selection", 0);
            PDU_checkout_type = NONACT;
 
-           status = PDUformat_buffer (PDU_PART_FILE_BUFFER, 
-                                      &PDU_part_file_buffer);
+           status = PDUformat_buffer (PDU_PART_FILE_BUFFER, &PDU_part_file_buffer);
            _pdm_status("PDUformat_buffer", status);
          
            if (status != PDM_S_SUCCESS)
-             {
-	     _pdm_debug("error formatting PDU_part_file_buffer", 0);
-	     PDU_load_file_buffer = FALSE;;
-             }
+           {
+             _pdm_debug("error formatting PDU_part_file_buffer", 0);
+	           PDU_load_file_buffer = FALSE;;
+           }
            else
-             {
-	     _pdm_debug("PDU_part_file_buffer successfully formatted", 0);
-	     PDU_load_file_buffer = TRUE;
-             }
+           {
+	           _pdm_debug("PDU_part_file_buffer successfully formatted", 0);
+	           PDU_load_file_buffer = TRUE;
+           }
 
            PDUmessage(PDC_M_CHECKOUT, 'c');
            PDU_checkout_type = NONACT;
 
-	   status = CMget_wflow_name( refresh->rev_catalog, refresh->rev_partid,
-	   				refresh->rev_revision, w_flow);
+	         status = CMget_wflow_name( refresh->rev_catalog, refresh->rev_partid, refresh->rev_revision, w_flow);
 	   //__DBGpr_str( "HI w_flow", w_flow);
-           status = CMar_form( refresh->rev_catalog, refresh->rev_partid,
-                               refresh->rev_revision );
+           status = CMar_form( refresh->rev_catalog, refresh->rev_partid, refresh->rev_revision );
            status = PDUcheckout();
            _pdm_status("PDUcheckout", status);
 
-	   if (status != PDM_S_SUCCESS)
-             {
+	         if (status != PDM_S_SUCCESS)
+           {
              PDUmessage(status, 's');
-	     MEMclose(&PDU_part_file_buffer);
+	           MEMclose(&PDU_part_file_buffer);
              PDU_part_file_buffer = NULL;
-	     _pdm_debug( " breaking because of ");
+	           _pdm_debug( " breaking because of ");
              break;
-             }
+           }
 
            /* call function to display list of parts that may be activated */
            if ((PDU_part_file_buffer) && (PDU_part_file_buffer->rows > 0))
@@ -2028,40 +2025,38 @@ IGRdouble value;         /* The value of the gadget */
              }
 
            break;
-           }
+         } // Selected rows > 1
 
          _pdm_debug("entering design for single part selection", 0);
          if ((PDU_selected_rows == 1) && (PDU_mcf_list || PDU_structure_list))
+         {
+           _pdm_debug("before calling PDUload_refresh_from_parts_lis:", 0);
+           _pdm_debug("refresh->rev_filename = <%s>", refresh->rev_filename);
+           status = PDUload_refresh_from_parts_list();
+           if (status == PDM_E_GENERATE_PARTS_LIST)
            {
-         _pdm_debug("before calling PDUload_refresh_from_parts_lis:", 0);
-         _pdm_debug("refresh->rev_filename = <%s>", refresh->rev_filename);
-             status = PDUload_refresh_from_parts_list();
-             if (status == PDM_E_GENERATE_PARTS_LIST)
-               {
-               msg = (char *) PDUtranslate_message(PDM_E_GENERATE_PARTS_LIST);
-               FIg_set_text(fp, FI_MSG_FIELD, msg);
-               break;
-               }
+             msg = (char *) PDUtranslate_message(PDM_E_GENERATE_PARTS_LIST);
+             FIg_set_text(fp, FI_MSG_FIELD, msg);
+             break;
            }
+         }
 
-          if ((refresh->rev_parttype) &&
+         if ((refresh->rev_parttype) &&
              (strcmp(refresh->rev_parttype, "D") != 0) &&
              (strcmp(refresh->rev_parttype, "d") != 0) &&
              (strcmp(refresh->rev_parttype, "G") != 0) &&
              (strcmp(refresh->rev_parttype, "g") != 0))
-            {
-            msg = (char *)PDUtranslate_message(PDM_E_RETRIEVE_NONGRAPHIC);
-            FIg_set_text(fp, FI_MSG_FIELD,msg);
-            PDUmessage(PDM_E_RETRIEVE_NONGRAPHIC, 's');
-            break;
-            }
-
+         {
+           msg = (char *)PDUtranslate_message(PDM_E_RETRIEVE_NONGRAPHIC);
+           FIg_set_text(fp, FI_MSG_FIELD,msg);
+           PDUmessage(PDM_E_RETRIEVE_NONGRAPHIC, 's');
+           break;
+         }
          _pdm_debug("before calling PDUcheck_part_data_for_utilities:", 0);
          _pdm_debug("refresh->rev_filename = <%s>", refresh->rev_filename);
-          status = PDUcheck_part_data_for_utilities();
-          _pdm_status("PDUcheck_part_data_for_utilities", status);
-          if (status != PDM_S_SUCCESS)
-            break;
+         status = PDUcheck_part_data_for_utilities();
+         _pdm_status("PDUcheck_part_data_for_utilities", status);
+         if (status != PDM_S_SUCCESS) break;
 
          _pdm_debug("before calling PDUcheckout:", 0);
          _pdm_debug("refresh->rev_filename = <%s>", refresh->rev_filename);
@@ -2073,94 +2068,90 @@ IGRdouble value;         /* The value of the gadget */
          _pdm_status("PDMrcheck_part_status", status);
 
          if (status == MEM_S_SUCCESS)
-           {
+         {
            PDUmessage(PDM_E_ERROR_RETRIEVING_STATUS, 's');
            break;
-           }
+         }
 
          if (status == PDM_I_NEVER_CHECKED_IN)
-           {
+         {
            /* go ahead and activate the part */
            FIf_erase(forms.local_files_form_id);
-	   PDU_local_files_displayed = FALSE;
+	         PDU_local_files_displayed = FALSE;
            //__DBGpr_str("part retrieved", refresh->rev_partid);
-	   status = CMget_wflow_name( refresh->rev_catalog, refresh->rev_partid,
-	   				refresh->rev_revision, w_flow);
-	   //__DBGpr_str( " w_flow ", w_flow);
-	   // TR1364 follow CM changes only for AVD_CM_W_FLOW
-	   // SSR 7 SEP
-	   //if(!strcmp(w_flow, AVD_CM_WFLOW))
-	   if(!strcasecmp(w_flow, "Y"))
-	   {
-	     status = SrValidateforRet(refresh->rev_catalog, 
-	     			refresh->rev_partid, refresh->rev_revision);
-	     if(status)
-	     {
-	       FIf_display(forms.local_files_form_id);
-	       break;
-	     } 
+	         status = CMget_wflow_name( refresh->rev_catalog, refresh->rev_partid, refresh->rev_revision, w_flow);
+	         //__DBGpr_str( " w_flow ", w_flow);
+	         // TR1364 follow CM changes only for AVD_CM_W_FLOW
+	         // SSR 7 SEP
+	         //if(!strcmp(w_flow, AVD_CM_WFLOW))
+	         if(!strcasecmp(w_flow, "Y"))
+	         {
+	           status = SrValidateforRet(refresh->rev_catalog, refresh->rev_partid, refresh->rev_revision);
+	           if(status)
+	           {
+	             FIf_display(forms.local_files_form_id);
+	             break;
+	           }
 	     
-	     status = SrVDGetCMattrs(refresh->rev_catalog, refresh->rev_partid,
+	           status = SrVDGetCMattrs(refresh->rev_catalog, refresh->rev_partid,
                                    refresh->rev_revision, ARsel, CMmng, 
                                    DCCsel, Mdc, IsSuper); 
-	     if(!strcmp(CMmng, "Y"))
-	     {
-	       status = CMar_form( refresh->rev_catalog, refresh->rev_partid,
-                               refresh->rev_revision );
-               do
-               {
-                 ex$wait_for_input( response = &response,
+	          if(!strcmp(CMmng, "Y"))
+	          {
+	           status = CMar_form( refresh->rev_catalog, refresh->rev_partid, refresh->rev_revision );
+             do
+             {
+               ex$wait_for_input( response = &response,
                                   buffer = response_data,
                                   mode = EX_ALL_ASCII_MODE,
                                   byte = &status );
-               } while ( response != EX_FORM_FINISHED );
+             } while ( response != EX_FORM_FINISHED );
 
-               if(IsRetOK() == 0 )
-               {
-                 UI_status("No ARs/DCC selected; Couldnot open a file.");
-                 FIf_display(forms.local_files_form_id);
-                 break;
-               }
-               status = SrVDGetCMattrs(refresh->rev_catalog,
-	                               refresh->rev_partid,
-                                   refresh->rev_revision, ARsel, CMmng, 
-                                   DCCsel, Mdc, IsSuper);
-               if(strcmp(ARsel, "Y") && !strcmp(DCCsel, "Y"))
-               {
-               /* AR is not selected AND DCC is not selected */
-                 UI_status("No ARs selected; Couldnot open file.");
-                 FIf_display(forms.local_files_form_id);
-                 break;
-               }
+             if(IsRetOK() == 0 )
+             {
+               UI_status("No ARs/DCC selected; Couldnot open a file.");
+               FIf_display(forms.local_files_form_id);
+               break;
              }
-	   }
-           PDU_command = PDC_M_ACTIVATE_PART;
-           _pdm_debug("about to PDUactivate in PDM_I_NEVER_CHECKED_IN");
-           status = PDUactivate();
-           _pdm_status("PDUactivate", status);
-	   /* tls show CM form  we need to make it wait some how*/
-	   /* we need to check the state also */
-           /* SSR should call CMload_ar_form; to show working ARs and also give an option to query available ARs */
-  	   /*status = CMstate_form();*/
-           /*printf("\n USR %s", refresh->username);*/
-           break;
-           }
+             status = SrVDGetCMattrs(refresh->rev_catalog,
+	                                   refresh->rev_partid,
+                                     refresh->rev_revision, ARsel, CMmng,
+                                     DCCsel, Mdc, IsSuper);
+             if(strcmp(ARsel, "Y") && !strcmp(DCCsel, "Y"))
+             {
+               /* AR is not selected AND DCC is not selected */
+               UI_status("No ARs selected; Couldnot open file.");
+               FIf_display(forms.local_files_form_id);
+               break;
+             }
+           } // if(!strcmp(CMmng, "Y"))
+	       }
+         PDU_command = PDC_M_ACTIVATE_PART;
+         _pdm_debug("about to PDUactivate in PDM_I_NEVER_CHECKED_IN");
+         status = PDUactivate();
+         _pdm_status("PDUactivate", status);
+	       /* tls show CM form  we need to make it wait some how*/
+	       /* we need to check the state also */
+         /* SSR should call CMload_ar_form; to show working ARs and also give an option to query available ARs */
+  	     /*status = CMstate_form();*/
+         /*printf("\n USR %s", refresh->username);*/
+         break;
+       } // if (status == PDM_I_NEVER_CHECKED_IN)
 
-         else if (status == PDM_I_CHECKED_OUT_BY_YOU)
-           {
-           /* go ahead and activate the part */
-           FIf_erase(forms.local_files_form_id);
-	   PDU_local_files_displayed = FALSE;
-	   status = CMget_wflow_name( refresh->rev_catalog, refresh->rev_partid,
-	   				refresh->rev_revision, w_flow);
-	   //__DBGpr_str( " w_flow ", w_flow);
-	   // TR1364 follow CM changes only for AVD_CM_W_FLOW
-	   // SSR 7 SEP
-	   //if(!strcmp(w_flow, AVD_CM_WFLOW))
-	   if(!strcasecmp(w_flow, "Y"))
-	   {
-           status = SrValidateforRet(refresh->rev_catalog, refresh->rev_partid,
-                               refresh->rev_revision);
+       else if (status == PDM_I_CHECKED_OUT_BY_YOU)
+       {
+         /* go ahead and activate the part */
+         FIf_erase(forms.local_files_form_id);
+	       PDU_local_files_displayed = FALSE;
+	       status = CMget_wflow_name( refresh->rev_catalog, refresh->rev_partid, refresh->rev_revision, w_flow);
+
+	       //__DBGpr_str( " w_flow ", w_flow);
+	       // TR1364 follow CM changes only for AVD_CM_W_FLOW
+	       // SSR 7 SEP
+	       //if(!strcmp(w_flow, AVD_CM_WFLOW))
+	       if(!strcasecmp(w_flow, "Y"))
+	       {
+           status = SrValidateforRet(refresh->rev_catalog, refresh->rev_partid, refresh->rev_revision);
            if(status)
            {
              FIf_display(forms.local_files_form_id);
@@ -2200,71 +2191,69 @@ IGRdouble value;         /* The value of the gadget */
                break;
              }
            }
-	   }
-           PDU_command = PDC_M_ACTIVATE_PART;
-           _pdm_debug("about to PDUactive PDM_I_CHECKED_OUT_BY_YOU");
-  	   /*status = CMstate_form();*/
-           status = PDUactivate();
-           _pdm_status("PDUactivate", status);
-	   /* tls show CM form */
-	   /* we need to check the state also */
-           /*status = WaitForEvent();*/
-           /*printf("\n USR %s", refresh->username);*/
+	       } // if(!strcasecmp(w_flow, "Y"))
+         PDU_command = PDC_M_ACTIVATE_PART;
+         _pdm_debug("about to PDUactive PDM_I_CHECKED_OUT_BY_YOU");
+  	     /*status = CMstate_form();*/
+         status = PDUactivate();
+         _pdm_status("PDUactivate", status);
+	       /* tls show CM form */
+	       /* we need to check the state also */
+         /*status = WaitForEvent();*/
+         /*printf("\n USR %s", refresh->username);*/
+         break;
+       } // PDM_I_CHECKED_OUT_BY_YOU
+
+       else if (status == PDM_I_CHECKED_OUT_BY_ANOTHER_USER)
+       {
+         PDUmessage(status, 's');
+         break;
+       }
+
+       else if ((status != PDM_I_CHECKED_IN) &&
+                (status != PDM_I_CHECKED_OUT_BY_YOU) &&
+                (status != PDM_I_NEVER_CHECKED_IN) &&
+                (status != PDM_I_COPIED_TO_LOCAL_BY_YOU) &&
+                (status != PDM_I_ATTACHED_TO_LOCAL_ASSY) &&
+                (status != PDM_I_CHECKED_OUT_BY_ANOTHER_USER))
+       {
+         PDUmessage(status, 's');
+         break;
+       }
+
+       PDU_checkout_type = ACT;
+       PDU_load_file_buffer = TRUE;
+
+       FIf_erase(forms.local_files_form_id);
+	     PDU_local_files_displayed = FALSE;
+	     status = CMget_wflow_name( refresh->rev_catalog, refresh->rev_partid, refresh->rev_revision, w_flow);
+	     //__DBGpr_str( " w_flow ", w_flow);
+	     // TR1364 follow CM changes only for AVD_CM_W_FLOW
+	     // SSR 7 SEP
+	     //if(!strcmp(w_flow, AVD_CM_WFLOW))
+	     if(!strcasecmp(w_flow, "Y"))
+	     {
+         status = SrValidateforRet(refresh->rev_catalog, refresh->rev_partid, refresh->rev_revision);
+         if(status)
+         {
+           FIf_display(forms.local_files_form_id);
            break;
-           }
+         }
 
-         else if (status == PDM_I_CHECKED_OUT_BY_ANOTHER_USER)
-           {
-           PDUmessage(status, 's');
-           break;
-           }
-
-         else if ((status != PDM_I_CHECKED_IN) &&
-                  (status != PDM_I_CHECKED_OUT_BY_YOU) &&
-                  (status != PDM_I_NEVER_CHECKED_IN) &&
-                  (status != PDM_I_COPIED_TO_LOCAL_BY_YOU) &&
-                  (status != PDM_I_ATTACHED_TO_LOCAL_ASSY) &&
-                  (status != PDM_I_CHECKED_OUT_BY_ANOTHER_USER))
-           {
-           PDUmessage(status, 's');
-           break;
-           }
-
-         PDU_checkout_type = ACT;
-         PDU_load_file_buffer = TRUE;
-
-           FIf_erase(forms.local_files_form_id);
-	   PDU_local_files_displayed = FALSE;
-	   status = CMget_wflow_name( refresh->rev_catalog, refresh->rev_partid,
-	   				refresh->rev_revision, w_flow);
-	   //__DBGpr_str( " w_flow ", w_flow);
-	   // TR1364 follow CM changes only for AVD_CM_W_FLOW
-	   // SSR 7 SEP
-	   //if(!strcmp(w_flow, AVD_CM_WFLOW))
-	   if(!strcasecmp(w_flow, "Y"))
-	   {
-           status = SrValidateforRet(refresh->rev_catalog, refresh->rev_partid,
-                               refresh->rev_revision);
-           if(status)
-           {
-             FIf_display(forms.local_files_form_id);
-             break;
-           }
-
-           //__DBGpr_str("3part retrieved", refresh->rev_partid);
-           status = SrVDGetCMattrs(refresh->rev_catalog, refresh->rev_partid,
-                                   refresh->rev_revision, ARsel, CMmng, 
-                                   DCCsel, Mdc, IsSuper);
-           if(!strcmp(CMmng, "Y"))
-           {
-             status = CMar_form( refresh->rev_catalog, refresh->rev_partid,
+         //__DBGpr_str("3part retrieved", refresh->rev_partid);
+         status = SrVDGetCMattrs(refresh->rev_catalog, refresh->rev_partid,
+                                 refresh->rev_revision, ARsel, CMmng, 
+                                 DCCsel, Mdc, IsSuper);
+         if(!strcmp(CMmng, "Y"))
+         {
+           status = CMar_form( refresh->rev_catalog, refresh->rev_partid,
                                refresh->rev_revision );
-             do
-             {
-               ex$wait_for_input( response = &response,
-                                  buffer = response_data,
-                                  mode = EX_ALL_ASCII_MODE,
-                                  byte = &status );
+           do
+           {
+             ex$wait_for_input( response = &response,
+                                buffer = response_data,
+                                mode = EX_ALL_ASCII_MODE,
+                                byte = &status );
              } while ( response != EX_FORM_FINISHED );
              if(IsRetOK() == 0 )
              {
