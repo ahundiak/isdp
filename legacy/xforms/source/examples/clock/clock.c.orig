@@ -1,0 +1,102 @@
+#include <stdio.h>
+#include <tools.h>
+#include <sys/types.h>
+#include <sys/lock.h>
+#include "time.h"
+#include "FI.h"
+
+#define READOUT     14
+
+char buffer[20];
+
+time_t time();
+time_t the_time;
+
+struct tm *localtime();
+struct tm *t;
+
+main (argc, argv)
+int	argc;
+char	*argv[];
+{
+    struct vlt_slot * vlt;
+
+    Form form;
+
+    int vs;
+    int event;
+    int slots;
+    int timer_no;
+    int window;
+    int hour;
+    int last_min = 0;
+
+    plock ( PROCLOCK );
+
+    Enter_tools ();
+
+    Set_logo ( "Clock" );
+    Enable_events ( FI_EVENT_MASK );
+
+    /* Load vlt */
+   
+    Inq_displayed_vs ( &vs );
+    Get_fixed_vlt ( &vlt, &slots );
+    Loadvlt ( vs, vlt, slots );
+
+    FI_enter();
+
+    FI_set_font_path ( ".:..:/usr/ip32/resrc/bsfont" );
+
+    FIf_new ( 100, "clock.form", NULL, &form );
+    FIf_display ( form );
+
+    FIf_get_window ( form, &window );
+
+    Set_win_auto_act ( window, 0 );
+    Set_win_sys_icon ( window, DELETE_ICON_VALUE, 1 );
+
+    Start_timer ( 60, 1, &timer_no );
+
+    while ( FI_forms_active() )
+    {
+	Wait_for_next ( FI_EVENT_MASK, &event );
+
+	if ( ! FI_process_event ( event ) )
+	{
+		if ( event & TIMER_EVENT )
+		{
+			Get_timer_data ( &timer_no );
+	
+			the_time = time( (long *)0 );
+			t = localtime ( ( long * ) &the_time );
+
+			hour = t->tm_hour;
+
+			if ( hour > 12 )
+				hour-=12;
+
+			if ( last_min != t->tm_min )
+			{
+				sprintf ( buffer, "%2d:%02d", hour,t->tm_min );
+	
+				if ( buffer[0] == ' ' )
+					strcpy ( buffer, &buffer[1] );
+					
+				FIg_erase    ( form, READOUT );
+				FIg_set_text ( form, READOUT, buffer );
+				FIg_display  ( form, READOUT );
+				
+				last_min = t->tm_min;
+			}
+		}
+		else
+			FI_clear_event ( event );
+	}
+    }
+
+    Exit_tools();
+}
+
+
+

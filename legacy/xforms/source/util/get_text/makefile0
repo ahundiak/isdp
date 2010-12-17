@@ -1,0 +1,124 @@
+XFI          = ../xfi
+XFUTIL       = ..
+
+CURRENT_PROC_TYPE = c100
+
+# dmb:11/16/91:New Location
+FS           = /usr
+FS_INCLUDE   = $(FS)/include/X11
+
+CLIX_FS_LIB  = -lXFS_s
+SUN_FS_LIB   = -lXFS
+MIPS_FS_LIB  = -lXFS
+
+LIB_DIR      = $(XFI)/lib/$(CURRENT_PROC_TYPE)
+FORMS_LIB    = $(LIB_DIR)/libXFI_s.a
+
+LICTOOL_DIR=/usr/ip32/lictools
+LICTOOL_LIB=$(LICTOOL_DIR)/api.o
+
+CC           = acc
+COPT         = -knr  -O3 -Abss=0
+
+IPATH        = -I../set_text -I$(XFI)/include -I$(FS_INCLUDE) \
+	       -I$(LICTOOL_DIR)
+CFLAGS       = $(COPT) $(IPATH)
+
+#EXE_DIR      = $(XFUTIL)/bin/$(CURRENT_PROC_TYPE)
+EXE_DIR      = $(XFUTIL)/bin
+EXE          = $(EXE_DIR)/XFIf_get_text
+
+
+ARCHIVE      = libX11.a
+SHARABLE     = libX11_s.a
+
+# For SunOS
+SUN_XLIB     = -lX11
+# For CLIX
+CLIX_XLIB    = -lX11_s
+# For MIPS
+MIPS_XLIB    = -lX11_s
+
+
+BOX=`uname -s`
+
+OBJECTS =	\
+	main.o	\
+	get_text.o \
+	BAGgetopt.o
+
+$(EXE): $(OBJECTS) $(FORMS_LIB)
+	@if [ ! -d $(EXE_DIR) ]; \
+	then \
+		echo "Create $(EXE_DIR)."; \
+		mkdir -p $(EXE_DIR); \
+	fi;
+	@if [ "$(BOX)" = "CLIX" ]; \
+	then \
+		echo ""; \
+		echo "Build with $(CLIX_XLIB) for $(BOX)"; \
+		set -x; \
+		$(CC) $(CFLAGS) -o $(EXE) $(OBJECTS)	\
+		  $(FORMS_LIB)				\
+		  $(LICTOOL_LIB)			\
+		  $(CLIX_FS_LIB) $(CLIX_XLIB) \
+		  -lmath -lbsd -lc_s; \
+		set +x; \
+	elif [ "$(BOX)" = "IRIX" ]; \
+	then \
+		echo ""; \
+		echo "Build with $(MIPS_XLIB) for $(BOX)"; \
+		set -x; \
+		$(CC) $(CFLAGS) -o $(EXE) $(OBJECTS)	\
+		  $(FORMS_LIB)				\
+		  $(LICTOOL_LIB)			\
+		  $(MIPS_FS_LIB) $(MIPS_XLIB) \
+		  -lm -lbsd -lc; \
+		set +x; \
+	elif [ "$(BOX)" = "SunOS" ]; \
+	then \
+		echo ""; \
+		echo "Build with $(SUN_XLIB) for $(BOX)";	\
+		set -x; \
+		$(CC) $(CFLAGS) -o $(EXE) $(OBJECTS)		\
+		 $(LICTOOL_LIB)					\
+		 -lXFI $(SUN_FS_LIB) $(SUN_XLIB) -lm -lc;	\
+		set +x; \
+	else \
+		echo "Unknown BOX $(BOX)"; \
+	fi; \
+	if [ "${STRIP}" ]; \
+	then \
+		echo "Strip $(EXE)"; \
+		strip $(EXE); \
+	fi; \
+	echo; \
+	ls -ls $(EXE); \
+	echo;
+
+get_text.o:	get_text.c 		\
+	/usr/include/stdio.h		\
+	$(XFI)/include/FI.h		\
+	$(XFI)/include/FIform.h		\
+	$(XFI)/include/FIgadget.h	\
+	$(XFI)/include/FIfield.h	\
+	$(XFI)/include/FImcf.h		\
+	$(XFI)/include/FImacros.h	\
+	$(XFI)/include/FItext.h		\
+	$(XFI)/include/FItog.h		\
+	$(XFI)/include/FImin.h		\
+	../set_text/getsetdef.h
+
+main.o:	main.c 				\
+	$(LICTOOL_DIR)/api.h		\
+	/usr/include/stdio.h		\
+	/usr/include/errno.h		\
+	$(XFI)/include/FI.h		\
+	$(XFI)/include/FImin.h
+
+tst : $(OBJECTS)
+	$(CC) $(CFLAGS) -o tst.tmp $(OBJECTS) \
+	  -lXFI -lX11_s -lmath -ldmalloc -lbsd -lc_s -lg
+	mv tst.tmp tst
+	ls -ls tst
+
