@@ -1,0 +1,246 @@
+PROCESS ON TRANSITION
+ 
+1.1  PROCESS ON TRANSITION
+ 
+       The "Process on Transition" functionality allows a customer site or
+       application to associate a process (a single or multiple programs) to a
+       command/state in a workflow. If multiple processes are associated with
+       a transition, the sequence number will be used to determine the
+       processing order.
+
+1.1.1  General
+ 
+       A process can be associated with any transition line in an item 
+       workflow where the "from state" is not zero and the command is 
+       a true command (the "commands" used by "Make Transition", such 
+       as "Release Item", are not valid).
+ 
+       The information will be passed to either a C program or shell script
+ 
+       The process must be stored on the server and executed there
+ 
+       A process can be executed either before a command is executed (after
+       access validation) or after a command is executed. 
+ 
+1.1.2  Values passed
+ 
+       The following information will be made available to the process
+ 
+           - process name             # Name of the process (UNIX supplies
+                                        this)
+           - command name             # the command that was executed
+                                        (optional)
+           - user name                # the user that executed the command
+           - catalog                  # the active catalog
+           - item name                # the active item name
+           - item revision            # the active item's revision
+           - state of the item        # the state of the item at the time the
+               (name)                   process was executed - (optional)
+           - schema name              # the name of the schema (optional -
+                                        default is current schema)
+           - schema password          # the password of the schema (optional -
+                                        default is the current schema and the
+                                        password is not necessary)
+           - status of the command    # if pre_command, the status of access
+                                        validation, if post_command, the
+                                        status of the command
+                                        S - Command was successful. (Default
+                                            for pre_command)
+                                        I - Command generated an informational
+                                            message
+                                        W - Command generated a warning
+                                            message
+                                        E - Command was not successful
+ 
+           Warning - extreme care should be used when returning the scheme
+           name and password information since this information can be used to
+           access the I/NFM operating environment directly.
+
+1.1.3  Pre-processes
+ 
+       A process that is executed before a command is executed (but after
+       access validation) is a pre-process. 
+ 
+       A pre-process will not be executed if validate access fails.
+ 
+       The process will be able to provide a status to I/NFM -
+               0 = successful     >0 = unsuccessful
+ 
+       The process is able to provide a status to I/NFM via the exit()
+       function in C programs and the exit statement in shell scripts. I/NFM
+       will interpret a zero exit status as successful. A non-zero exit status
+       will cause the command to be aborted. I/NFM will also be able to
+       determine if the process failed to execute successfully. In this case,
+       the command will be aborted. I/NFM will generate the appropriate error
+       messages.
+ 
+       If the pre-process feature is used on a transition from one state to
+       another, it allows the user to define a set of conditions that must be
+       met before an item can be transitioned to the next state (checks).
+ 
+       This feature can also be used to abort a command if certain conditions
+       are not met. When a process is executed, the I/NFM software will wait
+       for the process to complete before continuing with the command (or
+       abort the command if the process is unsuccessful).
+ 
+1.1.4  Post-processes
+ 
+       A process that is executed after an I/NFM command has been executed is
+       called a post-process.
+ 
+       Post-processes will be executed even if the I/NFM command fails, but
+       the process will be able to check the status of the I/NFM command
+       (whether the command was successful or failed). This will allow the
+       process to react differently depending on the status of the command. (A
+       user might want to send customized mail depending on the status of the
+       command, for example).
+ 
+       The I/NFM software will wait for the process to complete, but the
+       status of the process will not be checked since it has no influence on
+       the I/NFM command.
+ 
+       If a process exits with a non-zero status or if the process fails,
+       I/NFM will generate the appropriate error messages provided that the
+       command was successful. If the command was not successful, error
+       messages from the post-process will not be displayed. I/NFM error
+       messages take precedence over process on command messages.
+ 
+1.1.5  Example C Program
+ 
+	#include <stdio.h>
+
+	main (argc, argv)
+	      int   argc;
+	      char *argv[];
+	{
+
+	/* To avoid any assignment problems, adhere to the array dimensions
+	shown. */
+
+        char process_path   [129];
+	char schema_name    [101];
+        char schema_passwd  [101];
+        char command_status [2];
+        char command_name   [101];
+        char user_name      [15];
+        char catalog        [21];
+        char item_name      [61];
+        char item_revision  [61];
+        char item_state     [41];
+              
+
+	/* The command line arguments will be ordered as follows */
+
+	strncpy (process_path,   argv[0], sizeof(process_path));
+	strncpy (schema_name,    argv[1], sizeof(schema_name));
+	strncpy (schema_passwd,  argv[2], sizeof(schema_passwd));
+        strncpy (command_status, argv[3], sizeof(command_status));
+        strncpy (command_name,   argv[4], sizeof(command_name));
+        strncpy (user_name,      argv[5], sizeof(user_name));
+        strncpy (catalog,        argv[6], sizeof(catalog));
+        strncpy (item_name,      argv[7], sizeof(itemname));
+        strncpy (item_revision,  argv[8], sizeof(itemrev));
+        strncpy (item_state,     argv[9], sizeof(itemstate));
+
+      
+	/************
+        Do some processing here ................
+        .
+        .
+        .
+        .
+        .
+	***********/
+
+	/* In communicating a status back to I/NFM, the following methods
+	may be utilized.  
+
+ 	exit(status);  	status = 0 (success) , status != 0 (failure) 
+        _exit(status);  
+        return(status);
+
+Note:  If program executes successfully and terminates without a
+       return or exit call, the results will be unpredictable.
+	*/
+	} 
+
+1.1.6  Example Schell Script
+ 
+	/********************** Example shell script ***********************/
+
+	# The command line arguments will be in the following order.
+	# This example simply assigns these command line arguments to 
+	#    local variables
+
+	process_name=$0
+	schema_name=$1
+	schema_passwd=$2
+	command_status=$3
+	command_name=$4
+	user_name=$5
+	catalog=$6
+	item_name=$7
+	item_revision=$8
+	item_state=$9
+
+
+	# Do some processing here .................
+	#  .
+	#  .
+	#  . 
+	#  .
+	#  .
+	#
+	#exit success (success = 0)
+	exit 0        
+	#exit failure (failure != 0)
+	exit 1 
+	---------------  
+
+1.1.7  Uses for the Process on Command Capability
+ 
+       Possible uses for the above information:
+ 
+           customized mail
+ 
+           maintaining/updating database information outside of I/NFM
+           (additional tables, attributes, or automatic flagging)
+ 
+           customized manipulation of files
+ 
+           automatic generation of reports
+
+1.1.8  Example Schell Script - Customized mail
+
+# This process will be attached to the "Approve Item" transition from
+# a state of "modification complete". If a "Make Transition" command
+# to approve the item is successful, mail will be sent to the project
+# manager's (user 'pm') mail account on node 'node1'.
+ 
+# Initialize variables from command line arguments
+
+    process_name=$0
+    schema_name=$1
+    schema_passwd=$2
+    command_status=$3
+    command_name=$4
+    user_name=$5
+    catalog=$6
+    item_name=$7
+    item_revision=$8
+    item_state=$9
+
+# If command was successful, send mail to project manager 
+
+    if [ $command_status = "S" ]
+    then
+        echo "Item Approved: $catalog: $item_name.$item_revision" > /usr/tmp/mail.tmp
+        elm -s "Item Approved" node1!pm < /usr/tmp/mail.tmp
+    fi
+    
+# Exit successfully
+
+    exit 0        
+
+
+

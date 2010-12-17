@@ -1,0 +1,136 @@
+#include "machine.h"
+#include "SQL.h"
+
+ extern long   SQLquery_count;
+ extern struct SQLglobal_st SQLglobal ;
+
+ long SQLfix_qry_prep_3 ()
+   {
+     static char *fname = "SQLfix_qry_prep_3" ;
+     exec sql begin declare section;
+       long    status;
+       char    sql_str [512];
+     exec sql end declare section;
+
+     sprintf (sql_str, "SELECT %s FROM %s WHERE %s = ? AND %s = ?",
+     "n_tableno", "NFMTABLES", "n_tabletype", "n_tablename");
+     
+     _SQLdebug ((fname, "Sql Str = <%s>\n", sql_str));
+
+     exec sql prepare NFMfix_qry_3 from :sql_str;
+     if (SQLCODE)
+      {
+        status = SQLerror (SQL_E_PREPARE, risca -> sqlerrd [2], SQLCODE);
+        _SQLdebug ((fname, "Prepare Failed : <0x%.8x>\n", status));
+        exec sql clear NFMfix_qry_3;
+/*        ERRload_struct (SQL, status, NULL); */
+        return (status);
+      }
+         
+     _SQLdebug ((fname, "SUCCESSFUL\n")) ;
+     return (SQL_S_SUCCESS);
+   }
+
+ long SQLfix_qry_res_3 (table_type, table_name, table_no)
+   exec sql begin declare section;
+     char    *table_type;
+     char    *table_name;
+     int     *table_no;
+   exec sql end declare section;
+   {
+     static char *fname = "SQLfix_qry_res_3" ;
+     exec sql begin declare section;
+       long    status;
+       int     t_table_no;
+       long    ind1;
+     exec sql end declare section;
+     char sql_str [512] ;
+
+     SQLquery_count = SQLquery_count + 1;
+/*     _SQLdebug ((fname, "SQL QUERY NO = <%d>\n", SQLquery_count)); */
+
+    *table_no = 0;
+
+/*    _SQLdebug ((fname, "Tab Type = <%s> : Tab Name = <%s>\n", 
+	table_type, table_name)); */
+     
+   if (! SQLglobal.prep[3]) 
+   {
+	status = SQLfix_qry_prep_3 () ;
+        if (status != SQL_S_SUCCESS)
+        {
+           _SQLdebug ((fname, "Failure : status = <0x%.8x>\n", status));
+	   return (status) ;
+        }
+	SQLglobal.prep[3] = 1 ;
+   }
+
+     sprintf (sql_str, "SELECT %s FROM %s WHERE %s = '%s' AND %s = '%s'",
+     "n_tableno", "NFMTABLES", "n_tabletype", table_type,
+      "n_tablename", table_name);
+
+     _SQLdebug ((fname, "Fix Qry 3 : %s\n", sql_str)) ;
+
+     exec sql declare NFMfix_cur_3 cursor for NFMfix_qry_3;
+     if (SQLCODE)
+      {
+        status = SQLerror (SQL_E_DECLARE, risca -> sqlerrd [2], SQLCODE);
+        _SQLdebug ((fname, "Declare Failed : <0x%.8x>\n", status));
+        exec sql close NFMfix_cur_3;
+/*        ERRload_struct (SQL, status, NULL); */
+        return (status);
+      }
+
+     exec sql open NFMfix_cur_3 using :table_type, :table_name;
+     if (SQLCODE)
+      {
+        status = SQLerror (SQL_E_OPEN, risca -> sqlerrd [2], SQLCODE);
+        _SQLdebug ((fname, "Open Failed : <0x%.8x>\n", status));
+        exec sql close NFMfix_cur_3;
+/*        ERRload_struct (SQL, status, NULL); */
+        return (status);
+      }
+
+     exec sql fetch NFMfix_cur_3 into :t_table_no:ind1;
+     if (SQLCODE)
+      {
+        if (SQLCODE != END_OF_DATA)
+         {
+           status = SQLerror (SQL_E_FETCH, risca -> sqlerrd [2], SQLCODE);
+           _SQLdebug ((fname, "Fetch Failed : <0x%.8x>\n", status));
+         }
+        else
+         {
+/*           status = SQLerror (SQL_I_NO_ROWS_FOUND, 
+                    risca -> sqlerrd [2], SQLCODE); */
+	   status = SQL_I_NO_ROWS_FOUND ;
+           _SQLdebug ((fname, "No Rows Found : <0x%.8x>\n", status));
+	   ERRload_struct (SQL, status, NULL) ;
+         }
+
+        exec sql close NFMfix_cur_3;
+/*        ERRload_struct (SQL, status, NULL); */
+        return (status);
+     }
+       
+    exec sql close NFMfix_cur_3;
+    if (SQLCODE)
+     {
+       status = SQLerror (SQL_E_CLOSE, risca -> sqlerrd [2], SQLCODE);
+       _SQLdebug ((fname, "Close Failed : <0x%.8x>\n", status));
+/*       ERRload_struct (SQL, status, NULL); */
+       return (status);
+     }
+
+    if (ind1 < 0)    *table_no = 0;
+    else             *table_no = t_table_no;
+
+    _SQLdebug ((fname, "Table No = <%d> : SUCCESSFUL\n", *table_no));
+
+    return (SQL_S_SUCCESS);
+  }
+
+SQLp_free_3()
+{
+        exec sql clear NFMfix_qry_3;
+}

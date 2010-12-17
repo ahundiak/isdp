@@ -1,0 +1,766 @@
+#
+# Copyright Intergraph Corporation
+#
+# I/NFM Product Installation
+#
+# Synopsis
+#
+#    install.sh <srcmedia> <node.usr.pass> <srcdir> <destdir> [takedefaults]
+#
+# Modified for the SUN - Vasu 07.12.93
+
+# Check to see if there is any server running in the machine that try
+# To do newprod I/NFM product.
+
+UNIXDIR=$DESTDIR
+echo $UNIXDIR
+
+if [ ! -d ${UNIXDIR} ]; then mkdir -p ${UNIXDIR}; fi
+if [ ! -d ${UNIXDIR} ]; then echo Cannot create ${UNIXDIR}; exit 1; fi
+
+LOGFILE=${UNIXDIR}/log
+cat /dev/null > $LOGFILE
+
+# get file partition
+fp=`echo $UNIXDIR | cut -f2 -d"/"`
+UNIXDIR=/$fp/ip32/nfm
+echo $UNIXDIR
+
+cd ${UNIXDIR}
+
+RISVER="4.3"
+Ini_Size=2500
+Fcc_Size=11000
+Fcx_Size=12000
+Acc_Size=9500
+Wfg_Size=4500
+Wfx_Size=5000
+Adm_Size=4500
+Ffi_Size=4800
+Ffx_Size=5200
+Hlp_Size=3000
+Alp_Size=3800
+Cli_Size=1600
+Blk_Size=6500
+Fbk_Size=1300
+Fbx_Size=1400
+Fls_Size=1700
+Uti_Size=2000
+Msg_Size=625
+
+Fcc_Size=`expr $Ini_Size + $Fcc_Size + $Msg_Size`
+Fcx_Size=`expr $Ini_Size + $Fcx_Size + $Msg_Size`
+Acc_Size=`expr $Ini_Size + $Acc_Size + $Msg_Size`
+Wfg_Size=`expr $Wfg_Size + $Msg_Size`
+Wfx_Size=`expr $Wfx_Size + $Msg_Size`
+Adm_Size=`expr $Adm_Size + $Msg_Size`
+Ffi_Size=`expr $Ffi_Size + $Msg_Size`
+Ffx_Size=`expr $Ffx_Size + $Msg_Size`
+Alp_Size=`expr $Alp_Size + $Msg_Size`
+Cli_Size=`expr $Cli_Size + $Msg_Size`
+Blk_Size=`expr $Blk_Size + $Msg_Size`
+Fbk_Size=`expr $Fbk_Size + $Msg_Size`
+Fbx_Size=`expr $Fbx_Size + $Msg_Size`
+Fls_Size=`expr $Fls_Size + $Uti_Size`
+
+pd=/usr/ip32/product_data
+pdtmp=/usr/ip32/Product_Data
+TCPMSG="is NOT"
+
+curnfmver=`grep SN01383 /usr/ip32/ingrconfig | cut -f4 -d"#"`
+
+Check_Space () { # Check Disk Space
+  checkDIR=$1
+  checkSIZE=$2
+  checkPRODUCT=$3  
+
+# Modification for the SunOS.
+# The first 5 parameters are headings that get printed so $3 would be actually
+# ${11} for the Sun df implementation. Sample shown for a better understanding
+# of the problem.  - Vasu 1.Dec.93
+#
+# /bin/df /usr2
+# Filesystem            kbytes    used   avail capacity  Mounted on
+# /dev/sd1g             613252  469468   82459    85%    /usr2
+
+  set `/bin/df $checkDIR`
+  Disk_Space=${11}
+
+#  set `df $checkDIR`	** Old code
+#  Disk_Space=$3	** Old code
+
+  if [ $Disk_Space -lt $checkSIZE ]
+  then
+    echo ${checkPRODUCT} requires ${checkSIZE} blocks.
+    echo ${checkDIR} has only ${Disk_Space} free blocks.
+    exit 1
+  fi
+}
+
+Get_Size () { # Get image size
+  COMBINED=$1
+  UI=$2
+
+  if [ "$COMBINED" = "y" ]
+  then
+      case $UI in
+          FORMS )
+              SIZE=$Fcc_Size
+              ;;
+          XFORMS )
+              SIZE=$Fcx_Size
+              ;;
+          ALPHA )
+              SIZE=$Acc_Size
+              ;;
+          * )
+              ;;
+      esac
+  else
+      case $UI in
+          FORMS )
+              SIZE=$Ffi_Size
+              ;;
+          XFORMS )
+              SIZE=$Ffx_Size
+              ;;
+          FBLUbulkloader )
+              SIZE=$Fbk_Size
+              ;;
+          XBLUbulkloader )
+              SIZE=$Fbx_Size
+              ;;
+          ALPHA )
+              SIZE=$Alp_Size
+              ;;
+          * )
+              ;;
+      esac
+  fi
+}
+
+#
+# Give message on importance of README
+#
+
+/usr/5bin/echo "\nThis version of I/NFM is built on RIS ${RISVER} and is compatible"
+/usr/5bin/echo "ONLY with RIS ${RISVER} or later. If you do not have RIS ${RISVER} or"
+/usr/5bin/echo "later loaded on your server and environment machines, DO NOT download"
+/usr/5bin/echo "this version of the I/NFM software.  "
+/usr/5bin/echo "\nThis version of the I/NFM user interface software represents major"
+/usr/5bin/echo "changes and enhancements over previous versions. The I/NFM server soft-"
+/usr/5bin/echo "ware is now delivered with I_NFMSRV (SN01382)."
+/usr/5bin/echo "\nIt is recommended that you remove the product before upgrading. It is"
+/usr/5bin/echo "imperative that all users review the README file that is delivered with"
+/usr/5bin/echo "I/NFM before attempting to use the software.\n"
+
+if [ "$PREPROCESS" = "Y" -o "$PREPROCESS" = "y" ]
+then
+    contans=`getanswer "Do you wish to continue (y/n) ?" "n"`
+    case "$contans" in
+    [Nn]*)
+        exit 1
+        ;;
+    *)
+        ;;
+    esac
+fi
+
+/usr/5bin/echo "Download executables for Sun processors . . ." >>$LOGFILE 2>&1
+
+#
+# Get responses to prompts
+#
+
+#    combinedans => Combined Client-Server Architecture
+#    tradans  => Traditional Client-Server Architecture
+#    formsans => Forms Software
+#    xformsans => X Forms Software
+#    alphaans => Alpha Software
+#    workflans => Workflow Interface (Nfmwff)
+#    xworkflans => X Workflow Interface (Nfmwff)
+#    admans  => Administrator Utility (Nfmadmin)
+#    hlpans  => Help
+#    hlpblkans => HELP (BLUblukloader)
+#    clians  => Command Line Interface (Nfmcli)
+#    blkans  => Bulkloaders (Nfmbulk, BLU*)
+#    formsblkans  => Forms BLUbulkloaders Interface (DataEntry.exe)
+#    xformsblkans  => X forms BLUbulkloaders Interface (DataEntryx.exe)
+#    flsans  => File server and daemon (NFMfileserver/NFMdaemon)
+#    msgans  => Messages configuration
+#    msgblkans => Message configuration (BLUbulkloader)
+#    riswarn => RIS version warning
+
+# initialize stuff
+flsans=n
+msgans=n
+msgblkans=n
+riswarn=y
+
+#
+#   Do you want to bring down the combined client-server architecture?
+#
+if [ "$PREPROCESS" = "Y" -o "$PREPROCESS" = "y" ]
+then
+    /usr/5bin/echo "\nThe I/NFM User Interface software can operate in one of two modes."
+    /usr/5bin/echo "The combined client/server images have the NFMserver software"
+    /usr/5bin/echo "integrated with the client interface software giving the ability"
+    /usr/5bin/echo "to operate as a dedicated I/NFM server. The traditional client"
+    /usr/5bin/echo "software communicates remotely with an NFMserver process.\n"
+fi
+
+    cant_decide=1
+    while test $cant_decide -eq 1
+    do
+    combinedans=`getanswer "Install I/NFM Combined Client-Server Architecture software (y/n/h) ?" "y"`
+        case "$combinedans" in
+        [Hh]*)
+            /usr/5bin/echo "\nThe I/NFM Combined Client-Server software is a \c"
+            /usr/5bin/echo "standalone image that gives"
+            /usr/5bin/echo "any I/NFM client workstation the ability to operate \c"
+            /usr/5bin/echo "as a dedicated I/NFM \nserver.  \n"
+            ;;
+        *)
+            cant_decide=0
+            if [ "$combinedans" = "y" ]
+            then
+                ARCH="Combined Client-Server"
+                tradans=n
+                flsans=y
+                msgans=y
+                riswarn=y
+            fi
+            ;;
+        esac
+    done
+
+    if [ "$combinedans" = "n" ]
+    then
+#
+#   Do you want to bring down the traditional client software?
+#
+        cant_decide=1
+        while test $cant_decide -eq 1
+        do
+        tradans=`getanswer "Install I/NFM Traditional Client software (y/n/h) ?" "y"`
+            case "$tradans" in
+            [Hh]*)
+                /usr/5bin/echo "\nThe I/NFM Traditional Client software are \c"
+                /usr/5bin/echo "the standalone requester images that communicate"
+                /usr/5bin/echo "with an I/NFM server process remotely. \c"
+                ;;
+            *)
+                cant_decide=0
+                if [ "$tradans" = "y" ]
+                then
+                    ARCH="Client"
+                    combinedans=n
+                    flsans=y
+                    msgans=y
+                    msgblkans=y
+                    riswarn=y
+                fi
+                ;;
+            esac
+        done
+    fi  #combinedans = n
+
+    if  [ "$combinedans" = "y" -o "$tradans" = "y" ]
+    then
+#
+#   Do you want to bring down Forms, Alpha, Cli, Wff?
+#
+        if [ "$PREPROCESS" = "Y" -o "$PREPROCESS" = "y" ]
+        then
+            /usr/5bin/echo "\nThe I/NFM Graphic Interface is available built on I/XForms or \n"
+        fi
+        cant_decide=1
+        while test $cant_decide -eq 1
+        do
+        xformsans=`getanswer "Install I/NFM I/XForms ${ARCH} software (y/n/h) ?" "n"`
+            case "$xformsans" in
+            [Hh]*)
+                Get_Size $combinedans XFORMS
+                /usr/5bin/echo "\nThe I/NFM I/XForms ${ARCH} software is a \c"
+                /usr/5bin/echo "XWindows graphic interface of I/NFM.\n"
+                /usr/5bin/echo "The I/NFM I/XForms ${ARCH} software \c"
+                /usr/5bin/echo "requires approximately\n${SIZE} blocks.\n"
+                ;;
+            *)
+                cant_decide=0
+                if [ "$xformsans" = "y" ]
+                then
+                    flsans=y
+                    msgans=y
+                    riswarn=y
+                fi
+                ;;
+            esac
+        done
+
+        cant_decide=1
+        while test $cant_decide -eq 1
+        do
+        alphaans=`getanswer "Install I/NFM Alphanumeric ${ARCH} software (y/n/h) ?" "y"`
+            case "$alphaans" in
+            [Hh]*)
+                Get_Size $combinedans ALPHA
+                /usr/5bin/echo "\nThe I/NFM Alphanumeric ${ARCH} software is a \c"
+                /usr/5bin/echo "curses-based"
+                /usr/5bin/echo "interface of I/NFM.\n"
+                /usr/5bin/echo "The Alphanumeric ${ARCH} software \c"
+                /usr/5bin/echo "requires approximately\n${SIZE} blocks.\n"
+                ;;
+            *)
+                cant_decide=0
+                if [ "$alphaans" = "y" ]
+                then
+                    flsans=y
+                    msgans=y
+                    riswarn=y
+                fi
+                ;;
+            esac
+        done
+
+        cant_decide=1
+        while test $cant_decide -eq 1
+        do
+        xworkflans=`getanswer "Install I/NFM I/XForms Workflow Interface software (y/n/h) ?" "n"`
+            case "$xworkflans" in
+            [Hh]*)
+                /usr/5bin/echo "\nThe I/NFM I/XForms Workflow Interface is an I/XForms-based \c"
+                /usr/5bin/echo "utility for creating"
+                /usr/5bin/echo "and modifying user-defined item workflows.  This \c"
+                /usr/5bin/echo "utility may also be"
+                /usr/5bin/echo "used to copy existing workflows.  \c"
+                /usr/5bin/echo "The I/NFM I/XForms Workflow Interface requires approximately \c"
+                /usr/5bin/echo "${Wfx_Size} blocks.\n"
+                ;;
+            *)
+                cant_decide=0
+                if [ "$xformsans" = "y" ]
+                then
+                    flsans=y
+                    msgans=y
+                    riswarn=y
+                fi
+                ;;
+            esac
+        done
+
+#
+#  Do you want the bulkloader?
+#    
+        cant_decide=1
+        while test $cant_decide -eq 1
+        do
+        blkans=`getanswer "Install I/NFM Bulk Loader (y/n/h) ?" "n"`
+            case "$blkans" in
+            [Hh]*)
+                /usr/5bin/echo "\nThe I/NFM Bulk Loader can be used to quickly \c"
+                /usr/5bin/echo "enter a large amount of"
+                /usr/5bin/echo "file information into an I/NFM operating environment.\c"
+                /usr/5bin/echo "  The Bulk Loader requires \napproximately ${Blk_Size}\c"
+                /usr/5bin/echo " blocks.\n"
+                ;;
+            *)
+                cant_decide=0
+                if [ "$blkans" = "y" ]
+                then
+                    flsans=y
+                    msgans=y
+                    riswarn=y
+                fi
+                ;;
+            esac
+        done
+    
+#
+#  If combined, Do you want the Nfmadmin utility?
+#
+        if [ "$combinedans" = "y" ]
+        then
+          cant_decide=1
+          while test $cant_decide -eq 1
+          do
+          admans=`getanswer "Install I/NFM Administrator Utility (y/n/h) ?" "n"`
+              case "$admans" in
+              [Hh]*)
+                  /usr/5bin/echo "\nThe I/NFM Administrator Utility can be used for \c"
+                  /usr/5bin/echo "creating various reports"
+                  /usr/5bin/echo "on an I/NFM database and for performing various \c"
+                  /usr/5bin/echo "maintenance tasks."
+                  /usr/5bin/echo "The Administrator Utility requires approximately\c"
+                  /usr/5bin/echo " ${Adm_Size} blocks."
+                  /usr/5bin/echo "It must be installed on an I/NFM server node.\n"
+                  ;;
+              *)
+                  cant_decide=0
+                  if [ "$admans" = "y" ]
+                  then
+                      msgans=y
+                      riswarn=y
+                  fi
+                  ;;
+              esac
+          done
+        fi  #if combined
+    fi  #if combinedans or tradans = y
+
+#
+#   If the forms user interface is requested, do you want help?
+#
+        if [ "$formsans" = "y" -o "$xformsans" = "y" ]
+        then
+            cant_decide=1
+            while test $cant_decide -eq 1
+            do
+                if [ "$PREPROCESS" = "Y" -o "$PREPROCESS" = "y" ]
+                then
+                    /usr/5bin/echo "\nOn-Line Help is available for the I/NFM \c"
+                    /usr/5bin/echo "graphic interfaces via HELPRT."
+                    /usr/5bin/echo "The I/NFM HELPINFO files will be delivered. \c"
+                    /usr/5bin/echo "If this system is a Help server,"
+                    /usr/5bin/echo "the I/NFM HELPFILE files are also available.\n"
+                fi
+
+                helpserver=`grep "helpds" /etc/inetd.conf`
+                if [ "$helpserver" != "" ]
+                then
+                    helpserver=y
+                    /usr/5bin/echo "This machine IS a Help server.\n"
+                    hlpans=`getanswer "Install I/NFM On-line Help (y/n/h) ?" "y"`
+                    case "$hlpans" in
+                    [Hh]*)
+                        /usr/5bin/echo "\nThe I/NFM Forms Interface has On-Line help \c"
+                        /usr/5bin/echo "available via HELPRT.  This will"
+                        /usr/5bin/echo "require approximately ${Hlp_Size} additional \c"
+                        /usr/5bin/echo "blocks.  \n"
+                        ;;
+                    *)
+                        cant_decide=0
+                        ;;
+                    esac
+                else
+                    cant_decide=0
+                    helpserver=n
+                fi
+            done
+
+            if [ "$helpserver" = "n" ]
+            then
+                /usr/5bin/echo "This machine IS NOT a Help server.\n"
+            fi
+        fi  #if forms
+#
+#   If no other software has been requested, do you want the file server?
+#
+
+    if [ "$flsans" = "n" ]
+    then
+       cant_decide=1
+       while test $cant_decide -eq 1
+       do
+           flsans=`getanswer "Install I/NFM File Server and Utility Software (y/n/h) ?" "y"`
+           case "$flsans" in
+           [Hh]*)
+                /usr/5bin/echo "\nThe I/NFM File Server must reside on all \c"
+                /usr/5bin/echo "machines that will \ncommunicate with I/NFM.  \c"
+                /usr/5bin/echo "All network protocol software must be"
+                /usr/5bin/echo "downloaded prior to the I/NFM Fileserver.  \c"
+                /usr/5bin/echo "The I/NFM Fileserver requires approximately \c"
+                /usr/5bin/echo "${Fls_Size} blocks.\n" 
+                ;;
+            *)
+                cant_decide=0
+                msgans=y
+               ;;
+            esac
+        done
+    fi  # flsans = n
+    
+
+if [ "$PREPROCESS" = "Y" -o "$PREPROCESS" = "y" ]
+then
+        exit 0
+fi
+
+#
+# Check for the presence of RIS
+#
+
+if [ "$riswarn" = "y" ]
+then
+    RIS_Exists=`grep "RIS" /usr/ip32/ingrconfig`
+    if [ "$RIS_Exists" = "" ]
+    then 
+      /usr/5bin/echo "WARNING !!!!"
+      /usr/5bin/echo "RIS cannot be detected on this machine.  I/NFM will not"
+      /usr/5bin/echo "initialize or run without RIS.  Please make sure that RIS"
+      /usr/5bin/echo "has been downloaded to this machine."
+    fi
+fi
+
+#
+# Check for 'nfmadmin' account
+#
+
+if [ "$combinedans" = "y" ]
+then
+    Login_Exists=`grep "nfmadmin" /etc/passwd`
+    if [ "$Login_Exists" = "" ]
+    then 
+      /usr/5bin/echo "WARNING !!!!"
+      /usr/5bin/echo "\"nfmadmin\" login cannot be detected on this machine.  I/NFM"
+      /usr/5bin/echo "will not operate correctly on this machine without it.  Please"
+      /usr/5bin/echo "create the \"nfmadmin\" account prior to using I/NFM."
+    fi
+fi
+
+#
+#  Now bring down the indicated software cpio files.
+
+#
+#  Load I/NFM Initialize.
+#
+
+echo " "
+if [ "$combinedans" = "y" ]
+then
+    if [ "$formsans" = "y" -o "$xformsans" = "y" -o "$alphaans" = "y" ]
+    then
+        Check_Space $UNIXDIR $Ini_Size "I/NFM Initialize Software"
+        /usr/5bin/echo Installing I/NFM Initialize Software
+        /usr/5bin/echo Installing I/NFM Initialize Software >>$LOGFILE 2>&1
+        date >>$LOGFILE 2>&1
+        getfile nfmini.sun | compress -d | cpio -ivmud >>$LOGFILE 2>&1
+        AOK=$?
+        if [ "$AOK" != "0" ] ; then exit $AOK; fi
+    fi
+fi
+
+#
+#  Load Combined/Client software
+#
+
+#  Load I/XForms Combined Client-Server
+if [ "$combinedans" = "y" -a "$xformsans" = "y" ]
+then
+    Check_Space $UNIXDIR $Fcx_Size "I/NFM I/XForms Combined Client-Server"
+    /usr/5bin/echo Installing I/NFM I/XForms Combined Client-Server Software
+    /usr/5bin/echo Installing I/NFM I/XForms Combined Client-Server Software >>$LOGFILE 2>&1
+    date >>$LOGFILE 2>&1
+    getfile nfmfcx.sun | compress -d | cpio -ivmud >>$LOGFILE 2>&1
+    AOK=$?
+    if [ "$AOK" != "0" ] ; then exit $AOK; fi
+fi
+
+#  Load Alpha Combined Client-Server
+if [ "$combinedans" = "y" -a "$alphaans" = "y" ]
+then
+    Check_Space $UNIXDIR $Acc_Size "I/NFM Alphanumeric Combined Client-Server"
+    /usr/5bin/echo Installing I/NFM Alphanumeric Combined Client-Server Software
+    /usr/5bin/echo Installing I/NFM Alphanumeric Combined Client-Server Software >>$LOGFILE 2>&1
+    date >>$LOGFILE 2>&1
+    getfile nfmacc.sun | compress -d | cpio -ivmud >>$LOGFILE 2>&1
+    AOK=$?
+    if [ "$AOK" != "0" ] ; then exit $AOK; fi
+fi
+
+#
+# Load Traditional I/NFM User Interfaces
+#
+
+#  Load I/XForms Forms UI
+if [ "$tradans" = "y" -a "$xformsans" = "y" ]
+then
+    Check_Space $UNIXDIR $Ffx_Size "I/NFM I/XForms User Interface"
+    /usr/5bin/echo Installing I/NFM I/XForms User Interface 
+    /usr/5bin/echo Installing I/NFM I/XForms User Interface >>$LOGFILE 2>&1
+    date >>$LOGFILE 2>&1
+    getfile nfmffx.sun | compress -d | cpio -ivmud >>$LOGFILE 2>&1
+    AOK=$?
+    if [ "$AOK" != "0" ] ; then exit $AOK; fi
+fi
+
+if [ "$tradans" = "y" -a "$alphaans" = "y" ]
+then
+    Check_Space $UNIXDIR $Alp_Size "I/NFM Alphanumeric User Interface"
+    /usr/5bin/echo Installing I/NFM Alphanumeric Interface
+    /usr/5bin/echo Installing I/NFM Alphanumeric Interface >>$LOGFILE 2>&1
+    date >>$LOGFILE 2>&1
+    getfile nfmalp.sun | compress -d | cpio -ivmud >>$LOGFILE 2>&1
+    AOK=$?
+    if [ "$AOK" != "0" ] ; then exit $AOK; fi
+fi
+
+#
+#  Load Help
+#
+if [ "$hlpans" = "y" ]
+then
+    Check_Space $UNIXDIR $Hlp_Size "I/NFM On-Line Help"
+    /usr/5bin/echo Installing I/NFM On-Line Help
+    /usr/5bin/echo Installing I/NFM On-Line Help >>$LOGFILE 2>&1
+    date >>$LOGFILE 2>&1
+    getfile nfmhlp.sun | compress -d | cpio -ivmud >>$LOGFILE 2>&1
+    AOK=$?
+    if [ "$AOK" != "0" ] ; then exit $AOK; fi
+fi
+
+
+#
+#  Load I/XForms Workflow Interface
+#
+if [ "$xworkflans" = "y" ]
+then
+    Check_Space $UNIXDIR $Wfg_Size "I/NFM I/XForms Workflow Interface"
+    /usr/5bin/echo Installing I/NFM I/XForms Workflow Interface Software
+    /usr/5bin/echo Installing I/NFM I/XForms Workflow Interface Software >>$LOGFILE 2>&1
+    date >>$LOGFILE 2>&1
+    getfile nfmwfx.sun | compress -d | cpio -ivmud >>$LOGFILE 2>&1
+    AOK=$?
+    if [ "$AOK" != "0" ] ; then exit $AOK; fi
+fi
+
+if [ "$blkans" = "y" ]
+then
+    Check_Space $UNIXDIR $Blk_Size "I/NFM Bulk Load Utility"
+    /usr/5bin/echo Installing I/NFM Bulk Loader
+    /usr/5bin/echo Installing I/NFM Bulk Loader >>$LOGFILE 2>&1
+    date >>$LOGFILE 2>&1
+    getfile nfmblk.sun | compress -d | cpio -ivmud >>$LOGFILE 2>&1
+    AOK=$?
+    if [ "$AOK" != "0" ] ; then exit $AOK; fi
+fi
+
+#
+#  Load Separate Utilities
+#
+
+if [ "$admans" = "y" ]
+then
+    Check_Space $UNIXDIR $Adm_Size "I/NFM Administrator Utility"
+    /usr/5bin/echo Installing I/NFM Administrator Utility
+    /usr/5bin/echo Installing I/NFM Administrator Utility >>$LOGFILE 2>&1
+    date >>$LOGFILE 2>&1
+    getfile nfmadm.sun | compress -d | cpio -ivmud >>$LOGFILE 2>&1
+    AOK=$?
+    if [ "$AOK" != "0" ] ; then exit $AOK; fi
+fi
+
+if [ "$clians" = "y" ]
+then
+    Check_Space $UNIXDIR $Cli_Size "I/NFM Command Line Interface"
+    /usr/5bin/echo Installing I/NFM Command Line Interface
+    /usr/5bin/echo Installing I/NFM Command Line Interface >>$LOGFILE 2>&1
+    date >>$LOGFILE 2>&1
+    getfile nfmcli.sun | compress -d | cpio -ivmud >>$LOGFILE 2>&1
+    AOK=$?
+    if [ "$AOK" != "0" ] ; then exit $AOK; fi
+fi
+
+#
+#  Load Message files
+#
+
+if [ "$msgans" = "y" ]
+then
+    Check_Space $UNIXDIR $Msg_Size "I/NFM Message Files"
+    /usr/5bin/echo Installing I/NFM Message Files
+    /usr/5bin/echo Installing I/NFM Message Files >>$LOGFILE 2>&1
+    date >>$LOGFILE 2>&1
+    getfile nfmmsg.sun | compress -d | cpio -ivmud >>$LOGFILE 2>&1
+    AOK=$?
+    if [ "$AOK" != "0" ] ; then exit $AOK; fi
+fi
+
+#
+# Load I/NFM Fileserver and NFMdaemon
+#
+
+if [ "$flsans" = "y" ]
+then
+    Check_Space $UNIXDIR $Fls_Size "I/NFM File Server"
+    if [ ! -d ${UNIXDIR}/utilities ]; then mkdir -p ${UNIXDIR}/utilities; fi
+    if [ ! -d ${UNIXDIR}/utilities ]
+    then /usr/5bin/echo Cannot create ${UNIXDIR}/utilities; exit 1; fi
+    chmod 777 ${UNIXDIR}/utilities
+#
+#  Stop the I/NFM Daemon
+#
+    if [ -x /usr/ip32/nfm/bin/NFMdaemon ]
+    then
+        pid=`/bin/ps -ex | grep NFMdaemon | grep -v grep | awk '{print $1}'`
+        if [ "${pid}" != "" ]
+        then
+            /usr/5bin/echo "$0: NFMdaemon : PID = ${pid} killed\n" > /dev/console
+            /bin/kill -9 ${pid}
+        fi
+    fi
+
+    /usr/5bin/echo Installing I/NFM File Server for Sun
+    /usr/5bin/echo Installing I/NFM File Server for Sun >>$LOGFILE 2>&1
+    date >>$LOGFILE 2>&1
+    getfile nfmfls.sun | compress -d | cpio -ivmud >>$LOGFILE 2>&1
+    AOK=$?
+    if [ "$AOK" != "0" ] ; then exit $AOK; fi
+    getfile nfmuti.sun | compress -d | cpio -ivmud >>$LOGFILE 2>&1
+    AOK=$?
+    if [ "$AOK" != "0" ] ; then exit $AOK; fi
+fi
+
+if [ "$flsans" = "y" ]
+then
+    RCLOCAL="/etc/rc.local"
+    if [ -f ${RCLOCAL} ]
+    then
+        server_line=`grep -n "NFMdaemon" /etc/rc.local | \
+           sed s/\ \ /\ /g | \
+           cut -f1 -d":"`
+        new_line="${UNIXDIR}/bin/NFMdaemon &"
+        if [ "$server_line" = "" ]
+        then
+           /usr/5bin/echo $new_line >> /etc/rc.local
+        else
+           /usr/5bin/echo "${server_line}c\n$new_line\n.\nw" > /usr/tmp/nfm.tmp
+           ed /etc/rc.local < /usr/tmp/nfm.tmp  >/dev/null 2>&1
+           rm /usr/tmp/nfm.tmp
+        fi
+    fi
+fi
+
+#  This call has to go here or it will cause the installation procedure to
+#  think that an error occured.
+#
+
+getfile nfmdoc.sun | compress -d | cpio -ivmud >>$LOGFILE 2>&1
+
+#
+# Get postinstall.sh
+#
+    cd ${UNIXDIR}/i_nfmui
+    getfile postinst.sun | compress -d | cpio -ivmud >>$LOGFILE 2>&1
+    AOK=$?
+    if [ "$AOK" != "0" ] ; then exit $AOK; fi
+#
+#  Make root the owner of the product.
+#
+
+find $UNIXDIR -exec chown root {} \;
+#find $UNIXDIR -exec chgrp sys {} \;	Commented for the SunOs
+
+#
+#  Start the I/NFM Daemon if necessary
+#  Moved this to postinstall.sh. If installing on a partition
+#  other that /usr, the link to /usr/ip32/nfm has not been made and 
+#  /etc/init.d/nfm will not be able to find /usr/ip32/nfm/bin/NFMdaemon.
+#
+
+#if [ "$flsans" = "y" ] 
+#then
+#    /etc/init.d/nfm start_nfm;  
+#fi
+
+exit $retstatus

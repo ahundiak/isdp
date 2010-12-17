@@ -1,0 +1,13 @@
+#include <stdio.h>
+#include "NFMerrordef.h"
+#include "NETstruct.h"
+#include "NETerrordef.h"
+#include "MEMstruct.h"
+#include "DEBUG.h"
+#include "pc.h"
+#include "ERR.h"
+#include "NFMfto_buf.h"
+#include "NFMapi.h"
+#include "NFMschema.h"
+#include "NFMstruct.h"
+#include "NFMpcproto.h" 

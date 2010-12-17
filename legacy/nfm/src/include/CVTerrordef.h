@@ -1,0 +1,2 @@
+#define CVT_S_SUCCESS 0
+#define CVT_E_BAD_PATH 999

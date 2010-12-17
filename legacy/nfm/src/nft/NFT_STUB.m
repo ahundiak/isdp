@@ -1,0 +1,17 @@
+ARCHIVE
+libnfmftr.a
+
+INCLUDE
+${NFMINC}
+${INGRINC}
+${RISINC}
+${FORMSINC}
+${XFORMSINC}
+${FTRINC}
+${HELPINC}
+${RESINC}
+${X11INC}
+${RISCC}
+
+SOURCE
+ftrstubs.c

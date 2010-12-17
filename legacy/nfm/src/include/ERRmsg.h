@@ -1,0 +1,5 @@
+#define	ERR_S_SUCCESS			0x080d8009
+#define	ERR_I_OVERWRITE			0x080d8013
+#define	ERR_E_INVALID_INPUT		0x080d801a
+#define	ERR_E_MALLOC			0x080d8022
+#define	ERR_E_UMS			0x080d802a

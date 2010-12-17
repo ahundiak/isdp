@@ -1,0 +1,870 @@
+     UNDERSTANDING WORKFLOWS AND CHANGES TO I/NFM 3.0 WORKFLOW ASCII FILES
+     ---------------------------------------------------------------------
+                                 March 24, 1992
+
+Sections in this Document
+
+1.  Understanding Workflows - General
+2.  Types of Workflows
+3.  Sections of a Workflow File
+4.  How to Create a Customized Item Workflow
+5.  General Notes on Workflows and Access Control Lists
+6.  The Commands That Can Be Included in an Item Workflow
+7.  How to Implement Signoffs
+8.  Changes to Ascii 2.* Workflow Files
+
+1.  Understanding Workflows
+
+The following sections are included in this document:
+ 
+    Types of Workflows
+
+    NFM_ADMIN_WORKFLOW (Administrator Workflow)
+    NFM_CATALOG_WORKFLOW (Catalog Workflow)
+    NFM_PROJECT_WORKFLOW (Project Workflow)
+    NFM_SDP_WORKFLOW (Workflow Workflow)
+    NFM_ITEM_WORKFLOW (Default Item Workflow)
+ 
+    Sections of a Workflow File
+ 
+    NFMWORKFLOW section
+    NFMSTATES section
+    NFMCLASSES section
+    NFMTRANSITIONS section
+ 
+    How to Create a Customized Item Workflow
+ 
+    General Notes on Workflows and Access Control Lists
+ 
+    The Commands That Can Be Included in an Item Workflow
+ 
+    How to Implement Signoffs
+ 
+    General Information on Signoffs
+    New Commands
+    Creating an Item Workflow that Includes Signoffs
+  
+2. Types of Workflows
+
+ 
+During I/NFM initialization, five default workflows are loaded into the
+database. These workflows control access to the I/NFM functionality. Each
+workflow has a default ACL associated to it. The following describes the 
+five workflows added, the default ACL associated with each workflow,
+the classes of users in each workflow, and the type of operations
+being controlled by each workflow:
+ 
+NFM_ADMIN_WORKFLOW (Administrator Workflow) - NFM_ADMIN_ACL
+ 
+    administrator
+    o can create, delete and manipulate information for
+    - nodes
+    - storage areas
+    - users
+    - access control lists
+    - reports
+    o can perform operator functions
+  
+    operator
+    o can archive, backup, restore and delete flagged files
+
+NFM_CATALOG_WORKFLOW (Catalog Workflow) - NFM_CATALOG_ACL
+  
+    administrator
+    o can create and manipulate catalogs
+    o can map catalogs
+  
+NFM_PROJECT_WORKFLOW (Project Workflow) - NFM_PROJECT_ACL
+  
+    administrator
+    o can add, change, and delete a project
+    o can perform project_manager functions
+  
+    project_manager
+    o can map a project
+    o can define members of a project (items)
+  
+NFM_SDP_WORKFLOW (Workflow Workflow) - NFM_SDP_ACL
+  
+    administrator
+    o can load a new workflow
+  
+NFM_ITEM_WORKFLOW (Default Item Workflow) - NFM_ITEM_ACL
+  
+    designer
+    o can add and manipulate an item while in initial states
+    o can promote an item to the next level
+ 
+    supervisor
+    o can manipulate an item while in the approval states
+    o can promote an item to the next level or reject an item
+    o can perform all designer functions
+  
+    manager
+    o can manipulate an item in any state
+    o can promote an item to a released state
+    o can perform all supervisor and designer functions
+  
+During I/NFM initialization, the user initializing I/NFM (nfmadmin)
+is added to every class in every ACL. This is done to ensure that
+one person will have access to all the commands provided by I/NFM.
+After initialization the administrator (nfmadmin) may add additional
+users to the existing ACLs or create additional ACLs on any of the
+workflows.  
+  
+3. Sections of a Workflow File
+ 
+A user can create and add additional item workflows. In order to create a
+workflow, the user may create an ascii file with all of the necessary
+information (or the workflow can be created and added through the 
+Workflow Interface). In order to change a workflow ascii file, the user 
+must understand the format needed.  The following will describe the 
+sections of a workflow ascii file and the functionality of each. The 
+default item workflow will be used as an example.  
+
+3.1 NFMWORKFLOW section
+ 
+The section as it appears in the example item workflow (comments are
+marked with # - these are not in the actual file). Note - in I/NFM 3.0
+the ascii file of the default item workflow is not included. The
+example item workflow (/usr#/ip32/nfm/config/workflow/NFMexample.30) is
+the default item workflow with a different name and description.
+ 
+    NFMWORKFLOW
+      NFM_EXAMPLE_WORKFLOW |Example Item Workflow |I|NFM_SDP_ACL
+ 
+    #         ^                       ^         ^      ^
+    #         |                       |         |      |
+    #   
+    #   Workflow name            Description   Type   Workflow ACL 
+ 
+Notes on the NFMWORKFLOW section
+  
+    -  Workflow name - must be unique : datatype char(20)
+    -  Workflow description : datatype char (30)
+    -  Workflow type - must be "I" for Item
+    -  Workflow ACL - must be NFM_SDP_ACL
+ 
+3.2 NFMSTATES section
+ 
+The section as it appears in the example item workflow (comments are
+marked with # - these are not in the actual file).
+ 
+    NFMSTATES
+ 
+    creation complete     |Item creation complete     |Y|Y|0|N|1
+    modification complete |Item modification complete |Y|Y|0|N|2
+    approval complete     |Item approval complete     |Y|Y|0|N|3
+    released              |Item released              |Y|Y|0|N|4
+ 
+        ^                   ^                          ^ ^ ^ ^ ^
+        |                   |                          | | | | |
+                            |                          | | | | |
+    # State Name            |                          | | | | |
+    #                       |                          | | | | |
+    # Description----------                            | | | | |
+    #                                                  | | | | |
+    # Transfer from state------------------------------  | | | |
+    #                                                    | | | |
+    # Transfer to state----------------------------------  | | |
+    #                                                      | | |
+    # Number of signoffs ----------------------------------  | |
+    #                                                        | |
+    # Signoff Type ------------------------------------------  |
+    #                                                          |
+    # Sequence Number ----------------------------------------- 
+
+
+Notes on the NFMSTATES section
+ 
+    -  State Name - must be unique within each workflow : char(20)
+    -  State Description - description of the state
+    -  Transfer from state - this field is used by the "Make Transition
+       command to determine if it can transition an item while it is in
+       this from (current) state : valid values "Y" and "N"
+    -  Transfer to state - this field is used by the "Make Transition"
+       command to determine if it can transition an item TO this state :
+       valid values "Y" and "N"
+    -  Number of signoffs - the minimum number of signoff users that
+       must be defined for this state. (A value of "0" means that
+       signoffs are not active for this state) : datatype integer
+    -  Signoff Type - 
+          N = no signoff (only valid with "0" for Number of Signoffs)
+          MN = Mandatory - all users must signoff
+          MJ = Majority - a majority of users must sign off
+    -  Sequence Number - states should be sequenced from the lowest level
+       state to the highest level state. The sequence number is being 
+       added to distinguish between lower level and higher level states. 
+       In future releases it may be used to allow an item to be rejected 
+       (moved to a lower level state) without signoffs being resolved. 
+       It may also be used to control the transitioning of sets based on 
+       the minimum state level that set members must have achieved. 
+ 	   
+When a workflow is loaded the software numbers the states beginning with
+2. The transition section will use these internal numbers for "to" and
+"from" states. 
+ 
+States 0 and 1 have special meaning to I/NFM. "From" states of 0 and 1
+specify that the command can be invoked regardless of the current state
+of the entity as long as the user has access to the command. "To" states
+of 0 and 1 specify that the current state of the entity is not to be
+changed; and a "to" state of 0 specifies that no activity/mail
+notification is to be done and no process can be activated.
+ 
+The following shows the internal numbering of the states shown above and
+the understood meaning of the internal states.
+ 
+    0.  DONT CARE STATE                       --------
+    1.  NO CHANGE STATE                       --------
+    2.  creation complete                     |Y|Y|0|N
+    3.  modification complete                 |Y|Y|0|N
+    4.  approval complete                     |Y|Y|0|N
+    5.  released                              |Y|Y|0|N
+ 
+ 
+3.3 NFMCLASSES section
+ 
+The NFMCLASSES section gives the name of each class of user in the
+workflow. The section as it appears in the default item workflow. 
+ 
+    NFMCLASSES
+ 
+    manager
+    supervisor
+    designer
+ 
+Notes on the NFMCLASSES section
+ 
+    -  Class Name - must be unique within a workflow : char (20)
+ 
+These are the classes of users associated with the workflow. Like the
+states, they are mapped to a number for use in the transitions section.
+The classes are numbered from 1 as shown:
+ 
+   1. manager
+   2. supervisor
+   3. designer
+
+
+3.4 NFMTRANSITIONS section
+ 
+This is the real meat of the workflow. There is a line in the transition
+section of the ascii file for each command/state/access combination.
+This section tells which commands are valid for the workflow, the state
+that an item must be in for the command on the item to be valid, which
+classes of user can execute the command while the item is in a
+particular state, and some activity logging and mail flags. Here is an
+example of a line in the file (comments are marked with # - these are
+not in the actual file).
+ 
+  NFMTRANSITIONS 
+ 
+  Display List of Catalogs |Display List of Catalogs |1 |1 |N|Y|N|1|2|3
+ 
+  #         ^                         ^               ^  ^  ^ ^ ^ ^ ^ ^
+  #         |                         |               |  |  | | | | | |
+  #         |                         |               |  |  | | | | | |
+  #   Transition Name                 |               |  |  | | | | | |
+  #                                   |               |  |  | | | | | |
+  #   Command Name -------------------                |  |  | | | | | |
+  #                                                   |  |  | | | | | |
+  #   From state -------------------------------------   |  | | | | | |
+  #                                                      |  | | | | | |
+  #   To state ------------------------------------------   | | | | | |
+  #                                                         | | | | | |
+  #   Log on success ---------------------------------------  | | | | |
+  #                                                           | | | | |
+  #   Log on failure -----------------------------------------  | | | |
+  #                                                             | | | |
+  #   Notify ---------------------------------------------------  | | |
+  #                                                               | | |
+  #   First class (Manager) can execute --------------------------  | |
+  #   Second class (Supervisor) can execute ------------------------  |
+  #   Third class (Designer) can execute -----------------------------
+ 
+Notes on the NFMTRANSITIONS section
+ 
+    -  Transition Name : char (80)
+    -  Command Name : char (100)
+       o  If the command does not exist in the commands table (see the
+          section on "The Commands That Can Be Included in an Item
+          Workflow"), it will be inserted into it as a new command.
+       o  If the command is in the commands table but does not have an
+          n_entity value of NFMITEM or NFMNOENTITY, the loading of the
+          workflow will fail
+    -  From state - the state that must be the current state for the
+       command to be executed          
+    -  To state - the state that will be assumed once the command is
+       executed
+    -  Log on success - log an entry in the activity table if the
+       command is successful : valid values "Y" and "N"
+    -  Log on failure - log an entry in the activity table if the
+       command fails : valid values "Y" and "N"
+    -  Notify - notify all users in the ACL by electronic mail of the
+       status of the command that was invoked : valid values "Y" and "N"
+
+To understand a workflow, you must first understand that different
+commands require different types of access control. For discussion here,
+lets divide the commands into three types.
+ 
+    1. Commands that do not act on a specific item 
+ 
+       Commands such as "Display List of Items" or "Change Password" do
+       not act on a specific item. These commands should have a "1" in
+       the "from state" and the "to state" fields. Including these
+       commands allows the classes of users listed to execute these
+       commands in general (within NFM). Note - most of these commands
+       have been given a type of "D" (Don't Check) in I/NFM 3.0. Commands
+       of type "D" do not need to be included in item workflows.
+ 
+    2. Commands that act on a specific item but do not affect the state
+       of the item
+ 
+       These commands, such as "Change Item" or "Copy Item" can be
+       handled in two different ways, depending on the type of control
+       needed. The administrator for the workflow might want the "Copy
+       Item" command to be valid at any state for any class. In that
+       case, the command can be handled with a single line in the
+       workflow file, such as 
+ 
+       Copy Item       |Copy Item         |1 |1 |N|N|N|1|2|3
+ 
+       Another command, like "Change Item" might be valid for different
+       users depending on the item's current state. In that case, each
+       unique command/state/access combination would have to be entered.
+ 
+       Change Item     |Change Item       |2 |1 |Y|Y|N|1|2|3
+       Change Item     |Change Item       |3 |1 |Y|Y|N|1|2|
+       Change Item     |Change Item       |4 |1 |Y|Y|N|1| |
+       Change Item     |Change Item       |5 |1 |Y|Y|N|1| |
+    
+    3. The Item Transition section 
+ 
+       The Item Transition section of the workflow contains "commands"
+       that are not really NFM commands. In order to handle forced
+       transitioning (the user moving the item to a new state) in the
+       same manner as other command access, NFM has made this section
+       conform to the same rules as the other entries. 
+ 
+       This is the section that defines how an item can be moved through
+       the states in its life cycle. The "command name" portion is
+       unimportant except that it must be unique for each "command
+       name"/"from state" combination (due to a unique index on the
+       table). If a "command name" is entered that is not in the command
+       table, NFM will add it when the workflow is loaded. (See the
+       section on "The Commands That Can Be Included in an Item
+       Workflow" for a discussion of the commands table). The "Make Item
+       Transition" line establishes which classes have access to the
+       command, the other lines define the transitions that are possible
+       and the classes which can perform the transitions.
+
+       Make Item Transition |Make Item Transition   |1 |1 |Y|Y|N|1|2|3
+ 
+       Complete Item        |Complete Item          |2 |3 |Y|Y|Y|1|2|3
+       Approve Item         |Approve Item           |3 |4 |Y|Y|Y|1|2|
+       Release Item         |Release Item           |4 |5 |Y|Y|Y|1| |
+       Reject Item          |Reject Item            |3 |2 |Y|Y|Y|1|2|
+       Reject Item          |Reject Item            |4 |3 |Y|Y|Y|1| |
+ 
+4. How to Create a Customized Item Workflow
+ 
+It is advised that a user begin with an existing workflow as a template
+for creating a customized workflow. Three possible template workflows are
+contained in the /usr#/ip32/nfm/config/workflow directory - NFMexample.30
+(the default item workflow), NFMsignoff.30 (an example workflow with
+signoffs), and NFMsimple.30 (a very simple workflow with one state and one
+class of user). Note that these workflows deal only with the manipulation 
+of items in a catalog. Manipulations of a catalog are controlled by the 
+relevant catalog workflow, projects by an associated project workflow, 
+and so on. A user can only create and load an item workflow. 
+ 
+The following notes discuss changes to each workflow section during
+modification.
+ 
+4.1 The NFMWORKFLOW section
+ 
+    The workflow name can be changed. NFM_SDP_ACL must be left as it
+    is.
+ 
+4.2 The NFMSTATES section
+ 
+    Care should be taken when changing the states. Any change in the
+    number or order of states means that each corresponding entry in the
+    NFMTRANSITIONS section must be changed. The logical order of the
+    states (how an item will progress through its life cycle) is
+    determined by the transitions, not by the order in the NFMSTATES
+    section. It is recommended that the proper state order be
+    maintained by the proper sequence numbers.  
+ 
+4.3 The NFMCLASSES section
+ 
+    A workflow designer can name the classes as desired and have any
+    number of classes. The effect on the NFMTRANSITIONS section should
+    be understood so that appropriate changes can be made to the class
+    access on each transition entry.
+ 
+4.4 The NFMTRANSITIONS section
+ 
+    The entries in the NFMTRANSITIONS section will determine how the
+    customized workflow controls activities concerning an item following
+    the workflow. This is a complex section and a great deal of planning
+    should occur before modification of this section is done. Lets
+    discuss each type of command and how a customized workflow might be
+    constructed.
+ 
+    1. Commands that do not act on a specific item or do not act on an
+       item at all
+ 
+       Commands of this type do not need to be included in the workflow
+       if they are of type "D". They can be included, but they will be
+       ignored.
+ 
+    2. Commands that act on a specific item but do not affect the state
+       of the item
+ 
+       Any command, like "Change Item", that has been broken down into
+       each command/state/access combination must be altered if
+ 
+       -  the order or function of any state has changed
+       -  the number or functionality of the classes of user has changed
+ 
+    3. The "Item Transition" section of the workflow
+ 
+       It is suggested that a user draw a diagram of the states that are
+       desired and the transitions that should be possible (and the
+       class of user that can transition the item) before attempting to
+       customize this section of the workflow. 
+ 
+    Note - If additional classes are added, additional columns need to
+    be made for each NFMTRANSITION entry. For example, if a fourth class
+    were added the "Copy Item" entry might be
+ 
+    Copy Item   | Copy Item   |1 |1 |N|N|N|1|2|3|4
+ 
+    Also, it is not necessary for each class above a certain class to
+    have access to a command. For example, in the default workflow, if
+    the "Change Item" for state "2" was changed to
+ 
+    Change Item    |Change Item      |2 |1 |Y|Y|N| | |3
+ 
+    then ONLY class "3" (designer) would be able to change an item that
+    was in state 2. 
+ 
+ 
+5. General Notes on Workflows and Access Control Lists
+ 
+Once a workflow is loaded into I/NFM, it is not usable until at
+least one Access Control List (ACL) is defined on the workflow (with
+at least one user in each class).
+ 
+Access Control Lists (ACL) are used to map users to user classes.
+    -  An ACL is associated with a single workflow
+    -  Multiple ACLs are allowed per workflow
+    -  a user can belong to multiple classes within an ACL
+    -  a user can be in more than one ACL within a workflow
+    -  the user may belong to different classes in different ACLs
+       associated with a workflow
+    -  A user added to I/NFM has no access to I/NFM commands until added
+       to at least one ACL.
+ 
+Each item, project, catalog, and workflow has an ACL associated with
+it. This ACL identifies the workflow that is being followed and
+determines user access.
+ 
+Once a workflow is defined (loaded) in I/NFM, the Workflow Interface
+can be used to make some modifications. It can also be deleted through
+the Workflow Interface once all ACLs are removed.
+ 
+If a workflow fails to load, it is suggested that NFM debug be
+turned on and the load attempted again. The debug file produced is
+very large, but searching on the error message returned will usually
+put you in the vicinity of the problem.
+ 
+6. The Commands That Can Be Included in an Item Workflow
+ 
+The nfmcommands table contains data concerning each NFM command that can
+be executed and which workflow or workflows should be checked for user
+access to the command. The n_entity attribute identifies which workflow
+or workflows should be searched when validating user access. The
+following describes each possible n_entity value:
+ 
+    A (NFMADMIN)       Search NFM_ADMIN_WORKFLOW 
+    B (NFMCATALOG)     Search NFM_CATALOG_WORKFLOW
+    S (NFMSDP)         Search NFM_SDP_WORKFLOW
+    P (NFMPROJECTS)    Search NFM_PROJECT_WORKFLOW
+    I (NFMITEMS)       Search NFM_ITEM_WORKFLOW and all user defined item
+                       workflows
+    N (NFMNOENTITY)    Search across all workflows
+    D (DON'T CHECK)    No access checking will occur
+
+Only those commands which have an n_entity value of "I" or "N" should 
+be included in an item workflow (Type "D" can be included, but will be 
+ignored). If a command is entered that is not valid for an item workflow, 
+the loading of the workflow will fail.  The Workflow Interface can be used 
+to determine the type of each command.
+ 
+7. How to Implement Signoffs
+ 
+Signoffs force certain users to review an item before it can be
+moved to the next state. The signoff requirement and details about
+the signoff are built into a workflow.
+ 
+The NFMSTATES section of the workflow has two attributes that
+determine if signoffs are active on the state. If "Number of
+signoffs" is greater than one, then signoffs are required on the
+state. The number in this attribute determines the minimum number of
+signoff users that must be defined for the state. The "Type of
+Signoff" attribute determines whether all signoff users must signoff
+on an item (MN) or only a majority of the users (MJ).
+ 
+To determine if a signoff requirement has been satisfied, the
+software will use the total number of signoff users that have been
+added for a particular state (more than the required minimum number
+may be added), the "type of signoff" value for the state, and the
+number of signoffs that have occurred. For example, if three signoff
+users have been defined on a state for the ACL, and the "type of
+signoff" value is "MN", then all three signoff users will have to
+signoff on the item before it can be transitioned from that state.
+If the "type of signoff" value is "MJ", then at least two of the
+signoff users will have to signoff on the item before it can be
+transitioned. If, however, a signoff user with "override" permission
+has selected to override the checking, the item can be promoted
+without the signoff requirements being satisfied (a user with
+override permission can satisfy all requirements without additional
+signoffs occurring). The "number of signoffs" value on the state is
+not important at "Signoff on Item" or "Make Transition" time. It is
+used when the ACL is created, and when signoff users are added or
+deleted from the ACL, to guarantee that the minimum number of
+signoff users is maintained.
+ 
+When a signoff actually occurs, an entry is made in the nfmsignoff
+table indicating the item, the user, and comments concerning the
+signoff. The signoff attribute is given an "X" value if it is a regular
+signoff or "O" if it is an override. When the item is transitioned, the 
+history attribute is changed to "Y" on each signoff, changing the 
+signoffs from active (where they show with "Display List of Signoffs on 
+Item") to history (where they show with "Display Signoff History).
+ 
+7.1 Creating an Item Workflow that Includes Signoffs
+ 
+NFMSTATES section
+ 
+The NFMSTATES section include two columns that define whether
+signoffs are active for the state. 
+ 
+"Number of signoffs" - if this is "0", then signoffs are not
+required for an item to leave this state. A number greater
+than zero indicates the minimum number of signoff users that
+must be defined for the state.
+ 
+"Signoff Type" - if the value is "MN" (mandatory), then all
+signoff users must signoff before the item can be moved from
+this state (unless someone with the appropriate power
+overrides this requirement). If the value is "MJ" (majority),
+then a majority of the users must signoff before the item can
+be moved from this state (again, unless overridden). 
+ 
+In order to assure that the proper control is maintained over an
+item requiring signoffs, a signoff state should be added for each
+signoff level required. This resolves the problem of possibly
+having more than one path to a state, and the problem of
+controlling changes to an item while signoffs are occuring.
+(Modifications should not be allowed while the signoff process is
+in progress).
+ 
+NFMCLASSES section
+ 
+Each user signing off on an item must belong to the ACL
+associated with the item. Even though a user signing off on an
+item may not be directly involved in the development and
+manipulation of the item, the user must be able to copy the item
+in order to evaluate it. For users that normally do not work with
+an item but who must be able to review the item for signoff, it
+makes sense to add a new class of user that has limited access to
+the item.
+ 
+NFMTRANSITIONS section
+ 
+The four new commands must be added to a workflow to allow full
+signoff functionality in the workflow.
+ 
+An example workflow with signoffs is included in the I/NFM product -
+/usr#/ip32/nfm/config/workflow/NFMsignoff.30. This workflow can be
+loaded without modification or altered to meet specific workflow
+requirements.
+
+8.  Changes to Ascii 2.* Workflow Files
+
+8.1  Changes to Ascii workflow files
+ 
+       In order for ascii workflow files compatible with I/NFM 2.* to load
+       properly, certain changes must be made. 
+ 
+           The workflow line has a new field for the type of workflow.
+ 
+           The states line now has two additional fields, one for description
+           of the state and another for the sequence number of the state.
+ 
+           Many changes have been made to the commands in I/NFM 3.0. The
+           necessary changes to an ascii workflow file are detailed in the
+           following sections.
+ 
+8.2  Commands Being Removed 
+ 
+       The following commands are no longer being used, were never
+       implemented, or do not require access checking. They are being removed
+       from the nfmcommands table along with all workflow references to them.
+       Any ascii workflow file must have these removed before it will load.
+ 
+           Initialize 
+           Login  
+           Display List of Copied Items on SA 
+           Remove Copied Items on SA 
+           Define User Defaults
+           Retrieve Default Active Data
+           Display List of Tables
+           Create Table 
+           Change Table
+           Delete Table
+           Flag Catalog Files for Backup
+           Flag Catalog Files for Restore 
+           Cancel Backup Flag on Catalog Files
+           Cancel Restore Flag on Catalog Files
+           Purge Files in Catalog
+           Display List of File Types
+           Add File Type 
+           Change File Type
+           Delete File Type
+           Display List of Reports
+           Define Report
+           Load Report
+           Delete Report
+           Run Report
+           Load Search Criteria
+           Load Sort Criteria
+           Display List of Programs
+           Load Program
+           Delete Program
+           Display List of Programs to Pre Transition
+           Display List of Programs to Post Transition
+           Add Program to Pre Transition
+           Add Program to Post Transition
+           Delete Program to Pre Transition
+           Delete Program to Post Transition
+           Change Item File to be Restored
+           Display List of Copied Files
+           Remove Copied Files
+           Add States
+           Delete States
+           Add Classes
+           Delete Classes
+           Add Transitions
+           Delete Transitions
+           Add Transition to Class Access
+           Delete Transition to Class Access
+           Display List of Files in Item
+           Convert Item to Set
+           Check Out Item/No Copy
+           Purge Files for Item
+           Add Set
+           Display List of Sets
+           Convert Set to Item
+           Display List of Defaults
+           Define Defaults
+           Connect to Server                                          
+           Disconnect from Server                                     
+           Login to Environment                                       
+           Logout from Environment                                    
+           Display List of Copied Files for User                      
+           Remove Copied Files for User                                
+           Define Project Members 
+ 
+8.3  Commands being Renamed
+ 
+       The following commands are being renamed due to a change in
+       functionality or a misleading prior name. Any ascii workflow files must
+       have these commands renamed before it will load.
+ 
+           The word "Files" has been replaced with "Items" to become
+               Display List of Items Flagged for Archive                  
+               Display List of Items Flagged for Backup                   
+               Display List of Items Flagged for Restore                  
+               Archive Flagged Items                                        
+               Backup Flagged Items                                         
+               Restore Flagged Items                                        
+ 
+           The "Copy Item" command has been changed to "Copy Item Files" (note
+           - this must be done before the new "Copy Item" command is added)
+ 
+           The "Copy Set" command has been changed to "Copy Set Files" 
+ 
+           The words "Item Files" have been replaced with "Item" to become
+               Flag Item for Archive                                       
+               Flag Item for Backup                                        
+               Flag Item for Restore                                       
+               Cancel Archive Flag on Item                                 
+               Cancel Backup Flag on Item                                  
+               Cancel Restore Flag on Item                                 
+ 
+           The words "Set Files" have been replaced with "Set" to become
+               Flag Set for Archive                                    
+               Flag Set for Backup                                     
+               Flag Set for Restore                                    
+               Cancel Archive Flag on Set                              
+               Cancel Backup Flag on Set                               
+               Cancel Restore Flag on Set                              
+ 
+           "Display List of Where Item Used in Set" is now "Display List of
+           Where Item Used in Sets"
+ 
+           "Display List of Where Item Used in Project" is now "Display List
+           of Where Item Used in Projects"
+ 
+8.4  Commands being Added
+ 
+       The following commands are being added. Any command of type "I" that an
+       administrator would like users to have access to must be included in
+       the workflow ascii file. These commands (type "I") can be added to an
+       existing workflow through the Workflow Interface (note - many will be
+       added automatically).
+ 
+           Display List of User Working Areas - type "D"
+ 
+           Display List of Working Areas - type "A"
+               Admin wf - |1|1|1
+           Change Workflow of Item - type "A"
+               Admin wf - |1|1|1
+ 
+           Display List of Saveset Entries - type "D"
+               Admin wf - |1|1|1
+           Display List of Archives - type "D"
+               Admin wf - |1|1|1
+           Display List of Items on Tape - type "D"
+               Admin wf - |1|1|1
+ 
+           Display List of Local Files - type "D"
+           Delete Copied Files - type "D"
+           Change Working Area Password - type "D"
+ 
+           Flag Project for Archive - type "P"
+               Project wf - |1|1|1|2
+           Cancel Archive Flag on Project - type "P"
+               Project wf - |1|1|1|2
+ 
+           Copy Item - type "I"
+               NFM_ITEM_WORKFLOW - |1|1|1|2|3
+           Add Files to Item - type "I"
+               All Item workflows - same settings as "Check In Item"
+           Change File Attributes - type "I"
+               All Item workflows - same settings as "Change Item"
+           Delete Files From Item - type "I"
+               NFM_ITEM_WORKFLOW - same settings as "Check In Item"
+           Save Files (future) - type "I"
+               All Item workflows - same settings as "Check In Item"
+ 
+           Purge File Versions - type "I"
+               NFM_ITEM_WORKFLOW
+                 |2|1|1|2|3
+                 |3|1|1|2|
+                 |4|1|1| |
+                 |5|1|1| |
+           Roll File Version Forward - type "I"
+               NFM_ITEM_WORKFLOW
+                 |2|1|1|2|3
+                 |3|1|1|2|
+                 |4|1|1| |
+
+           Add Items to Project - type "P"
+               Project wf - |1|1|1|2
+           Delete Items from Project - type "P"
+               Project wf - |1|1|1|2
+ 
+8.5  Miscellaneous Manipulations
+ 
+       The following manipulations are being done to the commands table and/or
+       the workflow entries. Similar changes should be made to ascii workflow
+       files.
+ 
+           All references to "Display List of Storage Areas" are being removed
+           from ITEM workflows. This is now an administrator command (see the
+           section on Storage Areas). The reference to this command in the
+           Admin workflow is not being changed.
+ 
+           The "Add Items to Set" command is being added to the commands table
+           (type "I") and all Item workflows with the same settings as "Define
+           Set Members". 
+ 
+           The "Delete Items from Set" command is being added to the commands
+           table (type "I") and all Item workflows with the same settings as
+           "Define Set Members"
+ 
+           After "Add Items to Set" and "Delete Items from Set" have been
+           added, the "Define Set Members" command will be removed along with
+           all references to it.
+ 
+           If the "Flag Project Files for Backup" command exists, it is being
+           renamed to "Flag Project for Backup". If it does not exist, it is
+           being added as "Flag Project for Backup" (type "P").
+ 
+           If the "Flag Project Files for Restore" command exists, it is being
+           renamed to "Flag Project for Restore". If it does not exist, it is
+           being added as "Flag Project for Restore" (type "P").
+ 
+           If the "Cancel Backup Flag on Project Files" command exists, it is
+           being renamed to "Cancel Backup Flag on Project". If it does not
+           exist, it is being added as "Cancel Backup Flag on Project" (type
+           "P").
+ 
+           If the "Cancel Restore Flag on Project Files" command exists, it is
+           being renamed to "Cancel Restore Flag on Project". If it does not
+           exist, it is being added as "Cancel Restore Flag on Project" (type
+           "P").
+
+           If the "Purge Signoff Users" command exists, it is being renamed to
+           "Purge Signoffs". If it does not exist, it is being added as "Purge
+           Signoffs" (type "I")
+ 
+           If "Signoff on Item" does not exist, it is being added (type "I").
+ 
+           If "Display List of Signoffs on Item" does not exist, it is being
+           added (type "I").
+ 
+           If "Display Signoff History" does not exist, it is being added
+           (type "I").
+ 
+8.6  Entity types on Commands
+ 
+       The entity type in the commands table is being shortened to a single
+       letter to speed processing. The following shows the old entity type and
+       the corresponding new type.
+ 
+           "NFMNOENTITY" becomes "N"
+           "NFMSDP" becomes "S"
+           "NFMADMIN" becomes "A"
+           "NFMCATALOG" becomes "C"
+           "NFMPROJECT" becomes "P"
+           "NFMITEM" becomes "I"
+ 
+       A new type "D" is also being allowed that represents the "No Check"
+       option.
+ 
+       All entity types will be changed to the corresponding type with the
+       following exceptions:
+ 
+           Display List of Storage Areas - now type "A" 
+           Display List of Catalogs - now type "D"
+           Display List of Files Flagged for Delete - now type "D"
+           Display List of States - now type "S"
+           Display List of Classes - now type "S"
+           Display List of Transitions - now type "S"
+           Display List of Class to Transition Accesses - now type "S"
+           Display List of Projects - now type "D"
+           Display List of Items in Project - now type "D"
+           Display List of Items - now type "D"
+           Display List of Signoffs on Item - now type "I"
+           Display Signoff History - now type "I"
+           Purge Signoffs - now type "I"
+           Change Password - now type "D"
+           Display List of Items Flagged for Archive - now type "D"
+           Display List of Items Flagged for Backup - now type "D"
+           Display List of Items Flagged for Restore - now type "D"

@@ -1,0 +1,138 @@
+#include "machine.h"
+#include "SQL.h"
+
+ extern long   SQLquery_count;
+ extern struct SQLglobal_st SQLglobal ;
+
+ long SQLfix_qry_prep_12 ()
+   {
+     static char *fname = "SQLfix_qry_prep_12" ;
+     exec sql begin declare section;
+       long    status;
+       char    sql_str [122];
+     exec sql end declare section;
+
+     sprintf (sql_str, 
+     "SELECT %s FROM NFMCATALOGS WHERE %s=? ",
+     "n_catalogno ", "n_catalogname");
+     
+     _SQLdebug ((fname, "Sql Str = <%s>\n", sql_str));
+
+     exec sql prepare NFMfix_qry_12 from :sql_str;
+     if (SQLCODE)
+      {
+        status = SQLerror (SQL_E_PREPARE, risca -> sqlerrd [2], SQLCODE);
+        _SQLdebug ((fname, "Prepare Failed : <0x%.8x>\n", status));
+        exec sql clear NFMfix_qry_12;
+        ERRload_struct (SQL, status, NULL);
+        return (status);
+      }
+         
+     _SQLdebug ((fname, "SUCCESSFUL : status = <0x%.8x>\n",
+     SQL_S_SUCCESS));
+     return (SQL_S_SUCCESS);
+   }
+
+   long SQLfix_qry_res_12 (catalog,catno)
+   exec sql begin declare section;
+     char    *catalog;
+     int     *catno;
+   exec sql end declare section;
+   {
+     static char *fname = "SQLfix_qry_res_12" ;
+     exec sql begin declare section;
+       long    status;
+       int     t_catno;
+       long    ind1;
+     exec sql end declare section;
+     char sql_str [200] ;
+
+     SQLquery_count = SQLquery_count + 1;
+/*     _SQLdebug ((fname, "SQL QUERY NO = <%d>\n", SQLquery_count)); */
+
+/*    _SQLdebug ((fname, "Catalog = <%s>  ", catalog)); */
+     
+   if (! SQLglobal.prep[12]) 
+   {
+	status = SQLfix_qry_prep_12 () ;
+        if (status != SQL_S_SUCCESS)
+        {
+           _SQLdebug ((fname, "Failure : status = <0x%.8x>\n", status));
+	   return (status) ;
+        }
+	SQLglobal.prep[12] = 1 ;
+   }
+
+     sprintf (sql_str,
+     "SELECT %s FROM NFMCATALOGS WHERE %s='%s' ",
+     "n_catalogno ", "n_catalogname", catalog);
+
+    _SQLdebug ((fname, "Fix Qry 12 : %s\n", sql_str)) ;
+
+     exec sql declare NFMfix_cur_12 cursor for NFMfix_qry_12;
+     if (SQLCODE)
+      {
+        status = SQLerror (SQL_E_DECLARE, risca -> sqlerrd [2], SQLCODE);
+        _SQLdebug ((fname, "Declare Failed : <0x%.8x>\n", status));
+        exec sql close NFMfix_cur_12;
+        ERRload_struct (SQL, status, NULL);
+        return (status);
+      }
+
+     exec sql open NFMfix_cur_12 using :catalog;
+     if (SQLCODE)
+      {
+        status = SQLerror (SQL_E_OPEN, risca -> sqlerrd [2], SQLCODE);
+        _SQLdebug ((fname, "Open Failed : <0x%.8x>\n", status));
+        exec sql close NFMfix_cur_12;
+        ERRload_struct (SQL, status, NULL);
+        return (status);
+      }
+
+     exec sql fetch NFMfix_cur_12 into :t_catno:ind1;
+     if (SQLCODE)
+      {
+        if (SQLCODE != END_OF_DATA)
+         {
+           status = SQLerror (SQL_E_FETCH, risca -> sqlerrd [2], SQLCODE);
+           _SQLdebug ((fname, "Fetch Failed : <0x%.8x>\n", status));
+         }
+        else
+         {
+           status = SQLerror (SQL_I_NO_ROWS_FOUND, 
+                    risca -> sqlerrd [2], SQLCODE);
+           _SQLdebug ((fname, "No Rows Found : <0x%.8x>\n", status));
+         }
+
+        exec sql close NFMfix_cur_12;
+        ERRload_struct (SQL, status, NULL);
+        return (status);
+     }
+       
+    exec sql close NFMfix_cur_12;
+    if (SQLCODE)
+     {
+       status = SQLerror (SQL_E_CLOSE, risca -> sqlerrd [2], SQLCODE);
+       _SQLdebug ((fname, "Close Failed : <0x%.8x>\n", status));
+       ERRload_struct (SQL, status, NULL);
+       return (status);
+     }
+
+    if (ind1 < 0)  
+    {
+	  *catno = 0;
+    }
+    else 
+    {
+            *catno = t_catno;
+    }
+
+    _SQLdebug ((fname, "Catalog No = <%d>  : SUCCESSFUL ", t_catno));
+
+    return (SQL_S_SUCCESS);
+  }
+
+SQLp_free_12()
+{
+        exec sql clear NFMfix_qry_12;
+}

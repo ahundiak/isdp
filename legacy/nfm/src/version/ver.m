@@ -1,0 +1,17 @@
+SOURCE
+NFMversion.c
+
+INCLUDE
+${NFMINC}
+${INGRINC}
+${RISINC}
+${FORMSINC}
+${XFORMSINC}
+${FTRINC}
+${HELPINC}
+${RESINC}
+${X11INC}
+${RISCC}
+
+LIB
+NFMversion.a

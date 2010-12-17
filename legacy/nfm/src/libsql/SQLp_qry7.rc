@@ -1,0 +1,143 @@
+#include "machine.h"
+#include "SQL.h"
+
+ extern long   SQLquery_count;
+ extern struct SQLglobal_st SQLglobal ;
+
+ long SQLfix_qry_prep_7 ()
+   {
+     static char *fname = "SQLfix_qry_prep_7";
+     exec sql begin declare section;
+       long    status;
+       char    sql_str [300];
+     exec sql end declare section;
+
+     sprintf (sql_str, 
+     "SELECT %s FROM %s WHERE %s=? AND %s=? AND %s=? AND %s AND %s",
+     "b.n_userno", "NFMACCESS a,NFMACLUSERS b, NFMACLS c", 
+     "a.n_transitionno ", "b.n_userno ", "c.n_workflowno ",
+     "b.n_aclno=c.n_aclno ", "a.n_classno = b.n_classno");
+     
+     _SQLdebug ((fname, "Sql Str = <%s>\n", sql_str));
+
+     exec sql prepare NFMfix_qry_7 from :sql_str;
+     if (SQLCODE)
+      {
+        status = SQLerror (SQL_E_PREPARE, risca -> sqlerrd [2], SQLCODE);
+        _SQLdebug ((fname, "Prepare Failed : <0x%.8x>\n", status));
+        exec sql clear NFMfix_qry_7;
+        ERRload_struct (SQL, status, NULL);
+        return (status);
+      }
+         
+     _SQLdebug ((fname, "SUCCESSFUL : status = <0x%.8x>\n",
+     SQL_S_SUCCESS));
+     return (SQL_S_SUCCESS);
+   }
+
+   long SQLfix_qry_res_7 (user_no,trans_no, wf_no,u_out)
+   exec sql begin declare section;
+     int     trans_no;
+     int     user_no;
+     int     wf_no;
+     int     *u_out;
+   exec sql end declare section;
+   {
+     static char *fname = "SQLfix_qry_res_7" ;
+     exec sql begin declare section;
+       long    status;
+       int     t_user_no;
+       long    ind1;
+     exec sql end declare section;
+     char sql_str [512] ;
+
+     SQLquery_count = SQLquery_count + 1;
+/*     _SQLdebug ((fname, "SQL QUERY NO = <%d>\n", SQLquery_count)); */
+
+/*    _SQLdebug ((fname, "Trans No = <%d>  : User No = <%d> : WF No = <%d>\n",
+	 trans_no, user_no, wf_no)); */
+
+   if (! SQLglobal.prep[7]) 
+   {
+	status = SQLfix_qry_prep_7 () ;
+        if (status != SQL_S_SUCCESS)
+        {
+           _SQLdebug ((fname, "Failure : status = <0x%.8x>\n", status));
+	   return (status) ;
+        }
+	SQLglobal.prep[7] = 1 ;
+   }
+
+     sprintf (sql_str,
+     "SELECT %s FROM %s WHERE %s=%d AND %s=%d AND %s=%d AND %s AND %s",
+     "b.n_userno", "NFMACCESS a,NFMACLUSERS b, NFMACLS c",
+     "a.n_transitionno ", trans_no,
+     "b.n_userno ", user_no, 
+     "c.n_workflowno ", wf_no,
+     "b.n_aclno=c.n_aclno ", "a.n_classno = b.n_classno");
+
+  
+   _SQLdebug ((fname, "Fix Qry 7 : %s\n", sql_str)) ;
+	     
+     exec sql declare NFMfix_cur_7 cursor for NFMfix_qry_7;
+     if (SQLCODE)
+      {
+        status = SQLerror (SQL_E_DECLARE, risca -> sqlerrd [2], SQLCODE);
+        _SQLdebug ((fname, "Declare Failed : <0x%.8x>\n", status));
+        exec sql close NFMfix_cur_7;
+        ERRload_struct (SQL, status, NULL);
+        return (status);
+      }
+
+     exec sql open NFMfix_cur_7 using :trans_no, :user_no,:wf_no;
+     if (SQLCODE)
+      {
+        status = SQLerror (SQL_E_OPEN, risca -> sqlerrd [2], SQLCODE);
+        _SQLdebug ((fname, "Open Failed : <0x%.8x>\n", status));
+        exec sql close NFMfix_cur_7;
+        ERRload_struct (SQL, status, NULL);
+        return (status);
+      }
+
+     exec sql fetch NFMfix_cur_7 into :t_user_no:ind1;
+     if (SQLCODE)
+      {
+        if (SQLCODE != END_OF_DATA)
+         {
+           status = SQLerror (SQL_E_FETCH, risca -> sqlerrd [2], SQLCODE);
+           _SQLdebug ((fname, "Fetch Failed : <0x%.8x>\n", status));
+         }
+        else
+         {
+           status = SQLerror (SQL_I_NO_ROWS_FOUND, 
+                    risca -> sqlerrd [2], SQLCODE);
+           _SQLdebug ((fname, "No Rows Found : <0x%.8x>\n", status));
+         }
+
+        exec sql close NFMfix_cur_7;
+        ERRload_struct (SQL, status, NULL);
+        return (status);
+     }
+       
+    exec sql close NFMfix_cur_7;
+    if (SQLCODE)
+     {
+       status = SQLerror (SQL_E_CLOSE, risca -> sqlerrd [2], SQLCODE);
+       _SQLdebug ((fname, "Close Failed : <0x%.8x>\n", status));
+       ERRload_struct (SQL, status, NULL);
+       return (status);
+     }
+
+    if (ind1 < 0)    *u_out = 0;
+    else             *u_out = t_user_no;
+
+    _SQLdebug ((fname, "User No = <%d> : SUCCESSFUL\n", t_user_no)) ;
+
+    return (SQL_S_SUCCESS);
+  }
+
+
+SQLp_free_7()
+{
+        exec sql clear NFMfix_qry_7;
+}

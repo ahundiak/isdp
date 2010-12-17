@@ -1,0 +1,26 @@
+#define UTILITY_TITLE       11
+
+#define UTI_ITEM_LIST       13
+#define UTI_SA_LIST         24
+
+#define UTI_USER_LABEL_TOGGLE 45
+#define UTI_USER_LABEL_LABEL  46
+#define UTI_EXIS_LABEL_TOGGLE 47
+#define UTI_EXIS_LABEL_LABEL  48
+#define UTI_SYS_LABEL_TOGGLE  49
+#define UTI_SYS_LABEL_LABEL   50
+
+#define UTI_LABEL_LIST_LABEL 44
+#define UTI_LABEL_LIST_BOX   41
+#define UTI_LABEL_LIST      39 
+
+#define UTI_LABEL_FIELD     42
+
+#define UTI_ITEM_TOGGLE     22
+
+#define  ARCHIVE_FLAGGED_ITEMS      100
+#define  BACKUP_FLAGGED_ITEMS       101
+#define  RESTORE_FLAGGED_ITEMS      102
+#define  DELETE_FLAGGED_ITEMS       103
+
+

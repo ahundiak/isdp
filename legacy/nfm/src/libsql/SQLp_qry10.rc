@@ -1,0 +1,161 @@
+#include "machine.h"
+#include "SQL.h"
+
+ extern long   SQLquery_count;
+ extern struct SQLglobal_st SQLglobal ;
+
+ long SQLfix_qry_prep_10 ()
+   {
+     static char *fname = "SQLfix_qry_prep_10" ;
+     exec sql begin declare section;
+       long    status;
+       char    sql_str [112];
+     exec sql end declare section;
+
+     sprintf (sql_str, 
+     "SELECT %s FROM NFMPROJECTS WHERE %s=? ",
+     "n_projectno,n_stateno,n_aclno ", "n_projectname");
+     
+     _SQLdebug ((fname, "Sql Str = <%s>\n", sql_str));
+
+     exec sql prepare NFMfix_qry_10 from :sql_str;
+     if (SQLCODE)
+      {
+        status = SQLerror (SQL_E_PREPARE, risca -> sqlerrd [2], SQLCODE);
+        _SQLdebug ((fname, "Prepare Failed : <0x%.8x>\n", status));
+        exec sql clear NFMfix_qry_10;
+        ERRload_struct (SQL, status, NULL);
+        return (status);
+      }
+         
+     _SQLdebug ((fname, "SUCCESSFUL : status = <0x%.8x>\n",
+     SQL_S_SUCCESS));
+     return (SQL_S_SUCCESS);
+   }
+
+   long SQLfix_qry_res_10 (project,projno,stateno,aclno)
+   exec sql begin declare section;
+     char    *project;
+     int     *projno;
+     int     *aclno;
+     int     *stateno;
+   exec sql end declare section;
+   {
+     static char *fname = "SQLfix_qry_res_10" ;
+     exec sql begin declare section;
+       long    status;
+       int     t_projno;
+       int     t_aclno;
+       int     t_stateno;
+       long    ind1;
+       long    ind2;
+       long    ind3;
+     exec sql end declare section;
+     char sql_str [200] ;
+
+     SQLquery_count = SQLquery_count + 1;
+/*     _SQLdebug ((fname, "SQL QUERY NO = <%d>\n", SQLquery_count)); */
+
+/*    _SQLdebug ((fname, "Project = <%s>  ", project)); */
+     
+   if (! SQLglobal.prep[10]) 
+   {
+	status = SQLfix_qry_prep_10 () ;
+        if (status != SQL_S_SUCCESS)
+        {
+           _SQLdebug ((fname, "Failure : status = <0x%.8x>\n", status));
+	   return (status) ;
+        }
+	SQLglobal.prep[10] = 1 ;
+   }
+
+     sprintf (sql_str,
+     "SELECT %s FROM NFMPROJECTS WHERE %s='%s' ",
+     "n_projectno,n_stateno,n_aclno ", "n_projectname", project);
+ 
+     _SQLdebug ((fname, "Fix Qry 10 : %s\n", sql_str)) ;
+
+     exec sql declare NFMfix_cur_10 cursor for NFMfix_qry_10;
+     if (SQLCODE)
+      {
+        status = SQLerror (SQL_E_DECLARE, risca -> sqlerrd [2], SQLCODE);
+        _SQLdebug ((fname, "Declare Failed : <0x%.8x>\n", status));
+        exec sql close NFMfix_cur_10;
+        ERRload_struct (SQL, status, NULL);
+        return (status);
+      }
+
+     exec sql open NFMfix_cur_10 using :project;
+     if (SQLCODE)
+      {
+        status = SQLerror (SQL_E_OPEN, risca -> sqlerrd [2], SQLCODE);
+        _SQLdebug ((fname, "Open Failed : <0x%.8x>\n", status));
+        exec sql close NFMfix_cur_10;
+        ERRload_struct (SQL, status, NULL);
+        return (status);
+      }
+
+     exec sql fetch NFMfix_cur_10 into :t_projno:ind1,:
+				t_stateno:ind2,:t_aclno:ind3;
+     if (SQLCODE)
+      {
+        if (SQLCODE != END_OF_DATA)
+         {
+           status = SQLerror (SQL_E_FETCH, risca -> sqlerrd [2], SQLCODE);
+           _SQLdebug ((fname, "Fetch Failed : <0x%.8x>\n", status));
+         }
+        else
+         {
+           status = SQLerror (SQL_I_NO_ROWS_FOUND, 
+                    risca -> sqlerrd [2], SQLCODE);
+           _SQLdebug ((fname, "No Rows Found : <0x%.8x>\n", status));
+         }
+
+        exec sql close NFMfix_cur_10;
+        ERRload_struct (SQL, status, NULL);
+        return (status);
+     }
+       
+    exec sql close NFMfix_cur_10;
+    if (SQLCODE)
+     {
+       status = SQLerror (SQL_E_CLOSE, risca -> sqlerrd [2], SQLCODE);
+       _SQLdebug ((fname, "Close Failed : <0x%.8x>\n", status));
+       ERRload_struct (SQL, status, NULL);
+       return (status);
+     }
+
+    if (ind1 < 0)  
+    {
+	  *projno = 0;
+    }
+    else 
+    {
+            *projno = t_projno;
+    }
+    if(ind2 < 0)
+    {
+           *stateno = 0;
+    }
+    else
+    {
+           *stateno = t_stateno;
+    }
+    if(ind3 < 0)
+    {
+	   *aclno = 0;
+    }
+    else 
+    {
+	   *aclno = t_aclno;
+    }
+
+    _SQLdebug ((fname, "Project No = <%d>  : State No = <%d> : Acl No = <%d> : SUCCESSFUL\n", 
+	t_projno, t_stateno, t_aclno));
+    return (SQL_S_SUCCESS);
+  }
+
+SQLp_free_10()
+{
+        exec sql clear NFMfix_qry_10;
+}

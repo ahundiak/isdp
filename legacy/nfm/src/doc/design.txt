@@ -1,0 +1,2843 @@
+                    DESIGN DOCUMENT FOR I/NFM 3.0
+                    -----------------------------
+                          March 24, 1992
+
+TABLE OF CONTENTS
+ 
+0. Introduction                                                    
+ 
+1. Performance Improvements                                        
+1.1  APOGEE                                                        
+1.2  QUERY ANALYSIS                                                
+1.3  MEMWRITE IMPROVEMENTS                                         
+1.4  REPLACE RPS SUBSYSTEM                                         
+1.5  COMBINED CLIENT-SERVER ARCHITECTURE                           
+1.6  REMOVE ATTRIBUTE ALIASES                                      
+1.7  DON'T CHECK ENTITY IN WORKFLOW                                    
+ 
+2. Files and Items                                                 
+2.1  GENERAL                                                       
+2.2  ADD OPERATIONS                                                
+2.3  DELETE OPERATIONS                                             
+2.4  FILE MANIPULATIONS                                            
+2.5  CHANGE ITEM AND FILE INFORMATION                              
+2.6  ITEM AND FILE LISTING OPERATIONS                              
+2.7  LOCK AND UNLOCK ITEM                                          
+2.8  FILE VERSIONS                                                 
+2.9  FILE ATTRIBUTES AND THE NFMFILETYPES TABLE                    
+ 
+3. Sets                                                            
+3.1  DEFINITION OF A SET                                           
+3.2  DEFINING A SET                                                    
+3.3  CHECK OUT SET                                                 
+3.4  CHECK IN SET                                                  
+3.5  COPY SET FILES                                                
+3.6  SET MANIPULATION RULES                                        
+ 
+4. Utilities and Flagging                                          
+4.1  GENERAL                                                       
+4.2  FLAGGING                                                      
+4.3  BACKUP OPERATIONS                                             
+4.4  ARCHIVE OPERATIONS                                            
+4.5  OPTICAL STORAGE MEDIA                                         
+4.6  MISCELLANEOUS                                                 
+ 
+5. Storage Areas                                                   
+5.1  GENERAL                                                       
+5.2  STORAGE AREA TYPES                                            
+5.3  MANIPULATION OF STORAGE AREA DATA                             
+5.4  LISTING OF STORAGE AREAS                                      
+5.5  DEFAULT WORKING LOCATION                                      
+5.6  WORKING AREA FILE MANIPULATIONS                               
+5.7  RELATIVE FILE PATHS                                           
+5.8  STORAGE AREA PATHS                                            
+5.9  STORAGE AREA CHARACTERISTICS                                  
+5.10 CONVERSION OF STORAGE AREAS
+ 
+6. Local File Manager                                              
+6.1  GENERAL                                                       
+6.2  LOCAL FILE MANAGER TABLE                                      
+6.3  NEW COMMANDS                                                  
+6.4  GENERAL RULES                                                 
+6.5  FUNCTIONS THAT USE THE LOCAL FILE MANAGER                     
+ 
+7. NFS in the NFM Environment                                      
+7.1  GENERAL                                                       
+7.2  REQUIREMENTS                                                  
+7.3  I/NFM RESTRICTIONS                                            
+7.4  SOLUTION REQUIREMENTS                                         
+7.5  ADMINISTRATION REQUIREMENTS                                   
+7.6  DESIGN                                                        
+ 
+8. Catalog Templates                                               
+8.1  USAGE OF DEFAULT ATTRIBUTES
+8.2  GENERAL IMPLEMENTATION OF CATALOG TEMPLATES
+ 
+9. Workflow                                                        
+9.1  CHANGES IN COMMAND ACCESS                                     
+9.2  CHANGE WORKFLOW OF ITEM                                       
+9.3  PROCESS ON TRANSITION                                         
+9.4  GRAPHIC WORKFLOW INTERFACE                                    
+9.5  WORKFLOW STATES                                               
+9.6  DELETE ACL
+9.7  CONVERSION OF EXISTING WORKFLOW INFORMATION
+ 
+10. Search and Sort Operations                                     
+10.1  MULTI-CATALOG SEARCH                                         
+10.2  CRITERIA OWNERSHIP                                           
+10.3  ITEMS CHECKED OUT BY A USER                                  
+ 
+11. User Interface                                                 
+11.1  MAIN FORM                                                    
+11.2  ACTIVE LIST OF ITEMS                                         
+11.3  DISPLAY LIST OF ITEMS                                        
+11.4  GENERIC COMMANDS ON SETS AND ITEMS                           
+11.5  OPERATIONS ON THE LIST OF ITEMS                              
+11.6  CATALOG LIST                                                 
+11.7  ADD OPERATIONS                                               
+11.8  MISCELLANEOUS                                                
+ 
+12. Command Line Interface                                         
+12.1  GENERAL DESIGN                                               
+ 
+13. PC Command Line Interface                                      
+13.1  GENERAL                                                      
+13.2  FILE TRANSFER CAPABILITIES                                   
+13.3  FILENAMES                                                    
+13.4  IMPLEMENTATION DETAILS                                       
+ 
+14. Microstation Reference Files                                   
+14.1  GENERAL                                                      
+14.2  CHECK IN                                                     
+14.3  CHECK OUT                                                    
+14.4  RESTRICTIONS                                                 
+ 
+15. Disaster Recovery                                              
+15.1  CASE 1 - Lose Database Disk                                  
+15.2  CASE 2 - Lose NFM Storage Area Disk                          
+15.3  CASE 3 - Lose Working Area Disk                              
+15.4  CASE 4 - Network Problems During File Transfer               
+ 
+16. How Dates Work
+16.1  WHAT HAPPENS AT LOGIN
+16.2  CHANGES TO THE DATETIME FORMAT
+16.3  INPUT AND CHANGE OF DATETIME DATA
+-------------------------------------------------------------------------
+
+0. Introduction
+ 
+This document gives functional descriptions of the I/NFM 3.0 software. It
+details the changes that have been made in the software and, where
+appropriate, supporting information on how the software behaves in prior
+releases (for clarity). This document will be helpful in understanding the
+concepts in I/NFM 3.0 and determining when the software is behaving as
+designed and when a problem has been detected.
+-------------------------------------------------------------------------
+
+1. Performance Improvements
+ 
+OBJECTIVES -
+ 
+Improve I/NFM performance, especially for large numbers of users.
+ 
+Improve the response of the most commonly executed commands
+ 
+Where ever possible, reduce the impact of access security on system response.
+ 
+Optimize database performance by constructing efficient data queries.
+ 
+1.1  APOGEE
+ 
+       All code has been recompiled using the Apogee compiler. The ansii
+       switch was used and O3 optimization.
+ 
+1.2  QUERY ANALYSIS
+ 
+       Queries have been evaluated for each command to ensure that data is
+       being obtained and manipulated in an efficient manner.
+ 
+1.3  MEMWRITE IMPROVEMENTS 
+ 
+       Minor improvements have been made to the MEMwrite routine. 
+ 
+1.4  REPLACE RPS SUBSYSTEM
+ 
+       Prior to I/NFM 3.0. the report subsystem was used to write a report
+       each time a listing was produced. This method has been replaced with a
+       more efficient system to produce the listings within I/NFM.
+ 
+       Attribute information on non-item related listings is hardcoded
+       (attributes returned, read flags, sequence, etc.). Although the
+       attribute information is loaded into the nfmsysattributes table, it is
+       for possible future use and will not be queried in I/NFM 3.0.
+ 
+       Prior to I/NFM 3.0, the location of files used for reports, search
+       criteria, sort criteria, and programs was determined through the
+       nfmsyscat table. This method was inefficient and has been replaced with
+       the following:
+ 
+           The internal filename of the file is calculated based on the table
+           number (nfmprograms or nfmreports) and the unique index on the
+           table. The filename is stored in an attribute
+           (nfmprograms.n_filename and nfmreports.n_filename)  so that it does
+           not have to be calculated each time it is used.
+ 
+           The files are stored in a static directory, named "system", that is
+           created when the product is initialized. The "reports" directory
+           will no longer be used and has been removed.
+ 
+       The current nfmsyscat table has been reduced to a few attributes that
+       are used to store the current version of the software and other system
+       information as needed.
+ 
+1.5  COMBINED CLIENT-SERVER ARCHITECTURE
+ 
+       Prior to I/NFM 3.0, the client running on the workstation communicated
+       with the I/NFM server running on a central server, which communicated
+       with RIS. With a combined client-server architecture, the I/NFM client
+       and server has been combined and reside on the workstation. RIS and the
+       database are the only software remaining on the server. This
+       architecture eliminates server overload due to many users running I/NFM
+       servers on a single machine; the processing is distributed onto
+       multiple desktop machines instead. 
+ 
+       The combined client-server architecture is optional. The current
+       separate client and server is still available.
+ 
+1.6  REMOVE ATTRIBUTE ALIASES
+ 
+       Prior to I/NFM 3.0, attribute aliases had to be resolved each time a
+       catalog was accessed. Since attribute synonyms can produce the desired
+       effect with less overhead, the attribute aliasing capability has been
+       removed.
+ 
+1.7  DON'T CHECK ENTITY IN WORKFLOW
+ 
+       The nfmcommands table contains an attribute (n_entity) that determines
+       which workflows are searched for access permission to the command. A
+       new type is available that indicates that no checking should occur. See
+       the Workflow section for more detailed information.
+------------------------------------------------------------------------------ 
+
+2. Files and Items
+ 
+
+OBJECTIVES -
+ 
+The current item and file relationship needs to be more clearly defined and
+the ability to manipulate multiple files per item needs to be more fully
+developed for full user functionality.
+
+ 
+2.1  GENERAL
+ 
+       The following commands will be available for item and file
+       manipulations:
+ 
+           Display List of Items
+           Review Item Attributes
+           Display List of Where Item Used in Sets
+           Display List of Where Item Used in Projects
+           Add Item
+           Copy Item
+           Change Item
+           Change File Attributes
+           Add Files to Item
+           Delete Item
+           Delete Files from Item
+           Check In Item
+           Check Out Item
+           Cancel Item Check Out
+           Copy Item Files
+           Lock Item
+           Unlock Item
+           Roll File Version Forward
+           Purge File Versions
+           Flag Item for Archive
+           Flag Item for Backup
+           Flag Item for Restore
+           Flag Item Files for Delete
+           Cancel Archive Flag on Item
+           Cancel Backup Flag on Item 
+           Cancel Restore Flag on Item
+           Cancel Delete Flag on Item Files
+           Make Item Transition
+           Signoff on Item
+           Display List of Signoffs on Item
+           Display Signoff History
+           Purge Signoffs
+           Change Workflow of Item
+ 
+       See the "User Interface" section for a discussion on generic commands
+       in the user interface that will operate on either non-set items or
+       sets.
+ 
+       I/NFM will protect data against overwrite in both internal storage
+       areas and working areas if the file is NOT under I/NFM control. This
+       includes initial checkin of a file into its internal storage area and
+       checkout or copy of a file to a working area. See the "Local File
+       Manager" section for more information.
+ 
+2.2  ADD OPERATIONS
+ 
+2.2.1  Add Item
+ 
+       Add item simply adds information to the Database. File related
+       information for one file may be entered if desired, but no file related
+       information will be mandatory until files are associated with the item.
+ 
+2.2.2  Copy Item
+ 
+       The Copy Item command will allow a user to copy an existing item and
+       optionally the associated files. This command will allow a user to
+       easily create a new item that is similar to an existing item or create
+       a new revision of an existing item. The new item will be in the same
+       catalog as the copied item.
+ 
+       If an item is copied without its associated files, the new item is
+       placed in the state associated with "Add Item". If an item is copied
+       with its associated files, the new item is placed in the state
+       appropriate for an "Add Item" and then "Check In Item". 
+ 
+       The following validations and rules apply:
+ 
+           The active item will be used as the item to be copied (in the I/NFM
+           user interface).
+ 
+           The user must have access to the "Copy Item" command on the active
+           item.
+ 
+           The active item (to be copied) may be checked out, but a warning
+           will be issued if the user copies the files with the item. The
+           files copied will be the internal copies of the files (not the
+           files in the working area).
+ 
+           If the user is able to copy the files associated with the active
+           item, the user will be able to copy the item and the files. If the
+           active item is in a state where the files cannot be copied or has a
+           condition that will not allow copying (locked, flags pending, etc.)
+           then the command will fail if the user attempts to copy the files
+           along with the new item.
+ 
+           The I/NFM user interface will default all values for the new item
+           to be the values in the copied item, except for revision, which
+           will be blank.
+ 
+           The item to be copied must not be locked.
+ 
+       If the existing item selected is a set, then the set row is copied with
+       the set indicator blank (ie. the new item is not a set until members
+       are associated with it). 
+ 
+2.2.3  Add Files to Item
+ 
+       The "Add Files to Item" command is used to associate a file or files to
+       an existing item and to specify item related information (storage area,
+       file type, etc.). "Check In Item" will no longer allow a user to add
+       files to an item. 
+ 
+       This command is valid when the item is not checked in (item is either
+       checked out or has never been checked in). If the item has been checked
+       out, only the checkout user will be able to add files to the item. This
+       command adds a row in the f_<catalog> for each file added. File(s) will
+       be checked in when the item is checked in.
+ 
+2.3  DELETE OPERATIONS
+ 
+       There will be four commands used for the deletion of items and their
+       associated files:
+ 
+           Delete Files from Item
+ 
+               Access to this command in a state would allow a user to delete
+               all or individual files in an item, but not the item record.
+ 
+           Flag Item Files for Delete
+ 
+               This command would allow a user to flag an item for delete.
+ 
+           Delete Flagged Files
+ 
+               A utility command that allows an administrator to delete files
+               that have been flagged for delete.
+ 
+           Delete Item
+ 
+               Access to this command in a state would allow a user to delete
+               an item and all associated files. Files may have been flagged
+               for delete.
+ 
+       The delete commands are only valid when an item is not checked out
+       (either checked in or never checked in). The command will fail if an
+       item is checked out.
+ 
+       The delete and flag for delete commands will fail on an item that is a
+       member of a set. The item must be removed from all sets before the
+       delete or flag for delete will be successful.
+ 
+2.3.1  Delete Files from Item
+ 
+       This command is needed when a customer wants a user to be able to
+       remove files from an item (all or selected files for multiple file
+       items). It can be used to delete the files associated with an item but
+       not the item record. This command will need to be included in a
+       workflow for each state in which a user might want to remove the file
+       or selected files from an item. It would generally be included for each
+       state that allows a user to add files to the item. 
+ 
+       This command removes the row in the f_<catalog> for the file, deletes
+       the internal copy of the file, and removes any saveset entries
+       associated with the file. If the file deleted is the last file
+       associated with the item, the "0" version is recreated and added to the
+       f_<catalog> (this is necessary as a place holder).
+ 
+       The command will display a list of all files in the active item and
+       allow the user to select all or individual files.
+ 
+       This command will be valid when an item is not checked out - while the
+       item is checked in or before initial check in. The command will ignore
+       delete flags, but will fail if the item is flagged for archive, backup,
+       or restore.
+ 
+2.3.2  Flag Item Files for Delete
+ 
+       Some customers need the ability to allow users to recommend item
+       deletion and an administrator to do the actual deletion. A customer
+       site that needs this amount of control will need to include access to
+       the "Flag Item for Delete" command in each workflow for each state
+       where the control is needed. Access to this command will NOT be implied
+       because a user has access to the "Delete Item" or "Delete Files From
+       Item" commands.
+ 
+       This command will be valid when an item is not checked out - while the
+       item is checked in or before initial check in.
+ 
+       Once a file has been flagged for delete, the administrator can delete
+       the files by:
+ 
+           using the "Delete Flagged Files" command under administrator
+           utilities. Only the flagged files will be deleted, not the item
+           itself. This command works as in prior releases of I/NFM and
+           requires the user to have operator privileges under the Admin
+           workflow.
+ 
+           using the "Delete Files from Item" command to remove the files or
+           the "Delete Item" command to remove the files and the item. Control
+           of these commands is through the ACL associated with the item.
+ 
+2.3.3  Delete Item
+ 
+       This command is used to delete an item and all associated files.
+ 
+       Prior to I/NFM 3.0 the "Delete Item" command only allowed an item to be
+       deleted if it had no files attached. The new "Delete Item" command will
+       allow a user to delete an item and all associated files. It will not,
+       however, allow control over the item where it can ONLY be deleted if it
+       has no files attached. When a user has permission to delete an item,
+       the user can delete the item and all associated files.
+ 
+       The "Delete Item" command will allow the user to delete an item that
+       has backed up files or has been archived, without requiring the user to
+       restore the files. When the item is deleted, the software will clear
+       any savesets associated with the item.
+ 
+2.3.4  Access Control on Delete Commands
+ 
+       This implementation does not allow a user to flag individual files for
+       delete - only the item and all files (only a problem for those
+       customers using multiple files per item). This is consistent with
+       backup, archive, and restore which operate only on the item level.
+ 
+2.3.5  Delete of a member of a set
+ 
+       An item that is a member of a set cannot be flagged for delete or
+       deleted until it has been dropped from the set. 
+ 
+2.4  FILE MANIPULATIONS
+ 
+2.4.1  Check In (through the I/NFM user interfaces)
+ 
+       The "Check In" command will not allow a user to add files to an item.
+       This will be done through the "Add Files to Item" command (or "Add
+       Item" or "Change Item" for the first file).
+ 
+       "Check In Item" will allow a user to check in a single item or a list
+       of items using the list capabilities. A confirm will be required from
+       the user, but no additional information. For previously checked in
+       files, the working area used to locate the files will be the working
+       area where the files were checked out (this is necessary for the Local
+       File Manager in addition to simplifying the check in process). For
+       initial check in (files have never been checked in), the user's working
+       area will be used to locate the file(s).
+ 
+       In order to speed up processing, the "Check In Item" command will no
+       longer allow the changing of attribute data (only a confirm will be
+       returned). The changing of attribute data must be done through the
+       "Change File Attributes" command (or "Change Item" if the first file).
+ 
+       If a user has specified the internal storage filename of a file
+       (n_cifilename) and an initial checkin is attempted, the software will
+       check the internal storage area for possible overwrite of an existing
+       file. If a file already exists with the same filename, the command will
+       fail.
+ 
+2.4.2  Check Out Item (through the I/NFM user interfaces)
+ 
+       The "Check Out Item" command will no longer allow a user to enter
+       database information. This change will make the command simpler to use
+       and faster.
+ 
+       A user's working location will be used to determine where files are to
+       be placed during a check out operation. Relative file paths may be used
+       to place files relative to the working location.
+ 
+       "Check Out Item" will fail if an item is flagged for archive, backup,
+       restore, or delete. "Check Out Item" will also fail if an item is
+       locked.
+ 
+       An item with no file can be checked out, but a warning will be issued.
+       An item that has a filename entered but no file associated (checked in
+       for the item) cannot be checked out until the file has been checked in
+       for the item (or the filename has been removed).
+ 
+2.4.3  Copy Item Files (our current "Copy Item")
+ 
+       Will be renamed to more accurately reflect the function of the command.
+       Copies associated files to the user's working area
+ 
+       Command will fail if the item is flagged for archive, restore, or
+       delete. Command will be successful if the item is flagged for backup.
+ 
+2.5  CHANGE ITEM AND FILE INFORMATION
+ 
+2.5.1  Change Item
+ 
+       Allows the modification of the database information that describes the
+       item and the first associated file. Changing of file information
+       follows the rules described below for "Change File Attributes".
+ 
+2.5.2  Change File Attributes
+ 
+       This command allows the user to change file information of all files
+       associated with an item (except for f_<catalog>.n_cosano - See "File
+       Attributes and the I/NFMFILETYPES Table"). The attributes that can be
+       changed are based on the attribute subsystem settings. 
+ 
+       Attributes such as file type (n_filetype), storage filename
+       (n_cifilename), and internal storage area (n_cisano) can ONLY be
+       changed through this command or, in the case of the first file, through
+       the "Change Item" command. If the internal storage area (n_cisano) is
+       changed, ALL VERSIONS of the file will be moved to the new location.
+       This insures that all versions are in the same location (since it will
+       be the only way to change the location). The current "Change Item"
+       command will remain unchanged (allows the user to change the first file
+       associated with the item) so that a user that does not have multiple
+       files per item will see no difference.
+ 
+       If a user changes the internal storage filename of a file
+       (n_cifilename), the software will check the internal storage area for
+       possible overwrite of an existing file. If a file already exists with
+       the same filename, the command will fail.
+ 
+       A user will be able to change file attributes while an item is checked
+       in or checked out. Caution should be used when changing attributes
+       related to a file when an item is checked out. The changing of the
+       local filename (n_cofilename), for example, can result in the wrong
+       file being checked back in or the failure of "Check In Item" because
+       the file does not exist.
+ 
+       If the current version has been backed up or archived, the internal
+       filename cannot be changed (the filename is needed to recover the
+       backup/archive copy).
+ 
+2.6  ITEM AND FILE LISTING OPERATIONS
+ 
+2.6.1  Display List of Items
+ 
+       Through the user interface, this command will be extended to list items
+       from one or more catalogs (see the User Interface section for further
+       information).
+ 
+2.6.2  Review Item Attributes
+ 
+       This command will display attribute information on the active item. It
+       displays both item and file attribute information. The attributes that
+       are displayed are based on the "read" value in the attribute subsystem.
+ 
+2.7  LOCK AND UNLOCK ITEM
+ 
+       I/NFM includes the capability to lock an item against changes and copy.
+       When an item is locked, the following commands will fail:
+ 
+           Check Out
+           Make Item Transition
+           Flag for Archive
+           Flag for Delete
+           Delete Item
+           Change Item / Change File Attributes
+           Add Files to Item / Delete Files from Item
+ 
+       The following command will be configurable at the administrative level:
+ 
+           Copy Item Files        (Lock with Copy or Lock without Copy -
+                                  default is Lock without Copy))
+ 
+       The following commands are not affected by the lock on an item:
+ 
+           Review Item Attributes
+           Flag for Backup 
+ 
+2.7.1  Lock Item
+ 
+       When the "Lock Item" command is executed, the software will check the
+       nfmsyscat table for the n_infotype of "COPY ITEM LOCK". If the
+       n_description is "N" or blank, the n_itemlock attribute on the item
+       will be set to "Y". If the n_description value in the nfmsyscat table
+       for "COPY ITEM LOCK" is "Y", then the n_itemlock attribute will be set
+       to "C". The "Copy Item" command will look at the n_itemlock value to
+       determine if a copy can occur (if value is "N" or "C").
+ 
+       Note - the decision on whether a locked item can be copied is
+       determined when the item is locked and will not change if the value in
+       the nfmsyscat is changed after the lock has occurred. The item can be
+       unlocked and then locked again to update the itemlock value on the
+       item.
+ 
+       A user will be able to lock an item only when it is not checked out and
+       when it is not flagged for archive, delete or restore.
+ 
+2.7.2  Unlock Item
+ 
+       An item can be unlocked only by the user that locked the item. The item
+       updater attribute (n_updater) will be updated with the user when an
+       item is locked and checked during the unlock command.
+ 
+2.8  FILE VERSIONS 
+ 
+       Generally, versions are used for administrative purposes only and are
+       invisible to the end user. They do not show when listing files
+       associated with an item, for example. The exception to this is the
+       "Roll Version Forward" command which may be either an administrative or
+       user command (since access is through workflow).
+ 
+       If a user names the internal copy of a file (n_cifilename) and sets the
+       version limit greater than one, the most recent version of the file
+       will have the user defined name, but older versions of the file will
+       have system generated names. This allows a user to have both named
+       internal files and versioning. If a user names the internal copy of a
+       file (n_cifilename) and also includes relative path information, only
+       the most recent version (the one with the user defined name) will be in
+       the relative location.
+ 
+2.8.1  Roll Version Forward (New Command):
+ 
+       Will allow a user to make a previous version of a file the current
+       version. 
+ 
+       On an item having a single file attached, the user will select the
+       version of the file desired and that version will become the most
+       recent version (the version number will be changed to be one higher
+       than the current version number).
+ 
+       If an item has multiple files associated, the user will be presented
+       with a list of files and their versions. The user can select which
+       files to roll forward. The user may select to roll all associated
+       versions forward or to choose which versions to roll forward. 
+ 
+       This command will not be valid if an item is checked out, flagged for
+       any operation, archived or locked.
+ 
+2.8.2  Purge Versions (New Command):
+ 
+       This is an administrator command that will be used to free disk space.
+       It will delete all but the most recent version of files. Since the most
+       recent version is not being affected, this command will not be
+       dependent on the status of an item (checked out, flagged, or locked).
+ 
+2.9  FILE ATTRIBUTES AND THE I/NFMFILETYPES TABLE
+ 
+       The internal storage location (f_<catalog>.n_cisano) may be different
+       for each file in an item. This allows different types of files to be
+       stored on different storage media.
+ 
+       The check out flag (f_<catalog>.n_fileco) will be used to determine the
+       status of a file. 
+ 
+           N = file is checked in
+           Y = file exists in the internal storage area (has been checked in)
+               but item is currently checked out
+           blank = file has not been checked in
+ 
+       The nfmfiletypes table will be dropped, as it is not being used. The
+       filetype attribute (f_<catalog>.n_filetype) will remain and be used by
+       applications to type files.
+ 
+       User-defined file level attributes will be available only through the
+       Application Programming Interface (API).
+ 
+       The check out comment (f_<catalog>.n_cocomment) will remain at the file
+       level and may be accessed through the "Change File Attributes" command.
+ 
+       In the I/NFM 2.* software, the working area (f_<catalog>.n_cosano) is
+       modifiable by the user. In I/NFM 3.0, the working area will be an
+       attribute used by the I/NFM software and will not be modifiable by the
+       user. A file should always be checked in from the same working area
+       that it was checked out to. This is necessary due to the Local File
+       Manager, which will be keeping track of files and their location.
+------------------------------------------------------------------------------
+
+3. Sets
+ 
+OBJECTIVES -
+ 
+The current implementation of sets needs to be simplified and proper access
+control to members needs to be maintained at all times.
+
+ 
+3.1  DEFINITION OF A SET
+ 
+       A set is an item that has members associated with it. A set item that
+       has all members removed is no longer considered to be a set (the set
+       indicator is changed to "N").
+ 
+       A set is a group of items which can be manipulated together. The
+       members of a set generally follow the same rules as if the items were
+       being manipulated individually (access, locks, pending flags).
+ 
+       A set may be made up of items from different catalogs
+ 
+       Items within a set may be designated as primary or secondary members
+ 
+       A set may have zero, one or many primary members
+ 
+       An item designated as a primary member of a set is one whose files may
+       be updated (if the relevant access conditions are fulfilled)
+ 
+       A set may have zero, one or many secondary members
+ 
+       The files of an item designated as a secondary member of a set cannot
+       be updated (access is read-only)
+ 
+       A set item may have zero, one or many files associated with it. The
+       "Add Files to Item" command is used to associate a file or files to the
+       set item.
+ 
+       If a set item has an associated file or files, the files are treated
+       like primary files when the set is manipulated
+ 
+       The secondary members of the set may be checked out as individuals
+       without affecting the integrity of the set
+ 
+       Sets may be nested to any level
+ 
+       The set item can be manipulated as a set or as an individual item
+ 
+       A set cannot be a member of itself
+ 
+       An item or set can be a member of more than one set in a nested set.
+       For example:
+ 
+           Set1
+               Item1
+               Set2
+                   Item2
+                   Item1
+               Set3
+                   Item3
+                   Set2
+                       Item2
+                       Item1
+ 
+       Within the I/NFM interfaces, an item cannot be attached directly more
+       than once to the same set. The API allows applications to build sets as
+       needed.
+ 
+       A set member is not required to have a file - the set can still be
+       checked out, checked in, and copied. A warning will not be issued when
+       a file manipulation is done on a member that has no file (warnings ARE
+       issued when a file manipulation is done on an individual item with no
+       file, but not when the item is manipulated as a member of a set).
+ 
+       The working area (f_<catalog>.n_cosano) of a set will be updated during
+       a check out of the set whether the set item has an associated file or
+       no associated file.
+ 
+       If a set is attached to another set as a primary member, its primary
+       members are manipulated like primary members of the higher level set
+       during manipulations of the higher level set (see Set Manipulation
+       Rules).
+ 
+       If a set is attached to another set as a secondary member, all of its
+       members, whether primary or secondary, are manipulated like secondary
+       members of the higher level set during manipulations of the higher
+       level set (see Set Manipulation Rules).
+ 
+       A file or files may be added to a set item or primary members of a set
+       while the set is checked out (through "Add Files to Item"). The Check
+       In of the set will do an initial check in of the added file(s).
+ 
+3.2  DEFINING A SET
+ 
+       The "Add Set" command is to be removed (it's obsolete).
+ 
+       The "Add Items to Set" command will allow the user to add members to a
+       set (or item, making it a set). The "Delete Items from Set" command
+       will allow the user to remove members from a set (making it a non-set
+       item if all members are removed).
+ 
+       An item becomes a set when members are added to it; a set becomes an
+       item when all members are removed.
+ 
+       Members cannot be added or removed from an item (set) when the item
+       (set) has pending flags, is archived, or is locked.
+ 
+       Through the I/NFM interfaces, members can only be added or removed when
+       the set is not checked out. The API will allow applications to add or
+       remove members when the set is checked out. It is the applications
+       responsibility to properly handle the relationships if modifications
+       are allowed while the set is checked out.
+ 
+3.3  CHECK OUT SET
+ 
+       This command checks out all primary members of the set (as members of
+       the set) and copies all secondary members to the working area (or
+       allows access through NFS - see the section on NFS).
+ 
+       All items within the set are checked out, the user will not be able to
+       select individual items.
+ 
+       A set can only be checked out if all of its primary member(s) are
+       checked in (or do not have associated files).
+ 
+       Members of a set are always checked for locks, archive state, and
+       pending flags before a check out operation. Success or failure is
+       determined using rules for item manipulations. Failure on a primary
+       member causes the entire set operation to fail. Failure on a secondary
+       member results in a warning and no copy of the member, but the command
+       continues. 
+ 
+       The following chart shows the status of "Check Out Set" based on the
+       possible pending flags:
+ 
+           Check Out Set
+ 
+               pending flag       Primary Member       Secondary Member
+               ------------------------------------------------------------
+               Archive            command fails        warning/no copy
+ 
+               Backup             command fails        successful
+ 
+               Restore            command fails        warning/no copy
+ 
+               Delete             should not occur     should not occur
+ 
+       Check out of a set will fail if any primary member is locked or
+       archived. If a secondary member is locked or archived, the command will
+       continue but the member will not be copied. A warning will be issued
+       when a secondary member is not copied.
+ 
+3.4  CHECK IN SET
+ 
+       Within the API, a set that has had all members removed can still be
+       checked back in.
+ 
+3.5  COPY SET FILES (replaces our current "Copy set")
+ 
+       Will be renamed to more accurately reflect the function of the command.
+       Copies associated set files to the user's working area.
+ 
+       Members of a set are always checked for locks, archive state, and
+       pending flags before a copy operation. Success or failure is determined
+       using rules for item manipulations. Failure on a primary member causes
+       the entire set operation to fail. Failure on a secondary member results
+       in a warning and no copy of the member, but the command continues. The
+       following chart shows the status of "Copy Set Files" based on the
+       possible pending flags:
+ 
+           Copy Set Files
+ 
+               pending flag       Primary Member       Secondary Member
+               -------------------------------------------------------------
+               Archive            command fails        warning/no copy
+ 
+               Backup             successful           successful
+ 
+               Restore            command fails        warning/no copy
+ 
+               Delete             should not occur     should not occur
+ 
+       Copy of a set will fail if any primary member cannot be copied because
+       it is locked (based on option) or archived. If a secondary member
+       cannot be copied because it is locked or archived, the command will
+       continue but the item will not be copied. A warning will be issued when
+       a secondary member is not copied.
+ 
+3.6  SET MANIPULATION RULES
+ 
+       Assume the following set relationships (P = primary member, S =
+       secondary member):
+ 
+       Set1
+ 
+           Item1 (P)
+           Item2 (S)
+           Set2 (P)
+               Item3 (P)
+               Item4 (S)
+               Set4 (P)
+                   Item5 (P)
+                   Item6 (S)
+           Set3 (S)
+               Set5 (P)
+                   Item7 (P)
+                   Item8 (S)
+               Set6 (S)
+                   Item9 (P)
+                   Item10 (S)
+ 
+       A Check Out of Set1 would result in the following:
+ 
+           Items Checked out:
+ 
+               Item1
+               Set2
+               Set4
+               Item5
+               Item3
+ 
+           Items Copied Out:
+ 
+               Item2
+               Item6
+               Item4
+               Set3
+               Set5
+               Item7
+               Item8
+               Set6
+               Item9
+               Item10
+ 
+       A Flag for Archive on Set1 would result in all items above that were
+       checked out being flagged for archive, and all items above that were
+       copied being flagged for backup.
+----------------------------------------------------------------------------
+
+4. Utilities and Flagging
+ 
+
+OBJECTIVES -
+ 
+To provide backup, archive and restore operations on items, sets, catalogs,
+and projects.
+
+ 
+4.1  GENERAL
+ 
+       Some of the delete operations will be available through item
+       manipulations (see the section on Files and Items).
+ 
+       All Archive, Backup, and Delete operations will be performed at the
+       "item" level. No individual file operations will be supported.
+ 
+       All archive and backup operations will be performed on the latest
+       version only.
+ 
+       Project flagging commands have been added.
+ 
+4.2  FLAGGING
+ 
+4.2.1  General
+ 
+       Flagging may be performed on individual items or on all items appearing
+       in a list. 
+ 
+4.2.2  Flag for Restore
+ 
+       In I/NFM 3.0 there will be two commands for flagging an item or set for
+       restore. The administrative command will allow the user to flag an
+       item's files for restore and allow the user to select which versions of
+       files will be flagged. The user command will flag only the latest
+       versions of files for restore.
+ 
+4.2.3  Flag Item for Archive
+ 
+       An item can not be flagged for archive if it is a primary member of a
+       set.
+ 
+4.3  BACKUP OPERATIONS
+ 
+       Backups may be performed for the following reasons:
+ 
+           To provide a snapshot of an item for future restore if needed
+ 
+           To provide incremental backups for protection of data from media
+           failure
+ 
+       Backups should be available for
+ 
+           Entire database (all storage areas and metadata) - Documented
+           procedures provided in the section on Disaster Recovery.
+ 
+           Entire catalogs - Available through operations on lists of items.
+ 
+           Entire projects - Available through the new project flagging
+           commands.
+ 
+           Sets, items, or a list of items or sets - Available through regular
+           menu options and the new list operations (see the section on the
+           User Interface).
+ 
+       The backup operation will show only item related data since the backup
+       operation is now operating on items instead of files.
+ 
+       All items will be included in a backup, regardless of the item's status
+       (checked in or checked out). An item that is checked out will have the
+       internal copy of the files included in the backup (not the files in the
+       working area).
+ 
+       Only the latest version of a file will be backed up.
+ 
+       The ability will be provided to update the I/NFM database when a backup
+       has been performed and (after a period of time) the backup tape is
+       moved to the scratch bin. This resolves the situation where the
+       database indicates the backup tape is still on record but the tape has
+       been reused. 
+ 
+           Expiration date is being added to the nfmarchives table (database
+           support now, functionality to be added later).
+ 
+           The "Delete Saveset Entries" (formerly "Clear Saveset") command
+           will be allowed without restore.
+ 
+           The database row in f_<catalog> associated with a file will be
+           removed when "Delete Saveset Entries" is performed.
+ 
+4.3.1  Incremental Backups
+ 
+       Flagging items for incremental backup can be performed using the flag
+       operation on a list of items. The f_<catalog>.n_cidate can be used to
+       indicate the data to be included. 
+ 
+4.4  ARCHIVE OPERATIONS
+ 
+       An archive moves the files associated with an item out of general
+       circulation to a secure area (a repository) or to off-line media. The
+       state of the item will not change. 
+ 
+       Once an item has been archived or flagged for archive it cannot be
+       placed into a new state without a restore
+ 
+       The archive operation will show only item related data since archive is
+       now operating on items instead of files.
+ 
+       The storage area of an item CAN be changed while an item is in an
+       archived state. This allows the item to be restored to a different
+       internal storage area upon restore.
+ 
+       Only the current versions of files associated with an item are
+       archived. It is the responsibility of the user to purge other entries
+       out (using the "Purge Versions" command) if multiple versions exist and
+       are not wanted.
+ 
+4.4.1  Set Archival
+ 
+       The archive constraints that apply to items also apply to sets.
+ 
+       When a set is flagged for archive, primary members are flagged for
+       archive and secondary members are flagged for backup.
+ 
+4.5  OPTICAL STORAGE MEDIA
+ 
+       The capability to archive and restore files to and from optical disk
+       media is available. The erasable optical disk (read/write) and write-
+       once optical disk (worm) with a jukebox attached are recognized via
+       specially assigned storage area device types. The configuration with no
+       jukebox attached to the optical disk is also supported. All of these
+       configurations are dependent upon CSS. 6.0 and uses the CSS 6.0 caching
+       file system capabilities.
+ 
+4.6  MISCELLANEOUS
+ 
+       The option to produce duplicate archive tapes exists. The normal prompt
+       sequence of 'Nfmutil' allows the user to produce as many archive copies
+       as needed.
+ 
+       An attribute has been added to the f_<cat> table, n_convertind, that
+       will indicate the version of I/NFM under which an archive or backup
+       occurred. This will allow the restore operation to determine the
+       appropriate method needed to restore the data.
+------------------------------------------------------------------------------ 
+
+5. Storage Areas
+
+OBJECTIVES -
+ 
+To provide a method of identifying and managing the various storage areas
+where files may reside. 
+ 
+5.1  GENERAL
+ 
+       A storage area is a physical location where files can be stored
+       (optical disk, magnetic disk or tape)
+ 
+       A Storage Area must be one of the following types:
+ 
+           Internal Storage Area
+           Working Area
+           Utility Area
+           System Storage Area
+           DOS Storage Area
+           Internal, Working, or Utility Area
+ 
+       The following commands are available for storage area listing and
+       manipulation:
+ 
+           Add Storage Area
+           Change Storage Area
+           Delete Storage Area
+           Display List of Storage Areas
+           Display List of Working Areas
+           Display List of User Working Areas
+           Display List of Local Files
+           Delete Copied Files
+           Change Storage Area Password
+           Change Working Area Password
+ 
+       A new feature has been added to storage areas that allows better
+       control over the listing and manipulation of working areas.
+ 
+5.2  STORAGE AREA TYPES
+ 
+       It is highly recommended that an administrator use a storage area for
+       only one type operation. Use of a storage area for multiple uses (for
+       example, internal and working area) can cause problems. The "B" type
+       storage area is being included because of the converter (there is no
+       way to distinguish between a permanent working area, an internal
+       storage area, and an on-line utility area in I/NFM 2.*). Administrators
+       are encouraged to change all "B" types to the appropriate type.
+ 
+5.2.1  Internal Storage Areas (Type "I")
+ 
+       Where files are kept when checked in to I/NFM
+ 
+       Only added and manipulated by the administrator
+ 
+       Chosen for an item during "Add Item" or "Add File to Item"
+ 
+       Can be changed for an item through "Change Item" or "Change Item Files"
+       (files are copied to the new location and deleted from the old)
+ 
+       May be used for active storage (files are being updated) or a
+       repository (a secure data storage area for files which are to be made
+       available in a read-only state)
+ 
+5.2.2  Working Areas (Type "W")
+ 
+       Where files are checked out (or copied) for use by a user, or where a
+       file is checked in from. Normally the user's default working directory.
+ 
+5.2.3  Utility Areas (Type "U")
+ 
+       A location where files are placed when archived or backed up.
+ 
+       Only added and manipulated by the administrator
+ 
+       May be on-line or off-line media
+ 
+5.2.4  System Storage Area (Type "S")
+ 
+       Used by I/NFM for the storage of sort criteria, search criteria, and
+       programs. The area used for the temporary storage for files during
+       utility operations (#_UTIL) are also type "S".
+ 
+5.2.5  DOS Storage Area (Type "D")
+ 
+       Used for the transfer of files to a PC.
+ 
+       Created automatically when the PC command line interface is used.
+ 
+5.2.6  Internal, Working, or Utility (Type "B")
+ 
+       This is a storage area that may be used as an internal storage area, a
+       working area, or utility area. This type storage area is NOT
+       recommended and is being included due to converter issues. After
+       conversion, it is recommended that customers change all "B" type
+       storage areas to the appropriate type, either Internal ("I") Working
+       ("W"), or Utility ("U").
+ 
+5.3  MANIPULATION OF STORAGE AREA DATA
+ 
+5.3.1  Adding storage areas
+ 
+       The "Add Storage Area" command allows an administrator to add a storage
+       area to the environment. The administrator assigns a type (Internal
+       Storage Area, Working Area, etc.) to the storage area depending on how
+       the storage area will be used. If the storage area is to be used as a
+       working area, the administrator can assign the working area to "public"
+       (the public user is a special user on the system that is used to
+       identify general usage by all users on the system).
+ 
+       Working areas may be added by the system manager or created
+       automatically when a user logs into I/NFM (through the I/NFM user
+       interfaces). Working areas added by the software will have system
+       generated names; working areas added by the system manager are named.
+       Working areas added automatically to the system will not have a
+       password. 
+ 
+       Any storage area that will be used with NFS must have a path defined.
+ 
+5.3.2  Changing storage area data
+ 
+       The "Change Storage Area" command allows an administrator to change
+       information about a storage area. The storage area type can be changed
+       (since "B" types should be changed to "I", "W", or "U" types), but
+       extreme care should be taken when changing the type of a storage area
+       since an incorrect type will cause problems. The owner on a working
+       area can be changed using the "Change Storage Area" command.
+ 
+       The "Change Storage Area Password" command allows an administrator to
+       change the password on the active storage area. The administrator does
+       not have to know the current password to do this.
+ 
+       The "Change Working Area Password" command allows a user to change the
+       password on the current working area if it is owned by the user. Only
+       the administrator can change the password on a public working area.
+ 
+5.3.3  Deleting a storage area
+ 
+       The "Delete Storage Area" command allows an administrator to delete a
+       storage area that does not contain I/NFM data. 
+ 
+           Internal storage area - it cannot have files stored on it or
+           catalogs or projects mapped to it. The "NFMFILES" storage area
+           cannot be deleted.
+ 
+           Working area - it cannot have files checked out or copied to it (no
+           entries in the LFM)
+ 
+           Utility area - can have no entries in nfmarchives.n_sano
+ 
+           System storage area - The "SYSTEM" and "UTILITIES" storage areas
+           cannot be removed. The #_UTIL areas should not be removed if
+           archives have EVER occurred using that storage area.
+ 
+           "B" type storage areas - follows the rules for deleting internal,
+           working and utility areas. 
+ 
+5.4  LISTING OF STORAGE AREAS
+ 
+       Storage areas are typed so that the storage area information for
+       selection is based on the operation being performed. For example, an
+       internal storage area will not show on a list of working areas and
+       working areas will not show when listing utility areas.
+ 
+       There are three storage area listing commands - "Display List of
+       Storage Areas", "Display List of Working Areas", and "Display List of
+       User Working Areas". All other listing operations are based on the
+       functions being performed. For example, during "Add Item" or "Change
+       Item" a list of valid internal storage areas will be presented for the
+       Storage Location.
+ 
+5.4.1  "List Storage Areas" Command
+ 
+       "List Storage Areas" is an administrative command that will list all
+       storage areas, regardless of type. It can be used for obtaining
+       information about storage areas, and/or selection for administrative
+       manipulation and modification purposes.
+ 
+5.4.2  "Display List of Working Areas" Command
+ 
+       "Display List of Working Areas" is an administrative command that will
+       list all working areas (type "W" and "B") on the system. The display
+       can then be used to make any working area active.
+ 
+5.4.3  "Display List of User Working Areas" Command
+ 
+       "Display List of User Working Areas" is a command that will allow a
+       user to list working areas and select a new active working area from
+       the list. Only working areas (type "W" and "B") that belong to the user
+       or are owned by "public" will show on a user's listing. 
+ 
+5.4.4  Listings in other commands
+ 
+       Add Item/Copy Item/Add Files to Item - Type "I" and "B" will show for
+       n_cisano 
+ 
+       Change Item and Change File Attributes - Type "I" and "B" will show for
+       n_cisano
+ 
+       Add Storage Area to Catalog Mapping - Type "I" and "B" will show for
+       storage areas that can be mapped to the catalog
+ 
+       Archive Flagged Items - can be archived to type "U" and type "B" areas
+ 
+       Backup Flagged Items - can be backed up to type "U" and type "B" areas
+ 
+5.5  DEFAULT WORKING LOCATION
+ 
+       When a user activates I/NFM, the active working area will be the
+       location where the I/NFM client was invoked (pwd). This location will
+       be added to the system as a working area if it does not already exist
+       (as part of login). The owner on the working area will be the user
+       logging into I/NFM. If a working area is located on a node that is not
+       entered into I/NFM, the node will be added along with the working area.
+ 
+       Once I/NFM is active, the user may list their available working areas
+       and select a new working location if desired.
+ 
+       The working location is used during checkout, copy and initial checkin.
+       The active working location will NOT be used during checkin on an item
+       that is checked out - the working area where the item was checked out
+       will be used to locate the files.
+ 
+5.6  WORKING AREA FILE MANIPULATIONS
+ 
+       I/NFM 3.0 has implemented a Local File Manager (LFM) that keeps up with
+       the files on a working storage area and the function or functions of
+       each file. This information is used to avoid overwrite of files and the
+       deletion of files that have multiple functions in the working area.
+ 
+       As part of the management of the files in a working area, there are two
+       commands that a user or administrator can use to list and manipulate
+       the files.
+ 
+           "Display List of Local Files" allows a user or administrator to
+           list files that have been copied (either through a copy command or
+           as a secondary member of a set) or checked out to the active
+           working area. There is no difference between the function of this
+           command between the administrator and the non-administrative user.
+ 
+           "Delete Copied Files" allows an administrator to delete files from
+           any active working area. The command allows a user to remove copied
+           files from the working area only if the user owns the working area.
+           If the active working area is owned by public, the user cannot
+           delete copied files even if the user copied the files to the
+           working area. The LFM does not keep up with who copied files to a
+           working area, only that the files exist in the area. 
+ 
+       See the "Local File Manager" section for more information on these
+       commands.
+ 
+5.7  RELATIVE FILE PATHS
+ 
+       If a filename includes path information, the file will be moved to the
+       directory relative to the checkout or checkin storage area. The
+       following apply
+ 
+           The relative path may be included on the f_<catalog>.n_cifilename
+           and/or the f_<catalog>.n_cofilename.
+ 
+           The attribute(s) must be extended by the customer during catalog
+           creation to include room for the relative path information.
+ 
+           For internal filenames, the initial checkin will scan the storage
+           filename, create any needed directories, if necessary, and move the
+           file.
+ 
+           Check Out, check in, and copy operations will scan the local
+           filename, create any directories that do not exist, and move the
+           file. When the file is removed from the storage area, the
+           directories will not be deleted.
+ 
+       Path information included with filenames can be relative (ex.
+       ../filename).
+ 
+5.8  STORAGE AREA PATHS
+ 
+       A path can be indicated when a storage area is created. If a file
+       transfer is attempted to a storage area with a path and the directory
+       does not exist, I/NFM will create the directory.
+ 
+       Storage area paths must be included if the storage area will be NFS
+       mounted. If a VAX utility area (#_UTIL) is being added, the path should
+       be the full path of the I/NFM directory (ex. ZFA1:[IGR.I_NFM.PRO]).
+ 
+5.9  STORAGE AREA CHARACTERISTICS
+ 
+       Each storage area can have one of the following general
+       characteristics, depending on its usage:
+ 
+           NFS mountable - where an internal storage area can be mounted
+           through NFS for read-only access in place. Any copy will attempt to
+           use NFS if the storage area is marked as "Y" for NFS. This setting
+           does not influence checkouts from the area.
+ 
+           As-is - where the file is always transferred 
+ 
+5.10  CONVERSION OF STORAGE AREAS
+ 
+       The following describes the conversion of storage areas from a I/NFM
+       2.* format to the I/NFM 3.0 format. 
+ 
+       REPORTS renamed SYSTEM --> Type "S"
+       UTILITIES --> Type "S"
+       NFMFILES --> Type "I"
+       1_UTIL --> Type "S"
+ 
+       all 2.* n_type "T" --> Type "W" (owner PUBLIC)
+           Note - there are no temporary types in I/NFM 3.0 
+       all off-line devices --> Type "U"
+       *_UTIL --> Type "S"
+       all others --> Type "B" (including nfm) (owner PUBLIC)
+ 
+       Note - the storage area created during initialize (usually "nfm") will
+       be a type "W" with the nfm administrator (usually "nfmadmin") as owner.
+------------------------------------------------------------------------------ 
+
+6. Local File Manager
+ 
+
+OBJECTIVES -
+ 
+A local file manager is needed to keep up with the files on
+each working storage area and the function or functions of each
+file. This information is needed to avoid unintentional
+overwrite of files and the deletion of files that have multiple
+functions in the storage area.
+
+ 
+6.1  GENERAL
+ 
+  The local file manager is most important when keeping up with
+  files that are members of sets, where a single file may be
+  checked out or copied out by more than one method (as a
+  primary set member, a secondary set member, or individually).
+  By keeping up with each file that is checked out or copied to
+  a storage area and how many ways it is being accessed, the
+  local file manager can avoid data loss due to file overwrite
+  (copying a file as a secondary member of a set over the file
+  checked out for update, for example) and due to unwanted
+  deletion (for example, deleting a file that is a secondary
+  member of a set when the file is checked-in, even though the
+  file is checked out for update).
+ 
+       EXAMPLE OF PROBLEM
+ 
+       SetA contains file1 as a primary member and SetB contains file1 as a
+       secondary member. 
+ 
+       - SetA is checked out and file1 is updated by the user.
+       - SetB is checked out and file1 is overwritten (updates to file1 are
+         lost)
+       - Updates are reentered to file1
+       - SetB is checked back in and file1 is deleted (updates lost again)
+       - SetA cannot be checked back in because one of its primary members has
+         been deleted 
+ 
+6.2  LOCAL FILE MANAGER TABLE
+ 
+       The Local File Manager will be a separate table in the I/NFM database
+       with the following attributes: 
+ 
+       n_sano          # join with nfmstoragearea.n_sano
+       n_filename      # local filename (including path)
+       n_catalogno     # join with nfmcatalogs.n_catalogno
+       n_itemno        # join with <catalog>.n_itemno and
+                         f_<catalog>.n_itemnum
+       n_filenum       # join with f_<catalog>.n_filenum (planned)
+       n_fileversion   # join with f_<catalog>.n_fileversion
+       n_co            # if file is checked out to the sa (Y or N)
+       n_copy          # if file is copied to the area (Y or N)
+       n_ref           # number of times a file is referenced 
+       n_nfs           # 'Y' indicates NFS was used for the copy operation
+       n_cisano        # the check-in storage area which is mounted remotely
+                         when file is being accessed through NFS
+       n_mountpoint    # If n_nfs is set to 'Y', the local mount point used to
+                         mount n_cisano
+ 
+6.3  NEW COMMANDS
+ 
+       A user must be able to cleanup files in a local storage area through
+       the product since the local file manager will be monitoring these local
+       files. The user should be able to list the files copied to a storage
+       area and delete files that are no longer needed (copied files).
+ 
+       Show List of Local Files
+ 
+           Will give the following information for each file in the active
+           working area: filename, file version, catalog, item name, item
+           revision, check out value, copy value, number of references, nfs
+           value. Will allow the user to select files for deletion (using the
+           "Delete Local Files" command) if the user is an administrator or
+           owns the working area, and if the files are are not checked out to
+           the working area.
+ 
+       Delete Local Files
+ 
+           Will allow the user to delete files in the active working area that
+           have been copied to the working area. This command uses the files
+           selected from the "Show List of Local Files" form. It deletes the
+           file and removes the entry from the Local File Manager. Note - the
+           "deletion" of a file that is NFS mounted will remove the link and
+           the entry in the LFM, but not the mountpoint. Mountpoints may be
+           deleted using the NFMadmin utility.
+ 
+6.4  GENERAL RULES
+ 
+       I/NFM will protect data against overwrite in both internal storage
+       areas and working areas if the file is NOT under I/NFM control. This
+       includes initial checkin of a file into its internal storage area and
+       checkout or copy of a file to a working area.
+ 
+       Since there are instances when I/NFM should overwrite a file that is
+       under its control, I/NFM cannot protect a copied file that has been
+       updated without being renamed. For example, file1 is copied to working
+       area 1 for review. File1 is then checked out to working area 2,
+       updated, and checked back in. File1 is then needed as a secondary
+       member of a set that is checked out to working area 1. I/NFM needs to
+       overwrite file1 in working area 1 with the updated file or the
+       reference file will be out-of-date.
+ 
+       On CLIX machines the copy operation in I/NFM will be changed so that a
+       copied file is brought down to the local directory with READ only
+       privileges (it is then obvious to the user that the file should not be
+       updated). If the file is to be updated, a user should copy the file to
+       a new name (along with the change of privileges) or the file may be
+       overwritten by I/NFM. I/NFM has no method of knowing if a user updates
+       a copied file. Note - the privileges on non-CLIX machines such as VAX
+       and IBMs will not change.
+ 
+       With the current recommendation, a file in the Local File Manager (LFM)
+       will be copied, without asking the user, when the most recent version
+       of the file does not match the version of the file when it was last
+       copied (which will be kept in the LFM). This will properly handle
+       situations where the file has been updated, restored from backup, or a
+       prior version has been rolled forward.
+ 
+6.5  FUNCTIONS THAT USE THE LOCAL FILE MANAGER
+ 
+       Copy of a file (Copy Item Files, Copy Set Files)
+ 
+           If the file is not in the LFM and does not exist in the storage
+           area (working area), the file is copied and an entry is made in the
+           LFM. If the file exists locally but is not in the LFM, the copy
+           operation fails.
+ 
+           If the file is in the LFM, the file is copied if the file version
+           in the LFM is less than the most recent version of the file. The
+           n_copy attribute is set to "Y" in the LFM.
+ 
+               Note - I/NFM has no way of knowing if a user has copied a file
+               local and then updated the file. In this case the local file
+               WILL BE OVERWRITTEN if the most recent file version is greater
+               than the file version in the LFM.
+ 
+           Each copy of an NFS mounted file will cause an unlink and relink.
+ 
+       Copy of a file (Check Out Set - Secondary Member)
+ 
+           If the file is not in the LFM and does not exist in the storage
+           area (working area), the file is copied and an entry is made in the
+           LFM. If the file exists locally but is not in the LFM, the checkout
+           will fail.
+ 
+           If the file is in the LFM, the reference counter is incremented and
+           the file is copied if the file version in the LFM is less than the
+           most recent version of the file. 
+ 
+               Note - I/NFM has no way of knowing if a user has copied a file
+               local and then updated the file. In this case the local file
+               WILL BE OVERWRITTEN if the most recent file version is greater
+               than the file version in the LFM.
+ 
+       Check out of a file (Check Out Item, Check Out Set - Primary Member)
+ 
+           If the file is not in the local directory, the file is copied and
+           an entry is made, or updated if existing, in the LFM (n_co = "Y").
+           Note - any previous copies of the file will be overwritten. 
+ 
+           If the file exists in the local directory, but not in LFM, the
+           checkout fails.
+ 
+       Check in of a file (Check In File, Check In Set - Primary Member)
+ 
+           File is checked into I/NFM. If the file has no further links (for
+           copies or reference), the entry in the LFM for the file is removed
+           and the file is deleted.
+ 
+       Check in a set - Secondary Members
+ 
+           The reference counter is decremented. If the file has no further
+           links (for copy, checkout, or reference), the entry in the LFM for
+           the file is removed and the file is deleted.
+ 
+       Cancel Checkout (Cancel Item Checkout, Cancel Set Checkout - Primary
+       Members)
+ 
+           Cancel Checkout presents a special problem since the file may be
+           used for reference or copied to the local directory in addition to
+           being checked out. Since it is difficult to know how to handle this
+           situation without knowing the reason for the cancel, the user will
+           be prompted for a decision if the file has also been copied or is
+           being used for reference. The following logic will be used:
+ 
+           User selects "Cancel Item Checkout" (or "Cancel Set Checkout")
+ 
+           If the item(s) is not being used, the user gets a Confirm form (any
+           file not needed will be deleted)
+ 
+           If the item (or any of the items in a set) are being used, then the
+           user gets the following choices (for the entire operation, not for
+           each individual file):
+ 
+           -   leave the file(s) in the directory
+           -   delete the local file(s) and copy down the checked in file(s)
+ 
+           In all cases the entry in the LFM is updated ("N" for checkout) and
+           any files that are no longer used will be deleted (the checkout was
+           the only use in the directory). 
+ 
+       Cancel Checkout of Set - Secondary Members
+ 
+           The reference counter is decremented. If the file has no further
+           links (for copy, checkout, or reference), the entry in the LFM for
+           the file is removed and the file is deleted.
+------------------------------------------------------------------------------ 
+
+7. NFS in the I/NFM Environment
+
+OBJECTIVES -
+ 
+To design Network File System (NFS) support in I/NFM that will facilitate user
+access to files "checked in" under I/NFM control, without physically copying
+the file from one storage area to another.  The access is READ ONLY access and
+is applicable to explicit/implicit COPY Operations. 
+ 
+7.1  GENERAL
+ 
+       Currently there is no NFS support in I/NFM. Every time a user needs a
+       file that is under I/NFM control, the user has to either check out or
+       copy the file to his workspace. When files become large or the
+       manipulation involves a set with a large number of files, the overhead
+       is considerable.
+ 
+       NFS provides users with a means to access data that is distributed
+       among machines on the same network. Though utilities like fmu and
+       rlogin allow you to access files on a remote node, the user must have
+       specific access privileges on the remote node; must login and later
+       exit the utility to return to local environment.
+ 
+       With NFS, local and remote file manipulations occur simultaneously and
+       independent of operating system differences. Thus NFS looks like a
+       remarkable solution in distributed environment for file access. The
+       implementation of NFS in a distributed environment is simple. File
+       access is the same as that on a local node once the file system on the
+       remote node is mounted on the local node.
+ 
+7.2  REQUIREMENTS
+ 
+       There are certain requirements that must be satisfied before NFS can be
+       used in a network. They are
+ 
+       1.  NFS relies on a valid TCP/IP address for its operations, so all
+           nodes that are serving as client and/or server (NFS client/server)
+           must have a valid TCP/IP address present and running. The TCP/IP
+           address must be in the internet address format.
+ 
+       2.  NFS server must be installed, up and running on all the nodes which
+           are made accessible to network via NFS. 
+ 
+           RESTRICTION: A PC does not have server support in the current
+           Intergraph NFS.
+ 
+       3.  Resources that are to be accessible by the network must be exported
+           by each NFS server.
+ 
+           CAUTION: An exported resource is accessible by users on the network
+           if the resource is mounted on user node.
+ 
+       4.  NFS client must be installed and running on all client (NFS) nodes.
+ 
+           RESTRICTION: VAX/VMS does not have client support.
+ 
+       5.  NPMOUNT/NPUMOUNT will be used for mount operations.
+ 
+       6.  An entire filesystem can be exported, but not individual
+           files/directories.
+ 
+       7.  A single file cannot be mounted. A directory can be mounted.
+ 
+       8.  A valid mount point must exist for the mount to succeed. The
+           software will handle the unique valid mount points.
+ 
+7.3  I/NFM RESTRICTIONS
+ 
+       1.  The internal storage area is a special set of storage areas unknown
+           to user. The files are stored in these areas by I/NFM, and
+           retrieved for the user by I/NFM.
+ 
+       2.  The user cannot be given access to the entire storage area, as this
+           will cause possible corruption of files under I/NFM control.
+ 
+       3.  Read only access needs to be given to the files the user wants to
+           view.
+ 
+       4.  The files are stored under I/NFM "check in"(n_cifilename) names.
+           The filenames must reflect the "check out" (n_cofilename) name
+           before it is displayed to the user.
+ 
+       5.  The files should be restored to the "check in" (n_cifilename) names
+           after the user access is complete.
+ 
+       6.  If a file has been mounted through an NFS mount, problems may occur
+           if the file is updated (checked out and checked back in) before all
+           NFS mounts are cleared. If a file with a system generated filename
+           is updated while an NFS mount is active, the mount will be pointing
+           to an old version of the file or a purged version (which will no
+           longer exist). If a file with a named filename is updated while an
+           NFS mount is active, the mount will be pointing to the new, updated
+           file (since the link is by name).
+ 
+7.4  SOLUTION REQUIREMENTS
+ 
+       1.  A copy request under I/NFM should be transparent. ( The user shall
+           not be  aware/ or required to do special processing because the
+           file is accessed through NFS).
+ 
+       2.  The User should get READ ONLY access to I/NFM files through NFS.
+ 
+       3.  The file(s) should appear in the directory specified by the user
+           for a particular storage area.
+ 
+       4.  The file(s) should reflect the "check out" n_cofilename name(s) in
+           the working storage area.
+ 
+       5.  The file(s) should stay around until removed by the user.
+ 
+       6.  If NFS fails the copy should proceed using file transfer. If such a
+           thing occurs an informative message should be displayed to the
+           user.
+ 
+7.5  ADMINISTRATION REQUIREMENTS
+ 
+       1.  I/NFM administrator needs to ensure proper installation of NFS.
+ 
+       2.  All storage area nodes that support NFS must have NFS client/server
+           capability installed and running. Download NFS with client/server.
+ 
+       3.  Filesystems that are available for mounting remotely via NFS must
+           be exported. Please refer to Exports(4) in CLIX Programmer's and
+           User Reference Manual.
+ 
+           WARNING: A filesystem exported to network can be accessed by all
+           users on a node that mounts it remotely.
+ 
+       4.  Make sure that a valid and unique internet address is assigned to
+           each node.
+ 
+       5.  TCP/IP software support must exist on nodes under NFS environment.
+ 
+       6.  Entries in nodes table must be valid. Do not delete/remove NFS
+           without updating all the I/NFM databases.
+ 
+       7.  Set up storage areas to allow NFS.
+ 
+7.6  DESIGN
+ 
+7.6.1  Node Information 
+ 
+       The nfmnodes table maintains information about a particular node in
+       I/NFM environment. Thus by looking into the nfmnodes table I/NFM can
+       determine the configuration of a particular node. An entry n_nfs is
+       created to support NFS. This specifies if a node has NFS capability or
+       not.
+ 
+       There are different entries to indicate type of NFS support.
+ 
+       1.  An entry 'N' means this node does not support NFS.
+ 
+       2.  An entry 'Y' means this node supports NFS.
+ 
+       An entry of 'Y' implies that the NODE has TCP/IP support and a valid
+       internet address.
+ 
+       CAUTION: The field n_tcpip must be 'Y' for these nodes to avoid
+       confusion.
+ 
+       Every effort should be made to keep this information intact and up to
+       date. NFS should not be removed without updating all the databases
+       involving this node. The TCP/IP address should not be removed
+       inadvertently.
+ 
+       A cleanup utility may be provided which can verify the node status and
+       the database entries. If the database and a node is out of sync, this
+       utility must bring them in sync.
+ 
+7.6.2  Storage Area Information
+ 
+       A storage area in I/NFM represents a directory on a node where files
+       are stored.
+ 
+       There are three different types of storage areas in I/NFM.
+ 
+       1.  Internal Storage Area: This is used by I/NFM to store "checked in"
+           files.
+ 
+       2.  Working Area: This is user's workspace.
+ 
+       3.  Utility Area: This is an area used by utilities.
+ 
+       To support NFS the nfmstoragearea table has a field called n_nfs. The
+       field specifies if the user wants NFS access to this storage area.
+ 
+       Notes:
+ 
+       1.  If NFS is present on a node, by default all I/NFM internal storage
+           areas on that node will allow NFS access.
+ 
+       2.  If n_nfs is set to 'Y' on a working storage area a copy operation
+           to that storage area will use NFS if 
+ 
+           a.  The internal storage area node has NFS support.
+ 
+           b.  The filesystem in which the I/NFM storage area exists is
+               exported to the working storage area node.
+ 
+               NOTE: An entry of 'Y' in n_nfs implies that the node has at
+               least NFS client support.
+ 
+7.6.3  Local File Manager
+ 
+       The local file manager is an important part of NFS support. The
+       information that needs to be maintained in the local file manager for
+       nfs use is as follows.
+ 
+       1.  n_nfs: 'Y' indicates NFS was used for the copy operation.
+ 
+       2.  n_cisano: The internal storage area which is mounted remotely.
+ 
+       3.  n_sano: The working storage area where the file currently exists.
+ 
+       4.  n_mountpoint: If n_nfs is set to 'Y' the local mount point used to
+           mount n_cisano.
+ 
+       This information will be used to remove mount points when local files
+       are deleted, and perform cleanup operation. The n_cisano is maintained
+       to avoid duplicate mounting of the same storage area on same node.
+ 
+7.6.4  Local Mount Point
+ 
+       The NFS client needs to have a local mount point. This is the directory
+       on which the networked file system will be mounted; this directory must
+       already exist and should be empty.
+ 
+       The local file manager must be consulted to see if the internal storage
+       area is already mounted on the current node. If so then a new mount
+       point need not be created.
+ 
+       A local mount point will be created by I/NFM in the directory /usr/tmp.
+       A boot up file (nfmnfstabs) will be created/appended with the mount
+       instruction. This is to re-establish the mount if the client(NFS)
+       machine reboots. This file must be cleaned while performing delete
+       local files operation.
+ 
+7.6.5  Copy File
+ 
+       The file(s) requested by the user to be copied to a working storage
+       area will appear with n_cofilename. To achieve this a symbolic link
+       will be created between the n_cifilename existing at the mount point,
+       and n_cofilename created in the working storage area. I/NFM must verify
+       if the file exists locally and take appropriate action before creating
+       the link. A symbolic link will destroy the contents of an existing
+       n_cofilename in the working storage area.  Refer to local file manager
+       for details on handling COPY when a file already exists locally.
+ 
+       If a symbolic link is created, this command must be appended to
+       nfmnfslinks file to re-establish the link after a reboot. The delete
+       local files command must cleanup this entry while deleting the file.
+ 
+7.6.6  NFS Server
+ 
+       A NFS server needs to be specified for mounting a remote filesystem.
+       This information can be easily obtained from nfmstoragearea and
+       nfmnodes table. The nodename for the internal storage area is the NFS
+       server name.
+ 
+7.6.7  Exported Resources
+ 
+       A NFS server exports the resources to the network clients. A UNIX
+       server can only export true filesystem. An entire VMS directory must be
+       exported. An exported filesystem can be mounted by a user that has
+       access to the server node and who has superuser privileges on the
+       client node.
+ 
+       An exported resource is always available to any one on the network with
+       superuser privileges. Hence caution must be exercised to prevent
+       security breach. A remote mounted resource is available if the OTHER
+       BIT is SET. So by appropriately setting the OTHER permission access can
+       be controlled.
+ 
+7.6.8  Mount Resources
+ 
+       A client can mount resources which are exported by a server. A server
+       can only export an entire filesystem, but a client can mount a
+       directory, or a sub-directory of the filesystem.
+ 
+       The directory containing all the I/NFM files will be mounted on the NFS
+       client node.
+ 
+7.6.9  Error Recovery
+ 
+       The NFS implementation is not foolproof and relies on proper
+       installation by the system administrator. Moreover system administrator
+       may tinker with some of the key elements required for proper
+       functioning of NFS. Thus errors are expected in a I/NFM copy using NFS,
+       and they must be handled properly.
+ 
+       The conditions which can lead to errors are
+ 
+       1.  NFS removed/altered  on NFS client.
+ 
+       2.  NFS removed/altered  on NFS server.
+ 
+       3.  TCP/IP networking errors.
+ 
+       4.  TCP/IP address removed from client/server.
+ 
+       5.  Internet address removed/altered/collide .
+ 
+       6.  Internet address invalid.
+ 
+       7.  Invalid nodes entry.
+ 
+       8.  Resources not exported.
+ 
+       9.  Resources exported improperly.
+ 
+       10. Directory Path Error.
+ 
+       11. Failed to create mount point.
+ 
+       12. Mount command failed.
+ 
+       13. Link command failed.
+ 
+       These errors need to be detected and appropriate action must be taken.
+ 
+7.6.10 Copy File Operation
+ 
+       The copy file operation can be implemented so that it can either
+       generate a copy under the current method on user workspace, or give the
+       user option to access the file through NFS.
+ 
+       When a user requests a copy of a file "checked in" under I/NFM, the
+       following will take place, if the user chooses the NFS route.
+ 
+       1.  I/NFM will extract information about the storage areas involved. 
+ 
+       2.  If both the storage areas have nfs capability, check if the source
+           has nfs client capability. Check if the destination has server
+           capability.
+ 
+       3.  Check if user storage area permits NFS use.
+ 
+       4.  Identify the files to be copied.
+ 
+       5.  Get n_cofilename and n_cifilename.
+ 
+       6.  Check if the file is already copied/checked out to same storage
+           area. If so Stop and inform user.
+ 
+       7.  Check Local File Manager if the n_cisano is already mounted on the
+           client node. 
+ 
+       8.  If (7) then extract the local mount point.
+ 
+       9.  else(7) create a unique local mount point.
+ 
+       10. else(7) mount n_cisano at the local mount point. Add line to
+           nfmnfstabs file. Add information to local file manager table.
+ 
+       11. Check if the file exists locally. If so this operation will destroy
+           this file. Abort the operation. Perform Cleanup.
+ 
+       12. If user requested entire directory ( files with relative paths )
+           create these directories and create a symbolic link between the
+           directory and local mount point.
+ 
+       13. link n_cofilename in working storage area to n_cifilename in local
+           mount point.
+ 
+7.6.11 I/NFM Server Changes 
+ 
+       The I/NFM server needs to keep track of all local file manager related
+       activities.
+ 
+       1.  The server needs to extract n_cisano, n_sano, remote nodename,
+           directory and pass it to the file server on n_sano.
+ 
+       2.  The server needs to check if NFS is available on the n_sano and
+           n_cisano node
+ 
+       3.  The server must verify if a file is already present on n_sano. If
+           so no need to perform the COPY OPERATION.
+ 
+       4.  The server checks to see if n_cisano is mounted on n_sano node. If
+           so it informs the file server to use this mount point.
+ 
+       5.  The server extracts n_cifilename and n_cofilename and passes it to
+           file server.
+ 
+       6.  The server verifies if relative pathnames exists and passes this
+           information to the file server.
+ 
+       7.  Server updates the local file manager table entries.
+ 
+       8.  Server handles delete local files details.
+ 
+7.6.12 I/NFM File Server Changes (former listener)
+ 
+       1.  Perform the mount if necessary.
+ 
+       2.  Perform symbolic link between n_cofilename and n_cifilename.
+ 
+       3.  Update nfmnfstabs and nfmnfslinks file.
+ 
+       4.  If NFS fails perform normal copy and inform the server about the
+           switch.
+----------------------------------------------------------------------------- 
+
+8. Catalog Operations
+
+OBJECTIVES -
+ 
+To give users better information on the use of default I/NFM attributes
+ 
+To give applications the ability to create catalogs through the I/NFM
+environment, including any additional tables needed by the application
+ 
+To give the capability for a customer to create a multi-application catalog
+ 
+8.1  USAGE OF DEFAULT ATTRIBUTES
+ 
+       The following rules apply when updating the default I/NFM attributes:
+ 
+           the user can change the length of an alphanumeric attribute
+ 
+           the user should not attempt to change the type of any attribute
+ 
+           Turning off the Read and Write on some attributes can cause
+           problems. "Item Name", "Item Revision", "Internal Storage Area" and
+           "Local Filename" should be writable and readable. "Set Indicator"
+           should be readable.
+ 
+       The advisory information for values supplied by I/NFM begins with "NFM
+       -". The user does not supply information for these attributes.
+ 
+8.2  GENERAL IMPLEMENTATION OF CATALOG TEMPLATES
+ 
+       Prior to I/NFM 3.0, a template was added by making a single entry into
+       the nfmtables table that identified the template, and then an entry in
+       the nfmattributes table for each attribute associated with the
+       template. When a table was created using a template, the table was
+       created using the template name (entry in nfmtables) and associated
+       attributes from nfmattributes.
+ 
+       Instead of having an entire table template loaded as a single table
+       into the nfmtables table, the process of creating a catalog will now
+       involve building the catalog and f_catalog tables from several entries
+       in the nfmtables table.
+ 
+           Creation of the item catalog - the I/NFM required attributes will
+           be added, then any application specific attributes for one or more
+           applications.
+ 
+           Creation of the file catalog - the I/NFM required attributes will
+           be added, then any application specific attributes for one or more
+           applications.
+------------------------------------------------------------------------------ 
+
+9. Workflow
+
+OBJECTIVES -
+ 
+Implement changes that will make command access more efficient and flexible
+ 
+Allow an administrator to change the workflow that an item is following
+ 
+Provide the ability for a command/state in a workflow to activate a process
+ 
+Simplify the creation of a customized item workflow. Add the ability to make
+appropriate changes to an existing item workflow and to delete a user defined
+workflow
+ 
+Add the ability to sequence states (for future functionality)
+ 
+9.1  CHANGES IN COMMAND ACCESS
+ 
+9.1.1  "Public" User
+ 
+       In I/NFM 3.0 there will be a special user, named "public", added to the
+       system that will signify all users on the system. The "public user"
+       will be understood by I/NFM without any setup by an application or
+       customer. Its use is optional and dependent on a customer's needs.
+ 
+       The public user may be used as an owner on working areas or search
+       criteria to specify that these are for general usage (see the
+       appropriate sections for more information on how the public owner is
+       used).
+ 
+       The specification of "public" as a user in an ACL is not supported at
+       this time.
+ 
+9.1.2  "Don't Check" Commands
+ 
+       A new n_entity type, "D" (Don't Check), will be available for the
+       nfmcommands table that means that no user access validation is needed
+       on the command. I/NFM will use this type for commands where validation
+       makes no sense (Display List of Items) or where the actual validation
+       occurs as part of the command itself (Change Working Area Password).
+       Since the nfmcommands table is queried first in access validation, this
+       option will speed processing on commands of this type. 
+ 
+       The following restrictions apply on any command of type "D" (Don't
+       Check):
+ 
+           the state of the item will not be changed by the command
+ 
+           there will be no mail notification
+ 
+           there will be no activity logging
+ 
+           there will be no process activated 
+ 
+9.2  CHANGE WORKFLOW OF ITEM
+ 
+       The "Change Workflow of Item" allows an administrative user to change
+       an item's workflow (ACL). The command will be valid on a single item or
+       a list of items. If a list is active, the ACL and state selected will
+       be for the entire list.
+ 
+9.2.1  Operation of the Command
+ 
+       The "Change Workflow of Item" command will
+ 
+           issue a warning if a list of items is active (proceed or cancel)
+ 
+           validate the user (must be an administrator in the
+           NFM_ADMIN_WORKFLOW)
+ 
+           display a list of all ACLs associated with item workflows. The list
+           will show each ACL (along with the workflow) and the user must
+           select one ACL.
+ 
+           display a list of all states associated with the selected workflow.
+           The user must select one state.
+ 
+       For each item in the list, the command will 
+ 
+           verify that the ACL selected is valid for the item's catalog (if
+           the catalog is mapped)
+ 
+           verify that the ACL selected is valid for the item's project if the
+           item belongs (is owned by) to a project
+ 
+           verify that the item is not locked
+ 
+       For each item that passes the preceding verifications, 
+ 
+           any signoffs for the item will be removed (these are based on the
+           state of the item)
+ 
+           the ACL and state of the item will be changed
+ 
+           an entry will be logged in the activity table. This is mandatory
+           for recording purposes and will not be based on a setting on a
+           transition. Note that existing entries in the nfmactivity table
+           will contain the old ACL. 
+ 
+       A list will be returned to the user with the status of each item
+       processed.
+ 
+9.2.2  Guideline for Usage
+ 
+       This command must be used with extreme caution! It is suggested that
+       the administrator follow this guideline
+ 
+           If a list of items are to be processed, the list should be based on
+           the current state of the items. In this manner A LIST OF ITEMS IN A
+           PARTICULAR STATE CAN BE MOVED TO A COMPATIBLE STATE IN ANOTHER
+           WORKFLOW. It is the administrator's responsibility to insure that
+           the resulting state is compatible with the item's status. For
+           example, suppose that the beginning workflow has a separate state
+           for items that are checked out and the item is currently checked
+           out (therefore in the checkout state). If the item is moved to a
+           new workflow state that is only for items that are checked in, the
+           item will be unusable (it can't be checked back in). A similar
+           situation will occur if a workflow is changing the state of an item
+           due to flagging and the item is flagged for a particular operation.
+           As long as the administrator carefully matches the beginning
+           workflow/state with the resulting workflow/state, problems should
+           not occur.
+ 
+9.3  PROCESS ON TRANSITION
+ 
+       The "Process on Transition" functionality allows a customer site or
+       application to associate a process (a single or multiple programs) to a
+       command/state in a workflow. If multiple processes are associated with
+       a transition, the sequence number will be used to determine the
+       processing order. For more information on this capability, see the on-
+       line documentation in the I/NFM product directory.
+ 
+9.4  GRAPHIC WORKFLOW INTERFACE
+ 
+       The graphic workflow interface will provide the administrative user a
+       forms interface to workflow and command creation and modification
+       tasks. It will do the following:
+ 
+           Workflow
+ 
+               list workflow information
+ 
+               allow the creation of a new workflow
+ 
+               allow the modification of some aspects of an existing, active
+               workflow 
+ 
+               allow the deletion of non-active workflows
+ 
+           Commands
+ 
+               list commands
+ 
+               create additional commands (make transition type commands)
+ 
+               delete commands not being used
+ 
+9.4.1  Creation of a Workflow
+ 
+       An administrative user with the proper permission will be able to
+       create a new item workflow from scratch or based on an existing
+       workflow. The "Create Workflow" command will allow the interactive
+       creation and modification of a new workflow.
+ 
+9.4.2  Modification of a Workflow
+ 
+       An administrative user with the proper permission will be allowed to
+       modify characteristics of a workflow after the workflow has been
+       created and in use. The states in a workflow will NOT be modifiable,
+       but other aspects of the workflow will be modifiable even after items
+       are following the workflow. Extreme care should be taken when modifying
+       an existing workflow, especially changes in the transitions and class
+       access. The "Create Workflow" command will allow the interactive
+       modification of an existing workflow.
+ 
+9.4.3  Deletion of a Workflow
+ 
+       An administrative user with the proper permission will be able to
+       delete a workflow. This command will not work if an ACL is assigned to
+       the workflow (all ACLs must be removed). The command will remove all
+       database references to the workflow, such as states, classes,
+       transitions, etc.
+ 
+9.5  WORKFLOW STATES
+ 
+       The ability to sequence states provides the following control:
+ 
+           the beginning and end states can be identified (for special
+           processing)
+ 
+           (future) signoffs can be mandatory on promotions of an item, but
+           not on rejection of the item 
+ 
+           (future) checks on members of sets can be performed when a set item
+           passes from one state to a higher level state
+ 
+       Note - The administrator creating a workflow defines the transitions
+       possible (states may be skipped if desired) and is responsible for a
+       proper order to assure that order dependent commands function properly.
+       Existing states may be sequenced through the graphic workflow
+       interface.
+ 
+9.6  DELETE ACL
+ 
+       The "Delete ACL" command will remove an ACL and all references to the
+       ACL. The command will fail if any items are following the ACL (the
+       "Change Workflow of Item" command can be used to move an item from one
+       ACL to another). The command will remove all entries associated with
+       the ACL from the following tables:
+ 
+           nfmacls
+           nfmaclusers
+           nfmcatalogaclmap
+           nfmprojectaclmap
+           nfmsignoffusers
+ 
+9.7  CONVERSION OF EXISTING WORKFLOW INFORMATION
+ 
+       The I/NFM 3.0 Converter will modify command and workflow data to comply
+       with I/NFM 3.0 schema and functionality changes. Any ascii workflow
+       data file will need to be altered to conform to the new data.
+ 
+9.7.1  Changes to Ascii workflow files
+ 
+       In order for ascii workflow files compatible with I/NFM 2.* to load
+       properly, certain changes must be made. For detailed information on the
+       new format, see the on-line workflow document.
+------------------------------------------------------------------------------ 
+
+10. Search and Sort Operations
+
+OBJECTIVES -
+ 
+I/NFM will provide a user friendly method by which search and sort criteria
+can be created and modified.
+ 
+I/NFM will allow selection of data across catalogs by using active item
+criteria and an active list of catalogs.
+ 
+10.1  MULTI-CATALOG SEARCH
+ 
+10.1.1 The software will allow search across multiple catalogs using common
+       attributes. If the search criteria generates an error on 'where' or
+       'select' the search will discontinue for a specific catalog. This will
+       resolve problems where the user defined columns do not match from
+       catalog to catalog.  An appropriate warning will be issued to the user
+       when a catalog is not valid for a particular search or sort.
+ 
+10.2  CRITERIA OWNERSHIP
+ 
+       I/NFM 3.0 includes a concept of ownership on search criteria. A search
+       criteria can either be owned by an individual or "public" (see the
+       discussion on the public user in the Workflow section). Listings will
+       show only the criteria owned by the user and public criteria. A user
+       can only delete criteria they own, except for administrators, who can
+       delete any criteria (including public ones). When a user defines a
+       criteria, it will automatically be owned by that user. If an
+       administrator defines a criteria, they will be able to elect to make
+       the criteria public.
+ 
+10.3  ITEMS CHECKED OUT BY A USER
+ 
+       An administrator or user will be able to copy and modify the public
+       search criteria for "Checked out items" to create a special criteria
+       for the items checked out by a particular user. This will be
+       particularly useful when a user wants to create a list of items for
+       check in.
+-----------------------------------------------------------------------------
+
+11. User Interface
+
+OBJECTIVES -
+ 
+I/NFM's graphic user interface will be enhanced to allow additional
+functionality and support new features.
+ 
+11.1  MAIN FORM
+ 
+       In I/NFM 3.0 the main form will consist of an active data section
+       (similar to the top of the I/NFM 2.2 form) and an error and message
+       strip. All listings will create a form that will persist until
+       dismissed (except for the pop-up listings). The active data section
+       will be different for the user interface and the administrator
+       interface in that the administrator's section will include additional
+       fields for workflow, acl, node, etc.
+ 
+11.2  ACTIVE LIST OF ITEMS
+ 
+       The graphic user interface will allow some item and set manipulations
+       to be available on a list of items or sets. An active list of items
+       will be created from the output of the following commands:
+ 
+           Display (List of) Items
+           Display Set Members
+           Display Items in Project
+ 
+       The results from the three listing commands will each be a form that
+       allows multiple selects. The active list will be the accumulated active
+       data from the three forms.
+ 
+11.3  DISPLAY LIST OF ITEMS
+ 
+       In I/NFM 3.0 the distinction between non-set items and sets becomes
+       less defined. A set is simply an item that has members attached. If all
+       members are dropped, the set automatically becomes a non-set item
+       again. The "Add Set" command is being eliminated and the "Add Items to
+       Set" command will operate on either a non-set item (before the command)
+       or a set.
+ 
+       In response to this change, the "Display List of Sets" command is being
+       eliminated. It is recommended that the administrator set up public
+       search criteria for sets and non-sets (see the section on search
+       criteria).
+ 
+11.4  GENERIC COMMANDS ON SETS AND ITEMS
+ 
+       I/NFM 3.0 will provide generic commands that will operate on either
+       sets or non-set items. For these commands, if the set indicator is set
+       on an item, the software will perform a set operation on the item; if
+       the set indicator is not set, an item operation will be performed. This
+       allows a list of items to include both sets and non-set items, which
+       will be processed appropriately based on the set indicator setting. If
+       a user wishes to perform regular item operations on a set item,
+       additional commands will be provided under Sets.
+ 
+       The user must still be careful what operations are performed on a list
+       of items that includes both set and non-set items. When an operation is
+       performed, the software will process the items in the list sequentially
+       and undesired results may occur if a list includes a set and one or
+       more of its primary members. For example, if a primary member of a set
+       is checked out first, check out of the set will fail.
+ 
+       The following generic commands will be provided:
+ 
+           Check In
+           Check Out
+           Cancel Check Out
+           Copy Files
+           Flag for Archive
+           Flag for Backup
+           Flag for Restore
+           Cancel Archive Flag 
+           Cancel Backup Flag 
+           Cancel Restore Flag 
+ 
+       The following commands will be provided under the Set section of the
+       menu for item manipulations on sets (as an item instead of a set):
+ 
+           Check Out Set Parent Only
+           Cancel Check Out of Set Parent
+           Check In Set Parent Only
+           Flag Only Set Parent for Backup
+           Cancel Backup Flag on Set Parent
+           Copy Set Parent Files Only
+ 
+11.5  OPERATIONS ON THE LIST OF ITEMS
+ 
+       The following commands will operate on an active list:
+ 
+           Delete Item
+           Flag Files for Delete
+           Flag for Backup
+           Flag for Restore
+           Flag for Archive
+           Check In
+           Check Out
+           Copy Files
+           Change Workflow of Item
+ 
+       "Review Item Attributes" will NOT be a list driven command.
+ 
+11.6  CATALOG LIST
+ 
+       I/NFM 3.0 will allow a search across catalogs for item information, and
+       a list of items may include items from multiple catalogs. The results
+       of the "Display (List of) Catalogs" command will be a form that allows
+       multiple selects. When the "Display (List of) Items" command is
+       executed, the list of selected catalogs will be used to determine the
+       catalogs to be searched.
+ 
+11.7  ADD OPERATIONS
+ 
+       All add operations in I/NFM 3.0 will have a process button that will
+       allow the user to loop back to the command without user access being
+       re-validated. If a failure occurs during an add operation, the user
+       will be left in the form with all input data still available.
+ 
+11.8  MISCELLANEOUS
+ 
+       In an effort to provide maximum performance, it has been decided that
+       all display commands are a snapshot and data is only accurate when the
+       list is created. No effort will be made to maintain accurate dynamic
+       information on the listing forms. If accurate data is needed, the user
+       will need to regenerate the appropriate form. (Speed enhancements in
+       the I/NFM 3.0 software will make the listing process quicker than in
+       current software.) If a form is used to maintain multiple selected
+       items used for list operations, the desired active items will have to
+       be reselected if the list is regenerated. 
+ 
+       A user will no longer be able to create storage areas without using the
+       "Add Storage Area" command (the concept of a temporary storage area is
+       no longer valid in I/NFM 3.0). If a user logs into I/NFM from a
+       directory that is unknown to I/NFM, the system will automatically add
+       the storage area (as the working area - see the section on Storage
+       Areas), but all other storage areas must be explicitly created.
+------------------------------------------------------------------------------ 
+
+12. Command Line Interface
+
+OBJECTIVES -
+ 
+I/NFM customers would like to be able to process commands in a batch
+environment. By allowing several new command line options and by using a
+defaults data file or commands data file containing command specific
+information, I/NFM batch processing can be accomplished.
+ 
+12.1  GENERAL DESIGN
+ 
+       The I/NFM command line interface (CLI) will obtain information from
+       four possible locations.  Information will be provided using command
+       line options, a defaults data file, a command data file, or standard
+       input. 
+ 
+       The command data file can be used to process any number of commands on
+       any number of files. The defaults data file and command data file will
+       have to be supplied by the user and adhere to a specified format to be
+       defined within this document.  If the command data file command line
+       argument is not specified, the CLI will accept input from the standard
+       input of the system on which it is executing.  This will provide the
+       capability of using the CLI in an interactive mode as well as
+       redirecting the output from some other source to be used as input to
+       the CLI.
+ 
+       The capabilities apply in general to the CLI, both the UNIX and PC
+       versions.
+ 
+       For detailed information on using the CLI, refer to the on-line
+       document in the product directory.
+------------------------------------------------------------------------------ 
+
+13. PC Command Line Interface
+
+OBJECTIVES -
+ 
+A PC command line interface will be provided that allows a PC to execute a
+limited set of I/NFM functions.
+ 
+13.1  GENERAL
+ 
+       The PC interface will consist of a command line interface similar in
+       appearance to the I/NFM command line interface. The PC interface will
+       allow a PC to execute the following commands:
+ 
+           login
+           logout
+           Check In Item
+           Check In Set
+           Check Out Item
+           Cancel Item Check Out
+           Check Out Set
+           Cancel Set Check Out
+           Copy Item Files
+           Copy Set Files
+           Flag Item for Backup
+           Flag Set for Backup
+           Flag Item for Archive
+           Flag Set for Archive
+           Flag Item for Restore
+           Flag Set for Restore
+           Cancel Backup Flag on Item
+           Cancel Backup Flag on Set
+           Cancel Archive Flag on Item
+           Cancel Archive Flag on Set
+           Cancel Restore Flag on Item
+           Cancel Restore Flag on Set
+ 
+       The catalog and item name/revision will have to be supplied to the
+       command line interface. There will be no way to query the database for
+       information. 
+ 
+       The Microstation reference file handling functionality will be
+       available to PC users. On the PC, however, the design file and all
+       reference files must be in the same directory.
+ 
+13.2  FILE TRANSFER CAPABILITIES
+ 
+       The PC will be directly involved in all file transfers. The PC can
+       request that a file be sent to itself or ask that a file be retrieved
+       from itself. A file cannot be sent to the PC unless requested by the
+       PC.
+ 
+       NFS is the preferred method for accessing files (the PC server will
+       have the logic for the NFS mount). FTP can also be used. The PC must
+       have a version of TCP/IP that supports FTP, at a minimum, and
+       preferably supports mount.
+ 
+13.3  FILENAMES
+ 
+       Traditional Unix filenames may be too long for the PC (which requires a
+       maximum of 8 chars . 3 chars). Check out of a file will fail if the
+       local filename does not fit PC conventions.
+ 
+13.4  IMPLEMENTATION DETAILS
+ 
+       The PC Command Line Interface will communicate with a special server
+       executable on the CLIX I/NFM server machine. (This is still under
+       investigation).
+ 
+       There will be a machine id of "DOS" for the PC node in the nfmnodes
+       table.
+ 
+       There will be a nfmstoragearea.n_type of "D" for a PC working area.
+ 
+       Once the PC has performed a task, it will inform the PC server so that
+       the database can be updated.
+ 
+       The PC will only deal with internet addresses, not node names.
+----------------------------------------------------------------------------- 
+
+14. Microstation Reference Files
+
+OBJECTIVES -
+ 
+Microstation customers would like for I/NFM to handle reference file
+attachments without the customer having to explicitly create and manipulate
+set structures. Microstation customers would like to check out a design file
+and have the proper reference files automatically copied along with the design
+file.
+ 
+14.1  GENERAL
+ 
+       When a microstation design file is checked in to I/NFM, the software
+       reads the header for reference file attachments. If reference files
+       exist, the software creates a set from the information. A MICROSTATION
+       SET is an item that represents a design file that has attached
+       reference files. A MICROSTATION ITEM is an item that represent a design
+       file that has no attached reference files.
+ 
+       Any file that will be used as a microstation design file must meet the
+       following conditions:
+ 
+       -   it must have a corresponding item in I/NFM
+       -   items can only have one file attached
+       -   the I/NFM filetype must be "M"
+       -   the local file name in I/NFM must be the design file name
+       -   before it can be used, the file must have been checked in to I/NFM
+ 
+       The items associated with the design file and all of its attached
+       reference files must reside in the SAME catalog or I/NFM will not find
+       them. 
+ 
+       All design filenames (local filenames) should be unique within a
+       catalog. If multiple hits are found when looking for item to filename
+       matches, the first occurrence will be used. (All I/NFM can get from a
+       design file is the name of a reference file that is attached. In order
+       to locate the database record that is associated with the reference
+       file, I/NFM must search for a local filename matching the reference
+       filename written in the header).
+ 
+14.2  CHECK IN
+ 
+       Before the initial check in of a design file, the reference files must
+       have been added to I/NFM (but not necessarily checked in) and follow
+       the rules for microstation design files (filetype and local filename).
+       The proper set structure is always resolved during a check in
+       operation, so all reference file attachments must be resolvable at that
+       time.
+ 
+       Each time a file of filetype "M" is checked in to I/NFM initially, the
+       software will search the Type 5 information on Level 9 and the Type 66
+       information on Level 5 for reference file attachments. If the design
+       file has no reference file attachments, it is considered to be a
+       microstation item (not a set). If reference file attachments are found,
+       I/NFM will attempt to locate the item associated with each reference
+       file attachment by searching the catalog for a file with the same local
+       filename as the reference file name. Each reference file found will be
+       entered as a secondary member of the microstation set. The primary
+       member is the design file that has the reference file attachments; the
+       secondary members are the items associated with the reference files.
+ 
+       During check in of a microstation set, I/NFM will read the design file
+       header to determine if reference file attachments have changed. If an
+       attached file has been deleted, I/NFM will delete that item from the
+       set and delete the file from the working area (per local file manager).
+       If a file has been attached, I/NFM will add that item to the set. It is
+       strongly advised that any file that needs to be attached to a design
+       file be first copied to the working area by I/NFM. If a file is copied
+       to the working area outside of I/NFM, problems can result when I/NFM
+       tries to avoid overwriting the file during a subsequent check out to
+       that working area (I/NFM will not overwrite an unknown file).
+ 
+       The I/NFM user interfaces will look at the set indicator on an item and
+       execute the proper command ("Check In Item" or "Check In Set") when a
+       "Check In" is selected from the menu. An application or customer who is
+       supplying their own interface must choose the appropriate command based
+       on whether the item represents a Microstation item or a Microstation
+       set. If a "Check In Item" is performed on a microstation set, the
+       command will fail (unless the item was checked out with "Check Out
+       Item"). 
+ 
+14.3  CHECK OUT
+ 
+       When a microstation set (design file) is checked out, I/NFM will move
+       all KNOWN reference files and the design file to the user's working
+       directory (based on the set structure determined during the check in of
+       the set). If a reference file has not been checked in to I/NFM, but is
+       part of the set, a warning will be issued that the file was not
+       available. The microstation set check out follows normal rules for
+       I/NFM set check out.
+ 
+           Note - NFM has no way to resolve set relationships through the
+           first level only. Eventhough microstation only displays reference
+           files that are directly attached to a design file, NFM will resolve
+           nesting of the design files and bring down all files. For example,
+           if df.dgn has rf1.dgn and rf2.dgn attached as reference files, and
+           rf1.dgn has rf3.dgn and rf4.dgn attached as reference files, NFM
+           will copy down rf1.dgn, rf2.dgn, rf3.dgn and rf4.dgn if df.dgn is
+           checked out. And eventhough microstation would allow rf4.dgn to
+           have df.dgn attached as a reference file, NFM will go into an
+           infinite loop trying to resolve the set relationships.
+ 
+       The I/NFM user interface will look at the set indicator on an item and
+       execute the proper command ("Check Out Item" or "Check Out Set") when a
+       "Check Out" is selected from the menu. An application or customer who
+       is supplying their own interface must choose the appropriate command
+       based on whether the item represents a microstation item or a
+       microstation set. If a "Check Out Item" is performed on a microstation
+       set, the set will be checked out as an item, without the reference
+       files.
+ 
+14.4  RESTRICTIONS
+ 
+       Microstation must be able to resolve the location of the files brought
+       down through I/NFM (MS_DEF, MS_RFDIR, etc.).
+ 
+       If a reference file is attached to itself, I/NFM ignores it. 
+ 
+       Initial check in of a design file with reference files attached makes
+       the item a set, but the forms interface will not recognize it as a set
+       until the user reselects the item.
+-----------------------------------------------------------------------------
+
+15. Disaster Recovery
+
+OBJECTIVES -
+ 
+Provide a system which can be setup to be easily recovered if some part of the
+system fails.
+ 
+15.1  CASE 1 - Lose Database Disk
+ 
+       SETUP
+ 
+           Turn database journaling 'ON'
+ 
+           Journaling file and database should be on separate disks (also
+           suggest you keep database and storage areas on separate disks)
+ 
+           Perform regular database backups (use tools from RDB vendor)
+ 
+           Purge journal each time you backup the database
+ 
+       RECOVERY
+ 
+           Restore database from backup
+ 
+           Bring forward with journal
+ 
+15.2  CASE 2 - Lose I/NFM Storage Area Disk
+ 
+       SETUP
+ 
+           Run I/NFM backups regularly
+ 
+               note: Currently, there is no concept of an 'incremental'
+               backup. In I/NFM 3.0, however, a user will able to flag a list
+               of items for flagging. By limiting the list to those item which
+               have a checkin date since the last backup and selecting the
+               entire list for flag for backup, incremental backups can be
+               accomplished.
+ 
+           Set the activity log to record Check In, Check Out, Backup, and
+           Archive
+ 
+       RECOVERY
+ 
+           Run a procedure similar to the flag for backup which will flag for
+           restore items in a storage area, then run I/NFM restore. After the
+           I/NFM restore has been performed, the only items missing from the
+           dataset are those which have been created or modified since the
+           last I/NFM backup.
+ 
+           Use SQL to look through the activity log table for items which have
+           been added or modified since the last I/NFM backup. Either re-enter
+           into I/NFM or modify those items individually.
+ 
+15.3  CASE 3 - Lose Working Area Disk
+ 
+       SETUP
+ 
+           Either check files into I/NFM frequently or run workstation backups
+ 
+       RECOVERY
+ 
+           Restore file from workstation backup, or cancel item check-out
+ 
+15.4  CASE 4 - Network Problems During File Transfer
+ 
+       SETUP
+ 
+           None required
+ 
+       RECOVERY
+ 
+           None required
+ 
+           The I/NFM software is already set to correct for this situation. If
+           the net goes down during a file transfer, the software will sense
+           it and no file deletes or database updates will occur. The
+           underlying database uses a "commit" process which will handle
+           situations where a network problem occurs during a database update.
+------------------------------------------------------------------------------ 
+
+16. How Dates Work
+
+OBJECTIVES -
+ 
+This section explains how dates are working in I/NFM 3.0.
+ 
+16.1   WHAT HAPPENS AT LOGIN
+ 
+       The nfmsyscat table is scanned for n_infotype = "DATE_FORMAT" to get
+       the n_description. (See the Admin Utility documentation on how to set
+       the data format)
+ 
+       n_description has the following acceptable values :
+           "AMERICAN"
+           "BRITISH"
+           "SPANISH"
+           "ITALIAN"
+           "GERMAN"
+           "FRENCH"
+ 
+       If there is no entry, or the entry is erroneous, it defaults to
+       AMERICAN.
+ 
+       The nfmsyscat table is scanned for n_infotype = "TIME_FORMAT" to get
+       the n_description. (See the Admin Utility documentation on how to set
+       the time format)
+ 
+       n_description has the following acceptable values :
+           "24HR", "12HR".
+ 
+       If there is no entry, or the entry is erroneous, it defaults to 24HR.
+ 
+       The format for each DATE_FORMAT/TIME_FORMAT type is
+ 
+           date_type                format_string
+ 
+           AMERICAN/24HR           mm/dd/yyyy hh24:nn:ss
+           AMERICAN/12HR           mm/dd/yyyy hh12:nn:ss
+           BRITISH/24HR            dd/mm/yyyy hh24:nn:ss
+           BRITISH/12HR            dd/mm/yyyy hh12:nn:ss
+           SPANISH/24HR            dd.mm.yyyy hh24:nn:ss
+           SPANISH/12HR            dd.mm.yyyy hh12:nn:ss
+           FRENCH/24HR             dd.mm.yyyy hh24:nn:ss
+           FRENCH/12HR             dd.mm.yyyy hh12:nn:ss
+           GERMAN/24HR             dd.mm.yyyy hh24:nn:ss
+           GERMAN/12HR             dd.mm.yyyy hh12:nn:ss
+           ITALIAN/24HR            dd-mm-yyyy hh24:nn:ss
+           ITALIAN/12HR            dd-mm-yyyy hh12:nn:ss
+ 
+       The default datetime format is "mm/dd/yy hh24:nn:ss".
+ 
+16.2   CHANGES TO THE DATETIME FORMAT
+ 
+       The Admin utility (Nfmadmin) will allow changes in the date or/and time
+       format. If the value is changed while users are logged in to I/NFM,
+       users will see the old format while in the session. (Value is
+       determined during login).
+ 
+16.3   INPUT AND CHANGE OF DATATIME DATA
+ 
+       If a user defined attribute is of type timestamp, when the user adds or
+       changes the item data in the catalog, the following rules apply:
+ 
+       User Imput                     Database Entry
+ 
+       <left blank><nulls allowed>    no change
+       :                              <current date>:<current time>
+       <input date>                   <input date>:<current time>
+       <input time>                   <current date>:<input time>
+ 

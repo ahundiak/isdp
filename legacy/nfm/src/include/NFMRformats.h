@@ -1,0 +1,15 @@
+#ifndef NFMR_FORMATS_H
+#define NFMR_FORMATS_H
+
+#define DATE_SUCCESS          0
+
+#define INVALID_DATE_FORMAT  -1
+#define AMERICAN_DATE_FORMAT  0
+#define ANSI_DATE_FORMAT      1
+#define BRITISH_DATE_FORMAT   2
+#define ITALIAN_DATE_FORMAT   3
+#define FRENCH_DATE_FORMAT    4
+#define GERMAN_DATE_FORMAT    5
+#define SPANISH_DATE_FORMAT   6
+
+#endif

@@ -1,0 +1,121 @@
+#
+#	INTERGRAPH/VAX Delivery Procedures
+#
+	PRODUCT_ID=SN01383
+	PRODUCT_FL=REMOVE
+#
+# The information in this document is subject to change without
+# notice and should not be construed as a commitment by INTERGRAPH
+# corporation.
+#
+
+echo "$PRODUCT_FL -- $PRODUCT_ID\n"
+if [ -z "$IDname" ]
+then
+        echo ""
+        echo ""
+        echo "Please use the remove program in the deltools directory"
+        echo "to remove this product (i.e. /usr/ip32/deltools/remove)"
+        echo "The remove.sh in each directory was intended to be called"
+        echo "from the remove program in the deltools directory."
+        echo ""
+        echo ""
+        exit 255
+fi
+
+#
+# Display information about the product.
+#
+
+
+NFDATA=`grep $PRODUCT_ID /usr/ip32/ingrconfig`
+NFNAME=`echo $NFDATA | cut -f2 -d"#"`
+NFVER=`echo $NFDATA | cut -f4 -d"#"`
+NFDATE=`echo $NFDATA | cut -f5 -d"#"`
+NFDIR=`echo $NFDATA | cut -f6 -d"#"`
+
+# get file partition
+fp=`echo $NFDIR | cut -f2 -d"/"`
+NFDIR=/$fp/ip32/nfm
+
+/usr/5bin/echo "\nThis is the product $NFNAME, $PRODUCT_ID, \c"
+/usr/5bin/echo "the Intergraph Network File Manager,"
+/usr/5bin/echo "Version $NFVER, dated $NFDATE.\n"
+
+flsans=n
+
+#
+# Prompt for confirmation on parts of the product.
+#
+
+if [ -f /usr/ip32/nfm/bin/NFMfileserver ] 
+then
+    /usr/5bin/echo "Remove the $IDname File Server Software (y/n) ? [y] \c"
+    read flsans; : ${flsans:=y}
+fi
+
+#
+# Do the removing...
+#
+
+case $flsans in
+y*|Y*)
+    flsans="Y"
+    /usr/5bin/echo "\nRemoving $PRODUCT_ID (I/NFM) File Server Software"
+#
+#  Stop the I/NFM Daemon and remove files
+#
+    if [ -x /usr/ip32/nfm/bin/NFMdaemon ]
+    then
+        pid=`/bin/ps -ex | grep NFMdaemon | grep -v grep | awk '{print $1}'`
+        if [ "${pid}" != "" ]
+        then
+            /usr/5bin/echo "$0: NFMdaemon : PID = ${pid} killed\n" > /dev/console
+            /bin/kill -9 ${pid}
+        fi
+    fi
+
+    rm -r ../bin/NFMfileserver                        >/dev/null 2>&1
+    rm -r ../bin/NFMdaemon                            >/dev/null 2>&1
+    ;;
+*)
+    ;;
+esac
+
+#
+#  Remove the NFMdaemon startup from /etc/rc.local
+#
+
+RCLOCAL=/etc/rc.local
+envvar=""
+envvar=`grep -n "NFMdaemon" $RCLOCAL`
+if [ "$envvar" != "" ]
+  then
+    echo "/NFMdaemon/"  > /usr/tmp/rmnfm.tmp
+    echo "d"     >> /usr/tmp/rmnfm.tmp
+    echo "."     >> /usr/tmp/rmnfm.tmp
+    echo "w"     >> /usr/tmp/rmnfm.tmp
+    ed $RCLOCAL < /usr/tmp/rmnfm.tmp > /dev/null 2>&1
+    rm /usr/tmp/rmnfm.tmp
+fi
+
+if [ -d $NFDIR ] 
+then
+    /usr/5bin/echo "\nWarning: The $NFDIR directory still exists on this machine."
+    /usr/5bin/echo "Do you wish to remove the $NFDIR product directory? [y] \c"
+    read delans; : ${delans:=y}
+    if [ "$delans"="Y" -o "$delans"="y" ]
+    then
+       cd /usr/tmp
+       /usr/5bin/echo "Removing $NFDIR ...\n"
+       rm -r $NFDIR                      >/dev/null 2>&1
+       if [ -h /usr/ip32/nfm ]
+       then
+          echo "Removing symbolic link to /usr/ip32/nfm ..."
+          rm -fr /usr/ip32/nfm >/dev/null 2>&1
+       fi
+   fi
+fi
+
+/usr/5bin/echo "$PRODUCT_FL -- $PRODUCT_ID operation complete.\n"
+exit 0

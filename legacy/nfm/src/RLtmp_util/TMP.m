@@ -1,0 +1,39 @@
+CC
+acc -g
+
+COPT
+-O4 -Dclipper
+
+SOURCE
+TMPmain.c
+TMPprog.c
+TMPutil.c
+
+INCLUDE
+${NFMINC}
+${INGRINC}
+${RISINC}
+${FORMSINC}
+${XFORMSINC}
+${FTRINC}
+${HELPINC}
+${RESINC}
+${X11INC}
+${RISCC}
+${NFMINC}
+${INGRINC}
+${RISINC}
+${FORMSINC}
+${XFORMSINC}
+${FTRINC}
+${HELPINC}
+${RESINC}
+${X11INC}
+${RISCC}
+
+ARCHIVE
+libredline.a
+
+VERSION
+DATE.a 0.0.1
+
