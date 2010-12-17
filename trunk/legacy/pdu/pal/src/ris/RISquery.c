@@ -1,0 +1,464 @@
+#include "ris.h"
+static short RIScpp_stmt_id0 = -1;
+#include <stdio.h>
+extern char  *malloc(), *calloc() ;
+int   RISquery ( ris_query, rows, out_arr, err_code )
+char   *ris_query;
+int    *rows;
+char   **out_arr;
+int   *err_code;
+{
+
+int i,  count,  extra;
+
+int fetch_over;
+
+int size;
+
+int allocated_size;
+
+int used_size;
+
+char * sql_stmt2;
+
+char buffer[200];
+
+sqlda in_desc;
+
+sqlda out_desc;
+
+char * err_ptr;
+
+char ext_buf[30];
+
+datetime * ptr;
+
+
+        /* allocate 2 K bytes to output array, initially */
+        count = 0 ;
+        *out_arr        =  (char *) malloc ( 2048 );
+        allocated_size =  2048;
+        used_size      =  0;
+	buffer[0] = '\0';
+
+	sql_stmt2 =  ris_query ;
+	
+	/* define exception handlers */
+	
+
+
+	
+
+	/* prepare a dynamic SQL statement */
+	
+{RISint_prepare(&RIScpp_stmt_id0,sql_stmt2,1,0);
+if (RISget_sqlcode() != RIS_SUCCESS) goto error;}
+
+
+	in_desc.sqld = 0;
+	in_desc.sqln = 0;
+	in_desc.sqlvar = 0;
+	
+	/* see if there are any input parameters */
+	
+{RISint_describe(RIScpp_stmt_id0,&in_desc,0);
+if (RISget_sqlcode() != RIS_SUCCESS) goto error;}
+
+
+
+	if ( in_desc.sqld )
+	{
+		/* allocate input buffers for any input parameters */
+
+		in_desc.sqlvar = (sqlvar*) calloc ( in_desc.sqld,
+                                                    sizeof(sqlvar) );
+		in_desc.sqln = in_desc.sqld;
+	
+		/* get information about the input parameters */
+	
+{RISint_describe(RIScpp_stmt_id0,&in_desc,0);
+if (RISget_sqlcode() != RIS_SUCCESS) goto error;}
+
+
+		for ( i = 0; i < in_desc.sqld; ++i )
+		{
+			/* get a value for the input parameter 
+			printf ( "Enter a value for input parameter #%d\n", i );*/
+	
+/*
+			gets ( buffer );
+*/
+
+			/* set up the program address, 
+                                             and (optional) indicator */
+
+			in_desc.sqlvar[i].sqldata = calloc ( 1,
+                                                     in_desc.sqlvar[i].sqllen + 1 );
+	
+			/* if no string was entered, assume null value wanted */
+
+			if ( buffer[0] == '\0' )
+			{
+				*in_desc.sqlvar[i].sqldata = '\0';
+				in_desc.sqlvar[i].sqlnull = 1;
+				in_desc.sqlvar[i].sqlind = (long*) calloc( 1, 
+                                                            sizeof(int) );
+				*in_desc.sqlvar[i].sqlind = -1;
+			}
+			else
+			{
+				in_desc.sqlvar[i].sqlnull = 0;
+				switch ( in_desc.sqlvar[i].sqltype )
+				{
+/*					case TIMESTAMP:
+						in_desc.sqlvar[i].sqldata = (char *)realloc ( in_desc.sqlvar[i].sqldata,
+                        	                             in_desc.sqlvar[i].sqllen + 15 );
+
+						strcpy(in_desc.sqlvar[i].sqldata," TIMESTAMP '");
+						strncat ( in_desc.sqlvar[i].sqldata, 
+                                                    buffer, in_desc.sqlvar[i].sqllen );
+						strcat(in_desc.sqlvar[i].sqldata,"'");
+printf("here: %s\n", in_desc.sqlvar[i].sqldata);					
+						break;
+*/
+
+					case CHARACTER:
+						strncpy ( in_desc.sqlvar[i].sqldata, 
+                                                    buffer, in_desc.sqlvar[i].sqllen );
+						break;
+
+					case SMALLINT:
+						sscanf ( buffer, "%hd", 
+                                                   in_desc.sqlvar[i].sqldata );
+						break;
+
+					case INTEGER:
+						sscanf ( buffer, "%d", 
+                                                   in_desc.sqlvar[i].sqldata );
+						break;
+
+					case REAL:
+						sscanf ( buffer, "%f",
+                                                   in_desc.sqlvar[i].sqldata );
+						break;
+
+					case DOUBLE:
+						sscanf ( buffer, "%lf", 
+                                                    in_desc.sqlvar[i].sqldata );
+						break;
+					case DECIMAL:
+						sscanf ( buffer, "%lf", 
+                                                    in_desc.sqlvar[i].sqldata );
+						break;
+
+
+
+					default:
+						/* printf ( "Invalid data type found\n" ); */
+                                                *err_code = -2 ;
+						/*strcpy ( err_str, "error: Invalid data type found\n" ); */
+						/* exit (); */
+{RISint_clear(&RIScpp_stmt_id0, 0, 7);
+if (RISget_sqlcode() != RIS_SUCCESS) goto error;}
+
+
+                                                return ( -1 );
+				}
+			}
+		}
+	}
+
+	/*
+	**	if the statement is not a SELECT statement (sqld == 0),
+	**		execute the statement.
+	**	else
+	**		declare a cursor for, open, and 
+        **              fetch from the statement.
+	*/
+	
+	out_desc.sqld = 0;
+	out_desc.sqln = 0;
+	out_desc.sqlvar = 0;
+
+	/* get the count of output columns */
+
+{RISint_describe(RIScpp_stmt_id0,&out_desc,1);
+if (RISget_sqlcode() != RIS_SUCCESS) goto error;}
+
+
+
+	/* non-SELECT statements will have sqld == 0 (no result columns) */
+
+	if (out_desc.sqld == 0)
+	{
+{RISint_execute(&RIScpp_stmt_id0,0,&in_desc,7,1,0);
+if (RISget_sqlcode() == END_OF_DATA) goto not_found;
+else if (RISget_sqlcode() != RIS_SUCCESS) goto error;}
+
+{RISint_clear(&RIScpp_stmt_id0, 0, 7);
+if (RISget_sqlcode() != RIS_SUCCESS) goto error;}
+
+                return ( 0 );
+	}
+	
+
+	/* open the SELECT statement */
+
+/* declare for statement id requires no work just return success */
+RISint_set_sqlcode(RIS_SUCCESS);
+
+{RISint_execute(&RIScpp_stmt_id0,0,&in_desc,7,1,0);
+if (RISget_sqlcode() != RIS_SUCCESS) goto error;}
+
+
+
+	/*
+	**	allocate a sqlvar struct for each column and call describe
+	**	again to get information about each result column.
+	*/
+
+	out_desc.sqlvar = (sqlvar*) calloc ( out_desc.sqld, sizeof(sqlvar) );
+	out_desc.sqln = out_desc.sqld;
+{RISint_describe(RIScpp_stmt_id0,&out_desc,1);
+if (RISget_sqlcode() != RIS_SUCCESS) goto error;}
+
+
+
+	/* allocate buffers for each result column */
+	for ( i = 0; i < out_desc.sqld; ++i )
+	{
+		out_desc.sqlvar[i].sqldata = calloc ( 1, 
+                                               out_desc.sqlvar[i].sqllen + 1 );
+		out_desc.sqlvar[i].sqlind = (long*) calloc ( 1, sizeof(long) );
+		out_desc.sqlvar[i].sqlnull = 1;
+	}
+	
+	
+        strcpy ( *out_arr, "" );
+        count = 0;                       /* count of rows fetched */
+        fetch_over = 0;                  /* fetch termination flag */
+
+	for ( ; ; )
+	{
+		/* fetch a row of output */
+
+{RISint_fetch(RIScpp_stmt_id0,0,&out_desc,0,7);
+if (RISget_sqlcode() == END_OF_DATA) goto not_found;
+else if (RISget_sqlcode() != RIS_SUCCESS) goto error;}
+
+	
+                /* allocate memory for the output array, if required */
+
+                size = 0;
+		for ( i = 0; i < out_desc.sqld; ++i )
+                {
+/* 26/Sep/94 - raj. TR# 139422534. Should allocate more than sqllen	*/
+/* as explained below. COMMENTED OUT BELOW AND RE-WRITTEN.		*/
+/*                   size = size + out_desc.sqlvar[i].sqllen; 		*/
+                     size = size + out_desc.sqlvar[i].sqllen
+				 + 5	/* for "NULL~" or "nul~"	*/
+				 + 1; 	/* for final '\0'		*/
+                }
+                used_size = used_size + size;
+
+                /* printf ( "SIZE = %d \n", size); */
+                /* printf ( "AL SIZE = %d \n", allocated_size); */
+                /* printf ( "U SIZE = %d \n", used_size); */
+
+                if ( used_size >= allocated_size )
+                {
+                    allocated_size = allocated_size + 1024 + used_size ;
+                    *out_arr = (char *) realloc ( (char *) *out_arr, 
+                                                 allocated_size); 
+
+		    if( *out_arr == NULL ){
+			_pdm_debug("Unable to allocate memory to out_arr\n",0);
+{RISint_clear(&RIScpp_stmt_id0, 0, 7);
+if (RISget_sqlcode() != RIS_SUCCESS) goto error;}
+
+{RISint_close(RIScpp_stmt_id0, 0, 7);
+if (RISget_sqlcode() != RIS_SUCCESS) goto error;}
+
+			return(-1);
+		    }
+                }
+	
+		/* print all columns */
+
+		/*printf("number of columns: %d\n", out_desc.sqld ); */
+
+		for ( i = 0; i < out_desc.sqld; ++i )
+		{
+			/* Print column name */
+	
+			/*printf ( "%-20.20s:", 
+                                out_desc.sqlvar[i].sqlname.sqlnamec );
+			*/
+
+			/* Check if value is NULL */
+	
+			if ( *out_desc.sqlvar[i].sqlind < 0) 
+			{
+                                strcat ( *out_arr, "NULL~" );
+				continue;
+			}
+
+			if(   out_desc.sqlvar[i].sqllen < 1 )
+			{
+				/* NULL data */
+				/* printf ( "<NULL>\n" ); */
+                                strcat ( *out_arr, "nil~" );
+				continue;
+			}
+			
+			/* Determine data type */
+
+			switch ( out_desc.sqlvar[i].sqltype )
+			{
+				case CHARACTER:
+					/*printf ( "char : %s\n", 
+                                                out_desc.sqlvar[i].sqldata );*/
+/*					_pdm_debug("out_desc.sqlvar.sqldata: %s",
+							 out_desc.sqlvar[i].sqldata );
+*/
+
+					if ( strlen (out_desc.sqlvar[i].sqldata) )
+	                                        strcat ( *out_arr,
+        	                                         out_desc.sqlvar[i].sqldata );
+					else
+						strcat(*out_arr,"nil");
+                                        strcat ( *out_arr, "~" );
+                              
+					break;
+
+				case INTEGER:
+                                        extra = *(int *)out_desc.sqlvar[i].sqldata ;
+               
+					/*printf ( "integer %d\n",extra); */
+                                        sprintf(ext_buf,"%d",extra);
+                                        strcat ( *out_arr,
+                                                 ext_buf );
+                                        strcat ( *out_arr, "~" );
+					break;
+
+				case SMALLINT:	
+                                        sprintf(ext_buf," %hd ",
+                                       *(short*)out_desc.sqlvar[i].sqldata);
+					/*printf ( "smallint : %hd  %s\n",
+                                       *(short*)out_desc.sqlvar[i].sqldata,
+                                                ext_buf ); */
+                                        strcat ( *out_arr, ext_buf );
+/*                                                 out_desc.sqlvar[i].sqldata ); */
+                                        strcat ( *out_arr, "~" );
+					break;
+
+				case DOUBLE:/* TR#139306576 - changed format %lf->%g */
+                                        sprintf(ext_buf," %g ",
+                                      *(double*)out_desc.sqlvar[i].sqldata );
+/*	 printf ( "double : %g %s\n", *(double*)out_desc.sqlvar[i].sqldata,ext_buf ); */
+                                        strcat ( *out_arr,ext_buf);
+/*                                                 out_desc.sqlvar[i].sqldata ); */
+                                        strcat ( *out_arr, "~" );
+					break;
+
+				case DECIMAL:
+					/* printf ( "decimal: %lf\n  %s", 
+                                      *(double*)out_desc.sqlvar[i].sqldata,
+                                                out_desc.sqlvar[i].sqldata );*/
+                                        strcat ( *out_arr,
+                                                 out_desc.sqlvar[i].sqldata );
+                                        strcat ( *out_arr, "~" );
+					break;
+
+				case REAL:
+                                        sprintf(ext_buf," %f ",
+                                       *(float*)out_desc.sqlvar[i].sqldata );
+					/*printf ( "real: %f\n  %s",
+                                       *(float*)out_desc.sqlvar[i].sqldata,
+                                                ext_buf); */ 
+                                        strcat ( *out_arr,ext_buf);
+/*                                                 out_desc.sqlvar[i].sqldata ); */
+                                        strcat ( *out_arr, "~" );
+					break;
+
+				case TIMESTAMP:
+			                ptr  = (datetime *) out_desc.sqlvar [i].sqldata ;
+
+			                RISdatetime_to_ascii (ptr, 
+							ext_buf,"mm/dd/yyyy hh24:nn:ss" ) ;
+
+/*
+					_pdm_debug("timestamp: %s",ext_buf);
+*/
+           
+                                        strcat ( *out_arr,ext_buf);
+                                        strcat ( *out_arr, "~" );
+					break;
+					
+
+				default:
+					_pdm_debug("error:unknown out_type",0); 
+					/*strcpy ( err_str,
+                                            "error: unknown output data_type" ); */
+                                        *err_code = - 3 ;
+{RISint_clear(&RIScpp_stmt_id0, 0, 7);
+if (RISget_sqlcode() != RIS_SUCCESS) goto error;}
+
+{RISint_close(RIScpp_stmt_id0, 0, 7);
+if (RISget_sqlcode() != RIS_SUCCESS) goto error;}
+
+					return ( -2 );
+					/* break; */
+			}
+		}
+
+                /* If rows required equals count, terminate fetch */
+
+		/* printf ( "\n" ); */
+                count ++;
+                if ( *rows == count )
+                {
+                     fetch_over = 1;
+                     break;
+                }
+	}
+        if ( fetch_over )
+        {
+		/*printf ("%d %s \n", (long)out_arr,*out_arr);*/
+        	*rows = count;
+        }
+	/* exit (); */
+{RISint_close(RIScpp_stmt_id0, 0, 7);
+if (RISget_sqlcode() != RIS_SUCCESS) goto error;}
+
+        return ( 0 );
+
+
+not_found:
+
+	/*printf ("%d  %s\n",(long)out_arr, *out_arr);*/
+	*rows = count;
+	/* exit (); */
+{RISint_close(RIScpp_stmt_id0, 0, 7);
+if (RISget_sqlcode() != RIS_SUCCESS) goto error;}
+
+        return ( 0 );
+	
+
+error:
+
+RISint_report_error(0,&err_ptr);
+
+        _pdm_debug("RISquery: error code: %d\n", risca -> sqlcode ); 
+        _pdm_debug("RISquery: error code: %s\n", risca->sqlerrm.sqlerrmc ); 
+        *err_code = risca -> sqlcode ;
+/*
+	_pdm_debug("ris error: %s",  err_ptr );   
+*/
+        /* strcpy ( err_str, err_ptr ); */
+	/* exit (); */
+{RISint_close(RIScpp_stmt_id0, 0, 7);
+}
+
+        return ( -3 );
+}

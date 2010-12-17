@@ -1,0 +1,2287 @@
+class implementation COpdu;
+
+#include	<cieveryone.h>
+#include	<grdpbdef.h>
+#include	<grdpbmacros.h>
+#include	<nddef.h>
+#include	<exmacros.h>
+#include	<acdef.h>
+#include	<acmacros.h>
+#include	<macro.h>
+#include	<PDUpart.h>
+#include	<PDUint.h>
+#include	<PDUintdef.h>
+#include	<PDUparamdef.h>
+#include	<PDUprompt.h>
+#include	<PDUfile_def.h>
+#include        <string.h>
+#include        <ACdb_info.h>
+#include	<MEMerrordef.h>
+#include        <PDUmacros.h>
+#include        <PDUstorage.h>
+#include        <expression.h>
+#include        "ciexecmacros.h"
+
+#define	NULL_COL	" "
+
+/* global orientations for writing child buffer */
+IGRchar	coordsys_orientation[PDU_K_ORIENTATION_LEN];
+IGRchar	default_orientation[100];
+IGRchar	*ORIENTATION;
+
+from ACdb_info import ACget_db_info;
+from ACcpx_defn import ACgive_temp_desc, ACgive_feet_desc, ACgive_name;
+from NDnode import NDget_objects, NDgive_structure;
+from NDmacro import ACgive_structure;
+from ACcpx import find_macro;
+from module import mod_info;
+
+/********************************************************************************
+
+Program:	PDUreport_parametric_parts
+
+Description:
+	It extracts a list of parametric parts placed in the assembly being 
+	checked in and a list of macro occurrences along with values of macro 
+	parents and feet. This information is sent to PDM on the server.
+
+Algorithm:
+	1. Scan checkin file to build list of macro occurrences.
+	2. For each macro occurrence in list:
+	   2.1 Write a row to the child buffer: catalog,partnum,revision, etc.
+	   2.2 Extract values of parents, write to buffer.
+	   2.3 Extract values of feet, write to buffer.
+	3. Put part specification, child list, and macro values in part
+	   form.
+
+Error Messages
+	PDM_S_SUCCESS		- Part file was activated
+	PDM_E_CAT_NOT_FOUND	- Specified catalog does not exist
+	PDM_E_PART_NOT_FOUND	- Specified part does not exist
+
+History:
+	11/16/90	Creation 	Beth Weeks
+
+***********************************************************************************/
+
+struct GRmd_env ModuleInfo;
+/* part area global */
+extern struct PDUpart	*part;
+
+IGRint PDUreport_parametric_parts( osnum, osid)
+  OMuword	osnum;
+  OM_S_OBJID	osid;
+  {
+  IGRint	sts;		/* return status */
+  /*IGRint	index; APOGEE *//* entry in invisible module table */
+  IGRint	macro_count;	/* number of macro occurrences in checkin file */
+  MEMptr	macro_parts;	/* buffer for list of macro parts */
+  MEMptr	macro_values;	/* buffer for appended macro output values buffers */
+  struct GRid	*macros;	/* list of macro occurences */
+  /*char 		prompt_string[16];		APOGEE */
+
+  _pdm_debug("In PDUreport_parametric_parts",0);
+
+  strcpy(default_orientation, PDU_TOP);
+  strcpy(coordsys_orientation, NULLSTR);
+
+  macros = (struct GRid *) NULL;
+  macro_values = (MEMptr) NULL;
+  macro_parts = (MEMptr) NULL;
+
+  /* 1. Get list of macro occurrences from file */
+  if ( 1&sts )
+     {
+     sts = PDUget_macros (osnum, osid, &macros, &macro_count);
+     _pdm_status("PDUget_macros", sts);
+
+     /* 2. Process macros to build macro values buffer */
+     if ( 1&sts )
+	{
+	sts = PDUprocess_macros ( osnum, macros, macro_count, &macro_values, &macro_parts);
+	_pdm_status("PDUprocess_macros", sts);
+	}
+     else if ( sts == PDM_E_PART_NOT_FOUND )
+	sts = PDM_S_SUCCESS;
+     }
+
+PDUbuffer_data("macro parts buffer", part->dynamic_part_list);
+PDUbuffer_data("macro values buffer", part->dynamic_value_list);
+PDUbuffer_data("attach list", (MEMptr)part->attach_list);
+PDUbuffer_data("child list", (MEMptr)part->part_list);
+
+   return(sts);
+  }
+
+
+PDUget_module_env (objid, osnum)
+  GRobjid	objid;
+  GRspacenum	osnum;
+  {
+  long msg,NumberOfBytes,BytesReceived;
+
+  NumberOfBytes = sizeof(ModuleInfo);
+  gr$get_module_env( msg = &msg,
+		     sizbuf = &NumberOfBytes,
+		     buffer = &ModuleInfo,
+		     nret = &BytesReceived);
+  _pdm_status ("gr$get_module_env", msg);
+
+  if ( osnum != NULL )
+     ModuleInfo.md_id.osnum = osnum;
+  if ( objid != NULL_OBJID )
+     ModuleInfo.md_id.objid = objid;
+  return(PDM_S_SUCCESS); 	/* return(PDM_S_SUCCESS)	APOGEE */
+  }
+
+
+/* #define	BUFFER_COLS	PDU_CHECKIN_COLS */
+#define	BUFFER_COLS	20
+
+IGRint  PDUformat_buffer (type, buffer)
+  IGRint	type;			/* i - buffer type */
+  MEMptr	*buffer;		/* o - buffer for macro values */
+  {
+  IGRint	sts;			/* return status */
+  IGRint	i;			/* loop index */
+  IGRint	columns;		/* number of columns */
+  IGRchar	*names[BUFFER_COLS];	/* column names for buffer */
+  IGRchar	*types[BUFFER_COLS];	/* data types for buffer */
+
+  _pdm_debug("In the function PDUformat_buffer", 0);
+
+  switch ( type )
+     {
+     case PDU_REPORT_ATTACH:
+	  /* open attach buffer  */
+	  sts = PDMopen_buffer(2, buffer);
+	  _pdm_status("PDMopen_buffer (attach buffer for check in)", sts);
+
+	  return (sts);
+	  /*break;				APOGEE */
+
+     case PDU_REPORT_CHECKIN:
+	  sts = PDMopen_buffer(1, buffer);
+	  _pdm_status("PDMopen_buffer( child buffer for check in)", sts);
+
+	  return (sts);
+	  /*break;				APOGEE */
+
+     case PDU_IN_ATTR:
+          /* open buffer for search and sort criteria */
+          sts = MEMopen(buffer, 512);
+          _pdm_status("MEMopen (buffer for search and sort criteria, size = 512)", sts);
+          break;
+
+     case PDU_SEARCH_SORT:
+          /* open buffer for attribute names */
+          sts = MEMopen(buffer, 512);
+          _pdm_status("MEMopen (buffer for attribute names, size = 512)", sts);
+          break;
+
+     case PDU_FILE_BUFFER:
+          /* open buffer for attribute names */
+          sts = MEMopen(buffer, 512);
+          _pdm_status("MEMopen (buffer for files to delete, size = 512)", sts);
+          break;
+
+     case PDU_REPORT_PARTSPEC:
+	  /* open macro part buffer  */
+	  sts = MEMopen(buffer, 512);
+	  _pdm_status("MEMopen (macro part buffer, size = 512)", sts);
+	  break;
+
+     case PDU_REPORT_LIST:
+	  /* open parameter values buffer  */
+	  sts = MEMopen(buffer, 1024);
+	  _pdm_status("MEMopen (parameter values buffer, size = 1024)", sts);
+	  break;
+
+     case PDU_ASSY_PARTS:
+	  /* open parameter values buffer  */
+	  sts = MEMopen(buffer, 1024);
+	  _pdm_status("MEMopen (assembly part buffer, size = 1024)", sts);
+	  break;
+
+     case PDU_ASSY_STRUCT:
+	  /* open parameter values buffer  */
+	  sts = MEMopen(buffer, 1024);
+	  _pdm_status("MEMopen (assembly structure buffer, size = 1024)", sts);
+	  break;
+
+     case PDU_CHILD_BUFR:
+	  /* open parameter values buffer  */
+	  sts = MEMopen(buffer, 1024);
+	  _pdm_status("MEMopen (nongraphic assembly structure buffer, size = 1024)", sts);
+	  break;
+
+     case PDU_CAT_ATTR:
+          /* open parameter values buffer  */
+          sts = MEMopen(buffer, 1024);
+          _pdm_status("MEMopen (catalog attr bufr, size = 1024)", sts);
+          break;
+
+     case PDU_SAVE_CRITERIA:
+          /* open parameter values buffer  */
+          sts = MEMopen(buffer, 1024);
+          _pdm_status("MEMopen (catalog attr bufr, size = 1024)", sts);
+          break;
+
+     case PDU_PART_FILE_BUFFER:
+          /* open parameter values buffer  */
+          sts = MEMopen(buffer, 1024);
+          _pdm_status("MEMopen (part_file_buffer, size = 1024)", sts);
+          break;
+
+     case PDU_PARTS_LIST_BUFFER:
+          /* open parameter values buffer  */
+          sts = MEMopen(buffer, 1024);
+          _pdm_status("MEMopen (parts_list_buffer, size = 1024)", sts);
+          break;
+
+     default:
+	  break;
+     }
+
+  if ( sts != MEM_S_SUCCESS )
+     sts = PDM_E_OPEN_BUFFER;
+  else
+     sts = PDM_S_SUCCESS;
+
+  /* format buffer */
+  if ( 1&sts )
+     {
+     /* set up arrays of column names and data types */
+     switch ( type )
+	{
+	case PDU_REPORT_ATTACH:
+	     names[0] = "p_seqno";
+	     types[0] = "integer";
+	     names[1] = "p_catalogname";
+	     types[1] = "char(30)";
+	     names[2] = "p_partnum";
+	     types[2] = "char(30)";
+	     names[3] = "p_revision";
+	     types[3] = "char(30)";
+
+	     columns = PDU_ATTACH_COLS;
+	     break;
+
+	case PDU_REPORT_CHECKIN:
+	     columns = PDU_CHECKIN_COLS;
+	     break;
+
+	case PDU_REPORT_PARTSPEC:
+	     names[0] = "p_catalogname";
+	     types[0] = "char(30)";
+/*
+	     names[1] = "p_partnum";
+	     types[1] = "char(30)";
+	     names[2] = "p_revision";
+	     types[2] = "char(30)";
+             names[3] = "p_childno";
+	     types[3] = "char(20)";
+*/
+	     columns = 1;
+	     break;
+
+        case PDU_FILE_BUFFER:
+             names[0] = "n_catalogno";
+             types[0] = "char(20)";
+             names[1] = "n_itemno";
+             types[1] = "char(15)";
+             names[2] = "n_catalogname";
+             types[2] = "char(150)";
+             names[3] = "n_itemname";
+             types[3] = "char(150)";
+             names[4] = "n_itemrev";
+             types[4] = "char(150)";
+             names[5] = "n_cofilename";
+             types[5] = "char(15)";
+             names[6] = "p_parttype";
+             types[6] = "char(2)";
+             names[7] = "p_action";
+             types[7] = "char(20)";
+             columns = 8;
+             break;
+
+        case PDU_ASSY_PARTS:
+             names[0] = "p_catalogname";
+             types[0] = "char(20)";
+             names[1] = "p_partnum";
+             types[1] = "char(15)";
+             names[2] = "p_revision";
+             types[2] = "char(15)";
+             names[3] = "p_partdesc";
+             types[3] = "char(40)";
+             names[4] = "p_usageid";
+             types[4] = "char(40)";
+             columns = 5;
+             break;
+
+        case PDU_ASSY_STRUCT:
+             names[0] = "p_level";
+             types[0] = "integer";
+             names[1] = "p_pchildno";
+             types[1] = "integer";
+             names[2] = "p_childno";
+             types[2] = "integer";
+             names[3] = "n_catalogname";
+             types[3] = "char(40)";
+             names[4] = "n_itemname";
+             types[4] = "char(40)";
+             names[5] = "n_itemrev";
+             types[5] = "char(40)";
+             names[6] = "n_itemdesc";
+             types[6] = "char(40)";
+             names[7] = "p_attached";
+             types[7] = "char(1)";
+             names[8] = "p_quantity";
+             types[8] = "char(40)";
+             names[9] = "p_usageid";
+             types[9] = "char(140)";
+             names[10] = "n_cofilename";
+             types[10] = "char(14)";
+             columns = 11;
+             break;
+
+        case PDU_CHILD_BUFR:
+             names[0] = "p_childno";
+             types[0] = "integer";
+             names[1] = "n_catalogname";
+             types[1] = "char(40)";
+             names[2] = "n_itemname";
+             types[2] = "char(40)";
+             names[3] = "n_itemrev";
+             types[3] = "char(40)";
+             names[4] = "p_attached";
+             types[4] = "char(1)";
+             names[5] = "p_quantity";
+             types[5] = "char(40)";
+             names[6] = "p_usageid";
+             types[6] = "char(25)";
+             names[7] = "p_tagno";
+             types[7] = "char(25)";
+             names[8] = "p_alttagno";
+             types[8] = "char(40)";
+             names[9] = "p_incbom";
+             types[9] = "char(1)";
+             names[10] = "p_explode";
+             types[10] = "char(1)";
+             names[11] = "n_cofilename";
+             types[11] = "char(14)";
+             names[12] = "p_history";
+             types[12] = "char(160)";
+             names[13] = "n_catalogno";
+             types[13] = "integer";
+             names[14] = "n_itemno";
+             types[14] = "integer";
+             names[15] = "n_level";
+             types[15] = "integer";
+             columns = 16;
+             break;
+
+        case PDU_SEARCH_SORT:
+             names[0] = "loc_search";
+             types[0] = "char(200)";
+             names[1] = "loc_sort";
+             types[1] = "char(200)";
+             names[2] = "cat_search";
+             types[2] = "char(500)";
+             names[3] = "cat_sort";
+             types[3] = "char(500)";
+             columns = 4;
+             break;
+
+        case PDU_IN_ATTR:
+             names[0] = "n_nfmname";
+             types[0] = "char(20)";
+             columns = 1;
+             break;
+
+	case PDU_REPORT_LIST:
+	     names[0] = "coord_sys";
+	     types[0] = "char(2)";
+	     names[1] = "d";
+	     types[1] = "double";
+	     names[2] = "tw";
+	     types[2] = "double";
+	     names[3] = "bf";
+	     types[3] = "double";
+	     names[4] = "tf";
+	     types[4] = "double";
+	     names[5] = "k";
+	     types[5] = "double";
+	     names[6] = "interference";
+	     types[6] = "char(2)";
+	     names[7] = "schematic";
+	     types[7] = "char(2)";
+	     names[8] = "without_fillet";
+	     types[8] = "char(2)";
+	     names[9] = "with_fillet";
+	     types[9] = "char(2)";
+	     names[10] = "without_names";
+	     types[10] = "char(2)";
+	     names[11] = "with_names";
+	     types[11] = "char(2)";
+
+	     columns = 12;
+	     break;
+
+        case PDU_CAT_ATTR:
+             names[0] = "n_name";
+             types[0] = "char(20)";
+             names[1] = "n_synonym";
+             types[1] = "char(40)";
+             names[2] = "n_datatype";
+             types[2] = "char(15)";
+             columns = 3;
+             break;
+
+        case PDU_SAVE_CRITERIA:
+             names[0] = "select";
+             types[0] = "char(20)";
+             names[1] = "from";
+             types[1] = "char(20)";
+             names[2] = "where";
+             types[2] = "char(200)";
+             names[3] = "orderby";
+             types[3] = "char(200)";
+             names[4] = "prompts";
+             types[4] = "char(20)";
+             columns = 5;
+             break;
+
+        case PDU_PART_FILE_BUFFER:
+             names[0] = "n_catalogname";
+             types[0] = "char(20)";
+             names[1] = "n_itemname";
+             types[1] = "char(40)";
+             names[2] = "n_itemrev";
+             types[2] = "char(40)";
+             names[3] = "n_itemdesc";
+             types[3] = "char(40)";
+             names[4] = "n_cofilename";
+             types[4] = "char(15)";
+             columns = 5;
+             break;
+
+        case PDU_PARTS_LIST_BUFFER:
+             names[0] = "p_level";
+             types[0] = "integer";
+             names[1] = "n_catalogname";
+             types[1] = "char(20)";
+             names[2] = "n_itemname";
+             types[2] = "char(100)";
+             names[3] = "n_itemrev";
+             types[3] = "char(100)";
+             names[4] = "n_cofilename";
+             types[4] = "char(100)";
+             names[5] = "p_attached";
+             types[5] = "char(2)";
+             names[6] = "p_quantity";
+             types[6] = "char(32)";
+             names[7] = "p_usageid";
+             types[7] = "char(25)";
+             columns = 8;
+             break;
+
+	default:
+	     break;
+	}
+
+     for ( i = 0; i < columns; i = i+1 )
+	 {
+	 if ( 1&sts )
+	    {
+	    /* write buffer format */
+	    sts = MEMwrite_format(*buffer, names[i], types[i]);
+	    _pdm_status("MEMwrite_format ()", sts);
+
+	    if ( sts != MEM_S_SUCCESS )
+	       sts = PDM_E_WRITE_FORMAT;
+	    else
+	       sts = PDM_S_SUCCESS;
+	    }
+	 }
+     }
+
+  return(sts);
+  }
+
+IGRint  PDUget_macro_format(macro_defs, family_name, part_num, revision, 
+			    macro_bufr)
+  struct PDUmacro_definition	*macro_defs;
+  char				*family_name;
+  char				*part_num;
+  char				*revision;
+  MEMptr			*macro_bufr;
+  {
+    int		status;
+    MEMptr	bufr1;
+    MEMptr	bufr2;
+    struct PDUmacro_definition  *temp;
+    char	*string;
+    int		char_index;
+    int		i;
+   
+    bufr1 = (MEMptr)NULL;
+    bufr2 = (MEMptr)NULL;
+
+    if (macro_defs == 0)
+      return(PDM_E_FAILURE);
+
+    while (macro_defs)
+      {
+       /* definition does not exist */
+       if (macro_defs->family == NULL)
+         {
+          status = PDMget_dyn_attr_names(
+                                         family_name,
+                                         part_num,
+                                         revision,
+                                         &bufr1 
+                                        );
+           _pdm_status("PDMget_dyn_attr_names", status);
+/*
+   	   status = PDMget_macro_format(family_name, part_num, revision,
+			&bufr1);
+           _pdm_status("PDMget_macro_format", status);
+*/           
+           if (status != PDM_S_SUCCESS)
+             return(status);
+/*
+           status = MEMsplit_copy_buffer(bufr1, &bufr2);
+           _pdm_status("MEMsplit_copy_buffer", status);
+*/      
+           PDUfill_in_string(&macro_defs->family, family_name);
+           macro_defs->definition_bufr = (MEMptr) bufr1;
+/*
+           *macro_bufr = bufr2;
+*/
+           *macro_bufr = bufr1;
+            
+           string = (char *) malloc ((*macro_bufr)->row_size);
+           memset(string, NULL, (*macro_bufr)->row_size);
+           char_index=0;
+
+           for (i=0; i<(*macro_bufr)->columns; ++i)
+             string[char_index++]='\1';
+
+           status = MEMwrite(*macro_bufr, string);
+           _pdm_status("MEMwrite",status);
+
+           if (status != MEM_S_SUCCESS)
+             return(PDM_E_WRITE_BUFFER);
+           else
+	     status = PDM_S_SUCCESS;
+
+	   status = MEMbuild_array(*macro_bufr);
+
+           temp = (struct PDUmacro_definition *) malloc (sizeof
+		     (struct PDUmacro_definition));
+
+           macro_defs->next = temp;
+
+           temp->family = (char *)NULL;   
+           temp->definition_bufr = (MEMptr)NULL;
+           temp->next = (struct PDUmacro_definition *)NULL;
+           break;
+         }
+       else /* compare the family name */
+         {
+	   if (strcmp(macro_defs->family, family_name) == 0)
+             {
+/*
+               status = MEMsplit_copy_buffer(macro_defs->definition_bufr, 
+						&bufr2);
+               _pdm_status("MEMsplit_copy_buffer", status);
+
+               *macro_bufr = bufr2;
+*/
+               *macro_bufr = macro_defs->definition_bufr;
+            
+               string = (char *) malloc ((*macro_bufr)->row_size);
+	       memset(string, NULL, (*macro_bufr)->row_size);
+               char_index=0;
+
+               for (i=0; i<(*macro_bufr)->columns; ++i)
+                 string[char_index++]='\1';
+
+               status = MEMwrite(*macro_bufr, string);
+               if (status != MEM_S_SUCCESS)
+                 return(PDM_E_WRITE_BUFFER);
+               else
+		  status = PDM_S_SUCCESS;
+
+   	       status = MEMbuild_array(*macro_bufr);
+               break;
+             }
+           else
+             macro_defs = macro_defs->next;
+         }
+      }
+    return(PDM_S_SUCCESS);
+  }
+
+IGRint  PDUcleanup_macro_defs(macro_defs)
+  struct PDUmacro_definition	*macro_defs;
+  {
+    int		status;
+    struct PDUmacro_definition  *temp;
+   
+    if (macro_defs == 0)
+      return(PDM_S_SUCCESS);
+
+    while (macro_defs)
+      {
+
+ 	temp = macro_defs->next;
+
+	if (macro_defs->family)
+          free(macro_defs->family);
+
+        free(macro_defs);
+
+        macro_defs = temp;
+      }
+    return(PDM_S_SUCCESS);
+  }
+  
+
+IGRint	PDUrecord_placement (osnum, db_info)
+  OMuword	osnum;			/* i - object space number */
+  struct ACdb_info *db_info;		/* i - structure for extracting macro part data */
+  {
+  IGRint	sts;			/* return status */
+  IGRchar	**parts_values;		/* array of buffer values */
+  IGRchar	quantity_string[10];	/* array to convert quantoty */
+  IGRchar  	serial_no_string[10];	/* array to convert serial_no */
+  MEMptr	part_list;		/* buffer of part attachments */
+  IGRint	incassem = TRUE;	/* include in assembly flag */
+
+  _pdm_debug("In the PPL function <PDUrecord_placement>", 0);
+
+  part_list = part->part_list;
+
+  sprintf(serial_no_string,"%d", db_info->serial_no);
+  sprintf(quantity_string, "%d", db_info->quantity);
+/*  
+  strcpy (serial_no_string, itoa(db_info->serial_no));
+  strcpy (quantity_string, itoa(db_info->quantity));
+*/
+  parts_values = (char **) malloc (13 * sizeof(char *));
+  memset(parts_values,NULL,(13 * sizeof(char *)));
+ 
+  /* build array of buffer values */
+  PDUfill_in_string(&parts_values[0],db_info->catalog);
+  PDUfill_in_string(&parts_values[1],db_info->part_num);
+  PDUfill_in_string(&parts_values[2],db_info->revision);
+  PDUfill_in_string(&parts_values[3],ORIENTATION);
+  PDUfill_in_string(&parts_values[4],quantity_string);
+  PDUfill_in_string(&parts_values[5],PDU_DEFAULT_HISTORY);
+  PDUfill_in_string(&parts_values[6],serial_no_string);
+  PDUfill_in_string(&parts_values[7],db_info->usage);
+  PDUfill_in_string(&parts_values[8],PDU_DEFAULT_VIEW);
+
+  _pdm_debug("catalog = %s"      , parts_values[0]);
+  _pdm_debug("part_num = %s"     , parts_values[1]);
+  _pdm_debug("revision = %s"     , parts_values[2]);
+  _pdm_debug("quantity = %s"     , parts_values[4]);
+  _pdm_debug("serial_no = %s"    , parts_values[6]);
+  _pdm_debug("usage = %s"        , parts_values[7]);
+
+  incassem = PDUcheck_incassem_flag(parts_values, osnum);
+  _pdm_status("PDUcheck_incassem_flag",incassem);
+
+  if (incassem == FALSE)
+    return(PDM_S_SUCCESS);
+
+/*   get the tagno and put in report.data */
+     sts = PDUget_tag_no(&parts_values[9],osnum, parts_values[0],
+				parts_values[1], parts_values[2]);
+     _pdm_status("PDUget_tag_no", sts);
+
+/*   get the alternate tag no and put in parts_values */
+     sts = PDUget_alttag_no(&parts_values[10],osnum, parts_values[0],
+				parts_values[1], parts_values[2]);
+     _pdm_status("PDUget_alttag_no", sts);
+
+/*   get the include bom value and put in parts_values */
+     sts = PDUget_incbom(&parts_values[11],osnum, parts_values[0],
+				parts_values[1], parts_values[2], parts_values[6]);
+     _pdm_status("PDUget_incbom", sts);
+
+/*   get the explode value and put in parts_values */
+     sts = PDUget_explodebom(&parts_values[12],osnum, parts_values[0],
+				parts_values[1], parts_values[2], parts_values[6]);
+     _pdm_status("PDUget_explode", sts);
+
+/* end BETH */
+  if ( part_list == NULL )
+     {
+     sts = PDUformat_buffer(PDU_REPORT_CHECKIN, &part_list);
+     _pdm_status("format_buffer(child buffer for check in)", sts);
+     }
+  else
+     {
+      sts = 1;
+     }
+
+  if ( 1&sts )
+     {
+     /* add row to child buffer */
+     sts = PDUwrite_data( part_list, parts_values, 1);
+     _pdm_status("PDUwrite_data : part_list", sts);
+
+     if ( 1&sts )
+	{
+	part->part_list = part_list;
+	}
+     }
+
+  return (sts);
+  }
+
+
+IGRint PDUextract_dbinfo (macro, db_info)
+  struct GRid	*macro;			/* i - objid, osnum for macro occurence */
+  struct ACdb_info *db_info;		/* o - structure for extracting macro part data */
+  {
+  IGRint	sts;		/* return status */
+  IGRlong	msg;
+  _pdm_debug("In the function PDUextract_dbinfo", 0);
+
+  /* access ACdb_info to get to macro occurrences */
+  sts = om$send (msg = message ACdb_info.ACget_db_info (&msg, db_info),
+		 senderid = macro->objid,
+		 targetid = macro->objid,
+		 targetos = macro->osnum);
+  _pdm_status2("ACdb_info.ACget_db_info", sts, msg);
+
+/*
+  if ( db_info.quantity == 0 )
+     {
+     return (PDM_E_PART_NOT_FOUND);
+     }
+*/
+  if ( 1&sts && 1&msg )
+     sts = PDM_S_SUCCESS;
+  else
+     sts = PDM_E_FAILURE;
+
+  return (sts);
+  }
+
+
+IGRint  PDUextract_parameters (macro_def, temp_desc, temp_num, feet_desc, feet_num)
+  struct GRid	*macro_def;		/* i - macro definition to scan */
+  struct stemp	**temp_desc;		/* o - template description (file macro.h) */
+  IGRint	*temp_num;		/* o - number of parents of the macro    */
+  struct myfeet	**feet_desc;		/* o - feet description     (file macro.h) */
+  IGRint	*feet_num;		/* o - number of feet in macro */
+  {
+  IGRint	sts;			/* return status */
+
+  /* extract list of parent descriptions */
+  sts = om$send ( msg = message ACcpx_defn.ACgive_temp_desc (temp_num, temp_desc),
+		 senderid = macro_def->objid,
+		 targetid = macro_def->objid,
+		 targetos = macro_def->osnum);
+  _pdm_status("om$send (ACcpx_defn.ACgive_temp_desc)", sts);
+  _pdm_debug("number of parents %d", temp_num);
+
+  if ( !(1&sts ))  return(sts);
+
+/* Modi CH 24 April 1991, to avoid to take into account the special 
+/* template "~rep" used for the representation.
+/*  */
+
+  if(strncmp((*temp_desc[0]).name,"~rep",4) == 0)
+   {
+    _pdm_debug("There is a representation as template",0);
+    *temp_desc = (struct stemp *) &(*temp_desc)[1];
+    *temp_num  = *temp_num - 1;
+   }
+
+/* End CH modif */
+/* It will be nice to verify than template and feet names are not key words
+/* of INFORMIX, .... */
+/* It's not Christian's idea to cut off feet 
+  if ( 1&sts )
+     {
+     sts = om$send( msg = message ACcpx_defn.ACgive_feet_desc (feet_num, feet_desc),
+		 senderid = macro_def->objid,
+		    targetid = macro_def->objid,
+		    targetos = macro_def->osnum);
+     _pdm_status("om$send (ACcpx_defn.ACgive_feet_desc)", sts);
+     _pdm_debug("number of feet %d", feet_num);
+     }
+*/
+  *feet_num=0;
+  *feet_desc = NULL;
+  return(sts);
+  }
+
+
+IGRint	PDUextract_values (macro, temp_desc, temp_num, feet_desc, feet_num,
+child_no, macro_values)
+  struct GRid	*macro;			/* i - objid, osnum for macro occurence */
+  struct stemp	*temp_desc;		/* i - template description */
+  IGRint	temp_num;		/* i - number of parents of the macro    */
+  struct myfeet	*feet_desc;		/* i - feet description */
+  IGRint	feet_num;		/* i - number of feet (or named element) in macro */
+  IGRint	child_no;		/* i - child of the parametric part */
+  MEMptr	macro_values;		/* o - buffer for macro input/output values */
+  {
+  IGRint	sts;		/* return status */
+  IGRlong	msg;
+  IGRint	i;			/* loop index */
+  /*IGRint	parameter_count;APOGEE*//* total number of parameters */
+  /*IGRchar	**values;       APOGEE*//* array of buffer values */
+  /*IGRchar	seq_num[20];    APOGEE*//* sequence number for input parameters */
+  IGRchar	double_str[25];		/* character form of double value */
+  IGRchar	point_string[80];	/* string to hold point values */
+  IGRint	temp_i;			/* array index */
+  IGRint	feet_i;			/* array index */
+  IGRint	direct_index;		/* argument for message send */
+  /*struct PDUpoint point;      APOGEE*//* structure for point parameter */
+  struct ret_struct rst;		/* geometric definition of elements */
+  struct GRid	*parents;		/* list of parents for the placed occurence */
+  struct GRid	*feet;			/* list of feet for the placed occurence */
+  char		serial_no_string[10];
+  /*char	string[16];	APOGEE*/
+  char		**col_name;
+  extern int 	PDM_debug_on;
+
+  _pdm_debug("In the function <PDUextract_values>", 0);
+
+  sts = 1;
+  parents = (struct GRid *) NULL;
+  feet = (struct GRid *) NULL;
+
+  if (PDM_debug_on)
+    {
+      printf("PDU -- temp_num = <%d>\n", temp_num);
+      printf("PDU -- feet_num = <%d>\n", feet_num);
+      printf("PDU -- temp_num+feet_num = <%d>\n", (temp_num + feet_num));
+      printf("macro_values->columns = <%d>\n", macro_values->columns);
+    }
+/* taken out because some parameters with invalid types are skipped */
+/*
+  if ( macro_values->columns != (temp_num + feet_num) )
+     return (PDM_E_INVALID_BUFFER_FORMAT);
+*/
+  /* allocate array of pointers to strings, initialize pointers to NULL */
+/*
+  values = (IGRchar **) malloc ( sizeof(IGRchar *) * (macro_values->columns) );
+  for ( i = 0; i < macro_values->columns; i = i + 1 )
+      values[i] = NULL;
+*/
+  if ( temp_num > 0 )
+     {
+     /* allocate space for array of parent objects */
+     parents = (struct GRid *) malloc ( sizeof(struct GRid) * temp_num );
+
+     if ( parents == (struct GRid *) NULL )
+	return (PDM_E_COULD_NOT_MALLOC);
+
+     /* extract list of macro parent objects */
+     sts = om$send(msg = message NDnode.NDget_objects
+		   (ND_ROOT, parents, temp_num, NULL, 0, OM_K_MAXINT, &temp_num),
+                   senderid= macro->objid,
+                   targetid = macro->objid,
+                   targetos = macro->osnum);
+     _pdm_status("om$send (NDnode.NDget_objects)", sts);
+     }
+
+  if ( 1&sts )
+     {
+/*
+     parameter_count = 0;
+*/
+     sprintf(serial_no_string, "%d", child_no);
+     sts = MEMwrite_data(macro_values,serial_no_string,macro_values->rows, 1);
+     _pdm_status("MEMwrite_data",sts);
+
+     if (sts != MEM_S_SUCCESS)
+       return(PDM_E_WRITE_BUFFER);
+     else
+       sts = PDM_S_SUCCESS;
+/*
+     PDUstrcpy(&(values[parameter_count]), serial_no_string);
+     parameter_count = parameter_count + 1;
+*/     
+
+     col_name = (char **)macro_values->column_ptr;
+
+     for ( temp_i = 0; temp_i < temp_num; temp_i = temp_i+1 )
+	 {
+         for (i=1; i<macro_values->columns; ++i)
+           {
+	     if (strcmp(temp_desc[temp_i].name, col_name[i]) == 0)
+		break;
+           }
+
+         if (i == macro_values->columns)
+           continue;
+              
+         if ( temp_desc[temp_i].type == -1 ||
+	      temp_desc[temp_i].type == 0)
+           {
+	     sts = 1;
+             msg = 1;
+           }
+         else
+           {
+             msg = 1;
+
+    	     sts = om$send(msg= message NDnode.NDgive_structure(&msg,&rst,&ModuleInfo),
+		      senderid = parents[temp_i].objid,
+		      targetid = parents[temp_i].objid,
+		      targetos = parents[temp_i].osnum);
+	     _pdm_status2("om$send (NDnode.NDgive_structure)", sts, msg);
+
+    	     _pdm_debug("parent name = <%s>", (IGRchar *)temp_desc[temp_i].name);
+	     _pdm_debug ("rst.type = %d", rst.type);
+           }
+
+	 /* Write macro parent values to buffer */
+	 if ( 1&sts && 1&msg )
+	    {
+	    /* get parameter value for parent based on template type */
+
+/******************** parameter type selection ************************************/
+
+	 if ( temp_desc[temp_i].type == -1 ||
+	      temp_desc[temp_i].type == 0 )
+           {
+	    _pdm_debug("Parent %d has an unrecognized type", temp_i);
+	    _pdm_debug("Template type = <%x>", temp_desc[temp_i].type);
+	    _pdm_debug("name is <%s>", (IGRchar *)temp_desc[temp_i].name);
+            continue;
+	   }
+
+	 if ( temp_desc[temp_i].type & point_generic )
+	    {
+	    _pdm_debug("Parent %d is a point", temp_i);
+	    _pdm_debug("name is <%s>", (IGRchar *)temp_desc[temp_i].name);
+
+	    PDUpoint_to_string(rst.var.point_st.pt, point_string);
+
+	    sts = MEMwrite_data(macro_values, point_string, 
+					macro_values->rows, i+1);
+/*
+	    PDUstrcpy(&(values[parameter_count]), point_string); 
+	    _pdm_debug("value is <%s>", (IGRchar *)values[parameter_count]);
+*/
+	    }
+	 else if ( temp_desc[temp_i].type & ref_generic )
+	    {
+	    _pdm_debug("Parent %d is a coordinate system", temp_i);
+	    _pdm_debug("name is <%s>", (IGRchar *)temp_desc[temp_i].name);
+
+	    PDUdump_matrix(rst.var.ref_st.t);
+	    PDUmatrix_to_string
+		(PDU_REPORT_ORIENTATION, rst.var.ref_st.t, coordsys_orientation);
+
+	    sts = MEMwrite_data(macro_values, coordsys_orientation, 
+					macro_values->rows, i+1);
+/*
+	    PDUstrcpy(&(values[parameter_count]), coordsys_orientation);
+	    _pdm_debug("value is <%s>", (IGRchar *)values[parameter_count]);
+*/
+	    ORIENTATION = coordsys_orientation;
+	    }
+
+	 else if ( temp_desc[temp_i].type & line_generic )
+	    {
+	    _pdm_debug("Parent %d is a line object", temp_i);
+	    _pdm_debug("name is <%s>", (IGRchar *)temp_desc[temp_i].name);
+/*
+	    PDUstrcpy(&(values[parameter_count]), NULL_COL);
+	    _pdm_debug("value is <%s>", (IGRchar *)values[parameter_count]);
+*/
+	    }
+
+	 else if ( temp_desc[temp_i].type & conic_generic )
+	    {
+	    _pdm_debug("Parent %d is a conic object", temp_i);
+	    _pdm_debug("name is <%s>", (IGRchar *)temp_desc[temp_i].name);
+
+/*
+	    PDUstrcpy(&(values[parameter_count]), NULL_COL);
+	    _pdm_debug("value is <%s>", (IGRchar *)values[parameter_count]);
+*/
+	    }
+
+	 else if ( temp_desc[temp_i].type == circle_type )
+	    {
+	    _pdm_debug("Parent %d is a circle object", temp_i);
+	    _pdm_debug("name is <%s>", (IGRchar *)temp_desc[temp_i].name);
+/*
+	    PDUstrcpy(&(values[parameter_count]), NULL_COL);
+	    _pdm_debug("value is <%s>", (IGRchar *)values[parameter_count]);
+*/
+	    }
+
+	 else if ( temp_desc[temp_i].type == arc_type )
+	    {
+	    _pdm_debug("Parent %d is a arc object", temp_i);
+	    _pdm_debug("name is <%s>", (IGRchar *)temp_desc[temp_i].name);
+/*
+	    PDUstrcpy(&(values[parameter_count]), NULL_COL);
+	    _pdm_debug("value is <%s>", (IGRchar *)values[parameter_count]);
+*/
+	    }
+
+	 else if ( temp_desc[temp_i].type & lbs_generic )
+	    {
+	    _pdm_debug("Parent %d is a lbs object", temp_i);
+	    _pdm_debug("name is <%s>", (IGRchar *)temp_desc[temp_i].name);
+/*
+	    PDUstrcpy(&(values[parameter_count]), NULL_COL);
+	    _pdm_debug("value is <%s>", (IGRchar *)values[parameter_count]);
+*/
+	    }
+
+	 else if ( temp_desc[temp_i].type == plan_type )
+	    {
+	    _pdm_debug("Parent %d is a plane object", temp_i);
+	    _pdm_debug("name is <%s>", (IGRchar *)temp_desc[temp_i].name);
+/*
+	    PDUstrcpy(&(values[parameter_count]), NULL_COL);
+	    _pdm_debug("value is <%s>", (IGRchar *)values[parameter_count]);
+*/
+	    }
+
+	 else if ( temp_desc[temp_i].type & curve_generic )
+	    {
+	    _pdm_debug("Parent %d is a curve object", temp_i);
+	    _pdm_debug("name is <%s>", (IGRchar *)temp_desc[temp_i].name);
+/*
+	    PDUstrcpy(&(values[parameter_count]), NULL_COL);
+	    _pdm_debug("value is <%s>", (IGRchar *)values[parameter_count]);
+*/
+	    }
+
+	 else if ( temp_desc[temp_i].type & parameter_generic )
+	    {
+	    if ( temp_desc[temp_i].type == double_type )
+	       {
+	       _pdm_debug("Parent %d is a double value", temp_i);
+	       _pdm_debug("name is <%s>", (IGRchar *)temp_desc[temp_i].name);
+
+	       sprintf(double_str, "%lf", rst.var.root_pm_st.value);
+
+	    sts = MEMwrite_data(macro_values, double_str, 
+					macro_values->rows, i+1);
+/*
+	       PDUstrcpy(&(values[parameter_count]), double_str);
+	       _pdm_debug("value is <%s>", (IGRchar *)values[parameter_count]);
+*/
+	       }
+	    else if ( temp_desc[temp_i].type == text_type )
+	       {
+	       _pdm_debug("Parent %d is a text value", temp_i);
+	       _pdm_debug("name is <%s>", (IGRchar *)temp_desc[temp_i].name);
+
+               if (rst.var.text_st.text_string[0])
+      	         sts = MEMwrite_data(macro_values, rst.var.text_st.text_string, 
+					macro_values->rows, i+1);
+/*
+	         PDUstrcpy(&(values[parameter_count]), NULL_COL);
+               else
+  	         PDUstrcpy(&(values[parameter_count]), rst.var.text_st.text_string);
+	       _pdm_debug("value is <%s>", (IGRchar *)values[parameter_count]);
+*/
+	       }
+	    }
+
+	 else if ( temp_desc[temp_i].type & macro_generic )
+	    {
+	    _pdm_debug("Parent %d is a macro", temp_i);
+	    _pdm_debug("name is <%s>", (IGRchar *)temp_desc[temp_i].name);
+
+            sts = MEMwrite_data(macro_values, rst.var.macro_st.name, 
+					macro_values->rows, i+1);
+/*
+	    PDUstrcpy(&(values[parameter_count]), rst.var.macro_st.name);
+	    _pdm_debug("value is <%s>", (IGRchar *)values[parameter_count]);
+*/
+	    }
+
+	 else
+	    {
+	    _pdm_debug("Parent %d has an unrecognized type", temp_i);
+	    _pdm_debug("Template type = <%x>", temp_desc[temp_i].type);
+	    _pdm_debug("name is <%s>", (IGRchar *)temp_desc[temp_i].name);
+/*
+	    status("Parent has an unrecognized type");
+*/
+	    continue;
+	    }
+
+/******************** parameter type selection ************************************/
+
+	    /* increment parameter count */
+/*
+	    parameter_count = parameter_count + 1;
+*/
+	    sts = PDM_S_SUCCESS;
+	    }
+	 else
+	    {
+	    sts = PDM_E_FAILURE;
+	    break;
+	    }
+	 }
+     }
+  else
+     sts = PDM_E_FAILURE;
+
+  if ( 1&sts )
+     {
+     for ( feet_i = 0; feet_i < feet_num; feet_i = feet_i+1 )
+	 {
+         for (i=1; i<macro_values->columns; ++i)
+           {
+	     if (strcmp(feet_desc[feet_i].name, col_name[i]) == 0)
+		break;
+           }
+
+         if (i == macro_values->columns)
+           continue;
+
+	 if ( feet_desc[feet_i].prop == -1 ||
+	      feet_desc[feet_i].prop == 0 )
+	   {
+	     sts = 1;
+	     msg = 1;
+           }
+	 else
+           {
+   	     direct_index = -1;
+	     sts = om$send (msg = message NDmacro.ACgive_structure(&msg, &direct_index,
+			feet_desc[feet_i].name, &rst, &ModuleInfo),
+			senderid = macro->objid,
+			targetid = macro->objid,
+			targetos = macro->osnum);
+  	     _pdm_status2("om$send (NDmacro.ACgive_structure)", sts, msg);
+	     _pdm_debug("foot name = <%s>", (IGRchar *)feet_desc[feet_i].name);
+           }
+
+	 /* Write macro feet values to buffer */
+	 if ( 1&sts && 1&msg )
+	    {
+	    /* get parameter value for foot based on object type */
+
+/******************** parameter type selection ************************************/
+
+	 if ( feet_desc[feet_i].prop == -1 ||
+	      feet_desc[feet_i].prop == 0 )
+           {
+	    _pdm_debug("Parent %d has an unrecognized type", feet_i);
+	    _pdm_debug("Feet type = <%x>", feet_desc[feet_i].prop);
+	    _pdm_debug("name is <%s>", (IGRchar *)feet_desc[feet_i].name);
+/*
+	    status("Parent has an unrecognized type");
+*/
+            continue;
+           }
+
+	 if ( feet_desc[feet_i].prop & point_generic )
+	    {
+	    _pdm_debug("Foot %d is a point", feet_i);
+	    _pdm_debug("name is <%s>", (IGRchar *)feet_desc[feet_i].name);
+
+	    PDUpoint_to_string(rst.var.point_st.pt, point_string);
+
+            sts = MEMwrite_data(macro_values, point_string, 
+					macro_values->rows, i+1);
+/*
+	    PDUstrcpy(&(values[parameter_count]), point_string);
+	    _pdm_debug("value is <%s>", (IGRchar *)values[parameter_count]);
+*/
+	    }
+	 else if ( feet_desc[feet_i].prop & ref_generic )
+	    {
+	    _pdm_debug("Foot %d is a coordinate system", feet_i);
+	    _pdm_debug("name is <%s>", (IGRchar *)feet_desc[feet_i].name);
+
+	    PDUdump_matrix(rst.var.ref_st.t);
+	    PDUmatrix_to_string
+		(PDU_REPORT_ORIENTATION, rst.var.ref_st.t, coordsys_orientation);
+
+            sts = MEMwrite_data(macro_values, coordsys_orientation, 
+					macro_values->rows, i+1);
+/*
+	    PDUstrcpy(&(values[parameter_count]), coordsys_orientation);
+	    _pdm_debug("value is <%s>", (IGRchar *)values[parameter_count]);
+*/
+	    ORIENTATION = coordsys_orientation;
+	    }
+
+	 else if ( feet_desc[feet_i].prop & line_generic )
+	    {
+	    _pdm_debug("Foot %d is a line object", feet_i);
+	    _pdm_debug("name is <%s>", (IGRchar *)feet_desc[feet_i].name);
+/*
+	    PDUstrcpy(&(values[parameter_count]), NULL_COL);
+	    _pdm_debug("value is <%s>", (IGRchar *)values[parameter_count]);
+*/
+	    }
+
+	 else if ( feet_desc[feet_i].prop & conic_generic )
+	    {
+	    _pdm_debug("Foot %d is a conic object", feet_i);
+	    _pdm_debug("name is <%s>", (IGRchar *)feet_desc[feet_i].name);
+/*
+	    PDUstrcpy(&(values[parameter_count]), NULL_COL);
+	    _pdm_debug("value is <%s>", (IGRchar *)values[parameter_count]);
+*/
+	    }
+
+	 else if ( feet_desc[feet_i].prop == circle_type )
+	    {
+	    _pdm_debug("Foot %d is a circle object", feet_i);
+	    _pdm_debug("name is <%s>", (IGRchar *)feet_desc[feet_i].name);
+/*
+	    PDUstrcpy(&(values[parameter_count]), NULL_COL);
+	    _pdm_debug("value is <%s>", (IGRchar *)values[parameter_count]);
+*/
+	    }
+
+	 else if ( feet_desc[feet_i].prop == arc_type )
+	    {
+	    _pdm_debug("Foot %d is a arc object", feet_i);
+	    _pdm_debug("name is <%s>", (IGRchar *)feet_desc[feet_i].name);
+/*
+	    PDUstrcpy(&(values[parameter_count]), NULL_COL);
+	    _pdm_debug("value is <%s>", (IGRchar *)values[parameter_count]);
+*/
+	    }
+
+	 else if ( feet_desc[feet_i].prop & lbs_generic )
+	    {
+	    _pdm_debug("Foot %d is a lbs object", feet_i);
+	    _pdm_debug("name is <%s>", (IGRchar *)feet_desc[feet_i].name);
+/*
+	    PDUstrcpy(&(values[parameter_count]), NULL_COL);
+	    _pdm_debug("value is <%s>", (IGRchar *)values[parameter_count]);
+*/
+	    }
+
+	 else if ( feet_desc[feet_i].prop == plan_type )
+	    {
+	    _pdm_debug("Foot %d is a plane object", feet_i);
+	    _pdm_debug("name is <%s>", (IGRchar *)feet_desc[feet_i].name);
+
+/*
+	    PDUstrcpy(&(values[parameter_count]), NULL_COL);
+	    _pdm_debug("value is <%s>", (IGRchar *)values[parameter_count]);
+*/
+	    }
+
+	 else if ( feet_desc[feet_i].prop & curve_generic )
+	    {
+	    _pdm_debug("Foot %d is a curve object", feet_i);
+	    _pdm_debug("name is <%s>", (IGRchar *)feet_desc[feet_i].name);
+/*
+	    PDUstrcpy(&(values[parameter_count]), NULL_COL);
+	    _pdm_debug("value is <%s>", (IGRchar *)values[parameter_count]);
+*/
+	    }
+
+	 else if ( feet_desc[feet_i].prop & parameter_generic )
+	    {
+	    if ( feet_desc[feet_i].prop == double_type )
+	       {
+	       _pdm_debug("Foot %d is a double value", feet_i);
+	       _pdm_debug("name is <%s>", (IGRchar *)feet_desc[feet_i].name);
+
+	       sprintf(double_str, "%lf", rst.var.root_pm_st.value);
+
+            sts = MEMwrite_data(macro_values, double_str,
+					macro_values->rows, i+1);
+/*
+	       PDUstrcpy(&(values[parameter_count]), double_str);
+	       _pdm_debug("value is <%s>", (IGRchar *)values[parameter_count]);
+*/
+	       }
+	    else if ( feet_desc[feet_i].prop == text_type )
+	       {
+	       _pdm_debug("Foot %d is a text value", feet_i);
+	       _pdm_debug("name is <%s>", (IGRchar *)feet_desc[feet_i].name);
+
+               if (rst.var.text_st.text_string[0])
+                 sts = MEMwrite_data(macro_values, rst.var.text_st.text_string, 
+					macro_values->rows, i+1);
+/*
+	         PDUstrcpy(&(values[parameter_count]), NULL_COL);
+               else
+  	         PDUstrcpy(&(values[parameter_count]), rst.var.text_st.text_string);
+	       _pdm_debug("value is <%s>", (IGRchar *)values[parameter_count]);
+*/
+	       }
+	    }
+
+	 else if ( feet_desc[feet_i].prop & macro_generic )
+	    {
+	    _pdm_debug("Foot %d is a macro", feet_i);
+	    _pdm_debug("name is <%s>", (IGRchar *)feet_desc[feet_i].name);
+            sts = MEMwrite_data(macro_values, rst.var.macro_st.name, 
+					macro_values->rows, i+1);
+/*
+	    PDUstrcpy(&(values[parameter_count]), rst.var.macro_st.name);
+	    _pdm_debug("value is <%s>", (IGRchar *)values[parameter_count]);
+*/
+	    }
+
+	 else
+	    {
+	    _pdm_debug("Foot %d has an unrecognized type", feet_i);
+	    _pdm_debug("feetlate type = <%x>", feet_desc[feet_i].prop);
+	    _pdm_debug("name is <%s>", (IGRchar *)feet_desc[feet_i].name);
+/*
+	    status("Foot has an unrecognized type");
+*/
+	    continue;
+	    }
+
+/******************** parameter type selection ************************************/
+
+	    /* increment parameter count */
+/*
+	    parameter_count = parameter_count + 1;
+*/
+	    sts = PDM_S_SUCCESS;
+	    }
+	 else
+	    {
+	    sts = PDM_E_FAILURE;
+	    break;
+	    }
+	 }
+     } 
+  else
+     sts = PDM_E_FAILURE;
+/*
+  _pdm_debug ("%d feet processed", parameter_count - temp_num);
+  _pdm_debug ("%d total parameters processed", parameter_count);
+*/
+  if ( 1&sts )
+     {
+     /* write parameter values to buffer */
+/*  
+   if (parameter_count == macro_values->columns)
+       {
+        sts = PDUwrite_data(macro_values, values, 1);
+        _pdm_status("PDUwrite_data (row of parameter values)", sts);
+       }
+     _pdm_debug("parameter count and buffers columns are not equal",0);
+*/
+     }
+
+  PDUdealloc (&parents);
+/*
+  for ( i = 0; i < macro_values->columns; i = i + 1 )
+      PDUdealloc ( &(values[i]) );
+  PDUdealloc (&values);
+*/
+/*
+  if (PDM_debug_on)
+    {
+      ci$get (prompt = "waiting",
+	    string = string );
+    }
+*/
+  return (sts);
+  }
+
+
+IGRint  PDUappend_macro_values(macro_bufrs, macro_values)
+  struct PDUmacro_definition	*macro_bufrs;
+  MEMptr			*macro_values;
+  {
+    int		sts;
+    struct PDUmacro_definition  *temp;
+   
+    _pdm_debug("In the function PDUappend_macro_values",0);
+
+    if (macro_bufrs == 0)
+      return(PDM_E_FAILURE);
+/*
+    while (macro_bufrs)
+*/
+    do
+      {
+        _pdm_debug("assigning macro_bufrs->next to temp",0);
+ 	temp = macro_bufrs->next;
+
+        if ( *macro_values == (MEMptr) NULL )
+          {
+            _pdm_debug("*macro_values was set to NULL",0);
+            *macro_values = macro_bufrs->definition_bufr;
+            if (PDM_debug_on)
+               MEMprint_buffer("*macro_values",*macro_values,"");
+         
+          }
+        else
+          {
+            _pdm_debug("MEMappending to *macro_values",0);
+            if (PDM_debug_on)
+               MEMprint_buffer("macro_bufrs_def",
+                               macro_bufrs->definition_bufr,"");
+
+            sts = MEMappend (macro_bufrs->definition_bufr, *macro_values);
+            _pdm_status("MEMappend (macro_bufrs->definition_bufr, *macro_values)", sts);
+
+            _pdm_debug("*macro_values buffer after MEMappending",0); 
+            if (PDM_debug_on)
+               MEMprint_buffer("*macro_values",*macro_values,"");
+
+	    if ( sts == MEM_S_SUCCESS )
+	      sts = PDM_S_SUCCESS;
+            else
+    	      sts = PDM_E_APPEND_BUFFER;
+          }
+        _pdm_debug("setting macro_buffrs to temp",0); 
+        macro_bufrs = temp;
+
+      } while (macro_bufrs->next);
+    _pdm_debug("returning from PDUappend_macro_values",0);
+    return(PDM_S_SUCCESS);
+  }
+
+IGRint	PDUprocess_macros (osnum,macros, macro_count)
+  OMuword	osnum;			/* i - object space number */
+  struct GRid	*macros;		/* i - list of macro occurences */
+  IGRint	macro_count;		/* i - number of macro occurrences */
+  {
+  IGRint	sts, msg;		/* return status */
+  IGRint	i;			/* loop index */
+  IGRint	k;			/* macro counter */
+  IGRchar	*macro_name;		/* name of macro for parametric family */
+  IGRchar  	*values[4];		/* array to hold buffer values */
+  IGRint	temp_num;		/* number of parents of the macro    */
+  IGRint	feet_num;		/* number of feet (or named element) in macro */
+  struct stemp	*temp_desc;		/* template description */
+  struct myfeet	*feet_desc;		/* feet description */
+  struct GRid	macro_defn;		/* macro definition */
+  struct ACdb_info db_info;		/* structure for extracting macro part data */
+  MEMptr	macro_values;		/* buffer for macro dynamic/output values */
+  MEMptr	macro_values_app;
+  MEMptr	macro_parts;		/* buffer for macro part list */
+  char		serial_no_string[20];
+  char		**macro_part_data;
+  int		part_row;
+  IGRchar	**parts_values;		/* array of buffer values */
+  IGRchar	quantity_string[10];	/* array to convert quantoty */
+  IGRint	incassem = TRUE;
+  extern int	PDM_debug_on;
+  
+  struct PDUmacro_definition *macro_bufrs;
+
+  _pdm_debug("In the function PDUprocess_macros", 0);
+
+  macro_name = (IGRchar *) NULL;
+  macro_values_app = (MEMptr) NULL;
+
+  macro_bufrs = (struct PDUmacro_definition *) malloc (sizeof 
+			(struct PDUmacro_definition));
+
+  /* initialize the structure */
+  macro_bufrs->family = (char *)NULL;
+  macro_bufrs->definition_bufr = (MEMptr)NULL;
+  macro_bufrs->next = (struct PDUmacro_definition *)NULL;
+
+  if ( part->dynamic_part_list == NULL )
+     {
+     sts = PDUformat_buffer(PDU_REPORT_PARTSPEC, &macro_parts);
+     _pdm_status("PDUformat_buffer(macro_parts)", sts);
+
+     PDUbuffer_data("macro part list buffer after formatting", macro_parts);
+     }
+  else
+     macro_parts = part->dynamic_part_list;
+
+  if ( 1&sts )
+     {
+     k= 0;
+
+     for ( i = 0; i < macro_count; i = i + 1 )
+	 {
+	 if ( !(1&sts) )  break;
+
+         if (PDM_debug_on)
+           printf("processing macro no %d/%d \n", i, macro_count);
+
+         ORIENTATION = default_orientation;
+
+ 	 /* Write database values for macros to part list buffer */
+  	 sts = PDUextract_dbinfo (&(macros[i]), &db_info);
+	 _pdm_status("extract_dbinfo", sts);
+
+	 if ( 1&sts )
+           {
+	    /* check for include cit flag */
+	    parts_values = (char **) malloc (13 * sizeof(char *));
+	    memset(parts_values,NULL,(13 * sizeof(char *)));
+
+	    sprintf(serial_no_string,"%d", db_info.serial_no);
+	    sprintf(quantity_string, "%d", db_info.quantity);
+
+            /* build array of buffer values */
+            PDUfill_in_string(&parts_values[0],db_info.catalog);
+            PDUfill_in_string(&parts_values[1],db_info.part_num);
+            PDUfill_in_string(&parts_values[2],db_info.revision);
+            PDUfill_in_string(&parts_values[3],"");
+            PDUfill_in_string(&parts_values[4],quantity_string);
+            PDUfill_in_string(&parts_values[5],PDU_DEFAULT_HISTORY);
+            PDUfill_in_string(&parts_values[6],serial_no_string);
+            PDUfill_in_string(&parts_values[7],db_info.usage);
+            PDUfill_in_string(&parts_values[8],PDU_DEFAULT_VIEW);
+
+	    _pdm_debug("catalog = %s"      , parts_values[0]);
+	    _pdm_debug("part_num = %s"     , parts_values[1]);
+	    _pdm_debug("revision = %s"     , parts_values[2]);
+	    _pdm_debug("quantity = %s"     , parts_values[4]);
+            _pdm_debug("serial_no = %s"    , parts_values[6]);
+            _pdm_debug("usage = %s"        , parts_values[7]);
+
+	    incassem = PDUcheck_incassem_flag(parts_values, osnum);
+            _pdm_status("PDUcheck_incassem_flag",incassem);
+
+            if (incassem == FALSE)
+              continue;
+
+	    /* increment count of macros occurences that are database parts */
+	    k= k+1;
+
+	    if (db_info.quantity > 0)
+	      {
+ 	   	/* get the macro definition for this macro occurrence */
+                sts = om$send (msg = message ACcpx.find_macro(&macro_defn),
+			senderid = macros[i].objid,
+			targetid = macros[i].objid,
+			targetos = macros[i].osnum);
+	        _pdm_status("om$send (ACcpx.find_macro)", sts);
+
+	        if ( 1&sts )
+	          {
+	           /* get the macro name from the macro definition */
+	           sts = om$send(msg = message ACcpx_defn.ACgive_name(&macro_name),
+			  senderid = macro_defn.objid,
+			  targetid = macro_defn.objid,
+			  targetos = macro_defn.osnum);
+	           _pdm_status("om$send (ACcpx_defn.ACgive_name)", sts);
+
+
+  	           if ( 1&sts )
+		     {
+		      _pdm_debug("macro name = %s", (IGRchar *)macro_name);
+
+  		      macro_values = (MEMptr) NULL;
+		      sts = PDUget_macro_format(macro_bufrs, 
+				db_info.catalog, db_info.part_num, 
+				db_info.revision, &macro_values);
+		      _pdm_status("PDUget_macro_format", sts);
+/*
+  		          PDUbuffer_data("macro values buffer after formatting", macro_values);
+*/
+		    }
+  	          if ( 1&sts )
+		    {
+		     /* Extract macro parent descriptions */
+		     sts = PDUextract_parameters (&macro_defn, &temp_desc, &temp_num,
+					    &feet_desc, &feet_num );
+	 	     _pdm_status("PDUextract_parameters", sts);
+		    }
+
+	          if ( 1&sts )
+		    {
+		     /* Write parameter values of macro to buffer */
+		     sts = PDUextract_values (&(macros[i]), temp_desc, temp_num,
+				feet_desc, feet_num, 
+				db_info.serial_no, macro_values);
+	 	     _pdm_status("PDUextract_values", sts);
+
+		     if ( !(1&sts))
+                       {
+			 if (PDM_debug_on)
+   		     printf("cannot extract values for macro %2d %5d <%s> \n", 
+			macros[i].osnum, macros[i].objid, macro_name);
+                         sts = 1;
+			 continue;
+		       } 
+		    } /* end if extract parameters successful */
+
+    	          /* write macro part specification to macro part list buffer */
+	          if ( 1&sts )
+		    {
+                     /* check for family name in buffer */
+                     sts = MEMbuild_array(macro_parts);
+                     _pdm_status("MEMbuild_array(macro_parts)", sts);
+
+                     if (sts != MEM_S_SUCCESS)
+                       sts = PDM_E_BUILD_BUFFER_ARRAY;
+                     else
+                       {
+			 sts = PDM_S_SUCCESS;
+
+                         macro_part_data = (char **)(macro_parts)->data_ptr;
+
+                         for (part_row = 0; part_row < (macro_parts)->rows; 
+			      part_row = part_row + 1)
+   		   	   {
+                             if (strcmp(macro_part_data[((macro_parts)->columns *
+				part_row) + 0], db_info.catalog) == 0)
+                               break;
+                           }
+
+                         if (part_row == (macro_parts)->rows)
+                           {
+   		            values[0] = db_info.catalog;
+/*
+		            values[1] = db_info.part_num;
+		            values[2] = db_info.revision;
+    		            strcpy (serial_no_string, itoa(db_info.serial_no));
+   		            values[3] = serial_no_string;
+*/
+		            sts = PDUwrite_data(macro_parts, values, 0);
+		            _pdm_status("PDUwrite_data (macro_parts)", sts);
+                          } /* if macro_parts == part_row */
+                       } /* sts != 0 */
+		    } /* extract parameters values fails */
+              } /* if ACfind_macro was successful */
+            else
+	       sts = PDM_E_FAILURE;
+            } /* if db_info.quantity > 0 */
+   	    /* Write additional row to child list buffer */
+	    if ( 1&sts )
+              {
+   		sts = PDUrecord_placement(osnum,&db_info);
+  		_pdm_status("PDUrecord_placement", sts);
+     	      }
+
+            /* get the user defined attr values */
+	    if ( 1&sts )
+              {
+   		sts = PDUget_user_defined_values(osnum,db_info,macro_values);
+  		_pdm_status("PDUrecord_placement", sts);
+     	      }
+
+	  } /* if extract db_info was successful */
+       else
+	  {
+	  /* skip the macro if there is no db_info */
+	  continue;
+          }
+     } /* end for */
+   }/* if format_buffer was successful */
+
+  _pdm_debug("%d macros were processed", macro_count);
+  _pdm_debug("%d macro parts were found", k);
+  
+  if (part->dynamic_value_list)
+    macro_values_app = part->dynamic_value_list;
+
+  sts = PDUappend_macro_values(macro_bufrs, &macro_values_app);
+  _pdm_status ("PDUappend_macro_values", sts);
+
+  if (sts == PDM_S_SUCCESS)
+    part->dynamic_value_list = macro_values_app;
+
+  part->dynamic_part_list = macro_parts;
+  PDUcleanup_macro_defs(macro_bufrs);
+
+  return (sts);
+  }
+  
+
+IGRint	PDUget_macros (osnum, osid, p_macros, p_macro_count)
+  GRspacenum	osnum;		/* checkin os number */
+  GRobjid	osid;		/* objid for checkin os */
+  struct GRid	**p_macros;	/* o - list of macro occurences in file */
+  IGRint	*p_macro_count;	/* o - number of macro occurrences in checkin file */
+  {
+  IGRint	sts, msg;	/* return status */
+  IGRint	i;		/* loop index */
+  int		j;
+
+  _pdm_debug("In function PDUget_macros", 0);
+
+  *p_macro_count= 0;
+
+  /* set module environment structure */
+  PDUget_module_env(osid, osnum);
+
+  /* get count of all macros placed */
+  sts = ACdb_info_get_objects (osnum, p_macros, p_macro_count);
+  _pdm_status ("ACdb_info_get_objects(macros placed)", sts);
+  _pdm_debug ("ACdb_info_get_objects: count = %d", *p_macro_count);
+  sts = 1;
+
+  if ( *p_macro_count == 0 )
+     return (PDM_E_PART_NOT_FOUND);
+
+  for (i = 0; i < *p_macro_count - 1; i = i + 1)
+    {
+      if ((*p_macros)[i+1].objid == (*p_macros)[i].objid)
+        {
+	  if (PDM_debug_on)
+	    printf("skipping %d \n", (*p_macros)[i].objid);
+	  for (j = i+1; j < *p_macro_count; j = j + 1)
+	     (*p_macros)[j-1].objid = (*p_macros)[j].objid;
+          *p_macro_count = *p_macro_count - 1;
+	}
+    }
+
+  return (sts);
+  }
+
+IGRint PDUreport_parametric_bomparts( osnum, osid)
+  OMuword	osnum;
+  OM_S_OBJID	osid;
+  {
+  IGRint	sts;		/* return status */
+  struct GRid	*macros;	/* list of macro occurences */
+  IGRint	macro_count;	/* number of macro occurrences in checkin file */
+  struct ACdb_info db_info;		/* structure for extracting macro part data */
+  IGRint	i,k;
+
+  _pdm_debug("In the PDUreport_parametric_bomparts function",0);
+
+  strcpy(default_orientation, PDU_TOP);
+  strcpy(coordsys_orientation, NULLSTR);
+
+  sts = PDUget_macros (osnum, osid, &macros, &macro_count);
+  _pdm_status("PDUget_macros", sts);
+
+  if (sts == PDM_E_PART_NOT_FOUND)
+    return(sts);
+
+  for ( i = 0; i < macro_count; i = i + 1 )
+    {
+      if ( !(1&sts) )  break;
+
+      if (PDM_debug_on)
+        printf("processing macro no %d/%d \n", i, macro_count);
+
+      ORIENTATION = default_orientation;
+
+      /* Write database values for macros to part list buffer */
+      sts = PDUextract_dbinfo (&(macros[i]), &db_info);
+      _pdm_status("extract_dbinfo", sts);
+
+      if ( 1&sts )
+        {
+	sts = PDUrecord_placement(osnum,&db_info);
+	_pdm_status("PDUrecord_placement", sts);
+	}
+     }
+  return(sts);
+  }
+
+IGRint PDUget_parmpart_serial(osnumber, serial)
+  OMuword	osnumber;
+  IGRint	*serial;
+  {
+  IGRint	sts;		/* return status */
+  OM_S_OBJID	osid;
+  IGRint	macro_count;	/* number of macro occurrences in checkin file */
+  struct GRid	*macros;	/* list of macro occurences */
+  struct ACdb_info db_info;		/* o - structure for extracting macro part data */
+  IGRint	i;
+
+  macros = (struct GRid *) NULL;
+  *serial = 0;
+
+  sts = om$osnum_to_oso_objid(osnum = osnumber, p_objid = &osid);
+
+  /* 1. Get list of macro occurrences from file */
+  sts = PDUget_macros (osnumber, osid, &macros, &macro_count);
+  _pdm_status("PDUget_macros", sts);
+  
+  if (sts == PDM_E_PART_NOT_FOUND)
+    return(PDM_S_SUCCESS);
+
+  for (i=0; i<macro_count; i=i+1)
+    {
+	sts = PDUextract_dbinfo(&(macros[i]), &db_info);
+	_pdm_status("PDUextract_dbinfo",sts);
+
+        if (1&sts)
+          *serial = _pdm_max(*serial, db_info.serial_no);
+    }
+  return(sts);
+  }
+
+IGRint PDUget_user_defined_values(osnum, db_info, macro_values)
+  OMuword	osnum;
+  struct ACdb_info db_info;		/* structure for extracting macro part data */
+  MEMptr	macro_values;		/* buffer for macro dynamic/output values */
+  {
+    IGRint	sts;
+    IGRchar	**data;
+    IGRchar	**columns;
+    IGRint	i;
+    IGRchar	serial_no_string[10];
+    IGRchar	*value;
+
+    sts = MEMbuild_array(macro_values);
+
+    data = (char **)macro_values->data_ptr;
+    columns = (char **)macro_values->column_ptr;
+
+    for (i=2; i<macro_values->columns; ++i)
+      {
+	if (strcmp(data[(macro_values->columns * (macro_values->rows - 1)) +i],
+		"") == 0)
+          {
+	    sprintf(serial_no_string,"%d",db_info.serial_no);
+
+	    value = NULL;
+
+	    sts = PDUget_parm_attr_value(db_info.catalog,
+					 db_info.part_num,
+					 db_info.revision,
+					 serial_no_string,
+					 columns[i],
+					 osnum,
+					 &value);
+
+	    _pdm_status("PDUget_parm_attr_value",sts);
+
+            if (strcmp(value,"\1"))
+              {
+                 sts = MEMwrite_data(macro_values,value,macro_values->rows,
+					i+1);
+		 _pdm_status("MEMwrite_data",sts);
+              }	      
+	  }		
+      }
+
+    return(PDM_S_SUCCESS);
+  }  
+
+IGRint PDUedit_macro_library()
+
+  {
+  IGRint status;
+  extern IGRchar *PDU_macro_catalog;
+  extern IGRchar *PDU_macro_partid;
+  extern IGRchar *PDU_macro_partrev;
+  extern IGRchar *PDU_macro_name;
+  extern struct  PDUrefresh *refresh;
+  long msg,NumberOfBytes,BytesReceived;
+  struct GRid header;
+  extern short PDU_checkin_lib;
+
+  _pdm_debug("In PDUedit_macro_library", 0);
+
+   /* call function to edit macro header */
+  NumberOfBytes = sizeof(ModuleInfo);
+  gr$get_module_env( msg = &msg,
+		     sizbuf = &NumberOfBytes,
+		     buffer = &ModuleInfo,
+		     nret = &BytesReceived);
+  _pdm_status ("gr$get_module_env", msg);
+
+   _pdm_debug("macro name = <%s>", PDU_macro_name);
+   status = GetMacroHeaderGivenName(PDU_macro_name, &ModuleInfo, &header);
+   _pdm_status("GetMacroHeaderGivenName", status);
+
+   if (status == 0)
+     return(PDM_E_FAILURE);
+
+  status = PDUis_macro_edited(&header);
+  _pdm_status("PDUis_macro_edited", status);
+
+  if (status == 0)
+  {
+  status = PDUedit_macro(&header);
+  _pdm_status("PDUedit_macro", status);
+
+  if (status == 0)
+    return(PDM_E_FAILURE);
+
+  ac$save_wd();
+  }
+
+  status = PDM_S_SUCCESS;
+  if (PDU_checkin_lib)
+  {
+  PDUfill_in_string(&refresh->rev_catalog, PDU_macro_catalog);
+  PDUfill_in_string(&refresh->rev_partid, PDU_macro_partid);
+  PDUfill_in_string(&refresh->rev_revision, PDU_macro_partrev);
+  refresh->command = PDC_M_CHECKIN;
+  PDUmessage_trans(PDC_M_CHECKIN, 'v');
+  status = PDUexternal();
+  _pdm_status("PDUexternal", status);
+  PDUmessage_trans(status, 's');
+  PDUfill_in_string(&refresh->rev_catalog, NULL);
+  PDUfill_in_string(&refresh->rev_partid, NULL);
+  PDUfill_in_string(&refresh->rev_revision, NULL);
+  }
+  return(status);
+  }
+  
+IGRint PDUcvt_macro_library(macro_name)
+
+IGRchar* macro_name;
+  {
+  IGRint status;
+  long msg,NumberOfBytes,BytesReceived;
+  struct GRid header;
+
+  _pdm_debug("In PDUcvt_macro_library", 0);
+
+   /* call function to edit macro header */
+  NumberOfBytes = sizeof(ModuleInfo);
+  gr$get_module_env( msg = &msg,
+		     sizbuf = &NumberOfBytes,
+		     buffer = &ModuleInfo,
+		     nret = &BytesReceived);
+  _pdm_status ("gr$get_module_env", msg);
+
+   _pdm_debug("macro name = <%s>", macro_name);
+  printf("GetMacroHeaderGivenName \n");
+   status = GetMacroHeaderGivenName(macro_name, &ModuleInfo, &header);
+   _pdm_status("GetMacroHeaderGivenName", status);
+
+   if (status == 0)
+     return(PDM_E_FAILURE);
+
+  printf("PDUis_macro_edited \n");
+  status = PDUis_macro_edited(&header);
+  _pdm_status("PDUis_macro_edited", status);
+
+  if (status == 0)
+  {
+  printf("PDUedit_macro \n");
+  status = PDUedit_macro(&header);
+  _pdm_status("PDUedit_macro", status);
+
+  if (status == 0)
+    return(PDM_E_FAILURE);
+
+  printf("ac$save_wd \n");
+  status = ac$save_wd();
+  _pdm_status("ac$save_wd", status);
+  }
+
+  status = PDM_S_SUCCESS;
+  return(status);
+  }
+  
+IGRint PDUattach_macro_library(catalog, part, rev, macro_lib)
+
+IGRchar *catalog;
+IGRchar *part;
+IGRchar *rev;
+IGRchar **macro_lib;
+
+  {
+  IGRint status;
+  IGRint i;
+  IGRint file_col;
+  IGRint type_col;
+  IGRchar **data_row = NULL;
+  MEMptr file_bufr = NULL;
+  extern short PDU_checkin_lib;
+
+  _pdm_debug("In PDUattach_macro_library", 0);
+
+  status = PDMget_filenames(catalog, part, rev, &file_bufr);
+  _pdm_status("PDMget_filenames", status);
+  if (( status != PDM_S_SUCCESS ) || (file_bufr == NULL))
+    return(status);
+  else if (file_bufr->rows == 0)
+    return(PDM_I_NO_FILES_FOUND);
+
+    status = MEMbuild_array(file_bufr);
+  _pdm_status("MEMbuild_array", status);
+
+  if (status != MEM_S_SUCCESS)
+    {
+    status = PDM_E_BUILD_BUFFER_ARRAY;
+    PDUmessage(status, 's');
+    return(status);
+    }
+  PDUsetup_buffer(file_bufr, ROW, &data_row);
+  PDUget_buffer_col(file_bufr, "n_cofilename", &file_col);
+  PDUget_buffer_col(file_bufr, "n_filetype", &type_col);
+  _pdm_debug("rows = <%d>", file_bufr->rows);
+  if (file_bufr->rows == 1) 
+    PDUfill_in_string(macro_lib, data_row[file_col]);
+  else if (file_bufr->rows == 0)
+    return(PDM_I_NO_FILES_FOUND);
+  else
+    {
+    for (i = 0; i < file_bufr->rows; i++)
+     if (strcmp(data_row[(file_bufr->columns * i) + type_col], "M") == 0)
+      {
+      _pdm_debug("file type of M found", 0);
+      PDUfill_in_string(macro_lib, data_row[(file_bufr->columns * i) + 
+                        file_col]);
+      break;
+      }
+    }
+    
+  if (*macro_lib == NULL) 
+    return(PDM_I_NO_FILES_FOUND);
+  else if (strcmp(*macro_lib, "") == 0)
+    return(PDM_I_NO_FILES_FOUND);
+  
+   status = PDUverify_file(*macro_lib);
+   _pdm_status("PDUverify_file", status);
+
+  if (status != PDM_S_SUCCESS)
+    return(status);
+
+  /* attach macro library */
+  status = ac$construct_path(mode = AC_ADD_PATH, 
+                             name =  *macro_lib);
+  _pdm_status("ac$construct_path", status);
+
+  return(PDM_S_SUCCESS); 
+  }
+
+int PDUvalidate_expression(text)
+
+IGRchar *text;
+
+  {
+  IGRint status;
+  struct data_struct ret_val;
+  IGRchar **arg_list = NULL;
+  IGRchar type_obtained;
+  IGRint  arg_num;
+  
+  _pdm_debug("IN PDUvalidate_expression", 0);
+
+  status = new_exp_Parse(text,&ret_val,&arg_list,&arg_num,0,&type_obtained);
+  _pdm_status("new_exp_Parse", status);
+
+  if (!(status&1))
+    return(PDM_E_FAILURE);
+
+  return(PDM_S_SUCCESS);
+  }
+
+IGRint PDUprocess_function(filename)
+
+IGRchar *filename;
+  {
+
+   IGRint sts;
+   IGRint response;
+   IGRint length;
+   IGRchar *file = NULL;
+   GRobjid ppl_objid;
+   GRobjid ppl_objid1;
+   extern IGRchar *PDU_attr_value;
+   extern struct PDUstorage *storage;
+
+
+   _pdm_debug("storage path name = <%s>", storage->path_name);
+   length = strlen(filename) + strlen(storage->path_name) + 5;
+   file = (char *)malloc(length);
+   memset(file, NULL, length);
+   strcpy(file, storage->path_name);
+   strcat(file, "/");
+   *((char *) strrchr(filename, '.')) = '\0';
+   strcat(file, filename);
+   _pdm_debug("file = <%s>", file);
+   sts = ci$load(file_name = file,
+                file_id         = &ppl_objid1,
+                sender_id       = NULL_OBJID);
+
+   if( ppl_objid1 == NULL_OBJID )
+     {
+     _pdm_debug("ci$load FAILED", 0);
+      return(0);
+     }
+
+
+   sts = ci$run(file_id = &ppl_objid1,
+                sender_id=NULL_OBJID,
+                retval = &response );
+
+   sts = ci$load(file_name = "process_val",
+                file_id         = &ppl_objid,
+                sender_id       = NULL_OBJID);
+
+   if( ppl_objid == NULL_OBJID )
+     {
+     _pdm_debug("ci$load FAILED", 0);
+      return(0);
+     }
+
+
+   sts = ci$run(file_id = &ppl_objid,
+                sender_id=NULL_OBJID,
+                retval = &response );
+   return(PDM_S_SUCCESS);
+  }
+
+IGRint PDUis_macro_library(filename)
+
+IGRchar *filename;
+  {
+
+   IGRint status,sts;
+   IGRint index;
+   IGRint name_len = 0;
+   IGRlong msg;
+   IGRchar mount_name[40];
+   IGRchar name[40];
+   GRobjid osid = NULL_OBJID;
+   OMuword osnum;
+   GRobjid objid;
+
+
+   _pdm_debug("PDUis_macro_library", 0);
+  /* Construct file mount name */
+  strcpy(mount_name, ":");
+  strcat(mount_name, filename);
+
+  /* Get osnum of invis space */
+  status = ex$retrieve_module (
+                               filename = filename,
+                               file_no = &index,
+                               ftype = EX_invisible,
+                               flag = EX_read_only,
+                               fstat = EX_default,
+                               type = EX_ACTINV,
+                               mount_name = mount_name,
+                               msg = &msg
+                              );
+ _pdm_status ("ex$retrieve_module", status);
+
+ status = ex$get_invis_info_by_index (
+                                      index = index,
+                                      mod_osnum = &osnum,
+                                      mod_id = &objid,
+                                      filed_id = &osid
+                                     );
+ _pdm_status ("ex$get_invis_info_by_index", status);
+
+status = ac$lib_name( osnum = osnum, name_size = 40, name = name, 
+                      name_len = &name_len);
+_pdm_status("ac$lib_name", status);
+_pdm_debug("name_len = <%d>", name_len);
+if (name_len > 1)
+  status = 1;
+else
+  status = 0;
+
+ /* Close and save object space */
+ sts = ex$close_module (
+                           index = index,
+                           flag = 0 | EX_ACTINV,
+                           ftype = EX_invisible
+                          );
+ _pdm_status ("ex$close_module", sts);
+
+  return(status);
+  }
+
+IGRint PDUis_cell_library(filename)
+
+IGRchar *filename;
+  {
+
+   IGRint status,sts;
+   IGRint index;
+   IGRint name_len;
+   IGRlong msg;
+   IGRchar mount_name[40];
+   IGRchar app[20];
+   GRobjid osid = NULL_OBJID;
+   OMuword osnum;
+   GRobjid objid;
+
+
+   _pdm_debug("PDUis_cell_library", 0);
+  /* Construct file mount name */
+  strcpy(mount_name, ":");
+  strcat(mount_name, filename);
+
+  /* Get osnum of invis space */
+  status = ex$retrieve_module (
+                               filename = filename,
+                               file_no = &index,
+                               ftype = EX_invisible,
+                               flag = EX_read_only,
+                               fstat = EX_default,
+                               type = EX_ACTINV,
+                               mount_name = mount_name,
+                               msg = &msg
+                              );
+ _pdm_status ("ex$retrieve_module", status);
+
+ status = ex$get_invis_info_by_index (
+                                      index = index,
+                                      mod_osnum = &osnum,
+                                      mod_id = &objid,
+                                      filed_id = &osid
+                                     );
+ _pdm_status ("ex$get_invis_info_by_index", status);
+
+    status =
+    om$send(mode = OM_e_wrt_object,
+            msg = message module.mod_info(EX_INQ, NULL, NULL, app, 20),
+            senderid = NULL_OBJID,
+            targetid = objid,
+            targetos = osnum);
+    _pdm_debug("app = <%s>", app);
+    if (status &1)
+    {
+        if (! strcmp(app, "cell"))
+        {
+        status = 1;
+        }
+        else
+        status = 0;
+    }
+    else
+      status = 0;
+
+ /* Close and save object space */
+ sts = ex$close_module (
+                           index = index,
+                           flag = 0 | EX_ACTINV,
+                           ftype = EX_invisible
+                          );
+ _pdm_status ("ex$close_module", sts);
+
+  return(status);
+  }
+
+IGRint PDUinitialize_help()
+
+  {
+
+   IGRint status,sts;
+   static IGRint flag = FALSE;
+
+  _pdm_debug("in PDUinitialze_help", 0);
+   status = ex$is_help_active();
+   _pdm_status("ex$is_help_active", status);
+
+   if ((!status) && (!flag))
+     {
+     status = ex$help_init();
+     _pdm_status("ex$ help_init", status);
+     flag = TRUE;
+     status = PDM_S_SUCCESS;
+     }
+   status = PDM_S_SUCCESS;
+
+  return(status);
+  }
+
+end implementation COpdu;

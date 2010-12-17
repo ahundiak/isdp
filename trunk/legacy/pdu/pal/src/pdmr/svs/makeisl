@@ -1,0 +1,217 @@
+.SUFFIXES: .c .o
+
+CC = cc
+
+LINKOPT =
+
+SRC = .
+
+IPATH =  \
+	-I$(PDU)/include \
+	-I$(PDM)/include \
+	-I$(EXNUC)/include \
+	-I$(GRNUC)/include \
+	-I$(NFM)/include \
+	-I$(DBA)/include
+
+MOPT = -Dsun=1 -D__sun__=1 -Di386=1 -D__i386=1 -D__i386__=1
+
+ocfiles = $(EXNUC)/bin/ocfiles
+
+
+# Object files 
+
+yacc_objects = \
+	condy.o \
+	viewy.o
+
+lex_objects = \
+	condl.o \
+	viewl.o
+
+c_objects = \
+	svs.o \
+	svswrk.o
+
+objects = \
+	$(yacc_objects) \
+	$(lex_objects) \
+	$(c_objects) 
+
+
+# src group targets
+
+objects_TARGET = objects
+
+$(objects_TARGET): $(objects)
+
+objects_FAST: FASTstart $(objects) FASTfinish $(objects_TARGET)
+
+svs.o : \
+	$(SRC)/svs.c \
+	/usr/include/sys/ieeefp.h \
+	/usr/include/floatingpoint.h \
+	/usr/include/math.h \
+	/usr/include/ctype.h \
+	/usr/include/string.h \
+	/usr/include/malloc.h \
+	$(SRC)/expression.h \
+	/usr/include/stdio.h \
+	$(SRC)/header.h
+
+svswrk.o : \
+	$(SRC)/svswrk.c \
+	/usr/include/stdio.h \
+	$(PDU)/include/PDUextdef.h \
+	$(NFM)/include/MEMstruct.h \
+	$(PDU)/include/PDUstr.h
+
+condy.o : \
+	$(SRC)/condy.y \
+	/usr/include/stdio.h \
+	/usr/include/string.h \
+	/usr/include/ctype.h
+	yacc -dvlt condy.y
+	mv y.tab.h condy.h
+	sed -e 's/yy/PDU_c_yy/g' y.tab.c > out
+	sed -e '1 i\
+#include "header.h"' out > condy.c
+	rm out
+	/opt/SUNWspro/bin/cc -c $(COPT) condy.c
+
+viewy.o : \
+	$(SRC)/viewy.y \
+	/usr/include/stdio.h \
+	/usr/include/string.h \
+	/usr/include/ctype.h
+	yacc -dvlt viewy.y
+	mv y.tab.h viewy.h
+	sed -e 's/yy/PDU_v_yy/g' y.tab.c > out
+	sed -e '1 i\
+#include "header.h"' out > viewy.c
+	rm out
+	/opt/SUNWspro/bin/cc -c $(COPT) viewy.c
+
+condl.o : \
+	$(SRC)/condl.l
+	lex -v condl.l
+	sed -e '1 i\
+#include "condy.h"' lex.yy.c > out
+	sed -f csedcom out > condl.c
+	rm out
+	/opt/SUNWspro/bin/cc -c $(COPT) condl.c
+
+viewl.o : \
+	$(SRC)/viewl.l
+	lex -v viewl.l
+	sed -e '1 i\
+#include "viewy.h"' lex.yy.c > out
+	sed -f vsedcom out > viewl.c
+	rm out
+	/opt/SUNWspro/bin/cc -c $(COPT) viewl.c
+
+PDUsvs.s:	$(objects_TARGET)
+	@echo "Making PDUsvs.s for reactive loading."
+	@echo
+	@echo "Moving condl.o, condy.o, viewl.o, and viewy.o to extention .X"
+	@mv condl.o condl.X
+	@mv condy.o condy.X
+	@mv viewl.o viewl.X
+	@mv viewy.o viewy.X
+	@-mkstubs -o PDUsvs.s -t"Pdu:pdu/pal/src/pdmr/svs" $(objects)
+	@if [ ! -d $(DIR) ] ; then mkdir -p $(DIR) ; fi ;
+	@echo "cp .o files from pal/src/pdmr/svs directory to $(DIR) for reactive loading."
+	@echo
+	@cp *.o $(DIR)
+	@- rm $(DIR)/PDUstubsvs.o
+	@echo "Moving condl.X, condy.X, viewl.X, and viewy.X to extention .o"
+	@mv condl.X condl.o
+	@mv condy.X condy.o
+	@mv viewl.X viewl.o
+	@mv viewy.X viewy.o
+	@echo "Copying condl.o, condy.o, viewl.o and viewy.o to $(PDU)/config/dload/init."
+	@cp condl.o $(PDU)/config/dload/init
+	@cp condy.o $(PDU)/config/dload/init
+	@cp viewl.o $(PDU)/config/dload/init
+	@cp viewy.o $(PDU)/config/dload/init
+	@echo "Compiling PDUstubsvs.o from PDUsvs.s"
+	@as -o PDUstubsvs.o PDUsvs.s
+
+$(c_objects):
+	@if [ "$(WHY)" ]; then echo "\t$(@): $?"; fi
+	@if [ -z "$(VERBOSE_RULES)" ]; \
+	 then \
+	     echo "\t$(SRC)/$(@:.o=.c) -> $(@)"; \
+	 fi
+	@if [ -n "$(@D)" -a "$(@D)" != "." ]; \
+	 then \
+	     if [ -n "$(VERBOSE_RULES)" ]; \
+	     then \
+	         echo "\tcd $(@D)"; \
+	     fi; \
+	     cd $(@D); \
+	 fi; \
+	 if [ -n "$(VERBOSE_RULES)" ]; \
+	 then \
+	     echo "\t$(CC) $(COPT) $(IPATH) $(IPATH1) $(IPATH2) $(MOPT) $(DOPT) $(DOPT1) $(DOPT2) -c $(SRC)/$(@:.o=.c)"; \
+	 fi; \
+	 $(CC) $(COPT) $(IPATH) $(IPATH1) $(IPATH2) $(MOPT) $(DOPT) $(DOPT1) $(DOPT2) -c $(SRC)/$(@:.o=.c)
+	@echo 
+
+.c.o:
+	@if [ "$(WHY)" ]; then echo "\t$<: $?"; fi
+	@if [ -z "$(VERBOSE_RULES)" ]; \
+	 then \
+	     echo "\t$< -> $*.o"; \
+	 else \
+	     echo "\t$(CC) $(COPT) $(IPATH) $(IPATH1) $(IPATH2) $(MOPT) $(DOPT) $(DOPT1) $(DOPT2) -c $*.c"; \
+	 fi
+	@$(CC) $(COPT) $(IPATH) $(IPATH1) $(IPATH2) $(MOPT) $(DOPT) $(DOPT1) $(DOPT2) -c $*.c
+	@echo 
+
+FASTstart:
+	@rm -f opp.list cc.list
+
+FASTfinish:
+	@if [ "$(FAST)" ]; \
+	 then \
+	     if [ -s opp.list ]; \
+	     then \
+	         echo "\topping files"; \
+	         if [ -n "$(VERBOSE_RULES)" ]; \
+	         then \
+	             echo "\t$(ocfiles) $(opp) $(OPPOPT) $(OPPFLAGS) $(DOPT) $(DOPT1) $(DOPT2) `cat opp.list`"; \
+	         fi; \
+	         $(ocfiles) $(opp) $(OPPOPT) $(OPPFLAGS) $(DOPT) $(DOPT1) $(DOPT2) `cat opp.list`; \
+	         sed -e 's/\.[IS]/.c/' <opp.list >>cc.list; \
+	     else \
+	         echo "\tnothing to opp"; \
+	     fi; \
+	     if [ -s cc.list ]; \
+	     then \
+	         echo "\tcompiling files"; \
+	         if [ -n "$(VERBOSE_RULES)" ]; \
+	         then \
+	             echo "\t$(ocfiles) $(CC) $(COPT) $(IPATH) $(IPATH1) $(IPATH2) $(MOPT) $(DOPT) $(DOPT1) $(DOPT2) -c `cat cc.list`"; \
+	         fi; \
+	         $(ocfiles) $(CC) $(COPT) $(IPATH) $(IPATH1) $(IPATH2) $(MOPT) $(DOPT) $(DOPT1) $(DOPT2) -c `cat cc.list`; \
+	         if [ "$(COPT)" != "-g" -a "$(DEBUG)" != "yes" ]; \
+	         then \
+	             echo "\tremoving .c files"; \
+	             rm `cat cc.list`; \
+	         else \
+	             echo "\tleaving .c files"; \
+	         fi; \
+	     else \
+	         echo "\tnothing to compile"; \
+	     fi; \
+	     if [ -n "$(VERBOSE_RULES)" ]; \
+	     then \
+	         echo "\trm -f opp.list cc.list"; \
+	     fi; \
+	     rm -f opp.list cc.list; \
+	 fi
+
+FAST:
+	$(MAKE) FAST=1 objects_FAST
+

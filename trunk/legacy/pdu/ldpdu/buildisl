@@ -1,0 +1,262 @@
+#
+# Test if being executed by Super User. Exit with error if not.
+#
+Test_id=`id | cut -c5`
+if [ $Test_id -ne 0 ]
+then
+   echo "^G"
+   echo "  Must be Super-User to run the build script"
+   echo
+   exit 1
+fi
+
+#
+# Check for date and time argument. Exit with error if argument is absent.
+#
+if (test $# = 0)
+then
+  echo ""
+  echo "   Need a date and time argument (like mmddhhmm)"
+  echo 
+  exit 1
+fi
+
+time="$1"
+
+#echo "Has $GRNUC/bin/GRenv.isl been edited for RISV5 and -K PIC???"
+#read ENVSET
+#if [ "$ENVSET" = "n" ]
+#then
+#exit
+#fi
+#echo
+
+echo "Exporting environment variables"
+
+export PATH1=.:/opt/SUNWspro/bin:/usr/ccs/bin:/opt/ingr/bin:/usr/ccs/lib
+export PATH1=$PATH1:/home/users/ingr/ris/riscli/bin:/home/users/ingr/ris/risdp/bin
+export PATH1=$PATH1:/home/users/ingr/grnucdp/bin
+export PATH1=$PATH1:/usr/openwin/share/include
+export PATH=$PATH:/bin:/usr/bin:/usr/sbin:$PATH1:/usr/ucb
+ 
+export LM_LICENSE_FILE=/opt/SUNWspro/SunTech_License/license.dat
+
+export RIS=/usr2/ingr/ris/risdp		# TBD: Don't know where used
+
+export PDU=/usr2/pduisl
+export NPAL=$PDU/pal
+export FPAL=$NPAL
+export PDM=/usr2/pdmisl
+
+export NFM=/usr2/ingr/nfmdp
+export DBA=/usr2/ingr/dbadev
+export LIBDIR=$NFM
+
+export XINCL=/usr/openwin
+export UMS=/usr2/ingr/ums
+export FORMS=$INGRHOME/xformsdp/xfi
+
+export COMP=cc
+export TARG=isl
+
+export reactive=1
+export REMOVEOBJ=y
+
+export GRCOMPILE_SWITCH=4	# Set compile switches to INTEL Solaris.
+
+. /usr/bin/startup.model	# Found under $MODEL/bin
+
+export COW=y
+export PDULOGNAME=pduisl
+export PDMLOGNAME=pdmisl
+export VERREF=32
+
+export COBCPPOPT="-I$EXNUC/include -I$GRNUC/include -I$BS/include -I$PDU/include -I$UMS/include"
+ 
+export MKDOPT="$MKDOPT -Dunix=1 -D__Sol2__ -DRISV5 -DX11"
+export COMPOPT="$COMPOPT -D__Sol2__ -K PIC"
+
+# I don't know why but -D__Sol2__ was being passed to grmakemake in
+# $PDM/make/make_isl and hence this change here.
+
+export MKMKOPT="$MKMKOPT -D__Sol2__ -DRISV5 -DX11"
+
+export COMP_OPT="$COMPOPT $MKDOPT"
+
+# Used by srcipt 'buildisl' to chgrp of PDM and PDU files.
+export GROUP=user
+
+# Used by $EXNUC/bin/version.sh ???
+PRODUCT_NAME=I/PDU
+PRODUCT_VERSION=03.01.00.08
+IDnumber=SM01052
+
+### make sure LD_LIBRARY_PATH is exported
+export LD_LIBRARY_PATH=/opt/SUNWspro/SC2.0.1
+LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/usr/lib/:/lib
+LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$INGRHOME/lib
+LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/usr/openwin/lib
+LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/opt/ingr/xformsdp/xfi/lib/i86pc
+LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/opt/ingr/ums/lib/i86pc
+LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/opt/ingr/resrc/fontserver
+export LD_LIBRARY_PATH
+
+echo "Completed exporting environment variables"
+
+echo
+echo "Retrieving PDU cpio file"
+echo
+cd $PDU
+ftp -n pdmdel <<- END
+	user root mdel
+	binary
+	cd /usr5/bldc400/pdu32c4
+	get pdu24.cpio
+	quit
+	END
+
+echo
+echo "Retrieving PDM cpio file"
+echo
+cd $PDM
+ftp -n pdmdel <<- END
+	user root mdel
+	binary
+	cd /usr5/bldc400/pdm32c4
+	get pdm24.cpio
+	quit
+	END
+
+
+cd $PDU
+cat pdu24.cpio | compress -d | cpio -ivmud
+find . -print | xargs chmod 777
+find . -print | xargs chown $PDULOGNAME
+find . -print | xargs chgrp $GROUP
+rm pdu24.cpio
+ 
+cd $PDM
+cat pdm24.cpio | compress -d | cpio -ivmud
+find . -print | xargs chmod 777
+find . -print | xargs chown $PDMLOGNAME
+find . -print | xargs chgrp $GROUP
+rm pdm24.cpio
+
+# Make sure INTEL Solaris build is being made.
+
+if [ "$TARG" != "isl" ]
+then
+  echo "TARG variable not set to 'isl'"
+  echo
+  exit 1
+fi
+
+echo
+echo "Removing libraries"
+echo
+cd $PDU/lib
+rm PDU*.a
+cd $PDM/lib
+rm PDM*.a
+cd $PDU/lib/$TARG
+rm PDU*.a
+cd $PDM/lib/$TARG
+rm PDM*.a
+ 
+echo
+echo "Compiling message files"
+echo
+cd $PDU/messages
+umsall
+
+cd $PDM/make
+./make_isl
+
+cd $PDU/ldpdu
+./makeisl
+
+cd $PDM/pdmapi/src
+./makeislapi
+
+echo
+echo "Retrieving command tables"
+echo
+cd $PDU/config/tables
+cp $PDU/ldpdu/tables_isl/*_table .
+
+# Added by raj to compile patch files.
+# All the patch files are checked into ICOM and exist under
+# directory by name patch_src under $PDU
+
+cd $PDU/patch_src
+rm -f makefile
+$GRNUC/bin/grmakemake -i $PDU/include/isl_igno patch.m
+$GRNUC/bin/grmake
+
+ld -z text -G -o $PDU/config/dload/patch/PDMnfm_sac.so PDMnfm_sac.o
+
+# fixes have ben integrated into EMS 3.2
+#ld -z text -G -o $PDU/config/dload/patch/EMsplitpart.so EMsplitpart.o
+#ld -z text -G -o $PDU/config/dload/patch/nci_macroi.so	nci_macroi.o
+#ld -z text -G -o $PDU/config/dload/patch/GRprtname.so GRprtname.o
+#ld -z text -G -o $PDU/config/dload/patch/ACconstgrmsg.so ACconstgrmsg.o
+
+cd $PDU/design
+ld -z text -G -o $PDU/config/dload/patch/EMpuldwnlst.so EMpuldwnlst.o
+
+cd $PDU/design
+ld -z text -G -o $PDU/config/dload/patch/PDUdispasm.so PDUdispasm.o
+ld -z text -G -o $PDU/config/dload/patch/PDUemshooks.so PDUemshooks.o
+ld -z text -G -o $PDU/config/dload/patch/EXfile_form.so EXfile_form.o
+ld -z text -G -o $PDU/config/dload/patch/PMplprto.so PMplprto.o
+ld -z text -G -o $PDU/config/dload/patch/PMdlprto.so PMdlprto.o
+
+#copy nfm startup files to appropriate directories
+cp $PDU/ldpdu/nfm /etc/init.d
+cp $PDU/ldpdu/K99nfm /etc/rc0.d
+cp $PDU/ldpdu/S99nfm /etc/rc2.d
+cp $PDU/ldpdu/nfmd.conf /etc
+ 
+#remove this empty file if it is there
+rm $PDU/config/dload/patch/grmake
+rm $PDM/pdmapi/apiexamples/api_driver
+rm $PDM/pdmapi/apiexamples/core
+rm $PDM/pdmapi/apiexamples/NFMenv.dat
+rm $PDM/pdmapi/apiexamples/*.o
+
+echo
+echo "Collecting products"
+echo
+cd $PDU/delivery
+./collect_isl $time
+echo
+./deliver_isl $time
+echo
+./collect_islsrc $time
+echo
+./deliver_islsrc $time
+echo
+./collect_isldp $time
+echo
+./deliver_isldp $time
+echo
+
+cd $PDM/delivery
+./collect_islsrc $time
+echo
+./deliver_islsrc $time
+echo
+
+echo
+echo Changing mode on files
+cd $PDU
+find . -print | xargs chmod 777
+find . -print | xargs chown $PDULOGNAME
+find . -print | xargs chgrp $GROUP
+ 
+cd $PDM
+find . -print | xargs chmod 777
+find . -print | xargs chown $PDMLOGNAME
+find . -print | xargs chgrp $GROUP
+
+cd $PDU

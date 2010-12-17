@@ -1,0 +1,240 @@
+#include        "ciminimum.h"
+#include        "cimacros.h"
+#include        "PDUstr.h"
+#include        "ex.h"
+#include        "igrdp.h"
+#include        "cieveryone.h"
+#include        "cimacros.h"
+#include        "acdef.h"
+#include        "acmacros.h"
+#include        "macro.h"
+#include        "grdpbdef.h"
+#include        "grdpb.h"
+#include        "grdpbmacros.h"
+#include        "growner.h"
+#include        "igrdp.h"
+#include        "madef.h"
+#include        "exdef.h"
+#include        "exmacros.h"
+#include        "dp.h"
+#include 	"PALglbs.h"
+#include 	"PALlctypes.h"
+#include	"PALmsg.h"
+#include 	"FI.h"
+#include	"msdef.h"
+#include	"msmacros.h"
+
+#include 	"asmacros.h"
+#include 	"PDUerror.h"
+#include 	"PDUforms.h"
+
+
+/* extern variable declarations */
+extern		struct PDUrefresh	*refresh;
+extern 		Form 			place_part_f;
+extern 		int 			PALMacintf;
+extern		int			PDU_auto_part_selection;
+extern		int			Num_Stat, Num_Dyn;
+extern		char			**StatAttribs, **StatTypes, **StatUnits;
+extern		char			**StatDesc;
+extern		struct GRid		*grid_list; 
+extern		MEMptr			PALdyn_bufr;
+extern		MEMptr			filterbuf;
+extern		struct GRid		DYNA_GRID_LIST[];
+extern		struct PDUforms		forms;
+extern		Form		        PDU_form_id;
+
+/* extern function definitions */
+extern 		_pdm_debug();
+extern 		PDUtranslate_message();
+extern		LoadLib_N_PrepareAttribs();
+extern		BreakLocAndNonLocDYn();
+extern		AddDynattrsToColl();
+extern		SetDynTemp();
+extern          GetStaticAttribsAddToRgObj();
+extern		Instance_Macro();
+extern		ret_fromGpart();
+extern		get_active_form_ptr();
+extern		MEMclose();
+extern		PDUdynamics_for_part();
+extern		get_mod_info();
+extern		malloc();
+extern		free();
+#ifndef sparc
+extern		sprintf();
+#endif
+extern		MSmessage();
+extern		PALlocate_by_keyin();
+extern		PALlocate_by_datapt();
+extern		SetDynAttrs();
+extern		pdmoCleanupMacroLibraryAttachment();
+extern		PDUmessage();
+
+#include 	"PALlocate.h"
+
+main()
+{
+	int ind, num_dynattr, sts;
+	struct	GRid	*rg_grid;
+	struct GRmd_env md_env;
+	struct GRid hdr , *dynexplist;
+	int  *locatables, numloc, num_exps;
+	char **prompts;
+	Form fp;
+	int num_temp, numcoll;
+
+
+	_pdm_debug("Enter Place Parametric Part", 0 );
+
+	PDUmessage(PDM_I_PLACE_PARAM_PART,'s');
+
+	get_mod_info( &md_env );
+
+	sts = 0;
+	dynexplist = NULL;
+
+	_pdm_debug( "Catalog name on entering %s",refresh->rev_catalog); 
+	_pdm_debug( "Part number on entering %s",refresh->rev_partid); 
+	_pdm_debug( "Part revision on entering %s",refresh->rev_revision); 
+	
+	get_active_form_ptr( &fp );
+
+	if( !LoadLib_N_PrepareAttribs( &md_env, fp, &rg_grid, &hdr, &numcoll ) )
+		goto wrapup; 
+
+	_pdm_debug("Loading library complete",0);
+
+	if((PALMacintf == PLCMNT_STD_INTF) || (PALMacintf == PLCMNT_MOD_PART))
+	{
+		/*
+		   The return grid_list will contain the locatable
+                   templates and the collections list
+		*/
+		if(( grid_list != NULL ) && ( PALMacintf == PLCMNT_STD_INTF ))
+			grid_list = NULL ;
+
+        	if( !BreakLocAndNonLocDYn( numcoll, &locatables, &prompts, &numloc ) )
+			goto wrapup;
+
+		_pdm_debug("BreakLoc complete",0);
+disp_form:
+		if( !display_dyn_form() )
+			goto wrapup;
+
+		_pdm_debug("display_dyn_form complete",0);
+                PDU_form_id = forms.design_form_id;
+
+		if( grid_list == NULL )
+		{
+			/* Allocate to grid_list */
+			grid_list = (struct GRid *)malloc( 
+					sizeof(struct GRid)*(numloc+numcoll));
+			if( grid_list == NULL )
+				goto wrapup;
+
+			if( numloc )
+			{
+				sts = GetLocTemplates( locatables, prompts, numloc );
+
+				_pdm_debug("Getloctemplates complete",0);
+
+				if( sts < 0 )
+				{
+					free( grid_list );
+					grid_list = NULL;
+					goto disp_form;
+				}
+
+
+				for( ind = 0; ind < numloc; ind = ind + 1 )
+					grid_list[ind] = DYNA_GRID_LIST[ind];
+			}
+			for( ind = 0; ind < numcoll; ind = ind + 1 )
+				grid_list[numloc+ind] = rg_grid[ind];
+
+			num_temp = numloc + numcoll; 
+
+			MEMclose( &PALdyn_bufr );
+                        PALdyn_bufr = NULL;
+		}
+		else /* Case of Changing the macro with only CS templ, ie.,
+                        ActionuponAccept = PLACE_MACRO in modprt. */
+		{
+			for( ind = 0; ind < numcoll; ind = ind + 1 )
+				grid_list[1+ind] = rg_grid[ind];
+			num_temp = numcoll + 1; /* 1 is for CS already in gridlist */
+		}
+
+		if ( !SetDynTemp( rg_grid, numcoll, 1, &md_env ) ) 
+			goto wrapup;
+
+		_pdm_debug("set dynamic templates complete",0);
+	}
+	else if( PALMacintf == PLCMNT_MAC_INTF ) /* No More User Input Required */
+	{
+		if( !SetDynAttrs( rg_grid, numcoll, &grid_list, &num_temp ))
+			goto wrapup;
+	}
+
+	/* If auto_part_sel ON, set the criteria exps and then place macro */
+
+	_pdm_debug("osnum = %d", md_env.md_id.osnum);
+
+	if( !Instance_Macro( fp, &md_env, &hdr, &rg_grid[0], num_temp, numcoll ) )
+		goto wrapup; 
+
+        PDUmessage(PDM_S_SUCCESS,'s');
+	exit;
+
+wrapup:
+        pdmoCleanupMacroLibraryAttachment(&md_env, refresh->rev_catalog, 
+                                          refresh->rev_partid, 
+                                          refresh->rev_revision);
+        PDUmessage(PDM_E_FAILURE,'s');
+	ret_fromGpart();
+	exit;
+}
+
+display_dyn_form()
+{
+int response;
+
+/* TR# 139419562. Additonal argument for default dynamic values was added.
+   Send NULL here. 26/may/94 - raj.	*/
+/*	if (PDUdynamics_for_part(PALdyn_bufr,filterbuf)  != PDM_S_SUCCESS )*/
+	if (PDUdynamics_for_part(PALdyn_bufr,filterbuf, NULL)  != PDM_S_SUCCESS )
+	{
+               	MEMclose(&PALdyn_bufr);
+                PALdyn_bufr = NULL;
+               	MEMclose(&filterbuf);
+                filterbuf = NULL;
+		return(0);
+        }
+
+        if (filterbuf)
+          {
+          MEMclose(&filterbuf);
+          filterbuf = NULL;
+          }
+  	/* Pause until the form is accepted or cancelled */
+  	_pdm_debug("Waiting on input", 0);
+
+	while ( 1 )
+	{
+  		ci$get(prompt = "", response = &response);
+
+//write("response = ", response ,"\n");
+
+  		if (response == MOVE_ON)
+     			return(1);
+
+  		if (response == RESET)
+     			return(0);
+
+//write("putting back response\n");
+
+/*		ci$put( response = response ); If not MOVE_ON or RESET putback */
+    	}
+}
+
+#include "getloc.h"

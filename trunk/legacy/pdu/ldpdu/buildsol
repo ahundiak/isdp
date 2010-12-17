@@ -1,0 +1,233 @@
+echo $1
+time="$1"
+
+#echo "Has $GRNUC/bin/GRenv.sun5 been edited for RISV5 and -K PIC???"
+#read ENVSET
+#if [ "$ENVSET" = "n" ]
+#then
+#exit
+#fi
+#echo
+
+echo "exporting variables"
+export PATH1=/opt/ingr/ris/risucu/bin:.:/opt/SUNWspro/bin:/usr/ccs/bin:/opt/ingr/bin:/opt/ingr/grnucdp/bin:/usr/ccs/lib:/usr/openwin/share/include:/usr2/ingr/ums/include:.
+export PATH=$PATH:/bin:/usr/bin:/usr/sbin:$PATH1:/usr/ucb:.
+ 
+export LM_LICENSE_FILE=/opt/ingr/SUNWspro/SunTech_License/license.dat
+ 
+export GRCOMPILE_SWITCH=5
+. $GRNUC/bin/startup.grnuc
+
+if [ "$PDUVERSION" = "31" ]
+then
+echo
+echo "Exporting variables for PDU 3.1"
+echo
+
+export RISDEVDIR=/usr/ip32/ris
+export RIS=$RISDEVDIR/riscom
+export PDU=/usr2/pdu30
+export NPAL=/usr2/pdu30/pal
+export FPAL=/usr2/pdu30/pal
+export PDM=/usr2/pdm30
+export NFM=/usr/ip32/nfmdp
+export EXNUC=/opt/ingr/exnucdp
+export GRNUC=/opt/ingr/grnucdp
+export MODEL=/opt/ingr/modeldp
+export BS=/opt/ingr/bspmathdp
+export DBA=/opt/ingr/dbadev
+export FORMS=/opt/ingr/xformsdp/xfi
+export LIBDIR=/opt/ingr/nfmdp
+export UMS=/opt/ingr/ums
+export WS_DIR=/usr2/ws_s
+export DELNODE=pdudev
+export DEL_PSWD=udev
+export RISVER=4
+
+export MKDOPT="$MKDOPT -D__Sol2__ -DSYSV -DSYS5 -DBIT_FIELDS_REVERSED -DINGR -DRUN_X=1 -DRISV4"
+ 
+export MKMKOPT="$MKMKOPT -D__Sol2__  -DRISV4"
+ 
+fi
+
+if [ "$PDUVERSION" = "32" ]
+then
+echo
+echo "Exporting variables for PDU 3.2"
+echo
+
+export RIS=/usr2/ingr/ris/risdp
+export PDU=/usr2/pdu32
+export NPAL=/usr2/pdu32/pal
+export FPAL=/usr2/pdu32/pal
+export PDM=/usr2/pdm32
+export NFM=/usr2/ingr/ip32/nfmdp
+export EXNUC=/opt/ingr/exnucdp
+export GRNUC=/opt/ingr/grnucdp
+export MODEL=/opt/ingr/modeldp
+export BS=/opt/ingr/bspmathdp
+export DBA=/opt/ingr/dbadev
+export FORMS=/opt/ingr/xformsdp/xfi
+export TMPDIR=/usr/tmp
+export DBEDIT=vi
+export LIBDIR=/opt/ingr/nfmdp
+export UMS=/usr2/ingr/ums
+export WS_DIR=/usr/ws_s
+export DELNODE=pdmsrv
+export DEL_PSWD=msrv
+export RISVER=5
+
+
+export MKDOPT="$MKDOPT -D__Sol2__ -DSYSV -DSYS5 -DBIT_FIELDS_REVERSED -DINGR -DRUN_X=1 -DRISV5"
+ 
+export MKMKOPT="$MKMKOPT -D__Sol2__  -DRISV5"
+ 
+fi
+
+export PDULOGNAME=pdu30
+export PDMLOGNAME=pdm30
+
+export COMP=cc
+export COMPOPT="$COMPOPT -Dsparc -D__Sol2__ -K PIC"
+export TARG=Sol2
+export XINCL=/usr/openwin
+export reactive=1
+export REMOVEOBJ=y
+export XINCL=/usr/openwin
+export COW=y
+export EDITOR=vi
+export VERREF=32
+
+export COBCPPOPT="-I/usr2/ip32/exnucdp/include -I/GRNUCSRC/ip32/grnucsource/include -I/usr2/ip32/bspmathdp/include"
+ 
+export COMPILER="cc"
+ 
+echo
+echo "Retrieving PDU cpio file"
+echo
+cd $PDU
+ftp -n pdmdel <<- END
+	user pdu32c4 pdubld
+	binary
+	get pdu24.cpio
+	quit
+	END
+
+echo
+echo "Retrieving PDM cpio file"
+echo
+cd $PDM
+ftp -n pdmdel <<- END
+	user pdm32c4 pdmbld
+	binary
+	get pdm24.cpio
+	quit
+	END
+
+
+cd $PDU
+cat pdu24.cpio | compress -d | cpio -ivmud
+find . -print | xargs chmod 777
+find . -print | xargs chown $PDULOGNAME
+find . -print | xargs chgrp users
+rm pdu24.cpio
+ 
+cd $PDM
+cat pdm24.cpio | compress -d | cpio -ivmud
+find . -print | xargs chmod 777
+find . -print | xargs chown $PDMLOGNAME
+find . -print | xargs chgrp users
+rm pdm24.cpio
+
+echo
+echo "Removing libraries"
+echo
+cd $PDU/lib
+rm PDU*.a
+cd $PDM/lib
+rm PDM*.a
+cd $PDU/lib/$TARG
+rm PDU*.a
+cd $PDM/lib/$TARG
+rm PDM*.a
+ 
+echo
+echo "Compiling message files"
+echo
+cd $PDU/messages
+umsall
+
+cd $PDM/make
+./make_sol2
+
+cd $PDU/ldpdu
+./makesol
+
+cd $PDM/pdmapi/src
+./makesol2api
+
+echo
+echo "Retrieving command tables"
+echo
+cd $PDU/config/tables
+cp /home/pdu30/*_table .
+
+echo
+echo "Moving forms.so to patch directory"
+echo
+cp $PDU/lib/Sol2/forms.so $PDU/config/dload/patch
+
+#cp $PDU/lib/Sol2/ACdyn_coli.so $PDU/config/dload/patch
+# Fixes have been integrated into EMS 3.2
+#cp $PDU/lib/Sol2/EMsplitpart.so $PDU/config/dload/patch
+#cp $PDU/lib/Sol2/GRprtname.so $PDU/config/dload/patch
+#cp $PDU/lib/Sol2/nci_macroi.so $PDU/config/dload/patch
+#cp $PDU/lib/Sol2/ACconstgrmsg.so $PDU/config/dload/patch
+
+cp $PDU/lib/Sol2/PDMnfm_sac.so $PDU/config/dload/patch
+
+#copy nfm startup files to appropriate directories
+cp $PDU/ldpdu/nfm /etc/init.d
+cp $PDU/ldpdu/S99nfm /etc/rc0.d
+cp $PDU/ldpdu/K99nfm /etc/rc2.d
+cp $PDU/ldpdu/nfmd.conf /etc
+ 
+#remove this empty file if it is there
+rm $PDU/config/dload/patch/grmake
+
+echo
+echo "Collecting products"
+echo
+cd $PDU/delivery
+./collect_sol $time
+echo
+./deliver_sol $time
+echo
+./collect_solsrc $time
+echo
+./deliver_solsrc $time
+echo
+./collect_soldp $time
+echo
+./deliver_soldp $time
+echo
+
+cd $PDM/delivery
+./collect_solsrc $time
+echo
+./deliver_solsrc $time
+echo
+
+echo
+echo Changing mode on files
+cd $PDU
+find . -print | xargs chmod 777
+find . -print | xargs chown $PDULOGNAME
+find . -print | xargs chgrp users
+ 
+cd $PDM
+find . -print | xargs chmod 777
+find . -print | xargs chown $PDMLOGNAME
+find . -print | xargs chgrp users
+
+cd $PDU

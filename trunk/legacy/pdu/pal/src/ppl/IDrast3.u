@@ -1,0 +1,544 @@
+#include <stdio.h>
+#include "cieveryone.h"
+#include "cimacros.h"
+#include "OMminimum.h"
+#include "igetypedef.h"
+#include "rasimport.h"
+#include "igrtypedef.h"
+#include "igr.h"
+#include "msdef.h"
+#include "grrasterdef.h"
+#include "igrrasterdef.h"
+#include "igrraster.h"
+#include "grrastermacs.h"
+#include "dpdef.h"
+#include "dp.h"
+#include "igrdp.h"
+#include "madef.h"
+#ifdef ENV5
+#include <tools.h>
+#endif
+#include "dperr.h"
+#include "igecolordef.h"
+#include "igewindef.h"
+#include "igewindow.h"
+#include "gocmacros.h"
+#include "wl.h"
+
+#include "FI.h"
+#include "FIdyn.h"
+
+#include "rsvcm.h"
+#include "parametric.h"
+
+#include "CIforms.h"
+
+#define WHOLE_RAST_BUF_SIZE	300000
+#define	CANCEL_SYMB 111
+
+extern	IGRboolean	RSreadspecs(),
+			RSreadheader(),
+			RSreadrecords(), 
+			RSvisidisplay(),
+			RSinitdithinfo();
+
+extern	IGRshort	*RSget_color_map();
+extern	EX_findmod();
+extern	CMadd_form_to_wl(); 
+extern	CMremove_form_from_wl();
+
+extern	ci_notification();
+extern	FIf_new(), FIf_set_cmd_oid_os(), FIf_display(),
+	FIf_erase(),FIg_set_state_off(), FIf_delete(),
+	FIf_get_attr(), FIf_set_attr(), FIg_new (),
+	FIg_set_standard_variables (), FIg_activate (),
+	FIg_display (), FIf_get_window(), FIf_set_location(),
+	FIf_set_size();
+extern  access ();
+extern	char * malloc();
+extern	free();
+extern	MAidmx() ;
+extern	hidecursor(), showcursor() ;
+
+/* redeclaration of: memset. error on INTEL Solaris. 05/may/95 - raj. */
+#if ! ((defined (__Sol2__) && defined (i386)) || defined (__sgi))
+extern	memset();
+#endif
+
+extern char PALrlefname[];
+IGRchar	rast_stdapp_data[4000];
+
+IGRint	ret;
+IGRint	mat_form_wno;
+int	rast_xorg, rast_yorg, rast_xsiz, rast_ysiz;
+int	back_xorg, back_yorg;	/* wno coords where upper left	*/
+				/* corner of bkgrd raster is to	*/
+				/* be painted.			*/
+int	clip_xorg, clip_yorg;	/* wno coords where upper left	*/
+				/* corner of clipped sphere area*/
+				/* is to be painted.		*/
+
+IGRint	xmin, xmax, ymin, ymax;	/* these variables mark the columns	*/
+				/* and rows of the rasters which	*/
+				/* represent the data that needs to	*/
+				/* be read in.  That means that		*/
+				/* only the non background data is	*/
+				/* read in for all but the backgrnd	*/
+
+double	dit_clip_range[6];
+
+IGRshort rast_offsets;
+IGRshort rast_types;	/* we use all the same type raster, so	*/
+			/* just make one type, and have all	*/
+			/* rasters use it.			*/
+
+Form			sketch_f;
+struct  CIform_st	form_st;
+struct	IGRraster	*bkgrd_rast_struc; 
+
+/*
+ *#define	DEBUG 0
+ */
+
+main()
+{
+
+/*    strcpy(PALrlefname,"MOPlEj.rle");	*/
+/*    strcpy(PALrlefname,"my.rgb");	*/
+    ret = sketch_init();
+
+}
+
+
+/* notification routine for component forms */
+
+form_notification()
+{
+	switch(form_st.gadget_label) 
+	{
+
+		case FI_CANCEL:		/* cancel form */
+			FIg_set_state_off(form_st.form_ptr,form_st.gadget_label);
+                        ci$put(response = MOVE_ON );
+			break;
+	}
+}
+
+
+sketch_init()
+{
+
+int form_label  ;
+char sketch_file[20] ;
+
+int sts , resp ;
+
+	strcpy(sketch_file,PALrlefname);
+
+	form_label = 777 ;
+
+#ifdef DEBUG
+	write("sketch_file: ", sketch_file,"\n");
+#endif
+	/* set up new form */
+	sts = FIf_new(form_label,"",ci_notification,&sketch_f);
+  	if ( sts ) 
+  	{	write ("FIf_new () error\n");
+    		return(FALSE);
+  	}
+
+        sts = FIf_set_cmd_oid_os ( sketch_f, MY_ID, OM_Gw_current_OS );
+        if ( sts )
+           {
+        	write ( "FIf_set_cmd_oid_os() sts = ", sts, "\n" );
+		exit;
+        }
+
+        ret = MOshow_sketch(sketch_f, sketch_file);
+	if (!ret) return (0);
+
+        while( 1 )
+	{
+		ci$get( response = &resp );
+		if ( resp == MOVE_ON )
+			break;
+	}
+
+        FIf_erase ( sketch_f );
+        FIf_delete( sketch_f );
+
+	return (1);
+}
+
+				      /* raster.			  */
+MOshow_sketch(fp, sketch_file)
+Form fp ;
+char	sketch_file[];
+{
+     int wno_ptr ;
+     struct IGRraster rast_struct;
+
+     /* read the raster file first */
+
+     if( access(sketch_file, 04) != 0 ) 
+     {						   // file doesn't exist.
+	write ("Sketch File Not Available\n");
+	return (0);	
+     }
+
+     ret = MOrgb_read(sketch_file, &rast_struct);
+     if (!ret) return (0);
+
+     /* set global paremeters */
+
+     FIf_get_window(fp,&wno_ptr);
+
+     ret = MOatt_init_fig_wno_parms(wno_ptr, 15, 15, rast_struct.num_cols,
+                       rast_struct.num_rows,0, 0);
+     if (!ret) return (0);
+
+     ret = MOpaint_sketch(&rast_struct, 15, 15, rast_xsiz,rast_ysiz, &wno_ptr);
+
+     if( rast_struct.records ) 
+               free( rast_struct.records);
+
+     if (!ret) return (0);
+
+    return (1);
+}
+ 
+/* ************************************************************	*/
+/* MOrgb_read--This function reads in a raster from disk.	*/
+/*		INPUTS:  rast_nm-  The file name of the raster  */
+/*				to be read in.			*/
+/*			 rast_struc- the variable in which the  */
+/*				raster is to be stored.		*/
+/*			--------------------------------------- */
+
+long MOrgb_read(rast_nm, rast_struc)
+
+	char *rast_nm; 
+	struct IGRraster *rast_struc;
+{
+	FILE *rast_ptr;
+	struct RSfile_specs rast_specs;
+	IGRlong msg;
+	IGRboolean retval;
+	long myret;
+	char * new_rast, *old_rast;
+	int pixel, x, y, mask , sts;
+	long alloc_size;
+	char whole_rast_buf[WHOLE_RAST_BUF_SIZE];				
+
+	struct	standard_st	button_st;
+	int	x_loc, y_loc, x_size, y_size ;
+
+	x_loc	= 100;
+	y_loc	= 100;
+	
+        retval = FALSE;
+        myret = 0 ;
+
+	rast_types = 0;
+	rast_offsets = 0;
+
+ 	rast_struc -> types = &rast_types;
+	rast_struc -> offsets = &rast_offsets;
+ 	rast_struc -> stdapp_data = rast_stdapp_data;
+
+ 	/* initialize the matrix to the identity matrix */
+ 	MAidmx(&msg, rast_struc -> matrix);
+
+
+	rast_ptr = fopen(rast_nm, "r");    /* open file for reading */
+	if( rast_ptr == NULL )
+	{
+                write("error opening raster file");
+		return(0);
+	}
+
+	memset((char *)&rast_specs,0,sizeof(rast_specs));
+
+	retval = RSreadspecs(&msg, rast_nm, &rast_specs);
+#ifdef DEBUG
+	printf ("RSreadspecs(): returns: %hd\n", retval);
+#endif
+
+	if(retval)
+	{
+
+		retval = RSreadheader(&msg, rast_ptr, &rast_specs, rast_struc);
+#ifdef DEBUG
+		printf ("RSreadheader(): returns: %hd\n", retval);
+#endif
+
+		if(retval)
+		{
+     	                FIf_set_location(sketch_f, x_loc, y_loc);
+
+			x_size = rast_struc -> num_cols + 30 ;
+			y_size = rast_struc -> num_rows + 30 ;
+
+ 	                FIf_set_size(sketch_f, x_size, y_size);
+
+			/*** Create the CANCEL button 	***/
+
+			FIg_new (sketch_f, FI_BUTTON, FI_CANCEL);
+
+			/* Initialize button_st here TBD*/
+
+			button_st.xlo = x_size - 35;
+			button_st.ylo = 5;
+			button_st.xhi = x_size - 5;
+			button_st.yhi = 35;
+			button_st.attr_mask = FI_NOT_DISPLAYED /*| FI_TEXT_GADGET*/;
+			button_st.value = 0;
+/**** GBTYL fontfile path to be set up so that it neednot be copied to the calling directory */
+			button_st.fontname  = "FBsymbols";
+			button_st.off_color = FI_BLACK;
+			button_st.on_color  = FI_BLACK;
+			button_st.symbol_index = 51;
+
+			FIg_set_standard_variables (sketch_f, FI_CANCEL, 
+							      &button_st);
+			FIg_activate (sketch_f, FI_CANCEL);
+
+	                /* display form 		*/
+                        sts = FIf_get_attr(sketch_f , &mask);
+
+                        mask = mask | FI_SAVE_RESTORE ;
+
+                        sts = FIf_set_attr(sketch_f , mask);
+
+	                FIf_display(sketch_f);
+
+			/* Now display the button 	*/
+
+			FIg_display (sketch_f, FI_CANCEL); 
+			
+
+
+			alloc_size = (rast_struc->num_cols * 
+				rast_struc->num_rows * 
+				rast_struc->rec_size);
+
+			rast_struc->records = (IGRchar *) 
+				malloc(alloc_size);
+			if( rast_struc->records == NULL ) 
+			{
+                                write("no memory\n");
+				fclose(rast_ptr);
+				return(0);
+			}
+
+			/* set up to read entire raster.	*/
+			rast_specs.start_row = 0;
+			rast_specs.stop_row = rast_struc->num_rows - 1;
+			rast_specs.start_col = 0;
+			rast_specs.stop_col = rast_struc->num_cols - 1;
+			retval = RSreadrecords(&msg, rast_ptr, 
+				&rast_specs, rast_struc);
+#ifdef DEBUG
+			printf ("RSreadrecords(): returns: %hd\n", retval);
+#endif
+		}
+
+
+		if(!retval) 
+		{
+                        write("error reading file\n");
+			fclose(rast_ptr);
+			return(0);
+		}
+
+		myret = 1;
+	}
+
+	fclose(rast_ptr);
+
+	return(myret);
+}
+
+/* ************************************************************	*/
+/* IDget_raster_type-- This function reads the specs of a 	*/
+/*	raster and returns the RASTER TYPE.  For example, for a */
+/*	regular Modelview raster, it returns 27.		*/
+/* 		----------------------------------------------- */
+
+IGRshort IDget_raster_type(rast_nm)
+
+	char *rast_nm;
+{
+	FILE *rast_ptr;
+	struct RSfile_specs rast_specs;
+	IGRlong msg;
+	IGRboolean retval ;
+	IGRshort ret_type;
+
+        retval = FALSE ;
+	rast_ptr = fopen(rast_nm, "r");    /* open file for reading */
+	if(rast_ptr == NULL )
+	{
+                write("error opening file\n");
+		return(0);
+	}
+	retval = RSreadspecs(&msg, rast_nm, &rast_specs);
+	if(retval)
+	{
+		ret_type = rast_specs.data_type_code;
+	}
+	else ret_type = 0;
+
+	if(rast_ptr)
+	{
+		fclose(rast_ptr);
+	} 
+	return(ret_type);
+}
+
+
+/* ***********************************************************	*/
+/* MOpaint_sketch--This function paints out a raster to a given */
+/*		area in a given window.				*/
+/*		INPUTS:  rast_struc--the raster			*/
+/*			 xorg, yorg-- the window coordinates at */
+/*				which the raster's upper-left 	*/
+/*				corner will be placed.		*/
+/*			 xend, yend-- the lower right corner	*/
+/*			 wno -- a ptr to the window in which to	*/
+/*				draw the raster.		*/
+/*		----------------------------------------------- */
+long MOpaint_sketch(rast_struc, xorg, yorg, xend, yend, wno)
+	struct IGRraster *rast_struc;
+	IGRint *wno;
+	int	xorg, yorg, xend, yend;
+{
+	struct	   IGRfastrasdis rasdis;
+	struct IGResrs new_esrs;
+	IGRlong msg;
+	IGRshort cols[512];
+	IGRint i;
+	IGRboolean retval;
+	struct	   IGRfastrasdis  *old_rasdis_ptr;
+	extern RSget_esrs_dith_info();
+	IGRshort *DPcolor_map;
+	IGRpoint	she_pnt;
+	IGRboolean	ret;
+	int	ii;
+	WLuint32	lwin_no;
+
+	OMuword modos;
+	WLuint16 vsno;
+	WLuint32 context_no;
+
+	lwin_no = 0;
+
+	EX_findmod( NULL, &modos ); /* ex$get_cur_mod() */
+
+	CMadd_form_to_wl(*wno, 
+			 1 /* share the context */,
+			 NULL,
+			 modos,  /* current OS */
+			 0,  /* not save-restore */
+			 &vsno,
+			 &context_no,
+			 &lwin_no);
+	  
+
+#ifdef DEBUG
+	printf("wno=%d, lwin_no=%d, retval=%d\n",*wno,lwin_no,retval);
+#endif
+	
+	RSget_esrs_dith_info( &new_esrs );
+	new_esrs.rasdis_ptr = &rasdis;
+
+	RSINIT_SCAN( rasdis );
+        rasdis.start_row = 0;
+        rasdis.start_col = 0;
+	rasdis.stop_row = rast_struc->num_rows - 1;
+	rasdis.stop_col = rast_struc->num_cols - 1;
+  	rasdis.solid = FALSE;
+
+	ret = WLhide_cursor(lwin_no,0);
+
+	/* dit clip range for window */
+	dit_clip_range[0] = 0.0;
+	dit_clip_range[1] = 0.0;
+	dit_clip_range[2] = 0.0;
+	dit_clip_range[3] = xend;
+	dit_clip_range[4] = yend;
+	dit_clip_range[5] = 0.0;
+
+	retval=RSvisidisplay(&msg, rast_struc, &new_esrs, &lwin_no, 
+			     dit_clip_range, &xorg, &yorg);
+
+	ret = WLshow_cursor(lwin_no);
+
+	CMremove_form_from_wl(vsno, lwin_no, context_no);
+
+	if(retval) return(1);
+	else return(-4);
+}
+
+/* ***********************************************************	*/
+/* MOatt_init_fig_wno_parms					*/
+/*								*/
+/*		INPUTS: wno_ptr--the ptr to the window in 	*/
+/*			 	which the sphere is to be drawn */
+/*			tmp_xorg, tmp_yorg--the upper left crnr */
+/*				of the clipping range in the 	*/
+/*				wno in which the sphere is to	*/
+/*				be drawn.			*/
+/*			tmp_xsiz, tmp_ysiz--The sizes, rspctvly */
+/*				in the x and y directions of 	*/
+/*				the area of the clip area in  	*/
+/*				which the sphere is to be drawn */
+/*			x_offset, y_offset--This routine centrs */
+/*				the main raster within the clip */
+/*				range given.  So if the actual	*/
+/*				picture is not in the center of */
+/*				the raster, then the picture	*/
+/*				will not be in the center of 	*/
+/*				clip area.  x_offset & y_offset */
+/*				can be used to tweek the pictre */
+/*				into the center of clip area.	*/
+/*		THIS ROUTINE ALTERS DATA GLOBAL TO THIS FILE.	*/
+/*		----------------------------------------------- */
+
+int MOatt_init_fig_wno_parms(wno_ptr, tmp_xorg, tmp_yorg, tmp_xsiz, tmp_ysiz,
+		x_offset, y_offset)
+IGRint wno_ptr;
+int	tmp_xorg, tmp_yorg, tmp_xsiz, tmp_ysiz, x_offset, y_offset;
+{
+	int 	sts, msg;
+	int 	clip_range_ctr_x, clip_range_ctr_y,
+		back_rast_ctr_x, back_rast_ctr_y;
+
+	mat_form_wno = wno_ptr;
+	rast_xorg = tmp_xorg; 
+	rast_yorg = tmp_yorg;
+	rast_xsiz = tmp_xsiz;
+	rast_ysiz = tmp_ysiz;	
+
+	dit_clip_range[0] = rast_xorg;
+	dit_clip_range[1] = rast_yorg;
+	dit_clip_range[2] = 0.0;
+	dit_clip_range[3] = (double) (rast_xorg + rast_xsiz);
+	dit_clip_range[4] = (double) (rast_yorg + rast_ysiz);
+	dit_clip_range[5] = 0.0;
+
+/*
+ *	clip_range_ctr_x = (rast_xorg + dit_clip_range[3])/2;
+ *	clip_range_ctr_y = (rast_yorg + dit_clip_range[4])/2;
+ *
+ *	back_rast_ctr_x = bkgrd_rast_struc->num_cols/2  ;
+ *	back_rast_ctr_y = bkgrd_rast_struc->num_rows/2  ;
+ *
+ *	back_xorg = clip_range_ctr_x - back_rast_ctr_x + x_offset;
+ *	back_yorg = clip_range_ctr_y - back_rast_ctr_y + y_offset;
+ *	
+ *	clip_xorg = back_xorg + xmin;
+ *	clip_yorg = back_yorg + ymin;
+ */
+	return(1);
+}

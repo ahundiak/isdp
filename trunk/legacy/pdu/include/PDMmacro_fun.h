@@ -1,0 +1,25 @@
+extern PDUprepare_activate_part();
+extern PDUm_add_part();
+extern PDUppl_checkin_part();
+extern PDUppl_checkout_part();
+extern PDUm_chg_part();
+extern PDUppl_copy_files();
+extern PDUprepare_create_bom();
+extern PDUprepare_create_catalog();
+extern PDUprepare_deactivate_part();
+extern PDUprepare_free_attribute_structure();
+extern PDUfree_file_structure();
+extern PDUprepare_load_attribute_structure();
+extern PDUload_file_structure();
+extern PDUppl_login();
+extern PDUppl_logout();
+extern PDMppl_query_bom();
+extern PDMppl_query_for_catalogs();
+extern PDMppl_query_for_parts();
+extern PDUm_review_pt();
+extern PDUprepare_where_used();
+extern PDMppl_ris_query();
+extern PDMppl_ris_stmt();
+extern PDMppl_set_alt_bom_switch();
+extern PDMppl_reset_alt_bom_switch();
+

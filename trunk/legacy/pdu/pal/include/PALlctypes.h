@@ -1,0 +1,15 @@
+#define POINT_TYPE      1
+#define CS_TYPE         2
+#define LINE_TYPE       3
+#define CONIC_TYPE      4
+#define CIRCLE_TYPE     5
+#define ARC_TYPE        6
+#define LBS_TYPE        7
+#define PLANE_TYPE      8
+#define SURF_TYPE       9
+#define CURVE_TYPE      10
+#define MACRO_TYPE      11
+#define SOLID_TYPE      12
+#define REFCI_TYPE      13
+#define GRAPH_TYPE      14
+#define UNKNOWN_TYPE    15
