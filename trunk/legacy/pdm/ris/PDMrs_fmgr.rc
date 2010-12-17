@@ -1,0 +1,273 @@
+#include	<string.h>
+#include	<stdio.h>
+#include "MEMstruct.h"
+#include "SQLerrordef.h"
+#include "MSGstruct.h"
+#include "DEBUG.h"
+#include "ERR.h" 
+#include "PDUris_incl.h" 
+#include "PDMproto.h" 
+#include "PDMris_fnpro.h" 
+
+extern MSGptr SQLmsg_ptr;
+extern int    PDMdebug_on;
+
+
+int PDMris_get_fmgr(catno,partno,sano,move_date,move_time,p_ref2,p_partnum )
+ int	catno;
+ int	partno;
+ int	sano;
+ char   *move_date;
+ char   *move_time;
+ int    *p_ref2;
+ int    *p_partnum;
+
+{
+        char fname[250] ;
+	exec sql begin declare section;
+		long status;
+		char sql_stmt[500];
+                char mv_date[25];
+                char mv_time[25];
+		int  ref;
+                int  partnum;
+		long nind;
+		char *err_ptr;
+	exec sql end declare section;
+
+	exec sql whenever sqlerror goto :error;
+	exec sql whenever not found goto :not_found;
+
+
+        PDMdebug("ENTER: PDMris_get_fmgr\n");
+        sql_stmt[0]=0;
+	strcpy(sql_stmt, "");
+
+
+	sprintf(sql_stmt,"select pdmwsfiles.p_mdate,pdmwsfiles.p_mtime, pdmfmgr.p_ref2, pdmwsparts.p_partnum from pdmfmgr,pdmwsfiles,pdmwsparts where pdmwsparts.p_partnum = pdmfmgr.p_partnum and pdmwsparts.p_partnum = pdmwsfiles.p_fileno and pdmfmgr.p_sano = %d and pdmwsparts.p_catalogno = %d and pdmwsparts.p_partno = %d",sano,catno,partno);
+        PDMdebug(sql_stmt);
+	exec sql prepare stmt2 from :sql_stmt;
+	exec sql declare c2 cursor for stmt2;
+
+	/* assign a value to be used in the SQL statement */
+
+
+	exec sql open c2;
+
+
+	*p_ref2 = 0;
+	nind = 0;
+
+	exec sql fetch c2 into :mv_date:nind,:mv_time:nind,:ref:nind,:partnum:nind ;
+
+		if (nind < 0) {PDMdebug("p_ref2: <null>");}
+		else
+                  {
+		  _PDMdebug(fname,"p_mdate: %s", mv_date);
+		  _PDMdebug(fname,"p_mtime: %s", mv_time);
+		  _PDMdebug(fname,"p_ref2: %d", ref);
+                  strcpy(move_date,mv_date);
+                  strcpy(move_time,mv_time);
+                  *p_ref2=ref;
+                  *p_partnum=partnum;
+		  }
+
+	  status = SQL_S_SUCCESS;
+        PDMdebug("EXIT: PDMris_get_fmgr\n");
+	  return(status);
+
+not_found:
+	exec sql whenever not found continue;
+	_PDMdebug(fname,"No more data\n");
+	  status = SQL_I_NO_ROWS_FOUND;
+        PDMdebug("EXIT: PDMris_get_fmgr\n");
+	return(status);
+
+error:
+	  exec sql report error into :err_ptr;
+	  puts(err_ptr);
+         _PDMdebug(fname, "RIS Error Msg : <%s>\n",risca->sqlerrm.sqlerrmc);
+        if (risca -> sqlcode == RIS_E_DUPLICATE_VALUE)
+            status = SQL_E_DUPLICATE_VALUE ;
+     else if (risca -> sqlcode == RIS_E_TABVIEW_ALREADY_EXISTS)
+            status = SQL_E_TABLE_EXISTS ;
+     else if (risca -> sqlcode == RIS_E_DUP_ATTR_NAME)
+            status = SQL_E_DUP_ATTR_NAME ;
+     else
+	status = SQL_E_EXECUTE;
+        PDMdebug("EXIT: PDMris_get_fmgr with error\n");
+	return(status);
+}
+
+int PDMris_find_references(p_partnum,n_sano,p_ref1,p_ref2 )
+ int p_partnum;
+ int	n_sano;
+ int    *p_ref1;
+ int    *p_ref2;
+
+{
+        char fname[250];
+	exec sql begin declare section;
+		long status;
+		char sql_stmt[250];
+		int  ref1;
+		int  ref2;
+		long nind;
+		char *err_ptr;
+	exec sql end declare section;
+
+	exec sql whenever sqlerror goto :error;
+	exec sql whenever not found goto :not_found;
+
+
+	strcpy(sql_stmt, "");
+
+
+	sprintf(sql_stmt,"select p_ref1, p_ref2 from pdmfmgr where p_partnum = %d and p_sano = %d",p_partnum,n_sano);
+        PDMdebug(sql_stmt);
+	exec sql prepare stmt3 from :sql_stmt;
+        if(SQLCODE > 0)
+        {
+	exec sql declare c3 cursor for stmt3;
+
+	/* assign a value to be used in the SQL statement */
+
+
+	exec sql open c3;
+
+
+	*p_ref2 = 0;
+	*p_ref1 = 0;
+	nind = 0;
+
+	exec sql fetch c3 into :ref1:nind,:ref2:nind ;
+
+		if (nind < 0) {PDMdebug("p_ref2: <null>");}
+		else
+                  {
+		  _PDMdebug(fname,"p_ref1: %d", ref1);
+		  _PDMdebug(fname,"p_ref2: %d", ref2);
+                  *p_ref1=ref1;
+                  *p_ref2=ref2;
+		  }
+
+	status = SQL_S_SUCCESS;
+        }
+	else
+        {
+	if ( PDMdebug_on )
+	  {
+	  exec sql report error into :err_ptr;
+	  puts(err_ptr);
+         _PDMdebug(fname, "RIS Error Msg : <%s>\n",risca->sqlerrm.sqlerrmc);
+          }
+           status = SQL_E_PREPARE;
+	return(status);
+        }
+	exec sql close c3;
+        return(status);
+
+not_found:
+	exec sql whenever not found continue;
+	_PDMdebug(fname,"No more data\n");
+	  status = SQL_I_NO_ROWS_FOUND;
+	exec sql close c3;
+	return(status);
+
+error:
+	  exec sql report error into :err_ptr;
+	  puts(err_ptr);
+         _PDMdebug(fname, "RIS Error Msg : <%s>\n",risca->sqlerrm.sqlerrmc);
+        if (risca -> sqlcode == RIS_E_DUPLICATE_VALUE)
+            status = SQL_E_DUPLICATE_VALUE ;
+     else if (risca -> sqlcode == RIS_E_TABVIEW_ALREADY_EXISTS)
+            status = SQL_E_TABLE_EXISTS ;
+     else if (risca -> sqlcode == RIS_E_DUP_ATTR_NAME)
+            status = SQL_E_DUP_ATTR_NAME ;
+     else
+	status = SQL_E_EXECUTE;
+	exec sql close c3;
+	return(status);
+}
+
+
+
+
+
+int PDMris_get_sano( saname, sano )
+ char	*saname;
+ int	*sano;
+{
+        static char  *fname = "PDMris_get_sano";
+	exec sql begin declare section;
+		long status;
+		char sql_stmt[100];
+		int  sa_no;
+		long numberind;
+		char *err_ptr;
+	exec sql end declare section;
+
+	exec sql whenever sqlerror goto :error;
+	exec sql whenever not found goto :not_found;
+
+        PDMdebug("ENTER: PDMris_get_sano\n");
+	strcpy(sql_stmt, "");
+
+
+	sprintf(sql_stmt,
+         "select n_sano from nfmstoragearea where n_saname = \'%s\'",
+		saname);
+
+        PDMdebug( sql_stmt);
+
+	exec sql prepare stmt50 from :sql_stmt;
+	exec sql declare c50 cursor for stmt50;
+
+	/* assign a value to be used in the SQL statement */
+
+	exec sql open c50;
+
+
+	*sano = 0;
+	numberind = 0;
+	sa_no = 0;
+
+		exec sql fetch c50 into :sa_no:numberind;
+
+		if (numberind < 0) {PDMdebug("sa_no: <null>");}
+		else
+                  {
+		  _PDMdebug(fname,"sa_no: %d\n",sa_no);
+		  *sano = sa_no;
+		  }
+
+	  status = SQL_S_SUCCESS;
+        PDMdebug("EXIT: PDMris_get_sano - data found\n");
+        exec sql close c50;
+	return(status);
+
+not_found:
+	exec sql whenever not found continue;
+	PDMdebug("No more data\n");
+	  status = SQL_I_NO_ROWS_FOUND;
+        PDMdebug("EXIT: PDMris_get_sano - No rows found\n");
+        exec sql close c50;
+	return(status);
+
+error:
+	  exec sql report error into :err_ptr;
+	  _PDMdebug(fname,"%s\n",err_ptr);
+         _SQLdebug ((fname, "RIS Error Msg : <%s>\n",risca->sqlerrm.sqlerrmc));
+        if (risca -> sqlcode == RIS_E_DUPLICATE_VALUE)
+            status = SQL_E_DUPLICATE_VALUE ;
+    else if (risca -> sqlcode == RIS_E_TABVIEW_ALREADY_EXISTS)
+            status = SQL_E_TABLE_EXISTS ;
+     else if (risca -> sqlcode == RIS_E_DUP_ATTR_NAME)
+            status = SQL_E_DUP_ATTR_NAME ;
+     else
+	status = SQL_E_EXECUTE;
+        exec sql close c50;
+        PDMdebug("EXIT: PDMris_get_sano with error\n");
+	return(status);
+}
+

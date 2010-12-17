@@ -1,0 +1,178 @@
+#include	<string.h>
+#include	<stdio.h>
+#include	<math.h>
+#include        "MRPstr.h"
+#include        "MRPintdef.h"
+#include        "MRPmessage.h"
+#include        "PDMproto.h"
+#include        "PDMris_fnpro.h"
+
+/*
+Sample Program 1 - Static SQL statements
+========================================
+*/
+
+extern int PDMdebug_on;
+extern int MRPlevel;
+extern  int MRPstrcpy();
+extern struct 	MRPvar        *mrpvar;
+
+int PSUrs_get_pitemno( p_itemno )
+ int  *p_itemno;
+{
+                static char *fname = "PSUrs_get_pitemno";
+	exec sql begin declare section;
+		long status;
+		int  i;
+		char sql_stmt[300];
+		int  pitemno;
+		long pitemind;
+		char *err_ptr;
+	exec sql end declare section;
+
+	exec sql whenever sqlerror goto :error;
+	exec sql whenever not found goto :not_found;
+
+/*	if (mrpvar->name != NULL)
+	  {
+	_PDMdebug(fname,"name %s", mrpvar->name);
+	sprintf(sql_stmt,"default schema %s.%s", mrpvar->name, mrpvar->passwd);
+	exec sql execute immediate :sql_stmt;
+*/	strcpy(sql_stmt, "");
+
+	i = 0;
+
+        PDMdebug("MRPrs_items- get pitemno");
+	/**** Itemno checks ****/
+        sprintf(sql_stmt, "select n_itemno from %s where p_partnum = \'%s\'and p_revision = \'%s\'",
+	        mrpvar->catalog, mrpvar->partid, mrpvar->revision);
+	_PDMdebug(fname,"%s", sql_stmt);
+	exec sql prepare stmt1 from :sql_stmt;
+ 	exec sql declare c1 cursor for stmt1;
+
+	/* assign a value to be used in the SQL statement */
+
+	exec sql open c1;
+	
+        pitemno = 0;
+	for (;;)
+	{
+		exec sql fetch c1 into :pitemno:pitemind;
+		if (pitemind < 0)
+		   {PDMdebug("pitemno: <null>");}
+		else 
+		   {
+		    _PDMdebug(fname,"pitemno: %d", pitemno);
+		    *p_itemno = pitemno;
+		   }
+        }
+
+
+/*          }
+	else
+           status = MRP_E_NotLogin;
+	return(status); */
+
+not_found:
+	exec sql whenever not found continue;
+	PDMdebug("No more data\n");
+        if ( pitemno > 0 )
+	  status = MRP_S_Success;
+	else
+	  status = MRP_I_NoPartMatch;
+	return(status);
+
+error:
+	exec sql whenever sqlerror continue;
+	if ( PDMdebug_on )
+	  {
+	  exec sql report error into :err_ptr;
+	  puts(err_ptr);
+	  }
+	status = MRP_E_RisPartItem;
+	return(status);
+}
+
+int PSUrs_get_bomname( pitemno, bomname )
+ int   pitemno;
+ char  *bomname;
+{
+                static char *fname = "PSUrs_get_bomname";
+	exec sql begin declare section;
+		long status;
+		int  i;
+		int  catno;
+		char sql_stmt[300];
+		char pbomname[21];
+		long bomind;
+		char *err_ptr;
+	exec sql end declare section;
+
+	exec sql whenever sqlerror goto :error;
+	exec sql whenever not found goto :not_found;
+
+/*	if (mrpvar->name != NULL)
+	  {
+	_PDMdebug(fname,"name %s", mrpvar->name);
+	sprintf(sql_stmt,"default schema %s.%s", mrpvar->name, mrpvar->passwd);
+	exec sql execute immediate :sql_stmt;
+*/	strcpy(sql_stmt, "");
+
+        PDMdebug("MRPrs_items- get mbomname");
+	i = 0;
+	catno = mrpvar->catno;
+	sprintf(sql_stmt, "select p_bomname from pdmboms where p_catalogno = %d and p_partno = %d", mrpvar->catno, pitemno);
+	_PDMdebug(fname,"%s", sql_stmt); 
+
+	exec sql prepare stmt3 from :sql_stmt;
+ 	exec sql declare c3 cursor for stmt3;
+
+	/* assign a value to be used in the SQL statement */
+
+	exec sql open c3;
+	
+	bomind = 0;
+	strcpy(pbomname, NULLSTR);
+	for (;;)
+	  {
+		exec sql fetch c3 into :pbomname:bomind;
+		if (bomind < 0)
+		   {PDMdebug("pbomname: <null>");}
+		else 
+		   {
+		    _PDMdebug(fname,"bomname: %s", pbomname);
+		    strcpy(bomname, pbomname);
+		   }
+          }
+
+
+/*          }
+	else
+          status = MRP_E_NotLogin;
+	return(status); */
+
+not_found:
+	exec sql whenever not found continue;
+	PDMdebug("No more data\n");
+	if ( strcmp(bomname, "") != 0 )
+	   {
+	   bomname[0] = 'b';
+	   bomname[1] = 'o';
+	   bomname[2] = 'm';
+	   status = MRP_S_Success;
+	   }
+	else
+	   status = MRP_E_NoPDMBOM;
+	return(status);
+
+error:
+	exec sql whenever sqlerror continue;
+	if ( PDMdebug_on )
+	  {
+	  exec sql report error into :err_ptr;
+	  puts(err_ptr);
+	  }
+	status = MRP_E_RisBOMName;
+	return(status);
+}
+
