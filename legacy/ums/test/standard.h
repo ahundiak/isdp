@@ -1,0 +1,10 @@
+#define	EX_M_command3			0x0832800e
+#define	EX_M_command3_1			0x08328016
+#define	EX_M_command3_1_1		0x0832801e
+#define	EX_M_command3_1_2		0x08328026
+#define	EX_M_command3_1_4		0x0832802e
+#define	EX_M_ActHelp			0x08328036
+#define	EX_M_Exiting			0x0832803e
+#define	EX_S_CmdAndType			0x08328041
+#define	EX_M_TxtIs			0x0832804e
+#define	EX_M_IntIs			0x08328056
