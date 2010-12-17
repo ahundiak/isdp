@@ -1,0 +1,194 @@
+/* Do not alter this SPC information: $Revision: 1.3.3.1 $ */
+/*
+**	NAME:				loddatfl.rc								
+**	AUTHORS:			Jennifer Xia			
+**	CREATION DATE:		June 26, 1990			
+**	ABSTRACT:			It contains a function which identifies a data f ile
+**						specification and a function which identifies a data
+**						file header.
+**	
+**	REVISION HISTORY:	August 6th, 1991 Hitesh Patel
+**				7/9/96 - Ashley - Fix for 439402027
+*/
+ 
+/*
+**	DEFINES
+*/
+
+
+/*
+**	INCLUDES
+*/
+#if defined(WIN32S) && defined(ULD_EXE)
+#include <windows.h>
+#include <windowsx.h>
+#include "winport.h"
+#include "winio.h"
+#include "winhan.h"
+#include "risutl.h"
+#include "prog32s.h"
+#endif 
+
+#include <ctype.h>
+#ifdef MM
+#include "lod.h"
+#endif
+
+exec sql include "lod.h";
+
+/*
+**	VARIABLES
+*/
+
+/*
+**	FUNCTIONS
+*/
+
+/*
+**      FUNCTION PROTOTYPES
+*/
+#define loddatfl_rc
+#include "sys.prt"
+#include "comjmp.prt"
+#include "comdebug.prt"
+#include "comwrap.prt"
+#include "comumsg.prt"
+#include "loddatfl.prt"
+#include "lodermsg.prt"
+#include "lodgtstm.prt"
+#include "lodlogdp.prt"
+#include "lodmisc.prt"
+#include "lodtime.prt"
+#include "comisfn.prt"
+
+extern FILE	*RISlod_iden_data_file_spec()
+{
+	char	pattern1[PATTERN_SIZE];
+	char	first_space;
+	char	data_file_name[RIS_MAX_PATH_SIZE];
+	char	second_space;
+	char	pattern2[PATTERN_SIZE];
+	FILE	*data_fp;
+
+	LOD_DBG(("RISlod_iden_data_file_spec: \n"));
+
+	sscanf(RISlod_sql_stmt + 1, "%9s%c%256s%c%9s", pattern1, &first_space, data_file_name, &second_space, pattern2);
+
+	if ((RISlod_sql_stmt[1] == '*') &&
+		(strcmp(pattern1, "***RIS***") == 0) && RIScom_isspace(first_space) && 
+		(data_file_name[0] != '\0') &&
+		RIScom_isspace(second_space) && (strcmp(pattern2, "***RIS***") == 0))
+	{
+		for(;;)
+		{	
+			data_fp = RISlod_batch_open_file('d',data_file_name);
+			if (data_fp == NULL)
+			{
+			
+				if ((RISlod_mode == BATCH) || (RISlod_mode == EMBED))
+				{
+					RISlod_dump_partial_tab(TRUE,TRUE,TRUE);
+					RISlod_dump_tab_info(RISlod_sql_stmt + 1);
+
+					LOD_DBG(("1. RISlod_iden_data_file_spec: end"));
+					return((FILE *) NULL);
+				}	
+			}
+	 		else
+			{
+				LOD_DBG(("2. RISlod_iden_data_file_spec: end"));
+				return(data_fp);
+			}      
+
+			RISlod_print_msg(MSG(RISUTL_I_ENTER_ANOTHER_D_FILE));
+#if !defined(ULD_DLL)
+#if defined(WIN32S)
+			GETS(data_file_name);
+#else
+			RIScom_fgets(data_file_name,RIS_MAX_PATH_SIZE-1,stdin);
+ /* Ashley 7/9/96 - fix for 439402027 */
+        /* this is may not be valid for international code */
+        /* but rislod/unlod is not internationalized on unix */
+#if defined(unix)
+                        if ( feof(stdin)) /* was control-D hit */
+                             exit(0);
+#endif
+#endif
+#endif
+			if (data_file_name[0] == DEFAULT)
+			{
+				RISlod_dump_partial_tab(TRUE,TRUE,TRUE);
+				RISlod_load_err_handler(RISUTL_E_CANT_OPEN_DATA_FILE,RISlod_sql_stmt);
+		
+				RISlod_dump_tab_info(RISlod_sql_stmt + 1);
+
+				LOD_DBG(("3. RISlod_iden_data_file_spec: end"));
+				return((FILE *) NULL);
+			}      
+			RISlod_strip_newline(data_file_name);
+		}
+	}
+	else
+	{
+		LOD_DBG(("4. RISlod_iden_data_file_spec: end"));
+		return(RISlod_in_fp);
+	}
+}      
+	
+
+extern int RISlod_row1_from_dfile(
+	FILE	*data_fp)
+{
+	int		header_indx;
+	int		status;
+
+	LOD_DBG(("RISlod_row1_from_dfile: data_fp 0x%x\n", data_fp));
+
+	if (RISlod_arow_from_dfile(data_fp) == FAILURE)
+	{
+		LOD_DBG(("1. RISlod_row1_from_dfile"));
+		return(FAILURE);
+	}
+
+	if (strncmp(RISlod_sql_stmt+1, "--",2) == 0)
+	{
+		LOD_DBG(("Comment = <%s>\n",RISlod_sql_stmt));
+		while(1)
+		{
+			/* Should this be data_fp ???? */
+			if (RIScom_fgets(RISlod_sql_stmt+1, RIS_MAX_STMT_LEN - 1, RISlod_in_fp) == NULL)
+				UNEXPECTED_EOF(RISUTL_E_CANT_READ_INPUT_FILE);
+			if (strncmp(RISlod_sql_stmt+1, "--",2) != 0)
+				break;
+			LOD_DBG(("Comment = <%s>\n",RISlod_sql_stmt));
+		}
+	}
+
+	if ((strncmp(RISlod_sql_stmt + 1, "***RIS***", 9) == 0) && RIScom_isspace(*(RISlod_sql_stmt + 10)))
+	{
+		for(header_indx = 1 + 10; 
+					header_indx < RIS_MAX_STMT_LEN - 10; 
+							header_indx++)
+		{
+			if (RISlod_sql_stmt[header_indx] == '\0')
+			{
+				LOD_DBG(("2. RISlod_row1_from_dfile"));
+				return(SUCCESS);
+			}
+
+			if ((strncmp((RISlod_sql_stmt + header_indx + 1), "***RIS***", 9) == 0) &&
+				RIScom_isspace(*(RISlod_sql_stmt + header_indx)))
+			{
+				LOD_DBG(("3. RISlod_row1_from_dfile"));
+				status = RISlod_arow_from_dfile(data_fp);
+				return(status);
+			}
+		}
+	}
+	else
+	{
+		LOD_DBG(("4. RISlod_row1_from_dfile"));
+		return(SUCCESS);
+	}
+	return(SUCCESS);
+}

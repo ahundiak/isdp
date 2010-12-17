@@ -1,0 +1,138 @@
+/* Do not alter this SPC information: $Revision: 1.1.53.1 $ */
+/*
+**	NAME:				lodtabdf.rc							
+**	AUTHORS:			Jennifer Xia			
+**	CREATION DATE:		June 26, 1990		
+**	ABSTRACT:			It contains a function which processes a create table 
+**						statement.
+**		
+**	REVISION HISTORY:	August 6th, 1991 Hitesh Patel
+*/
+ 
+/*
+**	DEFINES
+*/
+
+/*
+**	INCLUDES
+*/
+#if defined(WIN32S) && defined(ULD_EXE)
+#include <windows.h>
+#include <windowsx.h>
+#include "winport.h"
+#include "winio.h"
+#include "winhan.h"
+#include "risutl.h"
+#include "prog32s.h"
+#endif 
+
+#include <sys/types.h>
+#include "ris_err.h"
+
+#ifdef MM
+#include "lod.h"
+#endif
+
+exec sql include "lod.h";
+
+/*
+**	VARIABLES
+*/
+
+/*
+**	FUNCTIONS
+*/
+
+/*
+**      FUNCTION PROTOTYPES
+*/
+#define lodtabdf_rc
+#include "comdebug.prt"
+#include "comumsg.prt"
+#include "sys.prt"
+#include "ris.prt"
+#include "loddmp.prt"
+#include "lodermsg.prt"
+#include "lodlogdp.prt"
+#include "lodtabdf.prt"
+#include "ucoerrbx.prt"
+
+
+extern int RISlod_proc_create_tab(
+	char			*sch_name,
+	char			*tab_name,
+	int				tab_select,
+	int				def_data_select,
+	int				exist_tab_select)
+{
+
+	exec sql begin declare section;
+		char	*err_ptr;
+	exec sql end declare section;
+
+	LOD_DBG(("RISlod_proc_create_tab: sch_name <%s>, tab_name <%s>\n", sch_name, tab_name));
+	LOD_DBG(("\ttab_select <%c> def_data_select <%c> exist_tab_select <%c> \n",
+						tab_select, def_data_select, exist_tab_select));
+
+	if (RISlod_lod_or_dmp_new_tab(sch_name, 
+								  tab_name, 
+								  tab_select) == DUMP)
+	{
+		/* Do not dump to bad file */
+		LOD_DBG(("1. RISlod_proc_create_tab: end"));
+		return(FAILURE);
+	}
+
+	RISlod_print_msg(MSG(RISUTL_E_LOADING_TABLE), tab_name);
+
+	exec sql execute immediate :RISlod_sql_stmt;
+
+	LOD_WARNING_CHECK(RISlod_ptr_struct_ptr->btnode_ptr->sqlwarnings);
+	if (SQLCODE < 0)
+	{
+				
+		if (SQLCODE == RIS_E_TABVIEW_ALREADY_EXISTS)
+		{
+			if (RISlod_lod_or_dmp_exist_tab(def_data_select, 
+											exist_tab_select) == LOAD)
+			{
+				/* Nothing */
+			}
+			else
+			{
+				/* Do not dump to bad file */
+				LOD_DBG(("2. RISlod_proc_create_tab: end"));
+				return(FAILURE);
+			}
+		}	
+		else
+		{
+			/* for all modes */
+			RISlod_construct_n_dump_to_log("\tTable: %s not created.\n",tab_name);
+			RISlod_dump_to_bad_with_err(RISlod_sql_stmt);
+			RISlod_dump_tab_info(RISlod_sql_stmt);
+
+			if( RISlod_mode == EMBED )
+			{
+				RISlod_ptr_struct_ptr->btnode_ptr->ris_err_code = risca->sqlcode;
+				RISlod_ptr_struct_ptr->btnode_ptr->db_err_code = dbca->sqlcode;
+			}
+			else
+			{
+				exec sql report error into :err_ptr;
+#if !defined(ULD_DLL)
+				PUTS(err_ptr);
+#endif
+			}
+
+			LOD_DBG(("3. RISlod_proc_create_tab: end"));
+			return(FAILURE);
+		}
+	}
+
+	RISlod_construct_n_dump_to_log("\tTable: %s created.\n",tab_name);
+	
+	RISlod_tab_loaded++;
+	LOD_DBG(("4. RISlod_proc_create_tab: end"));
+	return(SUCCESS);
+}

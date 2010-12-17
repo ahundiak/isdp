@@ -1,0 +1,101 @@
+/* Do not alter this SPC information: $Revision: 1.1.53.1 $ */
+/*
+**	NAME:							ucoblob.rc
+**	AUTHORS:						Patrick Fitzgerald
+**	CREATION DATE:					3/94
+*/
+
+#include "ucommon.h"
+#include "ris_err.h"
+
+/* FUNCTION PROTOTYPES */
+#define ucoblob_rc
+#include "sys.prt"
+#include "comdebug.prt"
+#include "ris.prt"
+
+/**********************************************************************/
+/* Returns size 1 if there was an error.
+   Assumes that schema is the default schema. */
+extern unsigned int RISuco_blob_or_text_size(
+	char *table, /* Input - must be <= RIS_MAX_ID_SIZE */
+	char *col)   /* Input - must be <= RIS_MAX_ID_SIZE */
+{
+	unsigned int size = 1;
+
+	exec sql begin declare section;
+		sqlda out_desc;
+		char sql_stmt[256];
+	exec sql end declare section;
+
+	UCO_DBG(("RISuco_blob_or_text_size: table <%s> col <%s>\n", table, col));
+	
+	/* Create the sql statement */
+	sprintf(sql_stmt, "select char_max_length from ri05_t03 where table_id=(select table_id from ri05_t02 where table_name='%s') and column_name='%s'",
+			table, col);
+	UCO_DBG(("RISuco_blob_or_text_size: sql_stmt <%s>\n", sql_stmt));
+
+	/* Define exception handlers */
+	exec sql whenever sqlerror goto :error;
+	exec sql whenever not found goto :not_found;
+
+	/* Prepare the dynamic sql statement */
+	exec sql prepare blob_size_stmt from :sql_stmt;
+
+	/* Get the count of output columns */
+	out_desc.sqld = 0;
+	out_desc.sqln = 0;
+	out_desc.sqlvar = 0;
+
+	exec sql describe output blob_size_stmt using descriptor out_desc;
+
+	/* Open the SELECT statement */
+	exec sql declare blob_size_cursor cursor for blob_size_stmt;
+	exec sql open blob_size_cursor;
+
+	/* Call describe again to get information about each result column */
+	out_desc.sqlvar = (sqlvar *)calloc(out_desc.sqld, sizeof(sqlvar));
+	if (!out_desc.sqlvar)
+		goto error;
+	out_desc.sqln = out_desc.sqld;
+	exec sql describe output blob_size_stmt using descriptor out_desc;
+
+	/* Allocate a sqlvar struct for the result column */
+	if (out_desc.sqld != 1) /* should only get one column */
+		goto error;
+
+	out_desc.sqlvar[0].sqldata = (char *)calloc(1, out_desc.sqlvar[0].sqllen);
+	if (!out_desc.sqlvar[0].sqldata)
+		goto error;
+
+	out_desc.sqlvar[0].sqlind = (long*)calloc(1, sizeof(long));
+	if (!out_desc.sqlvar[0].sqlind)
+		goto error;
+
+	out_desc.sqlvar[0].sqlnull = 1;
+
+	/* Fetch the data */
+	exec sql fetch blob_size_cursor using descriptor out_desc;
+
+	if (out_desc.sqlvar[0].sqltype == RIS_INTEGER)
+	{
+		size = *(unsigned int *)out_desc.sqlvar[0].sqldata;
+		UCO_DBG(("RISuco_blob_or_text_size: got size <%d>\n", size));
+	}
+
+  error:
+  not_found:
+	/* Free memory */
+	if (out_desc.sqlvar)
+	{
+		free(out_desc.sqlvar);
+
+		if (out_desc.sqlvar[0].sqldata)
+			free(out_desc.sqlvar[0].sqldata);
+		if (out_desc.sqlvar[0].sqlind)
+			free(out_desc.sqlvar[0].sqlind);
+	}
+
+	UCO_DBG(("RISuco_blob_or_text_size: end\n"));
+	return size;
+}

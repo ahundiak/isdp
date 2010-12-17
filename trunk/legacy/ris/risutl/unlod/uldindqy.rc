@@ -1,0 +1,251 @@
+/* Do not alter this SPC information: $Revision: 1.1.53.1 $ */
+/*
+**	NAME:							uldindqy.rc
+**	AUTHORS:						Jennifer Xia
+**	CREATION DATE:					11/90
+**	ABSTRACT:
+**		It contains a function which prepares query for
+**						fetching information about index definitions, a 
+**						function which fetches the information and a 
+**						function which does thw cleanup after the query is
+**						executed.
+**	
+**	REVISION HISTORY:August 6th, 1991 Hitesh Patel
+*/
+ 
+/*
+**	DEFINES
+*/
+
+/*
+**	INCLUDES
+*/
+#if defined(WIN32S) && defined(ULD_EXE)
+#include <windows.h>
+#include <windowsx.h>
+#include "winport.h"
+#include "winio.h"
+#include "winhan.h"
+#include "risutl.h"
+#include "prog32s.h"
+#endif 
+
+#ifdef MM
+#include "unlod.h"
+#endif
+
+exec sql include "unlod.h";
+
+/*
+**	VARIABLES
+*/
+
+/*
+**	FUNCTIONS
+*/
+
+/*
+**      FUNCTION PROTOTYPES
+*/
+#define uldindqy_rc
+#include "sys.prt"
+#include "comdebug.prt"
+#include "ris.prt"
+#include "uldindqy.prt"
+#include "uldmisc.prt"
+#include "ucoerrbx.prt"
+
+
+
+extern int RISuld_prep_indx_qry(
+	char	*sch_name,
+	char	*tab_name)
+{
+
+	int 	i;	
+
+	exec sql begin declare section;
+		char	qry_str[1000];
+		char	*err_ptr;
+	exec sql end declare section;
+
+	exec sql whenever sqlerror goto :PIQ_error;
+
+	ULD_DBG(("RISuld_prep_indx_qry: sch_name <%s> tab_name <%s>\n", 
+						sch_name, tab_name));
+
+	/* a == ris5indexes; b == ris5index_columns */
+	if (tab_name)
+	{
+		sprintf(qry_str, 
+			"select a.table_name, a.index_name, a.index_type, b.column_name, "
+			"b.position from ris5indexes a, ris5index_columns b where	"
+			"(a.table_name = '%s') and (a.index_name = b.index_name) order by "
+			"a.table_name, a.index_name, b.position", tab_name);
+	}			
+
+	else
+	{
+		/* ris5indexes has only user-defined indexes */
+		sprintf(qry_str, 
+			"select	a.table_name, a.index_name, a.index_type, b.column_name, "
+			"b.position  from ris5indexes a, ris5index_columns b where "
+			"a.index_name = b.index_name order by a.table_name, a.index_name, "
+			"b.position");
+	} 
+	ULD_DBG(("qry_str = <%s>\n", qry_str));
+							
+	exec sql prepare index_id from :qry_str;
+
+	UNLOD_WARNING_CHECK(RISuld_general_warn);
+
+	RISuld_out_desc.sqld = 0;
+	RISuld_out_desc.sqln = 0;
+	RISuld_out_desc.sqlvar = 0;
+	
+	exec sql describe output index_id using descriptor RISuld_out_desc;
+
+	UNLOD_WARNING_CHECK(RISuld_general_warn);
+
+	if (RISuld_out_desc.sqld != 5)
+	{
+		/*
+		** INTERNAL_ERROR
+		*/
+		ULD_DBG(("1. RISuld_prep_indx_qry: end"));
+		return(FAILURE);
+	}
+	
+	RISuld_out_desc.sqlvar = (sqlvar *) calloc(RISuld_out_desc.sqld, sizeof(sqlvar));
+	RISuld_out_desc.sqln = RISuld_out_desc.sqld;
+	exec sql describe output index_id using descriptor RISuld_out_desc;
+
+	UNLOD_WARNING_CHECK(RISuld_general_warn);
+
+	for (i = 0; i < RISuld_out_desc.sqld; i++)
+	{
+		ULD_DBG(("size of column(%d) = %d\n", i, RISuld_out_desc.sqlvar[i].sqllen));
+
+		RISuld_out_desc.sqlvar[i].sqldata = (char *) calloc(RISuld_out_desc.sqlvar[i].sqllen, sizeof(char));
+		RISuld_out_desc.sqlvar[i].sqlind = (long *) calloc(1, sizeof(long));
+	}	
+	
+	exec sql declare index_cursor cursor for index_id;
+
+	UNLOD_WARNING_CHECK(RISuld_general_warn);
+
+	exec sql open index_cursor;
+
+	UNLOD_WARNING_CHECK(RISuld_general_warn);
+
+	ULD_DBG(("2. RISuld_prep_indx_qry: end"));
+	return(SUCCESS);
+
+PIQ_error:
+	exec sql whenever sqlerror continue;
+
+	if( RISuld_mode == EMBED )
+	{
+		*RISuld_general_err = risca->sqlcode;
+	}
+	else
+	{
+		exec sql report error into :err_ptr;
+#if !defined(ULD_DLL)
+		PUTS(err_ptr); /* For Embed set general_err */
+#endif
+	}
+
+	ULD_DBG(("3. RISuld_prep_indx_qry: end"));
+	return(FAILURE);
+}
+
+
+extern int RISuld_fetch_indx_row(
+	char	*indx_tab,
+	char	*indx_name,
+	char	*indx_type_ptr,
+	char	*indx_col)
+{
+	
+	exec sql begin declare section;
+		char	*err_ptr;
+	exec sql end declare section;
+
+	exec sql whenever sqlerror goto :FIR_error;
+
+	ULD_DBG(("RISuld_fetch_indx_row: indx_tab 0x%x indx_name 0x%x indx_type_ptr 0x%x indx_col 0x%x\n",
+						indx_tab, indx_name, indx_type_ptr, indx_col));
+
+	exec sql fetch index_cursor using descriptor RISuld_out_desc;
+
+	UNLOD_WARNING_CHECK(RISuld_general_warn);
+
+	if (SQLCODE != END_OF_DATA)
+	{
+		RISuld_strncpy(indx_tab, RISuld_out_desc.sqlvar[0].sqldata, 
+					   RISuld_out_desc.sqlvar[0].sqllen, (RIS_MAX_ID_SIZE - 1));
+		RISuld_strncpy(indx_name, RISuld_out_desc.sqlvar[1].sqldata, 
+					   RISuld_out_desc.sqlvar[1].sqllen, (RIS_MAX_ID_SIZE - 1));
+		*indx_type_ptr = *RISuld_out_desc.sqlvar[2].sqldata;
+		RISuld_strncpy(indx_col, RISuld_out_desc.sqlvar[3].sqldata, 
+					   RISuld_out_desc.sqlvar[3].sqllen, (RIS_MAX_ID_SIZE - 1));
+
+		ULD_DBG(("RISuld_fetch_indx_row: indx_tab = <%s> indx_name = <%s> *indx_type_ptr = <%c> indx_col <%s>\n",
+					indx_tab, indx_name, *indx_type_ptr, indx_col));
+	}
+	else indx_name[0] = '\0';
+
+	ULD_DBG(("1. RISuld_fetch_indx_row: end"));
+	return(SQLCODE);
+
+FIR_error:
+	exec sql whenever sqlerror continue;
+
+	if( RISuld_mode == EMBED )
+	{
+		*RISuld_general_err = risca->sqlcode;
+	}
+	else
+	{
+		exec sql report error into :err_ptr;
+#if !defined(ULD_DLL)
+		PUTS(err_ptr); /* Needs change */
+#endif
+	}
+
+	RISuld_clnup_indx_qry();
+
+	ULD_DBG(("2. RISuld_fetch_indx_row: end"));
+	return(FAILURE);
+} 
+
+
+extern void RISuld_clnup_indx_qry()
+{
+
+	int	i;
+
+	ULD_DBG(("RISuld_clnup_indx_qry"));
+
+	for (i = 0; i < RISuld_out_desc.sqld; i++)
+	{
+		free(RISuld_out_desc.sqlvar[i].sqldata);
+		free(RISuld_out_desc.sqlvar[i].sqlind);
+	}	
+	free(RISuld_out_desc.sqlvar);
+
+	exec sql close index_cursor;
+
+	UNLOD_WARNING_CHECK(RISuld_general_warn);
+
+	exec sql clear cursor index_cursor;
+
+	UNLOD_WARNING_CHECK(RISuld_general_warn);
+
+	exec sql clear index_id;
+
+	UNLOD_WARNING_CHECK(RISuld_general_warn);
+
+	ULD_DBG(("1. RISuld_clnup_indx_qry: end"));
+}

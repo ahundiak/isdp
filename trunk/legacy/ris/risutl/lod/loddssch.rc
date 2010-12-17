@@ -1,0 +1,611 @@
+/* Do not alter this SPC information: $Revision: 1.1.53.1 $ */
+/*
+**	NAME:					loddssch.rc
+**	AUTHORS:				Hitesh Patel		
+**	CREATION DATE:			30th May, 1991		
+**	ABSTRACT:				These functions passes information between risloddes**							descriptor and RISlod_ptr_struct_ptr relating to 
+**							schema only.
+**		
+**	REVISION HISTORY:
+*/
+ 
+/*
+**	DEFINES
+*/
+
+/*
+**	INCLUDES
+*/
+#include <ctype.h>
+#ifdef MM
+#include "lod.h"
+#endif
+
+exec sql include "lod.h";
+
+/*
+**	VARIABLES
+*/
+
+/*
+**	FUNCTIONS
+*/
+
+/*
+**      FUNCTION PROTOTYPES
+*/
+#define loddssch_rc
+#include "sys.prt"
+#include "comjmp.prt"
+#include "comdebug.prt"
+#include "comumsg.prt"
+#include "loddbs.prt"
+#include "loddsind.prt"
+#include "loddsprv.prt"
+#include "loddssch.prt"
+#include "loddstab.prt"
+#include "loddsvie.prt"
+#include "lodermsg.prt"
+#include "lodstspc.prt"
+#include "lodmisc.prt"
+#include "lodtime.prt"
+
+
+
+
+extern void RISlod_load_func(
+	risloddes 		*risloddes_ptr)
+{
+
+	LOD_DBG(("RISlod_load_func! risloddes_ptr: 0x%x\n",risloddes_ptr));
+
+	memset((char *) RISlod_ptr_struct_ptr,0,sizeof(ptr_struct_type)); 
+
+	/* ansi mode */
+	RISlod_ansi_mode(!risloddes_ptr->nonansimode);
+
+	/* preserve blanks */
+	RISlod_blankstrip_mode(!risloddes_ptr->preserve_blanks);
+
+	/* enable mode */
+	if( risloddes_ptr->dbs_count >= 1 )
+		RISlod_exec_enforce_dbs(risloddes_ptr->dbs_count,risloddes_ptr->dbs);
+
+	/* file mode */
+	if( !risloddes_ptr->filemode )
+	{
+		risloddes_ptr->filemode = 'e';
+	}
+
+	if (isupper(risloddes_ptr->filemode))
+	{
+		RISlod_filemode = _tolower(risloddes_ptr->filemode);
+	}
+	else
+	{
+		RISlod_filemode = risloddes_ptr->filemode;
+	}
+
+	/* main file */
+	if( !risloddes_ptr->mainfile[0] )
+	{
+		strcpy(risloddes_ptr->mainfile,"ris.dmp");
+	}
+	else
+	{
+		if( !CHECK_ID_SIZE_OK(strlen(risloddes_ptr->mainfile),RIS_MAX_PATH_SIZE) )	
+		{
+			/* if error return global error and terminate */;
+			risloddes_ptr->lod_err_code = RISUTL_E_INVALID_PATH_SIZE;
+			TERMINATE_RISLOAD
+		}
+	}
+	strcpy(RISlod_mfile,risloddes_ptr->mainfile);
+	RISlod_in_fp = RISlod_batch_open_file('m',RISlod_mfile); 
+
+	/* log file */
+	if( !risloddes_ptr->logfile[0] )
+	{
+		strcpy(risloddes_ptr->logfile,"ris.log");
+	}
+	else
+	{
+		if( !CHECK_ID_SIZE_OK(strlen(risloddes_ptr->logfile),RIS_MAX_PATH_SIZE) )	
+		{
+			risloddes_ptr->lod_err_code = RISUTL_E_INVALID_PATH_SIZE;
+			TERMINATE_RISLOAD
+		}
+	}
+	strcpy(RISlod_lfile,risloddes_ptr->logfile);
+	RISlod_log_fp = RISlod_batch_open_file('l',RISlod_lfile); 
+
+	/* bad file */
+	if( !risloddes_ptr->badfile[0] )
+	{
+		strcpy(risloddes_ptr->badfile,"ris.bad");
+	}
+	else
+	{
+		if( !CHECK_ID_SIZE_OK(strlen(risloddes_ptr->badfile),RIS_MAX_PATH_SIZE) )	
+		{
+			risloddes_ptr->lod_err_code = RISUTL_E_INVALID_PATH_SIZE;
+			TERMINATE_RISLOAD
+		}
+	}
+	strcpy(RISlod_bfile,risloddes_ptr->badfile);
+	RISlod_bad_fp = RISlod_batch_open_file('b',RISlod_bfile); 
+
+	/* delimiter */
+	if( !risloddes_ptr->delimiter )
+	{
+		risloddes_ptr->delimiter = '\'';
+	}
+	RISlod_delimiter = risloddes_ptr->delimiter;
+
+	/* commit_interval */
+	if( risloddes_ptr->commit_interval > 0 )
+	{
+		RISlod_commit_interval = risloddes_ptr->commit_interval;
+	}
+	else
+	{
+		RISlod_commit_interval = risloddes_ptr->commit_interval = DEFAULT_COMMIT_INTERVAL;
+	}
+
+	if( risloddes_ptr->schema_count <= 0 )
+	{
+		/* return error in global error structure */
+		risloddes_ptr->lod_err_code = RISUTL_E_INVALID_NUM_SCH;
+		TERMINATE_RISLOAD
+	}
+	if( !risloddes_ptr->schemas )
+	{
+		/* return error in global error structure */
+		risloddes_ptr->lod_err_code = RISUTL_E_RISLODSCH_NULL;
+		TERMINATE_RISLOAD
+	}
+
+	risloddes_ptr->lod_err_code = 0;
+	risloddes_ptr->ris_err_code = 0;
+	risloddes_ptr->db_err_code = 0;
+	risloddes_ptr->sqlwarnings[0] = '\0';
+
+	RISlod_analyze_schema(risloddes_ptr);
+	LOD_DBG(("1. RISlod_load_func! END.\n"));
+}
+
+
+extern void RISlod_analyze_schema(
+	risloddes		*risloddes_ptr)
+{
+	
+	int		schindx;
+
+	rislodsch *rislodsch_ptr;
+
+	LOD_DBG(("RISlod_analyze_schema! risloddes_ptr: 0x%x \n",risloddes_ptr)); 
+
+	for(schindx = 0; schindx < risloddes_ptr->schema_count; schindx++)
+	{
+		rislodsch_ptr = risloddes_ptr->schemas+schindx;
+		rislodsch_ptr->lod_err_code = 0;
+		rislodsch_ptr->ris_err_code = 0;
+		rislodsch_ptr->db_err_code = 0;
+		rislodsch_ptr->sqlwarnings[0] = '\0';
+		switch(rislodsch_ptr->select_mode)
+		{
+			case NONE:
+						/* return err  */
+						rislodsch_ptr->lod_err_code = RISUTL_E_RISLODSCH_NONE;
+						TERMINATE_RISLOAD
+			case ALL:	
+						/*** Creating header nodes ***/
+						RISlod_cp_passwords(risloddes_ptr,schindx);
+
+						RISlod_sch_select_mode_ALL(risloddes_ptr,schindx);
+						break;
+			case SOME:
+						/*** Creating header nodes ***/
+						RISlod_cp_passwords(risloddes_ptr,schindx);
+
+						RISlod_sch_select_mode_SOME(risloddes_ptr,schindx); 
+						break;
+			default:	
+						/* return illegal option err in global struct also*/
+						rislodsch_ptr->lod_err_code = RISUTL_E_ILLEGAL_SCH_MODE;
+						TERMINATE_RISLOAD
+		} /* switch */
+	}
+	LOD_DBG(("1. RISlod_schema_analyze! END.\n"));
+}
+
+
+extern void RISlod_cp_passwords(
+	risloddes 		*risloddes_ptr,
+	int				schindx)
+{
+	int matrixindx = 0;
+	rislodsch *rislodsch_ptr;
+
+	rislodsch_ptr = risloddes_ptr->schemas+schindx;
+
+	LOD_DBG(("\n1. RISlod_cp_passwords! BEGIN.\n"));
+
+	if( !CHECK_ID_SIZE_OK(strlen(rislodsch_ptr->schname),RIS_MAX_ID_SIZE) )	
+	{
+		rislodsch_ptr->lod_err_code = RISUTL_E_INVALID_ID_SIZE;
+		TERMINATE_RISLOAD
+	}
+
+	RISlod_create_bsnode(rislodsch_ptr->schname);
+
+	/* fill in passwords (no leading '.' allowed) */
+	/* schema password */
+	if(rislodsch_ptr->schpass[0] != '\0')
+	{
+		if( !CHECK_ID_SIZE_OK(strlen(rislodsch_ptr->schpass),RIS_MAX_ID_SIZE) )	
+		{ 	
+			rislodsch_ptr->lod_err_code = RISUTL_E_INVALID_ID_SIZE;
+			TERMINATE_RISLOAD
+		}
+		else
+		{
+			strcpy(RISlod_ptr_struct_ptr->bsnode_ptr->sch_pwd_matrix[matrixindx],rislodsch_ptr->schpass);
+			matrixindx++;
+		}
+	}
+
+	/* os password */
+	if(rislodsch_ptr->ospass[0] != '\0')
+	{
+		if( !CHECK_ID_SIZE_OK(strlen(rislodsch_ptr->ospass),RIS_MAX_ID_SIZE) )
+		{
+			rislodsch_ptr->lod_err_code = RISUTL_E_INVALID_ID_SIZE;
+			TERMINATE_RISLOAD
+		}
+		else
+		{
+			strcpy(RISlod_ptr_struct_ptr->bsnode_ptr->sch_pwd_matrix[matrixindx],rislodsch_ptr->ospass);
+			RISlod_ptr_struct_ptr->bsnode_ptr->num_relations ++;
+			matrixindx++;
+		}
+	}
+
+	/* user password */
+	if(rislodsch_ptr->userpass[0] != '\0')
+	{
+		if( !CHECK_ID_SIZE_OK(strlen(rislodsch_ptr->userpass),RIS_MAX_ID_SIZE) )	
+		{ 	
+			rislodsch_ptr->lod_err_code = RISUTL_E_INVALID_ID_SIZE;
+			TERMINATE_RISLOAD
+		}
+		else
+		{
+			strcpy(RISlod_ptr_struct_ptr->bsnode_ptr->sch_pwd_matrix[matrixindx],rislodsch_ptr->userpass);
+			matrixindx++;
+			RISlod_ptr_struct_ptr->bsnode_ptr->num_relations ++;
+		}
+	}
+	RISlod_ptr_struct_ptr->bsnode_ptr->num_sch_pwd = matrixindx;
+
+	/* user name */
+	if(rislodsch_ptr->username[0] != '\0')
+	{
+		if( !CHECK_ID_SIZE_OK(strlen(rislodsch_ptr->username),RIS_MAX_ID_SIZE) )	
+		{ 	
+			rislodsch_ptr->lod_err_code = RISUTL_E_INVALID_ID_SIZE;
+			TERMINATE_RISLOAD
+		}
+		else
+		{
+			strcpy(RISlod_ptr_struct_ptr->bsnode_ptr->db_name,
+				   rislodsch_ptr->username);
+		}
+	}
+	/* user name */
+	if(rislodsch_ptr->osname[0] != '\0')
+	{
+		if( !CHECK_ID_SIZE_OK(strlen(rislodsch_ptr->osname),RIS_MAX_ID_SIZE) )	
+		{ 	
+			rislodsch_ptr->lod_err_code = RISUTL_E_INVALID_ID_SIZE;
+			TERMINATE_RISLOAD
+		}
+		else
+		{
+			strcpy(RISlod_ptr_struct_ptr->bsnode_ptr->user_name,
+				   rislodsch_ptr->osname);
+		}
+	}
+
+	/* rename */
+	if(rislodsch_ptr->new_schname[0] != '\0')
+	{
+		if( !CHECK_ID_SIZE_OK(strlen(rislodsch_ptr->new_schname),RIS_MAX_ID_SIZE) )	
+		{ 	
+			rislodsch_ptr->lod_err_code = RISUTL_E_INVALID_ID_SIZE;
+			TERMINATE_RISLOAD
+		}
+		else
+		{
+			strcpy(RISlod_ptr_struct_ptr->bsnode_ptr->new_sch_name,rislodsch_ptr->new_schname);
+		}
+	}
+
+	if(rislodsch_ptr->new_schpass[0] != '\0')
+	{
+		if( !CHECK_ID_SIZE_OK(strlen(rislodsch_ptr->new_schpass),RIS_MAX_ID_SIZE) )	
+		{ 	
+			rislodsch_ptr->lod_err_code = RISUTL_E_INVALID_ID_SIZE;
+			TERMINATE_RISLOAD
+		}
+		else
+		{
+			strcpy(RISlod_ptr_struct_ptr->bsnode_ptr->new_sch_pwd,rislodsch_ptr->new_schpass);
+		}
+	}
+
+	if(rislodsch_ptr->new_user[0] != '\0')
+	{
+		if( !CHECK_ID_SIZE_OK(strlen(rislodsch_ptr->new_user),RIS_MAX_ID_SIZE) )	
+		{ 	
+			rislodsch_ptr->lod_err_code = RISUTL_E_INVALID_ID_SIZE;
+			TERMINATE_RISLOAD
+		}
+		else
+		{
+			strcpy(RISlod_ptr_struct_ptr->bsnode_ptr->new_user_name,rislodsch_ptr->new_user);
+		}
+	}
+
+	if(rislodsch_ptr->new_userpass[0] != '\0')
+	{
+		if( !CHECK_ID_SIZE_OK(strlen(rislodsch_ptr->new_userpass),RIS_MAX_ID_SIZE) )	
+		{ 	
+			rislodsch_ptr->lod_err_code = RISUTL_E_INVALID_ID_SIZE;
+			TERMINATE_RISLOAD
+		}
+		else
+		{
+			strcpy(RISlod_ptr_struct_ptr->bsnode_ptr->new_user_pwd,rislodsch_ptr->new_userpass);
+		}
+	}
+}
+
+
+extern void RISlod_sch_select_mode_ALL(
+	risloddes		*risloddes_ptr,
+	int				schindx)
+{
+	rislodsch *rislodsch_ptr;
+
+	LOD_DBG(("RISlod_sch_select_mode_ALL! risloddes_ptr: 0x%x schindx: <%d>\n",risloddes_ptr,schindx));
+
+	rislodsch_ptr = risloddes_ptr->schemas+schindx;
+
+	RISlod_ptr_struct_ptr->bthnode_ptr->tab_select 			= ALL;
+	RISlod_ptr_struct_ptr->bthnode_ptr->def_data_select 	= BOTH;
+	RISlod_ptr_struct_ptr->bthnode_ptr->exist_tab_select	= RIS_IGNORE;
+	RISlod_ptr_struct_ptr->bthnode_ptr->clear_tab_select	= NO;
+	RISlod_ptr_struct_ptr->bihnode_ptr->indx_select 		= ALL;
+	RISlod_ptr_struct_ptr->bvhnode_ptr->view_select 		= ALL;
+	RISlod_ptr_struct_ptr->bghnode_ptr->grant_select 		= ALL;
+
+	rislodsch_ptr->select_mode	 				= ALL;
+	rislodsch_ptr->tabinfo.select_mode 			= ALL;
+	rislodsch_ptr->tabinfo.with_data     		= BOTH;
+	rislodsch_ptr->tabinfo.ignore_create_error	= RIS_IGNORE;
+	rislodsch_ptr->tabinfo.clear_exist_data		= NO;
+	rislodsch_ptr->viewinfo.select_mode 		= ALL;
+	rislodsch_ptr->indxtabinfo.select_mode 		= ALL;
+	rislodsch_ptr->granttabinfo.select_mode 	= ALL;
+
+	LOD_DBG(("1. RISlod_sch_select_mode_ALL! END.\n"));
+}
+
+
+extern void RISlod_sch_select_mode_SOME(
+	risloddes		*risloddes_ptr,
+	int				schindx)
+{
+	rislodsch *rislodsch_ptr;
+
+	LOD_DBG(("RISlod_sch_select_mode_SOME! risloddes_ptr: 0x%x schindx: <%d>\n",risloddes_ptr,schindx));
+
+	rislodsch_ptr = risloddes_ptr->schemas+schindx;
+
+	/*** TABLE ***/
+	if(	rislodsch_ptr->tabinfo.with_data )
+		RISlod_ptr_struct_ptr->bthnode_ptr->def_data_select 
+			= rislodsch_ptr->tabinfo.with_data
+				= BOTH;
+	else
+		RISlod_ptr_struct_ptr->bthnode_ptr->def_data_select 
+			= rislodsch_ptr->tabinfo.with_data
+				= ONLY;
+	/* rm 
+	{
+		rislodsch_ptr->lod_err_code = RISUTL_E_ILLEGAL_DEF_OPTION;
+		TERMINATE_RISLOAD
+	}
+	*/
+
+	if(	rislodsch_ptr->tabinfo.ignore_create_error )
+		RISlod_ptr_struct_ptr->bthnode_ptr->exist_tab_select 
+			= rislodsch_ptr->tabinfo.ignore_create_error
+				= RIS_IGNORE;
+	else 
+		RISlod_ptr_struct_ptr->bthnode_ptr->exist_tab_select 
+			= rislodsch_ptr->tabinfo.ignore_create_error
+				= DO_NOT_IGNORE;
+	/* rm
+	{
+		rislodsch_ptr->lod_err_code = RISUTL_E_ILLEGAL_IGNORE_OPTION;
+		TERMINATE_RISLOAD
+	}
+	*/
+
+	if(	rislodsch_ptr->tabinfo.clear_exist_data )
+	{
+		RISlod_ptr_struct_ptr->bthnode_ptr->clear_tab_select 
+			= rislodsch_ptr->tabinfo.clear_exist_data
+				= YES;
+		if( (rislodsch_ptr->tabinfo.ignore_create_error == DO_NOT_IGNORE) 
+		&&  (rislodsch_ptr->tabinfo.clear_exist_data == YES) )
+		{
+			rislodsch_ptr->lod_err_code = RISUTL_E_DO_NOT_IGNORE_AND_CLEAR;
+			TERMINATE_RISLOAD
+		}
+	}
+	else 
+		RISlod_ptr_struct_ptr->bthnode_ptr->clear_tab_select 
+			= rislodsch_ptr->tabinfo.clear_exist_data
+				= NO;
+	/* rm
+	{
+		rislodsch_ptr->lod_err_code = RISUTL_E_ILLEGAL_CLEAR_OPTION;
+		TERMINATE_RISLOAD
+	}
+	*/
+
+	switch(rislodsch_ptr->tabinfo.select_mode)
+	{
+		case ALL:
+
+					RISlod_ptr_struct_ptr->bthnode_ptr->tab_select = ALL; 
+					break;
+		case SOME:
+					if( rislodsch_ptr->tabinfo.table_count <= 0 )
+					{
+						rislodsch_ptr->lod_err_code = RISUTL_E_INVALID_NUM_TAB;
+						TERMINATE_RISLOAD
+					}
+					if( !rislodsch_ptr->tabinfo.tables )
+					{
+						rislodsch_ptr->lod_err_code = RISUTL_E_RISLODTAB_NULL;
+						TERMINATE_RISLOAD
+					}
+
+					RISlod_ptr_struct_ptr->bthnode_ptr->tab_select 	= SOME;
+					RISlod_tab_select_mode_SOME(risloddes_ptr,schindx);
+					break;
+		case NONE:
+					RISlod_ptr_struct_ptr->bthnode_ptr->tab_select 	= NONE;
+					break;
+		default:
+					rislodsch_ptr->lod_err_code = RISUTL_E_ILLEGAL_TAB_MODE;
+					TERMINATE_RISLOAD
+	}
+
+	/*** INDEX ***/
+	switch(rislodsch_ptr->indxtabinfo.select_mode)
+	{
+		case ALL:
+					RISlod_ptr_struct_ptr->bihnode_ptr->indx_select = ALL;
+					break;
+		case SOME:
+					if( rislodsch_ptr->indxtabinfo.indxtab_count <= 0 )
+					{
+						rislodsch_ptr->lod_err_code = RISUTL_E_INVALID_NUM_INDX;
+						TERMINATE_RISLOAD
+					}
+					if( !rislodsch_ptr->indxtabinfo.indxtabs )
+					{
+						rislodsch_ptr->lod_err_code = RISUTL_E_RISLODINDX_NULL;
+						TERMINATE_RISLOAD
+					}
+
+					RISlod_ptr_struct_ptr->bihnode_ptr->indx_select	= SOME;
+					RISlod_indx_select_mode_SOME(risloddes_ptr,schindx);
+					break;
+		case NONE:
+					RISlod_ptr_struct_ptr->bihnode_ptr->indx_select	= NONE;
+					break;
+		default:
+					rislodsch_ptr->lod_err_code = RISUTL_E_ILLEGAL_INDX_MODE;
+					TERMINATE_RISLOAD
+					break;
+	}
+
+	/*** VIEW ***/
+	switch(rislodsch_ptr->viewinfo.select_mode)
+	{
+		case ALL:
+					RISlod_ptr_struct_ptr->bvhnode_ptr->view_select = ALL;
+					break;
+		case SOME:
+					if( rislodsch_ptr->viewinfo.view_count <= 0 )
+					{
+						rislodsch_ptr->lod_err_code = RISUTL_E_INVALID_NUM_VIEW;
+						TERMINATE_RISLOAD
+					}
+					if( !rislodsch_ptr->viewinfo.views )
+					{
+						rislodsch_ptr->lod_err_code = RISUTL_E_RISLODVIEW_NULL;
+						TERMINATE_RISLOAD
+					}
+
+					RISlod_ptr_struct_ptr->bvhnode_ptr->view_select	= SOME;
+					RISlod_view_select_mode_SOME(risloddes_ptr,schindx);
+					break;
+		case NONE:
+					RISlod_ptr_struct_ptr->bvhnode_ptr->view_select	= NONE;
+					break;
+		default:
+					rislodsch_ptr->lod_err_code = RISUTL_E_ILLEGAL_VIEW_MODE;
+					TERMINATE_RISLOAD
+	}
+
+	/*** GRANT ***/
+	switch(rislodsch_ptr->granttabinfo.select_mode)
+	{
+		case ALL:
+					RISlod_ptr_struct_ptr->bghnode_ptr->grant_select = ALL;
+					break;
+		case SOME:
+					if( rislodsch_ptr->granttabinfo.granttab_count <= 0 )
+					{
+						rislodsch_ptr->lod_err_code = RISUTL_E_INVALID_NUM_PRIV;
+						TERMINATE_RISLOAD
+					}
+					if( !rislodsch_ptr->granttabinfo.granttabs )
+					{
+						rislodsch_ptr->lod_err_code = RISUTL_E_RISLODPRIV_NULL;
+						TERMINATE_RISLOAD
+					}
+
+					RISlod_ptr_struct_ptr->bghnode_ptr->grant_select = SOME;
+					RISlod_priv_select_mode_SOME(risloddes_ptr,schindx);
+					break;
+		case NONE:
+					RISlod_ptr_struct_ptr->bghnode_ptr->grant_select = NONE;
+					break;
+		default:
+					rislodsch_ptr->lod_err_code = RISUTL_E_ILLEGAL_PRIV_MODE;
+					TERMINATE_RISLOAD
+					break;
+	}
+
+	LOD_DBG(("1. RISlod_sch_select_mode_SOME! END.\n"));
+}
+
+
+extern void RISlod_sch_select_mode_post(
+	risloddes		*risloddes_ptr,
+	int				schindx)
+{
+	rislodsch *rislodsch_ptr;
+
+	LOD_DBG(("RISlod_sch_select_mode_post! risloddes_ptr: 0x%x schindx: <%d>\n",risloddes_ptr,schindx));
+
+	rislodsch_ptr = risloddes_ptr->schemas+schindx;
+
+	rislodsch_ptr->lod_err_code = RISlod_ptr_struct_ptr->bsnode_ptr->lnd_err_code;
+	rislodsch_ptr->ris_err_code = RISlod_ptr_struct_ptr->bsnode_ptr->ris_err_code;
+	rislodsch_ptr->db_err_code = RISlod_ptr_struct_ptr->bsnode_ptr->db_err_code;
+
+	strncpy(rislodsch_ptr->sqlwarnings,
+		RISlod_ptr_struct_ptr->bsnode_ptr->sqlwarnings, 8);
+
+	LOD_DBG(("RISlod_sch_select_mode_post! END.\n"));
+}
+
