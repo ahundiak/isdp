@@ -1,0 +1,151 @@
+
+  Author:    Mychelle Greene
+  Title:     API Design Document pdmoGetPartAttributes
+  Date:      8/18/93
+  Revision:  6
+
+  Abstract:  
+ 
+  This API retrieves a list of attributes for the specified part.
+
+  Keywords:
+
+  Part Attributes
+
+  Function Protocol:
+
+  pdmoGetPartAttributes(	cpr_catalog,
+				cpr_partnum, 
+				cpr_revision, 
+				spw_attrs);
+
+  Input:
+
+	char	*cpr_catalog
+	char	*cpr_partnum
+	char	*cpr_revision
+
+  Output:
+
+	struct   attribute_info      *spw_attrs
+
+  Sample Invocation:
+ 
+    status = pdmoGetPartAttributes(	"api_catalog",
+					"api_partnum"
+					"api_revision",
+					&attr_list);
+
+  Input Limitations:
+
+	cpr_catalog:	required 
+			16 characters or less
+			must already exist
+
+	cpr_partnum:	required
+			! * ? , : invalid characters
+			must not exceed the number of characters specified 
+			  at catalog creation time
+
+	cpr_revision:	required
+			! * ? , : invalid characters
+			must not exceed the number of characters specified 
+			  at catalog creation time
+
+  Structures:
+
+  struct attribute_info
+  {
+  char                 cpr_attr_name[IK_ATTR_MAX];
+  char                 cpr_datatype[IK_DATATYPE_MAX];
+  char                 cpr_synonym[IK_SYNONYM_MAX];
+  char                 cpr_value[IK_VALUE_MAX];
+  struct attribute_info *spm_next;
+  };
+
+	cpr_attr_name:	required
+			must not exceed 20 characters
+			/ # = ! * \\ ( ) { } [ ] < > & ? $ @ + - : | invalid
+			  characters
+			must not be a database reserved word
+
+	cpr_datatype:	required
+			must be a valid datatype: real, integer, char(xx),
+			  decimal, smallint
+
+	cpr_synonym:	required
+			must not exceed 40 characters
+
+	cpr_value:	optional
+			must be compatible with the specified datatype
+
+  Return Status:
+
+	PDM_S_SUCCESS
+	PDM_E_CAT_FIELD_BLANK
+	PDM_E_PART_FIELD_BLANK
+	PDM_E_REV_FIELD_BLANK
+	PDM_E_PART_NOT_FOUND
+        PDM_E_NULL_BUFFER
+	PDM_E_USER_NOT_LOGGED_IN
+
+  External Functions:
+
+  PDUcheck_if_logged_in()
+  PDMcheck_partnum()
+  PDUloadapi_attr_list_from_buffer()
+  
+  Assumptions:
+
+  This API may be called in the place of pdmoLoadAttrStructure.  Thus, the user
+  may edit this structure directly and pass it as the attr_list parameter for
+  pdmoAddPart and pdmoChangePart.
+
+  The pdmoFreeAttrStructure API should be called to free up this structure
+  when the user is through with it.
+
+  The PDMexec userid has been loaded during login.
+
+  Impacts:
+ 
+  None
+
+  Future:
+ 
+  None
+
+  Test Cases:
+
+    Success
+
+  Retrieve attributes for a part that exists.
+
+    Failure
+
+  Retrieve attributes for a part that does not exist.
+
+  Algorithm:
+
+- verify login - call PDUcheck_if_logged_in
+        - if status != SUCCESS, return status
+ 
+- catalog - check for NULL and NULLSTRING
+ 
+- partnum - check for NULL and NULLSTRING
+ 
+- revision - check for NULL and NULLSTRING
+ 
+- make sure the part already exists - call PDMcheck_partnum
+        - if status != SUCCESS
+                        - return status
+- call function to get existing part data - PDMget_existing_data
+- if status != SUCCESS
+	- return status
+- split return buffer into attr_bufr and data_bufr
+- call PDUloadapi_attr_list_from_buffer
+- call PDMcancel_modify_part
+- MEMclose data_bufr
+- data_bufr = NULL
+- MEMclose attr_bufr
+- attr_bufr = NULL
+- return status

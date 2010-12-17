@@ -1,0 +1,217 @@
+.nr HM 1.0i
+.nr FM 1.3i
+.nr PO 1.5i
+.nr LL 5.5i
+.nr PS 12
+.nr VS 14
+.po 1.0i
+.ll 6.5i
+.ds CH
+.ds LH \fBDesign Document for Save and Exit\fR
+.ds RH %
+.IZ
+.ps 12
+.vs 14
+
+
+.SH
+1. TITLE
+
+.LP
+.B
+.ce
+Design Document for PDM functions on "EMS" "save" and "exit".
+.R
+.LP
+
+
+.nf
+Author   : Jamal Shakra. 
+Cr. Date : 8/4/93. 
+Version  : 1.00
+Spec Ref.: dm0004
+.fi
+
+
+.SH
+2. ABSTRACT
+
+.LP
+This functionality allows the user to invoke PDM checkin, update 
+database, and delete local file from the EMS "save" and "exit" commands. 
+
+.SH
+3. KEYWORDS
+
+.LP
+SAVE, EXIT, LOGIN, CHECKIN, UPDATE DATABASE, DELETE LOCAL FILE.
+
+.SH
+4. FUNCTION PROTOCOL
+
+.LP
+Does not apply.
+
+.SH
+5. DEPENDENCIES
+
+.LP
+.IP "Assumptions:"
+This functionality assumes that the user must be in EMS for it to work.
+This functionality will be implemented within the context of any "EMS" save and
+exit of an object space. This functionality will only be available if PDU
+product is loaded. This functionality does not require PDM login.
+
+.IP "Impacts:"
+This functionality will impact the EMS save, exit, close, and retrieve 
+commands. The "EMS" save without exit will now have a hook for invoking update 
+database command. The "EMS" save and exit will now have a hook for invoking 
+checkin command. The "EMS" exit without save will now have a hook for invoking
+delete local file command.
+.LP
+
+.SH
+6. ALGORITHMS
+
+.LP
+This section is largely taken from the spec document dm0004.1.tx. It may be 
+replaced by more detailed function calls. The following exnuc functions are
+provided hooks that will help implement this functionality:
+
+ EX_save_function(), EX_exit_function(), EX_retrieve_function(), and
+ EX_exit_function_no_save(). 
+
+Those hooks will have to be set upon the initialization of the PDU command 
+object.
+
+
+Save Command State Flow.
+
+State 1.
+
+     Prompt:   Save <full file name>, y/n? [y]
+     KI:       y - go to state 2.
+               n - kill command.
+     MO:       accepts default
+
+State 2.
+     Prompt: Post <file name (Part Number)> to Database (y/n)? [n]
+               y -  actions
+                    if user not loged in, go to state 3.
+                    if user loged in, save and call update database
+               n -  save only (no update).
+
+
+State 3.
+     Display PDM-LOGIN FORM.
+          RUN: if login successful, save and call update database.
+               if login unsuccessful go to state 3 (come back to
+               login form.
+          CANCEL:   go to state 2.
+
+After save and update to database, kill the command.
+
+
+Save and Rename Command State Flow.
+
+No PDM action. The new file created by the rename is not automatically
+managed by PDM.
+
+
+Exit Command State Flow
+
+State 1:
+     Prompt:   Save <file name>, (y/n)? [y]
+     KI:       y - go to state 3.
+               n - go to state 2.
+     MO:       accepts default
+
+State 2:
+     Prompt:   Delete Local File <file name (Part Number)>, (y/n)? [n]
+          keyin:    y -  cancels part check out
+                         or deletes copy to local,
+                      if user not loged in, go to state 5.
+                      if user loged in, delete file and exit
+                    n -  does not delete local file, then exit
+          move-on:  accepts default [n], then exit
+
+State 3.
+     Prompt:   Check In <file name (Part Number)> (y/n)? [n]
+               y -  actions
+                    if user not loged in, go to state 4.
+                    if user loged in, save, call checkin, and exit
+
+               n -  save and exit only (no checkin).
+
+     For both y and n options, perform the necessary functions
+     PDM executes on save.
+
+State 4.
+     Display PDM-LOGIN FORM.
+          RUN: if login successful, save and call update database.
+               if login unsuccessful go to state 4 (come back to
+               login form).
+          CANCEL:   go to state 3.
+
+
+State 5.
+     Display PDM-LOGIN FORM.
+          RUN: if login successful, call delete local file
+               if login unsuccessful go to state 5 (come back to
+               login form).
+          CANCEL:   go to state 2.
+
+
+CLOSE Command State Flow
+
+The close command is the same as "exit" except instead of exit at
+the end, the command gives the option to "RETRIEVE or EXIT" (no
+save option then given for this "exit").  Use same state flow for
+Close as given for Exit above.
+
+.SH
+7. RETURN STATII
+
+.LP
+Does not apply.
+.SH
+8. MODULARITY
+
+.LP
+The PDM checkin module, the PDM update database module, and the PDM delete
+loacl file module will be invoked from this functionality.
+.SH
+9. TEST CASES/BOUNDARY CONDITIONS
+
+.LP
+.IP "\(bu"
+ Save new file. 
+.IP "\(bu"
+ Save existing file. 
+.IP "\(bu"
+ Save and update database. 
+.IP "\(bu"
+ Save, exit, and checkin.
+.IP "\(bu"
+ Exit with no save.
+.IP "\(bu"
+ Exit with no save and delete local file.
+.IP "\(bu"
+ Close file.
+.IP "\(bu"
+ Close and delete local file.
+.LP
+
+.SH
+10. EXTENSIBILITY
+
+.LP
+This functionality can be extended to support the EMS 2.5 "save" and "exit" 
+commands.
+
+.SH
+11. USER INTERFACE
+
+.LP
+Please see ALGORITHMS.
+

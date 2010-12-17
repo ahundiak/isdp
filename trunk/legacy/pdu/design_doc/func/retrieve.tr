@@ -1,0 +1,258 @@
+.nr HM 1.0i
+.nr FM 1.3i
+.nr PO 1.5i
+.nr LL 5.5i
+.nr PS 12
+.nr VS 14
+.po 1.0i
+.ll 6.5i
+.ds CH
+.ds LH \fBDesign Document for Retrieve\fR
+.ds RH %
+.IZ
+.ps 12
+.vs 14
+
+
+.SH
+1. TITLE
+
+.LP
+.B
+.ce
+Design Document for PDM functions on "EMS" retrieve.
+.R
+.LP
+
+
+.nf
+Author   : Jamal Shakra. 
+Cr. Date : 8/3/93. 
+Version  : 1.00
+Spec Ref.: dm0005
+.fi
+
+
+.SH
+2. ABSTRACT
+
+.LP
+This functionality eliminates the use of a blank or "dummy" file when using
+PDM. It also provides a more consistent interface with EMS.  
+
+.SH
+3. KEYWORDS
+
+.LP
+SAVE, EXIT, LOGIN, CHECKIN, CHECKOUT, UPDATE DATABASE, DELETE LOCAL FILE.
+
+.SH
+4. FUNCTION PROTOCOL
+
+.LP
+Does not apply.
+
+.SH
+5. DEPENDENCIES
+
+.LP
+.IP "Assumptions:"
+This functionality assumes that the user must be in EMS for it to work. There
+would be no command line interface provided for allowing the user to login to
+PDM and checkout/copy to local a file for initial EMS retrieval. This 
+functionality will be implemented within the context of any "EMS" retrieve
+of an object space. This functionality will only be available if PDU product
+is loaded. If user retrieves from PDM, PDM login would be required. 
+
+.IP "Impacts:"
+This functionality will impact the EMS retrieve command. The EMS optional 
+file retrieval form will now consist of two buttons. The first is to allow
+the user to retrieve from  PDM, the second allows the user to alter the display
+structure of the retrieved file. This functionality will also impact the way
+PDM login and PDM assembly display management are being invoked.
+.LP
+
+.SH
+6. ALGORITHMS
+
+.LP
+This section is largely taken from the spec document dm0005.1.tx. It may be 
+replaced by more detailed function calls. This functionality will be invoked 
+by dynamically overwriting the exnuc option form function EXget_file().
+
+State 1:
+     Prompt:   Save <full file name>, y/n? [y]
+     KI:       y - go to state 2.
+               n - clean up, go to state 2.5.
+     MO:       accepts default
+
+State 2.
+     Prompt: Check In <file name (part number)> (y/n)? [n]
+     KI:       y -  actions
+                    if user not loged in, go to state 3.
+                    if user loged in, save, call checkin, go state 4
+
+               n -  save and go to state 4.
+
+     MO:       accept default
+
+State 2.5
+     Prompt:   Delete Local File <file name (part number)> (y/n)? [n]
+     KI:       y  -  if not loged in, go to state 3.5.
+                     if loged in, call delete local file, go state 4
+               n  -  go to state 4.
+     MO:       accept default
+
+State 3.
+     Display PDM-LOGIN FORM.
+          RUN: if login successful, call checkin
+               if login unsuccessful go to state 3 (come back to
+               login form.
+          CANCEL:   go to state 2.
+
+State 3.5.
+     Display PDM-LOGIN FORM.
+          RUN: if login successful, call delete local file.
+               if login unsuccessful go to state 3.5 (come back
+               to login form).
+          CANCEL:   go to state 2.5.
+
+State 4.
+     Prompt:   Key in filename
+     KI:       if file not found, message "file not found", go to
+               state 4.
+               if file is found, retrieve.
+
+     OPTIONS:  Go to state 5.
+
+State 5:  Retrieve Options Form
+
+     PICK of a local file to retrieve:
+
+     RUN: Retrieves the selected file
+     -    if no selected file, go to state 5.5
+     -    if part/file is atomic: retrieve it.
+     -    if part is assembly and Alter Assembly Display = yes
+          then:
+               - if user not loged in, go to state 6.
+               - if user loged in, go to state 8.
+     -    if part is assembly and Alter Assembly Display = no,
+          then retrieve file using existing display options to
+          control the display and load of attached part files.
+
+     CANCEL:   Dismiss the options form and return to state 4.
+
+     PICK of PDM "short" selection gadgets
+          exact function as on PDM 2.2 main form except add the
+          "show all catalogs" category to top of list of
+          classifications on catalog search (see search form
+          classification).
+
+     PICK of "Search" button
+          If user loged in: go to state 7.
+          If user not loged in: go to state 6.
+
+State 5.5
+     Prompt:   Retrieve/exit (r/e)? [r]
+     KI:       retrieve - go to state 4
+               exit - exit.
+
+State 6:  PDM Login Form
+
+     RUN:    attempts log in
+               if failure, return to log in form
+               if success, go to state 7.
+     CANCEL: returns to state 5.
+
+
+State 7:  PDM Part Selection Form
+
+The PDM "part selection" form is unchanged from the PDM 2.2 form
+except:
+     1)   A toggle is added  "retrieve for design/review".
+          (default:design)
+     2)   Placement options button is removed.
+
+     RUN:
+     -    if part/file is atomic: retrieve it.
+     -    if part is assembly and Alter Assembly Display = yes
+          then:
+               - if user not loged in, go to state 6.
+               - if user loged in, go to state 8.
+     -    if part is assembly and Alter Assembly Display = no,
+          then retrieve file using existing display options to
+          control the display and load of attached part files.
+     -    If no selected part give message: "must select part"
+     -    If selected part is not a file-part, give message:
+          "Only graphic parts can be retrieved."
+
+
+     CANCEL: go to state 5 (retrieve options form)
+
+State 8.  Manage Assembly Form
+
+If the part being retrieved is an assembly, and the user has the
+toggle set to "alter display - yes", then the Manage Assembly
+Display form is displayed.  See design for manage assembly
+display command for details of operation.   Remember that
+the display for each and every part (file part or macro part) is
+recorded for the complete nested assembly.
+
+     RUN:    executes the retrieve using new display settings.
+     CANCEL: go to state 5.
+
+note 1:  As with PDM 2.2 retrieve, the files are "check-out" or
+"copied to local" if they are not already resident local.  PDM
+will transfer to local ONLY files for parts that are identified
+as display=y for the assembly being retrieved.
+
+note 2.  On the retrieve, conduct all functions now done with the
+PDM 2.2 retrieve when the object space is activated.  The
+"update" of the object space to match changes made through the
+NONgraphic editor are done at part checkout and not on activation
+(retrieve).  This makes it possible to retrieve without checking
+in.
+.SH
+7. RETURN STATII
+
+.LP
+Does not apply.
+.SH
+8. MODULARITY
+
+.LP
+The PDM login module and the PDM assembly manage display module will be invoked
+from this functionality.
+.SH
+9. TEST CASES/BOUNDARY CONDITIONS
+
+.LP
+.IP "\(bu"
+ Retieve new file. 
+.IP "\(bu"
+ Retrieve existing file. 
+.IP "\(bu"
+ Retrieve with save. 
+.IP "\(bu"
+ Retrieve with no save.
+.IP "\(bu"
+ Retrieve using option form.
+.IP "\(bu"
+ Retrieve using PDM.
+.IP "\(bu"
+ Retrieve using assembly display management. 
+.LP
+
+.SH
+10. EXTENSIBILITY
+
+.LP
+This functionality can be extended to support the EMS 2.5 retrieve option
+form with parts.
+
+.SH
+11. USER INTERFACE
+
+.LP
+Please see ALGORITHMS.
+

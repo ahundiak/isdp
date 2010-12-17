@@ -1,0 +1,185 @@
+Title:	  Design document for performance improvements on retrieving dynamic
+          attributes during place part.
+
+Author:	  Audra Romans
+Date:	  9/8/93
+Revision: 2
+
+
+Abstract:  
+
+           The intent of this design is to improve the performance during
+           retrieval of dynamic attributes at place part time. This
+           design is associated with CR139307373. The CR explains that
+           the retrieval of dynamic attributes should be as fast as
+           the retrieval of static attributes displayed on the forms.
+           This goal will not be reached completely due to the fact that
+           there is a difference in the amount of data retrieved when
+           retrieving static attributes and retrieving dynamic attributes.
+           When retrieving dynamic attributes the attributes, data and list
+           associated with the attributes are retrieved. When retrieving
+           static attributes, only the attributes are retrieved.
+
+Keywords:
+
+           PDMquery_dynamic_attrs
+
+Function Protocol:
+
+           Does not apply
+
+Assumptions:
+
+Impacts:
+
+           PDMquery_dynamic_attributes
+           PDMdyntable_for_catalog
+           PDMquery_table_no
+           PDUdynamics_for_part
+           create_part ppl
+           PDMquery_dynamic_attrs
+
+           Interface function call change for calling PDMget_list_buffer
+           on demand as a list is needed.
+
+           Interface change not to validate write access or update access
+           for the given attribute buffer. The attribute buffer will only
+           contain attributes that can be updated.
+
+Return Status:
+
+           Does not apply
+
+Algorithm:
+
+           function PDUdynamics_for_part and PDUcreate_GRpart
+
+           calls PDMquery_dynamic_attrs
+
+           function: PDMquery_dynamic_attrs
+
+            call PDUload_exec_structure
+            call PDMquery_dynamic_attributes
+            check return status and for null buffers
+            extract p_explode value from buffer
+           return(PDM_S_SUCCESS)
+         
+
+           function: PDMquery_dynamic_attributes
+
+            get dynamic table name for catalog
+              call PDMdyntable_for_catalog
+            get tableno for dynamic table name
+              call PDMquery_table_no
+            if (status != PDM_S_SUCCESS)
+            {
+              convert table name to lower
+               PDMconvert_to_lower
+              get tableno for dynamic table name
+               call PDMquery_table_no
+               if (status != PDM_S_SUCCESS)
+                  return(status)
+               else
+                get attribute buffer and data buffer
+                /* used to call NFMquery_table_attributes */
+                call PDMget_dyn_upd_attr
+             }
+            else
+             {
+              get attribute buffer and data buffer
+              /* used to call NFMquery_table_attributes */
+              call PDMget_dyn_upd_attr
+             }
+           
+           open new buffer - assm_bufr
+           add p_explode to assm_bufr
+           check for computable as a partnum for PDMnorm
+           if (partnum is computable)
+             call PDMfind_p_explode
+             write p_explode to assm_bufr
+           else
+             write null to assm_bufr
+
+          check to see that all buffers are open
+           if buffers are null open buffers
+
+          return(PDM_S_SUCCESS)
+
+           
+          function: PDMdyntable_for_catalog
+
+            query for dynamic table name given the catalog name
+            if (status == SQL_S_SUCCESS) 
+              MEMbuild_array
+             assign dynamic table name to variable
+            else
+             assign null to variable
+           return(PDM_S_SUCCESS)
+
+          function: PDMquery_table_no
+
+            query for the table number given the table name
+            if (status != SQL_S_SUCCESS)
+              switch on status
+            else
+              MEMbuild_array
+              assign table no to variable
+          return(PDM_S_SUCCESS)
+           
+
+Design Ideas:
+
+	   Change PDMmove_functions to check if the function associated
+           with dynamic attributes is local. If local do not move the
+           function again.
+
+           Change PDUdynamics_for_part and the create_part ppl to
+           use cashing and not call PDMquery_dynamic_attrs for
+           every occurance of the same part. The attributes, data and
+           list could be stored for the part being placed and
+           reused when the same part is placed.
+
+           Change the function PDMquery_dynamic_attributes to store in
+           memory the catalog name and dynamic table name being used.
+           Do not call the function PDMdyntable_for_catalog unless the
+           catalog has changed since the last call. 
+
+           Change PDMquery_table_no to make use of cashing the
+           table no and table names.
+
+           Change PDMquery_dynamic_attributes to call PDMget_dyn_upd_attr
+           instead of NFMquery_table_attributes. This new function will
+           return the attribute buffer consisting of only the updatable
+           attributes, datatype, synonym and the data buffer containing
+           the default value , list no, min and max values for each attribute.
+
+           Change the interface to call PDMget_list_buffer as a list
+           is needed. This new function will allow the database to
+           validate the data and return a list.
+
+           Check if the dynamic attributes have functions associated
+           with them. If a function is associated with a dynamic
+           attribute check if the function is local before going
+           to get the function.
+    
+Test Cases:
+
+           Comparing against the static attributes is not a good
+           comparison. The best comparison is 2.4 software verses
+           2.2 software.
+
+           Place a part with a small number of dynamic attributes
+           using the 2.2 pdm software. Then, place the same part
+           using the 2.4 pdm software and compare the difference 
+           in the time it takes to place each part.
+
+           Place a part with a large number of dynamic attributes
+           using the 2.2 pdm software. Then, place the same part 
+           using the 2.4 pdm software and compare the difference
+           in the time it takes to place each part. 
+
+
+
+
+
+

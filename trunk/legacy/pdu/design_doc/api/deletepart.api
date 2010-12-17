@@ -1,0 +1,165 @@
+Author:   Jenny Parris
+Title:    Delete Part API Macro
+Revision: 2
+
+Abstract:
+The delete part occurrence macro deletes a graphic part, non-graphic part, and
+any parametric part. This macro does not delete the part definition from the 
+database.
+
+
+Function Definition:
+
+long pdmoDeletePartOccurrence(
+               lw_status,
+               spr_mod_env,
+               spr_part
+              )     
+Argument       Data Type        I/O Description
+lw_status      long             I   Return Status
+spr_mod_env    *struct GRmd_env I   Module environment to delete part occurrence
+spr_part       *struct GRid     I   Object ID of part occurrence to be deleted
+
+Error Handling:
+
+Status Returns
+PDM_E_BAD_OBJID
+PDM_E_NULL_OBJID
+PDM_E_DELETE_PARAMETRIC_PART
+PDM_E_DETACH_MACRO_LIB
+PDM_E_DELETE_GRPART
+PDM_E_DETACH_PART
+PDM_E_INVALID_PART_POINTER
+
+External Functions:
+
+  PDUis_parametric_part()
+  co$part_get_attr()
+  di$give_pathname()
+  PDUget_GRpart_ids()
+  PDMdetach_part()
+  PDUremove_assembly()
+  delete_prpart()
+  PDMdetach_macro_library()
+  delete_maclib_entry()
+  dp$display()
+
+Assumptions: 
+
+  The user must be logged into PDM.
+
+  EMS must be running and if the delete part occurrence is suppose to be 
+  invisible, the file must be opened invisibly prior to calling 
+  pdmoDeletePartOccurrence.
+
+Impacts:
+
+  None.
+
+Future:
+
+  A way of allowing the user to delete a part occurrence outside of EMS.
+
+Input Requirements:
+
+  Input spr_part is required.
+
+Input Validation:
+
+  Verify the user is logged in.
+
+  If spr_mod_env is NULL, get current module environment.
+
+  If spr_part is NULL, return PDM_E_NULL_OBJID.
+
+  Verify spr_part is valid if given. If part's objid does not exist in the 
+    object space, return PDM_E_BAD_OBJID.
+
+Algorithm:
+
+  Check for type of part to be deleted.
+    status = PDUis_parametric_part(spr_part)
+
+  When not a parametric part:
+
+    Extract attach value from the object space.
+      co$part_get_attr(msg = &msg, mod_env = spr_mod_env, part = spr_part, 
+                       attr = "attach_flag", value = attr_value, type = &type)
+      If msg = MSSUCC or attr_value = "", return PDM_E_INVALID_PART_POINTER. 
+
+    Construct path to file directory.
+      di$give_pathname(osnum = spr_mod_env->md_id.osnum, pathname = part_path)
+
+    Extract parttype from the object space.
+      co$part_get_attr(msg = &msg, mod_env = spr_mod_env, part = spr_part, 
+                       attr = "part_type", value = attr_value, type = &type)
+      If msg = MSSUCC or attr_value = "", return PDM_E_INVALID_PART_POINTER 
+
+    When parttype = "G" or "g" or "D" or "d" and part is attached:
+
+      Check to see if part is attached in another occurrence.
+        status = PDUget_GRpart_ids(s, &part_ids, &count). For all parts
+          returned, check for attach flag != -1 or != -2 
+
+      When part is not attached in another occurrence:
+
+        Delete all files associated with this part (assembly structure included)
+          locally.
+          status = PDMdetach_part(delete_list). If status not PDM_S_SUCCESS, 
+          return PDM_E_DETACH_PART.
+
+    Erase part pointer.
+      dp$display(msg = &sts, oids = spr_part, mode = GRbe);
+
+    Delete GRpart.
+        status = om$send(msg = message GRgraphics.GRdelete(&sts,
+                                                          spr_mod_env)
+                         targetid = spr_part->objid,
+                         targetos = spr_part->osnum). If not success, return
+         PDM_E_DELETE_GRPART.
+
+    Update assembly structure.
+      status = PDUremove_assembly(part_path, spr_mod_env)
+
+    return PDM_S_SUCCESS.
+
+  When a parametric part:
+
+     Delete part.
+       status = delete_prpart(spr_part, spr_mod_env). If not successful, return
+       PDM_E_DELETE_PARAMETRIC_PART.
+
+     Cleanup macro library if necessary.
+        PDMdetach_macro_library()
+
+     Detach macro library file if no longer needed.
+       delete_maclib_entry(spr_mod_env->osnum, macro_library). If not 
+       successful, return PDM_E_DETACH_MACRO_LIB.
+
+     return PDM_S_SUCCESS.
+
+Sample Invocation:
+
+ struct GRid *part;
+
+ pdmoDeletePartOccurrence(&status, NULL, part);
+
+Test Cases:
+
+GRParts:
+
+Test Case
+-----------------------------
+User Not Logged In
+Delete Part Attached
+Delete Part Not Attached
+Delete Part Not Positioned
+
+Parametric Parts:
+
+Test Case
+-----------------------------
+User Not Logged In
+Delete Part
+Delete Part Not Positioned
+

@@ -1,0 +1,300 @@
+/****************************************************************************
+
+Name
+   pdmoAddPartToAssembly
+
+Abstract
+ Adds a part to the given assembly.
+
+Description
+
+This function adds a part non-graphically to the given assembly. It validates
+the entries in child_list [It adds to the database, if the parts doesn't
+exist in the case of VIEW catalogs]. The structure can be defined onlyif
+the part is checked in/Never checked in.
+
+Function protocol
+
+long pdmoAddPartToAssembly
+(
+char *cpr_catalog,
+char *cpr_partnum,
+char *cpr_revsion,
+PDMchildren *spr_PDMstructure
+)
+
+   Input:
+
+     char *cpr_catalog - Catalog of the part to be defined.
+     char *cpr_partnum - Partnum of the part to be defined.
+     char *cpr_revision -Revision of the part to be defined.
+     PDMchildren *spr_PDMstructure - children info which make up the
+                                     assembly.
+
+        {
+        int     im_n_citno;      /* System defined - Leave it  - N */
+        int     im_n_pcatalogno; /* System defined - Leave it  - N */
+        int     im_n_pitemno;    /* System defined - Leave it  - N*/
+        int     im_n_ccatalogno; /* System defined - Leave it  - N*/
+        int     im_n_citemno;    /* System defined - Leave it  - N*/
+        int     ir_p_level;/* Level no of the assembly-Default 1 - OPTIONAL*/
+        cha     caw_n_setindicator[2]; /* System defined -Leave it -N*/
+        cha     caw_n_status[3];  /* System defined - Leave it  - N*/
+        int     im_p_pchildno;    /* System defined - Leave it  - N*/
+        int     ir_p_childno;    /* Child no of the like parts in the
+same level, if multiple parts
+                                    are defined without this input
+                                   system will assign it - OPTIONAL*/
+        char    car_n_catalogname[21]; /*Catalogname of the child - INPUT */
+        char    *cpr_n_itemname;      /*Partnumber of the child   - INPUT */
+        char    *cpr_n_itemrev;       /*Revision   of the child   - INPUT */
+        char    *cpr_n_itemdesc;      /*Description of the child  - INPUT */
+        char    car_p_attached[2];/*Display flag of the child - Leave it -N */
+        double  dr_p_quantity;   /* Quantity of the child - Default 1
+OPTIONAL*/
+        char    car_p_usgaeid[25]; /* Usage ID - OPTIONAL */
+        char    car_n_cofilename[14]; /*Filename of the part - OPTIONAL */
+        int     ir_p_tagno;  /* Tagno - OPTIONAL - Default system generates */
+        char    car_p_alttagno;/* ALttagno -OPTIONAL-Default system generates
+*/
+        spr_children      *next;/* NEXT child pointer of linked list or NULL
+*/
+        }* spr_PDMchildren;
+ pdmoLoadChildStructure can be called to load this structure.
+Input Constraints:
+  cpr_n_catalogname:    required
+                        16 characters or less
+                        must already exist
+
+  cpr_n_itemname:       required
+                        ! * ? , : invalid characters
+                        must not exceed the number of characters specified
+                        at catalog creation time
+
+  cpr_n_itemrev:        required
+                        ! * ? , : invalid characters
+                        must not exceed the number of characters specified
+                        at catalog creation time
+  ir_p_tagno            Cannot be zero or negative
+  ir_p_quantity         Cannot be zero or negative
+
+
+
+Output :
+       None
+Input/Output:
+       None
+
+
+Algorithm:
+
+    Check whether the user is logged in?
+    (YES)
+    (No) return PDM_E_USER_LOGGED_IN!
+     ?end
+    Check for it's existence, Exists?
+     (YES)
+     (No) return PDM_E_ASSEMBLY_NOT_FOUND!
+     ?end
+     Check for the catalog type , Is it "P", "CID", "EID"?
+       (Yes) return PDM_E_PARAMETRIC_STRUCTURE!
+        (No)
+      ?end
+     Check the usage ID of the given child. Is it there?
+      (YES)
+      (No) Call the PDMget_usage_id, then return status.
+      ?end
+     Check for the input tagno, Is it there?
+      (YES) Validate the tagno.
+      (No)  Generate instance_no  which will be used for tag_no, Is it success?
+           (Yes) Load it.
+           (No)  instance_no = 1.
+           ?end
+      ?end
+      Check for the Alt  tagno for the children. Does it exist?
+       (Yes)  Validate it.
+       (No)  Carry over the tagno to alttagno.
+      ?end
+     Check for the  child no for the children.
+       (Yes) Validate it.
+       (No)  Generate the child no- Success?
+             (Yes)
+             (No) childno = 1!
+             ?end
+        ?end
+       Call PDMadd_to_assembly_structure()
+       Get Catalog nos and Part nos SUCCESS?
+      (Yes)
+      (No)  return error!
+      ?end
+       Add p_citno,n_catalogno,n_itemno,pn_catalogno,pn_itemno,p_flag:
+       Get Assembly indicator SUCCESS?
+        (Yes)
+        (No)  return error!
+       ?end
+       Load children's catalognos and itemnos SUCCESS?
+         (Yes)
+         (No) > WRAPUP
+       ?end
+       Load parent's catalognos and itemnos SUCCESS?
+         (Yes)
+         (No) > WRAPUP
+       ?end
+       If PDMexec->operation is 1 ?
+         (Yes)
+          Check assembly structure for cyclic placement SUCCESS?
+           (Yes)
+           (No) > WRAPUP
+            ?end
+         (No)
+       ?end
+       SET AUTOCOMMIT OFF?
+      (Yes)
+      (No) > return error!
+      ?end
+      LOCK PDMCIT Loop for 2 minutes - SUCCESS?
+      (Yes)
+      (No) > return error!
+      ?end
+        If assembly indicator is set to "Y" ?
+           (Yes)
+           (No) > Set n_setindicator to "Y".
+            ?end
+      Check whether this combination exists in NFMSETCIT?
+       (Yes)
+           Load it in the pdmcit.
+       (No)
+             LOAD THE first level children into NFMSETCIT - SUCCESS?
+               (Yes) Load it in the pdmcit.
+                (No) > WRAPUP
+                ?end
+        ?end
+       Change p_incbom based on p_incstr and p_incbom for background part.
+       LOAD THE first level children into PDMCIT - SUCCESS?
+         (Yes)
+          (No) > WRAPUP
+        ?end
+       SET the n_setindicator to "Y".
+       SET AUTOCOMMIT ON?
+        (Yes)
+        (No) > return error!
+        ?end
+        -WRAPUP
+        ROLLBACK TRANSACTION.
+        RETURN status!
+
+DEPENDENCIES
+
+Assumptions:
+  1. The part is checked in/Never checked in.
+  2. Parts are known to the database, except the view parts.
+  3. Parts are yet to be positioned.
+  4. Parts are not cyclic, except for the background attachement.
+  5. The user has the access the change the defintion of the part.
+  6. The part is not flagged for delete, restore, backup, archive.
+  7. The part is backuped, or archived.
+  8. You can't change parametric assemblies.
+  9. You can't change nth level structure.
+  10. The user is logged into the database.
+
+Globals used.
+   ALL globals needed for Validate user access.
+   All globals needed for login
+
+Database schema impact:
+   NFMSETCIT, PDMCIT gets changed
+   p_incpartrpt,n_setindicator of catalog table gets changed
+
+Functions called
+1.PDMquery_catalog_partnos
+2.MEM functions
+3.PDMquery_assembly_ind
+4.PDMload_partnos
+5.PDMload_parentnos
+6.PDMcheck_cycles
+7.PDMstop_transaction
+8.SQLstmt
+9.PDMset_n_setindicator
+10.PDMstart_transaction
+
+Feature Level Impact.
+
+1. This will affect checkout and activate to update the current
+   product structure.
+2. This will affect the reports.
+
+
+MODULARITY
+
+Reused functions:
+
+1.PDMquery_catalog_partnos  - used everywhere
+2.MEM functions             - used everywhere
+3.PDMquery_assembly_ind     - used everywhere
+4.PDMload_partnos           - List local files
+5.PDMstop_transaction       - used everywhere
+6.SQLstmt                   - used everywhere
+7.PDMset_n_setindicator    - Checkin
+8.PDMstart_transaction     - used everywhere
+
+Extensibility:
+
+1. Can be later in PDM2.4+ for taking care of EMS parts.
+2. Can be used in the Update DB command.
+
+
+Return Values
+
+PDM_S_SUCCESS               -   Succesful Completion
+PDM_E_CATALOG_NOT_FOUND     -   A given catalog is not there in the DB.
+PDM_E_PART_NOT_FOUND        -   A given part/rev is not there in the DB.
+PDM_E_CAT_FIELD_BLANK       -   Catalog field empty
+PDM_E_PART_FIELD_BLANK      -   Partnum field empty
+PDM_E_REV_FIELD_BLANK       -   Revison field empty
+PDM_E_INVALID_PART_TYPE     -   Invalid part ype
+PDM_I_TABLE_LOCKED          -   Concurrent access, the table is locked
+PDM_E_LOCK_CIT              -   CIT is locked, Please try later.
+PDM_E_SQL_STMT              -   Invalid data
+
+
+
+Notes
+
+Index
+STRUCTURE,ASSEMBLY,NON-GRAPHIC EDITING
+Keywords
+EDITING,STRUCTURE,ASSEMBLY,DEFINE ASSEMBLY
+
+History
+   Kumar Narayanan Sun Jul 12 16:50:39 CDT 1993: Initial Creation
+****************************************************************************/
+
+
+/****************************************************************************
+Include Files
+****************************************************************************/
+#include                <stdio.h>
+#include                "PDUerror.h"
+#include                "MEMstruct.h"
+#include                "MEMerrordef.h"
+#include                "NFMerrordef.h"
+#include                "SQLerrordef.h"
+#include                "PDUris_incl.h"
+#include                "PDMproto.h"
+#include                "PDUpdmrpro.h"
+
+static  long            status;
+static  char            s[1024];
+extern  int                     PDMdebug_on;
+extern  char            PDM_DEBUG_FILE[];
+extern  PDMexec_ptr     PDMexec;
+
+
+
+/****************************************************************************
+sample  invocation
+****************************************************************************/
+
+
+ status = pdmoAddPartToAssembly (cpr_catalog, cpr_partnum, cpr_revsion,
+spr_PDMstructure);

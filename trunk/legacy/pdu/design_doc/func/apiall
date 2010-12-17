@@ -1,0 +1,5639 @@
+
+------------------------------------------------------------------------------
+  Final Design Document pdmoAddPart 
+  7/21/93
+
+  Abstract:  
+ 
+  This API adds a part to the database.
+
+  Keywords:
+
+  Add Part
+
+  Function Protocol:
+
+  pdmoAddPart(	cpr_catalog,
+		cpr_partnum, 
+		cpr_revision, 
+		cpr_parttype, 
+		cpr_description,
+		cpr_acl_name, 
+		cpr_stg_name, 
+		spr_attrs, 
+		spr_files);
+
+  Input:
+
+	char	*cpr_catalog
+	char	*cpr_partnum
+	char	*cpr_revision
+	char	*cpr_parttype
+	char	*cpr_description
+	char	*cpr_acl_name
+	char	*cpr_stg_name
+	struct   attribute_info *spr_attrs
+	struct   file_info      *spr_files
+
+  Output:
+
+	None
+
+  Input Limitations:
+
+	cpr_catalog:	required 
+			16 characters or less
+			must already exist
+
+	cpr_partnum:	required
+			! * ? , : invalid characters
+			must not exceed the number of characters specified 
+			  at catalog creation time
+
+	cpr_revision:	required
+			! * ? , : invalid characters
+			must not exceed the number of characters specified 
+			  at catalog creation time
+
+	cpr_parttype:	required
+			must be "M" "m" "D" "d" "G" "g" "N" or "n"
+
+	cpr_description:	optional
+			must not exceed the number of characters specified 
+			  at catalog creation time
+
+	cpr_acl_name:	required
+			default is PDM_PART_ACL
+
+	cpr_stg_name:	required
+			default is NFMFILES
+
+	spr_files:	optional
+			necessary for adding a part with file information
+			
+	spr_attrs:	optional
+			necessary for changing the value of system or user-
+			  defined attributes
+
+  Structures:
+
+  struct file_info
+        {
+        char                 *cpr_file_desc;
+        char                 *cpr_local_fn;
+        char                 *cpr_storage_fn;
+        char                 *cpr_file_type;
+        int                   ir_mode;
+        struct file_info  *spm_next;
+        };
+
+	cpr_file_desc:	optional
+			must not exceed 40 characters
+
+	cpr_local_fn:	optional
+			must be unique to for the part being added
+			must not exceed 14 characters
+			/ # = ! * \\ ( ) { } [ ] < > & ? $ @ + - : | invalid
+			  characters
+
+	cpr_storage_fn:	optional
+			must be unique to for the part being added
+			must not exceed 14 characters
+			/ # = ! * \\ ( ) { } [ ] < > & ? $ @ + - : | invalid
+			  characters
+			filename must not already exist in check in storage
+			  area
+
+	cpr_file_type:	optional
+			may not be "M" or "m"
+			must not exceed 5 characters
+			/ # = ! * \\ ( ) { } [ ] < > & ? $ @ + - : | invalid
+			  characters
+
+  struct attribute_info
+        {
+        char                 *cpr_attr_name;
+        char                 *cpr_datatype;
+        char                 *cpr_synonym;
+        char                 *cpr_value;
+        struct attribute_info *spm_next;
+        };
+
+	cpr_attr_name:	required
+			must not exceed 20 characters
+			/ # = ! * \\ ( ) { } [ ] < > & ? $ @ + - : | invalid
+			  characters
+			must not be a database reserved word
+
+	cpr_datatype:	required
+			must be a valid datatype: real, integer, char(xx),
+			  decimal, smallint
+
+	cpr_synonym:	required
+			must not exceed 40 characters
+
+	cpr_value:	optional
+			must be compatible with the specified datatype
+
+  Return Status:
+
+	PDM_S_SUCCESS
+	PDM_E_CAT_FIELD_BLANK
+	PDM_E_PART_FIELD_BLANK
+	PDM_E_REV_FIELD_BLANK
+	PDM_E_CAT_FIELD_TOO_LONG
+	PDM_E_PART_FIELD_TOO_LONG
+	PDM_E_LOC_FN_TOO_LONG
+	PDM_E_FILE_DESC_TOO_LONG
+	PDM_E_FILETYPE_TOO_LONG
+	PDM_E_STG_FN_TOO_LONG 
+	PDM_E_CAT_NOT_FOUND
+	PDM_E_INVALID_CHAR_IN_PART
+	PDM_E_INVALID_CHAR_IN_REV
+	PDM_E_INVALID_CHAR_IN_LOCFN
+	PDM_E_INVALID_CHAR_IN_STGFN
+	PDM_E_INVALID_CHAR_IN_FILETYPE
+	PDM_E_IDENTIFIER_TOO_LONG
+	PDM_E_REVISION_EXISTS
+	PDM_E_CI_FILENAME_EXISTS
+	PDM_E_STG_FN_NOT_UNIQUE
+	PDM_E_ACLNAME_NOT_FOUND
+	PDM_E_STGNAME_NOT_FOUND
+	PDM_E_INVALID_PART_TYPE
+	PDM_I_TABLE_LOCKED 
+	NFM_E_ITEM_ACL_NOT_IN_PROJ_MAP
+	NFM_E_NO_SO_FOUND_FOR_ITEM
+	NFM_E_NO_SO_USERS_FOUND_IN_ACL
+	NFM_W_INVALID_VERSION_LIMIT
+	NFM_E_INV_ACL_FOR_OWNED_MEMBER
+	NFM_E_INV_ACL_FOR_MAPPED_CAT
+
+	PDM_E_USER_NOT_LOGGED_IN
+
+  External Functions:
+
+  PDUcheck_if_logged_in()
+  PDMvalidate_user_access()
+  PDUcheck_catalog_syntax()
+  PDMrverify_catalog()
+  PDUcheck_part_syntax()
+  PDUcheck_part_datatype()
+  PDUcheck_rev_syntax()
+  PDUcheck_rev_datatype()
+  PDMcheck_partnum()
+  PDUcheck_desc_datatype()
+  PDUvalidate_parttype()
+  PDUverify_aclname()
+  PDUverify_storage_name()
+  PDUverify_file_desc()
+  PDUverify_addpart_filename()
+  PDUcheck_dup_sa_fname()
+  PDUverify_filetype()
+  PDUfind_attr_in_bufr()
+  PDUvalid_attr()
+  PDUcheck_for_reserved_words()
+  PDUformat_buffer()
+  PDMadd_part()
+  
+  Assumptions:
+
+  If the user is adding files with the new part, pdmoLoadFileStructure must
+  be called before pdmoAddPart.
+
+  If the user is assigning attribute values, pdmoLoadAttrStructure must be
+  called before pdmoAddPart.
+
+  The user must call the appropriate APIs to free the file and attribute 
+  structures.
+
+  The PDMexec userid has been loaded during login.
+
+  Impacts:
+ 
+  None
+
+  Future:
+ 
+  None
+
+  Test Cases:
+
+    Success
+
+  Add a graphic part with one file.
+  Add a graphic part with multiple files.
+  Add a graphic part without files.
+  Add a nongraphic part.
+  Add a macro part.
+  Add a part with values for attributes and user-defined attributes.
+
+    Failure
+
+  Add a part with an invalid part type.
+  Add a part that already exists.
+  Add a part with an invalid local/storage filename.
+  Add a part with a duplicate local/storage filename.
+  Add a part to an invalid ACL.
+  Add a part with an invalid storage area name.
+
+  Algorithm:
+
+- verify login - call PDUcheck_if_logged_in
+	- if status != SUCCESS, return status
+
+- verify that all required input has been entered
+	- catalog - call PDUcheck_catalog_syntax
+		- set bufr_flag = TRUE
+		- set PDU_main_form_cat = FALSE
+		- call PDMrverify_catalog
+		- if status != SUCCESS, return status
+		- split the return buffer into the attr_bufr and data_bufr
+
+	- partnum - call PDUcheck_part_syntax
+		- if status != SUCCESS, return status
+		- get the part datatype from the attr_bufr
+		- call PDUcheck_part_datatype
+		- if status != SUCCESS, return status
+
+	- revision - call PDUcheck_rev_syntax
+		- if status != SUCCESS, return status
+		- get the revision datatype from the attr_bufr
+		- call PDUcheck_rev_datatype
+		- if status != SUCCESS, return status
+
+	- check to see if the part already exists - call PDMcheck_partnum
+		- if status = SUCCESS
+			- status = PDM_E_PART_EXISTS
+			- return status
+		- else if status == PDM_E_PARTREV_NOT_FOUND
+			- status = PDM_S_SUCCESS
+			- return status
+		- else return status
+
+- call PDMvalidate_user_access
+	- if status != SUCCESS, return status
+
+	- description - call PDUcheck_desc_datatype
+		- if status != SUCCESS, return status
+
+	- parttype - call PDUvalidate_parttype
+		- if status != SUCCESS, return status
+		- if parttype = N, verify that file list is NULL
+			- if file list is not NULL, PDM_E_NONGRAPH_FILES
+
+	- acl_name - call PDUverify_aclname
+		- if status != SUCCESS, return status
+	- verify that a valid acl_no was returned
+	- write the acl_no to the data_bufr
+
+	- stg_name - call PDUverify_storage_name
+		- if status != SUCCESS, return status
+	- verify that a valid storage_no was returned
+	- write the storage_no to the data_bufr
+
+- write part information to the data_bufr
+	- partnum
+	- revision
+	- parttype
+	- description
+
+- if file_list, for each entry verify data in file_list
+	- if !filedesc && !local_fn && !storage_fn && !filetype
+		- return PDM_E_NO_DATA_IN_FILE_LIST
+	- filedesc - if filedesc, call PDUverify_file_desc
+		- if status != SUCCESS, return status
+	- if local_fn - call PDUverify_addpart_filename
+		- if status != SUCCESS, return status
+	- if storage_fn - call PDUverify_addpart_filename
+		- if status != SUCCESS, return status
+		- call PDMcheck_dup_sa_fname
+		- if status != SUCCESS, return status
+	- if filetype - call PDUverify_filetype
+		- if status != SUCCESS, return status
+	- if mode != ADD
+		- return PDM_E_INVALID_MODE
+
+- for each attribute in the list
+	- if both attr_name and attr_synonym are empty, return error message
+
+	- else if attr_name is not empty
+		- call PDUfind_attr_in_buffer
+		- if return status = -1, return PDM_I_ATTR_NOT_FOUND
+		- call PDUvalid_attr
+		- if return status != SUCCESS, return PDM_E_INVALID_ATTR
+		- call PDUcheck_for_reserved_words
+		- if return status != SUCCESS, return PDM_E_RESERVED_DATA
+		- test for write permission
+		- if n_write = N, return PDM_E_NOT_WRITABLE
+		- write the attribute to the data_bufr
+
+	- else if attr_synonym is not empty
+		- call PDUfind_attr_in_buffer
+		- if return status = -1, return PDM_I_ATTR_NOT_FOUND
+		- test for write permission
+		- if n_write = N, return PDM_E_NOT_WRITABLE
+		- write the attribute to the data_bufr
+
+	- else return error message
+
+- if file_list
+	- call PDUformat_buffer
+	- write a blank first row to the buffer
+	- call PDUget_buffer_col for n_cofilename
+	- call PDUget_buffer_col for n_cifilename
+	- call PDUget_buffer_col for n_filetype
+	- call PDUget_buffer_col for p_filedesc
+	- call PDUget_buffer_col for n_cisaname
+	- for each set of file information
+		- write the file information to the file_bufr
+		- write the storage area name to the file_bufr
+
+- call PDMadd_part function
+- set part state with return status
+- close all buffers
+- set status
+- return
+-- 
+
+
+
+  Final Design Document pdmoChangePart
+  7/21/93
+
+  Abstract:  
+
+  This API changes the definition of an existing part in the database.
+
+  Keywords:
+
+  Change Part
+
+  Function Protocol:
+
+  pdmoChangePart(	cpr_catalog,
+			cpr_partnum, 
+			cpr_revision, 
+			cpr_parttype, 
+			cpr_description,
+			cpr_acl_name, 
+			cpr_stg_name, 
+			spr_attrs, 
+			spr_add_files,
+			spr_chg_files;
+			spr_delete_files);
+
+  Input:
+
+	char	*cpr_catalog
+	char	*cpr_partnum
+	char	*cpr_revision
+	char	*cpr_parttype
+	char	*cpr_description
+	char	*cpr_acl_name
+	char	*cpr_stg_name
+	struct   attribute_info *spr_attrs
+	struct   file_info      *spr_add_files
+	struct   chg_file_info  *spr_chg_files
+	struct   file_info      *spr_delete_files
+
+  Output:
+
+	None
+
+  Input Limitations:
+
+	cpr_catalog:	required 
+			16 characters or less
+			must already exist
+
+	cpr_partnum:	required
+			! * ? , : invalid characters
+			must not exceed the number of characters specified 
+			  at catalog creation time
+
+	cpr_revision:	required
+			! * ? , : invalid characters
+			must not exceed the number of characters specified 
+			  at catalog creation time
+
+	cpr_parttype:	required
+			must be "M" "m" "D" "d" "G" "g" "N" or "n"
+
+	cpr_description:	optional
+			must not exceed the number of characters specified 
+			  at catalog creation time
+
+	cpr_acl_name:	required
+			default is PDM_PART_ACL
+
+	cpr_stg_name:	required
+			default is NFMFILES
+
+	spr_add_files:	optional
+			necessary for adding file information
+			
+	spr_chg_files:	optional
+			necessary for changing file information
+			
+	spr_delete_files:	optional
+			necessary for deleting file information
+			
+	spr_attrs:		required
+			must contain a list of default attributes and values
+			  that are present in all catalog
+			may contain an appended list of user-defined 
+			  attributes and values
+
+  Structures:
+ 
+  struct file_info
+        {
+        char                 *cpr_file_desc;
+        char                 *cpr_local_fn;
+        char                 *cpr_storage_fn;
+        char                 *cpr_file_type;
+        int                   ir_mode;
+        struct file_info  *spm_next;
+        };
+
+	cpr_file_desc:	optional
+			must not exceed 40 characters
+
+	cpr_local_fn:	optional
+			must be unique to for the part being added
+			must not exceed 14 characters
+			/ # = ! * \\ ( ) { } [ ] < > & ? $ @ + - : | invalid
+			  characters
+
+	cpr_storage_fn:	optional
+			must be unique to for the part being added
+			must not exceed 14 characters
+			/ # = ! * \\ ( ) { } [ ] < > & ? $ @ + - : | invalid
+			  characters
+			filename must not already exist in check in storage
+			  area
+
+	cpr_file_type:	optional
+			may not be "M" or "m"
+			must not exceed 5 characters
+			/ # = ! * \\ ( ) { } [ ] < > & ? $ @ + - : | invalid
+			  characters
+
+	ir_mode:	reguired
+			specifies whether user is adding, changing or
+			  deleting file information
+			ADD = 1, CHANGE = 2, DELETE = 3
+
+  struct attribute_info
+        {
+        char                 *cpr_attr_name;
+        char                 *cpr_datatype;
+        char                 *cpr_synonym;
+        char                 *cpr_value;
+        struct attribute_info *spm_next;
+        };
+
+	cpr_attr_name:	required
+			must not exceed 20 characters
+			/ # = ! * \\ ( ) { } [ ] < > & ? $ @ + - : | invalid
+			  characters
+			must not be a database reserved word
+
+	cpr_datatype:	required
+			must be a valid datatype: real, integer, char(xx),
+			  decimal, smallint
+
+	cpr_synonym:	required
+			must not exceed 40 characters
+
+	cpr_value:	optional
+			must be compatible with the specified datatype
+
+  Return Status:
+
+	PDM_S_SUCCESS
+	PDM_E_CAT_FIELD_BLANK
+	PDM_E_PART_FIELD_BLANK
+	PDM_E_REV_FIELD_BLANK
+	PDM_E_LOC_FN_TOO_LONG
+	PDM_E_FILE_DESC_TOO_LONG
+	PDM_E_FILETYPE_TOO_LONG
+	PDM_E_STG_FN_TOO_LONG 
+	PDM_E_CAT_NOT_FOUND
+	PDM_E_INVALID_CHAR_IN_LOCFN
+	PDM_E_INVALID_CHAR_IN_STGFN
+	PDM_E_INVALID_CHAR_IN_FILETYPE
+	PDM_E_IDENTIFIER_TOO_LONG
+	PDM_E_CI_FILENAME_EXISTS
+	PDM_E_STG_FN_NOT_UNIQUE
+	PDM_E_ACLNAME_NOT_FOUND
+	PDM_E_STGNAME_NOT_FOUND
+	PDM_E_INVALID_PART_TYPE
+	PDM_I_TABLE_LOCKED 
+	NFM_E_ITEM_ACL_NOT_IN_PROJ_MAP
+	NFM_E_NO_SO_FOUND_FOR_ITEM
+	NFM_E_NO_SO_USERS_FOUND_IN_ACL
+	NFM_W_INVALID_VERSION_LIMIT
+	NFM_E_INV_ACL_FOR_OWNED_MEMBER
+	NFM_E_INV_ACL_FOR_MAPPED_CAT
+
+	PDM_E_NOT_USER_LOGGED_IN
+
+
+  External Functions:
+ 
+  PDUcheck_if_logged_in()
+  PDMvalidate_user_access()
+  PDUvalidate_catalog()
+  PDMcheck_partnum()
+  PDMget_existing_data()
+  PDUcheck_desc_datatype()
+  PDUvalidate_parttype()
+  PDUverify_aclname()
+  PDUverify_storage_name()
+  PDUverify_file_desc()
+  PDUverify_addpart_filename()
+  PDUcheck_dup_sa_fname()
+  PDUverify_filetype()
+  PDUfind_attr_in_bufr()
+  PDUvalid_attr()
+  PDUcheck_for_reserved_words()
+  PDUformat_buffer()
+  PDUdelete_files_from_buffer()
+  PDUadd_files_to_buffer()
+  PDUchange_files_in_buffer()
+  PDMmodify_part()
+  PDMcancel_modify_part()
+ 
+  Assumptions:
+ 
+  If the user is adding or deleting file information, pdmoLoadFileStructure
+  must be called before calling pdmoChangePart.
+ 
+  If the user is changing file information, pdmoLoadChangeStructure must be
+  called before calling pdmoChangePart.
+ 
+  If the user is changing attribute values, pdmoLoadAttrStructure must be
+  called before pdmoChangePart.
+ 
+  The user must call the appropriate APIs to free the file and attribute 
+  structures.
+
+  The PDMexec userid has been loaded during login.
+ 
+  Impacts:
+
+  None
+ 
+  Future:
+
+  Additional APIs will be written to add, change or delete files without
+  calling pdmoChangePart.  This will eliminate the time that is used to
+  retrieve attribute information.
+
+  Test Cases:
+
+    Success
+ 
+  Change the local filename of a part.
+  Change the storage area filename of a part.
+  Change the part type of a part.
+  Change the description of a part.
+  Change the values for attributes and user-defined attributes.
+  Add files to a part.
+  Delete files from a part.
+ 
+    Failure
+ 
+  Change the part type to an invalid part type.
+  Change the local filename to an invalid filename.
+  Change the storage filename to an invalid filename.
+  Change the local filename to a duplicate local filename.
+  Change the storage area filename to a duplicate storage area filename.
+  Change the description to an invalid description.
+ 
+  Algorithm:
+
+- verify login - call PDUcheck_if_logged_in
+        - if status != SUCCESS, return status
+ 
+- verify that all required input has been entered
+	- catalog - call PDUvalidate_catalog
+                - if status != SUCCESS, return status
+
+	- partnum - check for NULL and NULLSTRING
+
+	- revision - check for NULL and NULLSTRING
+
+	- make sure the part already exists - call PDMcheck_partnum
+                - if status != SUCCESS
+                        - return status
+
+- call PDMvalidate_user_access
+        - if status != SUCCESS, return status
+
+	- call function to get existing part data - PDMget_existing_data
+                - if status != SUCCESS
+                        - return status
+	- split return buffer into attr_bufr and data_bufr
+
+	- description - call PDUcheck_desc_datatype
+                - if status != SUCCESS, 
+			- call PDMcancel_modify_part
+			- return status
+ 
+        - parttype - call PDUvalidate_parttype
+                - if status != SUCCESS, 
+			- call PDMcancel_modify_part
+			- return status
+                - if parttype = N, verify that chg_file list is NULL
+                        - if chg_file list is not NULL, 
+				- call PDMcancel_modify_part
+				- return PDM_E_NONGRAPH_FILES
+
+	- acl_name - call PDUverify_aclname
+                - if status != SUCCESS, 
+			- call PDMcancel_modify_part
+			- return status
+        - verify that a valid acl_no was returned
+        - write the acl_no to the data_bufr
+ 
+        - stg_name - call PDUverify_storage_name
+                - if status != SUCCESS, 
+			- call PDMcancel_modify_part
+			- return status
+        - verify that a valid storage_no was returned
+        - write the storage_no to the data_bufr
+ 
+- write part information to the data_bufr
+        - parttype
+        - description
+
+- for each attribute in the list
+	- if both attr_name and attr_synonym are empty, return error message
+ 
+        - else if attr_name is not empty
+                - call PDUfind_attr_in_buffer
+                - if return status = -1, 
+			- call PDMcancel_modify_part
+			- return PDM_I_ATTR_NOT_FOUND
+                - call PDUvalid_attr
+                - if return status != SUCCESS, 
+			- call PDMcancel_modify_part
+			- return PDM_E_INVALID_ATTR
+                - call PDUcheck_for_reserved_words
+                - if return status != SUCCESS, 
+			- call PDMcancel_modify_part
+			- return PDM_E_RESERVED_DATA
+                - test for write permission
+                - if n_write = N, 
+			- call PDMcancel_modify_part
+			- return PDM_E_NOT_WRITABLE
+                - if n_update = N, 
+			- call PDMcancel_modify_part
+			- return PDM_E_NOT_UPDATABLE
+                - write the attribute to the data_bufr
+ 
+        - else if attr_synonym is not empty
+                - call PDUfind_attr_in_buffer
+                - if return status = -1, 
+			- call PDMcancel_modify_part
+			- return PDM_I_ATTR_NOT_FOUND
+                - test for write permission
+                - if n_write = N, 
+			- call PDMcancel_modify_part
+			- return PDM_E_NOT_WRITABLE
+                - if n_update = N, 
+			- call PDMcancel_modify_part
+			- return PDM_E_NOT_UPDATABLE
+                - write the attribute to the data_bufr
+ 
+        - else return error message
+
+- if delete_file_list
+	- check the status of part (in/out)
+	- if part is not checked in
+		- call PDMcancel_modify_part
+		- return PDM_E_CANNOT_DELETE_FILES
+
+- if add_file_list
+	- check the status of part (in/out)
+	- if part is not checked out
+		- call PDMcancel_modify_part
+		- return PDM_E_CANNOT_ADD_FILES
+
+- if chg_file_list
+	- check the status of part (in/out)
+	- if part is not checked in
+		- call PDMcancel_modify_part
+		- return PDM_E_CANNOT_CHANGE_FILES
+
+- if delete_file_list, for each entry verify data in file_list
+        - if !filedesc && !local_fn && !storage_fn && !filetype
+		- call PDMcancel_modify_part
+                - return PDM_E_NO_DATA_IN_FILE_LIST
+	- for each node in the list
+		- if mode != 3
+			- call PDMcancel_modify_part
+			- return PDM_E_INVALID_MODE
+	- call PDUdelete_files_from_buffer
+                - if status != SUCCESS, 
+			- call PDMcancel_modify_part
+			- return status
+
+- if add_file_list, for each entry verify data in file_list
+        - if !filedesc && !local_fn && !storage_fn && !filetype
+		- call PDMcancel_modify_part
+                - return PDM_E_NO_DATA_IN_FILE_LIST
+        - if file_desc call PDUverify_file_desc
+                - if status != SUCCESS, 
+			- call PDMcancel_modify_part
+			- return status
+        - if local_fn call PDUverify_addpart_filename
+                - if status != SUCCESS, 
+			- call PDMcancel_modify_part
+			- return status
+        - if storage_fn call PDUverify_addpart_filename
+                - if status != SUCCESS, 
+			- call PDMcancel_modify_part
+			- return status
+                - call PDMcheck_dup_sa_fname
+                - if status != SUCCESS, 
+			- call PDMcancel_modify_part
+			- return status
+        - if filetype call PDUverify_filetype
+                - if status != SUCCESS, 
+			- call PDMcancel_modify_part
+			- return status
+	- for each node in the list
+		- if mode != 1
+			- call PDMcancel_modify_part
+			- return PDM_E_INVALID_MODE
+	- call PDUadd_files_to_buffer
+                - if status != SUCCESS, 
+			- call PDMcancel_modify_part
+			- return status
+
+- if chg_file_list, for each entry verify data in file_list
+        - if !chg_filedesc && !chg_local_fn && !chg_storage_fn && !chg_filetype
+		- call PDMcancel_modify_part
+                - return PDM_E_NO_DATA_IN_FILE_LIST
+        - if chg_file_desc call PDUverify_file_desc
+                - if status != SUCCESS, 
+			- call PDMcancel_modify_part
+			- return status
+        - if chg_local_fn call PDUverify_addpart_filename
+                - if status != SUCCESS, 
+			- call PDMcancel_modify_part
+			- return status
+        - if chg_storage_fn call PDUverify_addpart_filename
+                - if status != SUCCESS, 
+			- call PDMcancel_modify_part
+			- return status
+                - call PDMcheck_dup_sa_fname
+                - if status != SUCCESS, 
+			- call PDMcancel_modify_part
+			- return status
+        - if chg_filetype call PDUverify_filetype
+                - if status != SUCCESS, 
+			- call PDMcancel_modify_part
+			- return status
+	- for each node in the list
+		- if mode != 2
+			- call PDMcancel_modify_part
+			- return PDM_E_INVALID_MODE
+	- call PDUchange_files_in_buffer
+                - if status != SUCCESS, 
+			- call PDMcancel_modify_part
+			- return status
+
+- call PDMmodify_part function
+- if status != PDM_S_SUCCESS
+	- call function to unlock the part
+- set status
+- return
+
+
+
+  Final Design Document pdmoDeletePart
+  7/21/93
+
+  Abstract:  
+
+  This API deletes a part definition in the database.
+
+  Keywords:
+
+  Delete Part
+
+  Function Protocol:
+
+  pdmoDeletePart(cpr_catalog, cpr_partnum, cpr_revision)
+
+  Input:
+
+	char	*cpr_catalog
+	char	*cpr_partnum
+	char	*cpr_revision
+
+  Output:
+
+	None
+
+  Input Limitations:
+
+	cpr_catalog:	required 
+			16 characters or less
+			must already exist
+
+	cpr_partnum:	required
+			! * ? , : invalid characters
+			must not exceed the number of characters specified 
+			  at catalog creation time
+
+	cpr_revision:	required
+			! * ? , : invalid characters
+			must not exceed the number of characters specified 
+			  at catalog creation time
+
+  Structures:
+
+  None
+
+  Return Status:
+
+	PDM_S_SUCCESS
+	PDM_E_PART_OCCURS_IN_ASSEMBLY
+	PDM_E_CAT_FIELD_BLANK
+	PDM_E_PART_FIELD_BLANK
+	PDM_E_REV_FIELD_BLANK
+	PDM_E_CAT_NOT_FOUND
+	PDM_I_TABLE_LOCKED 
+
+	PDM_E_USER_NOT_LOGGED_IN
+
+  External Functions:
+ 
+  PDUcheck_if_logged_in()
+  PDUmessage_trans()
+  PDUvalidate_catalog()
+  PDMcheck_partnum()
+  PDMrdelete_part()
+  PDMset_to_state()
+ 
+  Assumptions:
+
+  The PDMexec userid has been loaded during login.
+ 
+  Impacts:
+
+  None
+ 
+  Future:
+
+  None
+
+  Test Cases:
+
+    Success
+
+  Delete a part that is not used in an assembly.
+
+    Failure
+
+  Delete a part that is used in an assembly.
+  Delete a part that does not exist.
+
+  Algorithm:
+
+- verify login - call PDUcheck_if_logged_in
+        - if status != SUCCESS, return status
+ 
+- check catalog for NULL and NULLSTRING
+	- if NULL, return PDM_I_ENTER_CATALOG
+
+- check partnum for NULL and NULLSTRING
+	- if NULL, return PDM_I_ENTER_PART
+
+- check revision for NULL and NULLSTRING
+	- if NULL, return PDM_I_ENTER_REVISION
+
+- call PDMcheck_partnum
+	- if status != SUCCESS, return status
+
+- call PDUmessage_trans to validate access
+        - if status != SUCCESS, return status
+
+- call PDMrdelete_part
+
+- call PDMset_to_state
+
+- set status
+- return
+
+
+
+  Final Design Document pdmoMoveToNextState
+  7/21/93
+
+  Abstract:  
+
+  This API moves a part to the next or previous state in the user's workflow.
+
+  Keywords:
+
+  Move State
+
+  Function Protocol:
+
+  pdmoMoveToNextState(	cpr_catalog,
+			cpr_partnum, 
+			cpr_revision, 
+			ir_statenum, 
+			cpr_statename)
+
+  Input:
+
+	char	*cpr_catalog
+	char	*cpr_partnum
+	char	*cpr_revision
+        int      ir_statenum
+	char	*cpr_statename
+
+  Output:
+
+	None
+
+  Input Limitations:
+
+	cpr_catalog:	required 
+			16 characters or less
+			must already exist
+
+	cpr_partnum:	required
+			! * ? , : invalid characters
+			must not exceed the number of characters specified 
+			  at catalog creation time
+
+	cpr_revision:	required
+			! * ? , : invalid characters
+			must not exceed the number of characters specified 
+			  at catalog creation time
+
+	ir_statenum:	required
+			must be the number that represents the workflow state
+			  to which the part is being moved
+
+	cpr_statename:	required
+			must be a valid workflow state
+
+  Structures:
+
+  None
+
+  Return Status:
+
+	PDM_S_SUCCESS
+	PDM_E_CAT_FIELD_BLANK
+	PDM_E_PART_FIELD_BLANK
+	PDM_E_REV_FIELD_BLANK
+	PDM_E_CAT_NOT_FOUND
+	PDM_I_TABLE_LOCKED 
+
+	PDM_E_USER_NOT_LOGGED_IN
+        PDM_E_INVALID_STATE
+
+  External Functions:
+ 
+  PDUcheck_if_logged_in()
+  PDUmessage_trans()
+  PDUvalidate_catalog()
+  PDMcheck_partnum()
+  PDMget_trans()
+  PDUmark_trans_in_buffer()
+  PDMrmake_transition()
+ 
+  Assumptions:
+
+  The user supplies the state that the part should be moved to.  If the user
+  does not know the possible states of transition, the pdmoGetTransitions
+  API can be called to retrieve a list of transitions.
+
+  The PDMexec userid has been loaded during login.
+ 
+  Impacts:
+
+  None
+ 
+  Future:
+
+  None
+
+  Test Cases:
+
+    Success
+
+  Move the part to the next state in the workflow.
+  Move the part to the previous state in the workflow.
+  Release the part.
+
+    Failure
+
+  Move the part to a state that does not exist in the workflow.
+  Move the part to a state that is out of order (not the next or previous
+  state.
+  Move the part to a valid state name with an incorrect state number.
+  Move the part to a valid state number with an incorrect state name.
+
+  Algorithm:
+
+- verify login - call PDUcheck_if_logged_in
+        - if status != SUCCESS, return status
+ 
+- check catalog for NULL and NULLSTRING
+        - if NULL, return PDM_I_ENTER_CATALOG
+ 
+- check partnum for NULL and NULLSTRING
+        - if NULL, return PDM_I_ENTER_PART
+ 
+- check revision for NULL and NULLSTRING
+        - if NULL, return PDM_I_ENTER_REVISION
+ 
+- call PDMcheck_partnum
+        - if status != SUCCESS, return status
+
+- call PDUmessage_trans to validate access
+        - if status != SUCCESS, return status
+ 
+- check statename for NULL and NULLSTRING
+        - if NULL, return PDM_I_ENTER_STATENAME
+
+- call PDMget_trans
+        - if status != SUCCESS, return status
+
+- call PDUmark_trans_in_buffer
+        - if status != SUCCESS, return status
+
+- call PDMrmake_transition
+
+- set status
+- return
+
+
+
+  Final Design Document pdmoGetPartAttributes
+  7/23/93
+
+  Abstract:  
+ 
+  This API retrieves a list of attributes for the specified part.
+
+  Keywords:
+
+  Part Attributes
+
+  Function Protocol:
+
+  pdmoGetPartAttributes(	cpr_catalog,
+				cpr_partnum, 
+				cpr_revision, 
+				spw_attrs);
+
+  Input:
+
+	char	*cpr_catalog
+	char	*cpr_partnum
+	char	*cpr_revision
+
+  Output:
+
+	struct   attribute_info      *spw_attrs
+
+  Input Limitations:
+
+	cpr_catalog:	required 
+			16 characters or less
+			must already exist
+
+	cpr_partnum:	required
+			! * ? , : invalid characters
+			must not exceed the number of characters specified 
+			  at catalog creation time
+
+	cpr_revision:	required
+			! * ? , : invalid characters
+			must not exceed the number of characters specified 
+			  at catalog creation time
+
+  Structures:
+
+  struct attribute_info
+        {
+        char                 *cpr_attr_name;
+        char                 *cpr_datatype;
+        char                 *cpr_synonym;
+        char                 *cpr_value;
+        struct attribute_info *spm_next;
+        };
+
+	cpr_attr_name:	required
+			must not exceed 20 characters
+			/ # = ! * \\ ( ) { } [ ] < > & ? $ @ + - : | invalid
+			  characters
+			must not be a database reserved word
+
+	cpr_datatype:	required
+			must be a valid datatype: real, integer, char(xx),
+			  decimal, smallint
+
+	cpr_synonym:	required
+			must not exceed 40 characters
+
+	cpr_value:	optional
+			must be compatible with the specified datatype
+
+  Return Status:
+
+	PDM_S_SUCCESS
+	PDM_E_CAT_FIELD_BLANK
+	PDM_E_PART_FIELD_BLANK
+	PDM_E_REV_FIELD_BLANK
+	PDM_E_PART_NOT_FOUND
+        PDM_E_NULL_BUFFER
+	PDM_E_USER_NOT_LOGGED_IN
+
+  External Functions:
+
+  PDUcheck_if_logged_in()
+  PDMcheck_partnum()
+  PDUloadapi_attr_list_from_buffer()
+  
+  Assumptions:
+
+  This API may be called in the place of pdmoLoadAttrStructure.  Thus, the user
+  may edit this structure directly and pass it as the attr_list parameter for
+  pdmoAddPart and pdmoChangePart.
+
+  The pdmoFreeAttrStructure API should be called to free up this structure
+  when the user is through with it.
+
+  The PDMexec userid has been loaded during login.
+
+  Impacts:
+ 
+  None
+
+  Future:
+ 
+  None
+
+  Test Cases:
+
+    Success
+
+  Retrieve attributes for a part that exists.
+
+    Failure
+
+  Retrieve attributes for a part that does not exist.
+
+  Algorithm:
+
+- verify login - call PDUcheck_if_logged_in
+        - if status != SUCCESS, return status
+ 
+- catalog - check for NULL and NULLSTRING
+ 
+- partnum - check for NULL and NULLSTRING
+ 
+- revision - check for NULL and NULLSTRING
+ 
+- make sure the part already exists - call PDMcheck_partnum
+        - if status != SUCCESS
+                        - return status
+- call function to get existing part data - PDMget_existing_data
+- if status != SUCCESS
+	- return status
+- split return buffer into attr_bufr and data_bufr
+- MEMclose data_bufr
+- set data_bufr to NULL
+- call PDUloadapi_attr_list_from_buffer
+- MEMclose attr_bufr
+_ attr_bufr = NULL
+- if status != SUCCESS
+	- return status
+- set status
+- return status
+
+
+
+  Final Design Document pdmoGetTransitions
+  7/21/93
+
+  Abstract:  
+
+  This API retrieves a list of the possible states that a part may be 
+  transitioned to in the workflow.
+
+  Keywords:
+
+  Move State
+
+  Function Protocol:
+  
+  pdmoMoveState(	cpr_catalog,
+			cpr_partnum, 
+			cpr_revision,
+			spw_trans_list)
+
+  Input:
+
+	char	*cpr_catalog
+	char	*cpr_partnum
+	char	*cpr_revision
+
+  Output:
+
+	struct part_transition *spw_trans_list;
+
+  Input Limitations:
+
+	cpr_catalog:	required 
+			16 characters or less
+			must already exist
+
+	cpr_partnum:	required
+			! * ? , : invalid characters
+			must not exceed the number of characters specified 
+			  at catalog creation time
+
+	cpr_revision:	required
+			! * ? , : invalid characters
+			must not exceed the number of characters specified 
+			  at catalog creation time
+
+  Structures:
+
+  struct part_transition
+ 	{
+       	char                 *cpw_statename;
+       	char                 *cpw_transition;
+       	int                   iw_stateno;
+       	struct part_transition *spm_next;
+       	};
+
+       cpw_statename:	the name of the state to which the part is being moved
+
+       cpw_transition:	The name of the action that is being taken against
+                        the part (i.e. reject, approve)
+
+       iw_stateno:	the number of the state to which the part is being
+                        moved
+
+  Return Status:
+
+	PDM_S_SUCCESS
+	PDM_E_CAT_FIELD_BLANK
+	PDM_E_PART_FIELD_BLANK
+	PDM_E_REV_FIELD_BLANK
+	PDM_E_CAT_NOT_FOUND
+	PDM_I_TABLE_LOCKED 
+
+	PDM_E_USER_NOT_LOGGED_IN
+
+  External Functions:
+ 
+  PDUcheck_if_logged_in()
+  PDUmessage_trans()
+  PDUvalidate_catalog()
+  PDMcheck_partnum()
+  PDMget_trans()
+  PDUload_transition_structure()
+ 
+  Assumptions:
+  
+  The pdmoFreeTransStructure API should be called to free up this structure
+  when the user is through with it.
+ 
+  Impacts:
+  
+  None
+ 
+  Future:
+  
+  None
+
+  Test Cases:
+
+    Success
+
+  Retrieve the possible transitions for an existing part.
+
+    Failure
+
+  Retrieve the possible transitions for a part that does not exist.
+
+  Algorithm:
+
+- check catalog for NULL and NULLSTRING
+        - if NULL, return PDM_I_ENTER_CATALOG
+ 
+- check partnum for NULL and NULLSTRING
+        - if NULL, return PDM_I_ENTER_PART
+ 
+- check revision for NULL and NULLSTRING
+        - if NULL, return PDM_I_ENTER_REVISION
+ 
+- call PDUvalidate_catalog
+        - if status != SUCCESS, return status
+ 
+- call PDMcheck_partnum
+        - if status != SUCCESS, return status
+
+- call PDMget_trans
+        - if status != SUCCESS, return status
+
+- call PDUload_transition_structure
+        - if status != SUCCESS, return status
+
+- set status
+- return
+
+
+
+  Final Design Document pdmoAddFiles
+  7/21/93
+
+  Abstract:  
+
+  This API add files to an existing part.
+
+  Keywords:
+
+  Add Files
+
+  pdmoAddFiles(	cpr_catalog, 
+		cpr_partnum, 
+		cpr_revision, 
+		cpr_acl_name, 
+		cpr_stg_name, 
+		spr_add_files);
+
+  Input:
+
+	char	*cpr_catalog
+	char	*cpr_partnum
+	char	*cpr_revision
+	char	*cpr_acl_name
+	char	*cpr_stg_name
+	struct   file_info      *spr_add_files
+
+  Output:
+
+	None
+
+  Input Limitations:
+
+	cpr_catalog:	required 
+			16 characters or less
+			must already exist
+
+	cpr_partnum:	required
+			! * ? , : invalid characters
+			must not exceed the number of characters specified 
+			  at catalog creation time
+
+	cpr_revision:	required
+			! * ? , : invalid characters
+			must not exceed the number of characters specified 
+			  at catalog creation time
+
+	cpr_acl_name:	required
+			default is PDM_PART_ACL
+
+	cpr_stg_name:	required
+			default is NFMFILES
+
+	spr_add_files:	optional
+			necessary for adding file information
+			
+  Structures:
+
+  struct file_info
+        {
+        char                 *cpr_file_desc;
+        char                 *cpr_local_fn;
+        char                 *cpr_storage_fn;
+        char                 *cpr_file_type;
+        int                   ir_mode;
+        struct file_info  *spm_next;
+        };
+
+	cpr_file_desc:	optional
+			must not exceed 40 characters
+
+	cpr_local_fn:	optional
+			must be unique to for the part being added
+			must not exceed 14 characters
+			/ # = ! * \\ ( ) { } [ ] < > & ? $ @ + - : | invalid
+			  characters
+
+	cpr_storage_fn:	optional
+			must be unique to for the part being added
+			must not exceed 14 characters
+			/ # = ! * \\ ( ) { } [ ] < > & ? $ @ + - : | invalid
+			  characters
+			filename must not already exist in check in storage
+			  area
+
+	cpr_file_type:	optional
+			may not be "M" or "m"
+			must not exceed 5 characters
+			/ # = ! * \\ ( ) { } [ ] < > & ? $ @ + - : | invalid
+			  characters
+
+	ir_mode:	reguired
+			specifies whether user is adding, changing or
+			  deleting file information
+			ADD = 1, CHANGE = 2, DELETE = 3
+
+  Return Status:
+
+	PDM_S_SUCCESS
+	PDM_E_CAT_FIELD_BLANK
+	PDM_E_PART_FIELD_BLANK
+	PDM_E_REV_FIELD_BLANK
+	PDM_E_LOC_FN_TOO_LONG
+	PDM_E_FILE_DESC_TOO_LONG
+	PDM_E_FILETYPE_TOO_LONG
+	PDM_E_STG_FN_TOO_LONG 
+	PDM_E_CAT_NOT_FOUND
+	PDM_E_INVALID_CHAR_IN_LOCFN
+	PDM_E_INVALID_CHAR_IN_STGFN
+	PDM_E_INVALID_CHAR_IN_FILETYPE
+	PDM_E_IDENTIFIER_TOO_LONG
+	PDM_E_CI_FILENAME_EXISTS
+	PDM_E_STG_FN_NOT_UNIQUE
+	PDM_E_ACLNAME_NOT_FOUND
+	PDM_E_STGNAME_NOT_FOUND
+	PDM_I_TABLE_LOCKED 
+
+	PDM_E_NOT_USER_LOGGED_IN
+
+  External Functions:
+ 
+  PDUcheck_if_logged_in()
+  PDMvalidate_user_access()
+  PDUvalidate_catalog()
+  PDMcheck_partnum()
+  PDMget_existing_data()
+  PDUvalidate_parttype()
+  PDUverify_aclname()
+  PDUverify_storage_name()
+  PDUverify_file_desc()
+  PDUverify_addpart_filename()
+  PDUcheck_dup_sa_fname()
+  PDUverify_filetype()
+  PDUformat_buffer()
+  PDUadd_files_to_buffer()
+  PDMmodify_part()
+  PDMcancel_modify_part()
+ 
+  Assumptions:
+ 
+  The pdmoLoadFileStructure must be called before calling pdmoAddFiles.
+ 
+  The user must call pdmoFreeFileStructure to free the file structure.
+
+  The PDMexec userid has been loaded during login.
+ 
+  Impacts:
+
+  None
+ 
+  Future:
+
+  A supporting PDM function for adding files will be written in order to
+  eliminate the need for retrieving attribute information while adding files.
+
+  Test Cases:
+
+    Success
+
+  Add one file to a graphic part.
+  Add multiple files to a graphic part.
+
+    Failure
+
+  Call pdmoAddFiles with a null file list.
+  Add files to a nongraphic part.
+  Mark entries in the file list for "change" and "delete".
+  Add files to a part that is checked in.
+ 
+  Algorithm:
+
+- verify login - call PDUcheck_if_logged_in
+        - if status != SUCCESS, return status
+
+- if spr_add_files = NULL
+	- return PDM_E_NULL_LIST
+
+- catalog - call PDUvalidate_catalog
+        - if status != SUCCESS, return status
+
+- partnum - check for NULL and NULLSTRING
+
+- revision - check for NULL and NULLSTRING
+
+- make sure the part already exists - call PDMcheck_partnum
+        - if status != SUCCESS
+        - return status
+
+- call PDMvalidate_user_access
+        - if status != SUCCESS, return status
+
+- check the status of part (in/out)
+- if part is not checked out
+	- call PDMcancel_modify_part
+	- return PDM_E_CANNOT_ADD_FILES
+
+- call function to get existing part data - PDMget_existing_data
+        - if status != SUCCESS
+        - return status
+- split return buffer into attr_bufr and data_bufr
+
+- parttype - call PDUvalidate_parttype
+        - if status != SUCCESS, 
+		- call PDMcancel_modify_part
+		- return status
+        - if parttype = N
+		- call PDMcancel_modify_part
+		- return PDM_E_NONGRAPH_FILES
+
+- acl_name - call PDUverify_aclname
+        - if status != SUCCESS, 
+		- call PDMcancel_modify_part
+		- return status
+- verify that a valid acl_no was returned
+- write the acl_no to the data_bufr
+ 
+- stg_name - call PDUverify_storage_name
+        - if status != SUCCESS, 
+		- call PDMcancel_modify_part
+		- return status
+- verify that a valid storage_no was returned
+- write the storage_no to the data_bufr
+ 
+- for each entry verify data in spr_add_files
+        - if !filedesc && !local_fn && !storage_fn && !filetype
+		- call PDMcancel_modify_part
+                - return PDM_E_NO_DATA_IN_FILE_LIST
+        - if file_desc call PDUverify_file_desc
+                - if status != SUCCESS, 
+			- call PDMcancel_modify_part
+			- return status
+        - if local_fn call PDUverify_addpart_filename
+                - if status != SUCCESS, 
+			- call PDMcancel_modify_part
+			- return status
+        - if storage_fn call PDUverify_addpart_filename
+                - if status != SUCCESS, 
+			- call PDMcancel_modify_part
+			- return status
+                - call PDMcheck_dup_sa_fname
+                - if status != SUCCESS, 
+			- call PDMcancel_modify_part
+			- return status
+        - if filetype call PDUverify_filetype
+                - if status != SUCCESS, 
+			- call PDMcancel_modify_part
+			- return status
+	- for each node in the list
+		- if mode != 1
+			- call PDMcancel_modify_part
+			- return PDM_E_INVALID_MODE
+	- call PDUadd_files_to_buffer
+                - if status != SUCCESS, 
+			- call PDMcancel_modify_part
+			- return status
+
+- call PDMmodify_part function
+- if status != PDM_S_SUCCESS
+	- call function to unlock the part
+- set status
+- return
+
+
+
+  Final Design Document pdmoChangeFiles
+  7/21/93
+
+  Abstract:  
+
+  This API change files for an existing part.
+
+  Keywords:
+
+  Change Files
+
+  pdmoChangeFiles(	cpr_catalog, 
+			cpr_partnum, 
+			cpr_revision, 
+			cpr_acl_name, 
+			cpr_stg_name, 
+			spr_add_files);
+
+  Input:
+
+	char	*cpr_catalog
+	char	*cpr_partnum
+	char	*cpr_revision
+	char	*cpr_acl_name
+	char	*cpr_stg_name
+	struct   file_info      *spr_change_files
+
+  Output:
+
+	None
+
+  Input Limitations:
+
+	cpr_catalog:	required 
+			16 characters or less
+			must already exist
+
+	cpr_partnum:	required
+			! * ? , : invalid characters
+			must not exceed the number of characters specified 
+			  at catalog creation time
+
+	cpr_revision:	required
+			! * ? , : invalid characters
+			must not exceed the number of characters specified 
+			  at catalog creation time
+
+	cpr_acl_name:	required
+			default is PDM_PART_ACL
+
+	cpr_stg_name:	required
+			default is NFMFILES
+
+	spr_add_files:	optional
+			necessary for adding file information
+			
+  Structures:
+
+  struct file_info
+        {
+        char                 *cpr_file_desc;
+        char                 *cpr_local_fn;
+        char                 *cpr_storage_fn;
+        char                 *cpr_file_type;
+        int                   ir_mode;
+        struct file_info  *spm_next;
+        };
+
+	cpr_file_desc:	optional
+			must not exceed 40 characters
+
+	cpr_local_fn:	optional
+			must be unique to for the part being added
+			must not exceed 14 characters
+			/ # = ! * \\ ( ) { } [ ] < > & ? $ @ + - : | invalid
+			  characters
+
+	cpr_storage_fn:	optional
+			must be unique to for the part being added
+			must not exceed 14 characters
+			/ # = ! * \\ ( ) { } [ ] < > & ? $ @ + - : | invalid
+			  characters
+			filename must not already exist in check in storage
+			  area
+
+	cpr_file_type:	optional
+			may not be "M" or "m"
+			must not exceed 5 characters
+			/ # = ! * \\ ( ) { } [ ] < > & ? $ @ + - : | invalid
+			  characters
+
+	ir_mode:	reguired
+			specifies whether user is adding, changing or
+			  deleting file information
+			ADD = 1, CHANGE = 2, DELETE = 3
+
+  Return Status:
+
+	PDM_S_SUCCESS
+	PDM_E_CAT_FIELD_BLANK
+	PDM_E_PART_FIELD_BLANK
+	PDM_E_REV_FIELD_BLANK
+	PDM_E_LOC_FN_TOO_LONG
+	PDM_E_FILE_DESC_TOO_LONG
+	PDM_E_FILETYPE_TOO_LONG
+	PDM_E_STG_FN_TOO_LONG 
+	PDM_E_CAT_NOT_FOUND
+	PDM_E_INVALID_CHAR_IN_LOCFN
+	PDM_E_INVALID_CHAR_IN_STGFN
+	PDM_E_INVALID_CHAR_IN_FILETYPE
+	PDM_E_IDENTIFIER_TOO_LONG
+	PDM_E_CI_FILENAME_EXISTS
+	PDM_E_STG_FN_NOT_UNIQUE
+	PDM_E_ACLNAME_NOT_FOUND
+	PDM_E_STGNAME_NOT_FOUND
+	PDM_I_TABLE_LOCKED 
+
+	PDM_E_NOT_USER_LOGGED_IN
+
+  External Functions:
+ 
+  PDUcheck_if_logged_in()
+  PDMvalidate_user_access()
+  PDUvalidate_catalog()
+  PDMcheck_partnum()
+  PDMget_existing_data()
+  PDUvalidate_parttype()
+  PDUverify_aclname()
+  PDUverify_storage_name()
+  PDUverify_file_desc()
+  PDUverify_addpart_filename()
+  PDUcheck_dup_sa_fname()
+  PDUverify_filetype()
+  PDUformat_buffer()
+  PDUadd_files_to_buffer()
+  PDMmodify_part()
+  PDMcancel_modify_part()
+ 
+  Assumptions:
+ 
+  The pdmoLoadChangeStructure must be called before calling pdmoChangeFiles.
+ 
+  The user must call pdmoFreeChangeStructure to free the file structure.
+
+  The PDMexec userid has been loaded during login.
+ 
+  Impacts:
+
+  None
+ 
+  Future:
+
+  A supporting PDM function for changing files will be written in order to
+  eliminate the need for retrieving attribute information while changing files.
+
+  Test Cases:
+
+    Success
+ 
+  Change the local filename for a graphic part.
+  Change the storage area filename for a graphic part.
+  Change the file description for a graphic part.
+  Change the file type description for a graphic part.
+  Change all file information for a graphic part with one file.
+  Change all file information for a graphic part with multiple files.
+ 
+    Failure
+ 
+  Call pdmoChangeFiles with a null file list.
+  Change files for a nongraphic part.
+  Mark entries in the file list for "add" and "delete".
+  Change files for a part that is checked out.
+ 
+  Algorithm:
+
+- verify login - call PDUcheck_if_logged_in
+        - if status != SUCCESS, return status
+
+- if spr_change_files = NULL
+	- return PDM_E_NULL_LIST
+
+- catalog - call PDUvalidate_catalog
+        - if status != SUCCESS, return status
+
+- partnum - check for NULL and NULLSTRING
+
+- revision - check for NULL and NULLSTRING
+
+- make sure the part already exists - call PDMcheck_partnum
+        - if status != SUCCESS
+        - return status
+
+- call PDMvalidate_user_access
+        - if status != SUCCESS, return status
+
+- check the status of part (in/out)
+- if part is not checked in
+	- call PDMcancel_modify_part
+	- return PDM_E_CANNOT_CHANGE_FILES
+
+- call function to get existing part data - PDMget_existing_data
+        - if status != SUCCESS
+        - return status
+- split return buffer into attr_bufr and data_bufr
+
+- parttype - call PDUvalidate_parttype
+        - if status != SUCCESS, 
+		- call PDMcancel_modify_part
+		- return status
+        - if parttype = N
+		- call PDMcancel_modify_part
+		- return PDM_E_NONGRAPH_FILES
+
+- acl_name - call PDUverify_aclname
+        - if status != SUCCESS, 
+		- call PDMcancel_modify_part
+		- return status
+- verify that a valid acl_no was returned
+- write the acl_no to the data_bufr
+ 
+- stg_name - call PDUverify_storage_name
+        - if status != SUCCESS, 
+		- call PDMcancel_modify_part
+		- return status
+- verify that a valid storage_no was returned
+- write the storage_no to the data_bufr
+ 
+- for each entry verify data in spr_chg_files
+        - if !chg_filedesc && !chg_local_fn && !chg_storage_fn && !chg_filetype
+                - call PDMcancel_modify_part
+                - return PDM_E_NO_DATA_IN_FILE_LIST
+        - if chg_file_desc call PDUverify_file_desc
+                - if status != SUCCESS,
+                        - call PDMcancel_modify_part
+                        - return status
+        - if chg_local_fn call PDUverify_addpart_filename
+                - if status != SUCCESS,
+                        - call PDMcancel_modify_part
+                        - return status
+        - if chg_storage_fn call PDUverify_addpart_filename
+                - if status != SUCCESS,
+                        - call PDMcancel_modify_part
+                        - return status
+                - call PDMcheck_dup_sa_fname
+                - if status != SUCCESS,
+                        - call PDMcancel_modify_part
+                        - return status
+        - if chg_filetype call PDUverify_filetype
+                - if status != SUCCESS,
+                        - call PDMcancel_modify_part
+                        - return status
+        - for each node in the list
+                - if mode != 2
+                        - call PDMcancel_modify_part
+                        - return PDM_E_INVALID_MODE
+        - call PDUchange_files_in_buffer
+                - if status != SUCCESS,
+                        - call PDMcancel_modify_part
+                        - return status
+
+- call PDMmodify_part function
+- if status != PDM_S_SUCCESS
+	- call function to unlock the part
+- set status
+- return
+
+
+
+  Final Design Document pdmoDeleteFiles
+  7/21/93
+
+  Abstract:  
+
+  This API deleted files from an existing part.
+
+  Keywords:
+
+  Delete Files
+
+  pdmoDeleteFiles(	cpr_catalog,
+			cpr_partnum, 
+			cpr_revision, 
+			cpr_acl_name, 
+			cpr_stg_name, 
+			spr_add_files);
+
+  Input:
+
+	char	*cpr_catalog
+	char	*cpr_partnum
+	char	*cpr_revision
+	char	*cpr_acl_name
+	char	*cpr_stg_name
+	struct   file_info      *spr_delete_files
+
+  Output:
+
+	None
+
+  Input Limitations:
+
+	cpr_catalog:	required 
+			16 characters or less
+			must already exist
+
+	cpr_partnum:	required
+			! * ? , : invalid characters
+			must not exceed the number of characters specified 
+			  at catalog creation time
+
+	cpr_revision:	required
+			! * ? , : invalid characters
+			must not exceed the number of characters specified 
+			  at catalog creation time
+
+	cpr_acl_name:	required
+			default is PDM_PART_ACL
+
+	cpr_stg_name:	required
+			default is NFMFILES
+
+	spr_delete:	optional
+			necessary for deleting file information
+			
+  Structures:
+
+  struct file_info
+        {
+        char                 *cpr_file_desc;
+        char                 *cpr_local_fn;
+        char                 *cpr_storage_fn;
+        char                 *cpr_file_type;
+        int                   ir_mode;
+        struct file_info  *spm_next;
+        };
+
+	cpr_file_desc:	optional
+			must not exceed 40 characters
+
+	cpr_local_fn:	optional
+			must be unique to for the part being added
+			must not exceed 14 characters
+			/ # = ! * \\ ( ) { } [ ] < > & ? $ @ + - : | invalid
+			  characters
+
+	cpr_storage_fn:	optional
+			must be unique to for the part being added
+			must not exceed 14 characters
+			/ # = ! * \\ ( ) { } [ ] < > & ? $ @ + - : | invalid
+			  characters
+			filename must not already exist in check in storage
+			  area
+
+	cpr_file_type:	optional
+			may not be "M" or "m"
+			must not exceed 5 characters
+			/ # = ! * \\ ( ) { } [ ] < > & ? $ @ + - : | invalid
+			  characters
+
+	ir_mode:	reguired
+			specifies whether user is adding, changing or
+			  deleting file information
+			ADD = 1, CHANGE = 2, DELETE = 3
+
+  Return Status:
+
+	PDM_S_SUCCESS
+	PDM_E_CAT_FIELD_BLANK
+	PDM_E_PART_FIELD_BLANK
+	PDM_E_REV_FIELD_BLANK
+	PDM_E_CAT_NOT_FOUND
+	PDM_E_ACLNAME_NOT_FOUND
+	PDM_E_STGNAME_NOT_FOUND
+	PDM_I_TABLE_LOCKED 
+
+	PDM_E_NOT_USER_LOGGED_IN
+
+  External Functions:
+ 
+  PDUcheck_if_logged_in()
+  PDMvalidate_user_access()
+  PDUvalidate_catalog()
+  PDMcheck_partnum()
+  PDMget_existing_data()
+  PDUverify_aclname()
+  PDUverify_storage_name()
+  PDUformat_buffer()
+  PDUdelete_files_from_buffer()
+  PDMmodify_part()
+  PDMcancel_modify_part()
+ 
+  Assumptions:
+ 
+  The pdmoLoadFileStructure must be called before calling pdmoDeleteFiles.
+ 
+  The user must call pdmoFreeFileStructure to free the file structure.
+
+  The PDMexec userid has been loaded during login.
+ 
+  Impacts:
+
+  None
+ 
+  Future:
+
+  A supporting PDM function for deleting files will be written in order to
+  eliminate the need for retrieving attribute information while deleting files.
+
+  Test Cases:
+ 
+    Success
+ 
+  Delete the file for a part with one file.
+  Delete one file for a part with multiple files.
+  Delete all files for a part with multiple files.
+ 
+    Failure
+ 
+  Call pdmoDeleteFiles with a null file list.
+  Delete files for a nongraphic part.
+  Mark entries in the file list for "add" and "change".
+  Delete files for a part that is checked out.
+ 
+  Algorithm:
+
+- verify login - call PDUcheck_if_logged_in
+        - if status != SUCCESS, return status
+
+- if spr_delete_files = NULL
+	- return PDM_E_NULL_LIST
+
+- catalog - call PDUvalidate_catalog
+        - if status != SUCCESS, return status
+
+- partnum - check for NULL and NULLSTRING
+
+- revision - check for NULL and NULLSTRING
+
+- make sure the part already exists - call PDMcheck_partnum
+        - if status != SUCCESS
+        - return status
+
+- call PDMvalidate_user_access
+        - if status != SUCCESS, return status
+
+- check the status of part (in/out)
+- if part is not checked in
+	- call PDMcancel_modify_part
+	- return PDM_E_CANNOT_DELETE_FILES
+
+- call function to get existing part data - PDMget_existing_data
+        - if status != SUCCESS
+        - return status
+- split return buffer into attr_bufr and data_bufr
+
+- parttype - call PDUvalidate_parttype
+        - if status != SUCCESS, 
+		- call PDMcancel_modify_part
+		- return status
+        - if parttype = N
+		- call PDMcancel_modify_part
+		- return PDM_E_NONGRAPH_FILES
+
+- acl_name - call PDUverify_aclname
+        - if status != SUCCESS, 
+		- call PDMcancel_modify_part
+		- return status
+- verify that a valid acl_no was returned
+- write the acl_no to the data_bufr
+ 
+- stg_name - call PDUverify_storage_name
+        - if status != SUCCESS, 
+		- call PDMcancel_modify_part
+		- return status
+- verify that a valid storage_no was returned
+- write the storage_no to the data_bufr
+ 
+- for each entry verify data in spr_delete_files
+        - if !filedesc && !local_fn && !storage_fn && !filetype
+                - call PDMcancel_modify_part
+                - return PDM_E_NO_DATA_IN_FILE_LIST
+        - for each node in the list
+                - if mode != 3
+                        - call PDMcancel_modify_part
+                        - return PDM_E_INVALID_MODE
+        - call PDUdelete_files_from_buffer
+                - if status != SUCCESS,
+                        - call PDMcancel_modify_part
+                        - return status
+
+- call PDMmodify_part function
+- if status != PDM_S_SUCCESS
+	- call function to unlock the part
+- set status
+- return
+
+
+
+  Final Design Document pdmoLoadAttrStructure
+  7/22/93
+
+  Abstract:  
+
+  This API loads attribute values into a structure and adds the structure as 
+  an entry in a link list of structures.  The link list is then passed to the 
+  pdmoAddPart function.
+
+  Keywords:
+
+  Attribute Structure
+
+  Function Protocol:
+
+  pdmoLoadAttrStructure(	cpr_attr_name,
+				cpr_datatype, 
+				cpr_synonym, 
+				cpr_value, 
+				spm_attrs)
+
+  Input:
+
+	char	*cpr_attr_name
+	char	*cpr_datatype
+	char	*cpr_synonym
+	char	*cpr_value
+	struct   attrs_info      *spm_attrs
+
+  Output:
+
+  	None
+
+  Input Limitations:
+
+	cpr_attr_name:	required
+			must not exceed 20 characters
+			/ # = ! * \\ ( ) { } [ ] < > & ? $ @ + - : | invalid
+			  characters
+			must not be a database reserved word
+
+	cpr_datatype:	required
+			must be a valid datatype: real, integer, char(xx),
+			  decimal, smallint
+
+	cpr_synonym:	required
+			must not exceed 40 characters
+
+	cpr_value:	required
+			must be compatible with the specified datatype
+
+  Structures:
+
+	struct attribute_info
+        	{
+        	char	*cpr_attr_name;
+        	char	*cpr_datatype;
+        	char	*cpr_synonym;
+        	char	*cpr_value;
+        	struct  attribute_info *spm_next;
+        	};
+
+  Return Status:
+
+	PDM_S_SUCCESS
+	PDM_E_USER_LOGGED_IN
+	PDM_E_INVALID_DATATYPE
+	PDM_E_INVALID_ATTR
+	PDM_E_RESERVED_ATTR
+	PDM_E_NOT_WRITABLE
+	PDM_I_ATTR_NOT_FOUND
+
+	PDM_E_NO_DATA
+
+  External Functions:
+ 
+  PDUload_attr_structure()
+ 
+  Assumptions:
+
+  The return structure, spm_attrs, should be initialized to NULL the first
+  time pdmoLoadAttrStructure is called.
+
+  The pdmoFreeAttrStructure API should be called to free up this structure
+  when the user is through with it.
+ 
+  Impacts:
+
+  None
+ 
+  Future:
+
+  None
+
+  Test Cases:
+
+    Success
+
+  Load an attribute name and value in the structure.
+  Load an attribute synonym and value in the structure.
+  Load an attribute name, synonym and value in the structure.
+  Load an attribute name, datatype, synonym and value in the structure.
+  Load an attribute name, datatype and value in the structure.
+  Load an attribute synonym, datatype and value in the structure.
+
+    Failure
+
+  Load a datatype and value in the structure.
+  Load only a datatype in the structure.
+
+  Algorithm:
+
+- check cpr_attr_name for NULL and NULLSTRING
+- if cpr_attr_name = NULL or NULLSTRING
+	- check cpr_synonym for NULL and NULLSTRING
+		- if cpr_synonym = NULL or NULLSTRING
+			- return PDM_E_REQUIRED_DATA
+- if attr_list is not NULL
+	- create the first node in the link list
+- else
+	- add a node to the end of the list
+- set status
+- return
+
+
+
+  Final Design Document pdmoLoadChangeStructure
+  7/22/93
+
+  Abstract:  
+
+  This API loads file data into a structure and places the structure as an 
+  entry in a link list of structures.  The link list is then passed to the 
+  pdmoChangePart function.
+
+  Keywords:
+
+  Change File Structure
+
+  Function Protocol:
+
+  pdmoLoadChangeStructure(	cpr_file_desc, 
+				cpr_chg_file_desc, 
+				cpr_local_fn, 
+				cpr_chg_local_fn, 
+				cpr_storage_fn,
+				cpr_chg_storage_fn,
+				cpr_file_type, 
+				cpr_chg_file_type, 
+				ir_mode, 
+				spm_file_list)
+
+  Input:
+
+	char	*cpr_file_desc
+	char	*cpr_chg_file_desc
+	char	*cpr_local_fn
+	char	*cpr_chg_local_fn
+	char	*cpr_storage_fn
+	char	*cpr_chg_storage_fn
+	char	*cpr_file_type
+	char	*cpr_chg_file_type
+	int	 ir_mode
+	struct   chg_file_info  **spm_file_list
+
+  Output:
+
+	None
+
+  Input Limitations:
+
+	cpr_file_desc:	
+	cpr_chg_file_desc:
+			optional
+			must not exceed 40 characters
+
+
+	cpr_local_fn:
+        cpr_chg_local_fn:
+			optional
+			must be unique to for the part being added
+			must not exceed 14 characters
+			/ # = ! * \\ ( ) { } [ ] < > & ? $ @ + - : | invalid
+			  characters
+
+	cpr_storage_fn:	
+	cpr_chg_storage_fn:
+			optional
+			must be unique to for the part being added
+			must not exceed 14 characters
+			/ # = ! * \\ ( ) { } [ ] < > & ? $ @ + - : | invalid
+			  characters
+			filename must not already exist in check in storage
+			  area
+
+	cpr_file_type:	
+	cpr_chg_file_type:
+			optional
+			may not be "M" or "m"
+			must not exceed 5 characters
+			/ # = ! * \\ ( ) { } [ ] < > & ? $ @ + - : | invalid
+			  characters
+
+	ir_mode:	required
+			ADD = 1, DELETE = 3
+
+  Structures:
+
+  struct chg_file_info
+       	{
+       	char  	*cpr_file_desc;
+       	char  	*cpr_chg_file_desc;
+       	char	*cpr_local_fn;
+       	char	*cpr_chg_local_fn;
+       	char	*cpr_storage_fn;
+       	char	*cpr_chg_storage_fn;
+       	char	*cpr_file_type;
+       	char	*cpr_chg_file_type;
+        int	 ir_mode;
+ 	struct   chg_file_info  *spm_next;
+       	};
+
+  Return Status:
+
+	PDM_S_SUCCESS
+	PDM_E_FILE_DESC_TOO_LONG
+	PDM_E_FILETYPE_TOO_LONG
+	PDM_E_STG_FN_TOO_LONG 
+	PDM_E_INVALID_CHAR_IN_LOCFN
+	PDM_E_INVALID_CHAR_IN_STGFN
+	PDM_E_INVALID_CHAR_IN_FILETYPE
+	PDM_E_IDENTIFIER_TOO_LONG
+	PDM_E_CI_FILENAME_EXISTS
+	PDM_E_STG_FN_NOT_UNIQUE
+
+	PDM_E_USER_NOT_LOGGED_IN
+	PDM_E_NO_DATA
+	PDM_E_REQUIRED_DATA
+
+  External Functions:
+ 
+  PDUload_change_structure()
+ 
+  Assumptions:
+ 
+  The return structure, spm_file_list, should be initialized to NULL the first
+  time pdmoLoadChangeStructure is called.
+
+  Although all of the fields are optional, at least one field must have 
+  data, or the program will be exited.
+
+  The pdmoFreeChangeStructure API should be called to free up this structure
+  when the user is through with it.
+
+  Impacts:
+
+  None
+ 
+  Future:
+
+  None
+
+  Test Cases:
+
+    Success
+
+  Load existing and new file information and "change" into the structure.
+
+    Failure
+
+  Load only new file information in the structure.
+  Load only existing file information in the structure.
+  Load "add" or "delete" for mode.
+  Load a null string for all parameters.
+  Leave the mode field blank.
+ 
+  Algorithm:
+
+- check the mode
+	- if empty, return error message
+- if mode = ADD or DELETE
+        - return PDM_E_INVALID_MODE
+- if mode = CHANGE
+        - if chg_file_desc, chg_local_fn, chg_storage_fn and
+            chg_file_type are empty
+                - return PDM_E_NO_DATA
+- if the file_info link list is NULL
+	- add a new node to the list
+- else
+	- traverse to the end of the list
+	- add a node to the end of the list
+- set status
+- return
+
+
+
+  Final Design Document pdmoLoadFileStructure
+  7/22/93
+
+  Abstract:  
+
+  This API loads file data into a structure and places the structure as an 
+  entry in a link list of structures.  The link list is then passed to the 
+  pdmoAddPart or pdmoChangePart API.
+
+  Keywords:
+
+  File Structure
+
+  Function Protocol:
+
+  pdmoLoadFileStructure(	cpr_file_desc, 
+				cpr_local_fn, 
+				cpr_storage_fn,
+				cpr_file_type, 
+				ir_mode, 
+				spm_file_list)
+
+  Input:
+
+	char	*cpr_file_desc
+	char	*cpr_local_fn
+	char	*cpr_storage_fn
+	char	*cpr_file_type
+	int	 ir_mode
+	struct   file_info  **spm_file_list
+
+  Output:
+
+	None
+
+  Input Limitations:
+
+	cpr_file_desc:	optional
+			must not exceed 40 characters
+
+	cpr_local_fn:	optional
+			must be unique to for the part being added
+			must not exceed 14 characters
+			/ # = ! * \\ ( ) { } [ ] < > & ? $ @ + - : | invalid
+			  characters
+
+	cpr_storage_fn:	optional
+			must be unique to for the part being added
+			must not exceed 14 characters
+			/ # = ! * \\ ( ) { } [ ] < > & ? $ @ + - : | invalid
+			  characters
+			filename must not already exist in check in storage
+			  area
+
+	cpr_file_type:	optional
+			may not be "M" or "m"
+			must not exceed 5 characters
+			/ # = ! * \\ ( ) { } [ ] < > & ? $ @ + - : | invalid
+			  characters
+
+	ir_mode:	required
+			ADD = 1, DELETE = 3
+
+  Structures:
+
+  struct file_info
+       	{
+       	char  	*cpr_file_desc;
+       	char	*cpr_local_fn;
+       	char	*cpr_storage_fn;
+       	char	*cpr_file_type;
+        int	 ir_mode;
+       	struct   file_info  *spm_next;
+       	};
+
+  Return Status:
+
+	PDM_S_SUCCESS
+	PDM_E_FILE_DESC_TOO_LONG
+	PDM_E_FILETYPE_TOO_LONG
+	PDM_E_STG_FN_TOO_LONG 
+	PDM_E_INVALID_CHAR_IN_LOCFN
+	PDM_E_INVALID_CHAR_IN_STGFN
+	PDM_E_INVALID_CHAR_IN_FILETYPE
+	PDM_E_IDENTIFIER_TOO_LONG
+	PDM_E_CI_FILENAME_EXISTS
+	PDM_E_STG_FN_NOT_UNIQUE
+
+	PDM_E_USER_NOT_LOGGED_IN
+	PDM_E_NO_DATA
+	PDM_E_REQUIRED_DATA
+
+  External Functions:
+ 
+  PDUload_file_structure()
+ 
+  Assumptions:
+
+  The return structure, spm_file_list, should be initialized to NULL the first
+  time pdmoLoadFileStructure is called.
+ 
+  Although all of the fields are optional, at least one field must have data, 
+  or the program will be exited.
+
+  The pdmoFreeFileStructure API should be called to free up this structure
+  when the user is through with it.
+
+  Impacts:
+
+  None
+ 
+  Future:
+
+  None
+
+  Test Cases:
+ 
+    Success
+ 
+  Load file information and "add" or "delete" into the structure.
+ 
+    Failure
+ 
+  Load "change" for mode.
+  Load a null string for all parameters.
+  Leave the mode field blank.
+
+  Algorithm:
+
+- check the mode
+	- if empty, return error message
+- if mode = ADD or DELETE
+	- if file_desc, local_fn, storage_fn and file_type are empty
+		- return PDM_E_NO_DATA
+- if mode = CHANGE
+	- return PDM_E_INVALID_MODE
+- if the file_info link list is NULL
+	- add a new node to the list
+- else
+	- traverse to the end of the list
+	- add a node to the end of the list
+- set status
+- return
+
+
+
+  Final Design Document pdmoFreeAttrStructure
+  7/21/93
+
+  Abstract:  
+
+  This API frees an attribute structure that has been used to add or change 
+  the attribute values associated with a part.
+
+  Keywords:
+
+  Free Attribute Structure
+
+  Function Protocol:
+
+  pdmoFreeAttrStructure(spm_attrs)
+
+  Input:
+
+	struct   attrs_info      *spm_attrs
+
+  Output:
+
+	None
+
+  Input Limitations:
+
+	spm_attrs:     	required
+                        a linked list of structures
+                        pdmoLoadAttrStructure must be called before calling
+                          pdmoFreeAttrStructure
+
+  Structures:
+
+  struct attribute_info
+ 	{
+       	char	*cpr_attr_name;
+       	char	*cpr_datatype;
+       	char	*cpr_synonym;
+       	char	*cpr_value;
+       	struct  attribute_info *spm_next;
+       	};
+
+  Return Status:
+
+	PDM_S_SUCCESS
+	PDM_E_NULL_LIST
+	PDM_E_USER_NOT_LOGGED_IN
+
+  External Functions:
+ 
+  None
+ 
+  Assumptions:
+
+  The pdmoLoadAttrStructure API must be called to allocate the attribute_info
+  structure before pdmoFreeAttrStructure is called.
+ 
+  Impacts:
+
+  None
+ 
+  Future:
+
+  None
+
+  Test Cases:
+
+    Success
+
+  Pass in a list that has been allocated in pdmoLoadAttrStructure.
+
+    Failure
+
+  Pass in a null list.
+
+  Algorithm:
+
+- if attrs is NULL
+	- return error message
+- free each entry in the link list
+- set the pointer to the link list to NULL
+- set the status
+- return
+
+
+
+  Final Design Document pdmoFreeChangeStructure
+  7/21/93
+
+  Abstract:  
+
+  This API frees a file structure that has been used to change the file 
+  information associated with a part.
+
+  Keywords:
+
+  Free Change File Structure
+
+  Function Protocol:
+
+  pdmoFreeChangeStructure(spm_file_list)
+
+  Input:
+
+	struct   chg_file_info  **spm_file_list
+
+  Output:
+
+	None
+
+  Input Limitations:
+
+	spm_file_list:	required
+			a linked list of structures 
+			pdmoLoadFileStructure must be called before calling
+			  pdmoFreeFileStructure
+
+  Structures:
+
+  struct chg_file_info
+       {
+       char    *cpm_file_desc;
+       char    *cpm_chg_file_desc;
+       char    *cpm_local_fn;
+       char    *cpm_chg_local_fn;
+       char    *cpm_storage_fn;
+       char    *cpm_chg_storage_fn;
+       char    *cpm_file_type;
+       char    *cpm_chg_file_type;
+       int      im_mode;
+       struct   chg_file_info  *spm_next;
+       };
+
+  Return Status:
+
+	PDM_S_SUCCESS
+	PDM_E_USER_LOGGED_IN
+	PDM_E_NULL_LIST
+
+  External Functions:
+ 
+  None
+ 
+  Assumptions:
+
+  The pdmoLoadChangeStructure API must be called to allocate the chg_file_info
+  structure before pdmoFreeChangeStructure is called.
+ 
+  Impacts:
+
+  None
+ 
+  Future:
+
+  None
+
+  Test Cases:
+ 
+    Success
+ 
+  Pass in a list that has been allocated in pdmoLoadChangeStructure.
+ 
+    Failure
+ 
+  Pass in a null list.
+
+  Algorithm:
+
+- if file_list is NULL
+	- return error message
+- free each entry in the link list
+- set the pointer to the link list to NULL
+- set the status
+- return
+
+
+
+  Final Design Document pdmoFreeFileStructure
+  7/21/93
+
+  Abstract:  
+
+  This API frees a file structure that has been used to add or change the 
+  file information associated with a part.
+
+  Keywords:
+
+  Free File Structure
+
+  Function Protocol:
+
+  pdmoFreeFileStructure(spm_file_list)
+
+  Input:
+
+	struct   file_info  **spm_file_list
+
+  Output:
+
+	None
+
+  Input Limitations:
+
+	spm_file_list:	required
+			a linked list of structures 
+			pdmoLoadFileStructure must be called before calling
+			  pdmoFreeFileStructure
+
+  Structures:
+
+	struct file_info
+                {
+                char    *cpm_file_desc;
+                char    *cpm_local_fn;
+                char    *cpm_storage_fn;
+                char    *cpm_file_type;
+                int      im_mode;
+                struct   file_info  *spm_next;
+                };
+
+  Return Status:
+
+	PDM_S_SUCCESS
+	PDM_E_USER_LOGGED_IN
+	PDM_E_NULL_LIST
+
+  External Functions:
+ 
+  None
+ 
+  Assumptions:
+
+  The pdmoLoadFileStructure API must be called to allocate the file_info
+  structure before pdmoFreeFileStructure is called.
+ 
+  Impacts:
+
+  None
+ 
+  Future:
+
+  None
+
+  Test Cases:
+ 
+    Success
+ 
+  Pass in a list that has been allocated in pdmoLoadFileStructure.
+ 
+    Failure
+ 
+  Pass in a null list.
+  
+  Algorithm:
+
+- if file_list is NULL
+	- return error message
+- free each entry in the link list
+- set the pointer to the link list to NULL
+- set the status
+- return
+
+
+
+  Final Design Document pdmoFreeTransStructure
+  7/21/93
+
+  Abstract:  
+
+  This API frees the transisition structure that contains a list of possible 
+  transitions for a part.
+
+  Keywords:
+
+  Free Transition Structure
+
+  pdmoFreeTransStructure(spm_trans)
+
+  Input:
+
+	struct   part_transition      *spm_trans
+
+  Output:
+
+	None
+
+  Input Limitations:
+
+	spm_trans:     	required
+                        a linked list of structures
+                        pdmoGetTransitions must be called before calling
+                          pdmoFreeTransStructure
+
+  Structure:
+
+  struct part_transition
+       	{
+       	char                 *cpr_statename;
+       	char                 *cpr_transition;
+       	int                   ir_stateno;
+       	struct part_transition *spm_next;
+       	};
+
+  Return Status:
+
+	PDM_S_SUCCESS
+	PDM_E_NULL_LIST
+	PDM_E_USER_NOT_LOGGED_IN
+
+  External Functions:
+ 
+  None
+ 
+  Assumptions:
+
+  The pdmoGetTransitions API must be called to allocate the part_transition
+  structure before pdmoFreeTransStructure is called.
+ 
+  Impacts:
+
+  None
+ 
+  Future:
+
+  None
+
+  Test Cases:
+ 
+    Success
+ 
+  Pass in a list that has been allocated in pdmoGetTransitions.
+ 
+    Failure
+ 
+  Pass in a null list.
+
+  Algorithm:
+
+- if trans is NULL
+	- return error message
+- free each entry in the link list
+- set the pointer to the link list to NULL
+- set the status
+- return
+
+----------------------------------------------------------------------------
+
+Author:   Jenny Parris
+Title:    Place Part API Macro
+Revision: 6
+
+Abstract:
+The place part macro places a graphic part, non-graphic part, and
+any parametric part.  The macro can also "place but not position"
+any PDM part.
+
+
+Function Definition:
+
+pdmoPlacePart(
+               spr_mod_env,
+               spw_part,
+               cpr_catalogname,
+               cpr_itemname,
+               cpr_itemrev
+               cpr_cofilename,
+               cpr_usageid,
+               cpr_viewname,
+               cpr_quantity,
+               cpr_explode,
+               cpr_attach,
+               cpr_alttagno,
+               cpr_incstr,
+               cpr_incbom,
+               ir_dyn_count,
+               cpr_dyn_names,
+               cpr_dyn_values,
+               ir_dynloc_count,
+               cpr_dynloc_names,
+               spr_dynloc_id,
+               dar_origin,
+               dar_x_point,
+               dar_y_point,
+               spr_position_cs,
+              )
+Argument       Data Type        I/O  Description
+spr_mod_env    *struct GRmd_env I    Module enviroment to place part occurrence
+spw_part       *struct GRid     O    object ID of placed part
+cpr_catalogname*char            I    catalog name
+cpr_itemname   *char            I    part number
+cpr_itemrev    *char            I    part revision
+cpr_cofilename *char            I    file name
+cpr_usageid    *char            I    part usage identification
+cpr_viewname   *char            I    graphic view name
+cpr_quantity   double           I    part quantity
+cpr_explode    *char            I    explode in BOM (Y or N)
+cpr_attach     *char            I    attach file (Y or N)
+cpr_alttagno   *char            I    unique alternate tag number
+cpr_incstr     *char            I    background part (Y or N)
+cpr_incbom     *char            I    include in BOM (Y or N)
+ir_dyn_count   int              I    dynamic attribute count
+cpr_dyn_names  **char           I    dynamic attribute name array
+cpr_dyn_values **char           I    dynamic attribute value array
+ir_dynloc_count int             I    dynamic locate input count
+cpr_dynloc_names **char         I    dynamic locate input names
+spr_dynloc_id  *struct GRid     I    dynamic locate input object ID
+dar_origin     double[3]        I    position by three point origin point
+dar_x_point    double[3]        I    position by three point x-axis point
+dar_y_point    double[3]        I    position by three point y-axis point
+spr_position_cs *struct GRid    I    position by coordinate system
+
+Error Handling:
+
+Status Returns
+PDM_E_CAT_NOT_FOUND
+PDM_E_PART_NOT_FOUND
+PDM_E_PARTREV_NOT_FOUND
+PDM_E_BAD_DYNLOC
+PDM_E_BAD_DYNATTR
+PDM_S_SUCCESS
+PDM_E_DYN_TRIP
+PDM_E_DYN_LOC_TRIP
+PDM_E_BAD_DYN_LOC_ERROR
+PDM_E_DUPLICATE_USAGEID
+PDM_E_LENGTH_USAGEID
+PDM_E_VIEWNAME_NOT_EXIST
+PDM_E_INVALID VALUE
+PDM_E_BAD_POSITION
+PDM_E_DUP_ALTTAGNO
+
+External Functions:
+
+  PDUvalid_catalog()
+  PDUcheck_partnum()
+  PDUget_default_usageid()
+  PDUvalidate_quantity()
+  PDUis_alt_tag_unique()
+  PDUget_parttype()
+  PDUis_cyclic_placement()
+  PDUvalid_filename()
+  PDUcreate_GRpart()
+  PDUadd_assy_struct_from_buffer()
+  PDUgenerate_coord_orientation()
+  PDUcreate_part_pointer()
+  co$part_put_attr()
+  PDMget_part_attach_info()
+  co$part_get_attr()
+  PDUget_all_ref_file_names()
+  PDUload_local_file_buffer()
+  PDMcopy_attach()
+  PDUverify_file()
+  PDUattach_ref_to_GRpart()
+  PDUmodify_exp()
+  PDMquery_dynamic_attributes()
+  SetDynAttrs()
+  InstanceMacro()
+
+Assumptions:
+
+  The user must be logged into PDM.
+
+  EMS must be running and if the place part is suppose to be invisible, the
+file must be opened invisibly prior to calling pdmoPlacePart.
+
+Impacts:
+
+  None.
+
+Future:
+
+  A way of allowing the user to place a part occurrence outside of EMS.
+
+Input Requirements:
+
+  Inputs cpr_catalogname, cpr_itemname, and cpr_itemrev are required for all
+    part placements.
+
+Input Validation:
+
+  Verify the user is logged in.
+
+  Verify cpr_catalogname exists.
+    status = PDUvalid_catalog("", cpr_catalogname). If cpr_catalogname does not
+    exist, (status != PDM_S_SUCCESS), return PDM_E_CAT_NOT_FOUND.
+
+  Verify cpr_itemname and cpr_itemrev exists.
+    status = PDUcheck_partnum(cpr_catalogname,cpr_itemname, cpr_itemrev). If
+    cpr_itemname does not exist, return PDM_E_PART_NOT_FOUND. If cpr_itemrev
+    does not exist, return PDM_E_PARTREV_NOT_FOUND.
+
+  If cpr_usageid is given, verify it is valid. If cpr_usageid > 25 characters,
+    return PDM_E_LENGTH_USAGEID. If cpr_usageid is not unique, return
+    PDM_E_DUPLICATE_USAGEID. Copy cpr_usageid string to usageid.
+  else if cpr_usageid not given, default usageid.
+        status = PDUget_default_usage_id(cpr_catalogname, cpr_itemname,
+                                         cpr_itemrev, usageid)
+
+  Verify cpr_viewname is valid if given. If cpr_viewname is not valid, return
+    PDM_E_VIEWNAME_NOT_EXIST.
+
+  If cpr_quantity is given, verify it is valid.
+    status = PDUvalidate_quantity(cpr_quantity). If cpr_quantity is not valid,
+    (status != PDM_S_SUCCESS), return PDM_E_INVALID_VALUE. Store value of
+    cpr_quantity to quantity.
+  Else default quantity to 1.0.
+
+  If cpr_explode is given, verify it is valid. If cpr_explode is not equal to
+    "Y" or "N", return PDM_E_INVALID_VALUE. Store value of cpr_explode to
+     explode.
+  ELse default explode to interface value.
+
+  If cpr_attach is given, verify it is valid. If cpr_attach is not equal to "Y"
+    or "N", return PDM_E_INVALID_VALUE. Store value of cpr_attach to attach.
+  Else default attach to interface value.
+
+  Verify cpr_alttagno is valid if given.
+    status = PDUis_alt_tag_unique(cpr_alttagno). If cpr_alttagno is not unique,
+    (status != PDM_S_SUCCESS), return PDM_E_DUP_ALTTAGNO.
+
+  If cpr_incstr is given, verify it is valid. If cpr_incstr is not equal to "Y"
+    or "N", return PDM_E_INVALID_VALUE. Store value of cpr_incstr to incstr.
+  Else default incstr to interface value.
+
+  If cpr_incbom is given. verify it is valid. If cpr_incbom is not equal to "Y"
+    or "N", return PDM_E_INVALID_VALUE. Store value of cpr_incbom to incbom.
+  Else default incbom to interface value.
+
+  If spr_mod_env is NULL, get current module information.
+
+Alogorithm:
+
+  Query for p_parttype.
+    status = PDUget_parttype(cpr_catalogname, cpr_itemname, cpr_itemrev,
+                             &p_parttype).
+
+    When p_parttype != 'P' or p_parttype != 'p':
+
+      If both position_pts(dar_origin, dar_x_point, and dar_y_point) and
+        spr_position_cs are given, return PDM_E_BAD_POITION.
+
+      If only part of the three position by point parameters(dar_origin,
+        dar_x_point, and dar_y_point) are given, return PDM_E_BAD_POSITION.
+
+      If only part of the three dyn* parameters are given, return
+        PDM_E_DYN_TRIP.
+
+      Ignore all dynloc parameters if given.
+
+      If neither position_pts(dar_origin, dar_x_point, and dar_y_point) nor
+        spr_position_cs are given, default attach to N regardless.
+
+      Verify placement is not cyclic.
+        status = PDUis_cyclic_placement(cpr_catalogname, cpr_itemname,
+                                        cpr_itemrev,
+                                        &asm_bufr). If cyclic placement, return
+        PDM_E_CYCLIC_PLACEMENT
+
+      If cpr_cofilename given
+        status = PDUvalid_filename(cpr_cofilename). If cpr_cofilename does not
+        exist, default cofilename to first EMS (OM) file in list else copy
+        cpr_cofilename string to cofilename.
+      else
+        default cofilename to first EMS (OM) file in list.
+
+      Create a PDU GRpart.
+        status = PDUcreate_GRpart(*spr_mod_env, cpr_catalogname, cpr_itemname,
+                                  cpr_itemrev, quantity, cpr_alttagno,usageid,
+                                  cpr_viewname, history, p_parttype, incbom,
+                                  incstr, explode, attach, &part_id)
+
+        For all dynamic attributes in cpr_dyn_names:
+          Verify attributes existence. If attribute does not exist, continue.
+          Otherwise, if value given in cpr_dyn_values is valid (datatype, lists
+          and ranges), overwrite the default values from the database with this
+          value.
+
+      Extract catalog_no and n_itemno from the asm_bufr.
+
+      Add part to assembly structure according to explode. If explode = "Y",
+        and asm_bufr-> rows > 1, add parts assembly structure to the assembly
+        structure,
+        status = PDUadd_assy_struct_from_buffer(cpr_catalogname, cpr_itemname,
+                                                cpr_itemrev, description,
+                                                quantity, usageid, filename,
+                                                spr_mod_env->md_id.osnum,
+                                                child_no, catalog_no, item_no,
+                                                asm_bufr, 1)
+        Else add only 1st level assembly part information
+        status = PDUadd_assy_struct_from_buffer(cpr_catalogname, cpr_itemname,
+                                                cpr_itemrev, description,
+                                                quantity, usageid, filename,
+                                                spr_mod_env->md_id.osnum,
+                                                child_no, catalog_no, item_no,
+                                                NULL,1)
+
+        set cpw_partid.
+
+        If positionless placement return successfully.
+
+        If non-graphic placement (p_parttype = "N" or "n") return successfully.
+
+        When place by view alignment,(spr_position_cs is given):
+         status = om$send(msg = message GRgencs.GRgetmatrix(&msg,
+                                                            src_matrix),
+                          senderid = NULL_OBJID,
+                          targetid = spr_position_cs.objid,
+                          targetos = spr_position_cs.osnum)
+
+        When place by 3 points, (position_pts(dar_origin, dar_x_point and
+          dar_y_point) are given):
+          status = PDUgenerate_coord_orientation(dar_origin, dar_x_point,
+                                                 dar_y_point, src_matrix);
+
+       Create part pointer.
+         status = PDUcreate_part_pointer(src_matrix, *spr_mod_env, usage_id,
+                                         NULL, csobjid);
+
+       Add coordinate system as a component to GRpart.
+         status = om$send(msg = message GRowner.GRadd_components(&msg,
+                                                                 spr_mod_env,
+                                                                 &num_objects
+                                                                 objects,
+                                                                 own_index,
+                                                                 NULL)
+                         targetid = part_id.objid.
+                         targetos = part_id.osnum)
+
+       Modify serial_no in GRpart to indicate it is a positioned part.
+         co$part_put_attr(msg = &msg, spr_mod_env, part = &part_id,
+                          attr = "serial", value = serial_no,
+                          type = GR_DYNAMIC_ATTR)
+         If msg = MSSUCC or attr_value = "", return PDM_E_INVALID_PART_POINTER.
+
+       If attach = "N" or "n", return successfully.
+
+       If attach = "Y" or "y"
+
+         Verify part attach information.
+           status = PDMget_part_attach_info(cpr_catalogname, cpr_itemname,
+                                            cpr_itemrev, item_no, &view_buffer,
+                                            &file_buffer).
+           If part has never been checked in, change attach_flag attribute in
+           GRpart to -1 and return PDM_E_NEVER_CHECKIN. If no view exists,
+           change attach_flag attribute in GRpart to -1 and return
+           PDM_E_NO_VIEWS_DEFINED.  If multiple views defined and not
+           cpr_viewname is not defaulted, return PDM_E_MULTIPLE_VIEWS. If one
+           view is defined use as default.
+
+           Extract the serial_no from the GRpart. The serial number is the objid
+             of the coordinate system.
+             co$part_get_attr(msg = &msg, mod_env = spr_mod_env,part = &part_id,
+                              attr = "serial", value = attr_value, type = &type)
+            If msg = MSSUCC or attr_value = "", return
+              PDM_E_INVALID_PART_POINTER.
+             sscanf(attr_value, "%d", &coord.objid)
+
+           Get list of all attached reference filenames
+             status = PDUget_all_ref_file_names(*spr_mod_env)
+
+           Check linklist PDU_ref_filenames to see if part is already attached.
+             While linklist not null, check for match of cofilename in the
+             linklist.
+
+           If cofilename is already loaded into memory (cofilename found
+             in linklist), no file management is needed.
+           Else load this file into buffer to be copied to local later.
+             status = PDUload_local_file_buffer(catalog_no, item_no,
+                                                cpr_catalogname, cpr_itemname,
+                                                cpr_itemrev, cofilename,
+                                                &local_files).
+             Get the assembly structure of the part from either the database or
+               the object space.
+             For all parts in the assembly structure, check to see if the child
+               is attached. If the child is attached, check to see if the
+               child's file is already loaded into memory. If so, no copy to
+               local is necessary. Otherwise extract all the child's information
+               from the object space and load the file info into a buffer to
+               copied to local later.
+               status = PDUload_local_file_buffer(catalog_no, item_no,
+                                                  cpr_catalogname, cpr_itemname,
+                                                  cpr_itemrev, cofilename,
+                                                  &local_files).
+
+          If files are to be copied, (local_files->rows > 0), copy the files
+            to local.
+            status = PDMcopy_attach(local_files, &status_bufr). If status !=
+            PDM_S_SUCCESS, return PDM_E_COPY_FILES.
+
+          Verify cofilename exists locally.
+            status = PDUverify_file(cofilename). If file not found, return
+            PDM_E_FILE_NOT_FOUND
+
+          If PDU_incl_ASM = "N" or "n" background is TRUE, otherwise background
+            is FALSE.
+
+          When active part is a drawing part (act_parttype = "D" or "d"):
+
+            Extract the origin of the part pointer.
+              status = PDUmatrix_to_point(src_matrix, &origin_pt)
+
+            Find x-axis point and y-axis point on first alignment.
+              MAinvmx(&status, &four, src_matrix, src_matrix)
+              status = PDUadd_points(src_matrix, origin_pt, &x_axis_pt, 0, 1, 2)
+              status = PDUadd_points(src_matrix, origin_pt, &y_axis_pt, 4, 5 ,6)
+              origin[0] = origin_pt.x;
+              origin[1] = origin_pt.y;
+              origin[2] = origin_pt.z;
+              x_point[0] = x_axis_pt.x;
+              x_point[1] = x_axis_pt.y;
+              x_point[2] = x_axis_pt.z;
+              y_point[0] = y_axis_pt.x;
+              y_point[1] = y_axis_pt.y;
+              y_point[2] = y_axis_pt.z;
+
+            Find coordinate system matrix.
+              MA3protmx(&status, origin, x_point, y_point, rot_matrix
+              PDUdump_matrix(rot_matrix)
+
+            Attach drawing graphically.
+              status = PDUattach_ref_to_GRpart(part_id,src_matrix,*spr_mod_env,
+                                               first_level_catno,
+                                               first_level_itemno,
+                                               TRUE, background, rot_matrix,
+                                               origin, &cs_id, &refobjid)
+              If could not attach drawing graphically, return
+                PDM_E_ATTACH_DRAWING
+
+          When active part is not a drawing part (act_parttype != "D" or "d"):
+            Attach part graphically.
+              status = PDUattach_ref_to_GRpart(partid, src_matrix, *spr_mod_env,
+                                               first_level_catno,
+                                               first_level_itemno, FALSE,
+                                               background, rot_matrix, origin,
+                                               NULL, &refobjid)
+              If could not attach part graphically, return PDM_E_ATTACH_PART.
+
+          If active part is a drawing part or p_parttype = "D" or "d", add
+            coordinate system to GRpart.
+
+          Display attachment.
+            dp$display(msg = &msg, oids, &part_id, mode_GRbd)
+
+          Update the attach flag in this GRpart to refobjid.objid.
+            sprintf(attr_value, "%d", refobjid.objid)
+            co$part_put_attr(msg = &msg, *spr_mod_env, part = &part_id,
+                             attr = "attach_flag", value = attr_value,
+                             type = GR_DYNAMIC_ATTR)
+           If msg = MSSUCC or attr_value = "", return PDM_E_INVALID_PART_POINTER
+
+          Update the viewname attribute in this GRpart.
+            sprintf(tmp_viewname, "\"%s\"", viewname)
+            co$part_put_attr(msg = &msg, *spr_mod_env, part = &part_id,
+                             attr = "view_name", value = tmp_viewname,
+                             type = GR_DYNAMIC_ATTR)
+           If msg = MSSUCC or attr_value = "", return PDM_E_INVALID_PART_POINTER
+
+          Update the part's attached flag in assy struct.
+            status = PDUmodify_exp(0, assy_path, "attached", "Y",
+                                  spr_mod_env->md_id.osnum)
+
+          Update the part's attached flag in assy struct.
+            status = PDUmodify_exp(0, assy_path, "filename", cofilename,
+                               spr_mod_env->md_id.osnum)
+
+          Return from position and attach successfully.
+
+    When p_parttype == 'P' or p_parttype == 'p':
+
+      Ignore the position_pts(origin, x_point, and y_point) and spr_position_cs
+        if given.
+
+      If dynloc* input is not provided, do positionless placement as defined
+        above.
+
+      If only part of the three dyn* parameters are given, return
+        PDM_E_DYN_TRIP.
+
+      If only part of the three dynloc* parameters are given, return
+        PDM_E_DYN_LOC_TRIP.
+
+      Query for dynamic attributes.
+        status = PDMquery_dynamic_attributes(cpr_catalogname, cpr_itemname,
+                                             cpr_itemrev, &dyn_attr, &dyn_data,
+                                             &dynlists, &tmp_explode)
+
+      For all dynamic attributes in cpr_dyn_names:
+        Verify attributes existence. If attribute does not exist, continue.
+        Otherwise, if value given in cpr_dyn_values is valid (datatype, lists
+        and ranges), overwrite the default values from the database with this
+        value.
+
+      Call place parametric part given the dynloc* parameters as input.
+         SetDynAttrs()
+         InstanceMacro()
+
+      If not successful, return PDM_E_PLACE_PARAMETRIC_PART.
+
+      Return from place parametric part successfully.
+
+-----------------------------------------------------------------------------
+
+Date:     07/6/93
+Author:   Jenny Parris
+Title:    Place Part PPL Macro
+Revision: 3
+
+Abstract:
+The place part macro places a graphic part, non-graphic part, and
+any parametric part.  The macro can also "place but not position"
+any PDM part.
+
+Macro Definition:
+
+pdm$place_part(
+               status
+               mod_env
+               part
+               n_catalogname
+               n_itemname
+               n_itemrev
+               n_cofilename
+               p_usageid
+               p_viewname
+               p_quantity
+               p_explode
+               p_attach
+               p_alttagno
+               p_incstr
+               p_incbom
+               dyn_count
+               dyn_names
+               dyn_values
+               dynloc_count
+               dynloc_names
+               dynloc_id
+               origin
+               x_point
+               y_point
+               position_cs
+              )
+Argument       Data Type      I/O  Description
+status         *long          O    Return status
+mod_env      *struct GRmd_env I   Module environment to place part occurrence
+part           *struct GRid   O    object ID of placed part
+n_catalogname  *char          I    catalog name
+n_itemname     *char          I    part number
+n_itemrev      *char          I    part revision
+n_cofilename   *char          I    file name
+p_usageid      *char          I    part usage identification
+p_viewname     *char          I    graphic view name
+p_quantity     double         I    part quantity
+p_explode      *char          I    explode in BOM (Y or N)
+p_attach       *char          I    attach file (Y or N)
+p_alttagno     *char          I    unique alternate tag number
+p_incstr       *char          I    background part (Y or N)
+p_incbom       *char          I    include in BOM (Y or N)
+dyn_count      int            I    dynamic attribute count
+dyn_names      **char         I    dynamic attribute name array
+dyn_values     **char         I    dynamic attribute value array
+dynloc_count   int            I    dynamic locate input count
+dynloc_names   **char         I    dynamic locate input names
+dynloc_id      *struct GRid   I    dynamic locate input object ID
+origin         double[3]      I    position by three point origin point
+x_point        double[3]      I    position by three point x-axis point
+y_point        double[3]      I    position by three point y-axis point
+position_cs    *struct GRid   I    position by coordinate system
+
+
+Error Handling:
+
+Status Returns
+PDM_E_CAT_NULL
+PDM_E_PART_NULL
+PDM_E_REV_NULL
+PDM_E_CAT_NOT_FOUND
+PDM_E_PART_NOT_FOUND
+PDM_E_PARTREV_NOT_FOUND
+PDM_E_BAD_DYNLOC
+PDM_E_BAD_DYNATTR
+PDM_S_SUCCESS
+PDM_E_DYN_TRIP
+PDM_E_DYN_LOC_TRIP
+PDM_E_BAD_DYN_LOC_ERROR
+PDM_E_DUPLICATE_USAGEID
+PDM_E_LENGTH_USAGEID
+PDM_E_VIEWNAME_NOT_EXIST
+PDM_E_INVALID VALUE
+PDM_E_BAD_POSITION
+PDM_E_DUP_ALTTAGNO
+
+External Functions:
+
+  pdmoPlacePart()
+
+Assumptions:
+
+  The user must be logged into PDM.
+
+  EMS must be running.
+
+Impacts:
+
+  None.
+
+Future:
+
+  A way of allowing the user to place a part occurrence outside of EMS.
+
+Input Requirements:
+
+  Inputs n_catalogname, n_itemname, and n_itemrev are required for all part
+    placements.
+
+Input Validation:
+
+   If n_catalogname is NULL, set status to PDM_E_CAT_NULL and exit.
+
+   If n_itemname is NULL, set status to PDM_E_PART_NULL and exit.
+
+   If n_itemrev is NULL, set status to PDM_E_REV_NULL and exit.
+
+   If mod_env is NULL, get current module information.
+
+Algorithm:
+
+  *status = pdmoPlacePart(mod_env, part, n_catalogname, n_itemname,
+                          n_cofilename, p_usageid, p_viewname, p_quantity,
+                          p_explode, p_attach, p_alttagno, p_incstr, p_incbom,
+                          dyn_count, dyn_names, dyn_values, dynloc_count,
+                          dynloc_names, dynloc_id, origin, x_point, y_point,
+                          position_cs)
+
+  Exit.
+
+-----------------------------------------------------------------------------
+
+
+uthor:   Jenny Parris
+Title:    Delete Part API Macro
+Revision: 2
+
+Abstract:
+The delete part occurrence macro deletes a graphic part, non-graphic part, and
+any parametric part. This macro does not delete the part definition from the
+database.
+
+
+Function Definition:
+
+long pdmoDeletePartOccurrence(
+               spr_mod_env,
+               spr_part
+              )
+Argument       Data Type        I/O Description
+spr_mod_env    *struct GRmd_env I   Module environment to delete part occurrence
+spr_part       *struct GRid     I   Object ID of part occurrence to be deleted
+
+Error Handling:
+
+
+PDM_E_BAD_OBJID
+PDM_E_NULL_OBJID
+PDM_E_DELETE_PARAMETRIC_PART
+PDM_E_DETACH_MACRO_LIB
+PDM_E_DELETE_GRPART
+PDM_E_DETACH_PART
+PDM_E_INVALID_PART_POINTER
+
+External Functions:
+
+  PDUis_parametric_part()
+  co$part_get_attr()
+  di$give_pathname()
+  PDUget_GRpart_ids()
+  PDMdetach_part()
+  PDUremove_assembly()
+  delete_prpart()
+  PDMdetach_macro_library()
+  delete_maclib_entry()
+  dp$display()
+
+Assumptions:
+
+  The user must be logged into PDM.
+
+  EMS must be running and if the delete part occurrence is suppose to be
+  invisible, the file must be opened invisibly prior to calling
+  pdmoDeletePartOccurrence.
+
+Impacts:
+
+  None.
+
+Future:
+
+  A way of allowing the user to delete a part occurrence outside of EMS.
+
+Input Requirements:
+
+  Input spr_part is required.
+
+Input Validation:
+
+  Verify the user is logged in.
+
+  If spr_mod_env is NULL, get current module environment.
+
+  If spr_part is NULL, return PDM_E_NULL_OBJID.
+
+  Verify spr_part is valid if given. If part's objid does not exist in the
+    object space, return PDM_E_BAD_OBJID.
+
+Algorithm:
+
+  Check for type of part to be deleted.
+    status = PDUis_parametric_part(spr_part)
+
+  When not a parametric part:
+
+    Extract attach value from the object space.
+      co$part_get_attr(msg = &msg, mod_env = spr_mod_env, part = spr_part,
+                       attr = "attach_flag", value = attr_value, type = &type)
+      If msg = MSSUCC or attr_value = "", return PDM_E_INVALID_PART_POINTER.
+
+    Construct path to file directory.
+      di$give_pathname(osnum = spr_mod_env->md_id.osnum, pathname = part_path)
+
+    Extract parttype from the object space.
+      co$part_get_attr(msg = &msg, mod_env = spr_mod_env, part = spr_part,
+                       attr = "part_type", value = attr_value, type = &type)
+      If msg = MSSUCC or attr_value = "", return PDM_E_INVALID_PART_POINTER
+
+    When parttype = "G" or "g" or "D" or "d" and part is attached:
+
+      Check to see if part is attached in another occurrence.
+        status = PDUget_GRpart_ids(s, &part_ids, &count). For all parts
+          returned, check for attach flag != -1 or != -2
+
+      When part is not attached in another occurrence:
+
+        Delete all files associated with this part (assembly structure included)
+          locally.
+          status = PDMdetach_part(delete_list). If status not PDM_S_SUCCESS,
+          return PDM_E_DETACH_PART.
+
+    Erase part pointer.
+      dp$display(msg = &sts, oids = spr_part, mode = GRbe);
+
+    Delete GRpart.
+        status = om$send(msg = message GRgraphics.GRdelete(&sts,
+                                                          spr_mod_env)
+                         targetid = spr_part->objid,
+                         targetos = spr_part->osnum). If not success, return
+         PDM_E_DELETE_GRPART.
+
+    Update assembly structure.
+      status = PDUremove_assembly(part_path, spr_mod_env)
+
+    return PDM_S_SUCCESS.
+
+  When a parametric part:
+
+     Delete part.
+       status = delete_prpart(spr_part, spr_mod_env). If not successful, return
+       PDM_E_DELETE_PARAMETRIC_PART.
+
+     Cleanup macro library if necessary.
+        PDMdetach_macro_library()
+
+     Detach macro library file if no longer needed.
+       delete_maclib_entry(spr_mod_env->osnum, macro_library). If not
+       successful, return PDM_E_DETACH_MACRO_LIB.
+
+     return PDM_S_SUCCESS.
+
+
+-----------------------------------------------------------------------------
+
+Author:   Jenny Parris
+Title:    Delete Part PPL Macro
+Revision: 3
+
+Abstract:
+The delete part occurrence macro deletes a graphic part, non-graphic part, and
+any parametric part. This macro does not delete the part definition from the
+database.
+
+Macro Definition:
+
+pdm$delete_occurrence(
+               lw_status,
+               spr_mod_env,
+               spr_part
+              )
+Argument       Data Type      I/O  Description
+lw_status      *long          O    Return status
+spr_mod_env    *struct GRmd_env I   Module environment to delete part occurrence
+spr_part       *struct GRid   I    Object ID of part to be deleted
+
+Error Handling:
+
+
+PDM_E_BAD_OBJID
+PDM_E_NULL_OBJID
+PDM_E_DELETE_PARAMETRIC_PART
+PDM_E_DETACH_MACRO_LIB
+PDM_E_INVALID_PART_POINTER
+
+External Functions:
+
+  pdmoDeletePartOccurrence()
+
+Assumptions:
+
+  The user must be logged into PDM.
+
+  EMS must be running.
+
+Impacts:
+
+  None.
+
+Future:
+
+  A way of allowing the user to delete a part occurrence outside of EMS.
+
+Input Requirements:
+
+  Input spr_part is required for all delete part placements.
+
+Input Validation:
+
+  If spr_mod_env is NULL, get current module information.
+
+  If spr_part is NULL, set lw_status to PDM_E_NULL_OBJID and exit.
+
+  Verify spr_part is valid if given. If spr_part's objid does not exist in the
+    object space, set lw_status to PDM_E_BAD_OBJID and exit.
+
+Algorithm:
+
+  *lw_status = pdmoDeletePartOccurrence(spr_mod_env, spr_part)
+
+  Exit.
+
+----------------------------------------------------------------------------
+
+  Final Design Document pdmoLogin
+
+  Revision:
+
+  7/15/93 
+  Version 2
+  
+  
+  Abstract: 
+
+  The function pdmoLogin allows a user to login to an nfm environment
+  for database manipulation.
+  
+  Keywords:
+
+  Login
+
+  Function Protocol:
+
+  long pdmoLogin(cpr_env,cpr_pdmuser,cpr_pdmpasswd,cpr_msgpath,spm_userinfo)
+  char *cpr_env
+  char *cpr_pdmuser
+  char *cpr_pdmpasswd
+  char *cpr_msgpath
+  struct pdmStorageArea *spm_userinfo
+  
+  Inputs:
+
+  cpr_env - environment name
+            must not exceed 9 characters
+            required
+  cpr_pdmuser - pdm user name 
+                must not exceed 14 characters
+                required
+  cpr_pdmpasswd - pdm password
+                  must not exceed 14 characters
+                  required
+  cpr_msgpath - device or file name for message output  
+                optional
+  
+  Outputs:
+
+  spm_userinfo - structure containing storage area information
+  
+  Structures:  
+
+  struct pdmStorageArea
+  {
+   char *cpr_node_name        I 
+   char *cpr_user_name        I
+   char *cpr_user_passwd      I
+   char *cpr_path             I
+   char *cpw_saname           O      
+   int  iw_sanum              O
+   int  iw_userid             O
+  }
+  
+   cpr_node_name   workstation node name for storage area
+                   must not exceed 30 characters 
+                   required
+   cpr_user_name   workstation user name for storage area
+                   must not exceed 14 characters
+                   required
+   cpr_user_passwd workstation password
+                   must not exceed 14 characters
+                   required
+   cpr_path        storage area path on workstation
+                   must not exceed 80 characters
+                   required
+   cpw_saname      name of storage area given by the database
+                   must not exceed 14 characters
+   iw_sanum        storage area number coinciding with storage area name
+   iw_userid       user id assigned by database
+
+
+  Return Status:
+  
+  PDM_S_SUCCESS  
+  PDM_E_INITIALIZED
+  PDM_E_BAD_NODE
+  PDM_E_BAD_PROTOCOL
+  PDM_E_BAD_USERNAME
+  PDM_E_BAD_ENV
+  PDM_E_CLH
+  PDM_E_USER_PASSWD
+  PDM_E_LOCATE_SCHEMA_FILE
+  PDM_E_INVALID_ENV
+  PDM_E_WRKST_USER
+  PDM_E_WRKST_PASSWD
+  PDM_E_INV_STORG_PATH               /* NEW ERROR CODE */
+  PDM_E_LIST_ENVS
+ 
+  External Functions:
+
+  NFMls_nodes()
+  PDUget_envs()
+  PDUload_exec_structure()
+  PDMlogin()
+  PDMverify_init()
+  PDUfill_in_string()
+  PDUuser_init()
+  PDUstorage_init()
+  PDUpdm_exec_init()
+
+  Assumptions: 
+
+  Only one schema can be active at a time. If the user has
+  already activated a schema then pdmoLogin will deactivate the existing 
+  schema to allow connection to the new schema or error if trying to
+  connect to the same schema.
+
+  Impacts:
+
+   Two global variables will be set PDU_apiflag, PDU_apimessage.
+   Global structures PDUuser, PDUstorage will be filled up.
+  
+  Future:
+
+   A mechanism is needed to trap core dumps and call a function for
+   clean up before exiting the process. This would be similar to 
+   exitadd used by exnuc. This does not exist at this time. If time
+   permits and a function is developed to handle this pdmoLogin can
+   use this new mechanism to handle core dumps in a more efficient
+   manner.
+  
+  Algorithm:
+  
+   initialize global variable PDU_apiflag to 1
+   initialize global variable PDU_apimessage string to null
+   copy cpr_msgpath to PDU_apimessage (If null copy "NULL" to string)
+
+   validate environment
+    if not null
+     check if the environment is valid on the network
+     ifndef sparc
+      call NFMls_nodes
+     else
+      call PDUget_envs
+     if not valid return PDM_E_INVALID_ENV
+    else return PDM_E_BAD_ENV
+  
+   validate pdm user name, password
+   if null return PDM_E_BAD_USERNAME or PDM_E_USER_PASSWD
+  
+   validate node name
+   if null return PDM_E_BAD_NODE
+  
+   validate wkst user name, password
+   if null return PDM_E_WRKST_USER or PDM_E_WRKST_PASSWD
+  
+   validate wkst path
+   if null return PDM_E_INV_STORG_PATH
+
+   check PDUuser structure to verify if a login has already occurred  
+   if already logged in return PDM_S_SUCCESS
+
+   initialize PDUuser structure
+   initialize PDUstorage structure
+   initialize PDUexec_ptr structure
+
+   load PDUuser structure for PDU/PDM use
+   load PDUstorage structure for PDU/PDM use  
+   load PDMexec structure
+    call PDUload_exec_structure("",username,password,environment,"","","",0,0);
+
+   initialize &sp_userinfo->user_id  = 0
+
+   call PDMlogin(&user_info->user_id)
+   if error
+    equate NFM error message to PDM error message
+    clear PDUuser structure
+    clear PDUstorage structure
+    return status
+   if success
+     signal(13,SIG_IGN)  /* ignore signal (13) */
+     verify initialization of PDM on the server
+     call PDUload_exec_structure("","",prod_name,prod_version,"","","",0,0)
+     call PDMverify_init()
+     if status is not PDM_S_SUCCESS 
+       return PDM_E_INITIALIZED
+
+     load PDMexec structure with user_id
+     load pdmStorageArea structure with saname, sanum, userid
+  
+    /* Save the current file name for PDU internal use */   ?????
+   /* call PDUset_default_file()    Not going to be used because there
+      will not be a concept of a dummy file in 2.4  */
+  
+   return PDM_S_SUCCESS
+
+----------------------------------------------------------------------------
+
+
+/****************************************************************************
+
+Name
+   pdmocheckinpart
+
+Abstract
+   Checks in a list of parts. The files of the parts are moved and the database
+is updated.
+
+Description
+
+This function checks in the part and it's associated files. It updates the
+current structure of the part to the database, if it's a assembly. It
+updates the placement specific attribution and dynamic attribution of the
+1st level parts. It defines the newly placed parametric sub-assemblies.
+It updates the files of the part that is checked in into the storage area.
+The saved views of the part that is checked in is updated. It also does
+the filemanagement of the children. Macro library management is done
+for the assembly and it's associated 1st level parts. Versioning of the
+files is done, if requested. View parts are defined, if they aren't defined
+in the database yet.
+
+
+Function protocol
+
+long pdmoAddPartToAssembly
+(
+PDMparts *spr_parts;
+)
+
+   Input/Output:
+
+PDMparts *spr_parts  - a linked list of parts to be checked in.
+
+     {
+
+  Input:
+
+char *cpr_n_catalogname - Catalog of the part to be checked in.         - Input
+required
+char *cpr_n_itemname    - Partnum of the part to be checked in.         - Input
+required
+char *cpr_n_itemrev     - Revision of the part to be checked in.        - Input
+required
+char *cpr_filename      - Local filename of the part from which         - Input
+optional
+                          the assembly structure is to be read, if the
+                          part is an assembly and has multiple files.
+                          If this input is null, the only or the first
+                          EMS file will be taken for checkin. 
+char  car_st_update_flag[2] - Flag to indicate whether to update         -
+Input optional
+                          the product structure or not. Setting this
+                          flag to "N", 'n', disables product
+                          structure update, and only file management will
+                          be done. By setting this flag to 'N', you don't
+                          need have loaded in the workstation for checkin.
+   Output:
+
+     long    iw_status  - status of the checkin operation of this part.   -
+System output.
+     PDMparts *spr_next - pointer to the next node in the linked list or NULL.
+     }
+
+     
+ pdmoLoadPartsForCheckin can be called to load this structure.
+
+Input Constraints:
+  cpr_n_catalogname:    required
+                        16 characters or less
+                        must already exist
+
+  cpr_n_itemname:       required
+                        ! * ? , : invalid characters
+                        must not exceed the number of characters specified
+                        at catalog creation time
+
+  cpr_n_itemrev:        required
+                        ! * ? , : invalid characters
+                        must not exceed the number of characters specified
+                        at catalog creation time
+  cpr_filename          optional
+  car_st_update_flag    optional - Y,y,N,n, NULL STRING
+
+  
+
+
+
+Algorithm:
+
+{*HIDE .!}
+-BEGIN
+
+- Check whether the user has logged in.
+Initialize PDU_dyn_index = 1.
+Query for the part info and load it in the refresh.
+Get Catalog nos and Load it in PDMpart.n_catalogno SUCCESS?
+      (Yes)
+      (No) return error!
+   ?end
+Get Part Info and Load it in PDMpart SUCCESS?
+      (Yes)
+      (No) return error!
+   ?end
+Is PDMpart.n_cisano < 0 ?
+      (Yes) return PDM_E_NO_STO_LOC!
+      (No)
+   ?end
+Is PDMpart.n_status = 'I" ?
+      (Yes) return PDM_E_PART_CHECKIN!
+      (No)
+   ?end
+Is PDMpart.n_status = 'TI" ?
+      (Yes) return PDM_I_ON_TRANSFER!
+      (No)
+   ?end
+Is PDMpart.n_status = 'TO" ?
+      (Yes) return PDM_I_ON_TRANSFER!
+      (No)
+   ?end
+Is PDMpart.n_status = 'O" or 'S'?
+      (Yes) Get the new files which got added after checkout - SUCCESS?
+            (Yes)
+            (No)  print no files got added!
+           ?end
+      (No)
+   ?end
+Is PDMpart.p_parttype = 'N' or 'n' ?
+      (Yes) return PDM_E_PART_NONGRAPHIC!
+      (No)
+   ?end
+Is PDMpart.p_parttype = 'P' or 'p' ?
+      (Yes) return PDM_E_CAN_NOT_CHECKIN_PARAMETRIC_PART!
+      (No)
+   ?end
+Is PDMpart.n_arichivestate = 'N' or 'n' ?
+      (Yes) return PDM_E_PART_ARHCIVED!
+      (No)
+   ?end
+Is PDMpart.n_itemlock = 'N' or 'n' ?
+      (Yes) return PDM_E_ITEM_LOCKED!
+      (No)
+   ?end
+Is PDMpart.n_pendingflag = 'IA' or 'SA' ?
+      (Yes) return PDM_E_PART_FLAGGED_FOR_ARCHIVE!
+      (No)
+?end
+Is PDMpart.n_pendingflag = 'IA' or 'SA' ?
+      (Yes) return PDM_E_PART_FLAGGED_FOR_ARCHIVE!
+      (No)
+   ?end
+Is PDMpart.n_pendingflag = 'IB' or 'SB' ?
+      (Yes) return PDM_E_PART_FLAGGED_FOR_BACKUP!
+      (No)
+   ?end
+Is PDMpart.n_pendingflag = 'ID' or 'SD' ?
+      (Yes) return PDM_E_PART_FLAGGED_FOR_DELETE!
+      (No)
+   ?end
+Is PDMpart.n_pendingflag = 'IR' or 'SR' ?
+      (Yes) return PDM_E_PART_FLAGGED_FOR_RESTORE!
+      (No)
+   ?end
+ Validate User access on "PDMCheck In Part"?
+ (Access given)
+ (Access denied) return PDM_E_VALIDATE_USER_ACCESS!
+?end
+Check to see if the part is checked out. PDUget_file_status?
+  (O,S,NULL)
+  (ANY THING ELSE) return PDM_E_NOTCHECK_OUT!
+?end
+Call PDMget_filenames to get the list of filenames?
+ (No files found) return PDM_I_NO_FILES_FOUND!
+ (Files found)
+?end
+Call gr$get_module_env.
+Verify that all the files in the file bufr exists locally?
+ (Yes)
+ (No) return PDM_E_FILE_NOT_FOUND!
+?end
+If it's a macro library?
+ (Yes)
+ (No) Checking in a macro library!
+?end
+Do this if the part has multiple files .
+ Do this for the files which are EMS and user says that this is not
+ going to be a structure definition file.
+ Check to see if it's a OM file by calling ex$is_om_file?
+ (Yes)
+ (No) Skip this file
+ ?end
+ If it's a OM file construct a file mount name.
+ Get the osnum of invis Object space.
+ Call ex$retrieve_module - Success?
+ (Yes)
+ (No) skip that file!
+  ?end
+  Open the object space invisbly, call ex$get_invis_info_by_index -SUCCESS?
+ (Yes)
+ (NO) skip that file!
+ ?end
+ Check to see if file is a PDU file by calling PDUis_PDU_file- SUCCESS?
+ (Yes)
+ (No) PDUremove_PDU_design_file_stamp
+  ?end
+ Close and save object space by calling ex$close_module.
+Check the entry in the variable car_filename. If it's null, take the
+first OM file. Otherwise use the filename given by the user.
+Construct the osnum of invis space by calling ex$retrieve_module - Success?
+(Yes)
+(No)  return PDM_E_OPEN_FILE
+?end
+Open the object space of the assembly by calling ex$get_invis_info_by_index
+-SUCCESS?
+(Yes)
+ (No) return PDM_E_OPEN_FILE!
+?end
+ If spr_mod_env not NULL, get current module environment.
+
+  Stamp PDU design file with PDU_DESIGN_FILE.
+    PDUstamp_design_file(*spr_mod_env);
+
+  Check to see if parametric parts exist.
+    PDUget_all_parametric_ids(osnum, &parametric_ids, &count).
+
+  If count is greater than 0
+
+    Free parametric_ids.
+
+    Load list of parametric catalogs.
+      PDUprepare_param_cats_list(spr_mod_env, &PDU_param_cat_list). If not
+      successful (status != PDM_S_SUCCESS), return PDM_E_COMPLETE_PART_CHECKIN.
+      This function will query only the catalogs of parametric parts
+      which are placed after checkout. There is no need to manage the
+      macro libraries of the nth level children.
+
+    Load parametric checkin information.
+      status = PALchekin(spr_mod_env). If not successful
+      (status != PDM_S_SUCCESS), return PDM_E_COMPLETE_PART_CHECKIN.
+
+
+  Extract part pointer information.
+    status = PDUload_child_buffer(&PDU_child_buffer, spr_mod_env). If not
+    successful (status != PDM_S_SUCCESS), return PDM_E_COMPLETE_CHECKIN.
+    {
+    Check to see if part exists in obj space?
+     (Yes)
+     (No) return PDM_S_SUCCES!
+    Extract all PDU GRparts from object space.
+    Intialize the part ids list.
+    Intialize the total count.
+    Check if need to get active design module info.
+    If osnum = 0 , get active module info by calling ex$get_cur_mod.
+    Check to see if parts directory exists, by calling di$give_pathname, and
+di$ls.
+    If count <=0 then return PDM_S_SUCCESS.
+    Extract part types from object space by calling di$find - SUCCESS?
+    (Yes)
+    (No)  return status!
+    ?end
+    If  part count < 0, then say no parts found in object space, return
+PDM_S_SUCCESS.
+    Get the class id of the GRpart.
+    Loop thru part types extracting part ids.
+    Calling di$dump.
+    Add part ids to part ids list.
+    Load the variable "total_count".
+    If count == 0 return PDM_S_SUCCESS.
+    If child_buffer is not fromatted, format it.
+    Construct path tofile directory by calling di$give_pathname.
+    Loop thru extracting part checkin info, write info to child buffer.
+    Extract p_childno by calling co$part_get_attr.
+    Extract p_catalogname  by calling co$part_get_attr.
+    Extract n_itemname  by calling co$part_get_attr.
+    Extract n_itemrev  by calling co$part_get_attr.
+    Extract p_quantity  by calling co$part_get_attr.
+    Extract p_usageid  by calling co$part_get_attr.
+    Extract p_tagno  by calling co$part_get_attr.
+    Extract p_alttagno  by calling co$part_get_attr.
+    Extract p_incbom  by calling co$part_get_attr.
+    Extract p_incstr  by calling co$part_get_attr.
+    Extract p_history  by calling co$part_get_attr.
+    Extarct catalogno from expressions by calling PDUevaluate_exp.
+    Extract filename from expressions by calling PDIevaluate_exp.
+    Write this information into the child buffer.
+
+  Extract part attachment information.
+    status = PDUload_attach_buffer(&PDU_attach_buffer, *spr_mod_env). If not
+    successful (status != PDM_S_SUCCESS), return PDM_E_COMPLETE_CHECKIN.
+    Contstruct path to object space file.
+    Construct path to the assembly structure.
+    Build a list of attached parts of all levels by calling di$find.
+    Create and format the attached buffer.
+    For all the parts
+     Strip the directory entry in the parts list
+     Extract the catalogno and itemno from obj space by calling PDUevalu-
+ate_exp.
+      Load the attach buffer.
+
+  Load dynamic attributes and values.
+    status = PDUload_dynamic_attrs(spr_mod_env, &PDU_dyn_attr_bufr,
+                                   &PDU_dyn_data_bufr). If not successful
+    (status != PDM_S_SUCCESS), return PDM_E_COMPLETE_PART_CHECKIN. Note:
+    This function needs to be modified so as not to query the dynamic
+attributes
+    from the db for non-parametric parts.
+    Get all the GRpart_ids by calling PDUget_all_GRpart_ids.
+    Get all the parametric part ids by calling PDUget_all_parametric_ids.
+    Process all parametric parts by calling PDUprocess_part_dyn_attrs.
+    Process all regular dynamic part attributes
+    Extract catalog name from the parts by calling get_parameter_values.
+    Check to see if part dyn attrs have already been processed.
+    Load dynamic attrs to data buffer.
+    Extract part child no by calling get_parameter_values.
+    Extract dyn attr values by calling get_parameter_values.
+    Extract part usage id by calling get_parameter_values.
+    Get the path to external dyn. attrs by calling di$give_pathname.
+    Append :PDU:macro_parts:parameter
+    Extract the value by calling PDUevaluate_exp.
+
+  Extract view information.
+    status = PDUload_view_info(spr_mod_env->md_id.objid,
+                               spr_mod_env->md_id.osnum, &PDU_view_buffer). If
+    not successful (status != PDM_S_SUCCESS and status !=
+    PDM_I_ORIGIN_NOT_FOUND), return (PDM_E_COMPLETE_PART_CHECKIN).
+    This is going to be done only if new views are defined.
+MEMbuild_array file_bufr, saved_views_buffer, child_bufr, attach_bufr -
+SUCCESS?
+      (Yes)
+      (No) return PDM_E_BUILD_ARRAY!
+   ?end
+MEMprint all the buffers.
+MEMopen and MEMwrite_format delete_list buffer which needs to sent back to PDU
+- SUCCESS?
+      (Yes)
+      (No) return NFM_E_MEM!
+   ?end
+Analyze child bufr and PDMpart.n_setindicator:
+(If child_bufr->rows = 0 and PDMpart.n_setindicator is 'Y' or 'y' - case1)
+     > CASE1
+(If child_bufr->rows = 0 and PDMpart.n_setindicator is 'n' or 'N' - case2)
+     > CASE2
+(If child_bufr->rows > 0 and PDMpart.n_setindicator is 'Y' or 'y' - case3)
+     > CASE3
+(If child_bufr->rows > 0 and PDMpart.n_setindicator is 'n' or 'N' - case4)
+     > CASE4
+If the parttype is not set set the p_parttype = 'G'?
+      (Yes)
+      (No) print out the debug information
+   ?end
+If the PDMpart.n_status is null:
+     (i.e Never checked in before)
+      then get the multiple files of the item to be deleted - SUCCESS?
+      (Yes) Add to the delete list to PDU
+      (No) print out the debug information
+       ?end
+      :end
+     (i.e Checked in before atleast once)
+       Add to the delete list to PDU.
+   :end
+Macro library management - Call PDMdelete_local_macros - SUCCESS?
+      (Yes)
+      (No) print the debug info
+   ?end
+Update the permission of the files that needs to be changed - Call _PDMup-
+date_permission_change_bufr -  SUCCESS?
+      (Yes)
+      (No) print the debug info
+   ?end
+Update p_incpartrpt to null.
+Return delete file list to PDU with successful status.
+
+-CASE1
+(If child_bufr->rows = 0 and PDMpart.n_setindicator is 'Y' or 'y' - case1)
+SET AUTOCOMMIT OFF?
+      (Yes)
+      (No)  return error!
+   ?end
+If the structure update flag is set to 'Y'?
+ (Yes) LOCK catalog attribute with a value for update. - SUCCESS?
+      (Yes)
+      (No) > return error!
+   ?end
+    If assembly indicator is set to "Y" ?
+      (Yes)
+          Drop all its first level children - SUCCESS?
+           (Yes)
+           (No) > WRAPUP
+            ?end
+      (No)
+   ?end
+  (No) Loop for 2 minutes.
+?end
+SET AUTOCOMMIT ON?
+      (Yes)
+      (No) > return error!
+   ?end
+Call NFMconvert_to_item to convert assembly to item - SUCCESS?
+      (Yes)
+      (No) > WRAPUP
+   ?end
+Check the view change flag and then Insert the saved views
+   information - SUCCESS?
+      (Yes)
+      (No) > WRAPUP
+   ?end
+Load NFMoperation struct.
+Create fmgr buffer - SUCCESS?
+      (Yes)
+      (No) > WRAPUP
+   ?end
+Check the local file manager and load the bufr for cleanup - SUCCESS?
+      (Yes)
+      (No) > WRAPUP
+   ?end
+Call NFMcheckin_item - SUCCESS?
+      (Yes)
+      (No) > WRAPUP
+   ?end
+SET AUTOCOMMIT OFF?
+      (Yes)
+      (No) > WRAPUP
+   ?end
+LOCK NFMSAFILES Loop for 2 minutes - SUCCESS?
+      (Yes)
+      (No) > WRAPUP
+   ?end
+Update the local file manager  - SUCCESS?
+      (Yes)
+      (No) > WRAPUP
+   ?end
+Check the fmgr buffer manager and load the delete file list  for cleanup to
+PDU- SUCCESS?
+      (Yes)
+      (No) > WRAPUP
+   ?end
+SET AUTOCOMMIT ON?
+      (Yes)
+      (No) > WRAPUP
+   ?end
+:end
+
+
+-CASE2
+
+(If child_bufr->rows = 0 and PDMpart.n_setindicator is 'n' or 'N' - case2)
+SET AUTOCOMMIT OFF?
+      (Yes)
+      (No) > return error!
+   ?end
+Insert the saved views information if the saved views flag is set- SUCCESS?
+      (Yes)
+      (No) > WRAPUP
+   ?end
+SET AUTOCOMMIT ON?
+      (Yes)
+      (No) > return error!
+   ?end
+Load NFMoperation struct.
+Create fmgr buffer - SUCCESS?
+      (Yes)
+      (No) > WRAPUP
+   ?end
+Check the local file manager and load the bufr for cleanup - SUCCESS?
+      (Yes)
+      (No) > WRAPUP
+   ?end
+Call NFMcheckin_item - SUCCESS?
+      (Yes)
+      (No) > WRAPUP
+   ?end
+SET AUTOCOMMIT OFF?
+      (Yes)
+      (No) > WRAPUP
+   ?end
+LOCK NFMSAFILES Loop for 2 minutes - SUCCESS?
+      (Yes)
+      (No) > WRAPUP
+   ?end
+Update the local file manager  - SUCCESS?
+      (Yes)
+      (No) > WRAPUP
+   ?end
+Check the fmgr buffer manager and load the delete file list  for cleanup to
+PDU- SUCCESS?
+      (Yes)
+      (No) > WRAPUP
+   ?end
+SET AUTOCOMMIT ON?
+      (Yes)
+      (No) > WRAPUP
+   ?end
+:end
+
+-CASE3
+(If child_bufr->rows > 0 and PDMpart.n_setindicator is 'Y' or 'y' - case3)
+SET AUTOCOMMIT OFF?
+      (Yes)
+      (No) > return error!
+   ?end
+If the update structure flag is set, then do the followin
+LOCK catalog table to update the structure flag update  - SUCCESS?
+  (Yes)
+      (Yes)
+      (No) > return error!
+   ?end
+Call to PDMupdate_set_members - SUCCESS?
+      (Yes)
+      (No) > WRAPUP
+   ?end
+Call to PDMXXinsert_citinfo - SUCCESS?
+      (Yes)
+      (No) > WRAPUP
+   ?end
+If, there are nthlevel parametric info Call to PDMdefine_parametric_assembly -
+SUCCESS?
+      (Yes)
+      (No) > WRAPUP
+   ?end
+ (No) return error!
+?end
+Insert the saved views information if the flag is set- SUCCESS?
+      (Yes)
+      (No) > WRAPUP
+   ?end
+SET AUTOCOMMIT ON?
+      (Yes)
+      (No) > WRAPUP
+   ?end
+Create fmgr buffer - SUCCESS?
+      (Yes)
+      (No) > WRAPUP
+   ?end
+Check the local file manager and load the bufr for cleanup - SUCCESS?
+      (Yes)
+      (No) > WRAPUP
+   ?end
+If, n_status is null, then set n_couser to the current username - SUCCESS?
+      (Yes)
+      (No) print out the debug information
+   ?end
+Set n_status = 'O' to enable item checkin - SUCCESS?
+      (Yes)
+      (No)  return PDM_E_SQL_STMT!
+   ?end
+Load NFMoperation struct - SUCCESS?
+      (Yes)
+      (No) > WRAPUP
+   ?end
+Call NFMcheckin_item - SUCCESS?
+      (Yes)
+      (No) > WRAPUP
+   ?end
+SET AUTOCOMMIT OFF?
+      (Yes)
+      (No) > WRAPUP
+   ?end
+LOCK NFMSAFILES Loop for 2 minutes - SUCCESS?
+      (Yes)
+      (No) > WRAPUP
+   ?end
+Update the local file manager  - SUCCESS?
+      (Yes)
+      (No) > WRAPUP
+   ?end
+Check the fmgr buffer manager and load the delete file list  for cleanup to
+PDU- SUCCESS?
+      (Yes)
+      (No) > WRAPUP
+   ?end
+SET AUTOCOMMIT ON?
+      (Yes)
+      (No) > WRAPUP
+   ?end
+:end
+
+-CASE4
+(If child_bufr->rows > 0 and PDMpart.n_setindicator is 'n' or 'N' - case4)
+
+Call to NFMconvert_to_set - SUCCESS?
+      (Yes)
+      (No) > WRAPUP
+   ?end
+SET AUTOCOMMIT OFF?
+      (Yes)
+      (No) > return error!
+   ?end
+If the update structure flag is set, then do the following.
+
+LOCK catalog table for the structure update flag  - SUCCESS?
+      (Yes)
+      (No) > return error!
+   ?end
+Call to PDMupdate_set_members - SUCCESS?
+      (Yes)
+      (No) > WRAPUP
+   ?end
+Call to PDMXXinsert_citinfo - SUCCESS?
+      (Yes)
+      (No) > WRAPUP
+   ?end
+If, there are nthlevel parametric info Call to PDMdefine_parametric_assembly -
+SUCCESS?
+      (Yes)
+      (No) > WRAPUP
+   ?end
+Insert the saved views information if the flag is set- SUCCESS?
+      (Yes)
+      (No) > WRAPUP
+   ?end
+SET AUTOCOMMIT ON?
+      (Yes)
+      (No) > WRAPUP
+   ?end
+Select and load the max level - default is 50.
+Update n_colevel = max level - SUCCESS?
+      (Yes)
+      (No) return PDM_E_SQL_STMT!
+   ?end
+Create fmgr buffer - SUCCESS?
+      (Yes)
+      (No) > WRAPUP
+   ?end
+Check the local file manager and load the bufr for cleanup - SUCCESS?
+      (Yes)
+      (No) > WRAPUP
+   ?end
+Load NFMoperation struct - SUCCESS?
+      (Yes)
+      (No) > WRAPUP
+   ?end
+Call NFMcheckin_item - SUCCESS?
+      (Yes)
+      (No) > WRAPUP
+   ?end
+SET AUTOCOMMIT OFF?
+      (Yes)
+      (No) > WRAPUP
+   ?end
+LOCK NFMSAFILES Loop for 2 minutes - SUCCESS?
+      (Yes)
+      (No) > WRAPUP
+   ?end
+Update the local file manager  - SUCCESS?
+      (Yes)
+      (No) > WRAPUP
+   ?end
+Check the fmgr buffer manager and load the delete file list  for cleanup to
+PDU- SUCCESS?
+      (Yes)
+      (No) > WRAPUP
+   ?end
+SET AUTOCOMMIT ON?
+      (Yes)
+      (No) > WRAPUP
+   ?end
+Set n_indicator = Y to make it as an assembly  - SUCCESS?
+      (Yes)
+      (No) > WRAPUP
+   ?end
+:end
+
+-WRAPUP
+ROLLBACK TRANSACTION.
+RETURN status!
+
+Intialize the gloabal variables PDU_child_buffer, PDU_attach_buffer,
+PDU_view_buffer,
+PDU_param_buffer, PDUchild_dyn_buffer, reformatted buffer.
+
+Free up the PDU_param_cat_list global variable.
+
+Reset the PDY_dyn_index =1.
+
+return status.
+   
+
+DEPENDENCIES
+
+1. If it's a EMS assembly file, there is a dependency of the
+   existence of /usrx/ip32/ems/bin/ems and
+    /usrx/ip32/pdu/ppl/bin/checkin.e
+2. It expects NFMdaemon to be running.
+3. It expects the NFMfileserver to be loaded in the client anf
+   the storage area machine.
+4. It expects TCP/XNS to be loaded in the clienti and the
+   corresponding daemons running.
+5. Interprocess communication is done between the ppl and API based executable.
+
+
+Assumptions:
+  1. The part is checked out/Never checked in.
+  2. Parts are known to the database, except the view parts.
+  3. The user has the access to checkin the part.
+  4. The part is not flagged for delete, restore, backup, archive.
+  5. The part is backuped, or archived.
+  6. The part is not non-graphic or parametric.
+  7. The files of the part are all local.
+  8. The user is logged into the database.
+  
+
+Globals used.
+   ALL globals needed for Validate user access.
+   All globals needed for login.
+   All plobals needed for debug.
+   PDU_child_buffer, PDU_attach_buffer, PDU_view_buffer,
+   PDU_param_buffer, PDUchild_dyn_buffer, reformatted buffer.
+   
+
+Database schema impact:
+   NFMSETCIT, PDMCIT, dynamic tables gets inserted/updated/deleted.
+   n_status, n_statename, p_incpartrpt,n_setindicator of catalog table gets
+changed.
+   A version of this is entered in to the f_catalog table for every file.
+   All the columns of the f_catalog table are updated.
+
+
+
+Functions called
+1. PDUint_checkin
+2. PDUext_checkin
+3. PDMvalidate_user_access
+4. PDMload_part_info
+5. PDMcheckin
+6. PDMupdate_set_members
+7. PDMinsert_cit_info
+8. NFMcheckin_item.
+9. PDMupdate_local_filemgr
+10. PDMdelete_macro_libraries
+11. PDMdefine_parametric_assembly
+12.PDMquery_catalog_partnos
+13.MEM functions
+14.PDMget_filenames
+15.gr$get_module_env
+16 ex$is_om_file
+17. ex$retrieve_module
+18. ex$get_invis_info_by_index
+19. PDUis_PDU_file
+20. PDUremove_PDU_design_file_stamp
+21. ex$close_module.
+22. PDUprepare_param_cats_list
+23. PALcheckin
+24. PDUload_child_buffer
+25. di$find.
+26. di$dump.
+27. co$part_get_attr.
+28. PDUload_attach_buffer
+29. PDUevalute_exp
+30. PDUload_dynamic_attrs
+31. PDUget_all_GRpart_ids.
+32. PDUprocess_part_dyn_attrs
+33. di$give_pathname
+34. PDUload_view_info
+35. PDMcheck_cycles
+36. PDMstop_transaction
+37.SQLstmt
+38.PDMset_n_setindicator
+39.PDMstart_transaction
+
+Feature Level Impact.
+
+1. This will affect checkout, non-graphic assembly structure,
+   and de-activate to update the current product structure.
+2. This will affect the reports.
+3. This command makes the OS and the database to be in sink.
+4. Place part of a sub-assembly depends on this.
+5. Copy commmands depends on this.
+6. View parts which are not yet known to the PDM database
+   depends on this.
+7. Post to DB depends on this.
+
+
+MODULARITY
+
+1. checkin.u was written to be used both by the API and the interface.
+2. PDMcheckin is used both by post to DB and checkin.
+
+
+
+Extensibility:
+
+1. Can be later in PDM2.4+ for taking care of EMS parts.
+
+Return Values
+
+PDM_S_SUCCESS               -   Succesful Completion
+PDM_E_CATALOG_NOT_FOUND     -   A given catalog is not there in the DB.
+PDM_E_PART_NOT_FOUND        -   A given part/rev is not there in the DB.
+PDM_E_CAT_FIELD_BLANK       -   Catalog field empty
+PDM_E_PART_FIELD_BLANK      -   Partnum field empty
+PDM_E_REV_FIELD_BLANK       -   Revison field empty
+PDM_E_INVALID_PART_TYPE     -   Invalid part ype
+PDM_I_TABLE_LOCKED          -   Concurrent access, the table is locked
+PDM_E_SQL_STMT              -   Invalid data
+
+All statuses in NFMerrordef.h
+All statuses in SQLerrordef.h
+All relevant statuses in PDUerror.h
+
+
+Notes
+
+Index
+CHECKIN
+Keywords
+CHECK IN, CHECKIN
+
+History
+   Kumar Narayanan Sun Jul 30 16:50:39 CDT 1993: Initial Creation
+****************************************************************************/
+
+
+/****************************************************************************
+Include Files
+****************************************************************************/
+#include                <stdio.h>
+#include                "PDUerror.h"
+#include                "MEMstruct.h"
+#include                "MEMerrordef.h"
+#include                "NFMerrordef.h"
+#include                "SQLerrordef.h"
+#include                "PDUris_incl.h"
+#include                "PDMproto.h"
+#include                "PDUpdmrpro.h"
+
+static  long            status;
+static  char            s[1024];
+extern  int                     PDMdebug_on;
+extern  char            PDM_DEBUG_FILE[];
+extern  PDMexec_ptr     PDMexec;
+
+
+
+/****************************************************************************
+sample  invocation
+****************************************************************************/
+
+
+ status = pdmoCheckin ( PDMparts spr_parts);
+-----------------------------------------------------------------------------
+
+/****************************************************************************
+
+Name
+   pdmoDefineAssembly
+
+Abstract
+ Defines the assembly stucture of the part
+
+
+Description
+
+To define a non-graphic assembly, a list of 1-level children are given.
+This function adds a part non-graphically to the given assembly. It validates
+the entries in child_list [It adds to the database, if the parts doesn't
+exist in the case of VIEW catalogs]. The structure can be defined on if
+part is checked in/Never checked in. If it's already exits as an assembly,
+knock off the old defintion, redefine the structure.
+
+Function protocol
+
+long pdmoDefineAssembly (
+                        char *cpr_catalog,
+                        char *cpr_partnum,
+                        char *cpr_revsion,
+                        PDMchildren *spr_PDMstructure
+                         )
+
+   Input:
+
+     char *cpr_catalog - Catalog of the part to be defined.
+     char *cpr_partnum - Partnum of the part to be defined.
+     char *cpr_revision -Revision of the part to be defined.
+     PDMchildren *spr_PDMstructure - children info which make up the
+                                     assembly.
+
+        {
+        int     im_n_citno;      /* System defined - Leave it  - N */
+        int     im_n_pcatalogno; /* System defined - Leave it  - N */
+        int     im_n_pitemno;    /* System defined - Leave it  - N*/
+        int     im_n_ccatalogno; /* System defined - Leave it  - N*/
+        int     im_n_citemno;    /* System defined - Leave it  - N*/
+        int     ir_p_level;/* Level no of the assembly-Default 1 - OPTIONAL*/
+        cha     caw_n_setindicator[2]; /* System defined -Leave it -N*/
+        cha     caw_n_status[3];  /* System defined - Leave it  - N*/
+        int     im_p_pchildno;    /* System defined - Leave it  - N*/
+        int     ir_p_childno;    /* Child no of the like parts in the
+                                    same level, if multiple parts
+                                    are defined without this input
+                                   system will assign it - OPTIONAL*/
+        char    car_n_catalogname[21]; /*Catalogname of the child - INPUT */
+        char    *cpr_n_itemname;      /*Partnumber of the child   - INPUT */
+        char    *cpr_n_itemrev;       /*Revision   of the child   - INPUT */
+        char    *cpr_n_itemdesc;      /*Description of the child  - INPUT */
+        char    car_p_attached[2];/*Display flag of the child - Leave it -N */
+        double  dr_p_quantity;   /* Quantity of the child - Default 1
+OPTIONAL*/
+        char    car_p_usgaeid[25]; /* Usage ID - OPTIONAL */
+        char    car_n_cofilename[14]; /*Filename of the part - OPTIONAL */
+        int     ir_p_tagno;  /* Tagno - OPTIONAL - Default system generates */
+        char    car_p_alttagno;/* ALttagno -OPTIONAL-Default system generates
+*/
+        spr_children      *next;/* NEXT child pointer of linked list or NULL
+*/
+        }* spr_PDMchildren;
+
+pdmoLOadChildStructure can be used to load this structure.
+
+Input Constraints:
+ cpr_n_catalogname:    required
+                        16 characters or less
+                        must already exist
+
+ cpr_n_itemname:       required
+                        ! * ? , : invalid characters
+                        must not exceed the number of characters specified
+                        at catalog creation time
+ cpr_n_itemrev:         required
+                        ! * ? , : invalid characters
+                        must not exceed the number of characters specified
+                        at catalog creation time
+  ir_p_tagno            Cannot be zero or negative
+  ir_p_quantity         Cannot be zero or negative
+
+
+
+Output :
+       None
+Input/Output:
+       None
+
+
+Algorithm:
+    Check whether the user is logged in?
+     (YES)
+     (No) return PDM_E_USER_NOT_LOGGED_IN!
+     ?
+    Check for it's existence, Exists?
+     (YES)
+     (No) return PDM_E_ASSEMBLY_NOT_FOUND!
+     ?end
+     Check for the catalog type , Is it "P", "CID", "EID"?
+       (Yes) return PDM_E_PARAMETRIC_STRUCTURE!
+        (No)
+      ?end
+     Check the usage ID of the given child. Is it there?
+      (YES)
+      (No) Call the PDMget_usage_id, then return status.
+      ?end
+     Check for the input tagno, Is it there?
+      (YES) Validate the tagno.
+      (No)  Generate instance_no  which will be used for tag_no, Is it success?
+           (Yes) Load it.
+           (No)  instance_no = 1.
+           ?end
+      ?end
+      Check for the Alt  tagno for the children. Does it exist?
+       (Yes)  Validate it.
+       (No)  Carry over the tagno to alttagno.
+      ?end
+     Check for the  child no for the children.
+       (Yes) Validate it.
+       (No)  Generate the child no- Success?
+             (Yes)
+             (No) childno = 1!
+             ?end
+        ?end
+      Call PDMdefine_assembly_structure()
+       Get Catalog nos and Part nos SUCCESS?
+      (Yes)
+      (No) > return error!
+      ?end
+       Add p_citno,n_catalogno,n_itemno,pn_catalogno,pn_itemno,p_flag:
+       Expand the assembly Bufr SUCCESS?
+        (Yes)
+        (No) > return error!
+       ?end
+       Get Assembly indicator SUCCESS?
+        (Yes)
+        (No) > return error!
+       ?end
+       Load children's catalognos and itemnos SUCCESS?
+         (Yes)
+         (No) > WRAPUP
+       ?end
+       Load parent's catalognos and itemnos SUCCESS?
+         (Yes)
+         (No) > WRAPUP
+       ?end
+       If PDMexec->operation is 1 ?
+         (Yes)
+          Check assembly structure for cyclic placement SUCCESS?
+           (Yes)
+           (No) > WRAPUP
+            ?end
+         (No)
+       ?end
+       SET AUTOCOMMIT OFF?
+      (Yes)
+      (No) > return error!
+      ?end
+      LOCK PDMCIT Loop for 2 minutes - SUCCESS?
+      (Yes)
+      (No) > return error!
+      ?end
+        If assembly indicator is set to "Y" ?
+      (Yes)
+          Drop all its first level children - SUCCESS?
+           (Yes)
+           (No) > WRAPUP
+            ?end
+        (No)
+       ?end
+       LOAD THE first level children into NFMSETCIT - SUCCESS?
+         (Yes)
+         (No) > WRAPUP
+        ?end
+       Change p_incbom based on p_incstr and p_incbom for background part.
+       LOAD THE first level children into PDMCIT - SUCCESS?
+         (Yes)
+          (No) > WRAPUP
+        ?end
+       SET the n_setindicator to "Y".
+       SET AUTOCOMMIT ON?
+        (Yes)
+        (No) > return error!
+        ?end
+        -WRAPUP
+        ROLLBACK TRANSACTION.
+        RETURN status!
+
+DEPENDENCIES
+
+Assumptions:
+  1. The part is checked in/Never checked in.
+  2. Parts are know to the database, except the view parts.
+  3. Parts are yet to be positioned.
+  4. Parts are not cyclic, except for the background attachement.
+  5. The user has the access the change the defintion of the part.
+  6. The part is not flagged for delete, restore, backup, archive.
+  7. The part is backuped, or archived.
+  8. You can't change parametric assemblies.
+  9. You can't change nth level structure.
+  10. The user is logged into the database.
+
+Globals used.
+   ALL globals needed for Validate user access.
+   All globals needed for login
+
+Database schema impact:
+   NFMSETCIT, PDMCIT gets changed
+   p_incpartrpt,n_setindicator of catalog table gets changed
+
+Functions called
+1.PDMsdefine_assembly_structure
+2.PDMquery_catalog_partnos
+3.MEM functions
+4.PDMexpand_copy_buffer
+5.PDMquery_assembly_ind
+6.PDMload_partnos
+7.PDMload_parentnos
+8.PDMcheck_cycles
+9.PDMstop_transaction
+10.SQLstmt
+11.PDMdron_setindicator
+12.PDMload_set_members
+13.PDMset_n_setindicator
+14.PDMstart_transaction
+
+Feature Level Impact.
+
+1. This will affect checkout and activate to update the current
+   product structure.
+2. This will affect the reports.
+
+
+MODULARITY
+
+Reused functions:
+
+1.PDMquery_catalog_partnos  - used everywhere
+2.MEM functions             - used everywhere
+3.PDMexpand_copy_buffer     - Data defintion functionality
+4.PDMquery_assembly_ind     - used everywhere
+5.PDMload_partnos           - List local files
+6.PDMstop_transaction       - used everywhere
+7.SQLstmt                   - used everywhere
+8.PDMdron_setindicator      - Checkin
+9.PDMload_set_members       - Checkin
+10.PDMset_n_setindicator    - Checkin
+11.PDMstart_transaction     - used everywhere
+
+Extensibility:
+
+1. Can be later in PDM2.4+ for taking care of EMS parts.
+2. Can be used in the Update DB command.
+
+
+Return Values
+
+PDM_S_SUCCESS               -   Succesful Completion
+PDM_E_CATALOG_NOT_FOUND     -   A given catalog is not there in the DB.
+PDM_E_PART_NOT_FOUND        -   A given part/rev is not there in the DB.
+PDM_E_CAT_FIELD_BLANK       -   Catalog field empty
+PDM_E_PART_FIELD_BLANK      -   Partnum field empty
+PDM_E_REV_FIELD_BLANK       -   Revison field empty
+PDM_E_INVALID_PART_TYPE     -   Invalid part ype
+PDM_I_TABLE_LOCKED          -   Concurrent access, the table is locked
+PDM_E_LOCK_CIT              -   CIT is locked, Please try later.
+PDM_E_SQL_STMT              -   Invalid data
+
+
+
+Notes
+
+Index
+STRUCTURE,ASSEMBLY,NON-GRAPHIC EDITING
+Keywords
+EDITING,STRUCTURE,ASSEMBLY,DEFINE ASSEMBLY
+
+History
+   Kumar Narayanan Sun Jul 11 16:50:39 CDT 1993: Initial Creation
+****************************************************************************/
+
+
+/****************************************************************************
+Include Files
+****************************************************************************/
+#include                <stdio.h>
+#include                "PDUerror.h"
+#include                "MEMstruct.h"
+#include                "MEMerrordef.h"
+#include                "NFMerrordef.h"
+#include                "SQLerrordef.h"
+#include                "PDUris_incl.h"
+#include                "PDMproto.h"
+#include                "PDUpdmrpro.h"
+
+static  long            status;
+static  char            s[1024];
+extern  int                     PDMdebug_on;
+extern  char            PDM_DEBUG_FILE[];
+extern  PDMexec_ptr     PDMexec;
+
+
+
+/****************************************************************************
+Main Function
+****************************************************************************/
+
+
+
+----------------------------------------------------------------------------
+
+/****************************************************************************
+
+Name
+   pdmoDebugOn
+
+Abstract
+   Turns the debug option of PDU,PDM,and NFM subsystems to "ON".
+
+Description
+   The global variables are PDM_debug_on, and PDMdebug_on to 1.
+   The path variables are PDU_DEBUG_FILE, and PDM_DEBUG_FILE are loaded.
+   NFM variables toggles and files are set.
+
+
+Function Protocol
+  int pdmoDebugOn (
+                   int iar_toggles[8],
+                   char car_paths[8]
+                   )
+
+Input:
+        toggles [0] =   1 or 0;    /*PDU deb on or debug off*/
+        toggles [1] =   1 or 0;    /*PDM deb on or debug off*/
+        toggles [2] =   1 or 0;    /*NFM deb on or debug off*/
+        toggles [3] =   1 or 0;    /*SQL deb on or debug off*/
+        toggles [4] =  1  or 0;     /*MEMS deb on or debug off*/
+        toggles [5] =  1  or 0;     /*ERRS deb on or debug off*/
+        toggles [6] =   1 or 0;    /*NET-CLIENT deb on or debug off*/
+        toggles [7] =   1 or 0;    /*NET-SERVER deb on or debug off*/
+
+   The path variables for NFM are
+
+        files [0] =   "/usr2/tmp/pdu.dbg"; /*PDU debug file*/
+        files [1] =   "/usr2/tmp/pdm.dbg";  /*PDM debug file*/
+        files [2] =   "/usr2/tmp/nfm.dbg"; /*NFM debug file*/
+        files [3] =   "/usr2/tmp/sql.dbg";  /*SQL debug file*/
+        files [4] =   "/usr2/tmp/mem.dbg";  /*MEM debug file*/
+        files [5] =   "/usr2/tmp/err.dbg";  /*ERRS debug file*/
+        files [6] =   "/usr2/tmp/netc.dbg";  /*NETC debug file*/
+        files [7] =   "/usr2/tmp/nets.dbg";  /*NETS debug file*/
+
+   Input/Output:
+
+   Output:
+    Nothing.
+
+
+
+   Algorithm:
+
+   1. If     toggles [0] =   1;    /*PDU deb on */
+       Sets the global variables PDM_debug_on for PDU debug
+        Checks the entry in files[0]
+        if valid, copies the path to PDU_DEBUG_FILE variable, proceeds further
+           else defaults to /usr/tmp/pdu.dbg
+       else
+        proceed further
+   2. If     toggles [1] =   1;    /*PDM deb on */
+       Sets the global variables PDMdebug_on for PDM sub sytem debug
+         Checks the entry in files[1]
+        if valid, copies the path to PDM_DEBUG_FILE variable, proceeds further
+           else defaults to /usr/tmp/pdm.dbg
+       else
+        proceed further
+   3. If     toggles [2] =   1;    /*NFM deb on */
+       Sets the variable NFMtoggle[8] =1 for NFM subsystem debug
+         Checks the entry in files[2]
+        if valid, copies the path to NFMfiles[8] variable, proceeds further
+           else defaults to /usr/tmp/nfm.dbg
+       else
+        proceed further
+   4. If     toggles [3] =   1;    /*SQL deb on */
+       Sets the variable NFMtoggle[9] =1 for SQL sub system debug
+         Checks the entry in files[3]
+        if valid, copies the path to NFMfiles[9] variable, proceeds further
+           else defaults to /usr/tmp/sql.dbg
+       else
+        proceed further
+   5. If     toggles [4] =   1;    /*MEMS deb on */
+       Sets the variable NFMtoggle[11] =1 for MEM subsytem debug
+         Checks the entry in files[4]
+        if valid, copies the path to NFMfiles[11] variable, proceeds further
+           else defaults to /usr/tmp/mems.dbg
+       else
+        proceed further
+   8. If     toggles [5] =   1;    /*ERRS deb on */
+       Sets the variable NFMtoggle[14] =1 for Error sub sytem debug
+         Checks the entry in files[5]
+        if valid, copies the path to NFMfiles[14] variable, proceeds further
+           else defaults to /usr/tmp/errs.dbg
+       else
+        proceed further
+   9. If     toggles [6] =   1;    /*NETclient deb on */
+       Sets the variable NFMtoggle[6] =1 for Error sub sytem debug
+         Checks the entry in files[6]
+        if valid, copies the path to NFMfiles[6] variable, proceeds further
+           else defaults to /usr/tmp/netc.dbg
+       else
+        proceed further
+   9. If     toggles [7] =   1;    /*NETserver deb on */
+       Sets the variable NFMtoggle[3] =1 for Error sub sytem debug
+         Checks the entry in files[7]
+        if valid, copies the path to NFMfiles[3] variable, proceeds further
+           else defaults to /usr/tmp/nets.dbg
+       else
+        proceed further
+
+then call NFMall_debug() function ;
+return success;
+
+DEPENDENCIES
+
+Assumptions
+None
+Globals Used
+PDMdebug_on, PDM_debug_on, PDU_DEBUG_FILE, PDM_DEBUG_FILE
+
+Database schema impact
+None
+
+Functions called
+
+1. NFMdebug_all
+
+Feature Level Impact
+
+It affects everywhere in the product.
+
+
+MODULARITY
+
+
+EXTENSIBILITY
+
+Return Values
+
+PDM_S_SUCCESS      - Successful Completion
+PDM_E_OPEN_FILE    - Couldn't open the debug files
+PDM_E_FAILURE      - Couldn't generate the debugs
+
+Notes
+
+Index
+DEBUG
+
+Keywords
+DEBUG
+
+History
+   Kumar Narayanan Fri Jul 16 13:43:00 CDT 1993: Initial Creation
+****************************************************************************/
+
+
+/****************************************************************************
+Include Files
+#include <DEBUG.h>
+****************************************************************************/
+
+/****************************************************************************
+Main Function
+****************************************************************************/
+
+
+int pdmoDebugOn ( )
+
+{
+}
+
+
+
+/****************************************************************************
+
+Name
+   pdmoDebugOff
+
+Abstract
+   Turns the debug option "OFF" of PDU,PDM,and NFM subsystems.
+
+Synopsis
+  int pdmoDebugOff ()
+
+
+Description
+   The global variables are PDM_debug_on, and PDMdebug_on to "OFF".
+   The path variables are PDU_DEBUG_FILE, and PDM_DEBUG_FILE to "OFF".
+    NFM variables of toggle and files for set.
+
+   Algorithm:
+       1. Sets the global variables PDM_debug_on for PDU debug to zero.
+          Nullifies the path of PDU_DEBUG_FILE variable, proceeds further
+       2. Sets the global variables PDMdebug_on for PDM debug to zero.
+          Nullifies the path of PDM_DEBUG_FILE variable, proceeds further
+       3. Sets the variable NFMtoggle[8] =0 for NFM subsystem debug.
+          Nullifies the path to NFMfiles[8] variable, proceeds further
+       4. Sets the variable NFMtoggle[9] =0 for SQL sub system debug
+          Nullifies the path to NFMfiles[9] variable, proceeds further
+       5. Sets the variable NFMtoggle[11] =0 for MEM subsytem debug
+          Nullifies  the path to NFMfiles[11] variable, proceeds further
+       6. Sets the variable NFMtoggle[14] =0 for Error sub sytem debug
+          Nullifies the path to NFMfiles[14] variable, proceeds further
+       7. Sets the variable NFMtoggle[6] =0 for Error sub sytem debug
+          Nullifies the path to NFMfiles[6] variable, proceeds further
+       8. Sets the variable NFMtoggle[3] =0 for Error sub sytem debug
+          Nullifies the path to NFMfiles[3] variable, proceeds further
+
+then call NFMall_debug() function ;
+return success;
+
+Input:
+
+Nothing
+
+   Input/Output:
+    Nothing
+
+   Output:
+    Nothing.
+
+DEPENDENCIES
+
+Assumptions
+1. The user has logged into the database.
+
+Globals Used
+PDMdebug_on, PDM_debug_on, PDU_DEBUG_FILE, PDM_DEBUG_FILE
+
+Database schema impact
+None
+
+Functions called
+
+1. NFMdebug_all
+
+Feature Level Impact
+
+It affects everywhere in the product.
+
+
+MODULARITY
+
+
+EXTENSIBILITY
+
+Return Values
+
+PDM_S_SUCCESS    - Successful COmpletion
+PDM_E_FAILURE    - Couldn't turn the debug off.
+
+Notes
+
+Index
+DEBUG
+
+Keywords
+DEBUG
+
+History
+   Kumar Narayanan Fri Jul 16 13:43:00 CDT 1993: Initial Creation
+****************************************************************************/
+
+
+/****************************************************************************
+Include Files
+#include <DEBUG.h>
+****************************************************************************/
+
+/****************************************************************************
+Main Function
+****************************************************************************/
+
+
+int pdmoDebugOff ( )
+
+{
+}
+-----------------------------------------------------------------------------
+
+/****************************************************************************
+
+Name
+   pdmoAddPartToAssembly
+
+Abstract
+ Adds a part to the given assembly.
+
+Description
+
+This function adds a part non-graphically to the given assembly. It validates
+the entries in child_list [It adds to the database, if the parts doesn't
+exist in the case of VIEW catalogs]. The structure can be defined onlyif
+the part is checked in/Never checked in.
+
+Function protocol
+
+long pdmoAddPartToAssembly
+(
+char *cpr_catalog,
+char *cpr_partnum,
+char *cpr_revsion,
+PDMchildren *spr_PDMstructure
+)
+
+   Input:
+
+     char *cpr_catalog - Catalog of the part to be defined.
+     char *cpr_partnum - Partnum of the part to be defined.
+     char *cpr_revision -Revision of the part to be defined.
+     PDMchildren *spr_PDMstructure - children info which make up the
+                                     assembly.
+
+        {
+        int     im_n_citno;      /* System defined - Leave it  - N */
+        int     im_n_pcatalogno; /* System defined - Leave it  - N */
+        int     im_n_pitemno;    /* System defined - Leave it  - N*/
+        int     im_n_ccatalogno; /* System defined - Leave it  - N*/
+        int     im_n_citemno;    /* System defined - Leave it  - N*/
+        int     ir_p_level;/* Level no of the assembly-Default 1 - OPTIONAL*/
+        cha     caw_n_setindicator[2]; /* System defined -Leave it -N*/
+        cha     caw_n_status[3];  /* System defined - Leave it  - N*/
+        int     im_p_pchildno;    /* System defined - Leave it  - N*/
+        int     ir_p_childno;    /* Child no of the like parts in the
+same level, if multiple parts
+                                    are defined without this input
+                                   system will assign it - OPTIONAL*/
+        char    car_n_catalogname[21]; /*Catalogname of the child - INPUT */
+        char    *cpr_n_itemname;      /*Partnumber of the child   - INPUT */
+        char    *cpr_n_itemrev;       /*Revision   of the child   - INPUT */
+        char    *cpr_n_itemdesc;      /*Description of the child  - INPUT */
+        char    car_p_attached[2];/*Display flag of the child - Leave it -N */
+        double  dr_p_quantity;   /* Quantity of the child - Default 1
+OPTIONAL*/
+        char    car_p_usgaeid[25]; /* Usage ID - OPTIONAL */
+        char    car_n_cofilename[14]; /*Filename of the part - OPTIONAL */
+        int     ir_p_tagno;  /* Tagno - OPTIONAL - Default system generates */
+        char    car_p_alttagno;/* ALttagno -OPTIONAL-Default system generates
+*/
+        spr_children      *next;/* NEXT child pointer of linked list or NULL
+*/
+        }* spr_PDMchildren;
+ pdmoLoadChildStructure can be called to load this structure.
+Input Constraints:
+  cpr_n_catalogname:    required
+                        16 characters or less
+                        must already exist
+
+  cpr_n_itemname:       required
+                        ! * ? , : invalid characters
+                        must not exceed the number of characters specified
+                        at catalog creation time
+
+  cpr_n_itemrev:        required
+                        ! * ? , : invalid characters
+                        must not exceed the number of characters specified
+                        at catalog creation time
+  ir_p_tagno            Cannot be zero or negative
+  ir_p_quantity         Cannot be zero or negative
+
+
+
+Output :
+       None
+Input/Output:
+       None
+
+
+Algorithm:
+
+    Check whether the user is logged in?
+    (YES)
+    (No) return PDM_E_USER_LOGGED_IN!
+     ?end
+    Check for it's existence, Exists?
+     (YES)
+     (No) return PDM_E_ASSEMBLY_NOT_FOUND!
+     ?end
+     Check for the catalog type , Is it "P", "CID", "EID"?
+       (Yes) return PDM_E_PARAMETRIC_STRUCTURE!
+        (No)
+      ?end
+     Check the usage ID of the given child. Is it there?
+      (YES)
+      (No) Call the PDMget_usage_id, then return status.
+      ?end
+     Check for the input tagno, Is it there?
+      (YES) Validate the tagno.
+      (No)  Generate instance_no  which will be used for tag_no, Is it success?
+           (Yes) Load it.
+           (No)  instance_no = 1.
+           ?end
+      ?end
+      Check for the Alt  tagno for the children. Does it exist?
+       (Yes)  Validate it.
+       (No)  Carry over the tagno to alttagno.
+      ?end
+     Check for the  child no for the children.
+       (Yes) Validate it.
+       (No)  Generate the child no- Success?
+             (Yes)
+             (No) childno = 1!
+             ?end
+        ?end
+       Call PDMadd_to_assembly_structure()
+       Get Catalog nos and Part nos SUCCESS?
+      (Yes)
+      (No)  return error!
+      ?end
+       Add p_citno,n_catalogno,n_itemno,pn_catalogno,pn_itemno,p_flag:
+       Get Assembly indicator SUCCESS?
+        (Yes)
+        (No)  return error!
+       ?end
+       Load children's catalognos and itemnos SUCCESS?
+         (Yes)
+         (No) > WRAPUP
+       ?end
+       Load parent's catalognos and itemnos SUCCESS?
+         (Yes)
+         (No) > WRAPUP
+       ?end
+       If PDMexec->operation is 1 ?
+         (Yes)
+          Check assembly structure for cyclic placement SUCCESS?
+           (Yes)
+           (No) > WRAPUP
+            ?end
+         (No)
+       ?end
+       SET AUTOCOMMIT OFF?
+      (Yes)
+      (No) > return error!
+      ?end
+      LOCK PDMCIT Loop for 2 minutes - SUCCESS?
+      (Yes)
+      (No) > return error!
+      ?end
+        If assembly indicator is set to "Y" ?
+           (Yes)
+           (No) > Set n_setindicator to "Y".
+            ?end
+      Check whether this combination exists in NFMSETCIT?
+       (Yes)
+           Load it in the pdmcit.
+       (No)
+             LOAD THE first level children into NFMSETCIT - SUCCESS?
+               (Yes) Load it in the pdmcit.
+                (No) > WRAPUP
+                ?end
+        ?end
+       Change p_incbom based on p_incstr and p_incbom for background part.
+       LOAD THE first level children into PDMCIT - SUCCESS?
+         (Yes)
+          (No) > WRAPUP
+        ?end
+       SET the n_setindicator to "Y".
+       SET AUTOCOMMIT ON?
+        (Yes)
+        (No) > return error!
+        ?end
+        -WRAPUP
+        ROLLBACK TRANSACTION.
+        RETURN status!
+
+DEPENDENCIES
+
+Assumptions:
+  1. The part is checked in/Never checked in.
+  2. Parts are known to the database, except the view parts.
+  3. Parts are yet to be positioned.
+  4. Parts are not cyclic, except for the background attachement.
+  5. The user has the access the change the defintion of the part.
+  6. The part is not flagged for delete, restore, backup, archive.
+  7. The part is backuped, or archived.
+  8. You can't change parametric assemblies.
+  9. You can't change nth level structure.
+  10. The user is logged into the database.
+
+Globals used.
+   ALL globals needed for Validate user access.
+   All globals needed for login
+
+Database schema impact:
+   NFMSETCIT, PDMCIT gets changed
+   p_incpartrpt,n_setindicator of catalog table gets changed
+
+Functions called
+1.PDMquery_catalog_partnos
+2.MEM functions
+3.PDMquery_assembly_ind
+4.PDMload_partnos
+5.PDMload_parentnos
+6.PDMcheck_cycles
+7.PDMstop_transaction
+8.SQLstmt
+9.PDMset_n_setindicator
+10.PDMstart_transaction
+
+Feature Level Impact.
+
+1. This will affect checkout and activate to update the current
+   product structure.
+2. This will affect the reports.
+
+
+MODULARITY
+
+Reused functions:
+
+1.PDMquery_catalog_partnos  - used everywhere
+2.MEM functions             - used everywhere
+3.PDMquery_assembly_ind     - used everywhere
+4.PDMload_partnos           - List local files
+5.PDMstop_transaction       - used everywhere
+6.SQLstmt                   - used everywhere
+7.PDMset_n_setindicator    - Checkin
+8.PDMstart_transaction     - used everywhere
+
+Extensibility:
+
+1. Can be later in PDM2.4+ for taking care of EMS parts.
+2. Can be used in the Update DB command.
+
+
+Return Values
+
+PDM_S_SUCCESS               -   Succesful Completion
+PDM_E_CATALOG_NOT_FOUND     -   A given catalog is not there in the DB.
+PDM_E_PART_NOT_FOUND        -   A given part/rev is not there in the DB.
+PDM_E_CAT_FIELD_BLANK       -   Catalog field empty
+PDM_E_PART_FIELD_BLANK      -   Partnum field empty
+PDM_E_REV_FIELD_BLANK       -   Revison field empty
+PDM_E_INVALID_PART_TYPE     -   Invalid part ype
+PDM_I_TABLE_LOCKED          -   Concurrent access, the table is locked
+PDM_E_LOCK_CIT              -   CIT is locked, Please try later.
+PDM_E_SQL_STMT              -   Invalid data
+
+
+
+Notes
+
+Index
+STRUCTURE,ASSEMBLY,NON-GRAPHIC EDITING
+Keywords
+EDITING,STRUCTURE,ASSEMBLY,DEFINE ASSEMBLY
+
+History
+   Kumar Narayanan Sun Jul 12 16:50:39 CDT 1993: Initial Creation
+****************************************************************************/
+
+
+/****************************************************************************
+Include Files
+****************************************************************************/
+#include                <stdio.h>
+#include                "PDUerror.h"
+#include                "MEMstruct.h"
+#include                "MEMerrordef.h"
+#include                "NFMerrordef.h"
+#include                "SQLerrordef.h"
+#include                "PDUris_incl.h"
+#include                "PDMproto.h"
+#include                "PDUpdmrpro.h"
+
+static  long            status;
+static  char            s[1024];
+extern  int                     PDMdebug_on;
+extern  char            PDM_DEBUG_FILE[];
+extern  PDMexec_ptr     PDMexec;
+
+
+
+/****************************************************************************
+sample  invocation
+****************************************************************************/
+
+
+ status = pdmoAddPartToAssembly (cpr_catalog, cpr_partnum, cpr_revsion,
+spr_PDMstructure);
+-----------------------------------------------------------------------------
