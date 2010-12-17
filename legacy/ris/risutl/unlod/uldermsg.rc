@@ -1,0 +1,158 @@
+/* Do not alter this SPC information: $Revision: 1.1.53.1 $ */
+/*
+**	NAME:							uldermsg.rc
+**	AUTHORS:						Jennifer Xia
+**	CREATION DATE:					6/91
+**	ABSTRACT:
+**		Redirects error message to stdout or a buffer
+**		depending upon the mode of execution.
+**	
+**	REVISION HISTORY:
+*/
+ 
+/*
+**	DEFINES
+*/
+
+/*
+**	INCLUDES
+*/
+#include <stdarg.h>
+
+#if defined(WIN32S) && defined(ULD_EXE)
+#include <windows.h>
+#include <windowsx.h>
+#include "winport.h"
+#include "winio.h"
+#include "winhan.h"
+#include "risutl.h"
+#include "prog32s.h"
+#endif
+
+
+#ifdef MM
+#include "unlod.h"
+#endif
+
+exec sql include "unlod.h";
+
+/*
+**	VARIABLES
+*/
+
+/*
+**	FUNCTIONS
+*/
+
+/*
+**      FUNCTION PROTOTYPES
+*/
+#define uldermsg_rc
+#include "sys.prt"
+#include "comdebug.prt"
+#include "comumsg.prt"
+#include "ucoerrbx.prt"
+#include "uldermsg.prt"
+#if defined(WIN32S)
+#include "btcerrbx.prt"
+#endif
+
+
+/* Print message if not Embed Application */
+extern void RISuld_print_msg(
+	const char *fmt, 
+	...)
+{
+	va_list	args;
+
+	char buffer[500];
+
+	va_start(args,fmt);
+	vsprintf(buffer, fmt, args);
+	va_end(args);
+
+	if( RISuld_mode != EMBED )
+	{
+#if !defined(ULD_DLL)
+#if defined(WIN32S)
+		PRINTF(buffer);
+#else
+		FPUTS(buffer,stdout);
+		fflush(stdout);
+#endif
+#endif
+	}
+}
+
+
+extern void RISuld_parse_err_handler(
+	long	lnd_err_code)
+{
+	ULD_DBG(("RISuld_parse_err_handler: lnd_err_code %ld\n", lnd_err_code));
+	if( lnd_err_code )
+	{
+#if defined(WIN32S)
+	    	RIS32s_file_error_box(RISUTL_I_UNLOAD_ERROR,0,lnd_err_code,NULL,
+			0,1);
+#else
+	    	RISuco_file_error_box(stdout,RISUTL_I_UNLOAD_ERROR,0,lnd_err_code,NULL,
+			0,1);
+		fflush(stdout);
+#endif
+	}
+	ULD_DBG(("RISuld_parse_err_handler: End!\n"));
+}
+
+
+extern void RISuld_unload_err_handler(
+	long	lnd_err_code)
+{
+	ULD_DBG(("RISuld_unload_err_handler: lnd_err_code %ld\n",
+		lnd_err_code));
+
+	if( lnd_err_code )
+	{
+		if( RISuld_mode != EMBED )
+		{
+#if defined(WIN32S)
+	    		RIS32s_file_error_box(RISUTL_I_UNLOAD_ERROR,0,lnd_err_code,
+				NULL,0,1);
+#else
+	    		RISuco_file_error_box(stdout,RISUTL_I_UNLOAD_ERROR,0,lnd_err_code,
+				NULL,0,1);
+			fflush(stdout);
+#endif
+		}
+	}
+	ULD_DBG(("RISuld_unload_err_handler: End!\n"));
+}
+
+extern void RISuld_fatal_err_handler(
+	long	lnd_err_code)
+{
+	const char	*err_ptr;
+
+	ULD_DBG(("RISuld_fatal_err_handler: lnd_err_code %ld\n",
+		lnd_err_code));
+
+	if( lnd_err_code )
+	{
+		err_ptr = MSG(lnd_err_code);
+		if( RISuld_mode == EMBED )
+		{
+			*RISuld_general_err = lnd_err_code;
+		}
+		else
+		{
+#if defined(WIN32S)
+    		RIS32s_file_error_box(RISUTL_I_UNLOAD_ERROR,0,lnd_err_code,
+				NULL,0,1);
+#else
+    		RISuco_file_error_box(stdout,RISUTL_I_UNLOAD_ERROR,0,lnd_err_code,
+				NULL,0,1);
+			fflush(stdout);
+#endif
+		}
+	}
+	ULD_DBG(("RISuld_fatal_err_handler: END\n"));
+}

@@ -1,0 +1,310 @@
+$ ! Do not alter this SPC information: $Revision: 1.1.26.1 $
+$! [.build]maketplt.vax
+$!
+$!Syntax is:   make [-f]   [file.{c|m} | LIB]
+$!
+$! expected input:
+$!
+$!	ris_dir - 	a symbol, which is the name of the directory that is being
+$!				compiled
+$!
+$!	special_request (passed in the command line) this will either be :
+$!					a.	the filename of a 'c' file	(so you can just
+$!						compile one file)
+$!				or
+$!					b.	it will be the string "LIB" to indicate that
+$!						you only want to rebuild the library for this
+$!						directory
+$!
+$!	force_compile - "-f" set this value if you want to force the files
+$!					to be compiled (useful if an include file has been
+$!					updated, but not the source file)
+$!
+$!---------------------------------------------------------------------
+$! some internal symbols are:
+$!
+$!	flist -		is used to gather the list of files to be compiled from
+$!				the <dir-name>vax.m file
+$!
+$!	olist -		is used to gather the list of files to be placed in the
+$!				[.lib]<ris_lib>.olb file
+$!
+$!---------------------------------------------------------------------
+$ START_OF_MAKE:
+$	save_dir = f$directory()
+$	set def [-.lib]
+$	lib_dir = f$directory()
+$	set def 'save_dir'
+$	if p1 .eqs. "-F"
+$	then
+$   	force_compile	= 1
+$		p1 = p2
+$		p2 = p3
+$	else
+$   	force_compile	= 0
+$	endif
+$	ris_lib			= ris_dir
+$   special_request = "''p1'"
+$!	if f$trnlnm("C$INCLUDE") .nes. "" then deassign C$INCLUDE
+$	define C$INCLUDE	[.-.include]  , -
+						[.-.commint]   , -
+						[.-.net.prt]   , -
+						[.-.arch.prt]   , -
+						[.-.comm.prt]   , -
+		   				pro_dd_inc, -
+						sys$library
+$	goto get_file_list
+$
+$!---------------------------------------------------------------------
+$ DONE:
+$
+$	set on
+$	set message/fac/ident/sev/text
+$	wr sys$output "All done."
+$	exit
+$
+$
+$!---------------------------------------------------------------------
+$! after geting the list of files we START here 
+$!---------------------------------------------------------------------
+$ got_file_list:
+$
+$	files1 = flist1
+$	files2 = flist2
+$	obj1 =   olist1
+$	obj2 =   olist2
+$
+$	count = 0
+$	if special_request .eqs. ""    then goto create_lib
+$	if special_request .eqs. "LIB" then goto create_lib
+$	files2 = special_request 
+$	count = 1
+$	goto restart
+$
+$! ---------------------------------------------------------------------
+$ create_lib:
+$
+$	set message/nofac/noident/nosev/notext
+$	dir/nooutput 'lib_dir''ris_lib'.*
+$	if $severity .ne. 1 then lib/cre 'lib_dir''ris_lib'
+$	set message/fac/ident/sev/text
+$	if special_request .eqs. "LIB" then goto update_lib
+$
+$! ---------------------------------------------------------------------
+$ restart:
+$
+$	count = count + 1
+$
+$	if count .eq. 1 then filestring = files1
+$	if count .eq. 2 then filestring = files2
+$	if count .eq. 3 then goto done
+$
+$	remaining = f$length(filestring)
+$
+$!---------------------------------------------------------------------
+$ PICKFILE:
+$
+$	length = 'f$locate(" ",filestring)'
+$	if length .eq. 0 then goto SKIPBLANK
+$	filename = f$extract(0, length, filestring)
+$
+$	GOTO DO_FILE
+$
+$!---------------------------------------------------------------------
+$ CONTINUE_1:
+$
+$!---------------------------------------------------------------------
+$ SKIPBLANK:
+$
+$	remaining = remaining - length -1
+$	if remaining .le. 0 then goto restart
+$	filestring = f$extract(length+1, remaining, filestring)
+$	GOTO PICKFILE
+$
+$!---------------------------------------------------------------------
+$ DO_FILE:
+$
+$	suffix_offset = f$locate(".",filename)
+$	basename = f$extract(0, suffix_offset, filename)
+$	file_suffix = f$extract(suffix_offset+1,1,filename)
+$	if file_suffix .eqs. "C" then goto DO_FILE_C
+$	if file_suffix .eqs. "c" then goto DO_FILE_C
+$	if file_suffix .eqs. "M" then goto DO_FILE_M
+$	if file_suffix .eqs. "m" then goto DO_FILE_M
+$	wr sys$output "Unexpected file suffix: ''file_suffix'"
+$
+$	GOTO CONTINUE_1
+$
+$!-----------------------------------------------------------------------
+$ DO_FILE_C: 
+$
+$   continue_c_or_m = "continue_c"
+$	goto checkdate	! then come back to continue_c on next line
+$
+$!---------------------------------------------------------------------
+$ continue_c:
+$	if skipfile .eqs. "YES" then goto up_to_date
+$	wr sys$output "Processing file ''filename'"  
+$	on error   then goto failure
+$!	on warning then goto failure
+$	cc 'filename'
+$	purge 'basename'.obj
+$!
+$!     There are a variety of items that do not belong in library modules.
+$!     Currently these are the various main() routines in MISC
+$!       and the network specific modules.
+$!
+$   if basename .eqs. "VMSXNSMN" then goto not_library_module
+$   if basename .eqs. "VMSDNPMN" then goto not_library_module
+$   if basename .eqs. "VMSTCPMN" then goto not_library_module
+$   if basename .eqs. "NETXNSDM" then goto not_library_module
+$   if basename .eqs. "NETXNS" then goto not_library_module
+$   if basename .eqs. "NETDNPDM" then goto not_library_module
+$   if basename .eqs. "NETDNP" then goto not_library_module
+$   if basename .eqs. "NETTCPDM" then goto not_library_module
+$   if basename .eqs. "NETTCP" then goto not_library_module
+$!
+$   lib 'lib_dir''ris_lib' 'basename'.obj
+$!
+$ not_library_module:
+$   goto continue_1
+$
+$!-----------------------------------------------------------------------
+$ DO_FILE_M: 
+$! this works on vax 'macro' files - assembler source code
+$
+$   continue_c_or_m = "continue_m"
+$	goto checkdate	! then come back to continue_m on next line
+$
+$!---------------------------------------------------------------------
+$ continue_m:
+$	if skipfile .eqs. "YES" then goto up_to_date
+$	wr sys$output "Processing file ''filename'"  
+$	on error   then goto failure
+$!	on warning then goto failure
+$	macro 'filename'
+$	purge 'basename'.obj
+$   lib 'lib_dir''ris_lib' 'basename'.obj
+$	goto continue_1 
+$
+$!-----------------------------------------------------------------------
+$ failure:
+$	wr sys$output ""
+$	wr sys$output "***ERROR*** Processing file ",filename
+$	wr sys$output ""
+$	goto continue_1
+$
+$!-----------------------------------------------------------------------
+$ update_lib:
+$	save_dir = f$directory()
+$	purge *.obj
+$	
+$	lib 'lib_dir''ris_lib' 'obj1'
+$	lib 'lib_dir''ris_lib' 'obj2'
+$	set def 'save_dir'
+$
+$	wr sys$output ""
+$	wr sys$output "Finished making/updating library."
+$	wr sys$output ""
+$	exit
+$	
+$!-----------------------------------------------------------------------
+$ up_to_date:
+$
+$	wr sys$output "File ",filename," is up to date."
+$	goto continue_1 
+$
+$!-----------------------------------------------------------------------
+$ checkdate:
+$	skipfile := "YES"
+$	if force_compile .eq. 1 then goto redo
+$	set message/nofac/noident/nosev/notext
+$	on warning then goto redo
+$	time1 := 'f$file_attributes(filename,"CDT")'
+$	time1 := 'f$cvtime(time1,"COMPARISON")'
+$	temp := 'basename'.obj
+$	time2 := 'f$file_attributes(temp,"CDT")'
+$	time2 := 'f$cvtime(time2,"COMPARISON")'
+$	if time1 .LTS. time2 then goto continue_c
+$
+$!---------------------------------------------------------------------
+$ redo:
+$	set message/fac/ident/sev/text
+$	skipfile := "NO"
+$	goto 'continue_c_or_m'
+$
+$!-----------------------------------------------------------------------
+$ get_file_list:
+$	flist1 := ""
+$	flist2 := ""
+$	olist1 := ""
+$	olist2 := ""
+$	flist := ""
+$	olist := ""
+$	msg := "Cannot read file " 'ris_lib'"VAX.M"
+$	open/read/error=NOFILE MFILE 'ris_lib'VAX.M
+$	msg := "No SOURCE in the file"
+$
+$!---------------------------------------------------------------------
+$ skip_line:
+$	read/end=lastline mfile filename
+$	if filename.nes."SOURCE" then goto skip_line
+$	msg := "No filenames immediately after the SOURCE line"
+$
+$!---------------------------------------------------------------------
+$ nextline:
+$	read/end=LASTLINE MFILE FILENAME
+$	if filename .eqs. "" then goto lastline
+$	flist := 'flist' 'filename'
+$	tmp1 = 'f$locate(".",filename)'
+$	tmp2 := 'f$extract(0,tmp1,filename)'
+$	if (tmp2 .eqs. "NETXNS") .or. (tmp2 .eqs. "NETXNSDM") .or. -
+	(tmp2 .eqs. "NETDNP") .or. (tmp2 .eqs. "NETDNPDM") .or. -
+	(tmp2 .eqs. "NETTCP") .or. (tmp2 .eqs. "NETTCPDM")
+$	then
+$       if f$length(flist) .gt. 240 .and. flist1 .eqs. "" then goto nextlist
+$	else
+$	olist := 'olist' 'tmp2'
+$	if f$length(flist) .gt. 240 .and. flist1 .eqs. "" then goto nextlist
+$	olist := 'olist'","
+$	endif
+$	goto nextline
+$
+$!---------------------------------------------------------------------
+$ nextlist:
+$	flist1 := 'flist'
+$	flist  := ""
+$	olist1 := 'olist'
+$	olist  := ""
+$	goto nextline
+$
+$!---------------------------------------------------------------------
+$ lastline:
+$	close mfile
+$	if flist1.nes."" then flist2 := 'flist'
+$	if flist1.eqs."" then flist1 := 'flist'
+$	if olist1.nes."" then olist2 := 'olist'
+$	if olist1.eqs."" then olist1 := 'olist'
+$	tmp = f$length(olist1)
+$	if tmp .gt. 0
+$	then 
+$		if "''f$extract(tmp-1,1,olist1)'" .eqs. ","
+$		then
+$			olist1 := 'f$extract(0,tmp-1,olist1)'
+$		endif
+$	endif
+$	tmp = f$length(olist2)
+$	if tmp .gt. 0
+$	then 
+$		if "''f$extract(tmp-1,1,olist2)'" .eqs. ","
+$		then
+$			olist2 := 'f$extract(0,tmp-1,olist2)'
+$		endif
+$	endif
+$
+$!---------------------------------------------------------------------
+$ nofile:
+$	if flist1.nes."" then goto got_file_list
+$	wr sys$output "***ERROR*** Failed to get source list from ",ris_lib,"VAX.M"
+$	wr sys$output "    Problem: ",msg
+$	goto got_file_list

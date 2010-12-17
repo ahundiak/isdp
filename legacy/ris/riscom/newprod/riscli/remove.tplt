@@ -1,0 +1,239 @@
+#!/bin/ksh
+# remove.DOT_EXTENSION script for IDNAME
+
+# define and truncate log file
+export RISLOG=/usr/tmp/risinstl.log
+print "IDNAME deinstallation log file" >$RISLOG
+date '+Date: %h %d, %Y   Time: %H:%M:%S' >>$RISLOG
+
+# define and truncate error file
+export RISERR=/usr/tmp/risinstl.err
+print "IDNAME deinstallation error file" >$RISERR
+date '+Date: %h %d, %Y   Time: %H:%M:%S' >>$RISERR
+
+RIS_PLATFORM=ris_platform
+
+#
+# Set up commands and files
+#
+RM=/bin/rm
+PS=/bin/ps
+CAT=/bin/cat
+KILL=/bin/kill
+GREP=/bin/grep
+RMDIR=/bin/rmdir
+AWK=/usr/bin/awk
+
+TCPSVC=/etc/services
+TCPCNF=/etc/inetd.conf
+RISCONFIG=/etc/risconfig
+RISTMP=/usr/tmp/PRODNAME.tmp
+
+if [ $RIS_PLATFORM = "Solaris" ]
+then
+	: ${INGRHOME:=/opt/ingr}
+	DATES=$INGRHOME/bin/dates
+	PRODDATA=$INGRHOME/bin/proddata
+	RMHDOC=$INGRHOME/bin/rmhdoc.sh
+else
+ 	DATES=/usr/bin/dates
+	PRODDATA=/usr/bin/proddata
+	RMHDOC=/usr/bin/rmhdoc.sh
+fi
+
+if [ $RIS_PLATFORM = "CLIX" ]
+then
+	DNPSRV=/usr/lib/servers.reg
+	XNS_LINKS_DIR=/usr/ip32/ris/links
+fi
+
+get_version()
+{
+    print $1 | awk 'BEGIN{FS="."} { printf "%d_%d_X", $1, $2 }'
+}
+
+warn()
+{
+	print "WARNING !!!!"
+	print "De-installation of $1 was unsuccessful. Continuing..."
+}
+
+PRODDIR=$2
+
+#
+# Update/Delete /etc/risconfig file product information
+#
+if [ -f $RISCONFIG ]
+then
+	if [ -s $RISCONFIG ]
+	then
+		print "Updating $RISCONFIG file."
+		$CAT $RISCONFIG > $RISTMP
+		$GREP -v $PRODDIR $RISTMP > $RISCONFIG
+		$RM -f $RISTMP 2>>$RISERR
+	fi
+	if [ ! -s $RISCONFIG ]
+	then
+		print "No other RIS products exist. Deleting $RISCONFIG file."
+		$RM -f $RISCONFIG 2>>$RISERR
+	fi
+fi
+
+#
+# Delete entry from /usr/ip32/ingrconfig
+#
+if [ $RIS_PLATFORM = "CLIX" -o $RIS_PLATFORM = "SunOS4" ]
+then
+	INGR_CONFIG=/usr/ip32/ingrconfig
+	print "Deleting an entry from $INGR_CONFIG file."
+	typeset -u FAKENAME=OLD_PROD_NAME
+	FAKEDESTDIR=\/`echo $DESTDIR |cut -d\/ -f2`/ip32/ris/riscli4
+	FAKE_ENTRY="XXXXXXX#$FAKENAME#RIS V4 Client#04.01.99.99#DATE#$FAKEDESTDIR#"
+	$CAT $INGR_CONFIG > $RISTMP
+	$GREP -v "$FAKE_ENTRY" $RISTMP > $INGR_CONFIG
+	$RM -f $RISTMP 2>>$RISERR
+fi
+
+HELPDIR=`$PRODDATA +%p HELPRT`
+if [ -d "$HELPDIR" ]
+then
+	HELPBS=`$GREP helpbs /etc/inetd.conf`
+	HELPDS=`$GREP helpds /etc/inetd.conf`
+	if [ -n "$HELPBS" -a -n "$HELPDS" ]
+	then
+		print "De-installing Help files on this Help server."
+		$RMHDOC $PRODDIR/config/english/help/online/HELPFILE
+		[ $? != 0 ] && warn $PRODDIR/config/english/help/online/HELPFILE
+		$RMHDOC $PRODDIR/config/english/help/sqlref/HELPFILE
+		[ $? != 0 ] && warn $PRODDIR/config/english/help/sqlref/HELPFILE
+		$RMHDOC $PRODDIR/config/english/help/utlref/HELPFILE
+		[ $? != 0 ] && warn $PRODDIR/config/english/help/utlref/HELPFILE
+		$RMHDOC $PRODDIR/config/english/help/prgref/HELPFILE
+		[ $? != 0 ] && warn $PRODDIR/config/english/help/prgref/HELPFILE
+	fi
+fi
+
+#
+# Change to the RIS directory
+#
+[ -z "$PRODDIR" ] && exit 0
+cd $PRODDIR 2>>$RISERR
+[ $? != 0 ] && exit 0
+cd ..  2>>$RISERR
+
+#
+# Remove the product directory
+#
+$RM -rf PRODNAME  2>>$RISERR
+$RM -rf PRODNAME4 2>>$RISERR
+
+#
+# Remove the non-shared product directory for diskless workstations
+#
+if [ "$INSTALL_SHARED" = y ]
+then
+	$RM -rf $VARDIR 2>>$RISERR
+fi
+
+#
+# TCP stuff
+#
+
+# Kludge:
+# In this version, the TCP service name is "ristcpsrv"
+# and the server program is "$PRODDIR/bin/ristcpsr"
+# This is for compatibility with RIS 3.2.2
+#
+
+#
+# Remove the ristcpsrv entry from the /etc/inetd.conf file,
+# and /etc/services file, remove the file from links dir.
+#
+if [ $RIS_PLATFORM != "CLIX" -o -d "$($PRODDATA "+%p" "TCPIP")" ]
+then
+	print "\tRemoving TCP connection"
+	$CAT $TCPSVC > $RISTMP
+	$GREP -v "180/" $RISTMP > $TCPSVC
+	$RM -f $RISTMP 2>>$RISERR
+	$CAT $TCPCNF > $RISTMP
+	$GREP -v "ristcpsrv" $RISTMP > $TCPCNF
+	$RM -f $RISTMP 2>>$RISERR
+	if [ $RIS_PLATFORM = "SunOS4" ]
+	then
+		(set +e; $KILL -1 $($PS -aux| $AWK '/inetd/ {print $2}') 2>/dev/null; :)
+	else
+		(set +e; $KILL -1 $($PS -ef | $AWK '/inetd/ {print $2}') 2>/dev/null; :)
+	fi
+fi
+
+#
+# XNS stuff
+#
+if [ $RIS_PLATFORM = "CLIX" ]
+then
+	XNSDIR=`$PRODDATA +%p XNSINGR`
+	if [ -d "$XNSDIR" ]
+	then
+		print "\tRemoving XNS connection"
+		TARGETFILE=$XNS_LINKS_DIR/riscli.$(get_version PRODVERSION)
+		if [ -L $TARGETFILE ]
+		then
+			print "\t\tRemoving link $TARGETFILE"
+			$RM -f $TARGETFILE 2>>$RISERR
+			$RMDIR $XNS_LINKS_DIR 2>>$RISERR
+		fi
+	fi
+fi
+
+#
+# DNP stuff
+#
+if  [ $RIS_PLATFORM = "CLIX" ]
+then
+	DNPDIR=$($PRODDATA "+%p" "DNP")
+   	if [ -d "$DNPDIR" ]
+   	then
+       	print "\tRemoving DNP connection"
+       	if [ -s "$DNPSRV" ]
+       	then
+			DNPSRV_ENTRY=RISC_$(get_version PRODVERSION)
+           	$GREP -vi $DNPSRV_ENTRY $DNPSRV > $RISTMP
+   			# do not use mv because this file is a symbolic link
+           	$CAT $RISTMP > $DNPSRV
+           	$RM -f $RISTMP 2>>$RISERR
+       	fi
+   	fi
+fi
+
+#
+# Change to the ip32 directory
+#
+cd ..  2>>$RISERR
+
+#
+# Remove the RIS directory if it is empty
+#
+if [ "$INSTALL_SHARED" = y ]
+then
+	$RMDIR $ROOT/var/ingr/ris 2>>$RISERR
+fi
+
+$RMDIR ris 2>>$RISERR
+
+$DATES > /dev/null
+OTHER_RIS_PRODS=$($PRODDATA +%n ris)
+for PROD in $OTHER_RIS_PRODS
+do
+	# skip RISDP and RISUTL. Surjit (Oct.6,1995)
+	case $PROD in (RISDP|RISUTL) continue;; esac
+	DIR=$($PRODDATA +%p $PROD)
+	if [ -d "$DIR" ] && [ -x "$DIR/bin/risinstl.ksh" ]    
+	then
+		print "Executing $DIR/bin/risinstl.ksh" >>$RISLOG
+		export RIS_PLATFORM; $DIR/bin/risinstl.ksh
+		[ $? != 0 ] && exit 1
+		break
+	fi
+done
+
+exit 0

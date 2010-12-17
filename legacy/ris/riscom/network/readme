@@ -1,0 +1,219 @@
+Do not alter this SPC information: $Revision: 1.1.54.1 $
+
+Here's the documentation, such as it is, on the generic network interface.
+
+Files
+-----
+	net.h		- contains various macros and generic net structure
+	generic.c	- contains all the generic network calls
+	share.c		- contains low-level functions used by all protocols
+	memory.c	- contains the memory handling functions
+
+	xns.c		- contains the xns-specific routines
+	tcp.c		- contains the tcp-specific routines
+	dnp.c		- contains the dnp-specific routines (decnet)
+	lu62.c		- contains the lu62-specific routines
+	local.c		- contains the local-specific routines
+
+	xnsdum.c	- contains xns dummy routines
+	tcpdum.c	- contains tcp dummy routines
+	dnpdum.c	- contains dnp dummy routines
+	lu62dum.c	- contains lu62 dummy routines
+	localdum.c	- contains local dummy routines
+
+
+Overview
+--------
+	net.h contains a structure typedef, "net_s", which must be allocated
+	by the user.  It contains all information needed to use a particular
+	protocol.  It also contains fields for returning generic error
+	information (both error codes and strings) and protocol-specific
+	information (in case more info is needed).  Three fields in this 
+	structure should be filled in by the user, protocol, error_handler and
+	cs_flag.  Protocol should be set to one of the defines in
+	net.h.  error_handler should set to point to a user-supplied error
+	handling function to be called if an error occurs.  This is the
+	same concept as exception handlers in PL1 and Ada.  It enables users
+	to avoid having to check status after every network operation.
+	error_handler should be set to null if user is not going to supply
+	such a function. cs_flag should be set to one of the defines in net.h
+	to indicate if this process is a client or a server.
+
+	net.h contains a union typedef, "net_connect_s", which contains
+	information used by NET_connect.  This union contains a structure for
+	each protocol.  Each structure contains the specific information,
+	which the user must supply, needed to make a connection for that protocol.
+
+	net.h also contains a structure typedef, "net_finish_s", which contains
+	information used by NET_finish.  This union contains a field memory_mode,
+	which should be set to one of the defines in net.h.  This field indicates
+	if the process should deallocate shared memory or just detach from shared
+	memory.  The process which deallocates shared memory will also deallocate
+	the semaphores.
+
+	The connect call requires that the appropriate entry in the remote
+	server file is set up (/usr/ip32/inc/server.dat for xns;
+	/etc/services & /etc/inetd.conf for tcp; etc.)
+
+
+	NOTE: If you are going to use a TCP/IP connection, it is very important 
+	that your server does not attempt to read from stdin or write to stdout
+	before NET_init is called.  If you do your connection will be 
+	corrupted.
+
+	All protocol-specific functions are called by the generic function
+	via an array of function pointers.  This method should make it
+	easier to dynamically load particular protocols... I hope.
+
+	The dummy files are supplied to provide dummy functions for each
+	protocol-specific function.  This is a temporary mechanism to avoid
+	having to link with all the network libraries.  A better way
+	would be to set all the function pointers to one dummy function
+	which returns NET_INVALID_PROTOCOL and then initialize the 
+	function pointers to the real functions if that protocol is usable.
+
+
+
+Generic functions
+-----------------
+/*
+**	Establishes the connection with the server process.  This routine
+**	is called only by the client process.
+*/
+extern int NET_connect(
+	net_s			*net,
+	net_connect_s	*connect_info)
+
+/*
+**	Transfers a packet to the remote process. The len field should be set
+**	to the number of bytes to be transfered.  The actual number of bytes
+**	transfered  will be returned in len. The blocking value determines if the
+**	write is blocking with timeout or blocking indefinitely or non blocking.  
+**  If the blocking is set to NON_BLOCKING (or -1), then it is non blocking. 
+**  If the blocking is BLOCKING (or 0), then it is blocking indefinitely. 
+**  If the blocking is a positive integer (=> 1), then it is blocking with 
+**  timeout (in the blocking seconds).
+**
+**	For blocking indefinitely, NET_write will not return until it has 
+**	transmitted data to the network.  
+**
+**	For non blocking, NET_write will attempt to write data of len bytes 
+**	immediately. If successful, it will return number of bytes written in
+**	len. Otherwise, a long_jump return with value NET_E_TIMEOUT or other 
+**  network error.
+**	
+**	For blocking with timeout, NET_write will attempt to write data of len 
+**  bytes before the time of blocking seconds elapses. If successful, 
+**	it will return number of bytes written in len. Otherwise, a long_jump 
+**	return with value NET_E_TIMEOUT or other network error.
+**
+*/
+extern int NET_write(
+	net_s	*net,
+	int		*len,
+	int		blocking)
+
+/*
+**	Receives a packet from the remote process.  The number of bytes
+**	recieved will be returned in len.  The blocking value determines if the
+**	read is blocking with timeout or blocking indefinitely or non blocking.  
+**  If the blocking is set to NON_BLOCKING (or -1), then it is non blocking. 
+**  If the blocking is BLOCKING (or 0), then it is blocking indefinitely. 
+**  If the blocking is a positive integer (=> 1), then it is blocking with 
+**  timeout (in the blocking seconds).
+**
+**	For blocking indefinitely, NET_read will not return until it has 
+**	received data to the network.  
+**
+**	For non blocking, NET_read will immediately return data packet and 
+**	the number of bytes read in len, if successful. Otherwise, a long_jump 
+**	return with value NET_E_TIMEOUT if no data is available on the network
+**	or other network error.
+**	
+**	For blocking with timeout, NET_read will attempt to return data packet 
+**	and the number of bytes read in len before the time of blocking seconds 
+**	elapses. If failed, a long_jump return with value NET_E_TIMEOUT if no data 
+**	is available on the network before the time elapses or other network 
+**	error.
+**
+*/
+extern int NET_read(
+	net_s	*net,
+	int		*len,
+	int		blocking)
+
+/*
+**	Closes a connection.
+*/
+extern int NET_close(
+	net_s *net);
+
+/*
+**	 Uninitializes the network subsystem.
+*/
+extern int NET_finish(
+	net_s			*net,
+	net_finish_s	*finish_info);
+
+/*
+**	Given a nodename, this routine will return an address of the machine,
+**	corresponding the the protocol specified in net.
+*/
+extern int NET_address(
+	net_s	*net,				/* net structure containing protocol */
+	char	*nodename,			/* nodename for which to get address */
+	char	*netaddr,			/* pointer to buffer to copy address into */
+	int		*len)				/* pointer to length of netaddr buffer */;
+
+/*
+**	Returns the nodename of the local machine
+*/
+extern int NET_nodename(
+	net_s	*net,			/* net structure containing protocol */
+	char	*nodename,		/* pointer to buffer to copy local nodename into */
+	int		*len)			/* pointer to length of nodename buffer */;
+
+/*
+**	Make a copy of the remote file on this node using the file name given.
+*/
+extern int NET_get_file(
+	net_s			*net,			/* pointer to net structure with protocol*/
+	net_connect_s	*connect_info,	/* union containing connect information */
+	char			*remote_file,	/* remote file name */
+	char			*local_file)	/* local file name */;
+
+/*
+**	Put a copy of a local file on a remote node using the file name given.
+*/
+extern int NET_put_file(
+	net_s			*net,			/* pointer to net structure with protocol*/
+	net_connect_s	*connect_info,	/* union containing connect information */
+	char			*local_file,	/* local file name */
+	char			*remote_file)	/* remote file name */;
+
+/*
+**	Remove the lock file from the remote node to indicate a lock.
+*/
+extern int NET_get_lock_file(
+	net_s			*net,			/* pointer to net structure with protocol*/
+	net_connect_s	*connect_info,	/* union containing connect information */
+	char			*remote_file)	/* remote file name */;
+
+/*
+**	Replace the lock file on the remote node to indicate no lock.
+**	If a null pointer is passed in for the remote_file, the last lock file
+**	removed by this process is replaced (This can mechanism only be used when
+**	one	lock file is used at a time).
+*/
+extern int NET_put_lock_file(
+	net_s			*net,			/* pointer to net structure with protocol*/
+	net_connect_s	*connect_info,	/* union containing connect information */
+	char			*remote_file)	/* remote file name */;
+
+/*
+**	Remove a remote file
+*/
+extern int NET_remove_file(
+	net_s			*net,			/* pointer to net structure with protocol*/
+	net_connect_s	*connect_info,	/* union containing connect information */
+	char			*remote_file)	/* remote file name */;

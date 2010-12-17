@@ -1,0 +1,238 @@
+/*
+**	Name:			upgprvqy.rc
+**	Author:			Hitesh R. Patel
+**	Creation Date:		Jan 19, 1992
+**	Abstract:		
+**		It contains a function which prepares query for fetching information 
+**		about privilege definitions, a function which fetches the information
+**		and bunch of functions which does the cleanup after queries have been
+**		executed.
+**	
+**	Revision History:
+**		Modified by Raju for V4 -> V5 dictionary convertion. 03/94
+*/
+
+
+/*
+**  DEFINES
+*/
+
+/*
+**  INCLUDES
+*/
+#ifdef UPGRADE_GLOBAL_DEFINE
+#undef UPGRADE_GLOBAL_DEFINE
+#endif
+
+#ifdef MKMK_KLUDGE
+#include "upgrade.h"
+#endif
+
+exec sql include "upgrade.h";
+#if defined(unix)
+#include <sys/stat.h>
+#endif
+#include "ris_err.h"
+#include "risupger.h"
+
+/*
+**  FUNCTION PROTOTYPES
+*/
+#define upgprvqy_rc
+#include "sys.prt"
+#include "sysalloc.prt"
+#include "ris.prt"
+#include "comdebug.prt"
+#include "comumsg.prt"
+#include "upgmisc.prt"
+#include "upgprvqy.prt"
+
+/*
+**  VARIABLES
+*/
+
+/*
+**  FUNCTIONS
+*/
+
+/*
+**	Declare table risprivs so that client does not send an RIS_GET_TAB_CODE
+**	otherwise server would try to access ris_columns dictionary table
+*/
+extern int RISupg_declare_risprivs()
+{
+
+	UPG_DBG(("RISupg_declare_risprivs()\n"));
+
+	exec sql whenever sqlerror goto :DCQ_error;
+
+	exec sql declare table risprivs
+		( 
+			table_name  char(18) not null,
+			column_name char(18) ,
+			grantor     char(18) not null,
+			grantee     char(18) not null,
+			ris_privileges   char(7) not null
+		);
+
+	UPG_DBG(("1. RISupg_declare_risprivs: end\n"));
+	return(SUCCESS);
+
+DCQ_error:
+	exec sql whenever sqlerror continue;
+
+	/*
+	**	 Donot report error now.
+	*/
+	UPG_DBG(("2. RISupg_declare_risprivs: end\n"));
+	return(FAILURE);
+}
+
+/*****************************************************************************/
+
+extern int RISupg_prep_priv_qry(
+	char	*sch_name)
+{
+
+	int i;	
+
+	exec sql begin declare section;
+		char	qry_str[1000];
+	exec sql end declare section;
+
+	exec sql whenever sqlerror goto :PPQ_error;
+
+	UPG_DBG(("RISupg_prep_priv_qry: sch_name <%s> \n", sch_name));
+
+	/*
+	** RIS Version 2.1.4
+	*/
+	sprintf(qry_str, 
+			"select ris_privileges, table_name, column_name, grantee, grantor "
+			"from ris_privs where "
+			"(table_name not like 'ris%%') "
+			"and (grantor <> grantee) "
+			"order by grantor, table_name,grantee,column_name" 
+			);
+							
+	exec sql prepare priv_id from :qry_str;
+
+	RISupg_out_desc.sqld = 0;
+	RISupg_out_desc.sqln = 0;
+	RISupg_out_desc.sqlvar = 0;
+	
+	exec sql describe output priv_id using descriptor RISupg_out_desc;
+
+	if (RISupg_out_desc.sqld != 5)
+	{
+		fprintf(stderr,MSG(RIS_E_UPG_PRIV_INP_PARAMS), RISupg_out_desc.sqld, qry_str);
+
+		UPG_DBG(("1. RISupg_prep_priv_qry: end"));
+		return(FAILURE);
+	}
+	
+	RISupg_out_desc.sqlvar = (sqlvar *) calloc(RISupg_out_desc.sqld, sizeof(sqlvar));
+	RISupg_out_desc.sqln = RISupg_out_desc.sqld;
+	exec sql describe output priv_id using descriptor RISupg_out_desc;
+
+	for (i = 0; i < RISupg_out_desc.sqld; i++)
+	{
+		RISupg_out_desc.sqlvar[i].sqldata = (char *) calloc(RISupg_out_desc.sqlvar[i].sqllen, sizeof(char));
+		RISupg_out_desc.sqlvar[i].sqlind = (long *) calloc(1, sizeof(long));
+	}	
+	
+	exec sql declare priv_cursor cursor for priv_id;
+	exec sql open priv_cursor;
+
+	UPG_DBG(("2. RISupg_prep_priv_qry: end\n"));
+	return(SUCCESS);
+
+PPQ_error:
+	exec sql whenever sqlerror continue;
+
+	/*
+	**	 Donot report error now.
+	*/
+	UPG_DBG(("3. RISupg_prep_priv_qry: end\n"));
+	return(FAILURE);
+}
+
+/******************************************************************************/
+
+extern int RISupg_fetch_priv_row(
+	char	*priv,
+	char	*rel_name,
+	char	*col_name,
+	char	*grantee,
+	char	*grantor)
+{
+	
+	UPG_DBG(("RISupg_fetch_priv_row(priv 0x%x rel_name 0x%x col_name 0x%x grantee 0x%x grantor 0x%x\n",
+			priv, rel_name, col_name, grantee, grantor));
+
+	exec sql whenever sqlerror goto :FPR_error;
+	exec sql fetch priv_cursor using descriptor RISupg_out_desc;
+
+	if (SQLCODE != END_OF_DATA)
+	{
+		RISupg_strncpy(priv, RISupg_out_desc.sqlvar[0].sqldata, 
+					   RISupg_out_desc.sqlvar[0].sqllen, (RIS_MAX_ID_SIZE - 1));
+		RISupg_strncpy(rel_name, RISupg_out_desc.sqlvar[1].sqldata, 
+					   RISupg_out_desc.sqlvar[1].sqllen, (RIS_MAX_ID_SIZE - 1));
+		if (*RISupg_out_desc.sqlvar[2].sqlind < 0) col_name[0] = '\0';
+		else RISupg_strncpy(col_name, RISupg_out_desc.sqlvar[2].sqldata, 
+							RISupg_out_desc.sqlvar[2].sqllen, (RIS_MAX_ID_SIZE - 1));
+		RISupg_strncpy(grantee, RISupg_out_desc.sqlvar[3].sqldata, 
+					   RISupg_out_desc.sqlvar[3].sqllen, (RIS_MAX_ID_SIZE - 1));
+
+		RISupg_strncpy(grantor, RISupg_out_desc.sqlvar[4].sqldata, 
+					   RISupg_out_desc.sqlvar[4].sqllen, (RIS_MAX_ID_SIZE - 1));
+
+		UPG_DBG(("RISupg_fetch_priv_row: priv = <%s> rel_name = <%s> col_name = <%s> grantee = <%s> grantor = <%s>\n",
+					priv, rel_name, col_name, grantee, grantor));
+	}
+	else
+	{
+		rel_name[0] = '\0'; 
+		grantee[0] = '\0'; 
+		grantor[0] = '\0'; 
+	}
+
+	UPG_DBG(("1. RISupg_fetch_priv_row: end\n"));
+	return(SQLCODE);
+
+FPR_error:
+	exec sql whenever sqlerror continue;
+
+	/*
+	**	Donot report error now.
+	*/
+	RISupg_clnup_priv_qry();
+
+	UPG_DBG(("2. RISupg_fetch_priv_row: end\n"));
+	return(FAILURE);
+} 
+
+/******************************************************************************/
+
+extern void RISupg_clnup_priv_qry()
+{
+
+	int	i;
+
+	UPG_DBG(("RISupg_clnup_priv_qry: begin\n"));
+
+	for (i = 0; i < RISupg_out_desc.sqld; i++)
+	{
+		free(RISupg_out_desc.sqlvar[i].sqldata);
+		free(RISupg_out_desc.sqlvar[i].sqlind);
+	}	
+	free(RISupg_out_desc.sqlvar);
+
+	exec sql close priv_cursor;
+	exec sql clear cursor priv_cursor;
+
+	UPG_DBG(("1. RISupg_clnup_priv_qry: end\n"));
+}
+
+/******************************************************************************/

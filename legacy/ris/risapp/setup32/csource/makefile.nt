@@ -1,0 +1,120 @@
+# Do not alter this SPC information: $Revision: 1.16.3.1 $
+!include $(RISDEVDIR)\ristools\include\makeenv.nt
+!include $(RISDEVDIR)\riscli\setup32\setupenv.nt
+!include $(RISDEVDIR)\risapp\setup32\setupenv.nt
+
+RISCLI_CSOURCE=$(RISDEVDIR)\riscli\setup32\csource
+RISCLI_BLDCUI=$(RISDEVDIR)\riscli\setup32\bldcui
+RISCLI_RMPROD=$(RISDEVDIR)\riscli\setup32\rmprod
+RISAPP_REMOVENT=$(RISDEVDIR)\risapp\setup32\removent\obj_nt
+
+IPATH=   \
+	 -I"$(NT_SETUP_DIR)\csource" \
+	 -I"$(NT_SETUP_DIR)\isdklib" \
+         -I..\..\..\riscli\setup32\bldcui \
+	 -I..\..\..\riscom\internal\
+	 -I..\..\..\riscli\setup32\remove \
+	 -I..\..\..\riscli\setup32\csource \
+         -I"$(NT_SETUP_DIR)\csource\bldcui" \
+         -I"$(NT_SETUP_DIR)\remove" \
+     
+
+SETUP_OBJS= \
+	$(OBJDIR)\ris.obj \
+        $(RISDEVDIR)\riscli\setup32\csource\obj_nt\risregdb.obj \
+        $(RISDEVDIR)\riscli\setup32\csource\obj_nt\shareapp.obj \
+        $(RISAPP_REMOVENT)\rmprod.obj
+
+#
+# Be sure to remove the -DDONT_VERIFY tag below when building your
+# procedure for real!
+# Define KEEP_CURSOR to change cursor to hourglass etc
+#
+!if "$(DEBUG)" == "yes"
+cflags =$(cflags) $(cdebug) $(cvars) -I"$(NT_SETUP_DIR)\setup32" -DDONT_VERIFY -DDEBUG -DKEEP_CURSOR -DRISAPP -nologo
+lflags = $(ldebug) 
+!else
+cflags = $(cflags) $(cdebug) $(cvars) -I"$(NT_SETUP_DIR)\setup32"  -DRISAPP -nologo
+# lflags = $(guilflags)
+!endif
+
+fast: ..\bin\$(BINDIR)\risdp.exe 
+
+$(SETUPSDK_OBJS):
+    @nmake -f $(RISCLI_CSOURCE)\makefile.nt $(SETUPSDK_OBJS)
+
+..\bin\$(BINDIR)\risdp.exe: $(SETUP_OBJS) $(SETUPSDK_OBJS) \
+	$(RISDEVDIR)\riscli\setup32\bin\nt\rissetup.lib \
+	$(RISDEVDIR)\riscli\setup32\bin\nt\risrem.lib \
+	"$(NT_SETUP_DIR)\setup32\ingrstf.lib" \
+	$(NT_SETUP_LIBS) 
+	@echo.
+	@echo	SETUP_OBJS  -to-  $@
+	@$(link) @<<
+$(guilflags)		
+-machine:$(CPU)		
+-out:$@	
+$(SETUP_OBJS) 
+$(SETUPSDK_OBJS)
+$(RISDEVDIR)\riscli\setup32\bin\nt\rissetup.lib 
+$(RISDEVDIR)\riscli\setup32\bin\nt\risrem.lib 
+"$(NT_SETUP_DIR)\setup32\ingrstf.lib" 
+"$(NT_SETUP_DIR)\licapi\dlbrand.lib" 
+"$(NT_SETUP_DIR)\csource\cingrdll.lib" 
+"$(NT_SETUP_DIR)\setup32\ingrstf.lib" 
+$(NT_SETUP_LIBS) 
+advapi32.lib  
+version.lib
+$(guilibsdll) 
+<<NOKEEP
+
+# add to above in 2.3$(SETUPSDK2_DIR)\isdklib\isdk.lib 
+
+$(RISDEVDIR)\riscli\setup32\bin\nt\rissetup.lib: 
+        @cd $(RISDEVDIR)\riscli\setup32\csource
+        @nmake -f makefile.nt ..\bin\nt\rissetup.lib
+        @cd $(RISDEVDIR)\risapp\setup32\csource
+        @copy $(RISDEVDIR)\riscli\setup32\bin\nt\rissetup.lib $(LAYOUT_RIS_DIR)\rissetup.lib
+
+$(RISDEVDIR)\riscli\setup32\csource\obj_nt\risregdb.obj : $(RISDEVDIR)\riscli\setup32\csource\risregdb.c
+        @cd $(RISDEVDIR)\riscli\setup32\csource
+        @nmake -f makefile.nt obj_nt\risregdb.obj
+        @cd $(RISDEVDIR)\risapp\setup32\csource
+
+$(RISDEVDIR)\riscli\setup32\csource\obj_nt\shareapp.obj : $(RISDEVDIR)\riscli\setup32\csource\shareapp.c
+        @cd $(RISDEVDIR)\riscli\setup32\csource
+        @nmake -f makefile.nt obj_nt\shareapp.obj
+        @cd $(RISDEVDIR)\risapp\setup32\csource
+
+$(OBJDIR)\ris.obj: $(RISCLI_CSOURCE)\ris.c $(RISDEVDIR)\riscom\internal\risver.h \
+		"$(NT_SETUP_DIR)\csource\shareapp.h" \
+		$(LAYOUT_RIS_DIR)\rissetup.h $(RISCLI_CSOURCE)\setupver.h
+	@echo.
+	@echo 	ris.c ris.h  -to-  $@
+	@$(cc) $(cflags) $(IPATH) -DRISAPP $(RISCLI_CSOURCE)\ris.c -Fo$(OBJDIR)\ris.obj
+
+
+$(RISAPP_REMOVENT)\rmprod.obj: $(RISCLI_RMPROD)\rmprod.c \
+		$(RISCLI_RMPROD)\ingrreg.h \
+		..\..\..\riscli\setup32\remove\risrem.h \
+		..\..\..\riscom\internal\risver.h \
+		$(RISCLI_CSOURCE)\setupver.h \
+		$(RISCLI_RMPROD)\rmprod.h
+	@echo.
+	@echo 	rmprod.c  -to-  $@
+	@$(cc) $(cflags) $(IPATH) -DRISAPP $(RISCLI_RMPROD)\rmprod.c -Fo$(RISAPP_REMOVENT)\rmprod.obj
+
+
+$(OBJDIR)\remove.obj: remove.c
+	@echo.
+	@echo 	remove.c  -to-  $@
+	@$(cc) $(cflags) $(IPATH) remove.c 
+	@if exist $@ del $@
+	@move $(@F) $@
+
+clean:  $(SETUPSDK_OBJS) 
+	@-del /Q $(OBJDIR)\*.*
+        @-del /Q $(BIN_DIR)\bin\$(BINDIR)\$(DS_EXENAME) 
+        @-del /Q $**
+
+

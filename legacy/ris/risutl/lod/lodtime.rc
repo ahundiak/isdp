@@ -1,0 +1,132 @@
+/* Do not alter this SPC information: $Revision: 1.2.13.1 $ */
+/*
+**	NAME:				lodtime.rc							
+**	AUTHORS:			Hitesh Patel			
+**	CREATION DATE:		8th July 1991			
+**	ABSTRACT:			To calculate and log execution time of each session of 
+**						load.	
+**	
+**	REVISION HISTORY:
+*/
+ 
+/*
+**	DEFINES
+*/
+
+/*
+**	INCLUDES
+*/
+#include <sys/types.h>
+#include <time.h>
+
+#ifdef MM
+#include "lod.h"
+#endif
+
+exec sql include "lod.h";
+
+/*
+**	VARIABLES
+*/
+
+/*
+**	FUNCTIONS
+*/
+
+/*
+**      FUNCTION PROTOTYPES
+*/
+#define lodtime_rc
+#include "sys.prt"
+#include "comjmp.prt"
+#include "comdebug.prt"
+#include "comumsg.prt"
+#include "lodmisc.prt"
+#include "lodermsg.prt"
+#include "lodtime.prt"
+
+
+extern void RISlod_calc_time(
+	time_t i1,
+	time_t i2,
+	char	*date_and_time)
+{
+	int diff;
+	int hour;
+	int min;
+	int sec;
+
+	LOD_DBG(("RISlod_calc_time: i1 %d i2 %d date_and_time %s\n", i1,i2,date_and_time));
+	diff = i2 - i1;
+
+	hour = diff/3600;
+	diff -= hour * 3600;
+
+	min = diff/60;
+	diff -= min * 60;
+
+	sec = diff;
+
+	if( RISlod_mode != EMBED )
+	{
+		RISlod_print_msg(MSG(RISUTL_E_RUN_STARTED), date_and_time);
+		RISlod_print_msg(MSG(RISUTL_E_ELAPSED_TIME), hour, min, sec);
+	}
+
+	if( RISlod_log_fp != NULL )
+	{
+		RISlod_construct_n_dump_to_log("\nRun started on\t: %s",date_and_time);
+		RISlod_construct_n_dump_to_log("Elapsed time\t: %02d:%02d:%02d (hr:min:sec)\n\n", hour, min, sec);
+	}
+	LOD_DBG(("1. RISlod_calc_time: end.\n"));
+
+}
+
+extern void RISlod_process_timer(
+	int action)
+{
+	static  int		timer_running = 0;
+	static  time_t	start_time = 0;
+	static  time_t	stop_time = 0;
+	static  char 	*date_and_time;
+
+	switch(action)
+	{
+		case START:
+			if (timer_running)
+			{
+				return;
+			}
+			start_time = time((long *)0);
+			date_and_time = ctime(&start_time);
+			timer_running = 1;
+			break;
+
+		case STOP:
+			if (!timer_running)
+			{
+				return;
+			}
+			stop_time = time((long *)0);
+			RISlod_calc_time(start_time, stop_time, date_and_time);
+			timer_running = 0;
+			break;
+
+		default:
+			RISlod_fatal_err_handler(RISUTL_E_ILLEGAL_PARAMETER_TIMER,FALSE);
+			TERMINATE_RISLOAD
+			break;
+	}
+}
+
+
+
+extern void RISlod_start_timer()
+{
+	RISlod_process_timer(START);
+}
+
+extern void RISlod_stop_timer()
+{
+	RISlod_process_timer(STOP);
+}

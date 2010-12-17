@@ -1,0 +1,879 @@
+/*
+**	NAME:			upgview.rc
+**	AUTHORS:		Bhaskar R. Sayyaparaju
+**	CREATION DATE:		3/94
+**	ABSTRACT: 		
+**		The functions that handle user-defined views for the RIS upgrade 
+**		utility.
+**
+**	REVISION HISTORY:
+*/
+
+/*
+**	DEFINES
+*/
+
+/*
+**	INCLUDES
+*/
+#ifdef UPGRADE_GLOBAL_DEFINE
+#undef UPGRADE_GLOBAL_DEFINE
+#endif
+
+#ifdef MKMK_KLUDGE
+#include "upgrade.h"
+#endif
+
+#include <ctype.h>
+#ifdef WIN32
+#include <windows.h>
+#endif
+#if defined(unix)
+#include <sys/stat.h>
+#endif
+exec sql include "upgrade.h";
+#include "ris_err.h"
+#include "risupger.h"
+
+/*
+**	FUNCTION PROTOTYPES
+*/
+#define upgview_rc
+#include "sys.prt"
+#if ! defined(sun) && ! defined(__hpux__)
+#include "net_sys.prt"
+#endif
+#include "sysalloc.prt"
+#include "comjmp.prt"
+#include "comwrap.prt"
+#include "comdebug.prt"
+#include "comumsg.prt"
+#include "ris.prt"
+#include "upgmisc.prt"
+#if defined(sco) || defined(DOS) || defined(WIN32) || defined(WIN32S) || defined(vms)
+#include "upgtable.prt"
+#endif
+#include "upgview.prt"
+#if defined(WIN32)
+#include "cnvschfl.prt"
+#endif
+
+/*
+**	VARIABLES
+*/
+
+/*
+**	FUNCTIONS
+*/
+
+/******************************************************************************/
+
+extern int RISupg_get_view_names(
+	view_name_struct	**view_name_ptr,
+	char				*ristab_name)
+{
+	int					view_index;
+	view_name_struct	*view_list;
+
+	exec sql begin declare section;
+		int		num_view;
+		char	view_name[RIS_MAX_ID_SIZE];
+		char	query[UPG_CHUNK_SIZE];
+	exec sql end declare section;
+
+	UPG_DBG(("RISupg_get_view_names(*view_name_ptr 0x%x ristab_name <%s>)\n",
+			*view_name_ptr, ristab_name));
+
+	/*
+	**	user-defined views are in risdbms_views or risstrings
+	*/
+	if( !strcmp(ristab_name,"risviews") )
+	{
+                /* had to change this non-cursored select to a cursored one
+                   to get around a bug in which non-cursored select is not
+                   freeing underlying cursor, making it so that this
+                   table cannot be dropped in "drop schema" and causing
+                   upgrade to fail.  Quick work-around to fix upgrade while
+                   we continue to search out underlying problem for RDB *ddf*/
+
+    		exec sql declare cnt_cursor2 cursor for
+			select 	count(distinct view_name)   
+			from	risviews 
+			where 	ris_view_def is NULL 
+			and 	sequence_id = 0; 
+    		exec sql open cnt_cursor2;
+    		exec sql fetch cnt_cursor2 into :num_view;
+    		exec sql close cnt_cursor2;
+    		exec sql clear cursor cnt_cursor2;
+	}
+
+    if( num_view == 0 )
+    {
+        *view_name_ptr = 0;
+		/*
+		**	Do not report error
+		*/
+        UPG_DBG(("1. RISupg_get_view_names: end\n"));
+        return(0);
+    }
+
+	if( (SQLCODE != RIS_SUCCESS) && (num_view < 0) )
+	{
+        *view_name_ptr = 0;
+		RISupg_report_error(SQLCODE);
+        UPG_DBG(("2. RISupg_get_view_names: end with SQLCODE = %d\n",SQLCODE));
+		LONGJMP(SQLCODE);
+	}
+#if defined (WIN32)
+        if (INTERRUPTED())
+        {
+                no_change_exit();
+                CLEAR_INTERRUPT();
+                LONGJMP(RIS_E_UPG_GOT_INTERRUPT);
+        }
+#endif
+
+	view_list = (view_name_struct *) calloc (num_view, sizeof(view_name_struct));
+	if( !view_list )
+	{
+		fprintf(stderr,MSG(RIS_E_UPG_CANNOT_ALLOCATE_MEMORY));
+		RISupg_report_error(RISupg_INTERNAL_ERROR);
+        UPG_DBG(("3. RISupg_get_view_names: end\n"));
+		UPG_LONGJMP(RISupg_INTERNAL_ERROR);
+		return(0);
+	}
+
+	exec sql whenever sqlerror goto :VIEW_error;
+
+	/*
+	**	user-defined views are in risdbms_views or risstrings
+	*/
+	if( !strcmp(ristab_name,"risviews") )
+	{
+		sprintf(query,
+				"select distinct view_name from risviews "
+				"where ris_view_def is NULL "
+				"and sequence_id = 0 "
+				"order by view_name ");
+	}
+	else
+	{
+        *view_name_ptr = 0;
+		RISupg_report_error(RISupg_INTERNAL_ERROR);
+        UPG_DBG(("4. RISupg_get_view_names: end\n"));
+		UPG_LONGJMP(RISupg_INTERNAL_ERROR);
+		return(0);
+	}
+
+	exec sql prepare stmt1 from :query;
+	exec sql declare view_cursor cursor for stmt1;
+	exec sql open view_cursor;
+
+	for (view_index = 0; view_index < num_view; view_index++)
+	{
+		view_name[0] = '\0';
+		exec sql fetch view_cursor into :view_name;
+		RISupg_to_lower_case(view_name);
+		strncpy(view_list[view_index].view_name, view_name, strlen(view_name));
+		printf(MSG(RIS_I_UPG_EXTRACT_VIEW_INFO),view_name);
+	}
+	exec sql close view_cursor;
+	exec sql clear cursor view_cursor;
+	exec sql commit;
+
+	*view_name_ptr = view_list;
+
+	for (view_index = 0; view_index < num_view; view_index++)
+	{
+		UPG_DBG(("view_list[%d] = %s\n", view_index,view_list[view_index].view_name));
+		fprintf(RISupg_view_fp,"%s\n",view_list[view_index].view_name);
+	}
+
+	UPG_DBG(("5. RISupg_get_view_names: end. # of dbms views: <%d>\n",
+					num_view));
+#if defined (WIN32)
+        if (INTERRUPTED())
+        {
+                no_change_exit();
+                CLEAR_INTERRUPT();
+                LONGJMP(RIS_E_UPG_GOT_INTERRUPT);
+        }
+#endif
+	return(num_view);
+
+VIEW_error:
+	exec sql whenever  sqlerror continue;
+	RISupg_report_error(SQLCODE);
+	exec sql close view_cursor;
+	exec sql clear cursor view_cursor;
+	exec sql commit;
+	free(view_list);
+	*view_name_ptr = 0;
+	UPG_DBG(("6. RISupg_get_view_names: end with SQLCODE= %d`\n",SQLCODE));
+#if defined (WIN32)
+        if (INTERRUPTED())
+        {
+                no_change_exit();
+                CLEAR_INTERRUPT();
+                LONGJMP(RIS_E_UPG_GOT_INTERRUPT);
+        }
+#endif
+	LONGJMP(SQLCODE);
+	return(0);
+}
+
+/******************************************************************************/
+
+extern void RISupg_build_n_process_views()
+{
+	view_str_struct *view_str_ptr = 0;
+	view_name_struct *view_name_ptr = 0;
+	int num_view1=0;
+	int num_view2=0;
+
+	UPG_DBG(("RISupg_build_n_process_views: begin\n"));
+
+	RISupg_fputs("BEGIN VIEW INFO",RISupg_view_fp);
+	fprintf(RISupg_view_fp,"\n");
+	num_view1 = RISupg_get_view_names(&view_name_ptr,"risviews");
+	num_view2=RISupg_build_view_str_ptr(&view_str_ptr);
+	risupg_cur_sch->viewunload=num_view1 + num_view2;
+	RISupg_fputs("END VIEW INFO",RISupg_view_fp);
+	fprintf(RISupg_view_fp,"\n");
+	RISupg_free_view_str_ptr(view_str_ptr);
+	printf(MSG(RIS_I_UPG_NUM_VIEWS_UNLOADED),num_view1+num_view2);
+#if defined (WIN32)
+        if (INTERRUPTED())
+        {
+                no_change_exit();
+                CLEAR_INTERRUPT();
+                LONGJMP(RIS_E_UPG_GOT_INTERRUPT);
+        }
+#endif
+    UPG_DBG(("RISupg_build_n_process_views: end. # of views <%d>\n",
+						num_view1 + num_view2));
+}
+
+/******************************************************************************/
+/*
+**	This function gets the view information for the views created through
+**	RIS.
+*/
+
+static int RISupg_build_view_str_ptr(
+	view_str_struct	**view_str_ptr)
+{
+    char    pre_view_name[RIS_MAX_ID_SIZE];
+	char	view_string[RIS_MAX_STMT_LEN];
+	int 	num_view=0;
+
+    exec sql begin declare section;
+        char        view_name[RIS_MAX_ID_SIZE];
+        char        view_substr[RIS_MAX_VIEWSTRING_SIZE];
+        int         seq_id;
+    exec sql end declare section;
+
+	UPG_DBG(("RISupg_build_view_str_ptr(*view_str_ptr 0x%x)\n",*view_str_ptr));
+
+	exec sql whenever sqlerror goto :VIEW_ERR;
+
+    exec sql declare view_str_cursor cursor for
+        select	view_name, ris_view_def, sequence_id
+        from	risviews
+        where	(view_name not like 'ris%%') 
+		and		(ris_view_def is not null)
+        order by view_name, sequence_id;
+
+    exec sql open view_str_cursor;
+
+    pre_view_name[0] = '\0';
+    view_string[0] = '\0';
+
+    exec sql fetch view_str_cursor into :view_name, :view_substr, :seq_id;
+	if( SQLCODE == END_OF_DATA )
+	{
+    	exec sql close view_str_cursor;
+    	exec sql clear cursor view_str_cursor;
+        UPG_DBG(("1. RISupg_build_view_str_ptr: end\n"));
+		return(num_view);
+	}
+	num_view++;
+	strcpy(pre_view_name,view_name);
+	printf(MSG(RIS_I_UPG_EXTRACT_VIEW_INFO),view_name);
+
+	strip_control_chars(view_substr);
+	fprintf(RISupg_view_fp,"%s|%s|%d\n",view_name,view_substr,seq_id);
+	UPG_DBG(("1 view_name <%s> view_string <%s>\n",view_name,view_string));
+
+    for (;;)
+    {
+#if defined (WIN32)
+        if (INTERRUPTED())
+        {
+                no_change_exit();
+                CLEAR_INTERRUPT();
+                LONGJMP(RIS_E_UPG_GOT_INTERRUPT);
+        }
+#endif
+        exec sql fetch view_str_cursor into :view_name, :view_substr, :seq_id;
+        if (SQLCODE == END_OF_DATA)
+        {
+    		exec sql close view_str_cursor;
+    		exec sql clear cursor view_str_cursor;
+            UPG_DBG(("2. RISupg_build_view_str_ptr: end\n"));
+            break;
+        }
+
+		if (strncmp(view_name,pre_view_name,strlen(pre_view_name)))
+		{
+			num_view++;
+			strcpy(pre_view_name,view_name);
+			printf(MSG(RIS_I_UPG_EXTRACT_VIEW_INFO),view_name);
+		}
+		strip_control_chars(view_substr);
+		UPG_DBG(("2 view_name <%s> view_string <%s>\n",view_name,view_string));
+		fprintf(RISupg_view_fp,"%s|%s|%d\n",view_name,view_substr,seq_id);
+    }
+
+    UPG_DBG(("2. RISupg_build_view_str_ptr: end # of RIS views: <%d>\n",
+					num_view));
+	return(num_view);
+
+VIEW_ERR:
+	exec sql whenever sqlerror continue;
+	RISupg_report_error(SQLCODE);
+    exec sql close view_str_cursor;
+    exec sql clear cursor view_str_cursor;
+    UPG_DBG(("3. RISupg_build_view_str_ptr: end with SQLCODE = %d\n",SQLCODE));
+#if defined (WIN32)
+    if (INTERRUPTED())
+    {
+            no_change_exit();
+            CLEAR_INTERRUPT();
+            LONGJMP(RIS_E_UPG_GOT_INTERRUPT);
+    }
+#endif
+	LONGJMP(SQLCODE);
+	return(0);
+}
+
+/******************************************************************************/
+
+extern int RISupg_process_views(
+	char	*sch_name_pwd,
+	char	*sch_name,
+	char	*view_filename)
+{
+    exec sql begin declare section;
+        char sql_stmt[200];
+		int	 table_id;
+    exec sql end declare section;
+
+	char	buf[200+RIS_MAX_ID_SIZE+5];
+	char	save_buf[200+RIS_MAX_ID_SIZE+5]="";
+	char	*view_name=0;
+	char	*ris_view_def=0;
+	char	ris_view_def_str[100];
+	int 	seq_id=0;
+	view_str_struct *view_str_list=0;
+	view_str_struct *tmp_str_list=0;
+	int		num_view=0,status=0;
+	int		*done=0;
+
+	exec sql set transaction autocommit off;
+	exec sql whenever sqlerror continue;
+	UPG_DBG(("RISupg_process_view: sch_name %s\n",sch_name));
+	done = (int *)calloc(1,sizeof(int));
+	*done = 0;
+	while(RIScom_fgets(buf,200+RIS_MAX_ID_SIZE+5,RISupg_view_fp)
+		!= NULL && strncmp(buf,"BEGIN VIEW INFO",sizeof("BEGIN VIEW INFO")-1))
+		;
+	if(!strncmp(buf,"BEGIN VIEW INFO",sizeof("BEGIN VIEW INFO")-1))
+	{
+		while (1)
+		{
+			int i=0,j=0;
+			UPG_DBG(("In the while loop\n"));
+#if defined (WIN32)
+                	if (INTERRUPTED())
+                	{
+                        	no_change_exit();
+                        	CLEAR_INTERRUPT();
+                        	LONGJMP(RIS_E_UPG_GOT_INTERRUPT);
+                	}
+#endif
+			if	(RIScom_fgets(buf,200+RIS_MAX_ID_SIZE+5,
+					RISupg_view_fp) == NULL)
+				break;;
+			buf[strlen(buf)-1] = '\0';
+			UPG_DBG(("View_info: %s\n",buf));
+			if(!strncmp(buf,"END VIEW INFO",sizeof("END VIEW INFO")-1))
+				break;
+/*
+**	If buf = "v1||2", which means ris_view_def is NULL. But strtok fails
+**	when trying to get the seq_id because strtok skips leading delimiters
+**	. The following loop adds a blank between the delimiters if there is
+**	nothing in between. So, "v1||2" is changes to "v1| |2". RAJU
+**	This will fix TR# 249404494.
+*/
+			while(1)
+			{
+				
+				if (buf[i] == '\0')
+				{
+					save_buf[j] = buf[i];	
+					break;
+				}
+				if (buf[i] == '|')
+				{
+					if (buf[i+1] == '|')
+					{
+						save_buf[j++] = buf[i++];
+						save_buf[j++] = ' ';
+						save_buf[j++] = buf[i++];
+					}
+					else
+						save_buf[j++] = buf[i++];
+				}
+				else
+					save_buf[j++] = buf[i++];
+			}
+			strcpy(buf,save_buf);
+			view_name = strtok(buf,"|");
+			UPG_DBG(("View_name %s\n",view_name));
+			ris_view_def = strtok(NULL,"|");
+			if (ris_view_def == NULL)
+/*
+**	This is the view that had been created through the DBMS and then 
+**	included into RIS by usin alter schmema statement.
+*/
+				;
+			else
+			{
+				UPG_DBG(("View_def %s\n",ris_view_def));
+				seq_id = (int) strtol(strtok(NULL,"|"),(char **) NULL,10);
+			}
+			if (!view_str_list)
+			{
+				view_str_list = (view_str_struct *)malloc(sizeof(view_str_struct));
+				if (!view_str_list)
+				{
+					fprintf(stderr,MSG(RIS_E_UPG_CANNOT_ALLOCATE_MEMORY));
+					LONGJMP(RISupg_CANNOT_ALLOCATE_MEMORY);
+				}
+				tmp_str_list = view_str_list;
+			}
+			else
+			{
+				tmp_str_list->next =(view_str_struct *)malloc(sizeof(view_str_struct)); 
+				if (!tmp_str_list->next)
+				{
+					fprintf(stderr,MSG(RIS_E_UPG_CANNOT_ALLOCATE_MEMORY));
+					LONGJMP(RISupg_CANNOT_ALLOCATE_MEMORY);
+				}
+				tmp_str_list = tmp_str_list->next;
+			}
+			memset((char *)tmp_str_list,0,sizeof(view_str_struct));
+			strcpy(tmp_str_list->view_name,view_name);
+			tmp_str_list->done = (int *)calloc(1,sizeof(int));
+			if (ris_view_def)
+			{
+				strcpy(tmp_str_list->view_string,ris_view_def);
+				tmp_str_list->seq_id = seq_id;
+			}
+			else
+				tmp_str_list->view_string[0]='\0';
+		}
+/*
+		*view_str_curr = view_str_list;
+*/
+	}
+	else
+	{
+		printf(MSG(RIS_E_UPG_DATAFILE_CORRUPTED));
+		LONGJMP(RISupg_DATAFILE_CORRUPTED);
+	}
+	status = SETJMP();
+	if (status)
+	{
+    	RIScom_fclose(RISupg_view_fp);
+    	RISupg_view_fp = RIScom_fopen(view_filename,"w");
+    	if (!RISupg_view_fp)
+			printf(MSG(RIS_E_UPG_UPDATE_DUMPFILE_FOR_VIEWS));
+    	else
+        	RISupg_write_view_str_ptr(view_str_list);
+    	RISupg_free_view_str_ptr(view_str_list);
+   		UPG_DBG(("RISupg_process_views: end due to setjmp\n"));
+		RESETJMP();
+		LONGJMP(status);
+	}
+	if (view_str_list)
+	{
+		tmp_str_list = view_str_list;
+		while (tmp_str_list)
+		{
+#if defined (WIN32)
+                	if (INTERRUPTED())
+                	{
+                        	no_change_exit();
+                        	CLEAR_INTERRUPT();
+                        	LONGJMP(RIS_E_UPG_GOT_INTERRUPT);
+                	}
+#endif
+			view_name = tmp_str_list->view_name;
+			done = tmp_str_list->done;
+			*done = 0;
+			printf(MSG(RIS_I_UPG_PROSECCING_VIEW),view_name);
+			UPG_DBG(("Processing %s view\n",view_name));
+			sprintf(sql_stmt,"alter schema %s include view %s",
+						sch_name_pwd,view_name);
+			UPG_DBG(("statement: %s\n",sql_stmt));
+			exec sql execute immediate :sql_stmt;
+			if (SQLCODE != RIS_SUCCESS)
+			{
+				if (RISupg_got_signal)
+					LONGJMP(SQLCODE);
+    			RISupg_report_error(SQLCODE);
+				exec sql rollback;
+/*
+**	Added check for tmp_str_list to fix a TR for memory problem.
+**	RAJU 07/01/94
+*/
+				while (tmp_str_list && !strcmp(tmp_str_list->view_name,view_name))
+					tmp_str_list = tmp_str_list->next;
+				continue;
+			}
+			exec sql whenever sqlerror goto :err_handle;
+			/* 
+			** If the view was created through RIS, we have to update
+			** the view_col_def field of the risviews table.
+			*/
+			if (tmp_str_list->view_string[0] != '\0')
+			{
+				sprintf(sql_stmt,"select table_id from ri05_t02 "
+					"where table_name = '%s'",view_name);
+				exec sql prepare stmt2 from :sql_stmt;
+				exec sql declare tab_id cursor for stmt2;
+				exec sql open tab_id;
+				exec sql fetch tab_id into :table_id;
+				exec sql close tab_id;
+/*
+**	Added check for tmp_str_list to fix a TR for memory problem.
+**	RAJU 07/01/94
+*/
+				while (tmp_str_list && !strcmp(tmp_str_list->view_name,view_name))
+				{
+					ris_view_def = tmp_str_list->view_string;
+					strcpy(ris_view_def_str,ris_view_def);
+					seq_id = tmp_str_list->seq_id;
+					tmp_str_list->done = done;
+					Fix_quotes(ris_view_def,ris_view_def_str);
+					sprintf(sql_stmt,"update ri05_t08 "
+						"set ris_view_def = '%s' "
+						"where table_id = %d "
+						"and sequence_id = %d",ris_view_def_str,table_id,
+						seq_id);
+					UPG_DBG(("statement: %s\n",sql_stmt));
+					exec sql execute immediate :sql_stmt;
+/* 
+** If there needs to be more rows for ris_view_def than there are for
+** dbms_view_def for the view then we insert into risviews table.
+*/
+
+					if (SQLCODE == END_OF_DATA)
+					{
+						sprintf(sql_stmt,"insert into ri05_t08 values "
+							"(%d,'%s',NULL,%d)",table_id,ris_view_def_str,seq_id);
+						UPG_DBG(("statement: %s\n",sql_stmt));
+						exec sql execute immediate :sql_stmt;
+					}
+					tmp_str_list = tmp_str_list->next;
+				}
+				exec sql commit;
+				exec sql clear stmt2;
+				UPG_DBG(("COMMITING Transaction\n"));
+				num_view++;
+				*done = 1;
+				continue;
+			}
+			exec sql commit;
+			UPG_DBG(("COMMITING Transaction\n"));
+			num_view++;
+			*done = 1;
+			tmp_str_list = tmp_str_list->next;
+		}
+	}
+	RESETJMP();
+	RIScom_fclose(RISupg_view_fp);
+	RISupg_view_fp = RIScom_fopen(view_filename,"w");
+	if (!RISupg_view_fp)
+		printf(MSG(RIS_E_UPG_UPDATE_DUMPFILE_FOR_VIEWS));
+	else
+		RISupg_write_view_str_ptr(view_str_list);
+	RISupg_free_view_str_ptr(view_str_list);
+	UPG_DBG(("RISupg_process_views: end\n"));
+	return (0);
+
+err_handle:
+	exec sql whenever sqlerror continue;
+	if (!RISupg_got_signal)
+		RISupg_report_error(SQLCODE);
+	exec sql rollback;
+	exec sql clear stmt2;
+	RISupg_free_view_str_ptr(view_str_list);
+	UPG_DBG(("RISupg_process_views: end with SQLCODE = %d\n",SQLCODE));
+#if defined (WIN32)
+        if (INTERRUPTED())
+        {
+                no_change_exit();
+                CLEAR_INTERRUPT();
+                LONGJMP(RIS_E_UPG_GOT_INTERRUPT);
+        }
+#endif
+/*
+	LONGJMP(SQLCODE);
+*/
+	return(1);
+}	
+
+/******************************************************************************/
+
+static void RISupg_free_view_str_ptr(
+	view_str_struct *view_str_ptr)
+{
+	view_str_struct *view_str_prev;
+	view_str_struct *view_str_curr;
+
+	UPG_DBG(("RISupg_free_view_string_ptr: view_str_ptr 0x%x\n",view_str_ptr));
+	for( view_str_curr = view_str_ptr; 
+			view_str_curr; 
+				view_str_curr = view_str_prev )
+	{
+		view_str_prev = view_str_curr->next;
+/*
+**  Need not free view_string since it is not allocated using
+**  calloc. So, Freeing view_str_curr should take care of freeing
+**  view_string. Commenting out frreing view_string to fix TR#
+**  249406594. RAJU
+		if( (char *)view_str_curr->view_string )
+			free(view_str_curr->view_string);
+*/
+		free(view_str_curr);
+	}
+	UPG_DBG(("RISupg_free_view_string_ptr: end\n"));
+}
+
+/******************************************************************************/
+static void RISupg_write_view_str_ptr(
+				view_str_struct	*view_str_list)
+{
+	view_str_struct	*tmp_str_list=0;
+	int 	count=0;
+
+	UPG_DBG(("RISupg_write_view_str_ptr: view_str_list <0x%x>\n",
+					view_str_list));
+	tmp_str_list = view_str_list;
+	RISupg_fputs("BEGIN VIEW INFO\n",RISupg_view_fp);
+	while(tmp_str_list)
+	{
+		if (!(*tmp_str_list->done))
+		{
+			fprintf(RISupg_view_fp,"%s",tmp_str_list->view_name);
+			if((char *)tmp_str_list->view_string)
+				fprintf(RISupg_view_fp,"|%s|%d",tmp_str_list->view_string,
+						tmp_str_list->seq_id);
+			fprintf(RISupg_view_fp,"\n");
+			count++;
+		}
+		tmp_str_list = tmp_str_list->next;
+	}
+	RISupg_fputs("END VIEW INFO\n",RISupg_view_fp);
+	if (!count)
+		risupg_cur_sch->cre_view = 1;
+	UPG_DBG(("RISupg_write_view_str_ptr: end :view_str_list <0x%x>\n",
+					view_str_list));
+}
+			
+/******************************************************************************/
+
+static void RISupg_fix_spaces(
+	char	*view_substr)
+{
+	int i = 0; 
+	int len = 0;
+	int	pad = 0;
+
+	UPG_DBG(("RISupg_fix_spaces(view_substr <%s>)\n",view_substr));
+
+    len = strlen(view_substr);
+
+    for(i = 0; i < len; i++)
+	{
+		/*
+		**	In RIS 2.1.4 version, an extra char is added for each single quote
+		**	e.g., for a view string of size 64 and having two single quotes ..
+		**	server splits view string into two sub-string of length 62 (64-2) 
+		**	(the above 2 is for two quotes) and 2.
+		**	This will effect only if char literal string is chopped off.
+		**	The pad count will reduce the padding of spaces till end of 64.
+		*/
+		if( view_substr[i] == '\'' )
+			pad++;
+	}
+
+    for(i = strlen(view_substr); i < (RIS_MAX_VIEWSTRING_SIZE-1) - pad; i++)
+		view_substr[i] = ' ';
+	view_substr[i] = '\0';
+
+	UPG_DBG(("RISupg_fix_spaces: end\n"));
+}
+
+/******************************************************************************/
+
+
+extern void RISupg_fix_quotes(
+	char *dst_view_string,
+	char *src_view_string)
+{
+	int s, d;
+	int delimiter = 0;
+
+	UPG_DBG(("RISupg_fix_quotes(dst_view_string 0x%x src_view_string <%s>)\n",
+			dst_view_string, src_view_string));
+
+	/*
+	char	*src = "c1 = 'XYZ\"MNB' and c2 = \"xyz\"\"abc'ABC\"";
+	char	*src = "'XYZ\"MNB'\"";
+	*/
+
+	s = 0;
+	d = 0;
+
+	while( src_view_string[s] )
+	{
+		if( src_view_string[s] == '"' )
+		{
+			if( delimiter )
+			{
+				/*
+				**	Inside the string
+				*/
+				if( src_view_string[s+1] == '"' )
+				{
+					/*
+					**	Found char literal double quotes (") 
+					*/
+					dst_view_string[d] = src_view_string[s];
+
+					/*
+					** Ignoring second double quote (");
+					*/
+					s++;
+				}
+				else
+				{
+					delimiter = 0;
+					dst_view_string[d] = '\'';
+				}
+			}
+			else
+			{
+				/*
+				**	Found first double quotes (") 
+				*/
+				delimiter = 1;
+				dst_view_string[d] = '\'';
+			}
+		}
+		else if( src_view_string[s] == '\'' )
+		{
+			if( delimiter )
+			{
+				/*
+				**	Put two single quotes (')
+				*/
+				dst_view_string[d] = '\'';
+				dst_view_string[++d] = '\'';
+			}
+			else
+			{
+				/*
+				**	e.g. 'xxxy"yyss'
+				**	Do not alter copy as it is.
+				*/
+				dst_view_string[d++] = src_view_string[s++];
+				while( src_view_string[s] != '\'' )
+				{
+					if( !src_view_string[s] )
+					{
+						LONGJMP(RISupg_INTERNAL_ERROR);
+					}
+					dst_view_string[d++] = src_view_string[s++];
+				}
+				dst_view_string[d] = src_view_string[s];
+			}
+		}
+		else
+		{
+			dst_view_string[d] = src_view_string[s];
+		}
+		s++;
+		d++;
+	}
+
+	dst_view_string[d] = '\0';
+	UPG_DBG(("src_view_string >> %s\n", src_view_string));
+	UPG_DBG(("dst_view_string >> %s\n", dst_view_string));
+
+	if( delimiter )
+	{
+		fprintf(stderr,MSG(RIS_E_UPG_MISSING_CLOSE_QUOTES));
+		LONGJMP(RISupg_INTERNAL_ERROR);
+	}	
+	UPG_DBG(("RISupg_fix_quotes: end\n"));
+}
+/******************************************************************************/
+/*
+**		Function to replace control characters with space.
+*/
+
+static void strip_control_chars(
+	char *string)
+{
+	char *localstr;
+
+	localstr = string;
+	while(*localstr != '\0')
+	{
+		if (iscntrl(*localstr)) 
+			*localstr = ' ';
+		localstr++;
+	}
+}
+/******************************************************************************/
+/*
+**	Function to add quotes to the update string
+*/
+
+static void Fix_quotes(
+	char *ris_view_def,
+	char *ris_view_def_str)
+{
+	char 	*str1,*str2;
+
+	if (!ris_view_def)
+		return;
+	str1 = ris_view_def;
+	str2 = ris_view_def_str;
+	while (*str1 != '\0')
+	{
+		if (*str1 != '\'')
+			*str2++ = *str1++; 
+		else
+		{
+			*str2++ = *str1; 
+			*str2++ = *str1++;
+		}	
+	}
+	*str2 = '\0';
+}

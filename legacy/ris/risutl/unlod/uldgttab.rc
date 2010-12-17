@@ -1,0 +1,225 @@
+/* Do not alter this SPC information: $Revision: 1.1.53.1 $ */
+/*
+**	NAME:							uldgttab.rc
+**	AUTHORS:						Jennifer Xia
+**	CREATION DATE:					7/90
+**	ABSTRACT:
+**		It contains a function which generates a list of tables
+**		in a schema. It also contains two other functions which
+**		get a schema from either the user or the list.
+**	
+**	REVISION HISTORY:
+*/
+ 
+/*
+**	DEFINES
+*/
+
+/*
+**	INCLUDES
+*/
+#if defined(WIN32S) && defined(ULD_EXE)
+#include <windows.h>
+#include <windowsx.h>
+#include "winport.h"
+#include "winio.h"
+#include "winhan.h"
+#include "risutl.h"
+#include "prog32s.h"
+#endif 
+
+#ifdef MM
+#include "unlod.h"
+#endif
+
+exec sql include "unlod.h";
+
+/*
+**	VARIABLES
+*/
+
+/*
+**	FUNCTIONS
+*/
+
+/*
+**      FUNCTION PROTOTYPES
+*/
+#define uldgttab_rc
+#include "sys.prt"
+#include "comdebug.prt"
+#include "comjmp.prt"
+#include "comumsg.prt"
+#include "ris.prt"
+#include "uldermsg.prt"
+#include "uldgttab.prt"
+#include "uldmisc.prt"
+#include "uldtime.prt"
+#include "ucoerrbx.prt"
+
+
+extern int RISuld_batch_get_tabs(
+	char			*sch_name,
+	tab_node_type	**tab_list_ptr)
+{
+
+	int					num_tab;
+	int					tab_indx;
+	batch_tnode_type	*pre_btnode_ptr = (batch_tnode_type *) NULL;
+	batch_tnode_type	*btnode_ptr;
+
+	ULD_DBG(("RISuld_batch_get_tabs: sch_name <%s> *tab_list_ptr 0x%x\n", sch_name, *tab_list_ptr));
+
+	num_tab = RISuld_get_all_tab(sch_name, tab_list_ptr);
+
+	if (num_tab <= 0)
+	{
+		RISuld_ptr_struct_ptr->bthnode_ptr->btlink = (batch_tnode_type *) NULL;
+
+		ULD_DBG(("1. RISuld_batch_get_tabs: end"));
+		return(FAILURE);
+	}
+
+	for (tab_indx = 0; tab_indx < num_tab; tab_indx++)
+	{
+		
+		btnode_ptr = (batch_tnode_type *) calloc (1, sizeof(batch_tnode_type));
+		CHK_MEM_ALLOC_ERR(btnode_ptr)
+
+		if (tab_indx == 0)
+			RISuld_ptr_struct_ptr->bthnode_ptr->btlink = btnode_ptr;
+		else
+			pre_btnode_ptr->btlink = btnode_ptr;
+
+
+		btnode_ptr->tnode_ptr = (*tab_list_ptr + tab_indx);
+		btnode_ptr->btlink = (batch_tnode_type *) NULL;
+			
+		pre_btnode_ptr = btnode_ptr;
+	}
+
+	ULD_DBG(("2. RISuld_batch_get_tabs: end"));
+	return(num_tab);
+}
+
+extern int RISuld_get_all_tab(
+	char			*sch_name,
+	tab_node_type	**tab_list_ptr)
+{
+
+	tab_node_type	*tab_list;
+	int				tab_list_indx;
+	int hold_len ;
+
+	exec sql begin declare section;
+		int		num_tab;
+		char	tab_name[RIS_MAX_ID_SIZE];
+		char	*err_ptr;
+	exec sql end declare section;
+
+	ULD_DBG(("RISuld_get_all_tab: sch_name <%s> *tab_list_ptr 0x%x\n", sch_name, *tab_list_ptr));
+
+
+	exec sql whenever sqlerror goto :GAT_error;
+
+	/* ris5tables has both user-defined tables and views and
+	** dictionary views; but for table_type = 'T', only user
+	** tables will be selected 
+	*/
+	exec sql
+		select 	count(*)                      
+		into	:num_tab
+		from	ris5tables
+		where 	(table_type = 'T');
+
+	UNLOD_WARNING_CHECK(
+		RISuld_ptr_struct_ptr->bsnode_ptr->snode_ptr->tsqlwarnings);
+
+    if (num_tab < 0)
+    {
+        *tab_list_ptr = (tab_node_type *) NULL;
+        ULD_DBG(("1. RISuld_get_all_tab: end"));
+        return(FAILURE);
+    }
+
+	if (num_tab == 0)
+	{
+		*tab_list_ptr = (tab_node_type *) NULL;
+		RISuld_print_msg(MSG(RISUTL_E_NO_TAB_EXISTS));
+		ULD_DBG(("2. RISuld_get_all_tab: end"));
+		return(num_tab);
+	}
+
+	tab_list = (tab_node_type *) calloc (num_tab, sizeof(tab_node_type));
+	CHK_MEM_ALLOC_ERR(tab_list)
+
+	exec sql declare all_tab_cursor cursor for
+		select 		table_name
+		from		ris5tables
+		where 		(table_type = 'T')
+		order by	table_name;
+
+	UNLOD_WARNING_CHECK(
+		RISuld_ptr_struct_ptr->bsnode_ptr->snode_ptr->tsqlwarnings);
+
+	exec sql open all_tab_cursor;
+
+	UNLOD_WARNING_CHECK(
+		RISuld_ptr_struct_ptr->bsnode_ptr->snode_ptr->tsqlwarnings);
+
+	for (tab_list_indx = 0; tab_list_indx < num_tab; tab_list_indx++)
+	{
+		RISuld_assign_nulls(tab_name, RIS_MAX_ID_SIZE);
+
+		exec sql fetch all_tab_cursor into :tab_name;
+
+		UNLOD_WARNING_CHECK(
+			RISuld_ptr_struct_ptr->bsnode_ptr->snode_ptr->tsqlwarnings);
+
+		RISuld_to_lower_case(tab_name);
+		   hold_len = 0;
+	           while ( tab_name[hold_len] &&
+                           tab_name[hold_len] != ' ' && 
+			   hold_len < RIS_MAX_ID_SIZE)
+                   {
+		       hold_len++;
+                   }
+		   tab_name[hold_len] = '\0';
+		   strcpy(tab_list[tab_list_indx].tab_name, tab_name);
+		tab_list[tab_list_indx].unloaded  = FALSE;
+	}
+	exec sql close all_tab_cursor;
+
+	UNLOD_WARNING_CHECK(
+		RISuld_ptr_struct_ptr->bsnode_ptr->snode_ptr->tsqlwarnings);
+
+	exec sql clear cursor all_tab_cursor;
+
+	UNLOD_WARNING_CHECK(
+		RISuld_ptr_struct_ptr->bsnode_ptr->snode_ptr->tsqlwarnings);
+
+	*tab_list_ptr = tab_list;
+
+	ULD_DBG(("3. RISuld_get_all_tab: end"));
+	return(num_tab);
+
+GAT_error:
+	exec sql whenever  sqlerror continue;
+
+	if( RISuld_mode == EMBED )
+	{
+		RISuld_ptr_struct_ptr->bsnode_ptr->snode_ptr->tris_err_code = risca->sqlcode;
+		RISuld_ptr_struct_ptr->bsnode_ptr->snode_ptr->tdb_err_code = dbca->sqlcode;
+	}
+	else
+	{
+		exec sql report error into :err_ptr;
+#if !defined(ULD_DLL)
+		PUTS(err_ptr);
+#endif
+	}
+
+	ULD_DBG(("4. RISuld_get_all_tab: end"));
+	return(FAILURE);
+}
+

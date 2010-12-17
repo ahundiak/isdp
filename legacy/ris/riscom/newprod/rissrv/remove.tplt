@@ -1,0 +1,293 @@
+#!/bin/ksh
+# remove.DOT_EXTENSION script for IDNAME
+
+# define and truncate log file
+export RISLOG=/usr/tmp/risinstl.log
+print "IDNAME deinstallation log file" >$RISLOG
+date '+Date: %h %d, %Y   Time: %H:%M:%S' >>$RISLOG
+
+# define and truncate error file
+export RISERR=/usr/tmp/risinstl.err
+print "IDNAME deinstallation error file" >$RISERR
+date '+Date: %h %d, %Y   Time: %H:%M:%S' >>$RISERR
+
+RIS_PLATFORM=ris_platform
+
+#
+# Set up commands and files
+#
+RM=/bin/rm
+PS=/bin/ps
+CAT=/bin/cat
+KILL=/bin/kill
+GREP=/bin/grep
+RMDIR=/bin/rmdir
+AWK=/usr/bin/awk
+
+TCPSVC=/etc/services
+TCPCNF=/etc/inetd.conf
+RISCONFIG=/etc/risconfig
+RISTMP=/usr/tmp/PRODNAME.tmp
+
+if [ $RIS_PLATFORM = "Solaris" ]
+then
+	: ${INGRHOME:=/opt/ingr}
+	DATES=$INGRHOME/bin/dates
+	PRODDATA=$INGRHOME/bin/proddata
+else
+	DATES=/usr/bin/dates
+	PRODDATA=/usr/bin/proddata
+fi
+
+if [ $RIS_PLATFORM = "CLIX" ]
+then
+	LN=/bin/ln
+	SED=/bin/sed
+	CUT=/usr/bin/cut
+	DNPSRV=/usr/lib/servers.reg
+	XNSSRV=server.dat
+	XNS_LINKS_DIR=/usr/ip32/ris/links
+	SUIDSTOP=/usr/adm/dsm/config/.suid.stop
+	OLD_LINK_PREFIX=$(echo OLD_PRODUCT_NAME | $CUT -c1-5)
+	OLD_LINK_NAME=$OLD_LINK_PREFIX.4_3_X
+	NEW_LINK_NAME=PRODNAME.5_1_X
+	typeset -u OLD_DNP_PREFIX=$(echo OLD_PRODUCT_NAME | $CUT -c1-4)
+	OLD_DNP_NAME=${OLD_DNP_PREFIX}_4_3_X
+	NEW_DNP_NAME=${OLD_DNP_PREFIX}_5_0_X
+fi
+
+get_version()
+{
+    echo $1 | awk 'BEGIN{FS="."} { printf "%d_%d_X", $1, $2 }'
+}
+
+PRODDIR=$2
+
+#
+# Update/Delete /etc/risconfig file product information
+#
+if [ -f $RISCONFIG ]
+then
+	if [ -s $RISCONFIG ]
+	then
+		print "Updating $RISCONFIG file."
+		$CAT $RISCONFIG > $RISTMP
+		$GREP -v $PRODDIR $RISTMP > $RISCONFIG
+		$RM -f $RISTMP 2>>$RISERR
+	fi
+	if [ ! -s $RISCONFIG ]
+	then
+		print "No other RIS products exist. Deleting $RISCONFIG file."
+		$RM -f $RISCONFIG 2>>$RISERR
+	fi
+fi
+
+#
+# Change to the RIS directory
+#
+[ -z "$PRODDIR" ] && exit 0
+cd $PRODDIR 2>>$RISERR
+[ $? != 0 ] && exit 0
+cd ..  2>>$RISERR
+
+#
+# Remove the product directory
+#
+$RM -rf PRODNAME  2>>$RISERR
+$RM -rf PRODNAME4 2>>$RISERR
+
+#
+# Remove the non-shared product directory for diskless workstations
+#
+if [ "$INSTALL_SHARED" = y ]
+then
+	$RM -rf $VARDIR 2>>$RISERR
+fi
+
+#
+# Remove the old files
+#
+$RM -f OLD_FILES 2>>$RISERR
+
+#
+# Remove the old directories
+#
+$RMDIR OLD_DIRS 2>>$RISERR
+
+#
+# TCP stuff
+#
+# Remove the ristcpsrv entry from the /etc/inetd.conf file,
+# and /etc/services file, remove the file from links dir.
+#
+if [ $RIS_PLATFORM != "CLIX" -o -d "$($PRODDATA "+%p" "TCPIP")" ]
+then
+	print "\tRemoving TCP connection"
+	$CAT $TCPSVC > $RISTMP
+	$GREP -v "180/" $RISTMP > $TCPSVC
+	$RM -f $RISTMP 2>>$RISERR
+	$CAT $TCPCNF > $RISTMP
+	$GREP -v "ristcpsrv" $RISTMP > $TCPCNF
+	$RM -f $RISTMP 2>>$RISERR
+	if [ $RIS_PLATFORM = "SunOS4" ]
+	then
+		(set +e; $KILL -1 $($PS -aux| $AWK '/inetd/ {print $2}') 2>/dev/null; :)
+	else
+		(set +e; $KILL -1 $($PS -ef | $AWK '/inetd/ {print $2}') 2>/dev/null; :)
+	fi
+fi
+
+#
+# XNS stuff
+#
+if [ $RIS_PLATFORM = "CLIX" ]
+then
+	XNSDIR=`$PRODDATA +%p XNSINGR`
+	if [ -d "$XNSDIR" ]
+	then
+		echo "\tRemoving XNS connection"
+		#
+		# Remove interoperability link V4 RIS Client -> V5 RIS Server.
+		#
+		if [ -L $XNS_LINKS_DIR/$OLD_LINK_NAME ]
+		then
+			echo "\t\tRemoving link $XNS_LINKS_DIR/$OLD_LINK_NAME"
+			$RM -f $XNS_LINKS_DIR/$OLD_LINK_NAME 2>>$RISERR
+		fi
+		if [ -L $XNS_LINKS_DIR/$NEW_LINK_NAME ]
+		then
+			echo "\t\tRemoving link $XNS_LINKS_DIR/$NEW_LINK_NAME"
+			$RM -f $XNS_LINKS_DIR/$NEW_LINK_NAME 2>>$RISERR
+		fi
+		OLD_PRODDIR=`$PRODDATA +%p $OLD_LINK_PREFIX`
+		typeset -l OLD_PRODNAME=`$PRODDATA +%n $OLD_LINK_PREFIX`
+		if [ -n "$OLD_PRODDIR" ]
+		then
+			echo "\t\tResetting link $XNS_LINKS_DIR/$OLD_LINK_NAME"
+			$LN -fs $OLD_PRODDIR/bin/$OLD_PRODNAME \
+				$XNS_LINKS_DIR/$OLD_LINK_NAME
+		fi
+		LINKNAME=$(echo PRODNAME | $CUT -c1-8)
+		#
+		# Kludge for risdc
+		#
+		if [ "PRODNAME" = "risdc" ]
+		then
+			$CAT $XNSDIR/$XNSSRV > $RISTMP
+			$SED -e /"^!33!"/d $RISTMP > $XNSDIR/$XNSSRV
+			$RM -f $RISTMP 2>>$RISERR
+		fi
+		#
+		# Kludge for risoc and risocnet
+		#
+		if [ "PRODNAME" = "risoc" -o \
+			 "PRODNAME" = "risocnet" ]
+		then
+			$CAT $XNSDIR/$XNSSRV > $RISTMP
+			$SED -e /"^!31!"/d $RISTMP > $XNSDIR/$XNSSRV
+			$RM -f $RISTMP 2>>$RISERR
+		fi
+		TARGETFILE=$XNS_LINKS_DIR/$LINKNAME.$(get_version PRODVERSION)
+		if [ -L $TARGETFILE ]
+		then
+			echo "\t\tRemoving link $TARGETFILE"
+			$RM -f $TARGETFILE 2>>$RISERR
+			$RMDIR $XNS_LINKS_DIR 2>>$RISERR
+		fi
+	fi
+fi
+
+#
+# DNP stuff
+#
+if  [ $RIS_PLATFORM = "CLIX" ]
+then
+	DNPDIR=$($PRODDATA "+%p" "DNP")
+	if [ -d "$DNPDIR" ]
+	then
+		echo "\tRemoving DNP connection"
+		if [ -s "$DNPSRV" ]
+		then
+			#
+			# Remove interoperability link V4 RIS Client -> V5 RIS Server.
+			#
+			echo "\t\tRemoving old DNP entry"
+			$GREP -vi $OLD_DNP_NAME $DNPSRV > $RISTMP
+			$CAT $RISTMP > $DNPSRV
+			$RM -f $RISTMP 2>>$RISERR
+			#
+			OLD_PRODDIR=`$PRODDATA +%p $OLD_LINK_PREFIX`
+			typeset -l OLD_PRODNAME=`$PRODDATA +%n $OLD_LINK_PREFIX`
+			if [ -n "$OLD_PRODDIR" ]
+			then
+				echo "\t\tResetting DNP entry"
+				echo "0	$OLD_DNP_NAME	$OLD_PRODDIR/bin/$OLD_PRODNAME" >> $RISTMP
+				$CAT $RISTMP >> $DNPSRV
+				$RM -f $RISTMP 2>>$RISERR
+			fi
+			DNPSRV_ENTRY=$(echo IDNAME | $CUT -c1-4)_$(get_version PRODVERSION)
+			$GREP -vi $DNPSRV_ENTRY $DNPSRV > $RISTMP
+			# do not use mv because this file is a symbolic link
+			$CAT $RISTMP > $DNPSRV
+			$RM -f $RISTMP 2>>$RISERR
+# Remove V5 entry			
+			$GREP -vi $NEW_DNP_NAME $DNPSRV > $RISTMP
+			$CAT $RISTMP > $DNPSRV
+			$RM -f $RISTMP 2>>$RISERR
+		fi
+	fi
+fi
+
+#
+#	Remove the $PRODNAME entry from the /usr/adm/dsm/config/.suid.stop file
+#
+if [ $RIS_PLATFORM = "CLIX" ]
+then
+	if [ -a $SUIDSTOP ]
+	then
+		$CAT $SUIDSTOP > $RISTMP
+		$GREP -v "$PRODDIR/bin/$PRODNAME" $RISTMP > $SUIDSTOP
+		$RM -f $RISTMP 2>>$RISERR
+	fi
+fi
+
+#
+# Change to the ip32 directory
+#
+cd ..  2>>$RISERR
+
+#
+# Remove the RIS directory if it is empty
+#
+if [ "$INSTALL_SHARED" = y ]
+then
+	$RMDIR $ROOT/var/ingr/ris 2>>$RISERR
+fi
+
+$RMDIR ris 2>>$RISERR
+
+$DATES > /dev/null
+OTHER_RIS_PRODS=$($PRODDATA +%n ris)
+for PROD in $OTHER_RIS_PRODS
+do
+	# skip RISDP and RISUTL. Surjit (Oct.6,1995)
+	case $PROD in (RISDP|RISUTL) continue;; esac
+	DIR=$($PRODDATA +%p $PROD)
+	if [ -d "$DIR" ] && [ -x "$DIR/bin/risinstl.ksh" ]    
+	then
+		print "Executing $DIR/bin/risinstl.ksh" >>$RISLOG
+		export RIS_PLATFORM; $DIR/bin/risinstl.ksh
+		[ $? != 0 ] && exit 1
+		break
+	fi
+done
+
+#-------------------------------------------------------------
+# remove the link.
+#-------------------------------------------------------------
+if [ "$RIS_PLATFORM" = "Solaris" ] && [ "PRODNAME" = "risinfds" -o "PRODNAME" = "risinfns" ]
+then
+	$RM /usr/lib/iasfs07a.so 2>>$RISERR
+fi
+
+exit 0

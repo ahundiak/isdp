@@ -1,0 +1,239 @@
+/* Do not alter this SPC information: $Revision: 1.1.53.1 $ */
+/*
+**	NAME:							utlpaswd.rc
+**	AUTHORS:						Terrence D. McIntyre
+**	CREATION DATE:					1/94
+**	ABSTRACT:
+**	
+**	REVISION HISTORY:
+*/
+ 
+/*
+**	INCLUDES
+*/
+#include "util.h"
+#include "utl_inf.h"
+
+/*
+**	DEFINES
+*/
+
+/*
+**	TYPES
+*/
+
+/*
+**	FUNCTION PROTOTYPES
+*/
+#define utlpaswd_rc
+#include "comdebug.prt"
+#include "comjmp.prt"
+#include "comumsg.prt"
+#include "ucodesch.prt"
+#include "ucopaswd.prt"
+#include "utlerror.prt"
+#include "utlmisc.prt"
+#include "utlpaswd.prt"
+#include "ris.prt"
+#include "sys.prt"
+
+/*
+**	VARIABLES
+*/
+
+/*
+**	FUNCTIONS
+*/
+
+/******************************************************************************/
+
+extern void RISutl_set_passwords(
+	void)
+{
+	char schname[RIS_MAX_ID_SIZE] = "";
+	char schpass[RIS_MAX_ID_SIZE] = "";
+	char usrname[RIS_MAX_ID_SIZE] = "";
+	char usrpass[RIS_MAX_ID_SIZE] = "";
+	char osusrname[RIS_MAX_ID_SIZE] = "";
+	char osusrpass[RIS_MAX_ID_SIZE] = "";
+
+exec sql begin declare section;
+	char cmd[256];
+exec sql end declare section;
+
+	UTL_DBG(("RISutl_set_passwords()\n"));
+
+	CLEAR_INTERRUPT();
+
+	while(1)
+	{
+		if (RISutl_file_tos->file == stdin)
+		{
+			/* NOTE: This prompt doesn't really have a dot password in it */
+			/*       It's named this for historic reasons                 */
+			printf(MSG(RISUTL_I_ENTER_SCHEMA_DOT_PASSWORD));
+		}
+		RISutl_fgets(schname, sizeof(schname), RISutl_file_tos->file);
+		if (INTERRUPTED())
+		{
+			UTL_DBG(("RISutl_set_password: interrupted: returning\n"));
+			return;
+		}
+
+		if (schname[0])
+		{
+			if (RISuco_valid_schname(schname))
+			{
+				break;
+			}
+			PRINTF(MSG(RISUTL_I_INV_SCHEMA_NAME));
+		}
+		else
+		{
+			PRINTF(MSG(RISUTL_I_SCHEMA_MUST_BE_SPEC));
+		}
+	}
+
+	if (RISutl_file_tos->file == stdin)
+	{
+		RISuco_get_password(RIScom_umsg(RISUTL_I_ENTER_SCHEMA_PASSWORD),
+			schpass, sizeof(schpass));
+	}
+	else
+	{
+		RISutl_fgets(schpass, sizeof(schpass), RISutl_file_tos->file);
+	}
+	if (INTERRUPTED())
+	{
+		UTL_DBG(("RISutl_set_passwords: interrupted: returning\n"));
+		return;
+	}
+
+	/*
+	**	Username
+	*/
+	if (RISutl_file_tos->file == stdin)
+	{
+		printf(MSG(RISUTL_I_ENTER_USR_CR));
+	}
+	RISutl_fgets(usrname, sizeof(usrname), RISutl_file_tos->file);
+	if (INTERRUPTED())
+	{
+		UTL_DBG(("RISutl_set_password: interrupted: returning\n"));
+		return;
+	}
+
+	if (usrname[0])
+	{
+		if (RISutl_file_tos->file == stdin)
+		{
+			RISuco_get_password(RIScom_umsg(RISUTL_I_ENTER_USR_PASSWORD),
+				usrpass, sizeof(usrpass));
+		}
+		else
+		{
+			RISutl_fgets(usrpass, sizeof(usrpass), RISutl_file_tos->file);
+		}
+		if (INTERRUPTED())
+		{
+			UTL_DBG(("RISutl_set_passwords: interrupted: returning\n"));
+			return;
+		}
+	}
+
+	/*
+	**	OSusername
+	*/
+	if (RISutl_file_tos->file == stdin)
+	{
+		printf(MSG(RISUTL_I_ENTER_OSUSR_CR));
+	}
+	RISutl_fgets(osusrname, sizeof(osusrname), RISutl_file_tos->file);
+	if (INTERRUPTED())
+	{
+		UTL_DBG(("RISutl_set_password: interrupted: returning\n"));
+		return;
+	}
+
+	if (osusrname[0])
+	{
+		if (RISutl_file_tos->file == stdin)
+		{
+			RISuco_get_password(RIScom_umsg(RISUTL_I_ENTER_OSUSR_PASSWORD),
+				osusrpass, sizeof(osusrpass));
+		}
+		else
+		{
+			RISutl_fgets(osusrpass, sizeof(osusrpass), RISutl_file_tos->file);
+		}
+		if (INTERRUPTED())
+		{
+			UTL_DBG(("RISutl_set_passwords: interrupted: returning\n"));
+			return;
+		}
+	}
+
+	RISuco_declare_schema_str(schname, schpass, usrname, usrpass,
+		osusrname, osusrpass, cmd, sizeof(cmd));
+
+	exec sql execute immediate :cmd;
+	UTL_WARNING_CHECK();
+	UTL_ERROR_CHECK();
+
+	UTL_DBG(("RISutl_set_passwords: returning\n"));
+}
+
+/******************************************************************************/
+
+extern void RISutl_clear_passwords(
+	void)
+{
+	char schname[RIS_MAX_ID_SIZE] = "";
+
+exec sql begin declare section;
+	char cmd[80];
+exec sql end declare section;
+
+	UTL_DBG(("RISutl_clear_passwords()\n"));
+
+	CLEAR_INTERRUPT();
+
+	while(schname[0] == '\0')
+	{
+		if (RISutl_file_tos->file == stdin)
+		{
+			/* NOTE: This prompt doesn't really have a dot password in it */
+			/*       It's named this for historic reasons                 */
+			printf(MSG(RISUTL_I_ENTER_SCHEMA_DOT_PASSWORD));
+		}
+		RISutl_fgets(schname, sizeof(schname), RISutl_file_tos->file);
+		if (INTERRUPTED())
+		{
+			UTL_DBG(("RISutl_clear_password: interrupted: returning\n"));
+			return;
+		}
+
+		if (schname[0])
+		{
+			if (RISuco_valid_schname(schname))
+			{
+				break;
+			}
+			PRINTF(MSG(RISUTL_I_INV_SCHEMA_NAME));
+		}
+		else
+		{
+			PRINTF(MSG(RISUTL_I_SCHEMA_MUST_BE_SPEC));
+		}
+	}
+
+	sprintf(cmd, "undeclare schema %s", schname);
+
+	exec sql execute immediate :cmd;
+	UTL_WARNING_CHECK();
+	UTL_ERROR_CHECK();
+
+	UTL_DBG(("RISutl_clear_passwords: returning\n"));
+}
+
+/******************************************************************************/

@@ -1,0 +1,329 @@
+# Do not alter this line: $Revision: 1.1.54.1 $
+VALID_WORKING_SETS="\
+	ris5.0 \
+"
+
+VALID_PROJECTS="\
+	risapp \
+	riscli \
+	riscom \
+	rissrv \
+	ristools \
+	risutl \
+"
+
+Usage()
+{
+	echo
+	echo "Usage: mergespc {-r|-f} WorkingSet Project"
+	echo "       mergespc -?"
+	echo "       mergespc -w"
+	echo
+	echo "-r:  reserve files from spc"
+	echo "-f:  fetch files from spc"
+	echo "-?:  Display usage"
+	echo "-w:  What does mergespc do?"
+	echo
+	DisplayValidWorkingSets
+	DisplayValidProjects
+}
+
+What()
+{
+	echo
+
+echo "    mergespc will search the project specified for all files newer than the"
+echo "    source timestamp file and not listed in the spc.skp file."
+echo ""
+echo "    mergespc will then fetch/retrieve those files into a temporary directory"
+echo "    tree in /usr/tmp.  It will then compare this temporary directory tree"
+echo "    with the source directory tree and display the differences."
+echo ""
+echo "    mergespc assumes that the timestamp file exists in the project directory"
+echo "    (e.g. \$RISDEVDIR/ristools/tstamp_s.to for ristools)."
+echo "    "
+echo "    mergespc assumes the file spc.skp exists in the project build directory"
+echo "    (e.g. \$RISDEVDIR/ristools/build/spc.skp for ristools).  This file should"
+echo "    contain a list of files to be skipped while searching for updated files;"
+echo "    typically executable, objects, etc."
+
+	echo
+}
+
+DisplayValidWorkingSets()
+{
+	echo "Valid Working Sets are:"
+	for ValidWorkingSet in $VALID_WORKING_SETS
+	do
+		echo "	$ValidWorkingSet"
+	done
+	echo
+}
+
+DisplayValidProjects()
+{
+	echo "Valid Projects are:"
+	for ValidProject in $VALID_PROJECTS
+	do
+		echo "	$ValidProject"
+	done
+	echo
+}
+
+if [ $# = 1 ]
+then
+	if [ $1 = -w ]
+	then
+		What
+	else
+		Usage
+	fi
+	return
+fi
+
+if [ $# != 3 ]
+then
+	Usage
+	return
+fi
+
+Mode=$1
+WorkingSet=$2
+Project=$3
+
+case $Mode in
+	-r|-f)
+		break;;
+	*)
+		Usage
+		return;;
+esac
+
+InvalidWorkingSet=1
+for ValidWorkingSet in $VALID_WORKING_SETS
+do
+	if [ "$WorkingSet" = "$ValidWorkingSet" ]
+	then
+		InvalidWorkingSet=0
+		break
+	fi
+done
+
+if [ $InvalidWorkingSet = 1 ]
+then
+	echo
+	echo "$WorkingSet is not a valid Working Set."
+	echo
+	DisplayValidWorkingSets
+	return
+fi
+
+InvalidProject=1
+for ValidProject in $VALID_PROJECTS
+do
+	if [ "$Project" = "$ValidProject" ]
+	then
+		InvalidProject=0
+		break
+	fi
+done
+
+if [ $InvalidProject = 1 ]
+then
+	echo
+	echo "$Project is not a valid Project."
+	echo
+	DisplayValidProjects
+	return 1
+fi
+
+if [ ! "$RISDEVDIR" ]
+then
+	echo "\$RISDEVDIR must be set."
+	return 1
+fi
+
+TempDir=/usr/tmp/$WorkingSet/$Project
+
+if [ -d $TempDir ]
+then
+	echo "Cannot fetch code into directory $TempDir."
+	echo "The directory $TempDir already exists."          
+	return
+fi
+
+if [ -f $TempDir ]
+then
+	echo "Cannot fetch code into directory $TempDir."
+	echo "A file $TempDir already exists."          
+	return
+fi
+
+if [ "$Mode" = "-r" ]
+then
+	echo
+	echo "This utility will merge your code into spc.  After a file is merged"
+	echo "into SPC, this utility will fetch the file back out of SPC so the"
+	echo "source on your machine will contain the updated version information." 
+	echo "because of this, it is recommended that you backup your source before"
+	echo "running this utility."
+	echo
+	echo "Do you want to backup $RISDEVDIR/$Project (y/n)[y]? \c"
+	read response 
+	if [ "$response" = "" -o "$response" = "y" ]
+	then
+		cd $RISDEVDIR/$Project/build
+		mk backuptree
+	else
+		echo You have decided not to back up $RISDEVDIR/$Project.
+	fi
+fi
+
+case $Project in
+	risapp)		Timestamp=tstamp_s.ap;;
+	riscli)		Timestamp=tstamp_s.cl;;
+	riscom)		Timestamp=tstamp_s.co;;
+	rissrv)		Timestamp=tstamp_s.sr;;
+	ristools)	Timestamp=tstamp_s.to;;
+	risutl)		Timestamp=tstamp_s.ut;;
+esac
+
+cd $RISDEVDIR/$Project
+if [ $? != 0 ]
+then
+	echo "Unable to cd to $RISDEVDIR/$Project."
+	return
+fi
+
+ListFile=/usr/tmp/list$$
+
+getfiles -s build/spc.skp -n $Timestamp > $ListFile
+sts=$?
+if [ $sts != 0 ]
+then
+	echo "mergespc: getfiles returned $sts"
+	return
+fi
+
+if [ ! -s $ListFile ]
+then
+	echo "All files are up to date."
+	return
+fi
+
+SpcFile=/usr/tmp/spc$$
+
+genspc $Mode -p $Project -w $WorkingSet -d $TempDir < $ListFile > $SpcFile
+sts=$?
+if [ $sts != 0 ]
+then
+	echo "mergespc: genspc returned $sts"
+	return
+fi
+
+/usr/bin/spc -q < $SpcFile
+
+if [ "$Mode" = "-f" ]
+then
+	cmpdir -m $ListFile -i $TempDir $RISDEVDIR/$Project
+fi
+
+if [ "$Mode" = "-r" ]
+then
+	CmpFile=/usr/tmp/cmp$$
+	TmpFile=/usr/tmp/tmp$$
+	cmpdir -m $ListFile -i -o $CmpFile $TempDir $RISDEVDIR/$Project
+
+	#
+	#	Identical files -- unreserve them
+	#
+	rm -f $TmpFile 2>/dev/null
+	if [ -s $CmpFile.5 ]	# file identical version identical
+	then
+		echo  
+		echo "The following files are indentical (with identical versions)."
+		echo "They will be automatically unreserved:"
+		cat $CmpFile.5
+		cat $CmpFile.5 >> $TmpFile
+	fi
+	if [ -s $CmpFile.6 ]	# file identical version unknown
+	then
+		echo  
+		echo "The following files are indentical (with unknown versions)."
+		echo "They will be automatically unreserved:"
+		cat $CmpFile.6
+		cat $CmpFile.6 >> $TmpFile
+	fi
+	if [ -s $TmpFile ]
+	then
+		echo
+		genspc -u -p $Project -w $WorkingSet < $TmpFile > $SpcFile
+		sts=$?
+		if [ $sts != 0 ]
+		then
+			echo "mergespc: genspc returned $sts"
+			return
+		fi
+
+		/usr/bin/spc -q < $SpcFile
+	fi
+
+	#
+	#	Different files
+	#
+	if [ -s $CmpFile.3 ]	# file different, version identical
+	then
+		echo
+		echo "The following files are different but are the same SPC version."
+		echo "They will be replaced in SPC automatically:"
+		cat $CmpFile.3
+		echo
+
+		genspc -m -p $Project -w $WorkingSet -d $RISDEVDIR/$Project < $CmpFile.3 > $SpcFile
+		sts=$?
+		if [ $sts != 0 ]
+		then
+			echo "mergespc: genspc returned $sts"
+			return
+		fi
+
+		/usr/bin/spc -q < $SpcFile
+	fi
+
+	if [ -s $CmpFile.2 ]	# files different, version different
+	then
+		echo "The following files are different and are different SPC versions."
+		echo "This means someone else has also made changes to these files."
+		echo "You must merge these files and replace them in SPC."
+		cat $CmpFile.2
+	fi
+
+	if [ -s $CmpFile.4 ]	#file different, version unknown
+	then
+		echo "The following files are different and the SPC version could not be determined."
+		echo "This means someone else may have made changes to these files."
+		echo "You must merge these files and replace them in SPC."
+		cat $CmpFile.4
+	fi
+
+	if [ -s $CmpFile.0 ]	# dir 1 only
+	then
+		echo
+		echo Files in $TempDir only
+		cat $CmpFile.0
+		echo
+	fi
+
+	if [ -s $CmpFile.1 ]	# dir 2 only
+	then
+		echo
+		echo Files in $RISDEVDIR/$Project only
+		cat $CmpFile.1
+		echo
+	fi
+fi
+
+rm -f $ListFile 2>/dev/null
+rm -f $SpcFile 2>/dev/null
+rm -f $CmpFile.[0123456] 2>/dev/null
+rm -f $TmpFile 2>/dev/null

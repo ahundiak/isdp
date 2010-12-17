@@ -1,0 +1,598 @@
+/*
+**	NAME:			upgbldsc.rc
+**	AUTHORS:		Bhaskar R. Sayyaparaju
+**	CREATION DATE:		Mar 17, 1994
+**	ABSTRACT:
+**		It contains a function which constructs a schema definition.
+**	
+**	REVISION HISTORY:
+**		10/24/04 -Radha
+**			Added changes for MSSQL data server.
+*/
+ 
+/*
+**	DEFINES
+*/
+
+
+/*
+**	INCLUDES
+*/
+#ifdef UPGRADE_GLOBAL_DEFINE
+#undef UPGRADE_GLOBAL_DEFINE
+#endif
+#include "riscom.h"
+
+#ifdef MKMK_KLUDGE
+#include "upgrade.h"
+#endif
+
+#if defined(unix)
+#include <sys/stat.h>
+#endif
+#ifdef WIN32
+#include <windows.h>
+#endif
+exec sql include "upgrade.h";
+
+#include "risupger.h"
+/*
+**	VARIABLES
+*/
+
+/*
+**	FUNCTIONS
+*/
+
+/*
+**      FUNCTION PROTOTYPES
+*/
+#define upgbldsc_rc
+#include "upgbldsc.prt"
+#include "sys.prt"
+#include "comjmp.prt"
+#include "compd.prt"
+#include "comdebug.prt"
+#include "comwrap.prt"
+#include "comumsg.prt"
+#include "ris.prt"
+#include "upgmisc.prt"
+
+static char sch_stmt_buf[UPG_CREATE_SCHEMA_SIZE];
+
+extern void RISupg_build_sch_stmt(
+	char	*sch_name,
+	char	*sch_name_pwd,
+	ris_schema_info	*schinfo,
+	ris_db_info		*dbinfo,
+	char	**sch_def_stmt)
+{
+	int				i;
+	ris_schema_info	*schema_info;
+	ris_db_info		*db_info;
+	FILE			*cre_sch_fp;
+	char 			cre_sch_filename[RIS_MAX_PATH_SIZE]="";
+	char 			tmp_filename[RIS_MAX_PATH_SIZE]="";
+
+	UPG_DBG(("RISupg_build_sch_stmt(sch_name <%s> sch_name_pwd <%s> *sch_def_stmt 0x%x)\n",sch_name, sch_name_pwd,*sch_def_stmt));
+
+#ifdef DEBUG
+	printf("RISupg_build_sch_stmt(sch_name <%s> sch_name_pwd <%s> *sch_def_stmt 0x%x)\n",sch_name, sch_name_pwd,*sch_def_stmt);
+#endif
+    strcpy(cre_sch_filename,RIS_dir);
+	strcpy(tmp_filename,sch_name);
+#if defined (WIN32)
+    strcat(cre_sch_filename,"\\");
+	if (strlen(tmp_filename) > 8)
+		tmp_filename[8]='\0';
+#else
+    strcat(cre_sch_filename,"/");
+	if (strlen(tmp_filename) > 10)
+		tmp_filename[10]='\0';
+#endif
+    strcat(cre_sch_filename,tmp_filename);
+    strcat(cre_sch_filename,".cre");
+	sch_stmt_buf[0] = '\0';
+	*sch_def_stmt = sch_stmt_buf;
+
+	printf(MSG(RIS_I_UPG_GETTING_SCHEMA_INFO),sch_name);
+	schema_info = schinfo;
+	db_info = dbinfo;
+
+	if(!schema_info || !db_info)
+	{
+		UPG_DBG(("2. RISupg_build_n_exec_sch_stmt: end\n"));
+		/*
+		**	Or UPG_LONGJMP
+		*/
+		RISupg_report_error(RISupg_INTERNAL_ERROR);
+		LONGJMP(RISupg_INTERNAL_ERROR);
+	}
+
+	UPG_DBG(("\tsch_name = <%s>\n", schema_info->schname));
+	UPG_DBG(("\tusr = <%s>\n", schema_info->schowner));
+	UPG_DBG(("\tpasswd = <%s>\n", schema_info->schownpass));
+	UPG_DBG(("\tdb->dbid = %d\n", db_info->dbid));
+	UPG_DBG(("\tdb->dtype = <%c>\n", db_info->dtype));
+	UPG_DBG(("\tdb->dbname = <%s>\n", db_info->dbname));
+	for (i = 0; 
+			(i < RIS_MAX_NODE_SIZE) &&
+				((db_info->pathways + i)->protocol != '\0') && 
+				(*(db_info->pathways + i)->netaddr != '\0');
+					i++)
+	{
+		UPG_DBG(("\tprotocol = <%c>, netaddr[%d] = <%s>\n",
+				(db_info->pathways + i)->protocol, 
+				i, 
+				(db_info->pathways + i)->netaddr));
+	}
+
+	RISupg_build_sch_clause(sch_name_pwd);
+
+	/*
+	**	Also has left paren
+	*/
+	if (db_info->dtype == 'R')
+		exec sql set database enable all;
+	else
+		exec sql set database enable only informix,ingres,mssql,sybase,oracle,db2 ;
+	RISupg_build_dbtype_clause(db_info->dtype);
+
+	RISupg_build_dbname_clause(db_info->dbname);
+
+	RISupg_build_osuser_clause(db_info);
+
+	RISupg_build_dir_clause(db_info);
+
+	RISupg_build_ostype_clause(db_info->ostype);
+
+	RISupg_build_remote_clause(db_info);
+
+	RISupg_build_gateway_clause(db_info);
+	/*
+	**	Also has right paren
+	*/
+	RISupg_build_option_clause(db_info);
+
+	RISupg_build_user_clause(schema_info->schowner, schema_info->schownpass);
+
+	UPG_DBG(("Create Schema file name: %s\n",cre_sch_filename));
+	cre_sch_fp = RIScom_fopen(cre_sch_filename,"w");
+	if (!cre_sch_fp)
+	{
+		printf(MSG(RIS_E_UPG_CANT_WRITE_CRSCH_STMT));
+		printf(MSG(RIS_E_UPG_STOP_PROCESS_SCHEMA));
+		UPG_DBG(("Stopped processing this schema.\n"));
+		UPG_DBG(("3. RISupg_build_n_exec_sch_stmt: end\n"));
+		LONGJMP(RISupg_CANT_CREATE_CRESCH_FILE);
+		return;
+	}
+	RISupg_fputs(sch_stmt_buf,cre_sch_fp);
+	RIScom_fclose(cre_sch_fp);
+	UPG_DBG(("3. RISupg_build_n_exec_sch_stmt: end\n"));
+}
+
+
+/******************************************************************************/
+
+static void RISupg_build_sch_clause(
+	char	*sch_name_pwd)
+{
+
+	UPG_DBG(("RISupg_build_sch_clause: sch_name_pwd 0x%x \n", sch_name_pwd));
+#ifdef DEBUG
+	printf("RISupg_build_sch_clause: sch_name_pwd %s \n", sch_name_pwd);
+#endif
+
+	sprintf(sch_stmt_buf, "create schema %s on database", sch_name_pwd);
+
+#ifdef DEBUG
+	printf("After RISupg_build_sch_clause: sch_name_pwd %s \n", sch_name_pwd);
+#endif
+	UPG_DBG(("RISupg_build_sch_clause: sch_name_pwd 0x%x \n", sch_name_pwd));
+	UPG_DBG(("1. RISupg_build_sch_clause: end\n"));
+}
+
+
+/******************************************************************************/
+
+static void RISupg_build_dbtype_clause(
+	unsigned char	db_type)
+{
+
+	UPG_DBG(("RISupg_build_dbtype_clause: db_type = <%c> \n", db_type));
+
+	switch(db_type)
+	{
+		case 'X':
+			strcat(sch_stmt_buf," (informix");
+		break;
+		case 'O':
+			strcat(sch_stmt_buf," (oracle"); 
+		break;
+		case 'I':
+			strcat(sch_stmt_buf," (ingres"); 
+		break;
+		case 'D':
+			strcat(sch_stmt_buf," (db2"); 
+		break;
+		case 'R':
+			strcat(sch_stmt_buf," (rdb");
+		break;
+		case 'Y':
+			strcat(sch_stmt_buf," (sybase");
+		break;
+		case 'M':
+			strcat(sch_stmt_buf," (mssql");
+		break;
+		default:
+			RISupg_report_error(RISupg_INTERNAL_ERROR);
+			UPG_LONGJMP(RISupg_INTERNAL_ERROR);
+		break;
+	}
+	UPG_DBG(("1. RISupg_build_dbtype_clause: end\n"));
+}
+
+
+/******************************************************************************/
+
+extern void RISupg_build_ostype_clause(
+		unsigned char os_type)
+{
+	UPG_DBG(("RISupg_build_ostype_clause: os_type = <%c> \n", os_type));
+
+	switch (os_type)
+	{
+		case 'N':
+				strcat(sch_stmt_buf,", ostype nt");
+				break;
+		case 'U':
+				strcat(sch_stmt_buf,", ostype unix");
+				break;
+		case 'V':
+				strcat(sch_stmt_buf,", ostype vms");
+				break;
+		default	:
+				RISupg_report_error(RISupg_INTERNAL_ERROR);
+				UPG_LONGJMP(RISupg_INTERNAL_ERROR);
+				break;
+	}
+	UPG_DBG(("1. RISupg_build_ostype_clause: end\n"));
+}
+
+/******************************************************************************/
+
+static void RISupg_build_osuser_clause(
+    ris_db_info *db)
+{
+    char        *osuser = NULL;
+    char        *ospass = NULL;
+	char		dec_passwd[RIS_MAX_ID_SIZE] = "";
+
+    UPG_DBG(("RISupg_build_osuser_clause: db <0x%x> \n", db));
+
+    switch (db->dtype)
+    {
+        case 'X':
+        case 'I':
+        case 'R':
+            osuser = "";
+        break;
+        case 'Y':
+            osuser = db->info.syb.osuser;
+            ospass = db->info.syb.ospass;
+        break;
+        case 'M':
+            osuser = db->info.mssql.osuser;
+            ospass = db->info.mssql.ospass;
+        break;
+        case 'D':
+            osuser = db->info.db2.osuser;
+            ospass = db->info.db2.ospass;
+        break;
+        case 'O':
+            osuser = db->info.ora.osuser;
+            ospass = db->info.ora.ospass;
+        break;
+        default:
+			RISupg_report_error(RISupg_INTERNAL_ERROR);
+			UPG_LONGJMP(RISupg_INTERNAL_ERROR);
+        	break;
+    }
+
+    if (*osuser != '\0')
+    {
+        if( *ospass == '\0' )
+        {
+            sprintf(sch_stmt_buf+strlen(sch_stmt_buf), ", osuser %s ", 
+                         osuser); 
+        }
+        else
+        {
+			RIScom_depd(ospass,(char *)dec_passwd);
+			sprintf(sch_stmt_buf+strlen(sch_stmt_buf), ", osuser %s.%s\n", 
+                           osuser,dec_passwd);
+        }
+    }
+	UPG_DBG(("1. RISupg_build_osuser_clause: end\n"));
+}
+
+/******************************************************************************/
+
+static void RISupg_build_dbname_clause(
+	char			*db_name)
+{
+
+	UPG_DBG(("RISupg_build_dbname_clause: db_name <%s> \n", db_name));
+
+	if (*db_name != '\0') 
+	{
+		sprintf(sch_stmt_buf+strlen(sch_stmt_buf), ", dbname %s", db_name);
+	}
+		
+	UPG_DBG(("1. RISupg_build_dbname_clause: end\n"));
+}
+
+
+/******************************************************************************/
+
+static void RISupg_build_dir_clause(
+	ris_db_info	*db)
+{
+	char		*parms = NULL;
+
+	UPG_DBG(("RISupg_build_dir_clause: db <0x%x> \n", db));
+	
+	switch (db->dtype)
+	{
+		case 'D':
+		case 'R':
+		break;
+		case 'Y':
+			parms = db->info.syb.dir; 
+		break;
+		case 'M':
+			parms = db->info.mssql.dir; 
+		break;
+		case 'X':
+/*
+**	Added functionality to add /usr/informix if there is no dir entry
+**	in the schema file. Fix for TR# 249406017.
+*/
+			if(!db->info.ifx.dir[0])
+				strcpy(db->info.ifx.dir,"/usr/informix");
+			parms = db->info.ifx.dir;
+		break;
+		case 'I':
+			parms = db->info.igs.dir;
+		break;
+		case 'O':
+			parms = db->info.ora.dir;
+		break;
+		default:
+			RISupg_report_error(RISupg_INTERNAL_ERROR);
+			UPG_LONGJMP(RISupg_INTERNAL_ERROR);
+		break;
+	}
+
+	if ((db->dtype != 'D') && (db->dtype != 'R'))
+    	{
+	   if (parms != '\0') 
+    	   {
+           sprintf(sch_stmt_buf+strlen(sch_stmt_buf), ", dir %s", parms);
+    	   }
+	}
+	UPG_DBG(("1. RISupg_build_dir_clause: end\n"));
+}
+
+
+/******************************************************************************/
+
+static void RISupg_build_remote_clause(
+	ris_db_info	*db)
+{
+
+	short int	num_protocol;
+	int	sun_flag=0;
+
+	UPG_DBG(("RISupg_build_remote_clause: db 0x%x \n", db));
+
+	for (num_protocol = 0; 
+				(num_protocol < RIS_MAX_PROTOCOLS) &&
+				(((db->pathways) + num_protocol)->protocol != '\0') &&
+		   		(*(((db->pathways) + num_protocol)->netaddr) != '\0');
+						num_protocol++)
+	{
+		if (!num_protocol)
+		{
+			strcat(sch_stmt_buf,", remote (");
+		}
+		else
+		{
+			if (!sun_flag)
+			{
+				strcat(sch_stmt_buf,", ");
+			}
+		}
+
+		UPG_DBG(("\tprotocol = <%c>\n", ((db->pathways) + num_protocol)->protocol));
+		UPG_DBG(("\tnode = <%s>\n", ((db->pathways) + num_protocol)->netaddr));
+
+#if defined(clipper) || defined(__clipper__)
+		if (((db->pathways) + num_protocol)->protocol == 'X')
+		{
+			sprintf(sch_stmt_buf+strlen(sch_stmt_buf), "xns %s",
+					((db->pathways) + num_protocol)->netaddr);
+		}
+		else if (((db->pathways) + num_protocol)->protocol == 'T')
+		{
+			sprintf(sch_stmt_buf+strlen(sch_stmt_buf), "tcp %s",
+					((db->pathways) + num_protocol)->netaddr);
+		}
+		else if (((db->pathways) + num_protocol)->protocol == 'D')
+		{
+			sprintf(sch_stmt_buf+strlen(sch_stmt_buf), "dnp %s",
+					((db->pathways) + num_protocol)->netaddr);
+		}
+#elif defined(unix) || defined (WIN32)
+		if (((db->pathways) + num_protocol)->protocol == 'T')
+		{
+			sprintf(sch_stmt_buf+strlen(sch_stmt_buf), "tcp %s",
+					((db->pathways) + num_protocol)->netaddr);
+		}
+		sun_flag = 1;
+#endif
+	}
+	strcat(sch_stmt_buf,")") ;
+	UPG_DBG(("1. RISupg_build_remote_clause: end\n"));
+}
+
+
+/******************************************************************************/
+
+static void RISupg_build_gateway_clause(
+	ris_db_info 	*db)
+{
+	int	 len = 0;
+	char gateways[UPG_CHUNK_SIZE];
+
+	UPG_DBG(("RISupg_build_gateway_clause: db <0x%x \n",db));
+	gateways[0] = '\0';
+
+	switch (db->dtype)
+	{
+		case 'D':
+			if( db->info.db2.arch[0] )
+				len += sprintf(gateways+len,"arch=%s,",db->info.db2.arch);
+			if( db->info.db2.os[0] )
+				len += sprintf(gateways+len,"os=%s,",db->info.db2.os);
+			if( db->info.db2.env[0] )
+				len += sprintf(gateways+len,"env=%s,",db->info.db2.env);
+			if( db->info.db2.host_program[0] )
+				len += sprintf(gateways+len,"host_program=%s,",db->info.db2.host_program);
+			if( db->info.db2.net_protocol[0] )
+				len += sprintf(gateways+len,"net_protocol=%s,",db->info.db2.net_protocol);
+			if( db->info.db2.ris_lu[0] )
+				len += sprintf(gateways+len,"ris_lu=%s,",db->info.db2.ris_lu);
+			if( db->info.db2.host_lu[0] )
+				len += sprintf(gateways+len,"host_lu=%s,",db->info.db2.host_lu);
+			if( db->info.db2.mode[0] )
+				len += sprintf(gateways+len,"mode=%s,",db->info.db2.mode);
+		break;
+		case 'R':
+		case 'Y':
+		case 'M':
+		case 'X':
+		case 'I':
+		case 'O':
+		break;
+		default:
+			RISupg_report_error(RISupg_INTERNAL_ERROR);
+			UPG_LONGJMP(RISupg_INTERNAL_ERROR);
+		break;
+	}
+
+	if (*gateways != '\0')
+    {
+		/*
+		** rm trailing comma
+		*/
+		gateways[strlen(gateways)-1] = '\0';
+        sprintf(sch_stmt_buf+strlen(sch_stmt_buf), ", gateway(%s)", gateways);
+    }
+
+	UPG_DBG(("1. RISupg_build_gateway_clause: end\n"));
+}
+
+
+/******************************************************************************/
+
+static void RISupg_build_option_clause(
+	ris_db_info 	*db)
+{
+	int	 len = 0;
+	char options[UPG_CHUNK_SIZE];
+
+	UPG_DBG(("RISupg_build_option_clause: db 0x%x \n",db));
+	options[0] = '\0';
+
+	switch (db->dtype)
+	{
+		case 'D':
+		break;
+		case 'R':
+		break;
+		case 'Y':
+			/*
+			** Added dsquery and sybifile to the option cluase in the create
+			** schema statment. Fixes TR# 249405952
+			*/
+			if( db->info.syb.dsquery[0] )
+				len += sprintf(options+len,"dsquery=%s,",db->info.syb.dsquery);
+			if( db->info.syb.sybifile[0] )
+				len += sprintf(options+len,"filename=%s,",db->info.syb.sybifile);
+		break;
+		case 'M':
+			if( db->info.mssql.dsquery[0] )
+				len += sprintf(options+len,"dsquery=%s,",db->info.mssql.dsquery);
+			if( db->info.mssql.mssqlifile[0] )
+				len += sprintf(options+len,"filename=%s,",db->info.mssql.mssqlifile);
+		break;
+		case 'X':
+			if( db->info.ifx.sqlexec[0] )
+				len += sprintf(options+len,"sqlexec=%s,",db->info.ifx.sqlexec);
+			if( db->info.ifx.dbtemp[0] )
+				len += sprintf(options+len,"dbtemp=%s,",db->info.ifx.dbtemp);
+			if( db->info.ifx.tbconfig[0] )
+				len += sprintf(options+len,"tbconfig=%s,",db->info.ifx.tbconfig);
+		break;
+		case 'I':
+		break;
+		case 'O':
+		break;
+		default:
+			RISupg_report_error(RISupg_INTERNAL_ERROR);
+			UPG_LONGJMP(RISupg_INTERNAL_ERROR);
+		break;
+	}
+
+	if (*options != '\0')
+    {
+		/*
+		** rm trailing comma
+		*/
+		options[strlen(options)-1] = '\0';
+        sprintf(sch_stmt_buf+strlen(sch_stmt_buf), ", option(%s)", options);
+    }
+    strcat(sch_stmt_buf, ")");
+
+	UPG_DBG(("1. RISupg_build_option_clause: end\n"));
+}
+
+
+/******************************************************************************/
+
+static void RISupg_build_user_clause(
+	char	*user_name,
+	char	*encrypted_user_pwd)
+{
+	char	decrypted_user_pwd[RIS_MAX_ID_SIZE];
+
+	UPG_DBG(("RISupg_build_user_clause: user_name <%s> encrypted_user_pwd <%s> \n",
+				user_name, encrypted_user_pwd));
+
+	if (encrypted_user_pwd[0] == '\0')
+	{
+		sprintf(sch_stmt_buf+strlen(sch_stmt_buf), " user %s exclude force\n"
+						, user_name);
+	}
+	else
+	{
+		RIScom_depd(encrypted_user_pwd,decrypted_user_pwd);
+		sprintf(sch_stmt_buf+strlen(sch_stmt_buf), " user %s.%s exclude force \n", user_name,decrypted_user_pwd);
+	}
+
+	UPG_DBG(("1. RISupg_build_user_clause: end\n"));
+}
+
+/******************************************************************************/
