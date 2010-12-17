@@ -1,0 +1,857 @@
+/****************************************************************************
+
+Name
+   pdmoCheckinPart
+
+Abstract
+   Checks in a list of parts. The files of the parts are moved and the database
+is updated.
+
+Description
+
+This function checks in the part and it's associated files. It updates the
+current structure of the part to the database, if it's an assembly. It
+updates the placement specific attribution and dynamic attribution of the
+1st level parts. It defines the newly placed parametric sub-assemblies.
+It updates the files of the part that is checked in into the storage area.
+The saved views of the part that are checked in are updated. It also does
+the filemanagement of the children. Macro library management is done
+for the assembly and it's associated 1st level parts. Versioning of the
+files is done, if requested. View parts are defined, if they aren't defined
+in the database yet.
+
+
+Function protocol
+
+long pdmoCheckinPart
+(
+cpr_n_catalogname,
+cpr_n_itemname,
+cpr_n_itemrev,
+cpr_filename,
+car_st_update_flag
+)
+
+   Input/Output:
+
+     {
+
+  Input:
+
+char *cpr_n_catalogname - Catalog of the part to be checked in.         - Input
+required
+char *cpr_n_itemname    - Partnum of the part to be checked in.         - Input
+required
+char *cpr_n_itemrev     - Revision of the part to be checked in.        - Input
+required
+char *cpr_filename      - Local filename of the part from which         - Input
+optional
+                          the assembly structure is to be read, if the
+                          part is an assembly and has multiple files.
+                          If this input is null, the only or the first
+                          EMS file will be taken for checkin. 
+char  car_st_update_flag[2] - Flag to indicate whether to update         -
+Input optional
+                          the product structure or not. Setting this
+                          flag to "N", 'n', disables product
+                          structure update, and only file management will
+                          be done. By setting this flag to 'N', you don't
+                          need have EMS loaded in the workstation for checkin.
+  return status 
+
+      status of the checkin operation of this part.   -
+     }
+
+     
+
+Input Constraints:
+  cpr_n_catalogname:    required
+                        16 characters or less
+                        must already exist
+
+  cpr_n_itemname:       required
+                        ! * ? , : invalid characters
+                        must not exceed the number of characters specified
+                        at catalog creation time
+
+  cpr_n_itemrev:        required
+                        ! * ? , : invalid characters
+                        must not exceed the number of characters specified
+                        at catalog creation time
+  cpr_filename          optional
+  car_st_update_flag    optional - Y,y,N,n, NULL STRING
+
+  
+
+
+
+Algorithm:
+
+{*HIDE .!}
+-BEGIN
+
+- Check whether the user has logged in.
+Initialize PDU_dyn_index = 1.
+Query for the part info and load it in the refresh.
+Get Catalog nos and Load it in PDMpart.n_catalogno SUCCESS?
+      (Yes)
+      (No) return error!
+   ?end
+Get Part Info and Load it in PDMpart SUCCESS?
+      (Yes)
+      (No) return error!
+   ?end
+Is PDMpart.n_cisano < 0 ?
+      (Yes) return PDM_E_NO_STO_LOC!
+      (No)
+   ?end
+Is PDMpart.n_status = 'I" ?
+      (Yes) return PDM_E_PART_CHECKIN!
+      (No)
+   ?end
+Is PDMpart.n_status = 'TI" ?
+      (Yes) return PDM_I_ON_TRANSFER!
+      (No)
+   ?end
+Is PDMpart.n_status = 'TO" ?
+      (Yes) return PDM_I_ON_TRANSFER!
+      (No)
+   ?end
+Is PDMpart.n_status = 'O" or 'S'?
+      (Yes) Get the new files which got added after checkout - SUCCESS?
+            (Yes)
+            (No)  print no files got added!
+           ?end
+      (No)
+   ?end
+Is PDMpart.p_parttype = 'N' or 'n' ?
+      (Yes) return PDM_E_PART_NONGRAPHIC!
+      (No)
+   ?end
+Is PDMpart.p_parttype = 'P' or 'p' ?
+      (Yes) return PDM_E_CAN_NOT_CHECKIN_PARAMETRIC_PART!
+      (No)
+   ?end
+Is PDMpart.n_arichivestate = 'N' or 'n' ?
+      (Yes) return PDM_E_PART_ARHCIVED!
+      (No)
+   ?end
+Is PDMpart.n_itemlock = 'N' or 'n' ?
+      (Yes) return PDM_E_ITEM_LOCKED!
+      (No)
+   ?end
+Is PDMpart.n_pendingflag = 'IA' or 'SA' ?
+      (Yes) return PDM_E_PART_FLAGGED_FOR_ARCHIVE!
+      (No)
+?end
+Is PDMpart.n_pendingflag = 'IA' or 'SA' ?
+      (Yes) return PDM_E_PART_FLAGGED_FOR_ARCHIVE!
+      (No)
+   ?end
+Is PDMpart.n_pendingflag = 'IB' or 'SB' ?
+      (Yes) return PDM_E_PART_FLAGGED_FOR_BACKUP!
+      (No)
+   ?end
+Is PDMpart.n_pendingflag = 'ID' or 'SD' ?
+      (Yes) return PDM_E_PART_FLAGGED_FOR_DELETE!
+      (No)
+   ?end
+Is PDMpart.n_pendingflag = 'IR' or 'SR' ?
+      (Yes) return PDM_E_PART_FLAGGED_FOR_RESTORE!
+      (No)
+   ?end
+ Validate User access on "PDMCheck In Part"?
+ (Access given)
+ (Access denied) return PDM_E_VALIDATE_USER_ACCESS!
+?end
+Check to see if the part is checked out. PDUget_file_status?
+  (O,S,NULL)
+  (ANY THING ELSE) return PDM_E_NOTCHECK_OUT!
+?end
+Call PDMget_filenames to get the list of filenames?
+ (No files found) return PDM_I_NO_FILES_FOUND!
+ (Files found)
+?end
+Call gr$get_module_env.
+Verify that all the files in the file bufr exists locally?
+ (Yes)
+ (No) return PDM_E_FILE_NOT_FOUND!
+?end
+If it's a macro library?
+ (Yes)
+ (No) Checking in a macro library!
+?end
+Do this if the part has multiple files .
+ Do this for the files which are EMS and user says that this is not
+ going to be a structure definition file.
+ Check to see if it's a OM file by calling ex$is_om_file?
+ (Yes)
+ (No) Skip this file
+ ?end
+ If it's a OM file construct a file mount name.
+ Get the osnum of invis Object space.
+ Call ex$retrieve_module - Success?
+ (Yes)
+ (No) skip that file!
+  ?end
+  Open the object space invisbly, call ex$get_invis_info_by_index -SUCCESS?
+ (Yes)
+ (NO) skip that file!
+ ?end
+ Check to see if file is a PDU file by calling PDUis_PDU_file- SUCCESS?
+ (Yes)
+ (No) PDUremove_PDU_design_file_stamp
+  ?end
+ Close and save object space by calling ex$close_module.
+Check the entry in the variable car_filename. If it's null, take the
+first OM file. Otherwise use the filename given by the user.
+Construct the osnum of invis space by calling ex$retrieve_module - Success?
+(Yes)
+(No)  return PDM_E_OPEN_FILE
+?end
+Open the object space of the assembly by calling ex$get_invis_info_by_index
+-SUCCESS?
+(Yes)
+ (No) return PDM_E_OPEN_FILE!
+?end
+ If spr_mod_env not NULL, get current module environment.
+
+  Stamp PDU design file with PDU_DESIGN_FILE.
+    PDUstamp_design_file(*spr_mod_env);
+
+  Check to see if parametric parts exist.
+    PDUget_all_parametric_ids(osnum, &parametric_ids, &count).
+
+  If count is greater than 0
+
+    Free parametric_ids.
+
+    Load list of parametric catalogs.
+      PDUprepare_param_cats_list(spr_mod_env, &PDU_param_cat_list). If not
+      successful (status != PDM_S_SUCCESS), return PDM_E_COMPLETE_PART_CHECKIN.
+      This function will query only the catalogs of parametric parts
+      which are placed after checkout. There is no need to manage the
+      macro libraries of the nth level children.
+
+    Load parametric checkin information.
+      status = PALchekin(spr_mod_env). If not successful
+      (status != PDM_S_SUCCESS), return PDM_E_COMPLETE_PART_CHECKIN.
+
+
+  Extract part pointer information.
+    status = PDUload_child_buffer(&PDU_child_buffer, spr_mod_env). If not
+    successful (status != PDM_S_SUCCESS), return PDM_E_COMPLETE_CHECKIN.
+    {
+    Check to see if part exists in obj space?
+     (Yes)
+     (No) return PDM_S_SUCCES!
+    Extract all PDU GRparts from object space.
+    Intialize the part ids list.
+    Intialize the total count.
+    Check if need to get active design module info.
+    If osnum = 0 , get active module info by calling ex$get_cur_mod.
+    Check to see if parts directory exists, by calling di$give_pathname, and
+di$ls.
+    If count <=0 then return PDM_S_SUCCESS.
+    Extract part types from object space by calling di$find - SUCCESS?
+    (Yes)
+    (No)  return status!
+    ?end
+    If  part count < 0, then say no parts found in object space, return
+PDM_S_SUCCESS.
+    Get the class id of the GRpart.
+    Loop thru part types extracting part ids.
+    Calling di$dump.
+    Add part ids to part ids list.
+    Load the variable "total_count".
+    If count == 0 return PDM_S_SUCCESS.
+    If child_buffer is not fromatted, format it.
+    Construct path tofile directory by calling di$give_pathname.
+    Loop thru extracting part checkin info, write info to child buffer.
+    Extract p_childno by calling co$part_get_attr.
+    Extract p_catalogname  by calling co$part_get_attr.
+    Extract n_itemname  by calling co$part_get_attr.
+    Extract n_itemrev  by calling co$part_get_attr.
+    Extract p_quantity  by calling co$part_get_attr.
+    Extract p_usageid  by calling co$part_get_attr.
+    Extract p_tagno  by calling co$part_get_attr.
+    Extract p_alttagno  by calling co$part_get_attr.
+    Extract p_incbom  by calling co$part_get_attr.
+    Extract p_incstr  by calling co$part_get_attr.
+    Extract p_history  by calling co$part_get_attr.
+    Extarct catalogno from expressions by calling PDUevaluate_exp.
+    Extract filename from expressions by calling PDIevaluate_exp.
+    Write this information into the child buffer.
+
+  Extract part attachment information.
+    status = PDUload_attach_buffer(&PDU_attach_buffer, *spr_mod_env). If not
+    successful (status != PDM_S_SUCCESS), return PDM_E_COMPLETE_CHECKIN.
+    Contstruct path to object space file.
+    Construct path to the assembly structure.
+    Build a list of attached parts of all levels by calling di$find.
+    Create and format the attached buffer.
+    For all the parts
+     Strip the directory entry in the parts list
+     Extract the catalogno and itemno from obj space by calling PDUevalu-
+ate_exp.
+      Load the attach buffer.
+
+  Load dynamic attributes and values.
+    status = PDUload_dynamic_attrs(spr_mod_env, &PDU_dyn_attr_bufr,
+                                   &PDU_dyn_data_bufr). If not successful
+    (status != PDM_S_SUCCESS), return PDM_E_COMPLETE_PART_CHECKIN. Note:
+    This function needs to be modified so as not to query the dynamic
+attributes
+    from the db for non-parametric parts.
+    Get all the GRpart_ids by calling PDUget_all_GRpart_ids.
+    Get all the parametric part ids by calling PDUget_all_parametric_ids.
+    Process all parametric parts by calling PDUprocess_part_dyn_attrs.
+    Process all regular dynamic part attributes
+    Extract catalog name from the parts by calling get_parameter_values.
+    Check to see if part dyn attrs have already been processed.
+    Load dynamic attrs to data buffer.
+    Extract part child no by calling get_parameter_values.
+    Extract dyn attr values by calling get_parameter_values.
+    Extract part usage id by calling get_parameter_values.
+    Get the path to external dyn. attrs by calling di$give_pathname.
+    Append :PDU:macro_parts:parameter
+    Extract the value by calling PDUevaluate_exp.
+
+  Extract view information.
+    status = PDUload_view_info(spr_mod_env->md_id.objid,
+                               spr_mod_env->md_id.osnum, &PDU_view_buffer). If
+    not successful (status != PDM_S_SUCCESS and status !=
+    PDM_I_ORIGIN_NOT_FOUND), return (PDM_E_COMPLETE_PART_CHECKIN).
+    This is going to be done only if new views are defined.
+MEMbuild_array file_bufr, saved_views_buffer, child_bufr, attach_bufr -
+SUCCESS?
+      (Yes)
+      (No) return PDM_E_BUILD_ARRAY!
+   ?end
+MEMprint all the buffers.
+MEMopen and MEMwrite_format delete_list buffer which needs to sent back to PDU
+- SUCCESS?
+      (Yes)
+      (No) return NFM_E_MEM!
+   ?end
+Analyze child bufr and PDMpart.n_setindicator:
+(If child_bufr->rows = 0 and PDMpart.n_setindicator is 'Y' or 'y' - case1)
+     > CASE1
+(If child_bufr->rows = 0 and PDMpart.n_setindicator is 'n' or 'N' - case2)
+     > CASE2
+(If child_bufr->rows > 0 and PDMpart.n_setindicator is 'Y' or 'y' - case3)
+     > CASE3
+(If child_bufr->rows > 0 and PDMpart.n_setindicator is 'n' or 'N' - case4)
+     > CASE4
+If the parttype is not set set the p_parttype = 'G'?
+      (Yes)
+      (No) print out the debug information
+   ?end
+If the PDMpart.n_status is null:
+     (i.e Never checked in before)
+      then get the multiple files of the item to be deleted - SUCCESS?
+      (Yes) Add to the delete list to PDU
+      (No) print out the debug information
+       ?end
+      :end
+     (i.e Checked in before atleast once)
+       Add to the delete list to PDU.
+   :end
+Macro library management - Call PDMdelete_local_macros - SUCCESS?
+      (Yes)
+      (No) print the debug info
+   ?end
+Update the permission of the files that needs to be changed - Call _PDMup-
+date_permission_change_bufr -  SUCCESS?
+      (Yes)
+      (No) print the debug info
+   ?end
+Update p_incpartrpt to null.
+Return delete file list to PDU with successful status.
+
+-CASE1
+(If child_bufr->rows = 0 and PDMpart.n_setindicator is 'Y' or 'y' - case1)
+SET AUTOCOMMIT OFF?
+      (Yes)
+      (No)  return error!
+   ?end
+If the structure update flag is set to 'Y'?
+ (Yes) LOCK catalog attribute with a value for update. - SUCCESS?
+      (Yes)
+      (No) > return error!
+   ?end
+    If assembly indicator is set to "Y" ?
+      (Yes)
+          Drop all its first level children - SUCCESS?
+           (Yes)
+           (No) > WRAPUP
+            ?end
+      (No)
+   ?end
+  (No) Loop for 2 minutes.
+?end
+SET AUTOCOMMIT ON?
+      (Yes)
+      (No) > return error!
+   ?end
+Call NFMconvert_to_item to convert assembly to item - SUCCESS?
+      (Yes)
+      (No) > WRAPUP
+   ?end
+Check the view change flag and then Insert the saved views
+   information - SUCCESS?
+      (Yes)
+      (No) > WRAPUP
+   ?end
+Load NFMoperation struct.
+Create fmgr buffer - SUCCESS?
+      (Yes)
+      (No) > WRAPUP
+   ?end
+Check the local file manager and load the bufr for cleanup - SUCCESS?
+      (Yes)
+      (No) > WRAPUP
+   ?end
+Call NFMcheckin_item - SUCCESS?
+      (Yes)
+      (No) > WRAPUP
+   ?end
+SET AUTOCOMMIT OFF?
+      (Yes)
+      (No) > WRAPUP
+   ?end
+LOCK NFMSAFILES Loop for 2 minutes - SUCCESS?
+      (Yes)
+      (No) > WRAPUP
+   ?end
+Update the local file manager  - SUCCESS?
+      (Yes)
+      (No) > WRAPUP
+   ?end
+Check the fmgr buffer manager and load the delete file list  for cleanup to
+PDU- SUCCESS?
+      (Yes)
+      (No) > WRAPUP
+   ?end
+SET AUTOCOMMIT ON?
+      (Yes)
+      (No) > WRAPUP
+   ?end
+:end
+
+
+-CASE2
+
+(If child_bufr->rows = 0 and PDMpart.n_setindicator is 'n' or 'N' - case2)
+SET AUTOCOMMIT OFF?
+      (Yes)
+      (No) > return error!
+   ?end
+Insert the saved views information if the saved views flag is set- SUCCESS?
+      (Yes)
+      (No) > WRAPUP
+   ?end
+SET AUTOCOMMIT ON?
+      (Yes)
+      (No) > return error!
+   ?end
+Load NFMoperation struct.
+Create fmgr buffer - SUCCESS?
+      (Yes)
+      (No) > WRAPUP
+   ?end
+Check the local file manager and load the bufr for cleanup - SUCCESS?
+      (Yes)
+      (No) > WRAPUP
+   ?end
+Call NFMcheckin_item - SUCCESS?
+      (Yes)
+      (No) > WRAPUP
+   ?end
+SET AUTOCOMMIT OFF?
+      (Yes)
+      (No) > WRAPUP
+   ?end
+LOCK NFMSAFILES Loop for 2 minutes - SUCCESS?
+      (Yes)
+      (No) > WRAPUP
+   ?end
+Update the local file manager  - SUCCESS?
+      (Yes)
+      (No) > WRAPUP
+   ?end
+Check the fmgr buffer manager and load the delete file list  for cleanup to
+PDU- SUCCESS?
+      (Yes)
+      (No) > WRAPUP
+   ?end
+SET AUTOCOMMIT ON?
+      (Yes)
+      (No) > WRAPUP
+   ?end
+:end
+
+-CASE3
+(If child_bufr->rows > 0 and PDMpart.n_setindicator is 'Y' or 'y' - case3)
+SET AUTOCOMMIT OFF?
+      (Yes)
+      (No) > return error!
+   ?end
+If the update structure flag is set, then do the followin
+LOCK catalog table to update the structure flag update  - SUCCESS?
+  (Yes)
+      (Yes)
+      (No) > return error!
+   ?end
+Call to PDMupdate_set_members - SUCCESS?
+      (Yes)
+      (No) > WRAPUP
+   ?end
+Call to PDMXXinsert_citinfo - SUCCESS?
+      (Yes)
+      (No) > WRAPUP
+   ?end
+If, there are nthlevel parametric info Call to PDMdefine_parametric_assembly -
+SUCCESS?
+      (Yes)
+      (No) > WRAPUP
+   ?end
+ (No) return error!
+?end
+Insert the saved views information if the flag is set- SUCCESS?
+      (Yes)
+      (No) > WRAPUP
+   ?end
+SET AUTOCOMMIT ON?
+      (Yes)
+      (No) > WRAPUP
+   ?end
+Create fmgr buffer - SUCCESS?
+      (Yes)
+      (No) > WRAPUP
+   ?end
+Check the local file manager and load the bufr for cleanup - SUCCESS?
+      (Yes)
+      (No) > WRAPUP
+   ?end
+If, n_status is null, then set n_couser to the current username - SUCCESS?
+      (Yes)
+      (No) print out the debug information
+   ?end
+Set n_status = 'O' to enable item checkin - SUCCESS?
+      (Yes)
+      (No)  return PDM_E_SQL_STMT!
+   ?end
+Load NFMoperation struct - SUCCESS?
+      (Yes)
+      (No) > WRAPUP
+   ?end
+Call NFMcheckin_item - SUCCESS?
+      (Yes)
+      (No) > WRAPUP
+   ?end
+SET AUTOCOMMIT OFF?
+      (Yes)
+      (No) > WRAPUP
+   ?end
+LOCK NFMSAFILES Loop for 2 minutes - SUCCESS?
+      (Yes)
+      (No) > WRAPUP
+   ?end
+Update the local file manager  - SUCCESS?
+      (Yes)
+      (No) > WRAPUP
+   ?end
+Check the fmgr buffer manager and load the delete file list  for cleanup to
+PDU- SUCCESS?
+      (Yes)
+      (No) > WRAPUP
+   ?end
+SET AUTOCOMMIT ON?
+      (Yes)
+      (No) > WRAPUP
+   ?end
+:end
+
+-CASE4
+(If child_bufr->rows > 0 and PDMpart.n_setindicator is 'n' or 'N' - case4)
+
+Call to NFMconvert_to_set - SUCCESS?
+      (Yes)
+      (No) > WRAPUP
+   ?end
+SET AUTOCOMMIT OFF?
+      (Yes)
+      (No) > return error!
+   ?end
+If the update structure flag is set, then do the following.
+
+LOCK catalog table for the structure update flag  - SUCCESS?
+      (Yes)
+      (No) > return error!
+   ?end
+Call to PDMupdate_set_members - SUCCESS?
+      (Yes)
+      (No) > WRAPUP
+   ?end
+Call to PDMXXinsert_citinfo - SUCCESS?
+      (Yes)
+      (No) > WRAPUP
+   ?end
+If, there are nthlevel parametric info Call to PDMdefine_parametric_assembly -
+SUCCESS?
+      (Yes)
+      (No) > WRAPUP
+   ?end
+Insert the saved views information if the flag is set- SUCCESS?
+      (Yes)
+      (No) > WRAPUP
+   ?end
+SET AUTOCOMMIT ON?
+      (Yes)
+      (No) > WRAPUP
+   ?end
+Select and load the max level - default is 50.
+Update n_colevel = max level - SUCCESS?
+      (Yes)
+      (No) return PDM_E_SQL_STMT!
+   ?end
+Create fmgr buffer - SUCCESS?
+      (Yes)
+      (No) > WRAPUP
+   ?end
+Check the local file manager and load the bufr for cleanup - SUCCESS?
+      (Yes)
+      (No) > WRAPUP
+   ?end
+Load NFMoperation struct - SUCCESS?
+      (Yes)
+      (No) > WRAPUP
+   ?end
+Call NFMcheckin_item - SUCCESS?
+      (Yes)
+      (No) > WRAPUP
+   ?end
+SET AUTOCOMMIT OFF?
+      (Yes)
+      (No) > WRAPUP
+   ?end
+LOCK NFMSAFILES Loop for 2 minutes - SUCCESS?
+      (Yes)
+      (No) > WRAPUP
+   ?end
+Update the local file manager  - SUCCESS?
+      (Yes)
+      (No) > WRAPUP
+   ?end
+Check the fmgr buffer manager and load the delete file list  for cleanup to
+PDU- SUCCESS?
+      (Yes)
+      (No) > WRAPUP
+   ?end
+SET AUTOCOMMIT ON?
+      (Yes)
+      (No) > WRAPUP
+   ?end
+Set n_indicator = Y to make it as an assembly  - SUCCESS?
+      (Yes)
+      (No) > WRAPUP
+   ?end
+:end
+
+-WRAPUP
+ROLLBACK TRANSACTION.
+RETURN status!
+
+Intialize the gloabal variables PDU_child_buffer, PDU_attach_buffer,
+PDU_view_buffer,
+PDU_param_buffer, PDUchild_dyn_buffer, reformatted buffer.
+
+Free up the PDU_param_cat_list global variable.
+
+Reset the PDY_dyn_index =1.
+
+return status.
+   
+
+DEPENDENCIES
+
+1. If it's a EMS assembly file, there is a dependency of the
+   existence of /usrx/ip32/ems/bin/ems and
+    /usrx/ip32/pdu/ppl/bin/checkin.e
+2. It expects NFMdaemon to be running.
+3. It expects the NFMfileserver to be loaded in the client and
+   the storage area machine.
+4. It expects TCP/XNS to be loaded in the client and the
+   corresponding daemons running.
+5. Interprocess communication is done between the ppl and API based executable.
+
+
+Assumptions:
+  1. The part is checked out/Never checked in.
+  2. Parts are known to the database, except the view parts.
+  3. The user has the access to checkin the part.
+  4. The part is not flagged for delete, restore, backup, archive.
+  5. The part is backuped, or archived.
+  6. The part is not non-graphic or parametric.
+  7. The files of the part are all local.
+  8. The user is logged into the database.
+  
+
+Globals used.
+   ALL globals needed for Validate user access.
+   All globals needed for login.
+   All globals needed for debug.
+   PDU_child_buffer, PDU_attach_buffer, PDU_view_buffer,
+   PDU_param_buffer, PDUchild_dyn_buffer, reformatted buffer.
+   
+
+Database schema impact:
+   NFMSETCIT, PDMCIT, dynamic tables gets inserted/updated/deleted.
+   n_status, n_statename, p_incpartrpt,n_setindicator of catalog table gets
+changed.
+   A version of this is entered in to the f_catalog table for every file.
+   All the columns of the f_catalog table are updated.
+
+
+
+Functions called
+1. PDUint_checkin
+2. PDUext_checkin
+3. PDMvalidate_user_access
+4. PDMload_part_info
+5. PDMcheckin
+6. PDMupdate_set_members
+7. PDMinsert_cit_info
+8. NFMcheckin_item.
+9. PDMupdate_local_filemgr
+10. PDMdelete_macro_libraries
+11. PDMdefine_parametric_assembly
+12.PDMquery_catalog_partnos
+13.MEM functions
+14.PDMget_filenames
+15.gr$get_module_env
+16 ex$is_om_file
+17. ex$retrieve_module
+18. ex$get_invis_info_by_index
+19. PDUis_PDU_file
+20. PDUremove_PDU_design_file_stamp
+21. ex$close_module.
+22. PDUprepare_param_cats_list
+23. PALcheckin
+24. PDUload_child_buffer
+25. di$find.
+26. di$dump.
+27. co$part_get_attr.
+28. PDUload_attach_buffer
+29. PDUevalute_exp
+30. PDUload_dynamic_attrs
+31. PDUget_all_GRpart_ids.
+32. PDUprocess_part_dyn_attrs
+33. di$give_pathname
+34. PDUload_view_info
+35. PDMcheck_cycles
+36. PDMstop_transaction
+37.SQLstmt
+38.PDMset_n_setindicator
+39.PDMstart_transaction
+
+Feature Level Impact.
+
+1. This will affect checkout, non-graphic assembly structure,
+   and de-activate to update the current product structure.
+2. This will affect the reports.
+3. This command makes the OS and the database to be in sink.
+4. Place part of a sub-assembly depends on this.
+5. Copy commmands depends on this.
+6. View parts which are not yet known to the PDM database
+   depends on this.
+7. Post to DB depends on this.
+
+
+MODULARITY
+
+1. checkin.u was written to be used both by the API and the interface.
+2. PDMcheckin is used both by post to DB and checkin.
+
+
+
+Extensibility:
+
+1. Can be later in PDM2.4+ for taking care of EMS parts.
+
+Return Values
+
+PDM_S_SUCCESS               -   Succesful Completion
+PDM_E_CATALOG_NOT_FOUND     -   A given catalog is not there in the DB.
+PDM_E_PART_NOT_FOUND        -   A given part/rev is not there in the DB.
+PDM_E_CAT_FIELD_BLANK       -   Catalog field empty
+PDM_E_PART_FIELD_BLANK      -   Partnum field empty
+PDM_E_REV_FIELD_BLANK       -   Revison field empty
+PDM_E_INVALID_PART_TYPE     -   Invalid part ype
+PDM_I_TABLE_LOCKED          -   Concurrent access, the table is locked
+PDM_E_SQL_STMT              -   Invalid data
+PDM_E_NO_STO_LOC            -   No storage location allocated for this part
+PDM_E_PART_CHECKIN          -   Part is already checked in
+PDM_I_ON_TRANSFER           -   Part is in transfer
+PDM_E_PART_NON_GRAPHIC      -   Can't checkin a non-graphic part
+PDM_E_CAN_NOT_CHECKIN_PARAMETRIC_PART - Can't checkin a parametric part
+PDM_E_PART_ARCHIVED         -   Part is archived
+PDM_E_ITEM_LOCKED           -   Part is locked
+PDM_E_PART_FLAGGED_FOR_ARCHIVE - Part is flagged for archive
+PDM_E_PART_FLAGGED_FOR_BACKUP  - Part is flagged for backed up
+PDM_E_PATR_FLAGGED_FOR_DELETE  - Part is flagged for delete
+PDM_E_PART_FLAGGED_FOR_RESTORE - PArt is flagged for restore
+PDM_E_NOTCHECK_OUT          -  Part is not checked out
+PDM_I_NO_FILES_FOUND        -  No files found for this part to be checked in
+PDM_E_FILE_NOT_FOUND        -  File is not found
+PDM_E_OPEN_FILE             -  Couldn't open the file
+PDM_E_COMPLETE_PART_CHECIN  -  Can't load the parametric information
+PDM_I_ORIGIN_NOT_FOUND      -  Origin is not found
+PDM_E_BUILD_ARRAY           -  Couldn't build the array
+NFM_E_MEM                   -  Couldn't build the array
+
+All statuses in NFMerrordef.h
+All statuses in SQLerrordef.h
+All relevant statuses in PDUerror.h
+
+
+Notes
+
+Index
+CHECKIN
+Keywords
+CHECK IN, CHECKIN
+
+History
+   Kumar Narayanan Sun Jul 30 16:50:39 CDT 1993: Initial Creation
+****************************************************************************/
+
+
+/****************************************************************************
+Include Files
+****************************************************************************/
+#include                <stdio.h>
+#include                "PDUerror.h"
+#include                "MEMstruct.h"
+#include                "MEMerrordef.h"
+#include                "NFMerrordef.h"
+#include                "SQLerrordef.h"
+#include                "PDUris_incl.h"
+#include                "PDMproto.h"
+#include                "PDUpdmrpro.h"
+
+static  long            status;
+static  char            s[1024];
+extern  int                     PDMdebug_on;
+extern  char            PDM_DEBUG_FILE[];
+extern  PDMexec_ptr     PDMexec;
+
+
+
+/****************************************************************************
+sample  invocation
+****************************************************************************/
+
+
+ status = pdmoCheckinPart ( "xxxx", "yyyy", "a", "yyyy.ems", "N");

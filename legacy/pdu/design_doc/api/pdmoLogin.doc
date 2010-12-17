@@ -1,0 +1,185 @@
+  Author:   Audra Romans
+  Title:    Login API Design Document
+  Date:     10/7/93
+  Revision: 5
+  
+  Abstract: 
+
+  The function pdmoLogin allows a user to login to an nfm environment
+  for database manipulation.
+  
+  Keywords:
+
+  Login
+
+  Function Protocol:
+
+  long pdmoLogin(cpr_env,cpr_pdmuser,cpr_pdmpasswd,spm_userinfo)
+  char *cpr_env
+  char *cpr_pdmuser
+  char *cpr_pdmpasswd
+  struct pdmWorkingArea **spm_userinfo
+  
+  Inputs:
+
+  cpr_env - environment name
+            must not exceed 9 characters
+            required
+  cpr_pdmuser - pdm user name 
+                must not exceed 14 characters
+                required
+  cpr_pdmpasswd - pdm password
+                  must not exceed 14 characters
+                  required
+
+  spm_userinfo - Address of pointer to pdmWorkingArea structure 
+  
+  Outputs:
+
+  spm_userinfo - structure containing working area information
+  
+  Structures:  
+
+  struct pdmWorkingArea
+  {
+   char node_name[IK_NODE_MAX]            I 
+   char user_name[IK_USER_MAX]            I
+   char user_passwd[IK_PASSWD_MAX]        I
+   char path[IK_PATH_MAX]                 I
+   char saname[IK_SANAME_MAX]             O      
+   int  sanum                             O
+   int  userid                            O
+  }
+  
+   node_name   workstation node name for storage area
+               must not exceed 30 characters 
+               required
+   user_name   workstation user name for storage area
+               must not exceed 14 characters
+               required
+   user_passwd workstation password
+               must not exceed 14 characters
+               optional 
+   path        storage area path on workstation
+               must not exceed 80 characters
+               required
+   saname      name of storage area given by the database
+               must not exceed 14 characters
+   sanum       storage area number coinciding with storage area name
+   userid      user id assigned by database
+
+
+  Return Status:
+  
+  PDM_S_SUCCESS  
+  PDM_E_INITIALIZED
+  PDM_E_BAD_PROTOCOL
+  PDM_E_BAD_USERNAME
+  PDM_E_BAD_ENV
+  PDM_E_CLH
+  PDM_E_USER_PASSWD
+  PDM_E_LOCATE_SCHEMA_FILE
+  PDM_E_INVALID_ENV
+  PDM_E_LIST_ENVS
+  PDM_E_WRKST_NODE
+ 
+  External Functions:
+
+  NFMls_nodes()
+  PDUget_envs()
+  PDUload_exec_structure()
+  PDMlogin()
+  PDMverify_init()
+  PDUfill_in_string()
+  PDUuser_init()
+  PDUstorage_init()
+  PDUpdm_exec_init()
+  PDUget_sun_nodename()
+  
+
+  Assumptions: 
+
+  Only one schema can be active at a time. If the user has
+  already activated a schema then pdmoLogin will deactivate the existing 
+  schema to allow connection to the new schema or error if trying to
+  connect to the same schema. The user is responsible for freeing
+  the pointer to the pdmWorkingArea structure. The local working area 
+  will be the location of the check out storage area.
+
+  Impacts:
+
+   Two global variables will be set PDU_apiflag, PDU_apimessage.
+   Global structures PDUuser, PDUstorage will be filled up.
+   PDMlogin function will need to set a global variable PDU_IS_LOGGED_IN
+   that will be used to set a login flag for everyone to check.
+  
+  Future:
+
+   A mechanism is needed to trap core dumps and call a function for
+   clean up before exiting the process. This would be similar to 
+   exitadd used by exnuc. This does not exist at this time. If time
+   permits and a function is developed to handle this pdmoLogin can
+   use this new mechanism to handle core dumps in a more efficient
+   manner.
+  
+  Algorithm:
+  
+   initialize global variable PDU_apiflag to 1
+   initialize global variable PDU_apimessage string to null
+
+   validate environment
+    if not null
+     check if the environment is valid on the network
+     ifndef sparc
+      call NFMls_nodes
+     else
+      call PDUget_envs
+     if not valid return PDM_E_INVALID_ENV
+    else return PDM_E_BAD_ENV
+  
+   validate pdm user name, password
+   if null return PDM_E_BAD_USERNAME or PDM_E_USER_PASSWD
+  
+   check PDUuser structure to verify if a login has already occurred  
+   if already logged in return PDM_S_SUCCESS
+
+   initialize pdmWorkingArea structure
+   get information about local node 
+    call getuid and fill passwd struct
+    if sun 
+      call PDUget_sun_nodename
+    else
+      call uname
+
+   fill pdmWorkingArea structure with information from passwd struct
+
+   initialize PDUuser structure
+   initialize PDUstorage structure
+   initialize PDUexec_ptr structure
+
+   load PDUuser structure for PDU/PDM use
+   load PDUstorage structure for PDU/PDM use  
+   load PDMexec structure
+    call PDUload_exec_structure("",username,password,environment,"","","",0,0);
+
+   initialize &sp_userinfo->user_id  = 0
+
+   call PDMlogin(&user_info->user_id)
+   if error
+    equate NFM error message to PDM error message
+    clear PDUuser structure
+    clear PDUstorage structure
+    return status
+   if success
+     signal(13,SIG_IGN)  /* ignore signal (13) */
+     verify initialization of PDM on the server
+     call PDUload_exec_structure("","",prod_name,prod_version,"","","",0,0)
+     call PDMverify_init()
+     if status is not PDM_S_SUCCESS 
+       return PDM_E_INITIALIZED
+
+     load PDMexec structure with user_id
+     load pdmStorageArea structure with saname, sanum, userid
+  
+   return PDM_S_SUCCESS
+

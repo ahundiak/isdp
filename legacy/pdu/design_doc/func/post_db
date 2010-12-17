@@ -1,0 +1,283 @@
+Date:     07/21/93
+Author:   Jenny Parris
+Title:    Update Database
+Revision: 2
+
+Abstract:
+The "update" command does a "check in" except the files are not deleted from 
+local, and the database is left showing the part "checked out" to the user who
+did the "update". All required local file management data adjustments are made 
+so that the database and part file look as they would if a "check in" and "check
+out" had been done. The "update" command will work with a file that is just 
+checked out to local as well as with a file that is checked out and activated 
+(without requiring the user to exit the file that is being updated).
+
+Command String: Update database
+
+Command Key: PDUpDb
+
+External Functions:
+
+PDUverify_part()
+PDMcheck_if_checkedin()
+PDMget_filenames()
+PDUmessage_trans()
+PDUis_PDU_file()
+PDUremove_PDU_file_stamp()
+PDUint_checkin()
+PDMpost_to_database()
+PDUstamp_design_file()
+PDUget_all_parametric_ids()
+PDMcheck_if_checkedin()
+ex$retrieve_module()
+PDUprepare_param_cats_list()
+PALchekin()
+PDUload_child_buffer()
+PDUload_dynamic_attributes()
+PDUload_view_info()
+
+Command Statuses
+
+PDM_S_SUCCESS
+PDM_E_USER_NOT_LOGGED_IN
+PDM_I_ENTER_CATALOG
+PDM_I_ENTER_PART
+PDM_I_ENTER_REVISION
+PDM_E_NOT_ACTIVE
+PDM_E_NOTCHECK_OUT
+PDM_E_PART_NOT_FOUND
+PDM_E_CATALOG_NOT_FOUND
+PDM_E_NO_PART_FILE
+PDM_I_NO_FILES_FOUND
+PDM_E_REQ_COLUMN_NOT_FOUND
+PDM_E_SQL_QUERY
+PDM_E_BUILD_ARRAY
+PDM_E_VALIDATE_ACCESS
+PDM_E_CMD_CANCELLED
+PDM_E_OPEN_FILE
+PDM_E_FILE_NOT_LOCAL
+PDM_E_COMPLETE_UPDATE_DB
+PDM_E_CHILD_INFO
+PDM_E_PARAMETRIC_INFO
+PDM_E_VIEW_INFO
+PDM_E_UPDATE_DB
+PDM_E_FILE_NOT_FOUND
+
+Assumptions:
+
+  The user is logged in to PDM.
+
+  EMS must be running.
+
+Impacts:
+
+  Documentation with the interface changes to add the command button.
+
+Form Changes:
+
+  Update database command button will be added to the file operations palette
+  on the local files form. See attached form.
+
+Interface Changes:
+
+  Update database command will be executed multiple times if multiple parts are
+  selected.
+
+  If EMS save and PDU is loaded, the user will be prompted if he wishes to
+  update changes to database.
+
+Command Validation:
+
+  Verify the user is logged in.
+
+  Check to see if part is active. 
+    status = PDUverify_part('a'). If status is successful (status =
+    PDM_S_SUCCESS) continue with command for active part. Otherwise if not
+    successful(status = PDM_E_NOT_ACTIVE), verify part is selected. 
+    status = PDUverify_part('r'). If not successful, (status != PDM_S_SUCCESS)
+    exit command with status.
+
+Algorithm:
+
+When part is not active(not in design session):
+
+  Check status of part. 
+    status = PDMcheck_if_checkedin(catalog, partnum, revision).If part is not
+    checked out by this user or already checked in (status != PDM_S_SUCCESS)
+    and status != PDM_E_NOT_CHECKIN and status != PDM_E_PART_CHECKED_OUT and
+    status != PDM_E_ASSEMBLY_CHECKED_OUT), exit command with status.
+
+  Verify all files associated with this part exist locally.
+    status = PDMget_filenames(catalog, partnum, revision, &filenames). If no
+    files exist for this part (status != PDM_S_SUCCESS), exit command with  
+    status PDM_E_NO_FILES_FOUND. For all files in filenames, verify each exists
+    locally status = PDUverify_file(file). If file not found locally (status != 
+    PDM_S_SUCCESS), exit command with status PDM_E_FILE_NOT_FOUND.
+                             
+  Validate user access for part.
+    status = PDUmessage_trans(PDC_M_CHECKIN, 'v'). If user does not have 
+    access (status != PDM_S_SUCCESS), exit command with status.
+
+  For all files associated with this part, check to see if the file is an
+    OM (EMS) file. If not and OM file continue. Otherwise check to see if the 
+    file is a PDU file. status = PDUis_PDU_file(mod_env). If not a PDU file 
+    (status is 0) continue. Otherwise remove PDUstamp 
+    (PDUremove_PDU_file_stamp(mod_env)) and increment count of PDU OM files.
+
+  If count of PDU OM files are greater than 1, display list of files
+    for user to select one file. If file is not selected, exit command with 
+    status PDM_E_CMD_CANCELLED. Otherwise use the selected file as the file for 
+    which to extract the assembly information.
+
+  Open selected file invisibly. 
+    status =  ex$retrieve_module(filename = file, file_no = &index, 
+                                 ftype = EX_invisible,
+                                 flag = EX_overwrite, fstat = EX_default, 
+                                 type = EX_ACTINV, mount_name = mount_name, 
+                                 msg = &msg); If not successful (!status), 
+    exit command with status PDM_E_OPEN_FILE.
+
+  Extract invisible file information by index.
+    status = ex$get_invis_info_by_index(index = index, mod_osnum = osnum, 
+                                        mod_id = &objid, file_id = &osid). If
+    not successful (!status), close file, exit command with status 
+    PDM_E_OPEN_FILE.
+
+  Allocate spr_mod_env.
+
+  Set spr_mod_env->md_id.osnum to osnum.
+
+  Set spr_mod_env->md_id.objid to objid.
+
+  Stamp PDU design file with PDU_DESIGN_FILE
+    PDUstamp_design_file(*spr_mod_env);
+    
+  Check for parametric parts in design file
+    PDUget_all_parametric_ids(osnum, &parametric_ids, &count).
+
+  If count is greater than 0
+ 
+    Free parametric_ids.
+
+    Load list of 1st level parametric catalogs.
+      status = PDUprepare_param_cats_list(spr_mod_env, &PDU_param_cat_list).
+      If not successful (status != PDM_S_SUCCESS) , close file and exit command 
+      with PDM_E_COMPLETE_UPDATE_DB.
+
+    Load parametric information.
+      status = PALchekin(spr_mod_env). If not successful (status != 
+      PDM_S_SUCCESS), close file and exit command with 
+      PDM_E_COMPLETE_UPDATE_DB.
+
+  Extract part pointer information.
+    status = PDUload_child_buffer(&child_buffer, *spr_mod_env). If not
+    successful (status != PDM_S_SUCCESS), close file and exit command with 
+    PDM_E_COMPLETE_UPDATE_DB.
+
+  Extract dynamic attributes and values.
+    status = PDUload_dynamic_attributes(*spr_mod_env, &dyn_attr, &dyn_data). If
+    not successful (status != PDM_S_SUCCESS), close file and exit command with
+    PDM_E_COMPLETE_UPDATE_DB. Note: This function will need to be modified to
+    extract the dynamic attribute from the object space instead of querying the
+    dynamic attributes from the database. This function extracts all dynamic
+    values for both GRparts and parametric parts.
+
+  Extract view information.
+    status = PDUload_view_info(spr_mod_env->md_id.objid, 
+                               spr_mod_env->md_id.osnum, &view_buffer). If not
+    successful (status != PDM_S_SUCCESS and != PDM_I_ORIGIN_NOT_FOUND), close
+    file and exit command with PDM_E_COMPLETE_UPDATE_DB.
+     
+  Close and save file.
+
+  Update the current structure to the database [CIT], update the files of the
+  part, store saved views, and define any parametric sub assemblies.
+    status = PDMpost_to_database(child_buffer, view_buffer, dyn_attr, dyn_data,
+                                 para_ass). If not successful (status != 
+    PDM_S_SUCCESS, exit command with status.
+
+  Set the state.
+
+  Exit command successfully.
+ 
+When part is active in design session(save but no exit: "Y" to update database
+prompt):
+
+  Check status of part. 
+    status = PDMcheck_if_checkedin(catalog, partnum, revision).If part is not
+    checked out by this user or already checked in (status != PDM_S_SUCCESS)
+    and status != PDM_E_NOT_CHECKIN and status != PDM_E_PART_CHECKED_OUT and
+    status != PDM_E_ASSEMBLY_CHECKED_OUT), exit command with status.
+
+  Verify all files associated with this part exist locally.
+    status = PDMget_filenames(catalog, partnum, revision, &filenames). If no
+    files exist for this part (status != PDM_S_SUCCESS) exit command with status
+    PDM_E_NO_FILES_FOUND. For all files in filenames, verify each exist locally.    status = PDUverify_file(file). If file not found locally (status != 
+    PDM_S_SUCCESS), exit command with status PDM_E_FILE_NOT_FOUND.
+                             
+  Validate user access for part.
+    status = PDUmessage_trans(PDC_M_CHECKIN, 'v'). If user does not have 
+    access (status != PDM_S_SUCCESS), exit command with status.
+
+  For all files associated with this part, check to see if the file is an
+    OM (EMS) file. If not and OM file continue. Otherwise check to see if the 
+    file is a PDU file. status = PDUis_PDU_file(mod_env). If not a PDU file 
+    (status is 0) continue. Otherwise remove PDUstamp 
+    (PDUremove_PDU_file_stamp(mod_env)) and increment count of PDU OM files.
+
+  If count of PDU OM files are greater than 1, display list of files
+    for user to select one file. If file is not selected, exit command with 
+    status PDM_E_CMD_CANCELLED. Otherwise use the selected file as the file for
+    which to extract the assembly information.
+
+  Allocate spr_mod_env.
+
+  Get current module information.
+
+  Stamp PDU design file with PDU_DESIGN_FILE
+    PDUstamp_design_file(*spr_mod_env);
+    
+  Check for parametric parts in design file
+    PDUget_all_parametric_ids(osnum, &parametric_ids, &count).
+
+  If count is greater than 0
+ 
+    Free parametric_ids.
+
+    Load list of 1st level parametric catalogs.
+      status = PDUprepare_param_cats_list(spr_mod_env, &PDU_param_cat_list).
+      If not successful (status != PDM_S_SUCCESS) , exit command with
+      PDM_E_COMPLETE_UPDATE_DB.
+
+    Load parametric information.
+      status = PALchekin(spr_mod_env). If not successful (status != 
+      PDM_S_SUCCESS), exit command with PDM_E_COMPLETE_UPDATE_DB.
+
+  Extract part pointer information.
+    status = PDUload_child_buffer(&child_buffer, *spr_mod_env). If not
+    successful (status != PDM_S_SUCCESS), exit command with 
+    PDM_E_COMPLETE_UPDATE_DB.
+
+  Extract dynamic attributes and values.
+    status = PDUload_dynamic_attributes(*spr_mod_env, &dyn_attr, &dyn_data). If
+    not successful (status != PDM_S_SUCCESS), exit command with
+    PDM_E_COMPLETE_UPDATE_DB. Note: This function will need to be modified to
+    extract the dynamic attribute from the object space instead of querying the
+    dynamic attributes from the database. This function extracts all dynamic
+    values for both GRparts and parametric parts.
+
+  Extract view information.
+    status = PDUload_view_info(spr_mod_env->md_id.objid, 
+                               spr_mod_env->md_id.osnum, &view_buffer). If not
+    successful (status != PDM_S_SUCCESS and != PDM_I_ORIGIN_NOT_FOUND), exit
+    command with PDM_E_COMPLETE_UPDATE_DB.
+
+  Update the current structure to the database [CIT], update the files of the
+  part, store saved views, and define any parametric sub assemblies.
+    status = PDMpost_to_database(child_buffer, view_buffer, dyn_attr, dyn_data,
+                                 para_ass). If not successful (status != 
+    PDM_S_SUCCESS, exit command with status.
+
+  Set the state.
+
+  Exit command successfully.

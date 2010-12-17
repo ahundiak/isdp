@@ -1,0 +1,188 @@
+Author:    Audra Romans
+Title:     Ris Query API Design Document
+Date:      8/18/93
+Revision   4
+
+Abstract:  
+
+This function gives the user the ability to query the database.
+
+Keywords:
+
+RisQuery
+
+Function Protocol:
+
+pdmoRisQuery(cpr_sql_str,spm_query_info,spw_err_code)
+char *cpr_sql_str
+struct pdmRisQuery **spm_query_info
+struct pdmRisError **spw_err_code
+
+Inputs:
+
+cpr_sql_str - statement to be processed    
+              required
+spm_query_info - Address of pointer to struct pdmRisQuery
+                 required
+spw_err_code - Address of pointer to struct pdmRisError for ris error messages,
+               dbms error messages and database type
+
+Outputs:
+
+spw_err_code - structure with return code information 
+Additional information can be obtained using the pdmoDebugOn function
+
+spm_query_info - results of the query in struct pdmRisQuery
+
+Structure:
+
+Struct pdmRisQuery
+{
+ int no_of_cols        
+ int no_of_rows        
+ char **columns        
+ char **data           
+}
+
+no_of_cols - number of columns in query
+no_of_rows - number of rows returned by the query
+columns - char pointer array of column names
+data - char pointer array of data for each row
+
+Struct pdmRisError
+{
+ int ris_error_code
+ char ris_error_string[IK_RIS_ERROR_MAX]
+ int db_error_code  
+ char db_type   
+}
+
+ris_error_code - negative error code returned by ris
+ris_error_string - sql error message corresponding to ris_error_code
+db_error_code - vendor database error code
+db_type - vendor database type - x informix, O oracle, i ingres  
+
+
+Return Status:
+
+SQL_S_SUCCESS
+SQL_E_NOT_QUERY
+SQL_I_NO_ROWS_FOUND
+SQL_E_DATA_TYPE
+SQL_E_MESSAGE
+SQL_E_MALLOC
+SQL_E_NOT_QUERY
+SQL_E_PREPARE
+PDM_E_LOGIN
+
+Assumptions:
+
+The user must be logged in to an environment by using the pdmoLogin function.
+The input string sql_str is a valid sql query statement that is null 
+terminated. The user is responsible for freeing the pdmRisError structure
+pointer and the pdmRisQuery structure pointer. The members of the structure
+are static allocation.
+
+Impacts:
+
+The existing PDMquery function will be modified to make the variable
+out_desc a global variable with a more unique name (query_out_desc).
+The PDMquery function will need to be modified to not free the
+existing out_desc pointer to sqlda.
+The delimiter that exist (~) will be changed to a control character.
+
+Future:
+
+Need to provide a way to look out for users doing a default schema on 
+another schema using RisQuery then trying to come back and query on
+the pdm database. Now there is no way to get back accept pdmoLogout and
+pdmoLogin.
+
+   
+Algorithm:
+
+ check if logged in
+ if (!status = pdmcheck_log_in)
+  return (PDM_E_LOGIN)
+
+ descrypt schema name
+ get database type
+  SQLget_dbtype(sch_name, dbtype)
+
+ call PDMquery(cpr_sql_str,&ipr_rows, &cpr_out_buff, &ris_err_code);
+ if (status != SQL_S_SUCCESS)
+ {
+  if ((*spw_err_code) == NULL)
+   malloc space for (*spw_err_code) 
+  if ((*spw_err_code) == NULL)
+   return(SQL_E_MALLOC)
+
+  assign ris_err_code to (*spw_err_code)->ris_error_code
+  assign risca->sqlerrmc to (*spw_err_code)->ris_error_str 
+  assign dbca->sqlcode to (*spw_err_code)->db_error_code
+  assign dbp->dtype to (*spw_err_code)->db_type 
+  return(status)
+ }
+
+ if (spm_query_info == NULL) 
+  malloc space for (*spm_query_info)
+ if ((*spm_query_info) == NULL)
+   return(SQL_E_MALLOC)
+
+ if (cpr_out_buff)
+ {
+  malloc space for (*spm_query_info)->columns
+  
+  use global variable query_out_desc to build a char array of column names
+   for ( i=0; i < query_out_desc.sqld; i++) 
+   {
+    malloc space for each column name
+    if null
+      return (SQL_E_MALLOC)
+
+    assign query_out_desc->sqlvar[i].sqlname.sqlnamec to (*spm_query_info)->columns[i]
+   }
+   
+  assign query_out_desc.sqld to (*spm_query_info)->no_of_cols
+
+  malloc space for (*spm_query_info)->data
+  assiign output data to (*spm_query_info)->data
+   for (i=0; i < (*spm_query_info)->no_of_rows; i++)
+   {
+     row_idx = i * (*spm_query_info)->num_of_cols;
+     for (j=0; j < (*spm_query_info)->num_of_cols; j++)
+     {
+      parse char * cpr_out_buff for the control character delimeter
+      check for nil string
+      if nill
+       assign null ptr
+      else
+       {
+         malloc space for data in (*spm_query_info)->data[j + row_idx]
+         if null 
+          return SQL_E_MALLOC
+         assign cpr_out_buff to (*spm_query_info)->data[j + row_idx]
+       }
+     }
+   }
+   free cpr_out_buff
+  }
+  free query_out_desc
+
+return(PDM_S_SUCCESS)
+ 
+
+
+Test Cases
+
+  Perform a query using a wildcard for the column names
+  Perform a query listing out selected column names
+  Perform a query listing out all the column names in the table
+  Perform a query on a table with no rows of data to be returned
+  Perform a query on a table with one row of data to be returned
+  Perform a query on a table with multiple rows of data to be returned 
+  Perform a query that contains a syntax error
+  Perform a query on a table that does not exist
+
+
+

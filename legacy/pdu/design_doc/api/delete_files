@@ -1,0 +1,233 @@
+
+  Author:    Mychelle Greene
+  Title:     API Design Document pdmoDeleteFiles
+  Date:      8/18/93
+  Revision:  6
+
+  Abstract:  
+
+  This API deletes files from an existing part.
+
+  Keywords:
+
+  Delete Files
+
+  pdmoDeleteFiles(	cpr_catalog,
+			cpr_partnum, 
+			cpr_revision, 
+			spr_delete_files);
+
+  Input:
+
+	char	*cpr_catalog
+	char	*cpr_partnum
+	char	*cpr_revision
+	struct   file_info      *spr_delete_files
+
+  Output:
+
+	None
+
+  Sample Invocation:
+ 
+    status = pdmoDeleteFiles(   "api_catalog",
+                                "api_part1",
+                                "a",
+                                delete_file_list);
+
+  Input Limitations:
+
+	cpr_catalog:	required 
+			16 characters or less
+			must already exist
+
+	cpr_partnum:	required
+			! * ? , : invalid characters
+			must not exceed the number of characters specified 
+			  at catalog creation time
+
+	cpr_revision:	required
+			! * ? , : invalid characters
+			must not exceed the number of characters specified 
+			  at catalog creation time
+
+	cpr_acl_name:	required
+			default is PDM_PART_ACL
+
+	cpr_stg_name:	required
+			default is NFMFILES
+
+	spr_delete_files:	optional
+			necessary for deleting file information
+			
+  Structures:
+
+  struct file_info
+  {
+  char                 cpr_file_desc[IK_FILEDESC_MAX];
+  char                 cpr_local_fn[IK_FILENAME_MAX];
+  char                 cpr_storage_fn[IK_FILENAME_MAX];
+  char                 cpr_file_type[IK_FILETYPE_MAX];
+  int                  ir_mode;
+  struct file_info  *spm_next;
+  };
+
+	cpr_file_desc:	optional
+			must not exceed 40 characters
+
+	cpr_local_fn:	optional
+			must be unique to for the part being added
+			must not exceed 14 characters
+			/ # = ! * \\ ( ) { } [ ] < > & ? $ @ + - : | invalid
+			  characters
+
+	cpr_storage_fn:	optional
+			must be unique to for the part being added
+			must not exceed 14 characters
+			/ # = ! * \\ ( ) { } [ ] < > & ? $ @ + - : | invalid
+			  characters
+			filename must not already exist in check in storage
+			  area
+
+	cpr_file_type:	optional
+			may not be "M" or "m"
+			must not exceed 5 characters
+			/ # = ! * \\ ( ) { } [ ] < > & ? $ @ + - : | invalid
+			  characters
+
+	ir_mode:	reguired
+			specifies whether user is adding, changing or
+			  deleting file information
+			ADD = 1, CHANGE = 2, DELETE = 3
+
+  Return Status:
+
+	PDM_S_SUCCESS
+	PDM_E_CAT_FIELD_BLANK
+	PDM_E_PART_FIELD_BLANK
+	PDM_E_REV_FIELD_BLANK
+	PDM_E_CAT_NOT_FOUND
+	PDM_E_ACLNAME_NOT_FOUND
+	PDM_E_STGNAME_NOT_FOUND
+	PDM_I_TABLE_LOCKED 
+
+	PDM_E_NOT_USER_LOGGED_IN
+
+  External Functions:
+ 
+  PDUcheck_if_logged_in()
+  PDMvalidate_user_access()
+  PDUvalidate_catalog()
+  PDMcheck_partnum()
+  PDMget_existing_data()
+  PDUverify_aclname()
+  PDUverify_storage_name()
+  PDUformat_buffer()
+  PDUdelete_files_from_buffer()
+  PDMmodify_part()
+  PDMcancel_modify_part()
+ 
+  Assumptions:
+ 
+  The pdmoLoadFileStructure must be called before calling pdmoDeleteFiles.
+ 
+  The user must call pdmoFreeFileStructure to free the file structure.
+
+  The PDMexec userid has been loaded during login.
+ 
+  Impacts:
+
+  None
+ 
+  Future:
+
+  A supporting PDM function for deleting files will be written in order to
+  eliminate the need for retrieving attribute information while deleting files.
+
+  Test Cases:
+ 
+    Success
+ 
+  Delete the file for a part with one file.
+  Delete one file for a part with multiple files.
+  Delete all files for a part with multiple files.
+ 
+    Failure
+ 
+  Call pdmoDeleteFiles with a null file list.
+  Delete files for a nongraphic part.
+  Mark entries in the file list for "add" and "change".
+  Delete files for a part that is checked out.
+ 
+  Algorithm:
+
+- verify login - call PDUcheck_if_logged_in
+        - if status != SUCCESS, return status
+
+- if spr_delete_files = NULL
+	- return PDM_E_NULL_LIST
+
+- catalog - call PDUvalidate_catalog
+        - if status != SUCCESS, return status
+
+- partnum - check for NULL and NULLSTRING
+
+- revision - check for NULL and NULLSTRING
+
+- make sure the part already exists - call PDMcheck_partnum
+        - if status != SUCCESS
+        - return status
+
+- call PDMvalidate_user_access
+        - if status != SUCCESS, return status
+
+- check the status of part (in/out)
+- if part is not checked in
+	- call PDMcancel_modify_part
+	- return PDM_E_CANNOT_DELETE_FILES
+
+- call function to get existing part data - PDMget_existing_data
+        - if status != SUCCESS
+        - return status
+- split return buffer into attr_bufr and data_bufr
+
+- parttype - call PDUvalidate_parttype
+        - if status != SUCCESS, 
+		- call PDMcancel_modify_part
+		- return status
+        - if parttype = N
+		- call PDMcancel_modify_part
+		- return PDM_E_NONGRAPH_FILES
+
+- acl_name - call PDUverify_aclname
+        - if status != SUCCESS, 
+		- call PDMcancel_modify_part
+		- return status
+- verify that a valid acl_no was returned
+- write the acl_no to the data_bufr
+ 
+- stg_name - call PDUverify_storage_name
+        - if status != SUCCESS, 
+		- call PDMcancel_modify_part
+		- return status
+- verify that a valid storage_no was returned
+- write the storage_no to the data_bufr
+ 
+- for each entry verify data in spr_delete_files
+        - if !filedesc && !local_fn && !storage_fn && !filetype
+                - call PDMcancel_modify_part
+                - return PDM_E_NO_DATA_IN_FILE_LIST
+        - for each node in the list
+                - if mode != 3
+                        - call PDMcancel_modify_part
+                        - return PDM_E_INVALID_MODE
+        - call PDUdelete_files_from_buffer
+                - if status != SUCCESS,
+                        - call PDMcancel_modify_part
+                        - return status
+
+- call PDMmodify_part function
+- if status != PDM_S_SUCCESS
+	- call function to unlock the part
+- set status
+- return

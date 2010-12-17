@@ -1,0 +1,579 @@
+Author:   Jenny Parris
+Title:    Place Part API Macro
+Revision: 6
+
+Abstract:
+The place part macro places a graphic part, non-graphic part, and
+any parametric part.  The macro can also "place but not position"
+any PDM part.
+
+
+Function Definition:
+
+pdmoPlacePart(
+               lw_status,
+               spr_mod_env,
+               spw_part,
+               cpr_catalogname,
+               cpr_itemname,
+               cpr_itemrev
+               cpr_cofilename,
+               cpr_usageid,
+               cpr_viewname,
+               cpr_quantity,
+               cpr_explode,
+               cpr_attach,
+               cpr_alttagno,
+               cpr_incstr,
+               cpr_incbom,
+               ir_dyn_count,
+               cpr_dyn_names,
+               cpr_dyn_values,
+               ir_dynloc_count,
+               cpr_dynloc_names,
+               spr_dynloc_id,
+               dar_origin,
+               dar_x_point,
+               dar_y_point,
+               spr_position_cs,
+              )     
+Argument       Data Type        I/O  Description
+lw_status      long             O    Return Status
+spr_mod_env    *struct GRmd_env I    Module enviroment to place part occurrence
+spw_part       *struct GRid     O    object ID of placed part
+cpr_catalogname*char            I    catalog name
+cpr_itemname   *char            I    part number
+cpr_itemrev    *char            I    part revision
+cpr_cofilename *char            I    file name
+cpr_usageid    *char            I    part usage identification
+cpr_viewname   *char            I    graphic view name
+cpr_quantity   double           I    part quantity
+cpr_explode    *char            I    explode in BOM (Y or N)
+cpr_attach     *char            I    attach file (Y or N)
+cpr_alttagno   *char            I    unique alternate tag number
+cpr_incstr     *char            I    background part (Y or N)
+cpr_incbom     *char            I    include in BOM (Y or N)
+ir_dyn_count   int              I    dynamic attribute count
+cpr_dyn_names  **char           I    dynamic attribute name array
+cpr_dyn_values **char           I    dynamic attribute value array
+ir_dynloc_count int             I    dynamic locate input count
+cpr_dynloc_names **char         I    dynamic locate input names
+spr_dynloc_id  *struct GRid     I    dynamic locate input object ID
+dar_origin     double[3]        I    position by three point origin point
+dar_x_point    double[3]        I    position by three point x-axis point
+dar_y_point    double[3]        I    position by three point y-axis point
+spr_position_cs *struct GRid    I    position by coordinate system
+
+
+Error Handling:
+
+Status Returns
+PDM_E_CAT_NOT_FOUND
+PDM_E_PART_NOT_FOUND
+PDM_E_BAD_DYNLOC
+PDM_E_BAD_DYNATTR
+PDM_S_SUCCESS
+PDM_E_DYN_TRIP
+PDM_E_DYN_LOC_TRIP
+PDM_E_BAD_DYN_LOC_ERROR
+PDM_E_DUPLICATE_USAGEID
+PDM_E_LENGTH_USAGEID
+PDM_E_VIEWNAME_NOT_EXIST
+PDM_E_INVALID VALUE
+PDM_E_BAD_POSITION
+PDM_E_DUP_ALTTAGNO
+
+External Functions:
+  
+  PDUvalid_catalog()
+  PDUcheck_partnum()
+  PDUget_default_usageid()
+  PDUvalidate_quantity()
+  PDUis_alt_tag_unique()
+  PDUget_parttype()
+  PDUis_cyclic_placement()
+  PDUvalid_filename()
+  PDUcreate_GRpart()
+  PDUadd_assy_struct_from_buffer()
+  PDUgenerate_coord_orientation()
+  PDUcreate_part_pointer()
+  co$part_put_attr()
+  PDMget_part_attach_info()
+  co$part_get_attr()
+  PDUget_all_ref_file_names()
+  PDUload_local_file_buffer()
+  PDMcopy_attach()
+  PDUverify_file()
+  PDUattach_ref_to_GRpart()
+  PDUmodify_exp()
+  PDMquery_dynamic_attributes()
+  SetDynAttrs()
+  InstanceMacro()
+
+Assumptions:
+
+  The user must be logged into PDM.
+
+  EMS must be running and if the place part is suppose to be invisible, the
+file must be opened invisibly prior to calling pdmoPlacePart.
+
+Impacts:
+
+  None.
+
+Future:
+
+  A way of allowing the user to place a part occurrence outside of EMS.
+
+Input Requirements:
+
+  Inputs cpr_catalogname, cpr_itemname, and cpr_itemrev are required for all 
+    part placements. 
+
+Input Validation:
+
+  Verify the user is logged in.
+
+  Verify cpr_catalogname exists.
+    status = PDUvalid_catalog("", cpr_catalogname). If cpr_catalogname does not 
+    exist, (status != PDM_S_SUCCESS), return PDM_E_CAT_NOT_FOUND.
+
+  Verify cpr_itemname and cpr_itemrev exists.
+    status = PDUcheck_partnum(cpr_catalogname,cpr_itemname, cpr_itemrev). If 
+    cpr_itemname does not exist, return PDM_E_PART_NOT_FOUND. If cpr_itemrev 
+    does not exist, return PDM_E_PART_NOT_FOUND.
+
+  If cpr_usageid is given, verify it is valid. If cpr_usageid > 25 characters,
+    return PDM_E_LENGTH_USAGEID. If cpr_usageid is not unique, return 
+    PDM_E_DUPLICATE_USAGEID. Copy cpr_usageid string to usageid.
+  else if cpr_usageid not given, default usageid.
+        status = PDUget_default_usage_id(cpr_catalogname, cpr_itemname, 
+                                         cpr_itemrev, usageid)
+
+  Verify cpr_viewname is valid if given. If cpr_viewname is not valid, return 
+    PDM_E_VIEWNAME_NOT_EXIST. 
+
+  If cpr_quantity is given, verify it is valid.
+    status = PDUvalidate_quantity(cpr_quantity). If cpr_quantity is not valid, 
+    (status != PDM_S_SUCCESS), return PDM_E_INVALID_VALUE. Store value of 
+    cpr_quantity to quantity.
+  Else default quantity to 1.0.
+
+  If cpr_explode is given, verify it is valid. If cpr_explode is not equal to 
+    "Y" or "N", return PDM_E_INVALID_VALUE. Store value of cpr_explode to 
+     explode.
+  ELse default explode to interface value.
+
+  If cpr_attach is given, verify it is valid. If cpr_attach is not equal to "Y"
+    or "N", return PDM_E_INVALID_VALUE. Store value of cpr_attach to attach.
+  Else default attach to interface value.
+
+  Verify cpr_alttagno is valid if given. 
+    status = PDUis_alt_tag_unique(cpr_alttagno). If cpr_alttagno is not unique,
+    (status != PDM_S_SUCCESS), return PDM_E_DUP_ALTTAGNO.
+
+  If cpr_incstr is given, verify it is valid. If cpr_incstr is not equal to "Y"
+    or "N", return PDM_E_INVALID_VALUE. Store value of cpr_incstr to incstr.
+  Else default incstr to interface value.
+
+  If cpr_incbom is given. verify it is valid. If cpr_incbom is not equal to "Y"
+    or "N", return PDM_E_INVALID_VALUE. Store value of cpr_incbom to incbom.
+  Else default incbom to interface value.
+
+  If spr_mod_env is NULL, get current module information.
+
+Alogorithm:
+
+  Query for p_parttype.
+    status = PDUget_parttype(cpr_catalogname, cpr_itemname, cpr_itemrev, 
+                             &p_parttype).
+
+    When p_parttype != 'P' or p_parttype != 'p':
+
+      If both position_pts(dar_origin, dar_x_point, and dar_y_point) and 
+        spr_position_cs are given, return PDM_E_BAD_POITION.
+
+      If only part of the three position by point parameters(dar_origin, 
+        dar_x_point, and dar_y_point) are given, return PDM_E_BAD_POSITION.
+
+      If only part of the three dyn* parameters are given, return 
+        PDM_E_DYN_TRIP.
+
+      Ignore all dynloc parameters if given.
+
+      If neither position_pts(dar_origin, dar_x_point, and dar_y_point) nor 
+        spr_position_cs are given, default attach to N regardless.
+
+      Verify placement is not cyclic.
+        status = PDUis_cyclic_placement(cpr_catalogname, cpr_itemname, 
+                                        cpr_itemrev,
+                                        &asm_bufr). If cyclic placement, return
+        PDM_E_CYCLIC_PLACEMENT
+
+      If cpr_cofilename given
+        status = PDUvalid_filename(cpr_cofilename). If cpr_cofilename does not
+        exist, default cofilename to first EMS (OM) file in list else copy
+        cpr_cofilename string to cofilename.
+      else
+        default cofilename to first EMS (OM) file in list.
+
+      Create a PDU GRpart.
+        status = PDUcreate_GRpart(*spr_mod_env, cpr_catalogname, cpr_itemname, 
+                                  cpr_itemrev, quantity, cpr_alttagno,usageid,
+                                  cpr_viewname, history, p_parttype, incbom,
+                                  incstr, explode, attach, &part_id) 
+       
+        For all dynamic attributes in cpr_dyn_names:
+          Verify attributes existence. If attribute does not exist, continue.
+          Otherwise, if value given in cpr_dyn_values is valid (datatype, lists
+          and ranges), overwrite the default values from the database with this
+          value. 
+
+      Extract catalog_no and n_itemno from the asm_bufr.
+
+      Add part to assembly structure according to explode. If explode = "Y",
+        and asm_bufr-> rows > 1, add parts assembly structure to the assembly 
+        structure, 
+        status = PDUadd_assy_struct_from_buffer(cpr_catalogname, cpr_itemname, 
+                                                cpr_itemrev, description, 
+                                                quantity, usageid, filename,
+                                                spr_mod_env->md_id.osnum,
+                                                child_no, catalog_no, item_no,
+                                                asm_bufr, 1)
+        Else add only 1st level assembly part information
+        status = PDUadd_assy_struct_from_buffer(cpr_catalogname, cpr_itemname, 
+                                                cpr_itemrev, description, 
+                                                quantity, usageid, filename,
+                                                spr_mod_env->md_id.osnum, 
+                                                child_no, catalog_no, item_no, 
+                                                NULL,1)
+
+        set cpw_partid. 
+
+        If positionless placement return successfully.
+
+        If non-graphic placement (p_parttype = "N" or "n") return successfully.
+
+        When place by view alignment,(spr_position_cs is given):
+         status = om$send(msg = message GRgencs.GRgetmatrix(&msg,
+                                                            src_matrix),
+                          senderid = NULL_OBJID,
+                          targetid = spr_position_cs.objid,
+                          targetos = spr_position_cs.osnum)
+
+        When place by 3 points, (position_pts(dar_origin, dar_x_point and 
+          dar_y_point) are given):
+          status = PDUgenerate_coord_orientation(dar_origin, dar_x_point, 
+                                                 dar_y_point, src_matrix);
+
+       Create part pointer.
+         status = PDUcreate_part_pointer(src_matrix, *spr_mod_env, usage_id,
+                                         NULL, csobjid);
+
+       Add coordinate system as a component to GRpart.
+         status = om$send(msg = message GRowner.GRadd_components(&msg,
+                                                                 spr_mod_env,
+                                                                 &num_objects
+                                                                 objects,
+                                                                 own_index,
+                                                                 NULL)
+                         targetid = part_id.objid.
+                         targetos = part_id.osnum)
+
+       Modify serial_no in GRpart to indicate it is a positioned part.
+         co$part_put_attr(msg = &msg, spr_mod_env, part = &part_id, 
+                          attr = "serial", value = serial_no, 
+                          type = GR_DYNAMIC_ATTR)
+         If msg = MSSUCC or attr_value = "", return PDM_E_INVALID_PART_POINTER.
+
+       If attach = "N" or "n", return successfully.
+
+       If attach = "Y" or "y"
+       
+         Verify part attach information.
+           status = PDMget_part_attach_info(cpr_catalogname, cpr_itemname, 
+                                            cpr_itemrev, item_no, &view_buffer,
+                                            &file_buffer). 
+           If part has never been checked in, change attach_flag attribute in
+           GRpart to -1 and return PDM_E_NEVER_CHECKIN. If no view exists, 
+           change attach_flag attribute in GRpart to -1 and return 
+           PDM_E_NO_VIEWS_DEFINED.  If multiple views defined and not 
+           cpr_viewname is not defaulted, return PDM_E_MULTIPLE_VIEWS. If one 
+           view is defined use as default.
+
+           Extract the serial_no from the GRpart. The serial number is the objid
+             of the coordinate system.
+             co$part_get_attr(msg = &msg, mod_env = spr_mod_env,part = &part_id,
+                              attr = "serial", value = attr_value, type = &type)
+            If msg = MSSUCC or attr_value = "", return 
+              PDM_E_INVALID_PART_POINTER.
+             sscanf(attr_value, "%d", &coord.objid)
+
+           Get list of all attached reference filenames 
+             status = PDUget_all_ref_file_names(*spr_mod_env)
+
+           Check linklist PDU_ref_filenames to see if part is already attached.
+             While linklist not null, check for match of cofilename in the
+             linklist.
+
+           If cofilename is already loaded into memory (cofilename found
+             in linklist), no file management is needed.
+           Else load this file into buffer to be copied to local later.
+             status = PDUload_local_file_buffer(catalog_no, item_no, 
+                                                cpr_catalogname, cpr_itemname, 
+                                                cpr_itemrev, cofilename, 
+                                                &local_files).
+             Get the assembly structure of the part from either the database or
+               the object space.
+             For all parts in the assembly structure, check to see if the child
+               is attached. If the child is attached, check to see if the 
+               child's file is already loaded into memory. If so, no copy to 
+               local is necessary. Otherwise extract all the child's information
+               from the object space and load the file info into a buffer to
+               copied to local later.
+               status = PDUload_local_file_buffer(catalog_no, item_no,
+                                                  cpr_catalogname, cpr_itemname,
+                                                  cpr_itemrev, cofilename, 
+                                                  &local_files).
+
+          If files are to be copied, (local_files->rows > 0), copy the files
+            to local.
+            status = PDMcopy_attach(local_files, &status_bufr). If status !=
+            PDM_S_SUCCESS, return PDM_E_COPY_FILES.
+
+          Verify cofilename exists locally. 
+            status = PDUverify_file(cofilename). If file not found, return
+            PDM_E_FILE_NOT_FOUND
+
+          If PDU_incl_ASM = "N" or "n" background is TRUE, otherwise background
+            is FALSE.
+
+          When active part is a drawing part (act_parttype = "D" or "d"):
+            
+            Extract the origin of the part pointer.
+              status = PDUmatrix_to_point(src_matrix, &origin_pt)
+
+            Find x-axis point and y-axis point on first alignment.
+              MAinvmx(&status, &four, src_matrix, src_matrix)
+              status = PDUadd_points(src_matrix, origin_pt, &x_axis_pt, 0, 1, 2)
+              status = PDUadd_points(src_matrix, origin_pt, &y_axis_pt, 4, 5 ,6)
+              origin[0] = origin_pt.x;
+              origin[1] = origin_pt.y;
+              origin[2] = origin_pt.z;
+              x_point[0] = x_axis_pt.x;
+              x_point[1] = x_axis_pt.y;
+              x_point[2] = x_axis_pt.z;
+              y_point[0] = y_axis_pt.x;
+              y_point[1] = y_axis_pt.y;
+              y_point[2] = y_axis_pt.z;
+     
+            Find coordinate system matrix.
+              MA3protmx(&status, origin, x_point, y_point, rot_matrix
+              PDUdump_matrix(rot_matrix)
+
+            Attach drawing graphically.
+              status = PDUattach_ref_to_GRpart(part_id,src_matrix,*spr_mod_env,
+                                               first_level_catno,
+                                               first_level_itemno,
+                                               TRUE, background, rot_matrix,
+                                               origin, &cs_id, &refobjid)
+              If could not attach drawing graphically, return
+                PDM_E_ATTACH_DRAWING
+ 
+          When active part is not a drawing part (act_parttype != "D" or "d"):
+            Attach part graphically.
+              status = PDUattach_ref_to_GRpart(partid, src_matrix, *spr_mod_env,
+                                               first_level_catno, 
+                                               first_level_itemno, FALSE,
+                                               background, rot_matrix, origin,
+                                               NULL, &refobjid)
+              If could not attach part graphically, return PDM_E_ATTACH_PART.
+
+          If active part is a drawing part or p_parttype = "D" or "d", add 
+            coordinate system to GRpart.
+
+          Display attachment.
+            dp$display(msg = &msg, oids, &part_id, mode_GRbd)
+
+          Update the attach flag in this GRpart to refobjid.objid.
+            sprintf(attr_value, "%d", refobjid.objid)
+            co$part_put_attr(msg = &msg, *spr_mod_env, part = &part_id, 
+                             attr = "attach_flag", value = attr_value, 
+                             type = GR_DYNAMIC_ATTR)
+           If msg = MSSUCC or attr_value = "", return PDM_E_INVALID_PART_POINTER
+
+          Update the viewname attribute in this GRpart.
+            sprintf(tmp_viewname, "\"%s\"", viewname)
+            co$part_put_attr(msg = &msg, *spr_mod_env, part = &part_id, 
+                             attr = "view_name", value = tmp_viewname, 
+                             type = GR_DYNAMIC_ATTR)
+           If msg = MSSUCC or attr_value = "", return PDM_E_INVALID_PART_POINTER
+
+          Update the part's attached flag in assy struct.
+            status = PDUmodify_exp(0, assy_path, "attached", "Y", 
+                                  spr_mod_env->md_id.osnum)
+
+          Update the part's attached flag in assy struct.
+            status = PDUmodify_exp(0, assy_path, "filename", cofilename, 
+                               spr_mod_env->md_id.osnum)
+
+          Return from position and attach successfully.
+
+    When p_parttype == 'P' or p_parttype == 'p':
+
+      Ignore the position_pts(origin, x_point, and y_point) and spr_position_cs
+        if given.
+       
+      If dynloc* input is not provided, do positionless placement as defined
+        above.
+
+      If only part of the three dyn* parameters are given, return 
+        PDM_E_DYN_TRIP.
+
+      If only part of the three dynloc* parameters are given, return 
+        PDM_E_DYN_LOC_TRIP.
+
+      Query for dynamic attributes.
+        status = PDMquery_dynamic_attributes(cpr_catalogname, cpr_itemname, 
+                                             cpr_itemrev, &dyn_attr, &dyn_data, 
+                                             &dynlists, &tmp_explode)
+      
+      For all dynamic attributes in cpr_dyn_names:
+        Verify attributes existence. If attribute does not exist, continue.
+        Otherwise, if value given in cpr_dyn_values is valid (datatype, lists
+        and ranges), overwrite the default values from the database with this 
+        value.
+
+      Call place parametric part given the dynloc* parameters as input.
+         SetDynAttrs()
+         InstanceMacro()
+
+      If not successful, return PDM_E_PLACE_PARAMETRIC_PART. 
+
+      Return from place parametric part successfully.
+
+Sample Invocation:
+ 
+ A. Place by three points
+
+ double  origin[3];
+ double  x_point[3];
+ double  y_point[3];
+
+ origin[0] = 0.0;
+ origin[1] = 0.0;
+ origin[2] = 0.0;
+ x_point[0] = 1.0;
+ x_point[1] = 0.0;
+ x_point[2] = 0.0;
+ y_point[0] = 0.0;
+ y_point[1] = 1.0;
+ y_point[2] = 0.0;
+
+ status = pdmoPlacePart(&status, NULL, part, "api_parts","api_part1", "a",
+                        "apipart1.1", "three points", NULL,
+                        quantity, explode, attach, NULL, incstr, incbom,
+                        0, NULL, NULL, 0, NULL, NULL, origin, x_point, y_point,
+                        NULL);
+
+Test Cases:
+
+GRParts:
+
+Test Case                               
+-----------------------------           
+User Not Logged In                       
+NULL Catalog                               
+NULL Part                                 
+NULL Rev                                  
+Invalid Catalog                           
+Invalid Part                              
+Invalid Revision                          
+Invalid Usageid                            
+Duplicate Usageid                          
+Invalid Filename                           
+Invalid Quantity                           
+Invalid Viewname                           
+Invalid Explode                           
+Invalid Attach                            
+Duplicate Alternate Tag #                
+Invalid Include in Structure               
+Invalid Include in BOM                     
+Invalid Dynamic Input Triplet             
+Invalid 3 Point Input Triplet             
+Invalid Position                           
+Invalid Dynamic Attributes               
+Positionless Placement                    
+Non-graphic placement                      
+Place by 3 Points                         
+Place by Coordinate System                
+Place/Attach by 3 Points                  
+Place/Attach by C.S.                      
+Place Given Usageid                        
+Place Default Usageid                      
+Place Given Alternate Tag #               
+Place/Attach Given Viewname               
+Place/Attach Default Viewname              
+Place Given Dynamic Values               
+Place Default Dynamic Values              
+Place Given Quantity                      
+Place Default Quantity                    
+Place Include in Struct = Y                
+Place Include in Struct = N            
+Place Include in BOM = Y                  
+Place Include in BOM = N                   
+Place Explode in BOM = Y                 
+Place Explode in BOM = N                   
+
+From Interface:
+
+Test Case                             
+-----------------------------        
+Position Part                             
+Attach Part                              
+Copy Part                                  
+Detach Part                               
+Delete Part                              
+Checkin Assembly                           
+
+Parametric Parts:
+
+Test Case                               
+-----------------------------           
+NULL Catalog                               
+NULL Part                                 
+NULL Rev                                   
+Invalid Catalog                            
+Invalid Part                             
+Invalid Revision                           
+Invalid Usageid                           
+Duplicate Usageid                        
+Invalid Quantity                         
+Invalid Explode                            
+Invalid Include in Structure             
+Invalid Include in BOM                    
+Invalid Dynamic Input Triplet              
+Invalid Dynamic Attributes                 
+Invalid Dyn Locatable Triplet             
+Invalid Dyn Locatable Names                
+Positionless Placement                 
+Place Given Usageid                        
+Place Default Usageid                      
+Place Given Alternate Tag #                
+Place Given Dynamic Values                 
+Place Default Dynamic Values               
+Place Given Quantity                       
+Place Default Quantity                     
+Place Include in Struct = Y                
+Place Include in Struct = N                
+Place Include in BOM = Y                   
+Place Include in BOM = N                   
+
+From Interface:
+
+Test Case                              
+-----------------------------         
+Position Part                              
+Delete Part                                
+Checkin Assembly                           
+

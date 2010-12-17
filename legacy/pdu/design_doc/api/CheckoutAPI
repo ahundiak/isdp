@@ -1,0 +1,168 @@
+
+API for Checkout part
+
+Abstract:
+This describes interface protocol for Checkout assembly
+
+
+Keywords:
+Checkout, Assembly, Display management
+
+Function Protocol:
+
+int pdmoCheckOutPart ( char *cpr_catalog, char *cpr_itemname, 
+                             char *cpr_itemrev, long *ipw_status)
+
+ Input/Output:
+
+  char *cpr_catalog      : Catalog name of the part to be checked out
+                           Required
+  char *cpr_itemname     : Item name of the part to be checked out
+                           Required
+  char *cpr_itemrev      : Item Rev of the part to be checked out
+                           Required
+
+ Output:
+
+  long *ipw_status      :  Overall status of the command
+
+                      
+Dependencies:
+ - Assumption
+     The catalog and part exists for each entry and the part is an assy. 
+		       
+     The storage structure should have the current working
+     area information.
+     Global structure information required for validate access.
+       
+
+  -Impacts:
+     Updates the catalog record for this part.
+     Brings the specified files local.
+     Updates/inserts LFM entries for the parts brought local.
+     Global structures modified during validate access.
+
+
+Algorithm:
+
+
+  Algorithm for checkout part:
+
+  1. Validate the required inputs
+     All the required inputs are checked for NULL values
+      if (NULL) return error
+
+  2. Verify whether user is logged in
+
+  For each part in the list, perform steps 3 thro 14.
+
+  3. Verify the inputs
+     Catalog exists?
+        No: return error
+     Partnum and revision exists?
+        No: return error
+     partnum checked in
+        No: return error
+
+
+  4. Load the required information into PDMexec structure
+
+  5. Call PDMvalidate_user_access
+
+  6. Load catalog, partnum, revision into PDMexec structure
+
+  7. Call PDMCheckOutParentAssyStruct
+       This function does the following:
+        - checks to see if the part is an assy
+        - checks out the assembly (parent)
+        - Generates the assembly structure
+        - Gets a list of files for the part.
+
+  8. If the part is not an assy, return success
+  
+  9. Write the assy struct info into the shared mem.
+
+ 10. Call the ppl which does the following:
+       - reads the assy struct from shared mem
+       - resolves the structure with existing structure in OS
+       - generates the assy tree with the disp information
+       - writes this information in shared memory
+
+ 11. Read the assy struct with disp information from the
+     shared mem and load the list with it.
+
+ 12. Pass this list to PDMRetrieveChildFiles
+       This function does the following
+       - creates a list of files with disp set to "Y"
+       - Transfers the file across
+       - Updates the LFM entries for these files.
+
+ 13. If success load the pertinant struct field with PDM_S_SUCCESS
+        else load the pertinant struct field with status
+    
+ 14. Free up allocated structures
+
+ 15. If all the parts are successfully checked out
+       load overall status variable with PDM_S_SUCCESS
+       else load it with PDM_I_COULD_NOT_CO_SOME_PARTS
+             if some of them could not be checked out
+       else load it with PDM_E_COULD_NOT_CHECKOUT_PARTS
+             if all of them could not be checked out.
+
+  16. Return status
+
+
+
+  
+Return Status:
+
+PDM_S_SUCCESS
+PDM_E_APPEND_BUFFER
+PDM_E_BUFFER_FORMAT
+PDM_E_BUILD_ARRAY
+PDM_E_COULD_NOT_LOAD_PART_INFO
+PDM_E_COULD_NOT_MALLOC
+PDM_E_CO_SAME_USER_DIFF_SA
+PDM_E_ITEM_LOCKED
+PDM_E_NOTCHECK_IN
+PDM_E_NOTCHECK_OUT
+PDM_E_NOT_CO_USER
+PDM_E_PART_CHECKED_OUT
+PDM_E_PART_FLAGGED_FOR_ARCHIVE
+PDM_E_PART_FLAGGED_FOR_BACKUP
+PDM_E_PART_FLAGGED_FOR_DELETE
+PDM_E_PART_FLAGGED_FOR_RESTORE
+PDM_E_PART_NONGRAPHIC
+PDM_E_TEMP_IN
+PDM_E_TEMP_OUT
+PDM_E_WRITE_ROW
+PDM_I_CHECKED_OUT_BY_ANOTHER_USER
+PDM_E_ASSY_NOT_CHECKEDIN
+PDM_E_ITEM_FLAG_ARCHIVE
+PDM_E_ITEM_FLAG_BACKUP
+PDM_E_ITEM_FLAG_DELETE
+PDM_E_NO_PART_FILE
+PDM_E_SET_FLAG_ARCHIVE
+PDM_E_SET_FLAG_BACKUP
+PDM_I_TABLE_LOCKED
+PDM_I_COULD_NOT_CO_SOME_PARTS
+PDM_E_COULD_NOT_CHECKOUT_PARTS
+
+
+Test Cases:
+
+Checkout should work on all the following types of checked in parts.
+
+ 1. Assemblies containing multiple levels of regular parts
+ 2. Assemblies containing multiple levels of parametric parts
+ 4. Assemblies containing multiple levels of view parts
+ 3. Assemblies containing multiple levels of both parametric & regular parts
+ 5. Assemblies containing multiple levels of parametric, view & regular parts
+ 6. Atomic parts.
+
+
+Author : Arun Madhwesh
+Date   : 080593
+Vers   : 1.02
+
+
