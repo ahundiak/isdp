@@ -1,0 +1,166 @@
+#include "ciminimum.h"
+#include "cimacros.h"
+#include "exmacros.h"
+
+#include "OMindex.h"
+#include "OMprimitives.h"
+
+#include "DItypedef.h"
+#include "DIdef.h"
+#include "DIglob.h"
+#include "DIprims.h"
+#include "DImacros.h"
+#include "PDUerror.h"
+#include "PDUuser.h"
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <stdio.h>
+
+IGRint                  sts;
+
+IGRchar			file_name[DI_PATH_MAX];
+IGRchar			path[DI_PATH_MAX];
+struct GRmd_env         mod_env;
+FILE                    *infile;
+struct stat             buf;
+IGRshort                login;
+IGRint                  count;
+FILE                    *failure;
+FILE                    *success;
+
+extern char     *malloc();
+extern int	free();
+extern char	*strrchr();
+extern int      PDUcvt_20objspace();
+extern FILE     *fopen();
+extern int      PDUread_refresh_file();
+extern int      PDMrlogin();
+extern int      PDUload_storage_area();
+extern int      PDUprocess_wrkst_info(); 
+extern int      PDMterminate();
+extern int      PDUuser_init();
+extern          stat();
+extern          DIgive_pathname();
+extern          DImain();
+
+extern  struct PDUuser *user;
+
+main()
+
+{
+ /* Initialize local variables */
+ login = FALSE;
+ count = 0;
+
+ /* Load PDM login information */
+ if (stat("login.info", &buf))
+    {
+     write("login.info does not exit.\n");
+     exit;
+    }
+ 
+ if (buf.st_size == 0)
+    {
+     write("login.info is empty.\n");
+     exit;
+    }
+
+ if ((infile = fopen ("login.info", "r")) == NULL)
+    {
+     write("could not open login.info.\n");
+     exit;
+    }
+
+ PDUread_refresh_file (&user->environment, "login.info", infile);
+ PDUread_refresh_file (&user->username, "login.info", infile);
+ PDUread_refresh_file (&user->passwd, "login.info", infile);
+
+ fclose (infile);
+
+ /* Get current module info */
+ ci$get_module_info(md_env = &mod_env);
+ 
+ /* Get the <:filename> path */
+ di$give_pathname(
+                  osnum = mod_env.md_id.osnum,
+                  pathname = file_name
+                 );
+
+ /* Check to see if loging into PDM is necessary */
+ strcpy(path, file_name);
+ strcat(path, ":PDU:parts");
+
+ /* Check to see if part pointer conversion is necessary */
+ sts = di$ls(regexp = path, ptr = &count);
+
+ if (count > 0)
+    {
+     /* Load storage area information */
+     PDUprocess_wrkst_info();
+     PDUload_storage_area();
+
+     /* Login to PDM */
+     sts = PDMrlogin(
+                     user->username,
+                     user->passwd,
+                     user->environment,
+                     1, /* login flag */
+                     &user->user_id
+                    );
+
+     if (sts != PDM_S_SUCCESS)
+        {
+         write("Could not login to PDM.\n");
+         exit;
+        }
+
+     /* Flag login */
+     login = TRUE;
+    }
+
+ /* Call PDU 2.0 object space convertor */
+ sts = PDUcvt_20objspace();
+
+ if (sts != PDM_S_SUCCESS)
+    {
+     /* Open log files for append */
+     if ((failure = fopen ("failure.log", "a")) == NULL)
+        {
+         write("Could not open 'failure.log' file\n");
+         exit;
+        }
+
+     else
+         {
+          fprintf(failure, "%s\n", file_name + 1);
+          fclose (failure);
+         }
+
+     exit;
+    }
+
+ /* Open log files for append */
+ if ((success = fopen ("success.log", "a")) == NULL)
+    {
+     write("Could not open 'success.log' file\n");
+     exit;
+    }
+
+ else
+     {
+      fprintf(success, "%s\n", file_name + 1);
+      fclose (success);
+     }
+
+ /* Save file */
+ begincmd("save=y");
+	ci$put(string = "n",pos = BACK);
+ endcmd();
+
+ /* Logout from PDM, if necessary */
+ if (login)
+    {
+     PDUuser_init();
+     PDMterminate();
+    }
+}

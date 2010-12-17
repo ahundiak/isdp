@@ -1,0 +1,459 @@
+/*
+ * Author: Jenny Parris
+ * Date: 06-26-92
+ * This command  extracts the prameters from a give macro name 
+ */
+
+
+#if ! defined(__sgi)
+#include        "unistd.h"
+#endif
+#include 	"ciminimum.h"
+#include 	"cimacros.h"
+#include 	"PDUstr.h"
+#include        "PDUpart.h"
+#include        "PDUforms.h"
+#include        "ex.h"
+#include        "igrdp.h"
+#include 	"partmacros.h"
+#include 	"part.h"
+#include	"cieveryone.h"
+#include	"cimacros.h"
+#include	"acdef.h"
+#include	"acmacros.h"
+#include	"ACdb_info.h"
+#include	"macro.h"
+#include	"grdpbdef.h"
+#include	"grdpb.h"
+#include	"grdpbmacros.h"
+#include	"growner.h"
+#include	"igrdp.h"
+#include	"madef.h"
+#include	"exdef.h"
+#include	"exmacros.h"
+#include	"dp.h"
+#include	"dpdef.h"
+/* 'cs.h' is not available in 3.2 GRNUCDP. 05/Jul/95 - raj. */
+#include	"grcoordsys.h"
+#include	"csdef.h"
+#include	"msdef.h"
+#include	"PDUint.h"
+#include	"PDUintdef.h"
+#include	"string.h"
+#include	"grsymdef.h"
+#include	"grsym.h"
+#include	"grownerdef.h"
+#include 	"dpmacros.h"
+#include 	"comiscmac.h"
+#include 	"coplcmac.h"
+#include 	"cotxmacros.h"
+#include        "DItypedef.h"
+#include        "DIdef.h"
+#include        "DIglob.h"
+#include        "DIprims.h"
+#include        "expmacros.h"
+#include        "csmacros.h"
+#include        "MEMstruct.h"
+#include        "PDUfile_def.h"
+#include        "part_gadgets.h"
+#include        "parametric.h"
+#include        "PDMmessage.h"
+
+/* External Functions */
+extern ACconstruct_wd();
+extern ACconstruct_path();
+extern DIuntranslate();
+extern DImain();
+extern DIreport_error();
+extern PDUfill_in_string();
+extern PDUis_macro_edited();
+extern PDUcheck_for_blanks();
+extern FIfld_set_text();
+extern FIg_set_text();
+extern FIg_reset();
+extern _pdm_debug();
+extern _pdm_status();
+extern PDUtranslate_message();
+extern GetOriginalMacroInfo();
+extern free();
+
+/* External variables declaration section */
+extern          struct PDUrefresh        *refresh;
+extern          struct PDUforms          forms;
+extern          struct stemp             *PDU_macro_temp;
+extern          struct myfeet            *PDU_macro_feet;
+extern          char  *PDU_macro_name;
+extern          int    PDU_num_feet;
+extern          int    PDU_num_temp;
+
+struct   GRmd_env    my_env;
+
+main()
+{
+int         i, j , length ;
+int         sts;
+int         status;
+int         macro_or_not;
+int         num_rows;
+int         num_org;
+int         num_loc;
+int         num_col;
+char   error_msg[80] ;
+char *msg;
+struct GRid mac_hdr ;
+struct stemp *temp_desc;
+
+temp_desc = NULL;
+num_col = 0;
+num_org = 0;
+num_loc = 0;
+
+    /* TR# 139524873. 05/Jul/95 - raj */
+    if (PDU_macro_name == NULL)
+    {
+      _pdm_debug("PDU_macro_name is NULL", 0);
+      return(0);
+    }
+    else if (strcmp(PDU_macro_name, "") == 0)
+    {
+      _pdm_debug("PDU_macro_name is NULL", 0);
+      return(0);
+    }
+
+    _pdm_debug("listing paraemters for macro", 0);
+    ci$get_module_info(md_env = &my_env );
+
+    get_macro_header(PDU_macro_name,&mac_hdr);
+
+    sts = om$get_classname(objid = mac_hdr.objid,
+                               osnum = mac_hdr.osnum,
+                               classname = error_msg);
+
+    _pdm_status("om$get_classname", sts);
+    /* decide whether macro or ci_macro */
+
+    if ( strcmp(error_msg,"ci_mac_def") == 0 )
+           macro_or_not = 0 ;    // ci_macro
+    else
+           macro_or_not = 1 ;    // macro
+
+    /* Get templates and types */
+    sts = ci$send( msg = message ACcpx_defn.ACgive_temp_desc(&PDU_num_temp,
+                      &PDU_macro_temp),
+                      targetid = mac_hdr.objid,
+                      targetos = mac_hdr.osnum );
+
+    _pdm_status("ACcpx_defn.ACgive_temp_desc", sts);
+    _pdm_debug("Num temp = %d", PDU_num_temp);
+
+    _pdm_debug("temp[PDU_num_temp - 1].name = <%s>", PDU_macro_temp[PDU_num_temp - 1].name);
+
+    _pdm_debug("temp[PDU_num_temp].name = <%s>", PDU_macro_temp[PDU_num_temp].name);
+
+    FIg_reset(forms.parametric_catalog_form_id,MACRO_ATTR_MCF);
+
+    status = PDUis_macro_edited(&mac_hdr);
+    _pdm_status("PDUis_macro_edited", status);
+
+    if (status == 1)
+      {
+      GetOriginalMacroInfo(&mac_hdr, &temp_desc, &num_org, &num_loc, &num_col);
+      _pdm_debug("num_col = %d", num_col);
+      PDU_num_temp = PDU_num_temp - num_col;
+      }
+    
+    _pdm_debug("Num temp = %d", PDU_num_temp);
+
+    /* check for blanks in template names */
+    for ( i = 0; i < PDU_num_temp; i = i + 1)
+      {
+      _pdm_debug("text = <%s>", PDU_macro_temp[i].name);
+      length = strlen(PDU_macro_temp[i].name);
+ 
+      for (j = 0; j < length; j = j + 1)
+        {
+        if (PDU_macro_temp[i].name[j] == ' ')
+          {
+          msg = (char *)PDUtranslate_message(PDM_E_MACRO_TEMP_NO_BLANKS);
+          FIg_set_text(forms.parametric_catalog_form_id, FI_MSG_FIELD, msg);
+          PDUfill_in_string(&PDU_macro_name, NULL);
+          FIg_set_text(forms.parametric_catalog_form_id, MACRO_NAME, "");
+          FIg_reset(forms.parametric_catalog_form_id, MACRO_ATTR_MCF);
+          exit;
+          }
+        _pdm_debug("blanks not found", 0);
+        }
+     }
+    num_rows = 0;
+    for ( i = 0 ; i < PDU_num_temp ; i = i + 1 ) 
+       {
+       FIfld_set_text(forms.parametric_catalog_form_id,MACRO_ATTR_MCF,i,0,
+                       PDU_macro_temp[i].name,FALSE);
+
+       FIfld_set_text(forms.parametric_catalog_form_id,MACRO_ATTR_MCF,i,3,
+                      PDU_macro_temp[i].name,FALSE);
+
+       FIfld_set_text(forms.parametric_catalog_form_id,
+                          MACRO_ATTR_MCF,i,4,"",FALSE);
+       if (PDU_macro_temp[i].type == point_generic)
+         {
+         FIfld_set_text(forms.parametric_catalog_form_id,
+                        MACRO_ATTR_MCF,i,1,"Point",FALSE);
+         FIfld_set_text(forms.parametric_catalog_form_id,
+                        MACRO_ATTR_MCF,i,2,"Dynamic - file only",FALSE);
+         }
+       else if (PDU_macro_temp[i].type == ref_generic)
+         {
+         FIfld_set_text(forms.parametric_catalog_form_id,
+                        MACRO_ATTR_MCF,i,1,"Coord sys",FALSE);
+         FIfld_set_text(forms.parametric_catalog_form_id,
+                        MACRO_ATTR_MCF,i,2,"Dynamic - file only",FALSE);
+         FIfld_set_text(forms.parametric_catalog_form_id,
+                          MACRO_ATTR_MCF,i,4,"",FALSE);
+         }
+       else if (PDU_macro_temp[i].type == line_generic)
+         {
+         FIfld_set_text(forms.parametric_catalog_form_id,
+                        MACRO_ATTR_MCF,i,1,"Line",FALSE);
+         FIfld_set_text(forms.parametric_catalog_form_id,
+                        MACRO_ATTR_MCF,i,2,"Dynamic - file only",FALSE);
+         FIfld_set_text(forms.parametric_catalog_form_id,
+                          MACRO_ATTR_MCF,i,4,"",FALSE);
+         }
+       else if (PDU_macro_temp[i].type == conic_generic)
+         {
+         FIfld_set_text(forms.parametric_catalog_form_id,
+                        MACRO_ATTR_MCF,i,1,"Conic",FALSE);
+         FIfld_set_text(forms.parametric_catalog_form_id,
+                        MACRO_ATTR_MCF,i,2,"Dynamic - file only",FALSE);
+         FIfld_set_text(forms.parametric_catalog_form_id,
+                          MACRO_ATTR_MCF,i,4,"",FALSE);
+         }
+       else if (PDU_macro_temp[i].type == circle_type)
+         {
+         FIfld_set_text(forms.parametric_catalog_form_id,
+                        MACRO_ATTR_MCF,i,1,"Circle",FALSE);
+         FIfld_set_text(forms.parametric_catalog_form_id,
+                        MACRO_ATTR_MCF,i,2,"Dynamic - file only",FALSE);
+         FIfld_set_text(forms.parametric_catalog_form_id,
+                          MACRO_ATTR_MCF,i,4,"",FALSE);
+         }
+       else if (PDU_macro_temp[i].type == arc_type)
+         {
+         FIfld_set_text(forms.parametric_catalog_form_id,
+                        MACRO_ATTR_MCF,i,1,"Arc",FALSE);
+         FIfld_set_text(forms.parametric_catalog_form_id,
+                        MACRO_ATTR_MCF,i,2,"Dynamic - file only",FALSE);
+         FIfld_set_text(forms.parametric_catalog_form_id,
+                          MACRO_ATTR_MCF,i,4,"",FALSE);
+         }
+       else if (PDU_macro_temp[i].type == lbs_generic)
+         {
+         FIfld_set_text(forms.parametric_catalog_form_id,
+                        MACRO_ATTR_MCF,i,1,"Lbs",FALSE);
+         FIfld_set_text(forms.parametric_catalog_form_id,
+                        MACRO_ATTR_MCF,i,2,"Dyanamic - file only",FALSE);
+         FIfld_set_text(forms.parametric_catalog_form_id,
+                          MACRO_ATTR_MCF,i,4,"",FALSE);
+         }
+       else if (PDU_macro_temp[i].type == 67108864)
+         {
+         FIfld_set_text(forms.parametric_catalog_form_id,
+                        MACRO_ATTR_MCF,i,1,"Surface",FALSE);
+         FIfld_set_text(forms.parametric_catalog_form_id,
+                        MACRO_ATTR_MCF,i,2,"Dynamic - file only",FALSE);
+         FIfld_set_text(forms.parametric_catalog_form_id,
+                          MACRO_ATTR_MCF,i,4,"",FALSE);
+         }
+       else if (PDU_macro_temp[i].type == curve_generic)
+         {
+         FIfld_set_text(forms.parametric_catalog_form_id,
+                        MACRO_ATTR_MCF,i,1,"Curve",FALSE);
+         FIfld_set_text(forms.parametric_catalog_form_id,
+                        MACRO_ATTR_MCF,i,2,"Dynamic - file only",FALSE);
+         FIfld_set_text(forms.parametric_catalog_form_id,
+                          MACRO_ATTR_MCF,i,4,"",FALSE);
+         }
+       else if (PDU_macro_temp[i].type & parameter_generic)
+         {
+         if (PDU_macro_temp[i].type == double_type)
+           {
+           FIfld_set_text(forms.parametric_catalog_form_id,
+                          MACRO_ATTR_MCF,i,1,"Expression double",FALSE);
+           FIfld_set_text(forms.parametric_catalog_form_id,
+                        MACRO_ATTR_MCF,i,2,"Static",FALSE);
+           FIfld_set_text(forms.parametric_catalog_form_id,
+                          MACRO_ATTR_MCF,i,4,"inch",FALSE);
+           }
+         else if (PDU_macro_temp[i].type == text_type)
+           {
+           FIfld_set_text(forms.parametric_catalog_form_id,
+                          MACRO_ATTR_MCF,i,1,"Expression text",FALSE);
+           FIfld_set_text(forms.parametric_catalog_form_id,
+                        MACRO_ATTR_MCF,i,2,"Static",FALSE);
+           FIfld_set_text(forms.parametric_catalog_form_id,
+                           MACRO_ATTR_MCF,i,4,"constant",FALSE);
+           }
+        }
+       else if (PDU_macro_temp[i].type == macro_generic)
+         {
+         FIfld_set_text(forms.parametric_catalog_form_id,
+                        MACRO_ATTR_MCF,i,1,"Macro",FALSE);
+         FIfld_set_text(forms.parametric_catalog_form_id,
+                        MACRO_ATTR_MCF,i,2,"Dynamic - file only",FALSE);
+         FIfld_set_text(forms.parametric_catalog_form_id,
+                          MACRO_ATTR_MCF,i,4,"",FALSE);
+         }
+       else
+         {
+         _pdm_debug("type = <%d>", PDU_macro_temp[i].type);
+         FIfld_set_text(forms.parametric_catalog_form_id,
+                        MACRO_ATTR_MCF,i,2,"Dynamic - file only",FALSE);
+         FIfld_set_text(forms.parametric_catalog_form_id,
+                        MACRO_ATTR_MCF,i,1,"unknown type",FALSE);
+         FIfld_set_text(forms.parametric_catalog_form_id,
+                          MACRO_ATTR_MCF,i,4,"",FALSE);
+         }
+     num_rows = num_rows + 1;
+    }
+
+  sts = ci$send( msg = message ACcpx_defn.ACgive_feet_desc(&PDU_num_feet,
+                                                           &PDU_macro_feet),
+                 targetid = mac_hdr.objid,
+                 targetos = mac_hdr.osnum );
+  _pdm_debug("ACgive_feet_desc", sts);
+ 
+    status = PDUis_macro_edited(&mac_hdr);
+    _pdm_status("PDUis_macro_edited", status);
+
+  num_rows = 0;
+  for ( i = 0; i < PDU_num_feet; i = i + 1)
+       {
+      /*printf("text = <%s> \n", PDU_macro_feet[i].name);
+      printf("chan = <%d> \n", PDU_macro_feet[i].chan);*/
+      if (PDU_macro_feet[i]. chan == 0)
+        {
+        _pdm_debug("template feet", 0);
+        continue;
+        }
+       FIfld_set_text(forms.parametric_catalog_form_id,MACRO_DYN_MCF,
+                      (num_rows + i),0,
+                       PDU_macro_feet[i].name,FALSE);
+
+       FIfld_set_text(forms.parametric_catalog_form_id,MACRO_DYN_MCF,
+                      (num_rows + i),2,
+                      "Dynamic - file only",FALSE);
+
+       FIfld_set_text(forms.parametric_catalog_form_id,MACRO_DYN_MCF,
+                      (num_rows + i),3,
+                      PDU_macro_feet[i].name,FALSE);
+
+       FIfld_set_text(forms.parametric_catalog_form_id,
+                      MACRO_DYN_MCF,i,4,"",FALSE);
+       if (PDU_macro_feet[i].prop == point_generic)
+         {
+         FIfld_set_text(forms.parametric_catalog_form_id,
+                        MACRO_DYN_MCF,(num_rows + i),1,"Point",FALSE);
+         }
+       else if (PDU_macro_feet[i].prop == ref_generic)
+         {
+         FIfld_set_text(forms.parametric_catalog_form_id,
+                        MACRO_DYN_MCF,(num_rows + i),1,"Coord sys",FALSE);
+         }
+       else if (PDU_macro_feet[i].prop == line_generic)
+         {
+         FIfld_set_text(forms.parametric_catalog_form_id,
+                        MACRO_DYN_MCF,(num_rows + i),1,"Line",FALSE);
+         }
+       else if (PDU_macro_feet[i].prop == conic_generic)
+         {
+         FIfld_set_text(forms.parametric_catalog_form_id,
+                        MACRO_DYN_MCF,(num_rows + i),1,"Conic",FALSE);
+         }
+       else if (PDU_macro_feet[i].prop == circle_type)
+         {
+         FIfld_set_text(forms.parametric_catalog_form_id,
+                        MACRO_DYN_MCF,(num_rows + i),1,"Circle",FALSE);
+         }
+       else if (PDU_macro_feet[i].prop == arc_type)
+         {
+         FIfld_set_text(forms.parametric_catalog_form_id,
+                        MACRO_DYN_MCF,(num_rows + i),1,"Arc",FALSE);
+         }
+       else if (PDU_macro_feet[i].prop == lbs_generic)
+         {
+         FIfld_set_text(forms.parametric_catalog_form_id,
+                        MACRO_DYN_MCF,(num_rows + i),1,"Lbs",FALSE);
+         }
+       else if (PDU_macro_feet[i].prop == plan_type)
+         {
+         FIfld_set_text(forms.parametric_catalog_form_id,
+                        MACRO_DYN_MCF,(num_rows + i),1,"Plane",FALSE);
+         }
+       else if (PDU_macro_feet[i].prop == curve_generic)
+         {
+         FIfld_set_text(forms.parametric_catalog_form_id,
+                        MACRO_DYN_MCF,(num_rows + i),1,"Curve",FALSE);
+         }
+       else if (PDU_macro_feet[i].prop & parameter_generic)
+         {
+         if (PDU_macro_feet[i].prop == double_type)
+           {
+           FIfld_set_text(forms.parametric_catalog_form_id,
+                          MACRO_DYN_MCF,(num_rows + i),1,
+                          "Expression double",FALSE);
+           FIfld_set_text(forms.parametric_catalog_form_id,MACRO_DYN_MCF,
+                          (num_rows + i),2,
+                          "Dynamic - reportable",FALSE);
+           FIfld_set_text(forms.parametric_catalog_form_id,
+                          MACRO_DYN_MCF,(num_rows + i),4,"inch",FALSE);
+           }
+         else if (PDU_macro_feet[i].prop == text_type)
+           {
+           FIfld_set_text(forms.parametric_catalog_form_id,
+                          MACRO_DYN_MCF,(num_rows + i),1,
+                          "Expression text",FALSE);
+           FIfld_set_text(forms.parametric_catalog_form_id,MACRO_DYN_MCF,
+                          (num_rows + i),2,
+                          "Dynamic - reportable",FALSE);
+           FIfld_set_text(forms.parametric_catalog_form_id,
+                           MACRO_DYN_MCF,(num_rows + i),4,"constant",FALSE);
+           }
+        }
+       else if (PDU_macro_feet[i].prop == macro_generic)
+         {
+         FIfld_set_text(forms.parametric_catalog_form_id,
+                        MACRO_DYN_MCF,(num_rows + i),1,"Macro",FALSE);
+         }
+       else
+         {
+         FIfld_set_text(forms.parametric_catalog_form_id,
+                        MACRO_DYN_MCF,(num_rows + i),1,"unknown type",FALSE);
+         }
+
+     }
+}
+
+int get_macro_header(macro_name,header)
+char macro_name[] ;
+struct GRid *header ;
+{
+char error_msg[80] ;
+struct GRid ci_mac ;
+int  sts;
+int  msg;
+
+    ci_mac.objid = NULL_OBJID ;
+    ci_mac.osnum = my_env.md_id.osnum ;
+
+    sts = ci$send(msg = message ACcpx.ACattach(&msg,macro_name),
+                 targetid = ci_mac.objid ,
+                 targetos = ci_mac.osnum );
+
+    sts = ci$send( msg = message ACcpx.find_macro( header),
+                 targetid = ci_mac.objid,
+                 targetos = ci_mac.osnum);
+
+    return(1);
+   
+}

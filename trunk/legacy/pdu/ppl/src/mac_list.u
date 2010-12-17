@@ -1,0 +1,457 @@
+/*
+ * Author: Jenny Parris
+ * Date: 06-26-92
+ * This command lists the macros found in a given library and process a 
+ * GRpulldown.
+ */
+
+
+/*
+ * 14/Feb/95 -  raj. TR# 139423521.
+ * Use getenv() instead of PDUgetcwd().
+ * Consider the following scenario:
+ * 1. User created a directory /usr2/pdm symbolic linked
+ *    to /usr/pdm directory. (/usr2/pdm -> /usr/pdm)
+ * 2. Brought PDU up from /usr2/pdm directory.
+ * 3. Executed a command which caused a macro library
+ *    to be bought local to /usr2/pdm directory.
+ * 4. This macro library is attached to the design file
+ *    using ac$construct_path() which uses getenv("PWD")
+ *    to arrive at the full path of the macro library,
+ *    which is "/usr2/pdm/maclib".
+ * 5. The entry in the design file directory subsystem
+ *    becomes ":ems.dgn:constructs_lib:/usr2/pdm/maclib".
+ * 6. When this PPL attempts to construct the above path
+ *    by using PDUgetcwd() to get current working directory
+ *    it gets the original directory "/usr/pdm" instead of CWD
+ *    "/usr2/pdm".
+ * 7. This is in conflict with the directory entry in the design
+ *    file and hence causes di$ls() command to fail.
+ * 8. Using getenv() resolves this since the CWD will be consistent
+ *    with the entry in the design file.
+ */
+
+#if ! defined(__sgi)
+#include        "unistd.h"
+#endif
+#include 	"ciminimum.h"
+#include 	"cimacros.h"
+#include 	"PDUstr.h"
+#include        "PDUpart.h"
+#include        "ex.h"
+#include        "igrdp.h"
+#include 	"partmacros.h"
+#include 	"part.h"
+#include	"cieveryone.h"
+#include	"cimacros.h"
+#include	"acdef.h"
+#include	"acmacros.h"
+#include	"ACdb_info.h"
+#include	"macro.h"
+#include	"grdpbdef.h"
+#include	"grdpb.h"
+#include	"grdpbmacros.h"
+#include	"growner.h"
+#include	"igrdp.h"
+#include	"madef.h"
+#include	"exdef.h"
+#include	"exmacros.h"
+#include	"dp.h"
+#include	"dpdef.h"
+#include	"grcoordsys.h"
+#include	"csdef.h"
+#include	"msdef.h"
+#include	"PDUint.h"
+#include	"PDUintdef.h"
+#include	"string.h"
+#include	"grsymdef.h"
+#include	"grsym.h"
+#include	"grownerdef.h"
+#include 	"dpmacros.h"
+#include 	"comiscmac.h"
+#include 	"coplcmac.h"
+#include 	"cotxmacros.h"
+#include        "DItypedef.h"
+#include        "DIdef.h"
+#include        "DIglob.h"
+#include        "DIprims.h"
+#include        "expmacros.h"
+#include        "csmacros.h"
+#include        "MEMstruct.h"
+#include        "PDUfile_def.h"
+#include        "PDUinform.h"
+#include        "PDUassy.h"
+#include        "PDUforms.h"
+#include        "PDUform_def.h"
+#include        "WFstruct.h"
+#include        "part_gadgets.h"
+#include        "MEMerrordef.h"
+
+/* External Functions */
+extern ACconstruct_wd();
+extern ACconstruct_path();
+extern DIuntranslate();
+extern DImain();
+extern DIreport_error();
+extern DIgive_pathname();
+extern EX_findmod();
+extern _pdm_debug();
+extern _pdm_status();
+extern PDUfill_in_string();
+extern GRdelete_pull_down_list();
+extern GRcreate_pull_down_list();
+extern GRchange_pull_down_text();
+extern GRproc_pull_down_list();
+extern FIfld_set_text();
+extern FIg_set_text();
+extern FIf_cvrt_to_perm_win();
+extern MEMbuild_array();
+extern MEMclose();
+extern MEMsplit_copy_buffer();
+extern PDUdisplay_checkin_files();
+extern PDMget_filenames();
+extern PDUsetup_buffer();
+extern PDUget_buffer_col();
+extern PDUmessage();
+extern PDUmessage_trans();
+extern PDUget_file_status();
+extern PDUexternal();
+extern PDUverify_file();
+extern PDMi_backup_wfinfo();
+extern PDMi_restore_wfinfo();
+extern PDUtranslate_message();
+extern PDUgetcwd();
+extern PDMrcheck_part_status();
+
+/* External variables declaration section */
+extern          struct PDUrefresh        *refresh;
+extern          struct PDUforms          forms;
+extern          struct PDUpart           *part;
+extern          char  *PDU_macro_library;
+extern          char  *PDU_macro_name;
+extern          char  *PDU_macro_catalog;
+extern          char  *PDU_macro_partid;
+extern          char  *PDU_macro_partrev;
+extern          char  *PDU_checkin_file;
+extern          char  *PDU_store_catalog;
+extern          char  *PDU_template_catalog;
+extern          char   *PDU_value_list[605];
+extern          int    PDU_value_pulldown;
+extern          int    PDU_list_size;
+extern          MEMptr PDU_ret_bufr;
+extern          int    PDU_selected_rows;
+extern          int    PDU_command;
+
+/* 14/Feb/95 -  raj. TR# 139423521. */
+extern char *getenv();
+
+#define MACNAME_ASSOC_GADGET 17
+
+struct GRid  dir_grid;
+main()
+{
+char dir_name[DI_PATH_MAX];
+int  no_lines;
+int  length;
+int  len;
+int   sts;
+int   status;
+int  no_entries;
+int  i;
+int  file_col;
+int  Found;
+int store_rows;
+int save_command;
+char  *macro_name;
+char  *cwd_dir;
+char  *state;
+char  **lines;
+char  **data_row;
+char *msg;
+MEMptr file_bufr;
+struct WFstruct bak;
+OMuword osnum;
+OM_S_OBJID osid;
+
+osid = NULL_OBJID;
+macro_name = NULL;
+state = NULL;
+lines = NULL;
+file_bufr = NULL;
+cwd_dir = NULL;
+
+  if (PDU_template_catalog == NULL)
+    PDU_command = PDC_M_CREATE_CATALOG;
+  else if (strcmp(PDU_template_catalog, "") == 0)
+    PDU_command = PDC_M_CREATE_CATALOG;
+  else
+    PDU_command = PDC_M_CREATE_LIKE_CATALOG;
+
+  /* get list of files */
+  status = PDMget_filenames(
+                            PDU_macro_catalog,
+                            PDU_macro_partid,
+                            PDU_macro_partrev,
+                            &file_bufr
+                           );
+  _pdm_status("PDMget_filenames", status);
+
+  if ( status != PDM_S_SUCCESS )
+    {
+    PDUmessage(status, 's');
+    MEMclose(&file_bufr);
+    file_bufr = NULL;
+    return(status);
+    }
+
+  if ((file_bufr == NULL) || (file_bufr->rows == 0))
+    {
+    status = PDM_I_NO_FILES_FOUND;
+    PDUmessage(status, 's');
+    return(status);
+    }
+  status = MEMbuild_array(file_bufr);
+  _pdm_status("MEMbuild_array", status);
+
+  if (status != MEM_S_SUCCESS)
+    {
+    status = PDM_E_BUILD_BUFFER_ARRAY;
+    PDUmessage(status, 's');
+    return(status);
+    }
+  PDUsetup_buffer(file_bufr, ROW, &data_row);
+  PDUget_buffer_col(file_bufr, "n_cofilename", &file_col);
+
+  Found = FALSE;
+  if (file_bufr->rows == 1)
+    {
+    PDUfill_in_string(&PDU_macro_library, data_row[(file_bufr->columns * i ) +
+                      file_col]);
+    Found = TRUE;
+    }
+  else
+  {
+  for ( i = 0; i < file_bufr->rows; i = i + 1)
+    {
+    if (strcmp(data_row[(file_bufr->columns * i) + 1], "M") == 0)
+      {
+      PDUfill_in_string(&PDU_macro_library, data_row[(file_bufr->columns * i) +
+                        file_col]);
+      Found = TRUE;
+      break;
+      }
+    }
+  }
+  
+  if (Found == FALSE)
+    {
+    msg = (char *)PDUtranslate_message(PDM_E_INVALID_FILETYPE);
+    FIg_set_text(forms.parametric_catalog_form_id, FI_MSG_FIELD, msg);
+    exit;
+    }
+  _pdm_debug("Getting list of macros", 0);
+
+  _pdm_debug("PDUmacrolib = <%s>", PDU_macro_library);
+  /* check and see if part is checked in */
+  status = PDUget_file_status(PDU_macro_catalog, PDU_macro_partid, 
+                              PDU_macro_partrev, &state);
+  _pdm_status("PDUget_file_status", status);
+
+  if (strcmp(state, "I") == 0)
+    {
+    _pdm_debug("Check out part", 0);
+    /* check out part first */
+    save_command = PDU_command;
+    store_rows = PDU_selected_rows;
+    PDU_selected_rows = 0;
+    refresh->command = PDC_M_CHECKOUT;
+    PDMi_backup_wfinfo(&bak);
+    PDUmessage_trans(PDC_M_CHECKOUT, 'v');
+    FIf_cvrt_to_perm_win(forms.parametric_catalog_form_id);
+    PDUfill_in_string(&PDU_store_catalog, refresh->rev_catalog);
+    PDUfill_in_string(&refresh->rev_catalog, PDU_macro_catalog);
+    PDUfill_in_string(&refresh->rev_partid, PDU_macro_partid);
+    PDUfill_in_string(&refresh->rev_revision, PDU_macro_partrev);
+    PDUfill_in_string(&refresh->rev_filename, PDU_macro_library);
+
+    /*
+     * TR# 139423521. 14/Nov/94 - raj.
+     * Fill in parttype to indicate macrolibrary so
+     * that file is not processed during checkout in
+     * function PDUcheckout_part(), PDUcheckout.I.
+     */
+    PDUfill_in_string(&refresh->rev_parttype, "M");
+
+    status = PDUexternal();
+    _pdm_status("PDUexternal", status);
+    PDUfill_in_string(&refresh->rev_catalog, PDU_store_catalog);
+    PDUmessage_trans(status, 's');
+    PDMi_restore_wfinfo(bak);
+    PDU_selected_rows = store_rows;
+    PDU_command = save_command;
+    if (status != PDM_S_SUCCESS)
+      exit;
+     }
+  else if (strcmp(state, "O") == 0)
+    {
+    status = PDMrcheck_part_status(PDU_macro_catalog, PDU_macro_partid, 
+                              PDU_macro_partrev);
+    _pdm_status("PDMrcheck_part_status", status);
+    if (status != PDM_I_CHECKED_OUT_BY_YOU)
+      {
+      PDUmessage(status, 's');
+      exit;
+      }
+    }
+
+  status = PDUverify_file(PDU_macro_library);
+  _pdm_status("PDUverify_file", status);
+
+  if (status != PDM_S_SUCCESS)
+    {
+    msg = (char *)PDUtranslate_message(PDM_E_MACRO_LIB_LOCAL);
+    FIg_set_text(forms.parametric_catalog_form_id, FI_MSG_FIELD, msg);
+    exit;
+    }
+ sts = ac$construct_path ( mode = AC_ADD_PATH,
+                      name = PDU_macro_library);
+
+   _pdm_status("ac$construct_path", sts);
+
+    status = ex$get_cur_mod ( id = &osid, osnum = &osnum );
+    _pdm_debug("osnum = %d", osnum);
+    _pdm_status ("ex$get_cur_mod", status);
+
+    di$give_pathname(
+                     osnum = osnum,
+                     pathname = dir_name
+                     );
+
+     strcat(dir_name,":constructs_lib:");
+     /*
+      * 14/Feb/95 -  raj. TR# 139423521.
+      * Use getenv() instead of PDUgetcwd(). See history.
+      */
+     /*
+     cwd_dir = (char *)PDUgetcwd((char *)NULL,64);
+     */
+     cwd_dir = (char *) getenv("PWD");
+     strcat(dir_name,cwd_dir);
+     strcat(dir_name,"/");
+     strcat(dir_name,PDU_macro_library);
+     strcat(dir_name,":constructs");
+     length = strlen(dir_name);
+     strcat(dir_name,":*");
+     _pdm_debug("dir_name = <%s>", dir_name);
+
+        sts = di$ls( regexp = dir_name ,
+                     lines = &lines ,
+                     ptr = &no_lines);
+
+        _pdm_status("di$ls", sts);
+        if (!(sts&1))
+          di$report_error(sts = sts);
+
+        if (no_lines == 0) 
+          {
+          _pdm_debug("no macros found", 0);
+          exit ;
+          }
+
+        no_entries = 0 ;
+        /* extract macro name without path */
+        for (i = 0 ; i < no_lines ; i = i + 1 ) 
+           {
+           _pdm_debug("Entering for", 0);
+           macro_name = strrchr(lines[i], ':');
+           _pdm_debug("macro_name = <%s>", macro_name);
+           len = strlen(macro_name);
+
+           macro_name = macro_name + 1 ;
+           if (*macro_name == '\0' ) 
+             continue ;
+           _pdm_debug("lines[i] = <%s>", lines[i]);
+           remove_path(length,lines[i]);
+           _pdm_debug("loading list of values");
+           PDUfill_in_string(&PDU_value_list[no_entries], lines[i]);
+           no_entries = no_entries + 1 ;
+        }
+
+       if (no_entries == 1)
+         {
+         _pdm_debug("Only one macro in library", 0);
+         PDUfill_in_string(&PDU_macro_name, PDU_value_list[0]);
+         FIfld_set_text(forms.parametric_catalog_form_id, MACRO_NAME, 0, 0, 
+                        PDU_macro_name, FALSE);
+         ci$put(cmd_key = "PDGtMcPm",pos = FRONT);
+         /*ci$put(response = TERMINATE);*/
+         exit;
+         }
+       /* process GRpulldown */
+       PDU_list_size = no_entries;
+       _pdm_debug("PDU_list_size = %d", PDU_list_size);
+
+       GRdelete_pull_down_list(PDU_value_pulldown);
+       PDU_value_pulldown = 0;
+       GRcreate_pull_down_list(PARAMETRIC_CATALOG_FORM,
+                              forms.parametric_catalog_form_id,
+                              MACNAME_ASSOC_GADGET, PDU_list_size, VIS_ROWS,
+                              PDU_value_list, PDU_list_size, 1, 
+                              &PDU_value_pulldown);
+       /*GRchange_pull_down_text(PDU_value_pulldown, PDU_value_list, no_entries);*/
+   
+       GRproc_pull_down_list(PDU_value_pulldown);
+
+        _pdm_debug("After processing PDUpulldown", 0);
+        if(lines != NULL && no_lines != 0)
+                di$free(lines = lines,
+                        count = no_lines);
+       exit;
+}
+
+int remove_path(j,str)
+int j; 
+char str[];
+{
+    int i ;
+    char temp[DI_PATH_MAX] ;
+  
+    _pdm_debug("Entering remove_path", 0);
+    j = j  + 1 ;
+
+    for ( i = 0 ; str[j] != '\0'; i = i + 1 )
+      {
+       if (str[j] ==  '*')
+         break;
+       temp[i] = str[j] ;
+       j = j + 1 ;
+       }
+    temp[i] = '\0' ;
+
+    strcpy(str,temp);
+    _pdm_debug("str = <%s>", str);
+
+    return(1);
+}
+
+int display_files()
+  {
+  int response;
+  int status;
+
+  _pdm_debug("Entering PDUdesign_parts_listing_form", 0);
+  status = PDUdisplay_checkin_files();
+
+  /* Pause until the form is accepted or cancelled */
+  _pdm_debug("Waiting on input", 0);
+
+  ci$get(prompt = "", response = &response);
+  if (response == MOVE_ON)
+    {
+     return(1);
+    }
+
+  else
+    return(0);
+  }
+

@@ -1,0 +1,162 @@
+#set -x
+# make_pdu -- icom copy out ckins since a given date and makes the pdu product
+#
+passwd=`grep root /etc/passwd | awk -F: '{print $2}'`
+if [ "$passwd" ]
+then
+  my_id=`ps -l -p $$ | awk '{print $3}'`
+  my_id=`echo $my_id | awk '{print $2}'`
+  if [ "$my_id" -ne 0 ]
+  then
+    echo "Must be super-user to execute!"
+    exit 0
+  fi
+fi
+
+if [ $# -lt 1 ]
+then
+  echo "usage: $0 <date> <post_date>"
+  echo "  defaults if - or \"\""
+  echo "    date:   today"
+  exit 1
+fi
+echo $1
+echo $2
+echo ""
+echo "BUILD STARTING NOW!"
+echo ""
+echo "CNTR <c> if pdmdel is not rebooted"
+echo ""
+echo "Removing /usr3/pdmnorm/pdmnorm.*"
+echo ""
+cd $NORM
+rm pdmnorm24.*
+echo ""
+echo ""
+echo "FMU to pdmdel and run delta_norm"
+echo ""
+#delta_all_src $1 does not work because fmu does not allow the $1 for the comm
+fmu pdmdel.root.pdelrt com /usr/icom/delta_norm $1
+
+#DOES NOT WORK AS IS
+#echo "Logging into pdmdel.icom and running delta_all_src $1"
+#echo ""
+#This does not work because you must be super-user to run delta_all_src
+#rcmd pdmdel -l icom delta_all_src $1
+#echo "Exiting from pdmdel and returning to pdudev.pdu22src login"
+#echo ""
+#exit
+
+#echo "FMU to pdmdel.icom and run copy_all_src"
+#echo ""
+#fmu pdmdel.root.newroot com /usr/icom/copy_all_src
+
+nodename=pdudev
+login=pdu22src.u2src
+echo ""
+echo "cd $NORM"
+echo ""
+cd $NORM
+echo "Uncompress the pdmnorm* cpio file"
+echo ""
+cat pdmnorm* | compress -d | cpio -ivmud
+echo ""
+echo "Setting TARG to c100 to perform the c100 build"
+echo ""
+export TARG=c100
+echo "Setting Compiler Switches"
+echo ""
+if [ "$TARG" = "c100" ]
+then
+        if [ "$PLATFORM" = "21" ]
+        then
+        echo "Set compiler to compile source for a C100 workstation / 2.1 PLAT"
+        echo ""
+        COMP=acc
+        COMP_OPT="-knr -Dbld21"
+
+        else
+        echo "Set compiler to compile source for a C100 workstation / 2.2 PLAT"
+        echo ""
+        COMP=acc
+        COMP_OPT="-ansi -O3"
+        fi
+fi
+echo "Exporting COMP and COMP_OPT"
+echo ""
+export COMP COMP_OPT
+echo "COMP is set to:"
+echo $COMP
+echo ""
+echo "COMP_OPT is set to:"
+echo $COMP_OPT
+echo ""
+echo "Running bldnorm.sh"
+echo ""
+echo "***************************************************************"
+echo "C100 -- $NORM/bldnorm.sh started at:"
+date
+echo "***************************************************************"
+./bldnorm.sh
+echo "***************************************************************"
+echo "C100 -- $NORM/bldnorm.sh finished at:"
+date
+echo "***************************************************************"
+echo ""
+echo "C100 BUILD IS COMPLETE"
+echo ""
+echo "Setting TARG to c400 to perform the c400 build"
+echo ""
+export TARG=c400
+echo "Setting Compiler Switches"
+echo ""
+if [ "$TARG" = "c400" ]
+then
+        if [ "$PLATFORM" = "21" ]
+        then
+        echo "Set compiler to compile source for a C400 workstation / 2.1 PLAT"
+        echo ""
+        COMP=acc
+        COMP_OPT="-knr -Dbld21"
+
+        else
+        echo "Set compiler to compile source for a C400 workstation / 2.2 PLAT"
+        echo ""
+        COMP=acc
+        COMP_OPT="-ansi -O3 -Atarg=c400"
+        fi
+fi
+echo "Exporting COMP and COMP_OPT"
+echo ""
+export COMP COMP_OPT
+echo "COMP is set to:"
+echo $COMP
+echo ""
+echo "COMP_OPT is set to:"
+echo $COMP_OPT
+
+echo ""
+echo "cd $NORM"
+echo ""
+cd $NORM
+echo "Starting the c400 build"
+echo "Running bldnorm.sh"
+echo ""
+echo "***************************************************************"
+echo "C400 -- $NORM/bldnorm.sh started at:"
+date
+echo "***************************************************************"
+./bldnorm.sh
+echo "***************************************************************"
+echo "C400 -- $NORM/bldnorm.sh finished at:"
+date
+echo "***************************************************************"
+echo ""
+echo "C400 BUILD IS COMPLETE"
+echo ""
+echo "Removing /usr/pdmnorm/pdmnorm24.*"
+echo ""
+cd $NORM
+rm pdmnorm.*
+echo "BUILD COMPLETE"
+

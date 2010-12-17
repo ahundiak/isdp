@@ -1,0 +1,274 @@
+#include "ciminimum.h"
+#include "cimacros.h"
+#include "exmacros.h"
+
+#include "OMindex.h"
+#include "OMprimitives.h"
+
+#include "dpdef.h"
+#include "refdef.h"
+#include "ref.h"
+
+#include "DItypedef.h"
+#include "DIdef.h"
+#include "DIglob.h"
+#include "DIprims.h"
+#include "DImacros.h"
+
+IGRlong         	msg, zero;
+unsigned long           ref_prop;
+IGRlong                 i, size, len, temp;
+IGRint                  array_size;
+
+IGRchar			file_name[DI_PATH_MAX], name[DI_PATH_MAX],
+			attach_name[DI_PATH_MAX], new_name[DI_PATH_MAX];
+IGRchar                 assembly_path[DI_PATH_MAX];
+
+GRobjid                 mgr_objid;
+GRobj			*OBJECT,OBJECT1[500];
+short			*OSNUM,OSNUM1[500];	
+struct GRmd_env         MOD_ENV;
+struct GRinquire_list   list[5];
+
+extern char     *malloc();
+extern int	free();
+extern char	*strrchr();
+extern PDUstrip_dir_entry();
+extern PDUevaluate_exp();
+extern PDUmodify_exp();
+
+extern	EX_get_super(), EX_filename1(), DImain(),
+		DIuntranslate(), DIreport_error();
+
+main()
+
+{
+   IGRint count;
+   IGRint occur_count;
+   IGRchar *filename;
+   IGRchar **parts;
+   IGRint  part_count;
+   /*
+   IGRchar  *ptr, *ptr2;
+   */
+
+   filename = NULL;
+   part_count = 0;
+
+   ci$get_module_info(md_env = &MOD_ENV);
+
+   ex$get_super (mod_id = MOD_ENV.md_id.objid, 
+            	mod_osnum = MOD_ENV.md_id.osnum,  
+            	super_name = REFERENCE_FILE_MANAGER,
+            	create = FALSE, super_class = "Super_rfmgr", 
+            	super_id = &mgr_objid);
+
+   if ( mgr_objid == NULL )
+   {
+	status("No reference files are attached");
+   }
+   else
+   {
+       ref_prop = 0;
+       zero = 0;
+
+       ci$send(msg = message Super_rfmgr.GRget_channel_count(
+		&msg,&ref_prop, &zero, &count),
+               	targetid = mgr_objid, 
+		targetos = MOD_ENV.md_id.osnum);
+
+       if ( count > 500)
+       {
+           OBJECT = (GRobj *) malloc(( count * sizeof (GRobj)));      
+           OSNUM =  (short *) malloc(( count * sizeof (short)));       
+       }
+       else
+       {
+	   OBJECT = OBJECT1;
+           OSNUM = OSNUM1;
+       }
+  
+       ci$send(msg = message Super_rfmgr.GRget_channel_objects(
+		&msg,
+                &ref_prop, 
+		&zero, 
+		&count, 
+		OBJECT, 
+		OSNUM,
+                &array_size),
+		targetid = mgr_objid,
+		targetos = MOD_ENV.md_id.osnum);
+
+        list[0].var = REFERENCE_FILE_NAME;
+        list[0].var_ptr = file_name;
+        list[0].num_requested = DI_PATH_MAX;
+
+	list[1].var = END_PARAM;
+	list[1].var_ptr = NULL;
+        list[1].num_requested = NULL;
+
+
+        for (i=0; i < count; i=i+1)
+        {
+
+            ci$send (msg = message GRreffile.GRinquireref(
+			&msg,
+                        &MOD_ENV, 
+			list, 
+			&temp, 
+			&zero, 
+			NULL),
+                        targetid = OBJECT[i],
+                        targetos = OSNUM[i]);
+
+	    write("file_name: ",file_name,"\n");
+
+            /* Replace all '-' occurences with '.' in file_name */
+            replace_occurence(file_name, &occur_count);
+
+            if (!occur_count) continue;
+	    
+            /* JAMAL SHAKRA - 3-13-93.
+	    ptr = strrchr( file_name, '-' );
+
+	    if( ptr == NULL ) continue;
+            */
+            
+				msg = di$untranslate( osnum = OSNUM[i],
+							objid = OBJECT[i],
+							objname = attach_name );
+
+				strcpy( new_name, attach_name );
+
+				if( msg != DIR_S_SUCCESS )
+				{
+				di$report_error( sts = msg, comment = "untrans1" );
+				exit;
+				}
+		
+                                /*
+				ptr2 = strrchr( new_name,'-' );
+                                */
+
+                                /* Replace '-' with '.' in new_name */
+                                replace_occurence(new_name, &occur_count);
+
+                                /* JAMAL SHAKRA - 3-13-93.
+				if( ptr2 != NULL )
+                                */
+
+                                if (occur_count)
+				{
+
+				msg = di$rename( oldname = attach_name,
+							newname = new_name );
+
+					if( msg != DIR_S_SUCCESS )
+					{
+					di$report_error( sts = msg, comment = "rename1" );
+					}
+				}
+
+                        /* JAMAL SHAKRA - 3-13-93.
+		   	*ptr = '.'; 
+                        */
+                        write("Changing refname to: ",file_name,"\n");
+
+
+			ci$send( msg = message GRreffile.GRchgfilename( &msg,
+								file_name,
+								name),
+				targetid = OBJECT[i],
+				targetos = OSNUM[i] 
+			);
+	
+
+        }         
+
+	if (count > 500)
+	{
+	    if (OBJECT) free(OBJECT);
+	    if (OSNUM)  free(OSNUM);
+	}
+
+   }
+
+/* Take care of the file_name attribute under ASSEMBLY:P* entries */
+di$give_pathname(
+                 osnum = MOD_ENV.md_id.osnum,
+                 pathname = assembly_path
+                );
+
+strcat(assembly_path,":");
+strcat(assembly_path,"ASSEMBLY");
+
+/* Extract P* entries */
+di$find (
+         start_dir = assembly_path,
+         regexp = "P*",
+         lines = &parts,
+         ptr = &part_count,
+         max_level = -1
+        );
+
+if (part_count)
+   {
+    for (i = 0; i < part_count; i = i + 1)
+        {
+         /* Drop last ":" from entry */
+         PDUstrip_dir_entry(parts[i]);
+
+         /* Extract value for part file_name */
+         PDUevaluate_exp(
+                         parts[i],
+                         "file_name",
+                         &filename
+                        );
+
+         occur_count = 0;
+
+         /* Replace '-' with '.' in filename */
+         replace_occurence(filename, &occur_count);
+
+         if (occur_count)
+            {
+             /* Modify expression value */
+              PDUmodify_exp(
+                            0,
+                            parts[i],
+                            "file_name",
+                            filename,
+                            MOD_ENV.md_id.osnum
+                           );
+            }
+        }
+
+    di$free(lines = parts, count = part_count);
+   }
+
+begincmd("save=y");
+endcmd();
+
+}
+
+/* Function replace_occurence replaces all occurences of the character '-'
+ * with the character '.' in file_name. JAMAL SHAKRA 3-13-93.
+ */
+replace_occurence(file_name, occur_count)
+ IGRchar *file_name;       /* I/O */
+ IGRint  *occur_count;     /* I/O */
+ {
+  IGRchar  *ptr;
+
+  /* Initialize local variables */
+  *occur_count = 0;
+  ptr = NULL;
+
+  /* Replace '-' occurences with '.' in file_name */
+  while (ptr = strrchr(file_name, '-'))
+        {
+         *ptr = '.';
+         *occur_count = *occur_count + 1;
+        } /* end while */
+
+ } /* end replace_occurence */

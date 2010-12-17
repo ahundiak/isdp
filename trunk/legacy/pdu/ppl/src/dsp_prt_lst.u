@@ -1,0 +1,227 @@
+/*
+ * Author: Jamal Shakra
+ * Date: 08-17-92
+ * This command displays parts list for 2.01.
+ */
+
+
+#include 	"ciminimum.h"
+#include 	"cimacros.h"
+#include 	"PDUstr.h"
+#include 	"PDUpart.h"
+#include        "ex.h"
+#include        "igrdp.h"
+#include 	"partmacros.h"
+#include 	"part.h"
+#include	"cieveryone.h"
+#include	"cimacros.h"
+#include        "PDUgrpart.h"
+#include        "PDUnode.h"
+#include        "PDUfile_def.h"
+#include        "PDUcommand.h"
+
+
+/* External function declarations */
+extern		GRdpb_get();
+extern          PDUfill_in_string();
+extern          malloc();
+extern          free();
+extern          _pdm_debug();
+extern          _pdm_status();
+extern          PDUprocess_selected_parts_in_os();
+extern          PDUdesign_parts_listing_form();
+
+
+/* External global variables */
+extern          IGRint   PDU_command;
+extern          struct GRid *PDU_part_id;
+extern          struct PDUpart_node *PDU_parts_id_list;
+extern          struct PDUlist_parts_info *PDU_list_parts_info;
+extern          IGRchar *PDU_assy_catalog;
+extern          IGRchar *PDU_assy_partid;
+extern          IGRchar *PDU_assy_revision;
+extern          IGRchar *PDU_usage_id;
+extern          IGRshort PDU_list_parts;
+
+main()
+{
+ struct GRid      part_id;		
+ IGRint           temp_command;
+ IGRlong          status;
+ struct PDUpart_node       *temp;
+ struct PDUpart_node       *tail;
+ struct PDUlist_parts_info *top;
+ struct PDUlist_parts_info *head;
+
+
+ _pdm_debug("In display list of parts ppl program",0);
+
+ /* External variables initialization */
+ PDU_list_parts = FALSE;
+
+ /* Local variables initialization */
+ temp = NULL;
+ tail = NULL;
+ top = NULL;
+ 
+ /* Locate part pointers */
+ if ( (PDU_command != PDC_M_POSITION_PARTS) && 
+      (PDU_command != PDC_M_CREATE_TOP_DOWN) &&
+      (PDU_command != PDC_M_LOCATE_REV_PRTS) )
+    {
+     begincmd("locate part pointer");
+     endcmd();
+    }
+
+ else
+     {
+      PDU_list_parts = TRUE;
+     }
+
+ if (PDU_list_parts == TRUE)
+   {
+    status = display_parts_form();
+    if (status == 0)
+       exit;
+
+    else
+      {
+       if (PDU_part_id)
+          {
+           free(PDU_part_id);
+           PDU_part_id = NULL;
+          }
+
+       /* Save current command */
+       temp_command = PDU_command;
+       PDU_command = PDC_M_REPLACE_PART;
+
+       top = PDU_list_parts_info;
+       while (top != NULL)
+             { 
+              /* Get part ids */
+              PDUfill_in_string(
+                                &PDU_assy_catalog,
+                                top->catalog_name
+                               );
+
+              PDUfill_in_string(
+                                &PDU_assy_partid,
+                                top->part_id
+                               );
+
+              PDUfill_in_string(
+                                &PDU_assy_revision,
+                                top->revision
+                               );
+
+              PDUfill_in_string(
+                                &PDU_usage_id,
+                                top->usage_id
+                               );
+
+              _pdm_debug("putting PDIdP on the queue", 0);
+              begincmd_key("PDIdPr");
+              endcmd();
+
+              /* Construct list of parts ids */
+              temp =
+                   (struct PDUpart_node *) malloc(sizeof(struct PDUpart_node));
+
+               /* Initialize temp fields */
+               temp->part_id.objid = PDU_part_id->objid;
+               temp->part_id.osnum = PDU_part_id->osnum;
+               temp->next = NULL;
+
+               if (PDU_parts_id_list != NULL)
+                  {
+                   _pdm_debug("adding node to end of list", 0);
+
+                   tail = PDU_parts_id_list;
+                   while (tail->next)
+                         {
+                          tail = tail->next;
+                         }
+
+                   tail->next = temp;
+                  }
+
+               else
+                  {
+                   _pdm_debug("adding first node to list", 0);
+
+                   PDU_parts_id_list = temp;
+                  }
+
+
+              /* Process next node */
+              top = top->next;
+              
+             } /* end while loop */
+
+        /* Restore previous command */
+        PDU_command = temp_command; 
+
+        /* Free variables */
+        if (PDU_part_id)
+           {
+            free(PDU_part_id);
+            PDU_part_id = NULL;
+           }
+
+        if (PDU_list_parts_info)
+         {
+          head = PDU_list_parts_info;
+
+          while (PDU_list_parts_info)
+                {
+                 PDU_list_parts_info = PDU_list_parts_info->next;
+                 free(head);
+                 head = PDU_list_parts_info;
+                }
+
+          PDU_list_parts_info = NULL;
+         }
+
+       }
+   }
+
+ else if (PDU_part_id == NULL)
+         {
+          _pdm_debug("SEVERE error: could not find part objid", 0);
+          exit;
+         } 
+
+ /* Process selected part(s), if any */
+ status = PDUprocess_selected_parts_in_os();
+ _pdm_status("PDUprocess_selected_parts_in_os", status);
+
+}
+
+int  delay()
+ {
+  int  i;
+
+  for (i = 0; i < 20000; i = i + 1);
+ }
+
+int display_parts_form()
+  {
+  int response;
+  int status;
+
+  _pdm_debug("Entering PDUdesign_parts_listing_form", 0);
+  status = PDUdesign_parts_listing_form();
+
+  /* Pause until the form is accepted or cancelled */
+  _pdm_debug("Waiting on input", 0);
+
+  ci$get(prompt = "", response = &response);
+  if (response == MOVE_ON)
+    {
+     return(1);
+    }
+
+  else
+    return(0);
+  }

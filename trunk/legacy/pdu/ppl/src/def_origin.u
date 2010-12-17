@@ -1,0 +1,352 @@
+/*
+ * Author: Jamal Shakra
+ * Date: 12-14-91
+ * This commands defines an origin.
+ */
+
+
+#if ! defined(__sgi)
+#include        "unistd.h"
+#endif
+#include 	"ciminimum.h"
+#include 	"cimacros.h"
+#include 	"PDUstr.h"
+#include        "ex.h"
+#include        "igrdp.h"
+#include 	"partmacros.h"
+#include 	"part.h"
+#include	"cieveryone.h"
+#include	"cimacros.h"
+#include	"acdef.h"
+#include	"acmacros.h"
+#include	"ACdb_info.h"
+#include	"macro.h"
+#include	"grdpbdef.h"
+#include	"grdpb.h"
+#include	"grdpbmacros.h"
+#include	"growner.h"
+#include        "grgsmacros.h"
+#include        "grmessage.h"
+#include	"igrdp.h"
+#include	"madef.h"
+#include	"exdef.h"
+#include	"exmacros.h"
+#include	"dp.h"
+#include	"dpdef.h"
+#include	"grcoordsys.h"
+#include	"csdef.h"
+#include	"msdef.h"
+#include	"PDUint.h"
+#include	"PDUintdef.h"
+#include	"string.h"
+#include	"grsymdef.h"
+#include	"grsym.h"
+#include	"grownerdef.h"
+#include 	"dpmacros.h"
+#include 	"comiscmac.h"
+#include 	"coplcmac.h"
+#include 	"cotxmacros.h"
+#include 	"partdef.h"
+#include        "DItypedef.h"
+#include        "DIdef.h"
+#include        "DIglob.h"
+#include        "DIprims.h"
+#include        "expmacros.h"
+#include        "csmacros.h"
+#include        "PDUpart.h"
+#include        "PDUinform.h"
+#include        "PDUfile_def.h"
+
+
+
+/* External variables declaration */
+extern     IGRint       PDU_message_type;
+extern     IGRint       PDU_prompt_type;
+extern     IGRdouble    PDU_point[3];
+extern     IGRshort     PDU_store_point;
+extern     IGRshort     PDU_store_view;
+extern     struct GRid  PDU_window_id;
+extern     struct PDUpart *part;
+extern     IGRchar         *PDU_viewname;
+extern     IGRchar       PDU_status_string[54];
+
+
+
+/* External function declaration */
+extern          GRdpb_get();
+extern          DImain();
+extern          malloc();
+extern          DPsavevw_cons();
+extern          DIpwd();
+extern          DIgive_pathname();
+extern          DImkpath();
+extern          DIcd();
+extern          DPdisbyoid();
+extern          GRdpb_put();
+extern          PDUfill_in_string();
+extern          PDUget_coord_sys_id();
+extern          PDUcheck_file_for_origins();
+extern          PDUdisplay_design_form();
+extern          free();
+extern          _pdm_debug();
+extern		PDUmessage();
+
+main()
+{
+
+ struct GRmd_env  mod_env;		
+ IGRdouble        origin[3];
+ IGRlong          msg,sts;
+ IGRlong          stat;
+ IGRlong	  NumberOfBytes, BytesReceived;
+ IGRshort         ActiveLevel;
+ IGRshort         PointerLevel;
+ IGRchar          view_name[DI_PATH_MAX];
+ IGRchar          usr_dir[DI_PATH_MAX];
+ IGRchar unsigned weight;
+ IGRchar unsigned style;
+ struct IGRaltdisplay altdp_info;
+ struct GRid      coorid;
+
+
+ PDUmessage(PDM_I_DEFINE_ORIGIN,'s');
+ _pdm_debug("part->view at entry = <%s>", part->view );
+
+ /* Get active display level */
+ NumberOfBytes = sizeof(IGRshort);
+ stat = gr$get_active_level (
+                               msg = &msg,
+                               sizbuf = &NumberOfBytes,
+                               buffer = &ActiveLevel,
+                               nret = &BytesReceived
+                              );
+
+ /* Get current module environment information */
+ NumberOfBytes = sizeof(mod_env);
+ stat = gr$get_module_env(
+                            msg = &msg,
+                            sizbuf = &NumberOfBytes,
+                            buffer = &mod_env,
+                            nret = &BytesReceived
+                           );
+
+ /* Prompt user for view name */
+ prompt_view:
+ begincmd("enter view");
+ endcmd();
+
+ if (!PDU_store_view)
+    {
+     /* No view entered */
+     _pdm_debug("Invalid view name", 0);
+  
+     exit;
+    }
+
+ /* Check to see if view name does not start with blank character */
+ if (PDU_viewname[0] == ' ')
+    {
+     PDUmessage(PDM_E_INVALID_VIEW_NAME,'s');
+     delay();
+
+     free(PDU_viewname);
+     PDU_viewname = NULL;
+
+     PDU_store_view = FALSE;
+
+     goto prompt_view;
+    }
+
+ PDU_store_view = FALSE;
+
+ /* Prefix keyed in view name with the word ORIGIN */
+ if (PDU_viewname)
+    {
+     strcpy(view_name, "ORIGIN ");
+     strcat(view_name, PDU_viewname);
+    }
+
+ else
+    {
+     /* Default view to PDUview */
+     PDUfill_in_string(&PDU_viewname, "PDUview");
+     strcpy(view_name, "ORIGIN PDUview");
+    }
+
+ /* Initialize coorid.objid */
+ coorid.objid = 0;
+
+ /* Change directory to "<filename>:usr" */
+ di$give_pathname(
+                  osnum = mod_env.md_id.osnum,
+                  pathname = usr_dir
+                 );
+
+ strcat(usr_dir, ":");
+ strcat(usr_dir,"usr:");
+ strcat(usr_dir, view_name);
+ strcpy(view_name, usr_dir);
+
+ /* Check to see if view name already exists */
+ stat = PDUget_coord_sys_id(
+                              mod_env,
+                              view_name,
+                              &coorid.objid
+                             );
+
+ _pdm_debug("view_name = <%s>", view_name);
+
+ if ( (stat == PDM_S_SUCCESS) && (coorid.objid != 0) )
+    {
+     /* View name already exists */
+     PDUmessage(PDM_I_VIEW_ALREADY_EXISTS,'s');
+     delay();
+  
+     /* Prompt user for view name */
+     goto prompt_view;
+    }
+
+ /* Get origin point */ 
+ PDU_message_type = PDM_I_DEFINE_ORIGIN_MSG;
+ PDU_prompt_type = PDM_I_DATA_POINT;
+ 
+ /* Clear status */
+ strcpy(PDU_status_string, "");
+
+ begincmd("enter data point");
+ endcmd();
+
+ if (!PDU_store_point)
+    {
+     /* No data point entered */
+
+     exit;
+    }
+
+ /* Change active level to 1023 */
+ PointerLevel = 1023;
+ stat = gr$put_active_level (
+                               msg = &msg,
+                               sizbuf = &NumberOfBytes,
+                               buffer = &PointerLevel
+                              );
+
+ origin[0] = PDU_point[0];
+ origin[1] = PDU_point[1];
+ origin[2] = PDU_point[2];
+
+ PDU_store_point = FALSE;
+
+ /* Check to see if view name already exists, if not it will be created */
+ stat = dp$savvw_cons (
+                         msg = &sts,
+                         vw_name = PDU_viewname,
+                         gg_id = &PDU_window_id,
+                         descript = "ORIGIN",
+                         origin = origin
+                        );
+
+ /* ALR  12/29/93  Change this as a workaround. If a view exist either because
+     of an EMS delete or an EMS view with the same name as the one the usr
+     wants to create leave it there. There is no need to check duplicate.
+     Just continue and add the coord sys.  TR 13921332 */
+/* 
+ if (sts == DPDUPLICNM)
+    {
+     PDUmessage(PDM_I_VIEW_ALREADY_EXISTS,'s');
+     delay();
+
+
+     stat = gr$put_active_level (
+                                   msg = &msg,
+                                   sizbuf = &NumberOfBytes,
+                                   buffer = &ActiveLevel
+                                  );
+     goto prompt_view;
+    }
+
+ if (sts != MSSUCC)
+    {
+     PDUmessage(PDM_E_INVALID_VIEW_NAME,'s');
+     delay();
+
+     stat = gr$put_active_level (
+                                   msg = &msg,
+                                   sizbuf = &NumberOfBytes,
+                                   buffer = &ActiveLevel
+                                  );
+
+     goto prompt_view;
+    }
+*/
+
+
+ /* Place origin */
+ begincmd ("define coordinate system from view alignment");
+    ci$put(response = TERMINATE,pos = FRONT); 
+    ci$put(string = view_name, pos = FRONT);
+    ci$put(point = origin, pos = FRONT);
+ endcmd();
+
+ /* Restore current level status */
+ stat = gr$put_active_level (
+                               msg = &msg,
+                               sizbuf = &NumberOfBytes,
+                               buffer = &ActiveLevel
+                              );
+
+ /* Extract obj. id of named origin */
+ stat = PDUget_coord_sys_id(
+                              mod_env,
+                              view_name,
+                              &coorid.objid
+                             );
+
+ coorid.osnum = mod_env.md_id.osnum;
+
+ /* Erase solid origin */
+ dp$display(
+            msg = &sts,
+            oids = &coorid,
+            mode = GRbe
+           );
+
+ /* Change the style of the displayed origin */
+ style = 5;
+ stat = ci$send(
+                  msg = message GRvg.GRchgstyle
+                                    (
+                                     &sts,
+                                     &style
+                                    ),
+                  targetid = coorid.objid,
+                  targetos = coorid.osnum
+                 );
+
+ /* Redraw origin */
+ weight = 2;
+ altdp_info.weight = &weight;
+ altdp_info.color = NULL;
+ altdp_info.style = &style;
+
+ dp$display(
+            msg = &sts,
+            oids = &coorid,
+            alt_symb = &altdp_info,
+            mode = GRbdhe
+           );
+
+ /* Display design form */
+ PDUdisplay_design_form();
+
+ /* Enable delete origin button */
+ PDUcheck_file_for_origins();
+
+}
+
+int  delay()
+{
+ int i;
+
+ for (i = 0; i < 20000; i = i + 1);
+}

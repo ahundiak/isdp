@@ -1,0 +1,87 @@
+#include "ciminimum.h"
+#include "cimacros.h"
+#include "PDUstr.h"
+#include "PDUcommand.h"
+#include "PDUerror.h"
+
+extern struct PDUrefresh	*refresh;
+extern PDUactivate();
+extern PDUmessage();
+extern _pdm_debug();
+extern _pdm_status();
+extern PDUpart_file_list_form();
+extern WaitForEvent();
+extern PDUext_checkout();
+extern MEMclose();
+
+main()
+{
+
+ int             status;
+
+ extern int      PDU_checkout_type;
+ extern short    PDU_load_file_buffer;
+ extern short    PDU_chkout_single;
+ extern MEMptr   PDU_part_file_buffer;
+ extern int      PDU_command;
+ extern int      PDU_selected_rows;
+
+
+ _pdm_debug("In the chkoutact.u ppl program", 0);
+
+ /* Display command message */
+ PDUmessage (PDC_M_CHECKOUT_ACTIVATE, 'c');
+
+ PDU_command = PDC_M_CHECKOUT_ACTIVATE;
+
+ PDU_selected_rows = 0;
+ PDU_checkout_type = 601;
+ PDU_load_file_buffer = TRUE;
+ PDU_chkout_single = TRUE;
+
+ /* Call part checkout command */
+ status = PDUext_checkout();
+ _pdm_status(" PDUext_checkout (and activate)", status);
+
+ if (status != PDM_S_SUCCESS)
+    {
+     _pdm_debug("PDUext_checkout failed", 0);
+
+     PDUmessage(status, 's');
+
+     if (PDU_part_file_buffer)
+        {
+         MEMclose(&PDU_part_file_buffer);
+         PDU_part_file_buffer = NULL;
+        }
+
+     exit;
+    }
+
+ /* Call function to display list of parts that may be activated */
+ if (PDU_part_file_buffer)
+    {
+     if (PDU_part_file_buffer->rows > 0)
+        {
+         PDUpart_file_list_form();
+
+         status = WaitForEvent();
+         _pdm_status("WaitForEvent", status);
+
+         if (!status)
+            {
+             _pdm_debug("part listing form was cancelled", 0);
+
+             PDUmessage(PDM_E_CMD_CANCELLED, 's');
+             exit;
+            }
+        }
+    }
+
+ else
+     {
+      /* Call activate command */
+      status = PDUactivate();
+      _pdm_status("PDUactivate", status);
+     }
+}

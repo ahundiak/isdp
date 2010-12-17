@@ -1,0 +1,41 @@
+export TARG=c100
+export COMP=acc
+export COMP_OPT="-ansi -O3 -Atarg=$TARG"
+alias -x pdumakec100='$PDU/pdubuild/pdumakec100'
+alias -x pdumakec400='$PDU/pdubuild/pdumakec400'
+alias -x pdumake='$PDU/pdubuild/pdumake'
+alias -x make_build='$PDU/pdubuild/make_build'
+alias -x gather_doc='$PDU/pdubuild/gather_doc'
+alias -x makemake='$EXNUC/bin/makemake'
+alias -x pdmr='cd $PDU/pdmr'
+alias -x prod='cd $PDU/config/dload/prod'
+alias -x tables='cd $PDU/config/tables'
+alias -x lib='cd $PDU/lib'
+alias -x commands='cd $PDU/config/commands'
+alias -x parts='cd $PDU/parts'
+alias -x assy='cd $PDU/assembly'
+alias -x include='cd $PDU/include'
+alias -x catalogs='cd $PDU/catalogs'
+alias -x common='cd $PDU/common'
+alias -x design='cd $PDU/design'
+alias -x cob='cd $PDU/design/cob'
+alias -x filemgr='cd $PDU/filemgr'
+alias -x drawings='cd $PDU/drawings'
+alias -x init='cd $PDU/config/dload/init'
+alias -x patch='cd $PDU/config/dload/patch'
+alias -x palris='cd $PDU/pal/src/ris'
+alias -x palpdmr='cd $PDU/pal/src/pdmr'
+alias -x palsvs='cd $PDU/pal/src/svs'
+alias -x funk='cd $PDU/pal/src/funk'
+alias -x ldpdu='cd $PDU/ldpdu'
+alias -x misc='cd $PDU/misc'
+alias -x ppl='cd $PDU/ppl/src'
+alias -x reports='cd $PDU/reports'
+alias -x spec='cd $PDU/spec'
+alias -x tools='cd $PDU/tools'
+alias -x forms='cd $PDU/config/english/forms'
+alias -x messages='cd $PDU/config/english/messages'
+
+#RUN SCRIPTS
+
+#. $PDU/pdubuild/.screensize

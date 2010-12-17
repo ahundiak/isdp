@@ -1,0 +1,320 @@
+/*
+ * Author: Jamal Shakra
+ * Date: 12-14-91
+ * This command updates the part identification area with the info. extracted 
+ * from the identified part.
+ */
+
+
+#if ! defined(__sgi)
+#include        "unistd.h"
+#endif
+#include 	"ciminimum.h"
+#include 	"cimacros.h"
+#include 	"PDUstr.h"
+#include 	"PDUpart.h"
+#include        "ex.h"
+#include        "igrdp.h"
+#include 	"partmacros.h"
+#include 	"part.h"
+#include	"cieveryone.h"
+#include	"cimacros.h"
+#include	"acdef.h"
+#include	"acmacros.h"
+#include	"ACdb_info.h"
+#include	"macro.h"
+#include	"grdpbdef.h"
+#include	"grdpb.h"
+#include	"grdpbmacros.h"
+#include	"growner.h"
+#include	"igrdp.h"
+#include	"madef.h"
+#include	"exdef.h"
+#include	"exmacros.h"
+#include	"dp.h"
+#include	"dpdef.h"
+#include	"grcoordsys.h"
+#include	"csdef.h"
+#include	"msdef.h"
+#include	"PDUint.h"
+#include	"PDUintdef.h"
+#include	"string.h"
+#include	"grsymdef.h"
+#include	"grsym.h"
+#include	"grownerdef.h"
+#include 	"dpmacros.h"
+#include 	"comiscmac.h"
+#include 	"coplcmac.h"
+#include 	"cotxmacros.h"
+#include 	"partdef.h"
+#include        "DItypedef.h"
+#include        "DIdef.h"
+#include        "DIglob.h"
+#include        "DIprims.h"
+
+
+/* External function definition */
+extern		_pdm_debug();
+extern		_pdm_status();
+extern		GRdpb_get();
+extern		COpart_attr_func();
+extern          PDUfill_in_string();
+extern          PDUupdate_design_form();
+extern          PDUunquote();
+extern          PDUevaluate_exp();
+extern          DIgive_pathname();
+extern          malloc();
+extern          free();
+extern		PDUmessage();
+
+
+/* External variable definition */
+extern          struct PDUrefresh   *refresh;
+extern          struct PDUpart      *part;
+extern          struct GRid         *PDU_part_id;
+extern          IGRchar  *PDU_usage_id;
+extern          IGRchar  *PDU_quantity;
+extern          IGRchar  *PDU_tagno;
+extern          IGRchar  *PDU_alt_tagno;
+extern          IGRchar  *PDU_incl_BOM;
+extern          IGRchar  *PDU_incl_ASM;
+extern          IGRchar  *PDU_explode_BOM;
+
+
+
+main()
+{
+
+ struct GRmd_env  mod_env;
+ struct GRid      part_id;		
+ IGRchar          value[MAX_VALUE];
+ IGRchar          part_dir[DI_PATH_MAX];
+ IGRchar          part_path[DI_PATH_MAX];
+ IGRchar          *child_no;
+ IGRchar          *file_value;
+ IGRint           type;
+ IGRlong          msg, sts;
+ IGRlong          status;
+ IGRlong	  NumberOfBytes, BytesReceived;
+
+ 
+ /* Initialize local variables */
+ child_no = NULL;
+ file_value = NULL;
+
+
+ /* Get active module information */
+ NumberOfBytes = sizeof(mod_env);
+ status = gr$get_module_env( 
+                           msg = &msg,
+			   sizbuf = &NumberOfBytes,
+			   buffer = &mod_env,
+			   nret = &BytesReceived
+                          );
+
+ /* Locate GRpart */
+ identify_GRpart:
+ PDUmessage(PDM_I_UPDATE_PART_BY_POINT,'s');
+
+ begincmd("locate part pointer");
+ endcmd();
+
+ if (PDU_part_id == NULL)
+    {
+     exit;
+    }
+
+ /* Validate part pointer identity */
+ part_id.osnum = PDU_part_id->osnum;
+ part_id.objid = PDU_part_id->objid;
+
+ status = co$part_get_attr (
+                             msg = &msg,
+                             mod_env = &mod_env,
+                             part = &part_id,
+                             attr = "tag",
+                             value = value,
+                             type = &type 
+                           ); 
+
+ if ( (msg != MSSUCC) || (strcmp(value, "") == 0) )
+    {
+     PDUmessage(PDM_E_INVALID_PART_POINTER,'s');
+     delay();
+
+     /* Deallocate and initialize PDU_part_id */
+     free(PDU_part_id);
+     PDU_part_id = NULL;
+
+     goto identify_GRpart;
+    }
+
+ else
+    {
+     /* Extract catalog from GRpart */
+     co$part_get_attr (
+                       msg = &msg,
+                       mod_env = &mod_env,
+                       part = &part_id,
+                       attr = "CATALOG",
+                       value = value,
+                       type = &type
+                      );
+
+     /* Load catalog into refresh->rev_catalog */
+     PDUfill_in_string(&refresh->rev_catalog, value);
+
+     /* Extract part number from GRpart */
+     co$part_get_attr (
+                       msg = &msg,
+                       mod_env = &mod_env,
+                       part = &part_id,
+                       attr = "NUMBER",
+                       value = value,
+                       type = &type
+                      );
+
+     /* Load part number into refresh->rev_partid */
+     PDUfill_in_string(&refresh->rev_partid, value); 
+
+     /* Extract part revision from GRpart */
+     co$part_get_attr (
+                       msg = &msg,
+                       mod_env = &mod_env,
+                       part = &part_id,
+                       attr = "REVISION",
+                       value = value,
+                       type = &type
+                      );
+
+     /* Load part revision into refresh->rev_revision */
+     PDUfill_in_string(&refresh->rev_revision, value); 
+
+     /* Extract part type from GRpart */
+     co$part_get_attr (
+                       msg = &msg,
+                       mod_env = &mod_env,
+                       part = &part_id,
+                       attr = "part_type",
+                       value = value,
+                       type = &type
+                      );
+
+     /* Load part type into refresh->rev_parttype */
+     PDUfill_in_string(&refresh->rev_parttype, value); 
+
+     /* Extract part description from GRpart */
+     co$part_get_attr (
+                       msg = &msg,
+                       mod_env = &mod_env,
+                       part = &part_id,
+                       attr = "NAME",
+                       value = value,
+                       type = &type
+                      );
+
+     /* Load part description into refresh->rev_description */
+     PDUfill_in_string(&refresh->rev_description, value); 
+
+     /* Extract part child no from GRpart */
+     co$part_get_attr (
+                       msg = &msg,
+                       mod_env = &mod_env,
+                       part = &part_id,
+                       attr = "child_no",
+                       value = value,
+                       type = &type
+                      );
+     PDUunquote(value);
+     PDUfill_in_string(&child_no, value);
+
+     /* Construct path to part assy structure */
+     di$give_pathname(
+                      osnum = mod_env.md_id.osnum,
+                      pathname = part_dir
+                     );
+
+     strcpy(part_path, part_dir);
+     strcat(part_path, ":ASSEMBLY:P");
+     strcat(part_path, child_no);
+     _pdm_debug("part assy. path = <%s>", part_path);
+
+     /* Extract part file name */
+/* ALR  6/23/94  Too many parameters */
+/*
+     status = PDUevaluate_exp(
+                              part_path,
+                              "file_name",
+                              &file_value,
+                              mod_env.md_id.osnum
+                            );
+*/
+     status = PDUevaluate_exp(
+                              part_path,
+                              "file_name",
+                              &file_value
+                             );
+     _pdm_status("PDUevaluate_exp", status);
+
+     /* Load file name into refresh->rev_filename */
+     PDUfill_in_string(&refresh->rev_filename, file_value); 
+
+     /* Extract incl. in BOM attr. from GRpart */
+     co$part_get_attr (
+                       msg = &msg,
+                       mod_env = &mod_env,
+                       part = &part_id,
+                       attr = "incl_BOM",
+                       value = value,
+                       type = &type
+                      );
+
+     /* Load incl. in BOM attr.  into PDU_incl_BOM */
+     PDUfill_in_string(&PDU_incl_BOM, value); 
+
+     /* Extract incl. in assymbly attr. from GRpart */
+     co$part_get_attr (
+                       msg = &msg,
+                       mod_env = &mod_env,
+                       part = &part_id,
+                       attr = "incl_asm",
+                       value = value,
+                       type = &type
+                      );
+
+     /* Load incl. in assembly attr.  into PDU_incl_ASM */
+     PDUfill_in_string(&PDU_incl_ASM, value); 
+
+     /* Extract explode in BOM attr. from GRpart */
+     co$part_get_attr (
+                       msg = &msg,
+                       mod_env = &mod_env,
+                       part = &part_id,
+                       attr = "explode_BOM",
+                       value = value,
+                       type = &type
+                      );
+
+     /* Load explode in BOM attr.  into PDU_explode_BOM */
+     PDUfill_in_string(&PDU_explode_BOM, value); 
+
+     /* Updating design form with part pointer information */
+     
+     /* Deallocate and initialize PDU_part_id */
+     if (PDU_part_id)
+        {
+         free(PDU_part_id);
+         PDU_part_id = NULL;
+        }
+
+     PDUupdate_design_form();
+    }
+ 
+}
+
+int  delay()
+ {
+  int  i;
+
+  for (i = 0; i < 20000; i = i + 1);
+ }

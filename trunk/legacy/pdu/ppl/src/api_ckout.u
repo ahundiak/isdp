@@ -1,0 +1,373 @@
+#if ! defined(__sgi)
+#include        "unistd.h"
+#endif
+#include 	"ciminimum.h"
+#include 	"PDUstr.h"
+#include        "PDUpart.h"
+#include        "igrdp.h"
+#include 	"partmacros.h"
+#include 	"part.h"
+#include	"cieveryone.h"
+#include	"acdef.h"
+#include	"acmacros.h"
+#include	"ACdb_info.h"
+#include	"macro.h"
+#include	"grdpbdef.h"
+#include	"grdpb.h"
+#include	"grdpbmacros.h"
+#include	"growner.h"
+#include	"igrdp.h"
+#include	"madef.h"
+#include	"expriv.h"
+#include	"exmacros.h"
+#include	"dp.h"
+#include	"dpdef.h"
+#include	"grcoordsys.h"
+#include	"csdef.h"
+#include	"msdef.h"
+#include	"PDUint.h"
+#include	"PDUintdef.h"
+#include	"grsymdef.h"
+#include	"grsym.h"
+#include	"grownerdef.h"
+#include 	"dpmacros.h"
+#include 	"comiscmac.h"
+#include 	"coplcmac.h"
+#include 	"cotxmacros.h"
+#include 	"partdef.h"
+#include        "DItypedef.h"
+#include        "DIdef.h"
+#include        "DIglob.h"
+#include        "DIprims.h"
+#include        "expmacros.h"
+#include        "csmacros.h"
+#include        "MEMstruct.h"
+#include        "MEMerrordef.h"
+#include        "PDUfile_def.h"
+#include        "PDUinform.h"
+#include        "PDUassy.h"
+#include        "PDUforms.h"
+
+
+
+/* External functions declaration section */
+extern          _pdm_status();
+extern          _pdm_debug();
+extern          GRdpb_get();
+extern          MEMbuild_array();
+extern          PDUsetup_buffer();
+extern          PDUget_buffer_col();
+extern          PDUfill_in_string();
+extern          PDUverify_file();
+extern          EX_retrieve_os();
+extern          EX_get_invis_info_by_index();
+extern          PDUupdate_attach_info();
+extern          Close_OS();
+extern          PDUupdate_assembly_structure();
+extern          PDUprocess_assembly_display();
+extern          free();
+extern          PDMfile_to_tmp_bufr();
+extern          PDMbuffer_to_file();
+
+/* External variables declaration section */
+
+/* Global variable declaration */
+#define         COFILE_BUFR      2011
+#define         COASSY_BUFR      2012
+
+main()
+{
+
+ struct           GRmd_env  mod_env;		
+ long             NumberOfBytes, BytesReceived;
+ long             stat,msg;
+ int              status;
+ int              file_col;
+ int              row;
+ int              file_type;
+ int              index;
+ int              count;
+ short            major;
+ short            minor;
+ char             mach_type;
+ char             mount_name[40];
+ char             caw_formatfile[512];
+ char             caw_datafile[512];
+ char             stamp_path[DI_PATH_MAX];
+ char             *file;
+ char             **data_row;
+ MEMptr           file_bufr;
+ MEMptr           assy_struct_bufr;
+ OMuword          osnum;
+ GRobjid          objid;
+ GRobjid          osid;
+
+ _pdm_debug("In api_ckout.u", 0);
+ data_row == NULL;
+ file = NULL;
+ index = 0;
+ count = 0;
+ osid = NULL_OBJID;
+ assy_struct_bufr = NULL;
+ file_bufr = NULL;
+
+ caw_formatfile[0] = '\0';
+ caw_datafile[0] = '\0';
+
+ sprintf(caw_formatfile, "/usr/tmp/%d.for", COASSY_BUFR);
+ sprintf(caw_datafile, "/usr/tmp/%d.dat", COASSY_BUFR);
+
+ status = PDMfile_to_tmp_bufr(&assy_struct_bufr, caw_formatfile, caw_datafile);
+ _pdm_status("PDMfile_to_tmp_bufr", status);
+ if (status != PDM_S_SUCCESS) 
+   {
+   _pdm_debug("PDMfile_to_tmp_bufr failed %d", status);
+   exit;
+   }
+
+ caw_formatfile[0] = '\0';
+ caw_datafile[0] = '\0';
+
+ sprintf(caw_formatfile, "/usr/tmp/%d.for", COFILE_BUFR);
+ sprintf(caw_datafile, "/usr/tmp/%d.dat", COFILE_BUFR);
+
+ status = PDMfile_to_tmp_bufr(&file_bufr, caw_formatfile, caw_datafile);
+ _pdm_status("PDMfile_to_tmp_bufr", status);
+ if (status != PDM_S_SUCCESS) 
+   {
+   _pdm_debug("PDMfile_to_tmp_bufr failed %d", status);
+   exit;
+   }
+
+ if (assy_struct_bufr == NULL)
+   {
+   _pdm_debug("Part is atomic", 0);
+   }
+ if (file_bufr == NULL)
+   {
+   _pdm_debug("File buffer is NULL", 0);
+   exit;
+   }
+ else if (file_bufr->rows == 0)
+   {
+   _pdm_debug("File_bufr rows is 0", 0);
+   exit;
+   }
+
+ /* Get current module environment information */
+ NumberOfBytes = sizeof(mod_env);
+ stat = gr$get_module_env(
+                          msg = &msg,
+                          sizbuf = &NumberOfBytes,
+                          buffer = &mod_env,
+                          nret = &BytesReceived
+                         );
+
+ status = MEMbuild_array(file_bufr);
+ _pdm_status("file_bufr", status);
+
+ if (status != MEM_S_SUCCESS)
+   {
+   _pdm_debug("MEMbuild_array failed", status);
+   exit;
+   }
+     
+ PDUsetup_buffer(file_bufr, ROW, &data_row);
+ PDUget_buffer_col(file_bufr, "n_cofilename", &file_col);
+
+  /* Check to see if checkout file exists locally */
+  for (row = 0; row < file_bufr->rows; row = row + 1)
+      {
+       PDUfill_in_string(
+                         &file,
+                         data_row[(file_bufr->columns * row) + file_col]
+                        );
+
+       _pdm_debug("checkout filename = <%s>", file);
+
+       /* Verify filename for part */
+       status = PDUverify_file(file);
+       _pdm_status("PDUverify_file", status);
+
+       if (status == PDM_E_FILE_NOT_FOUND)
+          {
+           status = PDM_E_FILE_NOT_LOCAL;
+           _pdm_debug("SEVERE error: <%s> does not exist locally", file);
+           exit;
+          }
+
+       /* Check to see if file is an OM file */
+       status = ex$is_om_file(
+                              filename = file,
+                              p_major = &major,
+                              p_minor = &minor,
+                              p_mach_type = &mach_type,
+                              p_file_type = &file_type
+                             );
+       _pdm_status("ex$is_om_file", status);
+
+       if (status)
+          {
+           _pdm_debug("file <%s> is an OM file", file);
+
+           /* Construct file mount name */
+           strcpy(mount_name, ":");
+           strcat(mount_name, file);
+
+           /* Get osnum of invis space */
+           status = ex$retrieve_module (
+                                        filename = file,
+                                        file_no = &index,
+                                        ftype = EX_invisible,
+                                        flag = EX_overwrite,
+                                        fstat = EX_default,
+                                        type = EX_ACTINV,
+                                        mount_name = mount_name,
+                                        msg = &msg
+                                       );
+           _pdm_status ("ex$retrieve_module", status);
+
+           if (!status)
+              {
+              _pdm_debug("ex$retrieve_module failed on <%s>", file);
+              exit;  
+              }
+
+           /* Open object space */
+           status = ex$get_invis_info_by_index (
+                                                index = index,
+                                                mod_osnum = &osnum,
+                                                mod_id = &objid,
+                                                filed_id = &osid
+                                               );
+           _pdm_status ("ex$get_invis_info_by_index", status);
+
+           if (!status)
+              {
+              _pdm_debug("ex$get_invis_info_by_index failed on <%s>", file);
+              exit;
+              }
+
+           mod_env.md_id.osnum = osnum;
+           mod_env.md_id.objid = objid;
+
+           /* Construct path to <filename>:PDU_DESIGN_FILE directory */
+           di$give_pathname(
+                            osnum = osnum,
+                            pathname = stamp_path
+                           );
+
+           strcat(stamp_path, ":PDU_DESIGN_FILE");
+
+           /* Check to see if file is a PDU design file */
+           status = di$ls(regexp = stamp_path, ptr = &count);
+           _pdm_status("di$ls", status);
+
+           if ( (status == DIR_S_SUCCESS) && (count > 0) )
+              {
+               /* Delete attach info directory in the checkout assembly */
+               status = PDUupdate_attach_info(mod_env, NULL);
+               _pdm_status("PDUupdate_attach_info", status);
+
+               if (status != PDM_S_SUCCESS)
+                  {
+                   _pdm_debug("PDUdelete_attach_info failed", 0);
+
+                   /* Close object file */
+                   status = ex$close_module (
+                                             index = index,
+                                             flag = 0 | EX_ACTINV,
+                                             ftype = EX_invisible
+                                            );
+                   _pdm_status ("ex$close_module", status);
+
+                   exit;
+                  }
+
+               /* Update part assembly structure from the database */
+               status = PDUupdate_assembly_structure(
+                                                     &mod_env,
+                                                     TRUE,
+                                                     assy_struct_bufr
+                                                    );
+               _pdm_status("PDUupdate_assembly_structure", status);
+
+               if (status != PDM_S_SUCCESS)
+                  {
+                   _pdm_debug("PDUupdate_assembly_structure failed", 0);
+
+                   /* Close object file */
+                   status = ex$close_module (
+                                             index = index,
+                                             flag = 0 | EX_ACTINV,
+                                             ftype = EX_invisible
+                                            );
+                   _pdm_status ("ex$close_module", status);
+
+                   exit;
+                  }
+
+                  /* Process previously saved assembly structure */
+                  status = PDUprocess_assembly_display(
+                                                       &mod_env,
+                                                       NULL,
+                                                       0,
+                                                       0,
+                                                       0
+                                                      );
+                  _pdm_status("PDUprocess_assembly_display", status);
+
+                  if (status != PDM_S_SUCCESS)
+                     {
+                      _pdm_debug("PDUprocess_assembly_display failed", 0);
+
+                      /* Close object file */
+                      status = ex$close_module (
+                                                index = index,
+                                                flag = 0 | EX_ACTINV,
+                                                ftype = EX_invisible
+                                               );
+                      _pdm_status ("ex$close_module", status);
+
+                      exit;
+                     }
+
+               /* Close and save PDU design file */
+               status = ex$close_module (
+                                         index = index,
+                                         flag = 1 | EX_ACTINV,
+                                         ftype = EX_invisible
+                                        );
+               _pdm_status ("ex$close_module", status);
+
+               break;
+              }
+
+           /* Close object file */
+           status = ex$close_module (
+                                     index = index,
+                                     flag = 0 | EX_ACTINV,
+                                     ftype = EX_invisible
+                                    );
+           _pdm_status ("ex$close_module", status);
+          }
+
+     } /* end for row loop */
+
+  /* Free up variables */
+ caw_formatfile[0] = '\0';
+ caw_datafile[0] = '\0';
+
+ sprintf(caw_formatfile, "/usr/tmp/%d.for", COASSY_BUFR);
+ sprintf(caw_datafile, "/usr/tmp/%d.dat", COASSY_BUFR);
+
+ status = PDMbuffer_to_file (assy_struct_bufr, caw_formatfile, caw_datafile);
+ _pdm_status("PDMbuffer_to_file", status);
+ if (status != PDM_S_SUCCESS) 
+   exit;
+
+  if (file)
+    free(file);
+
+exit;
+}

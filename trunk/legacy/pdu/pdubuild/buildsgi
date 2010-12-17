@@ -1,0 +1,266 @@
+if [ $# -lt 1 ]
+then
+  echo "usage: <post datetime>"
+  echo "example 05201400"
+  exit 1
+fi
+
+echo $1
+time="$1"
+
+echo 
+echo "Have the README and product.def versions been changed ?[y/n]"
+read ANSWER
+if [ "$ANSWER" = "n" ]
+then
+exit 0
+fi
+
+export VERREF=32
+export INGRHOME=/usr2/ingr
+export TARG=irix
+export REMOVEOBJ=y
+export COMPILER="cc"
+export COMPOPT="-ansi -signed -O2 -G 0 -Wf,-XNp10000 -Wf,-XNh5000"
+export PATH=/usr/ingr/ris/risutl/bin/irix:.:$INGRHOME/exnucdp/bin:/usr/bsd
+PATH=/bin:/usr/bin:/usr2/ingr/exnucdp/bin:/usr/ingr/nfmdp/include:$PATH1:/usr2/ingr/grnucdp/bin
+export NFM=/usr2/nfm
+export DBA=/usr2/ingr/dbadev
+export DBASRC=/usr2/dba31
+export XINCL=/usr/include
+export EXNUC=/usr2/ingr/exnucdp
+export GRNUC=/usr2/ingr/grnucdp
+export MODEL=/usr2/ingr/modeldp
+export UMS=/usr2/ingr/ums
+export BS=/usr2/ingr/bspmathdp
+export FORMS=/usr2/ingr/xformsdp/xfi
+
+
+export GRCOMPILE_SWITCH=3
+. $GRNUC/bin/startup.grnuc
+
+if [ "$PDUVERSION" = "31" ]
+then
+echo
+echo "Exporting variables for PDU 3.1"
+echo
+
+export RISDEVDIR=/usr/ris
+export WS_DIR=/usr2/ws_s
+export DELNODE=pdudev
+export DEL_PSWD=udev
+export RISVER=4
+export PDU=/usr2/ingr/pdusrc
+export PDM=/usr2/ingr/pdmsrc
+export NPAL=/usr2/ingr/pdusrc/pal
+export FPAL=/usr2/ingr/pdusrc/pal
+
+export MKDOPT="$MKDOPT -DRISV4"
+fi
+
+if [ "$PDUVERSION" = "32" ]
+then
+echo
+echo "Exporting variables for PDU 3.2"
+echo
+
+export RISDEVDIR=/usr/ris
+export WS_DIR=/usr/ws_s
+export DELNODE=pdmsrv
+export DEL_PSWD=msrv
+export RISVER=4
+export PDU=/usr2/pdu32irix
+export PDM=/usr2/pdm32irix
+export NPAL=/usr2/pdu32irix/pal
+export FPAL=/usr2/pdu32irix/pal
+
+export MKDOPT="$MKDOPT -DRISV4"
+fi
+
+
+#Save the config/tables because slic does not create them correctly
+cp $PDU/config/tables/ppl_table $PDU
+cp $PDU/config/tables/start_table $PDU
+cp $PDU/config/tables/command_table $PDU
+cp $PDU/config/tables/pdm_table $PDU
+
+echo "Retrieve PDU source from pdmdel"
+echo
+cd $PDU
+ftp -n pdmdel <<- END
+	user pdu32c4 pdubld
+	binary
+	get pdu24.cpio
+	quit
+	END
+
+cat pdu24.cpio | compress -d | cpio -ivmud
+
+#Remove *.o in the init directory
+rm config/dload/init/*.so
+rm config/dload/patch/*.so
+
+echo
+echo "Retrieve PDM source from pdmdel"
+echo
+cd $PDM
+ftp -n pdmdel <<- END
+	user pdm32c4 pdmbld
+	binary
+	get pdm24.cpio
+	quit
+	END
+
+cat pdm24.cpio | compress -d | cpio -ivmud
+
+echo 
+echo "Building PDU on SGI"
+echo
+
+echo
+echo "Removing libraries"
+echo
+cd $PDU/lib
+rm PDU*.a
+cd $PDM/lib
+rm PDM*.a
+cd $PDU/lib/$TARG
+rm PDU*.a
+cd $PDM/lib/$TARG
+rm PDM*.a
+
+echo
+echo "Compiling message files"
+echo
+cd $PDU/messages
+umsall
+
+echo
+echo "Making temporary link from /usr/ris to /usr/ip32/ris"
+echo
+ln -s /usr/ris /usr/ip32
+echo
+
+echo
+echo "Copy dba.msg"
+cp $DBASRC/support/dba.msg $PDU/dbasupport
+echo
+cd $PDU/ldpdu
+./makesgi
+
+echo 
+echo "Building PDM on SGI"
+echo
+cd $PDM/make
+./make_sgi
+
+cd $PDU/pdubuild
+./genpduapi.sh
+./genpdmapi.sh
+
+cd $PDU/ldpdu
+./ld.sgi
+
+echo
+echo "Removing link to /usr/ip32/ris"
+echo
+rm /usr/ip32/ris
+
+echo
+echo "Linking PDUemshooks.so "
+echo
+ld -shared -o ${PDU}/config/dload/patch/PDUemshooks.so \
+        ${PDU}/design/PDUemshooks.o
+echo
+echo "PDUemshooks.so image created successfully."
+echo
+
+echo
+echo "Linking PDUdispasm.so "
+echo
+ld -shared -o ${PDU}/config/dload/patch/PDUdispasm.so \
+        ${PDU}/design/PDUdispasm.o
+echo
+echo "PDUdispasm.so image created successfully."
+echo
+# This is for the api's that use ppls
+echo
+echo "Linking PMfile_mem.so "
+echo
+ld -shared -o ${PDU}/config/dload/patch/PMfile_mem.so \
+        ${PDM}/pdmapi/src/PMfile_mem.o
+echo
+echo "PMfile_mem.so image created successfully."
+echo
+
+echo
+echo "Linking PMwrite_buf.so "
+echo
+ld -shared -o ${PDU}/config/dload/patch/PMwrite_buf.so \
+        ${PDM}/pdmapi/src/PMwrite_buf.o
+echo
+echo "Linking PMread_buf.so "
+echo
+ld -shared -o ${PDU}/config/dload/patch/PMread_buf.so \
+        ${PDM}/pdmapi/src/PMread_buf.o
+echo
+echo "PMwrite_buf.so image created successfully."
+
+#copy include files for API into pdu/include to be collected ok
+cp $PDM/include/PDMstruct.h $PDU/include/PDMstruct.h
+cp $PDM/pdmapi/include/PDUmac_struc.h $PDU/include/PDUmac_struc.h
+#copy two .o's files for API into lib/$TARG to be collected ok
+cp $PDM/tli/gethost.o $PDM/lib/$TARG/gethost.o
+cp $PDU/ldpdu/sgistub.o $PDM/lib/$TARG/sgistub.o
+
+#Move the config/tables back
+mv $PDU/ppl_table $PDU/config/tables/.
+mv $PDU/start_table $PDU/config/tables/.
+mv $PDU/command_table $PDU/config/tables/.
+mv $PDU/pdm_table $PDU/config/tables/.
+
+chmod 777 $PDU/config/tables/*_table
+chown pdusrc $PDU/config/tables/*_table
+
+#Copy nfm startup files to /etc to deliver
+#cp $PDU/ldpdu/K99nfm /etc/rc0.d
+#cp $PDU/ldpdu/S99nfm /etc/rc2.d
+#cp $PDU/ldpdu/nfm /etc/init.d
+#cp $PDU/ldpdu/nfmd.conf /etc
+
+#Copy button timing fix
+cp $PDU/lib/irix/exwfi.sgi.so $PDU/button_fix/exwfi.so
+
+#Copy Search across catalogs fix
+cp $PDU/lib/irix/PDMnfm_sac.so $PDU/config/dload/patch
+
+echo
+echo "Collecting products"
+echo
+cd $PDU/delivery
+echo
+./collect_sgi $time
+echo
+./deliver_sgi $time
+echo
+./collect_sgidp $time
+echo
+./deliver_sgidp $time
+echo
+
+#remove include files for API from pdu/include after collected 
+rm $PDU/include/PDMstruct.h
+rm $PDU/include/PDUmac_struc.h
+#remove .o's put in lib/$TARG after collected 
+rm $PDM/lib/$TARG/gethost.o
+rm $PDM/lib/$TARG/sgistub.o 
+
+cd $PDU
+rm pdu24.cpio
+find . -print | xargs chown pdusrc
+cd $PDM
+rm pdm24.cpio
+find . -print | xargs chown pdmsrc
+
+echo
+echo "Build completed"

@@ -1,0 +1,369 @@
+/*
+ * Author: Jamal Shakra
+ * Date: 12-14-91
+ * This command deletes an origin.
+ */
+
+
+#if ! defined(__sgi)
+#include        "unistd.h"
+#endif
+#include 	"ciminimum.h"
+#include 	"cimacros.h"
+#include 	"PDUstr.h"
+#include        "ex.h"
+#include        "igrdp.h"
+#include 	"partmacros.h"
+#include 	"part.h"
+#include	"cieveryone.h"
+#include	"cimacros.h"
+#include	"acdef.h"
+#include	"acmacros.h"
+#include	"ACdb_info.h"
+#include	"macro.h"
+#include	"grdpbdef.h"
+#include	"grdpb.h"
+#include	"grdpbmacros.h"
+#include	"growner.h"
+#include	"igrdp.h"
+#include	"madef.h"
+#include	"exdef.h"
+#include	"exmacros.h"
+#include	"dp.h"
+#include	"dpdef.h"
+#include	"grcoordsys.h"
+#include	"csdef.h"
+#include	"msdef.h"
+#include	"PDUint.h"
+#include	"PDUintdef.h"
+#include	"grsymdef.h"
+#include	"grsym.h"
+#include	"grownerdef.h"
+#include 	"dpmacros.h"
+#include 	"comiscmac.h"
+#include 	"coplcmac.h"
+#include 	"cotxmacros.h"
+#include 	"partdef.h"
+#include        "DItypedef.h"
+#include        "DIdef.h"
+#include        "DIglob.h"
+#include        "DIprims.h"
+#include        "PDUgrpart.h"
+
+
+/* External functions */
+extern		_pdm_debug();
+extern		_pdm_status();
+extern		GRdpb_get();
+extern          PDUdisplay_GRpart();
+extern          PDUfill_in_string();
+extern          DIls();
+extern          DIuntranslate();
+extern          DImain();
+extern          DPdisbyoid();
+extern          malloc();
+extern          free();
+extern          DIgive_pathname();
+extern          PDUcheck_file_for_origins();
+extern          PDUdisplay_design_form();
+extern          PDUrm_name();
+extern          strrchr();
+
+
+/* External variables */
+extern          IGRshort          PDU_list_origins;
+extern          struct   GRid     *PDU_origin_id;
+extern          IGRint            PDU_selected_rows;
+extern struct   PDUpart_node      *PDU_origins_id_list;
+
+main()
+{
+
+ struct GRmd_env  mod_env;
+ struct GRid      origin;		
+ IGRchar          origin_name[MAX_VALUE];
+ IGRchar          view_dir[DI_PATH_MAX];
+ IGRchar          file_dir[DI_PATH_MAX];
+ IGRchar          *s;
+ IGRlong          msg, sts;
+ IGRlong          status;
+ IGRint           count;
+ IGRint           i;
+ IGRchar          *view_name;
+ IGRchar          *tmp_name;
+ IGRdouble        acc_point;
+ struct PDUpart_node       *head;
+ IGRlong	  NumberOfBytes, BytesReceived;
+
+
+
+ _pdm_debug("In the delete origin ppl program", 0);
+
+ /* Get active module information */
+ NumberOfBytes = sizeof(mod_env);
+ status = gr$get_module_env( 
+                           msg = &msg,
+			   sizbuf = &NumberOfBytes,
+			   buffer = &mod_env,
+			   nret = &BytesReceived
+                          );
+
+ /* Locate origin */
+ identify_origin:
+
+ message("Delete Origin");
+
+ if (!PDU_list_origins)
+    {
+     begincmd("locate origin");
+     endcmd();
+
+     if (PDU_origin_id == NULL)
+        {
+         _pdm_debug("no PDU origin located", 0);
+
+         /* Free PDU_origins_id_list */
+         if (PDU_origins_id_list)
+            {
+             head = PDU_origins_id_list;
+
+             while (PDU_origins_id_list)
+                   {
+                    PDU_origins_id_list = PDU_origins_id_list->next;
+                    free(head);
+                    head = PDU_origins_id_list;
+                   } /* end while loop */
+
+             PDU_origins_id_list = NULL;
+            }
+
+         /* Display design form */
+         PDUdisplay_design_form();
+
+         exit;
+        }
+    }
+
+ /* Check to see if need to delete a list of origins */
+ if ( (PDU_origins_id_list != NULL) && (PDU_list_origins == TRUE) )
+    {
+     _pdm_debug("Deleting a list of origins", 0);
+
+     head = PDU_origins_id_list;
+
+     origin.osnum = head->part_id.osnum;
+     origin.objid = head->part_id.objid;
+    }
+
+  else
+      {
+       origin.objid = PDU_origin_id->objid;
+       origin.osnum = PDU_origin_id->osnum;
+      }
+
+ delete_list:
+
+ _pdm_debug("deleting %d", origin.objid);
+
+ /* Validate origin identity */
+ status = di$untranslate(
+                         objname = origin_name,
+                         objid = origin.objid,
+                         osnum = mod_env.md_id.osnum
+                        );
+
+ _pdm_debug("origin name = <%s>", origin_name);
+ _pdm_debug("obj id = %d", origin.objid);
+
+ if ((status == DIR_S_SUCCESS) && (strcmp(origin_name,"") != 0) && origin_name)
+    {
+     /* Extract coord sys name */
+     PDUfill_in_string(&tmp_name, origin_name);
+     s = (IGRchar *) strrchr(tmp_name, ':');
+
+     if (s != NULL)
+        {
+         _pdm_debug("s = %s", s);
+         s[7] = '\0';
+         s = s + 1;
+        
+         if (strcmp(s, "ORIGIN") != 0)
+            {
+             message("Invalid origin");
+             delay();
+
+             _pdm_debug("invalid origin", 0);
+             goto identify_origin;
+            }
+         }
+
+       else
+         {
+          _pdm_debug("SEVERE error", 0);
+  
+          /* Display design form */
+          PDUdisplay_design_form();
+
+          /* Free PDU_origin_id */
+          if (PDU_origin_id)
+             {
+              free(PDU_origin_id);
+              PDU_origin_id = NULL;
+             }
+
+          exit;
+         }
+    }
+
+ else
+    {
+     message("Invalid origin");
+     delay();
+
+     if (PDU_list_origins)
+        {
+         /* Free PDU_origins_id_list */
+         if (PDU_origins_id_list)
+            {
+             head = PDU_origins_id_list;
+
+             while (PDU_origins_id_list)
+                   {
+                    PDU_origins_id_list = PDU_origins_id_list->next;
+                    free(head);
+                    head = PDU_origins_id_list;
+                   } /* end while loop */
+
+             PDU_origins_id_list = NULL;
+            }
+
+         exit;
+        }
+
+     _pdm_debug("invalid origin", 0);
+     goto identify_origin;
+    }
+
+ origin.osnum = mod_env.md_id.osnum;
+
+ /* Erase origin */
+ dp$display(
+            msg = &sts,
+            oids = &origin,
+            mode = GRbe
+           );
+
+ /* Do it again */
+ dp$display(
+            msg = &sts,
+            oids = &origin,
+            mode = GRbe
+           );
+
+ /* Delete origin */
+ ci$send(
+         msg = message GRgraphics.GRdelete
+                                 (
+                                  &sts,
+                                  &mod_env
+                                 ),
+         targetid = origin.objid,
+         targetos = origin.osnum 
+        ); 
+
+
+ /* Need to extract view name */
+ view_name = origin_name + (strlen(origin_name) - 1);
+ i = strlen(origin_name) - 1;
+
+ while (origin_name[i] != ' ')
+       {
+        view_name = view_name - 1;
+        i = i - 1;
+       }
+
+ view_name = view_name + 1; 
+ _pdm_debug("view name = <%s>", view_name);
+
+ /* Delete saved view */  
+ di$give_pathname(
+                  osnum = mod_env.md_id.osnum,
+                  pathname = file_dir
+                 );
+ 
+ /* Construct full path to view directory */
+ sprintf(view_dir, "%s:views:savedviews:GRsavedviews:%s", file_dir, view_name);
+
+ _pdm_debug("view full path name = %s", view_dir);
+
+ /* Remove saved view name */
+ status = PDUrm_name(view_dir);
+ /*
+ status = di$rm_name ( regexp = view_dir );
+ */
+ _pdm_status("di$rm_name status", status); 
+
+ /* Free PDU_origin_id */
+ if (PDU_origin_id)
+    {
+     free(PDU_origin_id);
+     PDU_origin_id = NULL;
+    }
+
+ if (PDU_list_origins)
+    {
+     PDU_selected_rows = PDU_selected_rows - 1;
+
+     /* Display design form */
+     if (PDU_selected_rows == 0)
+        {
+         /* Reset PDU_list_parts flag */
+         PDU_list_origins = FALSE;
+
+         /* Free PDU_origins_id_list */
+         if (PDU_origins_id_list)
+            {
+             head = PDU_origins_id_list;
+
+             while (PDU_origins_id_list)
+                   {
+                    PDU_origins_id_list = PDU_origins_id_list->next;
+                    free(head);
+                    head = PDU_origins_id_list;
+                   } /* end while loop */
+
+             PDU_origins_id_list = NULL;
+            }
+
+         /* Display design form */
+         PDUdisplay_design_form();
+        }
+
+     else
+         {
+          /* Continue deleting origins in list */
+          head = head->next;
+
+          if (head)
+             {
+              origin.osnum = head->part_id.osnum;
+              origin.objid = head->part_id.objid;
+
+              goto delete_list;
+             }
+         }
+    }
+
+ else
+     {
+      /* Display design form */
+      PDUdisplay_design_form();
+     }
+}
+
+int  delay()
+ {
+  int  i;
+
+  for (i = 0; i < 20000; i = i + 1);
+ }

@@ -1,0 +1,153 @@
+#if ! defined(__sgi)
+#include        "unistd.h"
+#endif
+#include 	"ciminimum.h"
+#include 	"cimacros.h"
+#include 	"PDUstr.h"
+#include        "PDUpart.h"
+#include        "ex.h"
+#include        "igrdp.h"
+#include 	"partmacros.h"
+#include 	"part.h"
+#include	"cieveryone.h"
+#include	"cimacros.h"
+#include	"acdef.h"
+#include	"acmacros.h"
+#include	"ACdb_info.h"
+#include	"macro.h"
+#include	"grdpbdef.h"
+#include	"grdpb.h"
+#include	"grdpbmacros.h"
+#include	"growner.h"
+#include	"igrdp.h"
+#include	"madef.h"
+#include	"exdef.h"
+#include	"exmacros.h"
+#include	"dp.h"
+#include	"dpdef.h"
+#include	"grcoordsys.h"
+#include	"csdef.h"
+#include	"msdef.h"
+#include	"PDUint.h"
+#include	"PDUintdef.h"
+#include	"grsymdef.h"
+#include	"grsym.h"
+#include	"grownerdef.h"
+#include 	"dpmacros.h"
+#include 	"comiscmac.h"
+#include 	"coplcmac.h"
+#include 	"cotxmacros.h"
+#include 	"partdef.h"
+#include        "DItypedef.h"
+#include        "DIdef.h"
+#include        "DIglob.h"
+#include        "DIprims.h"
+#include        "expmacros.h"
+#include        "csmacros.h"
+#include        "MEMstruct.h"
+#include        "MEMerrordef.h"
+#include        "PDUfile_def.h"
+#include        "PDUinform.h"
+#include        "PDUassy.h"
+#include        "PDUforms.h"
+#include        "PDUstr.h"
+
+
+
+/* External functions declaration section */
+extern          _pdm_status();
+extern          _pdm_debug();
+extern          GRdpb_get();
+extern          PDUis_PDU_file();
+extern          PDUstamp_PDU_design_file();
+extern          PDUload_file_assembly_information();
+extern          MEMclose();
+extern          MEMopen();
+extern          PDUload_attach_buffer();
+extern          PDMrecreate_validated_dyn_databufr();
+extern          PDMattach_file();
+extern          PDUsave_format_to_file();
+extern          printf();
+
+/* External variables declaration section */
+extern MEMptr PDU_attach_buffer;
+extern MEMptr PDU_view_buffer;
+extern MEMptr PDU_child_buffer;
+extern MEMptr PDU_dyn_attr_bufr;
+extern MEMptr PDU_dyn_data_bufr;
+extern MEMptr PDU_param_buffer;
+extern MEMptr PDUchild_dyn_buffer;
+extern MEMptr PDU_file_bufr;
+
+
+/* Global variable declaration */
+
+main()
+{
+
+ struct           GRmd_env  mod_env;		
+ long             NumberOfBytes, BytesReceived;
+ int              status;
+ long             stat,msg;
+ MEMptr           reformatted_buffer;
+ char             path[512];
+
+ reformatted_buffer = NULL;
+
+ /* Get current module environment information */
+ _pdm_debug("In api_ckin.u", 0);
+ printf("In api_ckin.u\n");
+ NumberOfBytes = sizeof(mod_env);
+ stat = gr$get_module_env(
+                          msg = &msg,
+                          sizbuf = &NumberOfBytes,
+                          buffer = &mod_env,
+                          nret = &BytesReceived
+                         );
+ if (PDUis_PDU_file(mod_env))
+   {
+   _pdm_debug("File is a PDU_design file",0);
+   printf("File is a PDU_design file\n");
+   status = PDUstamp_PDU_design_file(mod_env);
+   _pdm_status("PDUstamp_PDU_design_file", status);
+
+   status = PDUload_file_assembly_information(mod_env);
+   _pdm_status("PDUload_file_assembly_information", status);
+
+   if (PDU_attach_buffer)
+     {
+     MEMclose(&PDU_attach_buffer);
+     PDU_attach_buffer = NULL;
+     }
+
+   status = PDUload_attach_buffer(&PDU_attach_buffer, mod_env);
+   _pdm_status("PDUload_attach_buffer", status);
+
+   if (PDUchild_dyn_buffer)
+     {
+     status = PDMrecreate_validated_dyn_databufr(PDUchild_dyn_buffer,
+                                                 &reformatted_buffer);
+     _pdm_status("PDMrecreate_validated_dyn_data_bufr", status);
+     }
+  _pdm_debug("Before PDMattach_file", 0);
+    if(PDU_file_bufr == NULL)
+        MEMopen(&PDU_file_bufr,512);
+
+  status = PDMattach_file(PDU_file_bufr, PDU_child_buffer, PDU_attach_buffer,
+                PDU_view_buffer, PDU_dyn_attr_bufr, PDU_dyn_data_bufr,
+                PDU_param_buffer, reformatted_buffer);
+  _pdm_status("PDMattach_file", status);
+  begincmd("exit=y");
+  ci$put(string = "", pos = FRONT);
+  endcmd();
+  }
+ else
+  {
+  _pdm_debug("file is not a PDU file", 0);
+  printf("file is not a PDU file\n");
+  status = PDUsave_format_to_file();
+  _pdm_status("PDUsave_format_to_file", status);
+  }
+
+exit;
+}

@@ -1,0 +1,318 @@
+/*
+ * Author: Jamal Shakra
+ * Date: 12-14-91
+ * This commands defines an origin in the invisible object space.
+ */
+
+
+#if ! defined(__sgi)
+#include        "unistd.h"
+#endif
+#include 	"ciminimum.h"
+#include 	"cimacros.h"
+#include 	"PDUstr.h"
+#include        "ex.h"
+#include        "igrdp.h"
+#include 	"partmacros.h"
+#include 	"part.h"
+#include	"cieveryone.h"
+#include	"cimacros.h"
+#include	"acdef.h"
+#include	"acmacros.h"
+#include	"ACdb_info.h"
+#include	"macro.h"
+#include	"grdpbdef.h"
+#include	"grdpb.h"
+#include	"grdpbmacros.h"
+#include	"growner.h"
+#include        "grgsmacros.h"
+#include        "grmessage.h"
+#include	"igrdp.h"
+#include	"madef.h"
+#include	"exdef.h"
+#include	"exmacros.h"
+#include	"dp.h"
+#include	"dpdef.h"
+#include	"grcoordsys.h"
+#include	"csdef.h"
+#include	"msdef.h"
+#include	"PDUint.h"
+#include	"PDUintdef.h"
+#include	"grsymdef.h"
+#include	"grsym.h"
+#include	"grownerdef.h"
+#include 	"dpmacros.h"
+#include 	"comiscmac.h"
+#include 	"coplcmac.h"
+#include 	"cotxmacros.h"
+#include 	"partdef.h"
+#include        "DItypedef.h"
+#include        "DIdef.h"
+#include        "DIglob.h"
+#include        "DIprims.h"
+#include        "expmacros.h"
+#include        "csmacros.h"
+#include        "PDUpart.h"
+#include        "PDUinform.h"
+
+
+
+/* External variables declaration */
+extern     IGRint       PDU_message_type;
+extern     IGRint       PDU_prompt_type;
+extern     IGRdouble    PDU_point[3];
+extern     IGRshort     PDU_store_point;
+extern     IGRshort     PDU_store_view;
+extern     struct GRid  PDU_window_id;
+extern     struct GRid  PDU_invis_newmod;
+extern     struct PDUpart *part;
+extern     IGRchar         *PDU_viewname;
+extern	   PDUmessage();
+
+
+
+/* External function declaration */
+extern		_pdm_debug();
+extern		_pdm_status();
+extern          GRdpb_get();
+extern          DImain();
+extern          malloc();
+extern          DPsavevw_cons();
+extern          DIpwd();
+extern          DIgive_pathname();
+extern          DImkpath();
+extern          DIcd();
+extern          DPdisbyoid();
+extern          GRdpb_put();
+extern          PDUfill_in_string();
+extern          PDUget_coord_sys_id();
+extern          PDUcreate_origin();
+extern          GRcsget_mgr();
+
+main()
+{
+
+ struct GRmd_env  mod_env;		
+ IGRdouble        origin[3];
+ IGRlong          msg,sts;
+ IGRlong          status;
+ IGRlong	  NumberOfBytes, BytesReceived;
+ IGRshort         cstype;
+ GRobjid          csmgr_id;
+ struct GRid      act_coorid;
+ struct GRid      csobj;
+ IGRchar          cs_name[DI_PATH_MAX];
+ IGRmatrix        placement_matrix; 
+
+
+ _pdm_debug("In the define invisible command", 0);
+
+ PDUmessage(PDM_I_DEFINE_INVISIBLE_ORIGIN,'s');
+
+ /* Get current module environment information */
+ NumberOfBytes = sizeof(mod_env);
+ status = gr$get_module_env(
+                            msg = &msg,
+                            sizbuf = &NumberOfBytes,
+                            buffer = &mod_env,
+                            nret = &BytesReceived
+                           );
+
+ /* Prompt user for view name */
+ begincmd("enter view");
+ endcmd();
+
+ if (!PDU_store_view)
+    {
+     /* No view entered */
+     _pdm_debug("Invalid view name", 0);
+  
+     exit;
+    }
+
+ PDU_store_view = FALSE;
+
+ /* Default view to PDUview if PDU_viewname is empty */
+ if (PDU_viewname == NULL)
+    {
+     PDUfill_in_string(&PDU_viewname, "PDUview");
+    }
+
+ /* Get origin point */ 
+ PDU_message_type = PDM_I_DEFINE_ORIGIN_MSG;
+ PDU_prompt_type = PDM_I_DATA_POINT;
+ 
+ begincmd("enter data point");
+ endcmd();
+
+ if (!PDU_store_point)
+    {
+     /* No data point entered */
+
+     exit;
+    }
+
+ origin[0] = PDU_point[0];
+ origin[1] = PDU_point[1];
+ origin[2] = PDU_point[2];
+
+ PDU_store_point = FALSE;
+
+ /* Need to save the active coordinate system */
+ status =  cs$get_mgr (
+                       msg = &msg,
+                       osnum = mod_env.md_id.osnum,
+                       module = mod_env.md_id.objid,
+                       csmgr = &csmgr_id
+                      );
+
+
+ /* Get the obj id of the most recently defined coor sys */
+ status = ci$send(
+                  msg = message GRcsmgr.GRget_acs_info
+                                                      (
+                                                        &msg,
+                                                        NULL,
+                                                        NULL,
+                                                        NULL,
+                                                        NULL,
+                                                        NULL,
+                                                        NULL,
+                                                        &cstype,
+                                                        &act_coorid
+                                                      ),
+                  targetid = csmgr_id,
+                  targetos = mod_env.md_id.osnum
+                 );
+
+ /* Construct path to <usr> directory */
+ di$give_pathname(
+                  osnum = mod_env.md_id.osnum,
+                  pathname = cs_name 
+                 );
+
+ strcat(cs_name, ":");
+ strcat(cs_name,"usr:");
+ strcat(cs_name, "INVIS ORIGIN");
+
+ /* Need to obtain placement matrix from origin point */
+ _pdm_debug("placing a coor sys by view alignment", 0);
+
+ begincmd_key ("GRPCrSyFrV");
+           ci$put(point = origin);
+           ci$put(string = cs_name);
+           ci$put(response = TERMINATE);
+ endcmd();
+
+ /* Extract obj. id of temp invis origin */
+ status = PDUget_coord_sys_id(
+                              mod_env,
+                              cs_name,
+                              &(csobj.objid)
+                             );
+
+ if (status != PDM_S_SUCCESS)
+    {
+     _pdm_debug("PDUget_coord_sys_id failed", 0);
+     exit;
+    }
+
+ csobj.osnum = mod_env.md_id.osnum;
+
+ /* Erase temp invis origin */
+ dp$display(
+            msg = &sts,
+            oids = &csobj,
+            mode = GRbe
+           );
+
+ /* Erase temp invis origin again */
+ dp$display(
+            msg = &sts,
+            oids = &csobj,
+            mode = GRbe
+           );
+
+ /* Get part pointer transition matrix */
+ status = ci$send(
+                  msg = message GRgencs.GRgetmatrix(
+                                                    &sts,
+                                                    placement_matrix
+                                                    ),
+                  targetid = csobj.objid,
+                  targetos = mod_env.md_id.osnum
+                 );
+
+ /* Delete temp invis origin */
+ ci$send(
+         msg = message GRgraphics.GRdelete(
+                                           &sts,
+                                           &mod_env
+                                          ),
+         targetid = csobj.objid,
+         targetos = csobj.osnum
+        );
+
+ /* Restore active coordinate system */
+ status = ci$send(
+                  msg = message GRcsmgr.GRset_active_cs
+                                       (
+                                        &msg,
+                                        &mod_env,
+                                        act_coorid.objid
+                                       ),
+                  targetid = csmgr_id,
+                  targetos = mod_env.md_id.osnum
+                 );
+
+ /* Set invisible module info */
+ _pdm_debug("PDU_invis_newmod.objid = %d", PDU_invis_newmod.objid);
+ _pdm_debug("PDU_invis_newmod.osnum = %d", PDU_invis_newmod.osnum);
+
+ mod_env.md_id.objid = PDU_invis_newmod.objid;
+ mod_env.md_id.osnum = PDU_invis_newmod.osnum;
+
+ /* Create invisible origin */
+ status = PDUcreate_origin(
+                           placement_matrix,
+                           mod_env,
+                           PDU_viewname,
+                           NULL,
+                           origin,
+                           1,
+                           &csobj
+                          );
+ _pdm_status("PDUcreate_origin", status);
+
+ /* Get cs manager in the invisible obj space */
+ /*
+ status =  cs$get_mgr (
+                       msg = &msg,
+                       osnum = mod_env.md_id.osnum,
+                       module = mod_env.md_id.objid,
+                       csmgr = &csmgr_id
+                      );
+ */
+
+ /* Make invisible origin active in the invisible obj space */
+ /*
+ status = ci$send(
+                  msg = message GRcsmgr.GRset_active_cs
+                                       (
+                                        &msg,
+                                        &mod_env,
+                                        csobj.objid
+                                       ),
+                  targetid = csmgr_id,
+                  targetos = mod_env.md_id.osnum
+                 );
+ */
+
+}
+
+int  delay()
+{
+ int i;
+
+ for (i = 0; i < 20000; i = i + 1);
+}
