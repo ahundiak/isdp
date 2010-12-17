@@ -1,0 +1,725 @@
+/*
+ * Author: Jamal Shakra
+ * Date: 12-14-91
+ * This command attachs graphics files to first-level part pointers.
+ */
+
+
+#include 	"ciminimum.h"
+#include 	"cimacros.h"
+#if ! defined(__sgi)
+#include        "unistd.h"
+#endif
+#include 	"PDUstr.h"
+#include 	"PDUpart.h"
+#include 	"ex.h"
+#include 	"igrdp.h"
+#include 	"partmacros.h"
+#include        "refdef.h"
+#include 	"part.h"
+#include	"cieveryone.h"
+#include	"cimacros.h"
+#include	"acdef.h"
+#include	"acmacros.h"
+#include	"ACdb_info.h"
+#include	"macro.h"
+#include	"grdpbdef.h"
+#include	"grdpb.h"
+#include	"grdpbmacros.h"
+#include	"growner.h"
+#include	"igrdp.h"
+#include	"madef.h"
+#include	"exdef.h"
+#include	"exmacros.h"
+#include	"dp.h"
+#include	"dpdef.h"
+#include	"grcoordsys.h"
+#include	"csdef.h"
+#include	"msdef.h"
+#include	"PDUint.h"
+#include	"PDUintdef.h"
+#include	"grsymdef.h"
+#include	"grsym.h"
+#include	"grownerdef.h"
+#include 	"dpmacros.h"
+#include 	"comiscmac.h"
+#include 	"coplcmac.h"
+#include 	"cotxmacros.h"
+#include 	"partdef.h"
+#include        "DItypedef.h"
+#include        "DIdef.h"
+#include        "DIglob.h"
+#include        "DIprims.h"
+#include        "detaildef.h"
+#include        "PDUgrpart.h"
+#include        "MEMstruct.h"
+#include        "PDUfile_def.h"
+
+
+/* External function declarations */
+extern		GRdpb_get();
+extern		COpart_attr_func();
+extern          PDUdisplay_GRpart();
+extern          PDUfill_in_string();
+extern          DPdisbyoid();
+extern          malloc();
+extern          PDUdisplay_views();
+extern          PDUdisplay_files();
+extern          PDUattach_ref_to_GRpart();
+extern          DIgive_pathname();
+extern          PDUget_GRparts_ids();
+extern          PDUget_all_ref_file_names();
+extern          DIfind();
+extern          PDUevaluate_exp();
+extern          PDUunquote();
+extern          free();
+extern          strrchr();
+extern          PDMget_part_attach_info();
+extern          PDMcopy_attach();
+extern          MEMclose();
+extern          MEMsplit_copy_buffer();
+extern          MEMbuild_array();
+extern          PDUmodify_exp();
+extern          PDMopen_buffer();
+extern          PDUload_local_file_buffer();
+extern          PDUmessage();
+extern          PDUsetup_buffer();
+extern          PDUdisplay_design_form();
+extern          MEMwrite();
+extern          PDUfree_string_array();
+extern          _pdm_debug();
+extern          _pdm_status();
+extern          PDUmatrix_to_point();
+extern          MAinvmx();
+extern          PDUadd_points();
+extern          MA3protmx();
+extern          PDUdump_matrix();
+extern          PDUverify_file();
+extern          PDUdisplay_files_and_origins();
+extern          pdmoAttachPart();
+extern          PDUload_assy_struct_buffer();
+extern          PDUprocess_assembly_display();
+extern          PDUassembly_display_form();
+extern          WaitForEvent();
+extern          PDUupdate_local_flag_in_assembly();
+extern          PDMrcheck_part_status();
+extern          PDUgenerate_instance_number();
+extern          PDUremove_assembly();
+extern          PDUadd_assy_struct_from_buffer();
+extern          PDUget_all_GRpart_ids();
+extern          PDUverify_part();
+extern          PDUget_parttype();
+
+/* External global variables */
+extern IGRint   PDM_debug_on;
+extern MEMptr   PDU_ret_bufr;
+extern MEMptr   PDU_attach_buffer;
+extern IGRchar  *PDU_filename;
+extern IGRchar  *PDU_viewname;
+extern IGRshort PDU_loop_cmd;
+extern IGRshort PDU_attach;
+extern IGRshort PDU_edit_display;
+extern IGRint   PDU_command;
+extern IGRint   PDM_debug_on;
+extern struct   PDUrefresh *refresh;
+extern struct   PDUpart *part;
+extern struct   PDUref_node *PDU_ref_filenames;
+extern          struct GRid *PDU_part_id;
+extern IGRshort PDU_list_parts;
+extern IGRint   PDU_selected_rows;
+extern IGRchar  *PDU_incl_ASM;
+extern struct PDUpart_node *PDU_parts_id_list;
+
+main()
+{
+
+ struct GRmd_env  mod_env;
+ struct GRobj_env objects[1];
+ struct GRid      part_id;		
+ struct GRid      refobjid;		
+ struct GRid      coord;		
+ struct GRid      cs_id;		
+ struct PDUpart_node *part_ids;		
+ struct PDUpoint  origin_pt;
+ struct PDUpoint  x_axis_pt;
+ struct PDUpoint  y_axis_pt;
+ GRobjid          window_id;
+ IGRchar          attr_value[MAX_VALUE];
+ IGRchar          tmpcatalog[MAX_VALUE];
+ IGRchar          tmpnumber[MAX_VALUE];
+ IGRchar          tmprevision[MAX_VALUE];
+ IGRchar          tmpusageid[MAX_VALUE];
+ IGRchar          tmp_viewname[MAX_VALUE];
+ IGRchar          part_dir[DI_PATH_MAX];
+ IGRchar          assy_path[DI_PATH_MAX];
+ IGRchar          tmp_assy_path[DI_PATH_MAX];
+ IGRchar          s[DI_PATH_MAX];
+ IGRchar          usageid[DI_PATH_MAX];
+ IGRchar          *catalog;
+ IGRchar          *number;
+ IGRchar          *revision;
+ IGRchar          *file_name;
+ IGRchar          *file_value;
+ IGRchar          *attached_value;
+ IGRchar          *cat_no;
+ IGRchar          *item_no;
+ IGRchar          *first_level_catno;
+ IGRchar          *first_level_itemno;
+ IGRchar          *status_no;
+ IGRchar          **parts;
+ IGRchar          **row_data;
+ IGRchar          **data;
+ IGRchar          *n_catalogno;
+ IGRchar          *n_catalogname;
+ IGRchar          *n_itemno;
+ IGRchar          *n_itemname;
+ IGRchar          *n_itemrev;
+ IGRchar          *n_cofilename;
+ IGRchar          *n_action;
+ IGRchar          *part_type;
+ IGRchar          *incl_asm;
+ IGRchar          *active_parttype;
+ IGRint           type;
+ IGRint           num_objects;
+ IGRint           total_count;
+ IGRint           part_count;
+ IGRint           count;
+ IGRint           i;
+ IGRint           itemno;
+ IGRint           temp_command;
+ IGRlong          msg, sts;
+ IGRlong          stat;
+ IGRshort         copy_file;
+ IGRshort         file_found;
+ IGRshort         unique_flag;
+ IGRshort         background;
+ IGRmatrix        src_matrix;
+ IGRmatrix        rot_matrix;
+ IGRpoint         origin;
+ IGRpoint         x_point;
+ IGRpoint         y_point;
+ IGRchar unsigned weight;
+ IGRchar unsigned style;
+ struct IGRaltdisplay altdp_info;
+ IGRlong	  NumberOfBytes, BytesReceived;
+ MEMptr           local_files;
+ MEMptr           status_buffer;
+ MEMptr           file_buffer;
+ MEMptr           view_buffer;
+ MEMptr           asm_bufr;
+ IGRchar          *child_no;
+ IGRint           four;
+ IGRint           response;
+ IGRint           instance_no;
+ struct  PDUref_node       *head;
+ struct  PDUref_node       *tail;
+ struct  PDUref_node       *buffer_files;
+ struct  PDUref_node       *temp;
+ struct  PDUref_node       *top;
+ IGRint           own_index[1];
+ unsigned         long ref_properties;
+ short            flag;
+ IGRint           selector;
+ IGRint           id_type[1];
+ struct  GRid     dv_refid[1];
+ FILE             *pdu_debug_file;
+ IGRshort         file_local;
+ struct PDUpart_node *head_list;
+ 
+
+ _pdm_debug("In attach part ppl file", 0);
+
+
+ /* Local variables initialization */
+ num_objects = 1;
+ child_no = NULL;
+ catalog = NULL;
+ number = NULL;
+ revision = NULL;
+ file_name = NULL;
+ status_no = NULL;
+ copy_file = TRUE;
+ buffer_files = NULL;
+ temp = NULL;
+ head = NULL;
+ head_list = NULL;
+ top = NULL;
+ file_value = NULL;
+ attached_value = NULL;
+ cat_no = NULL;
+ item_no = NULL;
+ first_level_catno = NULL;
+ first_level_itemno = NULL;
+ total_count = 0;
+ part_count = 0;
+ local_files = NULL;
+ status_buffer = NULL;
+ part_ids = NULL;
+ view_buffer = NULL;
+ file_buffer = NULL;
+ PDU_ref_filenames = NULL;
+ parts = NULL;
+ row_data = NULL;
+ n_catalogno = NULL;
+ n_catalogname = NULL;
+ n_itemno = NULL;
+ n_itemname = NULL;
+ n_itemrev = NULL;
+ n_cofilename = NULL;
+ n_action = NULL;
+ part_type = NULL;
+ incl_asm = NULL;
+ selector = GR_DV_REFFILE;
+ four = 4;
+ flag = 1;
+ file_local = FALSE;
+ asm_bufr = NULL;
+ active_parttype = NULL;
+
+ 
+ /* Get active module information */
+ NumberOfBytes = sizeof(mod_env);
+ stat = gr$get_module_env( 
+                          msg = &msg,
+  	                  sizbuf = &NumberOfBytes,
+		          buffer = &mod_env,
+	                  nret = &BytesReceived
+                         );
+
+ /* Locate GRpart */
+ identify_GRpart:
+
+ begincmd("locate part pointer");
+ endcmd();
+
+ if (PDU_part_id == NULL)
+  {
+   _pdm_debug("no PDU part located", 0);
+
+   /* Display design form */
+   PDUdisplay_design_form();
+
+   exit;
+  }
+
+  /* Validate part pointer identity */
+  part_id.osnum = PDU_part_id->osnum;
+  part_id.objid = PDU_part_id->objid;
+
+attach_list:
+ _pdm_debug("at label attach_list", 0);
+ stat = co$part_get_attr (
+                          msg = &msg,
+                          mod_env = &mod_env,
+                          part = &part_id,
+                          attr = "attach_flag",
+                          value = attr_value,
+                          type = &type 
+                         ); 
+
+ if ( (msg != MSSUCC) || (strcmp(attr_value, "") == 0) )
+    {
+     status("Invalid part pointer");
+
+     /* Deallocate and initialize PDU_part_id */
+     free(PDU_part_id);
+     PDU_part_id = NULL;
+
+     delay();
+     goto identify_GRpart;
+    }
+
+ else
+    {
+     /* Set flag for attaching non-positioned parts */
+     if (strcmp(attr_value, "-2.000000") == 0)
+        file_local = TRUE;
+
+     /* Make sure part is not attached */
+     if ( (strcmp(attr_value, "-1.000000") != 0) &&
+          (strcmp(attr_value, "-2.000000") != 0) )
+        {
+         status("Part is already attached");
+         delay();
+         delay();
+    
+         /* Enable looping, if disabled */
+         if (PDU_loop_cmd == FALSE)
+            PDU_loop_cmd = TRUE;
+
+         /* Deallocate and initialize PDU_part_id */
+         if (PDU_part_id)
+            {
+             free(PDU_part_id);
+             PDU_part_id = NULL;
+            }
+
+         exit;
+        }
+
+     /* Check to see if part is non-graphic */
+     co$part_get_attr (
+                       msg = &msg,
+                       mod_env = &mod_env,
+                       part = &part_id,
+                       attr = "part_type",
+                       value = attr_value,
+                       type = &type
+                      );
+
+     PDUfill_in_string(&part_type, attr_value);
+
+     if ( (strcmp(attr_value, "N") == 0) ||
+          (strcmp(attr_value, "n") == 0) )
+        {
+         /* Display design form */
+         PDUdisplay_design_form();
+
+         status("Non-graphic parts can not be attached");
+         delay();
+         delay();
+
+         /* Enable looping, if disabled */
+         if (PDU_loop_cmd == FALSE)
+            PDU_loop_cmd = TRUE;
+
+         /* Deallocate and initialize PDU_part_id */
+         if (PDU_part_id)
+            {
+             free(PDU_part_id);
+             PDU_part_id = NULL;
+            }
+
+         if (part_type)
+            {
+            free(part_type);
+            part_type = NULL;
+            }
+
+         exit;
+        }
+
+     /* Extract catalog from part */
+     stat = co$part_get_attr (
+                              msg = &msg,
+                              mod_env = &mod_env,
+                              part = &part_id,
+                              attr = "CATALOG",
+                              value = attr_value,
+                              type = &type
+                             );
+
+     /* Load value to catalog */
+     PDUfill_in_string(&catalog, attr_value);
+
+     /* Extract part number from part */
+     stat = co$part_get_attr (
+                              msg = &msg,
+                              mod_env = &mod_env,
+                              part = &part_id,
+                              attr = "NUMBER",
+                              value = attr_value,
+                              type = &type
+                             );
+
+     /* Load value to number */
+     PDUfill_in_string(&number, attr_value);
+
+     /* Extract part revision from part */
+     stat = co$part_get_attr (
+                              msg = &msg,
+                              mod_env = &mod_env,
+                              part = &part_id,
+                              attr = "REVISION",
+                              value = attr_value,
+                              type = &type
+                             );
+
+     /* Load value to revision */
+     PDUfill_in_string(&revision, attr_value);
+
+     /* Extract child number from GRpart */
+     co$part_get_attr (
+                       msg = &msg,
+                       mod_env = &mod_env,
+                       part = &part_id,
+                       attr = "child_no",
+                       value = attr_value,
+                       type = &type
+                      );
+
+     PDUunquote(attr_value);
+     PDUfill_in_string(&child_no, attr_value);
+
+     /* Extract incl_asm attribute from GRpart */
+     co$part_get_attr (
+                       msg = &msg,
+                       mod_env = &mod_env,
+                       part = &part_id,
+                       attr = "incl_asm",
+                       value = attr_value,
+                       type = &type
+                      );
+
+     PDUfill_in_string(&incl_asm, attr_value);
+
+     /* Extract usage_id attribute from GRpart */
+     co$part_get_attr (
+                       msg = &msg,
+                       mod_env = &mod_env,
+                       part = &part_id,
+                       attr = "usage_id",
+                       value = usageid,
+                       type = &type
+                      );
+
+     PDUunquote(usageid);
+     _pdm_debug("usageid = %s", usageid);
+     /* Construct path to part directory */
+     di$give_pathname(
+                      osnum = mod_env.md_id.osnum,
+                      pathname = part_dir
+                     );
+
+     /* Construct path to part assy structure */
+     strcpy(assy_path, part_dir);
+     strcat(assy_path, ":ASSEMBLY:P");
+     strcat(assy_path, child_no);
+     _pdm_debug("part assy. path = <%s>", assy_path);
+
+     PDUgenerate_instance_number(catalog, number, revision, &instance_no, 
+                                 &mod_env);
+     if (instance_no > 1)
+       {
+       stat = PDUget_all_GRpart_ids(mod_env.md_id.osnum, &part_ids, &count);
+       _pdm_status("PDUget_all_GRpart_ids", stat);
+       head_list = part_ids;
+       while(head_list)
+         {
+         co$part_get_attr(msg = &msg, mod_env = &mod_env, 
+                         part = &(head_list->part_id), attr = "CATALOG",
+                         value = tmpcatalog, type = &type);
+         co$part_get_attr(msg = &msg, mod_env = &mod_env, 
+                         part = &(head_list->part_id), attr = "NUMBER",
+                         value = tmpnumber, type = &type);
+         co$part_get_attr(msg = &msg, mod_env = &mod_env, 
+                         part = &(head_list->part_id), attr = "REVISION",
+                         value = tmprevision, type = &type);
+         co$part_get_attr(msg = &msg, mod_env = &mod_env, 
+                         part = &(head_list->part_id), attr = "serial",
+                         value = attr_value, type = &type);
+         co$part_get_attr(msg = &msg, mod_env = &mod_env, 
+                         part = &(head_list->part_id), attr = "usage_id",
+                         value = tmpusageid, type = &type);
+         PDUunquote(tmpusageid);
+         _pdm_debug("attr_value = <%s>", attr_value);
+         if ((strcmp(catalog, tmpcatalog) == 0) && 
+             (strcmp(number, tmpnumber) == 0) &&
+             (strcmp(revision, tmprevision) == 0) &&
+             (strcmp(attr_value, "-1.000000") != 0) &&
+             (strcmp(usageid, tmpusageid) != 0))
+           {
+           _pdm_debug("extract child no", 0);
+         co$part_get_attr(msg = &msg, mod_env = &mod_env, 
+                         part = &(head_list->part_id), attr = "child_no",
+                         value = attr_value, type = &type);
+         PDUunquote(attr_value);
+       strcpy(tmp_assy_path, part_dir);
+       strcat(tmp_assy_path, ":ASSEMBLY:P");
+       strcat(tmp_assy_path, attr_value);
+       stat = PDUload_assy_struct_buffer(&mod_env, &asm_bufr,-1,tmp_assy_path); 
+       _pdm_status("PDUload_assy_struct_buffer", stat);
+       if (stat == PDM_S_SUCCESS)
+         {
+         stat = PDUremove_assembly(assy_path, &mod_env);
+         _pdm_status("PDUremove_assembly", stat);
+         PDUfill_in_string(&n_cofilename, "");
+         stat = PDUadd_assy_struct_from_buffer(&mod_env, child_no, n_cofilename,
+                                               asm_bufr, 2);
+         _pdm_status("PDUadd_assy_struct_from_buffer", stat);
+         if (asm_bufr)
+           {
+           MEMclose(&asm_bufr);
+           asm_bufr = NULL;
+           }
+         strcpy(assy_path, "");
+         strcpy(assy_path, part_dir);
+         strcat(assy_path, ":ASSEMBLY:P");
+         strcat(assy_path, child_no);
+         if (part_ids)
+           {
+           head_list = part_ids;
+           while (part_ids)
+            {
+             part_ids = part_ids->next;
+             free(head_list);
+             head_list = part_ids;
+            }
+           }
+         }
+         head_list = NULL;
+       }
+       else
+         {
+         head_list = head_list->next;
+         }
+      }
+     }
+
+     /* Extract part catalog no */
+/* ALR  6/23/94  Too many parameters */
+/*
+     stat = PDUevaluate_exp(
+                            assy_path,
+                            "catalog_no",
+                            &cat_no,
+                            mod_env.md_id.osnum
+                           );
+*/
+     stat = PDUevaluate_exp(
+                            assy_path,
+                            "catalog_no",
+                            &cat_no
+                           );
+     _pdm_status("PDUevaluate_exp", stat);
+
+     /* Extract part item no */
+/* ALR  6/23/94  Too many parameters */
+/*
+     stat = PDUevaluate_exp(
+                            assy_path,
+                            "item_no",
+                            &item_no,
+                            mod_env.md_id.osnum
+                            );
+*/
+     stat = PDUevaluate_exp(
+                            assy_path,
+                            "item_no",
+                            &item_no
+                          );
+     _pdm_status("PDUevaluate_exp", stat);
+
+ /* Display part file(s) and origin(s) */
+ stat = PDUdisplay_files_and_origins(
+                                    catalog,
+                                    number,
+                                    revision,
+                                    &n_cofilename,
+                                    &part->view
+                                   );
+ if (!stat)
+   {
+   _pdm_debug("PDUdisplay_files_and_origins failed", 0);
+   PDUmodify_exp(0, assy_path, "usage_id", usageid, mod_env.md_id.osnum);
+   PDUmodify_exp(0, assy_path, "attached", "N", mod_env.md_id.osnum);
+   PDUmodify_exp(0, assy_path, "file_name", "", mod_env.md_id.osnum);
+   PDUmodify_exp(0, assy_path, "refid", "", mod_env.md_id.osnum);
+   PDUmessage(stat, 's');
+   exit;
+   }
+
+ if (n_cofilename == NULL)
+   PDUfill_in_string(&n_cofilename, "");
+ else if (strcmp(n_cofilename, "") == 0)
+   PDUfill_in_string(&n_cofilename, "");
+
+ PDUmodify_exp(0, assy_path, "usage_id", usageid, mod_env.md_id.osnum);
+ PDUmodify_exp(0, assy_path, "attached", "Y", mod_env.md_id.osnum);
+ PDUmodify_exp(0, assy_path, "file_name", n_cofilename, mod_env.md_id.osnum);
+ PDUmodify_exp(0, assy_path, "refid", "", mod_env.md_id.osnum);
+ stat = PDUupdate_local_flag_in_assembly(&mod_env);
+ _pdm_status("PDUupdate_local_flag_in_assembly", stat);
+ stat = PDUload_assy_struct_buffer(&mod_env, &asm_bufr, -1, assy_path);
+ _pdm_status("PDUload_assy_struct_buffer", stat);
+ if (stat != PDM_S_SUCCESS)
+   exit;
+ stat = PDUprocess_assembly_display(&mod_env, asm_bufr, FALSE, TRUE, FALSE);
+ _pdm_status("PDUprocess_assembly_display", stat);
+
+ if (stat != PDM_S_SUCCESS)
+   exit;
+ if (PDU_attach)
+   PDUfill_in_string(&attached_value, "Y");
+ else
+   PDUfill_in_string(&attached_value, "N");
+
+ stat = PDMrcheck_part_status(catalog, number, revision);
+ _pdm_status("PDMrcheck_part_status", stat);
+
+ if (stat == PDM_I_NEVER_CHECKED_IN)
+   {
+   _pdm_debug("part has never been checked in", 0);
+   exit;
+   }
+
+ stat = PDUverify_part('a');
+ _pdm_status("PDUverify_part", stat);
+
+ if (stat == PDM_S_SUCCESS)
+   {
+   stat = PDUget_parttype(refresh->act_catalog, refresh->act_partid, 
+                          refresh->act_revision, &active_parttype);
+   _pdm_status("PDUget_parttype(active)", stat);
+   }
+ else
+   PDUfill_in_string(&active_parttype, "G");
+
+ stat = pdmoAttachPart(&mod_env, &part_id, catalog, number, revision, 
+                       n_cofilename, part->view, incl_asm, cat_no, item_no, 
+                       child_no, active_parttype, attached_value);
+ _pdm_status("pdmoAttachPart", stat);
+  
+ if (stat != PDM_S_SUCCESS)
+   {
+   PDUmessage(stat, 's');
+   exit;
+   } 
+ if (asm_bufr)
+   {
+   MEMclose(&asm_bufr);
+   asm_bufr = NULL;
+   }
+
+ stat = PDUload_assy_struct_buffer(&mod_env, &asm_bufr, -1, assy_path);
+ _pdm_status("PDUload_assy_strutc_buffer", stat);
+
+ if (PDU_edit_display)
+   {
+   stat = PDUassembly_display_form(&mod_env, asm_bufr, TRUE, 
+                                     PDC_M_PLACE_PART);
+   _pdm_status("PDUassembly_display_form", stat);
+   if (stat != PDM_S_SUCCESS)
+     {
+     stat = PDUprocess_assembly_display(&mod_env, asm_bufr, FALSE, TRUE, TRUE);
+     _pdm_status("PDUprocess_assembly_display", stat);
+     }
+   else
+     {
+     do {
+        ci$get(prompt = "", response = &response);
+        }while (response != MOVE_ON && response!= RESET);
+
+     if (response != MOVE_ON)
+       {
+       stat = PDUprocess_assembly_display(&mod_env, asm_bufr, FALSE, TRUE, 
+                                          TRUE);
+       _pdm_status("PDUprocess_assembly_display", stat);
+       }
+     }
+   }
+ else
+   {
+   stat = PDUprocess_assembly_display(&mod_env, asm_bufr, FALSE, TRUE, TRUE);
+   _pdm_status("PDUprocess_assembly_display", stat);
+   exit;
+   }
+ }
+}
+int  delay()
+
+ {
+  int  i;
+
+  for (i = 0; i < 20000; i = i + 1);
+ }

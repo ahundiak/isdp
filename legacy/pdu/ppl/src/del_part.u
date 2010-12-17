@@ -1,0 +1,396 @@
+/*
+ * Author: Jamal Shakra
+ * Date: 12-14-91
+ * This command deletes an assembly part.
+ */
+
+
+#if ! defined(__sgi)
+#include        "unistd.h"
+#endif
+#include 	"ciminimum.h"
+#include 	"cimacros.h"
+#include 	"PDUstr.h"
+#include        "ex.h"
+#include        "igrdp.h"
+#include 	"partmacros.h"
+#include 	"part.h"
+#include	"cieveryone.h"
+#include	"cimacros.h"
+#include	"acdef.h"
+#include	"acmacros.h"
+#include	"ACdb_info.h"
+#include	"macro.h"
+#include	"grdpbdef.h"
+#include	"grdpb.h"
+#include	"grdpbmacros.h"
+#include	"growner.h"
+#include        "grgsmacros.h"
+#include        "grmessage.h"
+#include	"igrdp.h"
+#include	"madef.h"
+#include	"exdef.h"
+#include	"exmacros.h"
+#include	"dp.h"
+#include	"dpdef.h"
+#include	"grcoordsys.h"
+#include	"csdef.h"
+#include	"msdef.h"
+#include	"PDUint.h"
+#include	"PDUintdef.h"
+#include	"grsymdef.h"
+#include	"grsym.h"
+#include	"grownerdef.h"
+#include 	"dpmacros.h"
+#include 	"comiscmac.h"
+#include 	"coplcmac.h"
+#include 	"cotxmacros.h"
+#include 	"partdef.h"
+#include        "DItypedef.h"
+#include        "DIdef.h"
+#include        "DIglob.h"
+#include        "DIprims.h"
+#include        "expmacros.h"
+#include        "csmacros.h"
+#include        "PDUgrpart.h"
+
+/* TR# 13941 8749.	*/
+#include	"nddef.h"
+#include	"ndmacros.h"
+extern		NDput_mod_batch();
+extern		NDexec_batch();
+
+/* External function declaration */
+extern		_pdm_status();
+extern		_pdm_debug();
+extern          GRdpb_get();
+extern          DImain();
+extern          malloc();
+extern          DIgive_pathname();
+extern          DPdisbyoid();
+extern          COpart_attr_func();
+extern          PDUremove_assembly();
+extern          free();
+extern          DIfind();
+extern          PDUcheck_file_for_parts();
+extern          PDUfill_in_string();
+extern          PDUdisplay_design_form();
+extern          PDUdo_parts_exist();
+extern          PDUunquote();
+extern          PDUdesign_parts_listing_form();
+extern          PDUis_parametric_part();
+extern          delete_prpart();
+extern          pdmoDeletePartOccurrence();
+extern          PDUmessage();
+
+
+/* External variable declaration */
+extern              IGRshort PDU_assy_cmd;
+extern              IGRshort PDU_loop_cmd;
+extern              IGRshort PDU_macro_call;
+extern              IGRshort PDU_list_parts;
+extern IGRint       PDU_command;
+extern  struct GRid *PDU_part_id;
+extern IGRint   PDU_selected_rows;
+extern struct PDUpart_node *PDU_parts_id_list;
+
+
+main()
+{
+
+ struct GRmd_env  mod_env;		
+ IGRlong          msg,sts;
+ IGRlong          status;
+ IGRlong	  NumberOfBytes, BytesReceived;
+ IGRchar          part_path[DI_PATH_MAX];
+ IGRchar          attr_value[MAX_VALUE];
+ IGRchar          *child_no;
+ IGRint           count;
+ IGRint           part_count;
+ IGRint           i;
+ IGRint           type;
+ IGRint           serial_no;
+ struct GRid      part_id;
+ struct PDUpart_node       *head; 
+
+
+
+ _pdm_debug(" In the delete part ppl program", 0);
+
+ /* Initialize local variables */
+ child_no = NULL;
+ head = NULL;
+ count = 0;
+
+
+ /* Get current module environment information */
+ NumberOfBytes = sizeof(mod_env);
+ status = gr$get_module_env(
+                            msg = &msg,
+                            sizbuf = &NumberOfBytes,
+                            buffer = &mod_env,
+                            nret = &BytesReceived
+                           );
+
+ /* Locate GRpart */
+ identify_GRpart:
+
+ PDUmessage(PDM_I_DELETE_PART,'s');
+
+ /* Disable looping if PDU_list_parts = TRUE */
+ if (PDU_list_parts)
+    PDU_loop_cmd = FALSE;
+
+ if (!PDU_list_parts)
+    {
+     begincmd("locate part pointer");
+     endcmd();
+
+     if (PDU_part_id == NULL)
+        {
+         _pdm_debug("no PDU part located", 0);
+
+         if ( (PDU_command == PDC_M_DELETE_PART_PTR) ||
+              (PDU_command == PDC_M_DELETE_PPART) )
+            { 
+             /* Display design form */
+             PDUdisplay_design_form();
+            }
+
+         exit;
+        }
+    }
+
+ /* Check to see if need to delete a list of parts */
+ if ( (PDU_parts_id_list != NULL) && (PDU_list_parts == TRUE) )
+    {
+     _pdm_debug("Deleting a list of parts", 0);
+
+     head = PDU_parts_id_list;
+
+     while (head)
+           {
+            count = count + 1;
+            _pdm_debug("OBJECT = %d", head->part_id.objid);
+            head = head->next;
+           }
+
+     _pdm_debug("COUNT = %d", count);
+     head = PDU_parts_id_list;
+
+     part_id.osnum = head->part_id.osnum;
+     part_id.objid = head->part_id.objid;
+
+     _pdm_debug("deleting %d", head->part_id.objid);
+    }
+
+  else
+      {
+       part_id.osnum = PDU_part_id->osnum;
+       part_id.objid = PDU_part_id->objid;
+      }
+
+ delete_list:
+
+ if ( PDUis_parametric_part(&part_id) && (PDU_list_parts == TRUE) )
+    {
+     _pdm_debug("deleting a parametric part", 0);
+
+     /*status = delete_prpart(&part_id, &mod_env);
+     _pdm_status("delete_prpart", status);*/
+
+     /*begincmd_key("PDDlPPr");
+              ci$put(obj = part_id.objid);
+     endcmd();*/
+     sts = pdmoDeletePartOccurrence(&sts, NULL, &part_id);
+     _pdm_status("pdmoDeletePartOccurrence", sts);
+
+/* TR# 13941 8749. Force immediate processing to delete the object now. Begin.	*/
+	_pdm_debug("Exeucuting bacth. Begin", 0);
+        nd$mod_batch(request    = ND_SET,
+                     req_mode   = ND_IMMEDIATE);
+
+        nd$exec_batch();
+	_pdm_debug("Exeucuting bacth. Done", 0);
+/* TR# 13941 8749. Force immediate processing to delete the object now. End.	*/
+
+  PDUmessage(sts, 's');
+
+     PDU_selected_rows = PDU_selected_rows - 1;
+
+     head = head->next;
+
+     if (head)
+        {
+         part_id.osnum = head->part_id.osnum;
+         part_id.objid = head->part_id.objid;
+         goto delete_list;
+        }
+
+     else
+         {
+          if ( (PDU_command == PDC_M_DELETE_PART_PTR) ||
+               (PDU_command == PDC_M_DELETE_PPART) )
+             PDUdisplay_design_form();
+
+          /* Reset PDU_list_parts flag */
+          PDU_list_parts = FALSE;
+
+          /* Free PDU_parts_id_list */
+          if (PDU_parts_id_list)
+             {
+              head = PDU_parts_id_list;
+
+              while (PDU_parts_id_list)
+                    {
+                     PDU_parts_id_list = PDU_parts_id_list->next;
+                     free(head);
+                     head = PDU_parts_id_list;
+                    } /* end while loop */
+
+              PDU_parts_id_list = NULL;
+             }
+
+          exit;
+         }
+    }
+ 
+ status = co$part_get_attr (
+                            msg = &msg,
+                            mod_env = &mod_env,
+                            part = &part_id,
+                            attr = "attach_flag",
+                            value = attr_value,
+                            type = &type
+                           );
+
+ if ( (msg != MSSUCC) || (strcmp(attr_value, "") == 0) )
+    {
+     PDUmessage(PDM_E_INVALID_PART_POINT,'s');
+     delay();
+
+     /* Deallocate and initialize PDU_part_id */
+     free(PDU_part_id);
+     PDU_part_id = NULL;
+
+     goto identify_GRpart;
+    }
+
+ /* Disable looping if PDU_list_parts = TRUE */
+ if (PDU_list_parts)
+    PDU_loop_cmd = FALSE;
+
+  sts = pdmoDeletePartOccurrence(&sts, NULL, &part_id);
+  _pdm_status("pdmoDeletePartOccurrence", sts);
+
+  PDUmessage(sts, 's');
+
+  /* Disable design buttons if last part */
+  if (PDU_macro_call == TRUE)
+     {
+      _pdm_debug("PDU_macro_call = TRUE");
+
+      /* Deallocate and initialize PDU_part_id */
+      if (PDU_part_id)
+         {
+          free(PDU_part_id);
+          PDU_part_id = NULL;
+         }
+
+       /* Reset PDU_macro_call */
+       if (PDU_macro_call)
+          PDU_macro_call = FALSE;
+
+      exit;
+     }
+
+  else
+      {
+       if (PDU_list_parts)
+         {
+          PDU_selected_rows = PDU_selected_rows - 1;
+
+          /* Display design form */
+          if (PDU_selected_rows == 0)
+             {
+              if ( (PDU_command == PDC_M_DELETE_PART_PTR) || 
+                   (PDU_command == PDC_M_DELETE_PPART) )
+                 PDUdisplay_design_form();
+
+              /* Reset PDU_list_parts flag */
+              PDU_list_parts = FALSE;
+
+              /* Free PDU_parts_id_list */ 
+              if (PDU_parts_id_list)
+                 {
+                  head = PDU_parts_id_list;
+
+                  while (PDU_parts_id_list)
+                        {
+                         PDU_parts_id_list = PDU_parts_id_list->next;
+                         free(head);
+                         head = PDU_parts_id_list;
+                        } /* end while loop */
+
+                  PDU_parts_id_list = NULL;
+                 }
+             }
+
+          else
+              {
+               /* Continue deleting parts in list */
+               if (PDU_list_parts == TRUE)
+                  {
+                   head = head->next;
+
+                   if (head)
+                      {
+                       part_id.osnum = head->part_id.osnum;
+                       part_id.objid = head->part_id.objid;
+
+                       goto delete_list;
+                      }
+
+                   else
+                       {
+                        /* Free PDU_parts_id_list */
+                        if (PDU_parts_id_list)
+                           {
+                            head = PDU_parts_id_list;
+
+                            while (PDU_parts_id_list)
+                                  {
+                                   PDU_parts_id_list = PDU_parts_id_list->next;
+                                   free(head);
+                                   head = PDU_parts_id_list;
+                                  } /* end while loop */
+
+                            PDU_parts_id_list = NULL;
+                           }
+                       }
+                  }
+              }
+         }
+
+       else
+          {
+           if ( (PDU_command == PDC_M_DELETE_PART_PTR) ||
+                (PDU_command == PDC_M_DELETE_PPART) )
+              PDUdisplay_design_form();
+          }
+
+       /* Deallocate and initialize PDU_part_id */
+       if (PDU_part_id)
+          {
+           free(PDU_part_id);
+           PDU_part_id = NULL;
+          }
+      }
+}
+
+int  delay()
+{
+ int i;
+
+ for (i = 0; i < 200000; i = i + 1);
+}

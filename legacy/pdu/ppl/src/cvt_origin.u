@@ -1,0 +1,453 @@
+/*
+ * Author: Jamal Shakra
+ * Date: 05-14-92
+ * This commands converts PDU 1.4.0 origins to 2.0 origins.
+ */
+
+
+#if ! defined(__sgi)
+#include        "unistd.h"
+#endif
+#include 	"ciminimum.h"
+#include 	"cimacros.h"
+#include 	"PDUstr.h"
+#include        "ex.h"
+#include        "igrdp.h"
+#include 	"partmacros.h"
+#include 	"part.h"
+#include	"cieveryone.h"
+#include	"cimacros.h"
+#include	"acdef.h"
+#include	"acmacros.h"
+#include	"ACdb_info.h"
+#include	"macro.h"
+#include	"grdpbdef.h"
+#include	"grdpb.h"
+#include	"grdpbmacros.h"
+#include	"growner.h"
+#include        "grgsmacros.h"
+#include        "grmessage.h"
+#include	"igrdp.h"
+#include	"madef.h"
+#include	"exdef.h"
+#include	"exmacros.h"
+#include	"dp.h"
+#include	"dpdef.h"
+#include	"grcoordsys.h"
+#include	"csdef.h"
+#include	"msdef.h"
+#include	"PDUint.h"
+#include	"PDUintdef.h"
+#include	"string.h"
+#include	"grsymdef.h"
+#include	"grsym.h"
+#include	"grownerdef.h"
+#include 	"dpmacros.h"
+#include 	"comiscmac.h"
+#include 	"coplcmac.h"
+#include 	"cotxmacros.h"
+#include 	"partdef.h"
+#include        "DItypedef.h"
+#include        "DIdef.h"
+#include        "DIglob.h"
+#include        "DIprims.h"
+#include        "expmacros.h"
+#include        "csmacros.h"
+#include        "PDUpart.h"
+#include        "PDUinform.h"
+
+
+
+/* External variables declaration */
+
+
+/* External function declaration */
+extern		_pdm_debug();
+extern		_pdm_status();
+extern          GRdpb_get();
+extern          DImain();
+extern          malloc();
+extern          DPsavevw_cons();
+extern          DIpwd();
+extern          DIgive_pathname();
+extern          DImkpath();
+extern          DIcd();
+extern          DPdisbyoid();
+extern          GRdpb_put();
+extern          PDUfill_in_string();
+extern          PDUget_coord_sys_id();
+extern          PDUcreate_origin();
+extern          GRcsget_mgr();
+extern          DPsetinqsavvw();
+extern          PDUfree_list();
+extern          PDUstring_to_matrix();
+extern          PDUdump_matrix();
+extern          GRsmplmat();
+extern          DIfind();
+extern          free();
+extern          PDUrmdir();
+extern          DIfast_trans();
+extern		PDUmessage();
+
+main()
+{
+
+ struct GRmd_env  mod_env;		
+ IGRdouble        origin[3];
+ IGRlong          msg, sts;
+ IGRlong          status;
+ IGRlong	  NumberOfBytes, BytesReceived;
+ IGRshort         cstype;
+ GRobjid          csmgr_id;
+ struct GRid      act_coorid;
+ struct GRid      csobj;
+ IGRchar          regexp[DI_PATH_MAX];
+ IGRchar          origins_dir[DI_PATH_MAX];
+ IGRchar          view_dir[DI_PATH_MAX];
+ IGRmatrix        placement_matrix, sv_rotation; 
+ struct  GRid     *origin_ids;
+ struct  GRid     *bad_objids;
+ IGRchar          **origins;
+ IGRint           count;
+ IGRint           origin_count;
+ IGRint           badobj_count;
+ IGRint           i;
+ IGRchar          *view_name;
+ GRobjid          sv_objid;
+ IGRpoint         sv_origin;
+ IGRlong          error_var, n;
+ IGRdouble        scales[3];
+ IGRdouble        angle;
+ OM_p_CLASSLIST   classlist;
+ OMuword          classid;
+ struct var_list  var_list[3];
+ 
+
+
+ _pdm_debug("In the convert origin command", 0);
+
+ PDUmessage(PDM_I_CONVERT_PDU_ORIGINS,'s');
+
+ /* Initialize local variables */
+ origins = NULL;
+ origin_count = 0;
+ badobj_count = 0;
+
+ /* Get current module environment information */
+ NumberOfBytes = sizeof(mod_env);
+ status = gr$get_module_env(
+                            msg = &msg,
+                            sizbuf = &NumberOfBytes,
+                            buffer = &mod_env,
+                            nret = &BytesReceived
+                           );
+
+ /* Need to save the active coordinate system */
+ status =  cs$get_mgr (
+                       msg = &msg,
+                       osnum = mod_env.md_id.osnum,
+                       module = mod_env.md_id.objid,
+                       csmgr = &csmgr_id
+                      );
+
+
+ /* Get the obj id of the most recently defined coor sys */
+ status = ci$send(
+                  msg = message GRcsmgr.GRget_acs_info
+                                                      (
+                                                        &msg,
+                                                        NULL,
+                                                        NULL,
+                                                        NULL,
+                                                        NULL,
+                                                        NULL,
+                                                        NULL,
+                                                        &cstype,
+                                                        &act_coorid
+                                                      ),
+                  targetid = csmgr_id,
+                  targetos = mod_env.md_id.osnum
+                 );
+
+ /* Get the <:filename:PDU:origins> path */
+ di$give_pathname(osnum = mod_env.md_id.osnum, pathname = origins_dir);
+ strcat(origins_dir, ":PDU:origins");
+
+ _pdm_debug("full origins path = <%s>", origins_dir);
+
+ /* Check to see if origin conversion is necessary */ 
+ count = 0;
+ status = di$ls(regexp = origins_dir, ptr = &count);
+ _pdm_status("di$ls", status);
+
+ if ( (status != DIR_S_SUCCESS) || (count == 0) )
+    {
+     _pdm_debug("origin conversion has already been made", 0);
+     exit;
+    }
+
+ /* Get the class id of GRclhdr */
+ status = om$get_classid(
+                         classname = "GRclhdr",
+                         p_classid = &classid
+                        );
+ _pdm_debug("GRclhdr class id = %d", classid);
+
+ /* Malloc classlist */
+ classlist = (struct OM_sd_classlist *) malloc (sizeof
+                        (struct OM_sd_classlist));
+
+ /* Initialize certain field in classlist */
+ classlist->w_count = 1;
+ classlist->w_flags = OM_CLST_internal;
+ classlist->p_classes = &classid;
+
+ /* Construct regexp */
+ strcpy(regexp, origins_dir);
+ strcat(regexp, ":*");
+
+ _pdm_debug("regexp = <%s>", regexp);
+
+ /* Extract all PDU 1.4 origin objects */
+ origin_count = 0;
+ status = di$dump (
+                   regexp = regexp,
+                   p_classes = classlist,
+                   lines = &origins,
+                   grids = &origin_ids,
+                   ptr = &origin_count
+                  );
+
+ if (origin_count <= 0)
+    {
+     _pdm_debug("no PDU 1.4 origins were found", 0);
+
+     /* Make sure no other objects exist under "origins" directory */
+     status = di$find (
+                       start_dir = origins_dir,
+                       regexp = "*",
+                       grids = &bad_objids,
+                       max_level = 1,
+                       ptr = &badobj_count
+                      );
+
+     if (badobj_count > 0)
+        {
+         for (i = 0; i < badobj_count; i = i + 1)
+             {
+              /* Erase remaining objects */
+              dp$display(
+                         msg = &sts,
+                         oids = &(bad_objids[i]),
+                         mode = GRbe
+                        );
+
+              /* Delete remaining objects */
+              ci$send(
+                      msg = message GRgraphics.GRdelete(
+                                                        &sts,
+                                                        &mod_env
+                                                        ),
+                      targetid = bad_objids[i].objid,
+                      targetos = bad_objids[i].osnum
+                     );
+              }
+        }
+
+
+     /* Delete origins directory, if it exists */
+     strcat(origins_dir, ":");
+     status = PDUrmdir(origins_dir);
+     /*
+     status = di$rmdir(dirname = origins_dir, path = NULL);
+     */
+     _pdm_status("di$rmdir", status);
+
+     exit;
+    }
+
+ _pdm_debug("%d PDU 1.4 origin(s) were found", origin_count);
+
+ /* Turn origin display off */
+ begincmd("layers off");
+         ci$put(response = TERMINATE, pos = FRONT);
+         ci$put(string = "*", pos = FRONT);
+         ci$put(value = 1023, pos = FRONT);
+ endcmd();
+
+ /* For each origin, perform conversion */
+ for (i = 0; i < origin_count; i = i + 1)
+     {
+      /* Each origins entry need to be reduced to view name only */
+      *((IGRchar *)strrchr(origins[i], '*')) = '\0';
+
+      view_name = strrchr(origins[i], ':') + 1;
+
+      /* Extract objid of saved view corresponding to view_name */
+      di$give_pathname(
+                       osnum = mod_env.md_id.osnum,
+                       pathname = view_dir
+                      );
+
+      strcat(view_dir,":views:savedviews:GRsavedviews:");
+      strcat(view_dir, view_name);
+
+      di$translate(
+                   objname = view_dir,
+                   p_objid = &(sv_objid)
+                  );
+
+      _pdm_debug("translated saved view objid = %d", sv_objid);
+
+      /* Extarct saved view rotation matrix, and origin point */
+      var_list[0].var = VIEW_ORIGIN;
+      var_list[0].var_ptr = (IGRchar *)sv_origin;
+      var_list[0].num_bytes = sizeof (IGRpoint);
+      var_list[0].bytes_returned = &n;
+      var_list[1].var = VIEW_ROTATION;
+      var_list[1].var_ptr = (IGRchar *)sv_rotation;
+      var_list[1].num_bytes = sizeof(IGRdouble)*16;
+      var_list[1].bytes_returned = &n;
+      var_list[2].var = (IGRint)END_PARAM;
+
+      status = dp$inq_set_saved_view (
+                                      msg = &msg,
+                                      osnum = mod_env.md_id.osnum,
+                                      vw_objid = sv_objid,
+                                      which_error = &error_var,
+                                      var_list = var_list
+                                     );
+      _pdm_status("dp$inq_set_saved_view", status);
+
+      _pdm_debug("sv_origin[0] = %lf", sv_origin[0]);
+      _pdm_debug("sv_origin[1] = %lf", sv_origin[1]);
+      _pdm_debug("sv_origin[2] = %lf", sv_origin[2]);
+
+      _pdm_debug("saved view rotation matrix:", 0);
+      PDUdump_matrix(sv_rotation);
+
+      /* Construct new origin placement matrix */
+      scales[0] = 1.000000;
+      scales[1] = 1.000000;
+      scales[2] = 1.000000;
+
+      angle = 0.000000;
+
+      GRsmplmat(
+                &msg,
+                &angle,
+                scales,
+                sv_origin,
+                sv_rotation,
+                placement_matrix
+               );
+  
+      _pdm_debug("new origin placement matrix:", 0);
+      PDUdump_matrix(placement_matrix);
+
+      /* Erase PDU 1.4 origin */
+      dp$display(
+                 msg = &sts,
+                 oids = &(origin_ids[i]),
+                 mode = GRbe
+                );
+
+      /* Delete 1.4 origin */
+      ci$send(
+              msg = message GRgraphics.GRdelete(
+                                                &sts,
+                                                &mod_env
+                                               ),
+              targetid = origin_ids[i].objid,
+              targetos = origin_ids[i].osnum
+             );
+
+      /* Create PDU 2.0 origin */
+      origin[0] = 0.0;
+      origin[1] = 0.0;
+      origin[2] = 0.0;
+
+      status = PDUcreate_origin(
+                                placement_matrix,
+                                mod_env,
+                                view_name,
+                                NULL,
+                                origin,
+                                0,
+                                &csobj
+                               );
+      _pdm_status("PDUcreate_origin", status);
+
+      /* Update display */
+      dp$display(
+                 msg = &sts,
+                 oids = &csobj,
+                 mode = GRbd
+                );
+
+     } /* end for i loop */
+
+ /* Make sure no other objects exist under "origins" directory */
+ status = di$find (
+                   start_dir = origins_dir,
+                   regexp = "*",
+                   grids = &bad_objids,
+                   max_level = 1,
+                   ptr = &badobj_count
+                  );
+
+ if (badobj_count > 0)
+    {
+     for (i = 0; i < badobj_count; i = i + 1)
+         {
+          /* Erase remaining objects */
+          dp$display(
+                     msg = &sts,
+                     oids = &(bad_objids[i]),
+                     mode = GRbe
+                    );
+
+          /* Delete remaining objects */
+          ci$send(
+                  msg = message GRgraphics.GRdelete(
+                                                    &sts,
+                                                    &mod_env
+                                                    ),
+                  targetid = bad_objids[i].objid,
+                  targetos = bad_objids[i].osnum
+                 );
+          }
+    }
+
+ /* Delete origins directory */
+ strcat(origins_dir, ":");
+ status = PDUrmdir(origins_dir);
+ /*
+ status = di$rmdir(dirname = origins_dir, path = NULL);
+ */
+ _pdm_status("di$rmdir", status);
+
+ /* Restore active coordinate system */
+ status = ci$send(
+                  msg = message GRcsmgr.GRset_active_cs
+                                       (
+                                        &msg,
+                                        &mod_env,
+                                        act_coorid.objid
+                                       ),
+                  targetid = csmgr_id,
+                  targetos = mod_env.md_id.osnum
+                 );
+
+ /* Free variables */
+ if (origins)
+    di$free(lines = origins, count = origin_count);
+
+}
+
+int  delay()
+{
+ int i;
+
+ for (i = 0; i < 20000; i = i + 1);
+}

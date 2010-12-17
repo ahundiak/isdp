@@ -1,0 +1,312 @@
+#include        "ciminimum.h"
+#include        "cimacros.h"
+#include        "PDUstr.h"
+#include	"PDUcommand.h"
+#include        "ex.h"
+#include        "igrdp.h"
+#include        "cieveryone.h"
+#include        "cimacros.h"
+#include        "acdef.h"
+#include        "acmacros.h"
+#include        "macro.h"
+#include        "grdpbdef.h"
+#include        "grdpb.h"
+#include        "grdpbmacros.h"
+#include        "growner.h"
+#include        "igrdp.h"
+#include        "madef.h"
+#include        "exdef.h"
+#include        "exmacros.h"
+#include        "dp.h"
+#include 	"PALglbs.h"
+#include 	"PALlctypes.h"
+#include	"PALmsg.h"
+#include 	"FI.h"
+#include	"CIforms.h"
+#include	"msdef.h"
+#include	"msmacros.h"
+#include	"PDUerror.h"
+#include	"PDUprompt.h"
+
+#include 	"asmacros.h"
+
+/* TR# 139419562. 26/may/94 - raj.	*/
+#include	"MEMerrordef.h"
+
+/* extern variable declarations */
+extern		struct PDUrefresh	*refresh;
+extern 		Form 			place_part_f;
+extern 		int 			PALMacintf;
+extern		char			*PALchild_no;
+extern		int			PDU_auto_part_selection;
+extern		int			Num_Stat, Num_Dyn;
+extern		char			**StatAttribs, **StatTypes, **StatUnits;
+extern		char			**StatDesc;
+extern		struct GRid		*grid_list; 
+extern		MEMptr			PALdyn_bufr;
+extern		MEMptr			filterbuf;
+extern		Form			ModifyPartForm;
+extern		struct GRid		DYNA_GRID_LIST[];
+extern		int			PALnotification_flag;
+extern		int			PDU_command;
+
+/* extern function definitions */
+extern 		_pdm_debug();
+extern		LoadLib_N_PrepareAttribs();
+extern		BreakLocAndNonLocDYn();
+extern		AddDynattrsToColl();
+extern		SetDynTemp();
+extern          GetStaticAttribsAddToRgObj();
+extern		Instance_Macro();
+extern		ret_fromGpart();
+extern		get_active_form_ptr();
+extern		MEMclose();
+extern		PDUdynamics_for_part();
+extern		get_mod_info();
+extern		malloc();
+extern		free();
+#ifndef sparc
+extern		sprintf();
+#endif
+extern		MSmessage();
+extern		PALlocate_by_keyin();
+extern		PALlocate_by_datapt();
+extern		_pdm_status();
+extern		PDUprepare_queue();
+extern		Copy_ppart();
+extern		Make_copy();
+extern		PDUdisplay_design_form();
+extern		PALstack_events();
+extern		PDUis_PDU_part();
+extern		GetNumCollections();
+
+/* TR# 139419562. 26/may/94 - raj.	*/
+extern int	 	MAC_num_temp  ;
+extern struct stemp	*MAC_temp_desc;
+
+/* TR# 139419562. 26/may/94 - raj.	*/
+extern		PDUcreate_dynamic_data_bufr();
+extern		PDUwrite_dynamic_data_bufr();
+extern		MEMprint_buffer();
+extern		GetNumLocatable();
+extern		get_acdyncol_temp();
+extern          PDUmessage();
+extern		PDUtranslate_message();
+
+#include 	"PALlocate.h"
+#include	"PALlocobj.h"
+
+struct	GRid	part_located;
+struct  CIform_st form_st;
+int flag;
+
+main()
+{
+	int			response,  flg;
+	char            	error_msg[132];
+	int			numcoll, numgrids;
+	int 			ind, sts;
+	int  			*locatables, numloc;
+	char 			**prompts;
+	struct	GRmd_env	my_env;
+	struct  GRid		hdr;
+	struct	GRid		*rg_grid;
+	char option[5];
+        char *msg;
+
+	/* TR# 139419562. 26/may/94 - raj.	*/
+	MEMptr		dynamic_data_bufr;
+	struct	GRid	dynamic_collection;
+	int		num_loc;
+
+	
+        msg = NULL;
+        PDUmessage(PDM_S_COPY_PART,'s');
+
+	_pdm_debug ("PAL -- Enter Copy part", 0);
+
+	get_mod_info( &my_env );
+
+	/* Locate object */
+        msg = NULL;
+        msg = (char *)PDUtranslate_message(PDP_P_IDENTIFY_OR_MOVEON);
+        strcpy(error_msg,msg);
+	part_located.objid = NULL_OBJID ;
+
+        flag = -1;
+	response = PALloc_obj(error_msg,&my_env,&part_located,2) ;
+	if( !response )
+	{
+        	flag = response;
+		goto wrapup;
+	}
+
+	if( !GetNumCollections( &part_located, &hdr, &numcoll ) )
+		goto wrapup;
+
+	flg = 0;
+        if( numcoll > 1 )  /* Ask user for Assoc/NonAssoc Copy */
+	{
+		prompt(PDP_P_COPY_ASSOC);
+		option[0] = '\0';
+		ci$get( string = option );
+		if( option[0] == 'y' || option[0] == 'Y' )
+		{
+                        PDUmessage(PDM_I_COPY_ASSOC_ORIG,'s');
+			flg = 1;
+
+				}
+		else
+                        PDUmessage(PDM_I_COPY_NOT_ASSOC_ORIG,'s');
+	}
+	if( !Make_copy(&part_located, &hdr, &rg_grid, numcoll, flg) )
+		goto wrapup;
+
+	/* Call PDM function for getting the values of dynamic attributes
+	   which or not locatable type and add them to acrg_collect object. */
+	
+	if( grid_list ){
+//write("grid_list is not NULL????? \n");
+/*		free( (char *)grid_list );*/
+		grid_list = NULL ;
+	}
+
+       	if( !BreakLocAndNonLocDYn( numcoll, &locatables, &prompts, &numloc ) )
+		goto wrapup;
+
+	_pdm_debug("BreakLoc complete",0);
+
+	/* TR# 139419562. 26/may/94 - raj. Begin.			*/
+	/* Gather values of dynamic atributes from the original part
+	   and make-up a buffer to be sent to PDUdynamics_for_part().
+	   These will be displayed as defaults on dyn attrs form.	*/
+
+	/* Get number of locatable type templates			*/
+	if (!GetNumLocatable( MAC_temp_desc, MAC_num_temp, &num_loc))
+		return (0);
+
+	/* Get id of the dynamic collection.				*/
+        if (!get_acdyncol_temp(&part_located, &dynamic_collection, num_loc+numcoll-1))
+			return (0);
+
+	if (PDUcreate_dynamic_data_bufr(&dynamic_data_bufr) != MEM_S_SUCCESS)
+	   return(0);
+
+	if (!PDUwrite_dynamic_data_bufr(&dynamic_collection, PALdyn_bufr, &dynamic_data_bufr))
+	   return(0);
+
+	/* TR# 139419562. 26/may/94 - raj. End.				*/
+disp_form:
+/*	TR# 139419562. Send values of dynamic attributes from the original part. */
+/*	Added an argument.		*/
+/*	if( !display_dyn_form() )	*/
+	if( !display_dyn_form(dynamic_data_bufr) )
+		goto wrapup;
+
+	_pdm_debug("display_dyn_form complete",0);
+
+	if( (grid_list == NULL))
+	{
+		/* Allocate to grid_list */
+		grid_list = (struct GRid *)malloc( 
+				sizeof(struct GRid)*(numloc+numcoll));
+		if( grid_list == NULL )
+			goto wrapup;
+
+		if( numloc )
+		{
+			sts = GetLocTemplates( locatables, prompts, numloc );
+
+			_pdm_debug("Getloctemplates complete",0);
+
+			if( sts < 0 )
+			{
+				free( grid_list );
+				grid_list = NULL;
+				goto disp_form;
+			}
+
+			for( ind = 0; ind < numloc; ind = ind + 1 )
+				grid_list[ind] = DYNA_GRID_LIST[ind];
+		}
+		for( ind = 0; ind < numcoll; ind = ind + 1 )
+			grid_list[numloc+ind] = rg_grid[ind];
+	
+		numgrids =  numloc + numcoll;
+
+		MEMclose( &PALdyn_bufr );
+                PALdyn_bufr = NULL;
+	}
+
+	if ( !SetDynTemp( rg_grid, numcoll, 0, &my_env ) ) 
+		goto wrapup;
+
+	_pdm_debug("set dynamic templates complete",0);
+
+	if( !Copy_ppart( &hdr, &my_env, numgrids ) )
+		goto wrapup; 
+
+        msg = NULL;
+        msg = (char *)PDUtranslate_message(PDM_S_SUCCESS); 
+	status(msg);
+
+	PDUdisplay_design_form();
+
+wrapup:
+   	exit;
+}
+
+/* TR# 139419562. 26/may/94 - raj.	*/
+/* Added additional argument.		*/
+/* display_dyn_form()	*/
+display_dyn_form(dynamic_data_bufr)
+MEMptr	dynamic_data_bufr;
+{
+int response;
+
+/* TR# 139419562. Send additonal argument with default dynamic values.	*/
+/* 26/may/94 - raj.	*/
+	MEMprint_buffer("Sending to PDUdynamics_for_part:\ndefault_dynamic_data_bufr : ", dynamic_data_bufr, "/usr/tmp/pdu.dbg");
+/*	if (PDUdynamics_for_part(PALdyn_bufr,filterbuf)  != PDM_S_SUCCESS )	*/
+	if (PDUdynamics_for_part(PALdyn_bufr,filterbuf, dynamic_data_bufr)  != PDM_S_SUCCESS )
+	{
+               	MEMclose(&PALdyn_bufr);
+                PALdyn_bufr = NULL;
+               	MEMclose(&filterbuf);
+                filterbuf = NULL;
+		return(0);
+        }
+
+        if (filterbuf)
+          {
+          MEMclose(&filterbuf);
+          filterbuf = NULL;
+          }
+  	/* Pause until the form is accepted or cancelled */
+  	_pdm_debug("Waiting on input", 0);
+
+	while ( 1 )
+	{
+  		ci$get(prompt = "", response = &response);
+
+//write("response = ", response ,"\n");
+
+  		if (response == MOVE_ON)
+     			return(1);
+
+  		if (response == RESET)
+     			return(0);
+
+//write("putting back response\n");
+
+		ci$put( response = response ); /* If not MOVE_ON or RESET putback */
+    	}
+}
+
+delete ()
+{
+         _pdm_debug("exiting the copy part command", 0);
+         if (flag == -1)
+           PDUdisplay_design_form();
+ }
+#include "getloc.h"

@@ -1,0 +1,677 @@
+#include        "ciminimum.h"
+#include        "cimacros.h"
+#include        "PDUstr.h"
+#include	"PDUcommand.h"
+#include        "ex.h"
+#include        "igrdp.h"
+#include        "cieveryone.h"
+#include        "cimacros.h"
+#include        "acdef.h"
+#include        "acmacros.h"
+#include        "macro.h"
+#include        "grdpbdef.h"
+#include        "grdpb.h"
+#include        "grdpbmacros.h"
+#include        "growner.h"
+#include        "igrdp.h"
+#include        "madef.h"
+#include        "exdef.h"
+#include        "exmacros.h"
+#include        "dp.h"
+#include 	"PALglbs.h"
+#include 	"PALlctypes.h"
+#include	"PALmsg.h"
+#include 	"FI.h"
+#include	"CIforms.h"
+#include	"msdef.h"
+#include	"msmacros.h"
+#include	"PDUnode.h"
+#include 	"asmacros.h"
+#include        "MEMstruct.h"
+#include        "MEMerrordef.h"
+#include        "PDUstorage.h"
+#include        "PDUfile_def.h"
+#include        "PDUerror.h"
+#include        "errno.h"
+#if ! (defined (__Sol2__) && defined (i386))
+#include        "sys/types.h"
+#include        "sys/stat.h"
+#else
+#endif
+#include        "exdef.h"
+#include        "exmacros.h"
+#include        "DItypedef.h"
+#include        "DIdef.h"
+#include        "DIglob.h"
+#include        "DIprims.h"
+#include        "PDUerror.h"
+#include	"PDUprompt.h"
+
+
+extern		struct GRid		DYNA_GRID_LIST[];
+extern          struct  PDUstorage      *storage;
+extern          MEMptr                  PDU_detach_macro_lib;
+
+/* extern function definitions */
+
+extern          strrchr();
+extern          strchr();
+extern 		_pdm_debug();
+extern		get_mod_info();
+extern		malloc();
+extern		free();
+extern		MSmessage();
+extern		PALlocate_by_keyin();
+extern		PALlocate_by_datapt();
+extern		_pdm_status();
+extern		PDUprepare_queue();
+extern		delete_prpart();
+extern		PDUdisplay_design_form();
+extern		PALstack_events();
+extern		PDUis_PDU_part();
+extern		PDUdisplay_design_form();
+extern          PDUprepare_param_cats_list();
+extern          get_parameter_values();
+extern          PDMdetach_macro_library();
+extern          PDUremove_local_files_after_delete();
+extern          PDUload_macrolibrary_copy_buffer();
+extern          MEMbuild_array();
+extern          PDUget_buffer_col();
+extern          PDUsetup_buffer();
+extern          PDUfill_in_string();
+#if ! (defined (__Sol2__) && defined (i386))
+extern          stat();
+#else
+extern		PDUstat();
+#endif
+extern          PDUread_refresh_file();
+extern          PDUupdate_copy_macro_lib_bufr();
+extern          PDUextract_dir_value();
+extern          PDUstrip_dir_entry();
+extern          unlink();
+extern          MEMclose();
+extern          ACopen_init();
+extern          RISquery();
+extern          strtok();
+extern          PDUrmdir();
+extern          EX_is_invis();
+extern          Close_OS();
+extern          pdmoDeletePartOccurrence();
+extern		PDUmessage();
+extern		PDUtranslate_message();
+
+#include 	"PALlocate.h"
+#include	"PALlocobj.h"
+
+struct	GRid	part_located;
+int     flag;
+
+
+main()
+{
+	int			response,  flg;
+	char            	error_msg[132];
+	int			numcoll, numgrids;
+	int 			ind, sts;
+        int                     i,j;
+	int  			*locatables, numloc;
+        int                     file_col;
+	char 			**prompts;
+	char 			*params[3];
+        char                    **param_vals;
+        short                   last_occurence;
+	struct	GRmd_env	my_env;
+	struct  GRid		hdr;
+	struct	GRid		*rg_grid;
+        struct  PDUcat_node     *param_cat_list;
+        struct  PDUcat_node     *head;
+        struct  PDUcat_node     *tmp;
+        MEMptr                  local_files;
+        char                    *row;
+        FILE                    *infile;
+#if ! (defined (__Sol2__) && defined (i386))
+        struct stat             file_status, buf;
+#else
+	long			buf_st_size;
+#endif
+        char                    str[1023];
+        char                    str1[1023];
+        char                    **file_data;
+        char                    *filename;
+        char                    *filename1;
+        char                    *macrocat;
+        char                    *macropart;
+        char                    *macrorev;
+        char                    *ptr;
+        char                    query[256];
+        char                    *output_str;
+        int                     max_rows;
+        int                     err_code;
+        int                     count;
+        char                    **entries;
+        char                    *tag_no_value;
+        char                    dir_name[DI_PATH_MAX];
+        char                    catnumrev[DI_PATH_MAX];
+        char                    entry[DI_PATH_MAX];
+        char                    *msg;
+        
+
+
+        /* Initialize local variables */
+        local_files = NULL;
+        macrocat = NULL;
+        macropart = NULL;
+        macrorev = NULL;
+        filename = NULL;
+        filename1 = NULL;
+        output_str = NULL;
+        tag_no_value = NULL;
+        entries = NULL;
+        count = 0;
+
+
+	PDUmessage(PDM_I_DELETE_PART,'s');
+
+	_pdm_debug ("PAL -- Enter Delete part", 0);
+
+	get_mod_info( &my_env );
+
+	/* Locate object */
+        msg = NULL;
+        msg = (char *)PDUtranslate_message(PDP_P_IDENTIFY_OR_MOVEON);
+        strcpy(error_msg,msg);
+	part_located.objid = NULL_OBJID ;
+
+        flag = -1;
+	response = PALloc_obj(error_msg,&my_env,&part_located,3) ;
+        flag = response;
+
+        if (!response)
+           exit;
+
+	sts = pdmoDeletePartOccurrence(&sts,NULL, &part_located);
+
+        if (sts == PDM_S_SUCCESS)
+           {
+            /* Extract part info */
+            param_vals = NULL;
+            params[0] = "n_catalogname";
+            params[1] = "n_itemname";
+            params[2] = "n_itemrev";
+
+            sts = get_parameter_values(
+                                       &part_located,
+                                       params,
+                                       3,
+                                       &param_vals
+                                      );
+            if (!sts)
+               {
+                _pdm_debug("get_parameter_values failed", 0);
+
+                exit;
+               }
+
+            /* Load param_cat_list list */
+            param_cat_list = NULL;
+            sts = PDUprepare_param_cats_list(
+                                             &my_env,
+                                             &param_cat_list
+                                            );
+            _pdm_status("PDUprepare_param_cats_list", sts);
+
+            if (sts != PDM_S_SUCCESS)
+               {
+                _pdm_debug("PDUprepare_param_cats_list failed", 0);
+                exit;
+               }
+
+            /* Delete located part's catalog from param_cat_list */
+            last_occurence = FALSE;
+            head = param_cat_list;
+     
+            if (head)
+               tmp = head->next;
+       
+            while (head)
+                  {
+                   if (strcmp(param_cat_list->catalog, param_vals[0]) == 0) 
+                      {
+                       if (param_cat_list->count == 1)
+                          {
+                           /* Flag last occurence */
+                           last_occurence = TRUE;
+
+                           /* Delete node */
+                           if (param_cat_list->next == NULL)
+                              {
+                               free(param_cat_list);
+                               param_cat_list = NULL;
+                              }
+
+                           else
+                               {
+                                tmp = param_cat_list;
+                                param_cat_list = param_cat_list->next;
+                                free(tmp);
+                               }
+                          }
+
+                       break;
+                      }
+
+                   else
+                       {
+                        if (tmp)
+                           {
+                            if (strcmp(tmp->catalog, param_vals[0]) == 0)
+                               {
+                                if (tmp->count == 1)
+                                   {
+                                    /* Flag last occurence */
+                                    last_occurence = TRUE;
+
+                                    /* Delete node */
+                                    head->next = tmp->next;
+                                    free(tmp);
+                                   }
+ 
+                                  break;
+                               }
+                           }
+
+                        else
+                             break;
+                       }
+
+                   /* Process next node */
+                   head = head->next;
+                   tmp = tmp->next;
+                  } /* end while loop */
+
+            if (last_occurence)
+               {
+                /* Cleanup macro tag directory */
+                sts = di$give_pathname (
+                                        osnum =  my_env.md_id.osnum,
+                                        pathname =  dir_name
+                                       );
+
+                strcat(dir_name,":PDU:mac_tag_no");
+
+                sprintf(
+                        catnumrev,
+                        "!%s!%s!%s",
+                        param_vals[0],
+                        param_vals[1],
+                        param_vals[2]
+                       );
+
+                sts = di$find (
+                               start_dir = dir_name,
+                               regexp = "*",
+                               lines = &entries,
+                               max_level = 1,
+                               ptr = &count
+                              );
+
+                if (sts != DIR_S_SUCCESS)
+                   {
+                    _pdm_debug("di$find failed", 0);
+                    exit;
+                   }
+
+                if (count > 0)
+                   {
+                    for (i = 0; i < count; i = i + 1)
+                        {
+                         strcpy(entry, entries[i]);
+                         PDUstrip_dir_entry(entry);
+
+                         *((char *)strrchr(entry, '!')) = '\0';
+                         ptr = (char *) strchr(entry, '!');
+
+                         if (strcmp(catnumrev, ptr) == 0)
+                            {
+                             sts = PDUrmdir(entries[i]);
+                             break;
+                            }
+                        }
+
+                    if (entries)
+                       di$free(lines = entries, count = count);
+                   }
+
+                PDUmessage(PDM_I_DELETE_MACRO_LIB,'s');
+
+                /* Cleanup macrolibrary, if necessary */
+                sts = PDMdetach_macro_library(
+                                              param_vals[0],
+                                              param_cat_list,
+                                              &local_files
+                                             );
+                _pdm_status("PDMdetach_macro_library", sts);
+
+                if (sts != PDM_S_SUCCESS)
+                   {
+                    _pdm_debug("PDMdetach_macro_library failed");
+
+                    /* Free up param_cat_list */
+                    if (param_cat_list)
+                       {
+                        head = param_cat_list;
+
+                        while (param_cat_list)
+                              {
+                               param_cat_list = param_cat_list->next;
+                               if (head->catalog)
+                                  free(head->catalog);
+
+                               free(head);
+                               head = param_cat_list;
+                              } /* end while loop */
+                       }
+
+                    /* Free up variables */
+                    if (param_vals)
+                       {
+                        for (j = 0; j < 3; j = j + 1)
+                            free(param_vals[j]);
+
+                        free(param_vals);
+                       }
+
+                    PDUmessage(PDM_E_MACRO_DELETED,'s');
+                    exit;
+                   }
+
+                else
+                    {
+                     if (local_files)
+                        {
+                         if (local_files->rows > 0)
+                            {
+                             _pdm_debug("file(s) need to be removed", 0);
+
+                             /* Remove maclib from constructs_lib */
+                             MEMbuild_array(local_files);
+
+                             PDUget_buffer_col(
+                                               local_files,
+                                               "n_cofilename",
+                                               &file_col
+                                              );
+
+                             PDUsetup_buffer(local_files, ROW, &file_data);
+
+                             for (i = 0; i < local_files->rows; i = i + 1)
+                                 {
+                                  PDUfill_in_string(&filename,
+                                  file_data[(local_files->columns*i)+file_col]);
+
+                                  /* Check for cpio files */
+                                  sprintf(
+                                          str,
+                                          "%s/%s%s",
+                                          storage->path_name,
+                                          ".",
+                                          filename
+                                         );
+
+#if ! (defined (__Sol2__) && defined (i386))
+                                  sts = stat(str,&file_status);
+#else
+				  sts = PDUstat(str, NULL);
+#endif
+                                  if (sts == 0) /* file exists */
+                                     {
+                                      _pdm_debug("deleting cpio files", 0);
+
+#if ! (defined (__Sol2__) && defined (i386))
+                                      stat (str, &buf);
+#else
+				      PDUstat(str, &buf_st_size);
+#endif
+#if ! (defined (__Sol2__) && defined (i386))
+                                      if (buf.st_size == 0)
+#else
+                                      if (buf_st_size == 0)
+#endif
+                                         {
+                                          _pdm_debug("file is empty", 0);
+                                          continue; 
+                                         }
+
+                                      if ((infile = fopen (str, "r")) == NULL)
+                                         {
+                                          _pdm_debug("error opening <%s>",str);
+                                          _pdm_debug ("errno = <%d>",
+                                                     (char *)errno);
+                                          continue; 
+                                         }
+
+                                      while (sts == PDM_S_SUCCESS)
+                                            {
+                                             sts = PDUread_refresh_file(
+                                                       &filename1, str, infile);
+
+                                             if (sts != PDM_S_SUCCESS)
+                                                {
+                                                 fclose(infile);
+                                                 break;
+                                                }
+
+                                             sprintf(
+                                                     str1,
+                                                     "%s/%s",
+                                                     storage->path_name,
+                                                     filename1
+                                                    );
+
+                                             /* Delete file */
+#if ! (defined (__Sol2__) && defined (i386))
+                                             sts = stat(str1,&file_status);
+#else
+                                             sts = PDUstat(str1,NULL);
+#endif
+                                             if (sts == 0)
+                                                {
+                                                 unlink(str);
+                                                 delete_maclib_entry(
+                                                             my_env.md_id.osnum,
+                                                             filename1
+                                                                    );
+                                                }
+
+                                             sts = PDM_S_SUCCESS;
+                                            } /* end while */
+                                      
+                                      /* Delete the cpio file locally */
+                                      sts = unlink(str);
+                                      delete_maclib_entry(
+                                                          my_env.md_id.osnum,
+                                                          filename
+                                                         );
+                                     }
+
+                                   _pdm_debug("deleting non cpio files", 0);
+
+                                   /* Delete non-cpio files */
+                                   sprintf(
+                                           str,
+                                           "%s/%s",
+                                           storage->path_name,
+                                           filename
+                                          );
+#if ! (defined (__Sol2__) && defined (i386))
+                                   sts = stat(str,&file_status);
+#else
+                                   sts = PDUstat(str,NULL);
+#endif
+                                   if (sts == 0) /* file exists */
+                                      {
+                                       /* Delete the file locally */
+                                       sts = unlink(str);
+                                       delete_maclib_entry(
+                                                           my_env.md_id.osnum,
+                                                           filename
+                                                          );
+                                      }
+
+                                 } /* end for i loop */
+
+                             /* Get macro library revision and part number */
+                             sprintf(
+                                     query, "select p_macrocat, p_macropartno, p_macrorev from pdmparamloc where n_catalogname = '%s'", param_vals[0]);
+              
+                             sts = RISquery(
+                                            query,
+                                            &max_rows, 
+                                            &output_str,
+                                            &err_code
+                                           );
+
+                             if (sts < 0)
+                                {
+                                 PDUmessage(PDM_E_MACRO_LIB_LOCAL,'s'); 
+                                 exit;
+                                }
+
+                             ptr = (char *) strtok(output_str,"~");
+                             macrocat = (char *)malloc(strlen(ptr) + 1);
+                             strcpy(macrocat, ptr);
+
+                             ptr = (char *) strtok(NULL,"~");
+                             macropart = (char *)malloc(strlen(ptr) + 1);
+                             strcpy(macropart, ptr);
+
+                             ptr = (char *) strtok(NULL,"~");
+                             macrorev = (char *)malloc(strlen(ptr) + 1);
+                             strcpy(macrorev, ptr);
+
+                             /* Record detach activity */
+                             sts = PDUload_macrolibrary_copy_buffer(
+                                                           macrocat,
+                                                           macropart,
+                                                           macrorev,
+                                                           &PDU_detach_macro_lib
+                                                                   );
+                             if (sts != PDM_S_SUCCESS)
+                                {
+                                 _pdm_debug(
+                                 "PDUload_macrolibrary_copy_buffer failed",0);
+
+                                 PDUmessage(PDM_E_DELETE_PARAMETRIC_PART,'s');
+                                 exit;
+                                }
+
+                             /* Update PDU_copy_macro_lib_bufr */
+                             PDUupdate_copy_macro_lib_bufr(param_vals[0]);
+                            }
+                        }
+                    }
+               }
+
+            /* Free up param_cat_list */
+            if (param_cat_list)
+               {
+                head = param_cat_list;
+
+                while (param_cat_list)
+                      {
+                       param_cat_list = param_cat_list->next;
+                       if (head->catalog)
+                          free(head->catalog);
+
+                       free(head);
+                       head = param_cat_list;
+                      } /* end while loop */
+               }
+
+            /* Free up variables */
+            if (param_vals)
+               {
+                for (j = 0; j < 3; j = j + 1)
+                    free(param_vals[j]);
+
+                free(param_vals);
+               }
+
+            if (local_files)
+               MEMclose(&local_files);
+
+            if (macrocat)
+               free(macrocat);
+
+            if (macropart)
+               free(macropart);
+
+            if (macrorev)
+               free(macrorev);
+
+            if (filename)
+               free(filename);
+
+            if (filename1)
+               free(filename1);
+
+            PDUmessage(PDM_S_SUCCESS,'s');
+           }
+
+wrapup:
+   	exit;
+}
+
+delete ()
+{
+         _pdm_debug("exiting the copy part command", 0);
+         if (flag == -1)
+           PDUdisplay_design_form();
+ }
+
+delete_maclib_entry(osnum, maclib_entry)
+ OMuword  osnum;
+ char    *maclib_entry;
+{
+ int     sts;
+ char    dir_name[DI_PATH_MAX];
+ GRspacenum lib_osnum;
+ int invisible_index;
+
+ _pdm_debug("In the delete_maclib_entry function");
+
+ sts = di$give_pathname (osnum =  osnum, pathname =  dir_name);
+
+ strcat(dir_name,":constructs_lib:");
+ strcat(dir_name, maclib_entry);
+
+ _pdm_debug("dir_name = <%s>", dir_name);
+
+ sts = di$give_osnum(
+                     pathname = dir_name,
+                     p_osnum = &lib_osnum
+                    );
+
+ if(!(sts&1))di$report_error(sts = sts);
+
+ if(ex$is_invis(
+                mod_osnum = lib_osnum,
+                index = &invisible_index
+               ))
+               {
+                /* Detach macrolibrary */
+                sts = ex$close_module(
+                                      ftype = EX_invisible,
+                                      index = invisible_index,
+                                      flag  = 0
+                                     );
+                if (sts)
+                   {
+                    _pdm_debug("ex$close_module successful", 0);
+
+                    ACopen_init();
+                   }
+               }
+}
+
+#include        "getloc.h"

@@ -1,0 +1,210 @@
+/*
+ * Author: Jamal Shakra
+ * Date: 08-20-92
+ * This command displays origins list for 2.01.
+ */
+
+
+#include 	"ciminimum.h"
+#include 	"cimacros.h"
+#include 	"PDUstr.h"
+#include 	"PDUpart.h"
+#include        "ex.h"
+#include        "igrdp.h"
+#include 	"partmacros.h"
+#include 	"part.h"
+#include	"cieveryone.h"
+#include	"cimacros.h"
+#include        "grdpbdef.h"
+#include        "grdpb.h"
+#include        "grdpbmacros.h"
+#include        "DItypedef.h"
+#include        "DIdef.h"
+#include        "DIglob.h"
+#include        "DIprims.h"
+#include        "PDUgrpart.h"
+#include        "PDUnode.h"
+#include        "PDUfile_def.h"
+#include        "PDUcommand.h"
+#include        "PDUerror.h"
+
+
+/* External function declarations */
+extern		GRdpb_get();
+extern          PDUfill_in_string();
+extern          malloc();
+extern          free();
+extern          _pdm_debug();
+extern          _pdm_status();
+extern          PDUprocess_selected_origins_in_os();
+extern          PDUdisplay_origins();
+extern          PDUget_coord_sys_id();
+extern          DIgive_pathname();
+
+
+/* External global variables */
+extern          struct PDUpart_node *PDU_origins_id_list;
+extern          struct PDUlist_origins_info *PDU_list_origins_info;
+extern          IGRshort PDU_list_origins;
+
+main()
+{
+ struct GRmd_env  mod_env;
+ IGRlong          msg, sts;
+ IGRlong          status;
+ IGRchar          origin_name[DI_PATH_MAX];
+ IGRchar          full_path[DI_PATH_MAX];
+ IGRlong          NumberOfBytes, BytesReceived;
+ struct PDUpart_node       *temp;
+ struct PDUpart_node       *tail;
+ struct PDUlist_origins_info *top;
+ struct PDUlist_origins_info *head;
+
+
+ _pdm_debug("In display list of origins ppl program",0);
+
+ /* Get current module environment information */
+ NumberOfBytes = sizeof(mod_env);
+ status = gr$get_module_env(
+                            msg = &msg,
+                            sizbuf = &NumberOfBytes,
+                            buffer = &mod_env,
+                            nret = &BytesReceived
+                           );
+
+ /* External variables initialization */
+ PDU_list_origins = FALSE;
+
+ /* Local variables initialization */
+ temp = NULL;
+ tail = NULL;
+ top = NULL;
+ 
+ /* Locate origins */
+ begincmd("locate origin");
+ endcmd();
+
+ if (PDU_list_origins == TRUE)
+   {
+    status = display_origins_form();
+    if (status == 0)
+       exit;
+
+    else
+      {
+       /* Construct path to <usr> directory */
+       di$give_pathname(
+                        osnum = mod_env.md_id.osnum,
+                        pathname = full_path 
+                       );
+
+       strcat(full_path, ":");
+       strcat(full_path, "usr");
+       strcat(full_path,":");
+
+       /* Construct PDU_origins_id_list list */
+       top = PDU_list_origins_info;
+       while (top != NULL)
+             { 
+              /* Construct list of origins ids */
+              temp =
+                   (struct PDUpart_node *) malloc(sizeof(struct PDUpart_node));
+
+               /* Initialize temp fields */
+               temp->part_id.osnum = mod_env.md_id.osnum;
+               temp->next = NULL;
+
+               /* Get objid of origin */
+              strcpy(origin_name, full_path);
+              strcat(origin_name, "ORIGIN ");
+              strcat(origin_name, top->view_name);
+
+              status = PDUget_coord_sys_id(
+                                           mod_env,
+                                           origin_name,
+                                           &(temp->part_id.objid)
+                                          );
+
+               if (status != PDM_S_SUCCESS)
+                  {
+                   _pdm_debug("PDUget_coord_sys_id failed", 0);
+                   exit;
+                  }
+
+               if (PDU_origins_id_list != NULL)
+                  {
+                   _pdm_debug("adding node to end of list", 0);
+
+                   tail = PDU_origins_id_list;
+                   while (tail->next)
+                         {
+                          tail = tail->next;
+                         }
+
+                   tail->next = temp;
+                  }
+
+               else
+                  {
+                   _pdm_debug("adding first node to list", 0);
+
+                   PDU_origins_id_list = temp;
+                  }
+
+
+              /* Process next node */
+              top = top->next;
+              
+             } /* end while loop */
+
+        /* Free variables */
+        if (PDU_list_origins_info)
+         {
+          head = PDU_list_origins_info;
+
+          while (PDU_list_origins_info)
+                {
+                 PDU_list_origins_info = PDU_list_origins_info->next;
+                 free(head);
+                 head = PDU_list_origins_info;
+                }
+
+          PDU_list_origins_info = NULL;
+         }
+
+       }
+   }
+
+ /* Process selected origin(s), if any */
+ status = PDUprocess_selected_origins_in_os();
+ _pdm_status("PDUprocess_selected_origins_in_os", status);
+
+}
+
+int  delay()
+ {
+  int  i;
+
+  for (i = 0; i < 20000; i = i + 1);
+ }
+
+int display_origins_form()
+  {
+  int response;
+  int status;
+
+  _pdm_debug("Entering PDUdisplay_origins", 0);
+  status = PDUdisplay_origins();
+
+  /* Pause until the form is accepted or cancelled */
+  _pdm_debug("Waiting on input", 0);
+
+  ci$get(prompt = "", response = &response);
+  if (response == MOVE_ON)
+    {
+     return(1);
+    }
+
+  else
+    return(0);
+  }

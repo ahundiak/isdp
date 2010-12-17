@@ -1,0 +1,472 @@
+/* Generic file to edit a macro definition */
+#include "string.h"
+#include "cieveryone.h"
+#include "cimacros.h"
+#include "OMminimum.h"
+#include "igetypedef.h"
+#include "igrtypedef.h"
+#include "igr.h"
+#include "igrdp.h"
+#include "dpdef.h"
+#include "dp.h"
+#include "gr.h"
+#include "fontdef.h"
+#include "font.h"
+#include "gotextdef.h"
+#include "gotext.h"
+#include "grdpbdef.h"
+#include "grdpb.h"
+#include "grdpbmacros.h"
+#include "OMmacros.h"
+#include "dpmacros.h"
+#include "asdef.h"
+#include "asmacros.h"
+#include "ci_mac_def.h"
+#include "ci_macro.h"
+#include "OMprimitives.h"
+#include "parametric.h"
+#include "expmacros.h"
+#include "nddef.h"
+#include "asbox.h"
+
+/* macro library include files */
+#include "acdef.h"
+#include "acmacros.h"
+#include "macro.h"
+
+#include "MOmacros.h"
+#include "MEMstruct.h"
+#include "MEMerrordef.h"
+
+#include "PDUstr.h"
+#include "PDUuser.h"
+#include "PDUcommand.h"
+#include "WFstruct.h"
+#include "PDUprompt.h"
+
+#define  TRUE 1
+#define  FALSE 0
+
+/* External Functions */
+extern malloc();
+extern realloc();
+extern free();
+extern ACconstruct_save();
+extern PDUmessage();
+extern _pdm_debug();
+extern ACconstruct_wd();
+extern ACconstruct_path();
+extern _pdm_status();
+extern PDUfill_in_string();
+extern MEMbuild_array();
+extern MEMclose();
+extern PDMget_filenames();
+extern PDUsetup_buffer();
+extern PDUget_buffer_col();
+extern PDUmessage_trans();
+extern PDUget_file_status();
+extern PDUexternal();
+extern PDUverify_file();
+extern PDUvalid_catalog();
+extern PDMquery_catalog_type();
+extern PDMi_backup_wfinfo();
+extern PDMi_restore_wfinfo();
+extern RISquery();
+
+/* External variables declaration section */
+extern          struct PDUrefresh       *refresh;
+extern 		struct PDUuser 		*user;
+extern          char  *PDU_store_catalog;
+
+int sts, msg ;
+
+#include "reedit.h"
+
+char macro_catalog[50], *macro_lib, macro_partno[50], macro_partrev[50], macro_name[30];
+
+main()
+{
+	int mac_num_temp, nb_sup, i , props, nummac;
+	char *macname[150], catname[40], cat_type[5] ; 
+	struct GRid ci_mac , hdr ;
+	struct GRmd_env my_env ;
+	struct stemp *temp_desc ,  *newtemp, *new_desc ;
+	struct sup    sup[10], *sup1;
+	char   *dyntemp[30];
+	int    numdyn;
+
+	int  max_rows, err_code ;
+	char query[128] , *outstr, *ptr ;
+
+	char string[256];
+
+	PDUmessage(PDM_I_CONVERT_MACRO_DEF,'s');
+
+	/* Check if the user has logged in */
+	if( user->username == NULL )
+	{
+		status("LOGIN into PDM before running conmac");
+		exit;
+	}
+
+	ci$get_module_info( md_env = &my_env );
+
+start:
+	prompt(PDP_P_ENTER_CATALOG);
+
+	ci$get(string = catname);
+
+	/* Validate catalog and check if type is parametric - TBD */
+	if( (PDUvalid_catalog("", catname )) != PDM_S_SUCCESS )
+	{
+		status("Not a valid catalog name");
+		exit;
+	}
+        PDMquery_catalog_type(catname, cat_type);
+        _pdm_debug("cat_type = <%s>", cat_type);
+
+	if( strcmp(cat_type,"P") && strcmp(cat_type,"CID") && strcmp(cat_type,"EID") && strcmp(cat_type,"PXT") )
+	{
+		status("Catalog is not Parametric");
+		exit;
+	}
+        /* copy and load macro libraries relevant to catalog */
+        if( !load_macro_lib(catname))
+             exit;
+
+	/* Check if given catalog contains p_macro column, get all macro names */
+
+	sprintf(query,"select p_macro from %s", catname);
+	
+	max_rows = 0; /* Get all macronames */
+	sts = RISquery(query,&max_rows,&outstr,&err_code);
+
+	if( sts < 0 ) /* Query Failed, No p_macro column in catalog */
+	{
+		nummac = 1;
+		macname[nummac-1] = macro_name;
+		_pdm_debug("macro name : %s", macname[nummac-1] );
+	}
+	else
+	{
+		nummac = 0;
+		ptr = strtok(outstr,"~");
+		while( ptr != NULL )
+		{
+			macname[nummac] = ( char *)malloc( strlen(ptr) + 1 );
+			for( i = 0; i < nummac; i = i + 1 )
+				if( !strcmp(macname[i],ptr) ) /* This macro already in list */
+					break;
+/*  Added for unique macronames list */
+			if ( i == nummac ) /* Add to list, if not found*/
+				strcpy(macname[nummac],ptr);
+			else
+			{
+				ptr = strtok(NULL,"~"); /* go to next macro */
+				continue;
+			}
+/* end of addition */
+			_pdm_debug("macro name : %s", macname[nummac] );
+			nummac = nummac + 1;
+			ptr = strtok(NULL,"~");
+		}
+	}
+	free(outstr);
+	if( nummac == 0 )
+	{
+		status("Macro Name not Found");
+		exit;
+	}
+
+	for( i = 0; i < nummac; i = i + 1 )
+	{	
+	sprintf(string,"Processing Macro \"%s\" (%d/%d) ...",macname[i],i+1,nummac);
+	status( string );
+	ci_mac.objid = NULL_OBJID ;
+	ci_mac.osnum = my_env.md_id.osnum ;
+
+	sts = ci$send(msg = message ACcpx.ACattach(&msg,macname[i]),
+                 targetid = ci_mac.objid ,
+                 targetos = ci_mac.osnum );
+
+	if( !(sts & 1) )
+	{
+		status("Macro not available in library");
+		exit;
+	}
+
+/*	write("objid : ", ci_mac.objid, ci_mac.osnum,"\n");*/
+
+	/* Get macro header object */
+	sts = ci$send( msg = message ACcpx.find_macro( &hdr),
+                 targetid = ci_mac.objid,
+                 targetos = ci_mac.osnum);
+
+	if( !(sts & 1) )
+	{
+		status("Macro not available in library");
+		exit;
+	}
+
+/*	write("objid : ", hdr.objid, hdr.osnum,"\n");*/
+
+	/* Now get the static and dynamic attributes from the pdmparameters 
+           and do the mapping */
+
+	max_rows = 0;
+	sprintf(query,"SELECT p_iotype, p_templatename FROM pdmparameters where n_catalogname = '%s'", catname);
+
+	_pdm_debug("GetStatAndDynattribs:query is %s",query);
+
+	sts = RISquery( query, &max_rows, &outstr, &err_code);
+	if( sts < 0 )
+	{
+		free(outstr);
+		status("Error Accessing 'pdmparameters'.");
+		exit;
+	}
+	_pdm_debug(" output: %s",outstr );
+	
+	numdyn = 0;
+	ptr = strtok (outstr, "~");
+
+	while (ptr != NULL)
+	{
+		if (!strcmp (ptr, "D"))
+		{
+			/* Advance to p_templatename */
+			ptr = strtok (NULL, "~");
+
+			dyntemp[numdyn] = (char *) malloc (strlen (ptr) + 1);
+			strcpy (dyntemp[numdyn], ptr);
+			numdyn = numdyn + 1;
+		}
+		ptr = strtok (NULL, "~");
+	}
+/*
+	for(i=0;i<numdyn;i=i+1)
+		write("dyntemp[",i,"]=",dyntemp[i],"\n");
+*/
+	/* Now check if this macro is already edited */
+
+	if( (sts = PDUis_macro_edited(&hdr)) == 1 )
+		sts = PDUedit_macro(&hdr, dyntemp, numdyn, 1) ;
+	else if( sts == 0 )
+		sts = PDUedit_macro(&hdr, dyntemp, numdyn, 0) ;
+/* TR # 139313157. Reedit even if there are two collectiions.
+The catalog attributes' types (static or dynamic) might have
+changed and thus the templates might need to be remapped to
+different collections.	*/
+/*	else *//* Macro has 2 collections already *//*
+ *	{
+ *		status("Macro is already converted");
+ *		if( i != (nummac-1) ) ;
+ *			continue;
+ *	}
+ */
+	else if (sts == -1)	/* Remap atrributes among the collections.	*/
+	{
+	  _pdm_debug("Macro is already converted");
+	  _pdm_debug("Re-edit to remap templates if necessary", 0);
+	  sts = PDUedit_macro(&hdr, dyntemp, numdyn, 2) ;
+	}
+
+	if (sts)
+	{
+		status("Converted macro successfully");
+		sts = ac$save_wd();
+		if( !( sts&1) )write("save macro lib failed\n");
+	}
+	else
+		status("Convert macro failed");
+
+	}
+	/* Ask if the macrolibrary is to be checked in, if yes CHECKIN 
+        */
+	prompt(PDP_P_CHECKIN_MACROLIB);
+
+	catname[0] = '\0';
+	ci$get(string = catname);
+
+	if( catname[0] == 'y' || catname[0] == 'Y')
+  	{
+		_pdm_debug("Checkingin Macrolibrary ...",0);
+  		PDUfill_in_string(&refresh->rev_catalog, macro_catalog);
+  		PDUfill_in_string(&refresh->rev_partid, macro_partno);
+  		PDUfill_in_string(&refresh->rev_revision, macro_partrev);
+  		PDUfill_in_string(&refresh->rev_parttype, "M");
+		refresh->command = PDC_M_CHECKIN;
+  		PDUmessage_trans(PDC_M_CHECKIN, 'v');
+  		sts = PDUexternal();
+  		_pdm_status("PDUexternal", sts);
+  		PDUmessage_trans(sts, 's');
+    		PDUfill_in_string(&refresh->rev_catalog, PDU_store_catalog);
+  		PDUfill_in_string(&refresh->rev_partid, NULL);
+  		PDUfill_in_string(&refresh->rev_revision, NULL);
+	}
+
+	goto start;
+wrapup:
+	exit;
+}	
+
+load_macro_lib( catalog )
+char *catalog;
+{
+int  i;
+int  file_col;
+int  Found;
+char  *state;
+char  **data_row;
+MEMptr file_bufr;
+struct WFstruct bak;
+
+int  max_rows, err_code ;
+char query[128] , *outstr, *ptr ;
+
+	file_bufr = NULL;
+	i = 0;
+
+	sprintf(query,"select * from pdmparamloc where n_catalogname='%s'", catalog);
+	sts = RISquery(query,&max_rows,&outstr,&err_code);
+	if( sts < 0 )
+	{
+		free(outstr);
+		status("Macro library not found for this catalog");
+		return(0);
+	}
+	ptr = strtok( outstr, "~"); /* n_catalogname */
+	ptr = strtok( NULL, "~"); /* p_macrocat */
+	strcpy( macro_catalog, ptr );
+	ptr = strtok( NULL, "~"); /* p_macropartno */
+	strcpy( macro_partno, ptr );
+	ptr = strtok( NULL, "~"); /* p_macrorev */
+	strcpy( macro_partrev, ptr );
+	ptr = strtok( NULL, "~"); /* p_macroname */
+	strcpy( macro_name, ptr );
+
+	_pdm_debug("Macrocatalog = %s", macro_catalog);
+	_pdm_debug("partnum = %s", macro_partno);
+	_pdm_debug("rev= %s", macro_partrev);
+	_pdm_debug("name = %s", macro_name);
+
+	free( outstr );
+
+	/* get list of files */
+  	sts = PDMget_filenames(
+                            macro_catalog,
+                            macro_partno,
+                            macro_partrev,
+                            &file_bufr
+                           );
+  	_pdm_status("PDMget_filenames", sts);
+
+  	if ( sts != PDM_S_SUCCESS )
+  	{
+    		PDUmessage(sts, 's');
+    		MEMclose(&file_bufr);
+    		file_bufr = NULL;
+    		return(0);
+  	}
+
+  	if ((file_bufr == NULL) || (file_bufr->rows == 0))
+    	{
+    		sts = PDM_I_NO_FILES_FOUND;
+    		PDUmessage(sts, 's');
+    		return(0);
+    	}
+  	sts = MEMbuild_array(file_bufr);
+  	_pdm_status("MEMbuild_array", sts);
+
+  	if (sts != MEM_S_SUCCESS)
+    	{
+    		sts = PDM_E_BUILD_BUFFER_ARRAY;
+    		PDUmessage(sts, 's');
+    		return(0);
+    	}
+  	PDUsetup_buffer(file_bufr, 21, &data_row);
+  	PDUget_buffer_col(file_bufr, "n_cofilename", &file_col);
+
+  	Found = FALSE;
+  	if (file_bufr->rows == 1)
+    	{
+    		PDUfill_in_string(&macro_lib, data_row[(file_bufr->columns*i)+file_col]);
+    		Found = TRUE;
+    	}
+  	else
+  	{
+  		for ( i = 0; i < file_bufr->rows; i = i + 1)
+    		{
+    			if (strcmp(data_row[(file_bufr->columns * i) + 1], "M") == 0)
+      			{
+      				PDUfill_in_string(&macro_lib, data_row[(file_bufr->columns * i) +
+                        					file_col]);
+      				Found = TRUE;
+      				break;
+      			}
+    		}
+  	}
+  
+  	if (Found == FALSE)
+    	{
+                status("File does not have type of M");
+    		return(0);
+    	}
+	 _pdm_debug("PDUmacrolib = <%s>", macro_lib);
+  	/* check and see if part is checked in */
+  	sts = PDUget_file_status(macro_catalog, macro_partno, macro_partrev, &state);
+  	_pdm_status("PDUget_file_status", sts);
+
+  	if (strcmp(state, "I") == 0)
+    	{
+    		_pdm_debug("Check out part", 0);
+    		/* check out part first */
+    		refresh->command = PDC_M_CHECKOUT;
+    		PDMi_backup_wfinfo(&bak);
+    		PDUmessage_trans(PDC_M_CHECKOUT, 'v');
+    		PDUfill_in_string(&PDU_store_catalog, refresh->rev_catalog);
+    		PDUfill_in_string(&refresh->rev_catalog, macro_catalog);
+    		PDUfill_in_string(&refresh->rev_partid, macro_partno);
+    		PDUfill_in_string(&refresh->rev_revision, macro_partrev);
+    		PDUfill_in_string(&refresh->rev_filename, macro_lib);
+    		sts = PDUexternal();
+    		_pdm_status("PDUexternal", sts);
+    		PDUfill_in_string(&refresh->rev_catalog, PDU_store_catalog);
+    		PDUmessage_trans(sts, 's');
+    		PDMi_restore_wfinfo(bak);
+    		if (sts != PDM_S_SUCCESS)
+      			return(0);
+     	}
+
+     	sts = PDUverify_file(macro_lib);
+  	_pdm_status("PDUverify_file", sts);
+
+  	if (sts != PDM_S_SUCCESS)
+    	{
+    	        status("Macro library does not exist locally");
+    		return(0);
+    	}
+	sts = ac$construct_wd ( mode = AC_SET, name = macro_lib );
+
+	if( !( sts & 1 ) ) 
+	{
+		sprintf(query,"Cannot set %s as working library",macro_lib);
+		status(query);
+		return(0);
+	}
+
+	 _pdm_status("ac$construct_wd", sts);
+
+	sts = ac$construct_path ( mode = AC_ADD_PATH, name = macro_lib );
+
+	if( !( sts & 1 ) )
+	{
+		sprintf(query,"Cannot load %s",macro_lib);
+		status(query);
+		return(0);
+	}
+
+	 _pdm_status("ac$construct_wd", sts);
+
+	return(1);
+}

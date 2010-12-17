@@ -1,0 +1,176 @@
+/*
+ * Author: Jenny Parris
+ * Date: 08-31-92
+ * This command imports ris template libraries in PDU 2.1
+ */
+
+
+#include 	"ciminimum.h"
+#include 	"cimacros.h"
+#include 	"PDUstr.h"
+#include 	"PDUpart.h"
+#include	"cieveryone.h"
+#include	"cimacros.h"
+#include	"string.h"
+#include        "PDUgrpart.h"
+#include        "PDUnode.h"
+#include        "PDUfile_def.h"
+#include        "PDUcommand.h"
+#include        "PDUerror.h"
+#include        "PDUforms.h"
+#include        "part_gadgets.h"
+
+#define DYN_NAMES 52
+
+/* External function declarations */
+extern          PDUmessage();
+extern          PDUupdate_dynamics();
+extern          FIfld_get_active_row();
+extern          FIfld_set_text();
+extern          FIfld_get_text();
+extern          FIfld_get_text_length();
+extern          MEMbuild_array();
+extern          MEMwrite_data();
+extern          malloc();
+extern          free();
+extern          _pdm_debug();
+extern          _pdm_status();
+extern          PDUget_col_number();
+extern          PDUupdate_parmpart_function_value();
+extern          PDUupdate_AttrForm_function_value();
+extern		PDUtranslate_message();
+
+/* External global variables */
+extern char PDU_attr_value[40];
+extern Form PDU_form_id;
+extern Form ModifyPartForm;
+extern struct PDUforms forms;
+extern MEMptr PDU_attr_bufr;
+extern MEMptr PDU_data_bufr;
+
+main()
+{
+ long          status;
+  int          act_pos, act_row;
+  int          i;
+  int          n_name_col;
+  int          n_syn_col;
+  int          found;
+  int          row, col, length, select, pos;
+ char          answer[240];
+ char          *attr_text;
+ char          **attr_data_col;
+ char          **attr_data_row;
+ char *msg;
+  
+  _pdm_debug("in the function process value", 0);
+
+  row = 0;
+  col = 0;
+  length = 0;
+  select = 0;
+  pos = 0;
+  act_row = 0;
+  act_pos = 0;
+  attr_text = NULL;
+  attr_data_col = NULL;
+  attr_data_row = NULL;
+
+  _pdm_debug("value = <%s>", PDU_attr_value);
+if ((PDU_form_id == forms.part_operations_form_id) && (PDU_form_id != 0))
+  {
+  FIfld_get_active_row(forms.part_operations_form_id, ATTRIBUTE_VALUE_MCF, 
+                       &act_row, 
+                       &act_pos);
+ FIfld_set_text(forms.part_operations_form_id, ATTRIBUTE_VALUE_MCF, act_row, 1, 
+                 PDU_attr_value, FALSE);
+
+ FIfld_get_text_length(forms.part_operations_form_id,ATTRIBUTE_VALUE_MCF, 
+                       act_row, 
+                       0, &length);
+ attr_text = (char *) malloc (sizeof (char) * length + 1);
+ memset(attr_text, NULL, sizeof (char) * length + 1);
+ FIfld_get_text(forms.part_operations_form_id, ATTRIBUTE_VALUE_MCF,act_row,0, 
+                length, (unsigned char*)attr_text,
+                &select, &pos);
+
+ if (attr_text[0] == '*')
+   attr_text = attr_text + 1;
+
+  status = MEMbuild_array(PDU_attr_bufr);
+  _pdm_status("MEMbuild_array",status);
+
+  attr_data_col = (char **) PDU_attr_bufr->column_ptr;
+  attr_data_row = (char **) PDU_attr_bufr->data_ptr;
+
+  PDUget_col_number(PDU_attr_bufr,"n_name",attr_data_col,
+                    &n_name_col);
+  PDUget_col_number(PDU_attr_bufr,"n_synonym",attr_data_col,
+                    &n_syn_col);
+
+  for (i = 0; i < PDU_attr_bufr->rows; i = i + 1)
+    {
+    if (strcmp(attr_data_row[(PDU_attr_bufr->columns * i) +                                n_syn_col], attr_text) == 0)
+       {
+       status = MEMwrite_data(PDU_data_bufr,PDU_attr_value,1,i + 1);
+       if (status != MEM_S_SUCCESS)
+         {
+         msg = (char *)PDUtranslate_message(PDM_E_WRITE_BUFFER);
+         FIfld_set_text(forms.part_operations_form_id,FI_MSG_FIELD,msg);
+         break;
+         }
+      else 
+        {
+         found = 1;
+        }
+      }
+     else if (strcmp(attr_data_row[(PDU_attr_bufr->columns * i) +                              n_name_col], attr_text) == 0)
+       {
+        status = MEMwrite_data(PDU_data_bufr,PDU_attr_value,1,i + 1);
+        if (status != MEM_S_SUCCESS)
+          {
+           msg = (char *)PDUtranslate_message(PDM_E_WRITE_BUFFER);
+           FIfld_set_text(forms.part_operations_form_id,FI_MSG_FIELD,msg);
+            break;
+           }
+        else
+          {
+           found = 1;
+          }
+       }
+
+       if (found == 1)
+         break;
+       } 
+  exit;
+  }
+  else if (ModifyPartForm)
+    {
+    FIfld_get_active_row ( ModifyPartForm,  DYN_NAMES,  &act_row,  &pos );
+    FIfld_set_text(ModifyPartForm, DYN_NAMES, act_row, 2, 
+                   PDU_attr_value, FALSE);
+    exit;
+    }
+  else if ((PDU_form_id == forms.parametric_parts_form_id) && 
+           (PDU_form_id != 0))
+    {
+    status = PDUupdate_parmpart_function_value(PDU_attr_value);
+    _pdm_status("PDUupdate_parmpart_function_value", status);
+    exit;
+    }
+  else if ((PDU_form_id == forms.attr_value_form_id) && 
+           (PDU_form_id != 0))
+    {
+    status = PDUupdate_AttrForm_function_value();
+    _pdm_status("PDUupdate_AttrForm_function_value", status);
+    exit;
+    }
+    
+  else if ((PDU_form_id == forms.dynamic_attr_form_id) && 
+           (PDU_form_id != 0))
+    {
+    status = PDUupdate_dynamics();
+    _pdm_status("PDUupdate_dynamics", status);
+    }
+exit;  
+}

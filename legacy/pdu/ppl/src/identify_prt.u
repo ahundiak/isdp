@@ -1,0 +1,283 @@
+/*
+ * Author: Jamal Shakra
+ * Date: 12-14-91
+ * This command feeds the object id of a part to the command queue.
+ */
+
+ 
+#if ! defined(__sgi)
+#include        "unistd.h"
+#endif
+#include 	"ciminimum.h"
+#include 	"cimacros.h"
+#include 	"PDUstr.h"
+#include 	"PDUpart.h"
+#include        "ex.h"
+#include        "igrdp.h"
+#include 	"partmacros.h"
+#include 	"part.h"
+#include	"cieveryone.h"
+#include	"cimacros.h"
+#include	"acdef.h"
+#include	"acmacros.h"
+#include	"ACdb_info.h"
+#include	"macro.h"
+#include        "grdpbdef.h"
+#include        "grdpb.h"
+#include        "grdpbmacros.h"
+#include        "growner.h"
+#include	"igrdp.h"
+#include	"madef.h"
+#include	"exdef.h"
+#include	"exmacros.h"
+#include	"dp.h"
+#include	"dpdef.h"
+#include	"grcoordsys.h"
+#include	"csdef.h"
+#include	"msdef.h"
+#include	"PDUint.h"
+#include	"PDUintdef.h"
+#include 	"dpmacros.h"
+#include 	"comiscmac.h"
+#include 	"coplcmac.h"
+#include 	"cotxmacros.h"
+#include 	"partdef.h"
+#include        "DItypedef.h"
+#include        "DIdef.h"
+#include        "DIglob.h"
+#include        "DIprims.h"
+
+
+
+/* External function definition */
+extern		_pdm_debug();
+extern		_pdm_status();
+extern		GRdpb_get();
+extern          PDUfill_in_string();
+extern          DImain();
+extern          malloc();
+extern          DIgive_pathname();
+extern          COpart_attr_func();
+extern          DIfind();
+extern          PDUget_coord_sys_id();
+extern          PDUunquote();
+extern          DIfast_trans();
+extern          free();
+ 
+ 
+/* External variable definition */
+extern          IGRchar *PDU_parent_no;
+extern          IGRchar *PDU_child_no;
+extern          IGRint  PDU_level_no;
+extern          IGRchar *PDU_assy_catalog;
+extern          IGRchar *PDU_assy_partid;
+extern          IGRchar *PDU_assy_revision;
+extern          IGRchar *PDU_usage_id;
+extern          IGRint  PDU_command;
+extern   struct GRid    *PDU_part_id;
+
+
+
+main()
+{
+
+ struct GRmd_env  mod_env;
+ struct GRid      part_id;		
+ struct GRid      *part_ids;
+ IGRchar          value[MAX_VALUE];
+ IGRint           type;
+ IGRlong          msg, sts;
+ IGRlong          status;
+ IGRchar          numrev[DI_PATH_MAX];
+ IGRchar          parts_dir[DI_PATH_MAX];
+ IGRchar          macros_dir[DI_PATH_MAX];
+ IGRchar          attr_value[MAX_VALUE];
+ IGRint           part_count;
+ IGRint           i;
+ IGRshort         found;
+ OM_p_CLASSLIST   classlist;
+ OMuword          classid;
+ IGRlong	  NumberOfBytes, BytesReceived;
+
+
+ _pdm_debug("In the identify_prt ppl program", 0);
+
+ /* Initialize local variables */
+ part_ids = NULL;
+
+ /* Check to see if need only put available part id on queue */
+ if (PDU_command == PDC_M_IDENTIFY_PART)
+    {
+     ci$put(obj = PDU_part_id->objid, pos = FRONT);
+
+     /* Free PDU_part_id */
+     if (PDU_part_id)
+        {
+         free(PDU_part_id);
+         PDU_part_id = NULL;
+        }
+
+     /* Abort command */
+     exit;
+    }
+
+ /* Allocate PDU_part_id */
+ if (PDU_part_id == NULL)
+    PDU_part_id = (struct GRid *) malloc (sizeof(struct GRid));
+
+ _pdm_debug("PDU_usage_id = <%s>", PDU_usage_id);
+
+ /* Get active module information */
+ NumberOfBytes = sizeof(mod_env);
+ status = gr$get_module_env( 
+                           msg = &msg,
+			   sizbuf = &NumberOfBytes,
+			   buffer = &mod_env,
+			   nret = &BytesReceived
+                          );
+
+ /* Check to see if part is parametric */
+ di$give_pathname(
+                  osnum = mod_env.md_id.osnum, 
+                  pathname = macros_dir
+                 );
+ strcat(macros_dir, ":PDU:macro_parts:");
+ strcat(macros_dir, PDU_usage_id);
+
+ status = di$translate(
+                       objname = macros_dir,
+                       p_objid = &(PDU_part_id->objid) 
+                      );
+
+ if (status == DIR_S_SUCCESS)
+    {
+     _pdm_debug("part <%s> is parametric", PDU_usage_id);
+     PDU_part_id->osnum = mod_env.md_id.osnum;
+
+     exit;
+    }
+
+ /* Construct number!revision string */
+ sprintf(
+         numrev,
+         "%s!%s",
+         PDU_assy_partid,
+         PDU_assy_revision
+        ); 
+
+ 
+ /* Get the <:filename:parts:catalog:number!revision> path */
+ di$give_pathname(osnum = mod_env.md_id.osnum, pathname = parts_dir);
+
+ strcat(parts_dir,":");
+ strcat(parts_dir,"parts");
+ strcat(parts_dir,":");
+ strcat(parts_dir, PDU_assy_catalog);
+ strcat(parts_dir,":");
+ strcat(parts_dir,numrev);
+ strcat(parts_dir,":");
+ strcat(parts_dir,"*");
+
+ _pdm_debug("Part directory = <%s>", parts_dir);
+
+ /* Get the class id of GRpart */
+ status = om$get_classid(
+                         classname = "GRpart",
+                         p_classid = &classid
+                        );
+ _pdm_debug("GRpart class id = %d", classid);
+
+ /* Malloc classlist */
+ classlist = (struct OM_sd_classlist *) malloc (sizeof
+                        (struct OM_sd_classlist));
+
+ /* Initialize certain field in classlist */
+ classlist->w_count = 1;
+ classlist->w_flags = OM_CLST_internal;
+ classlist->p_classes = &classid;
+
+ /* Extract list of GRpart objects from given parts path */
+ status = di$dump (
+                   regexp = parts_dir,
+                   p_classes = classlist,
+                   grids = &part_ids,
+                   ptr = &part_count
+                  );
+
+ /* Extract GRpart ids from object space */
+ if (part_count > 0 )
+    {
+     _pdm_debug("%d PDU GRpart(s) were found", part_count);
+
+     /* Look for GRpart whose serial number matches that of part */
+     found = FALSE;
+     for (i = 0; i < part_count; i = i + 1)
+         {
+          /* Extract usage id from each GRpart */
+          co$part_get_attr (
+                            msg = &msg,
+                            mod_env = &mod_env,
+                            part = &part_ids[i],
+                            attr = "usage_id",
+                            value = attr_value,
+                            type = &type
+                           );
+
+          /* Unqoute usage id */
+          PDUunquote(attr_value);
+
+          /* Compare usage ids */
+          if (strcmp(attr_value, PDU_usage_id) == 0)
+             {
+              _pdm_debug("GRpart found", 0);
+              part_id.objid = part_ids[i].objid;
+              part_id.osnum = part_ids[i].osnum;
+              found = TRUE;
+
+              _pdm_debug("part_id.objid = %d", part_id.objid);
+              break;
+             }
+
+         } /* end for loop */
+
+     if (found == FALSE)
+        {
+         _pdm_debug("SEVERE error: No corresponding PDU part found", 0);
+
+         if (part_ids)
+            free( (IGRchar *) part_ids);
+
+         exit;
+        }
+    }
+
+ else
+    {
+     _pdm_debug("SEVERE error: No parts found", 0);
+     exit;
+    }
+
+ /* Free variables */
+ if (part_ids)
+    free( (IGRchar *) part_ids);
+
+ /* Assign part id to PDU_part_id */
+ if (PDU_command == PDC_M_REPLACE_PART)
+    {
+     PDU_part_id->objid = part_id.objid;
+     PDU_part_id->osnum = part_id.osnum;
+     exit;
+    }
+
+ /* Feed GRpart's object id to the queue */
+ ci$put(obj = part_id.objid, pos = FRONT);
+
+
+}
+
+int  delay()
+ {
+  int  i;
+
+  for (i = 0; i < 20000; i = i + 1);
+ }

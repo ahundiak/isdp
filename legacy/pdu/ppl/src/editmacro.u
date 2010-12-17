@@ -1,0 +1,137 @@
+/* Generic file to edit a macro definition */
+
+#include "cieveryone.h"
+#include "cimacros.h"
+#include "OMminimum.h"
+#include "igetypedef.h"
+#include "igrtypedef.h"
+#include "igr.h"
+#include "igrdp.h"
+#include "dpdef.h"
+#include "dp.h"
+#include "gr.h"
+#include "fontdef.h"
+#include "font.h"
+#include "gotextdef.h"
+#include "gotext.h"
+#include "grdpbdef.h"
+#include "grdpb.h"
+#include "grdpbmacros.h"
+#include "OMmacros.h"
+#include "dpmacros.h"
+#include "asdef.h"
+#include "asmacros.h"
+#include "ci_mac_def.h"
+#include "ci_macro.h"
+#include "OMprimitives.h"
+#include "parametric.h"
+#include "expmacros.h"
+#include "nddef.h"
+#include "asbox.h"
+#include "PDUerror.h"
+
+/* macro library include files */
+#include "acdef.h"
+#include "acmacros.h"
+#include "macro.h"
+
+/* mold include files */
+#include "MOmacros.h"
+
+extern char *malloc();
+extern char *realloc();
+extern free();
+extern ACconstruct_save();
+extern PDUmessage();
+extern PDUtranslate_message();
+extern _pdm_debug();
+
+int sts, msg ;
+
+#include "edmac.h"
+#include "PDUprompt.h"
+
+main()
+{
+	int mac_num_temp, nb_sup, i , props;
+	char macname[100] ; 
+	struct GRid ci_mac , hdr ;
+	struct GRmd_env my_env ;
+	struct stemp *temp_desc ,  *newtemp, *new_desc ;
+	struct sup    sup[10], *sup1;
+	char   *dyntemp[10];
+	int    numdyn;
+        char   prompt_msg;
+
+	PDUmessage(PDM_I_EDIT_MACRO_DEF,'s');
+        prompt_msg = NULL;
+
+	ci$get_module_info( md_env = &my_env );
+
+	prompt(PDP_P_ENTER_MACRO_NAME);
+
+	ci$get(string = macname);
+
+	ci_mac.objid = NULL_OBJID ;
+	ci_mac.osnum = my_env.md_id.osnum ;
+
+	sts = ci$send(msg = message ACcpx.ACattach(&msg,macname),
+                 targetid = ci_mac.objid ,
+                 targetos = ci_mac.osnum );
+
+/*	write("objid : ", ci_mac.objid, ci_mac.osnum,"\n");*/
+
+	/* Get macro header object */
+	sts = ci$send( msg = message ACcpx.find_macro( &hdr),
+                 targetid = ci_mac.objid,
+                 targetos = ci_mac.osnum);
+
+	_MO_omerr_chk("find_macro : could not find macro", sts, wrapup);
+
+/*	write("objid : ", hdr.objid, hdr.osnum,"\n");*/
+
+	/* Now check if this macro is already edited */
+
+	if( !PDUis_macro_edited(&hdr) )
+	{
+		numdyn = 0;
+                prompt_msg = (char *)PDUtranslate_message(PDP_P_ENTER_DYN_TEMP);
+		while(1)
+		{
+			dyntemp[numdyn] = (char *)malloc(50);
+			ci$get( string = dyntemp[numdyn],
+				rc = sts,
+				prompt = prompt_msg);
+			
+			if( dyntemp[numdyn][0] == '\0' )
+				break;
+
+			numdyn = numdyn + 1;
+			if( numdyn == 10 )
+				break;
+		}	
+/*		write(" The templates mapped to dynamic collection are ...\n");
+		for(i=0;i<numdyn;i=i+1)
+			write("dyntemp[",i,"]=",dyntemp[i],"\n");
+*/			 
+		if( PDUedit_macro(&hdr, dyntemp, numdyn) )
+		{
+                        PDUmessage(PDM_S_SUCCESS,'s');
+                        prompt_msg = 
+                         (char *)PDUtranslate_message(PDP_P_SAVE_WORK);
+			ci$get(prompt="Save working lib with new defintion?",
+				 string = macname);
+			if( macname[0] == 'y' )
+			{
+				sts = ac$save_wd();
+				if( !( sts&1) )write("save macro lib failed\n");
+			}
+		}
+		else
+                        PDUmessage(PDM_E_FAILURE);
+	}
+	else
+                        PDUmessage(PDM_I_MACRO_EDITED);
+wrapup:
+	exit;
+}	

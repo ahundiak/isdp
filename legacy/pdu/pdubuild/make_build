@@ -1,0 +1,1130 @@
+echo "***************************************************************"
+echo "make_build started at:"
+date
+echo "***************************************************************"
+#set -x
+# make_pdu -- icom copy out ckins since a given date and makes the pdu product
+#
+passwd=`grep root /etc/passwd | awk -F: '{print $2}'`
+if [ "$passwd" ]
+then
+my_id=`ps -l -p $$ | awk '{print $3}'`
+my_id=`echo $my_id | awk '{print $2}'`
+if [ "$my_id" -ne 0 ]
+then
+echo "Must be super-user to execute!"
+exit 0
+fi
+fi
+
+#if [ $# -lt 1 ]
+#then
+#  echo "usage: $0 <post_date> <local_node>"
+#  echo "  defaults if - or \"\""
+#  echo "    date:   today"
+#  exit 1
+#fi
+
+#Determine node
+NODE=`uname -n`
+
+#Determine logname
+#This will give the original login name instead of root since you must be
+#logged into root to run this script.
+
+export LOGNAME="`who am i | awk '{print $1}'`"
+echo "LOGNAME is $LOGNAME"
+echo 
+
+#Initialize Login Variables for testing if data exists within each
+PDMLOGIN=NULL
+PDULOGIN=NULL
+NORMLOGIN=NULL
+
+echo
+#echo
+#echo "*******  IF YOU WISH TO CLEAR OUT ALL LOGINS SO FILES CANNOT   *******" 
+#echo "           BE CHECKED IN AND TRs CANNOT BE UPDATED, REBOOT"
+#echo "            PDMDEL NOW TO CLEAN UP THOSE STILL LOGGED IN!"  
+#echo ""
+#echo ""
+echo ""
+echo "THINGS TO DO BEFORE A BUILD IS KICKED OFF"
+echo "__________________________________________"
+echo ""
+echo "Edit the version number and date of the product.def and README files"
+echo "of the following directories before the deliver scripts inside the"
+echo "make_build script are run:"
+echo ""
+echo "o $PDU/delivery/pdu"
+echo "o $PDU/delivery/pdudp"
+echo "o $PDU/delivery/pdusrc"
+echo "o $PDM/delivery/pdm"
+echo "o $PDM/delivery/pdmsrc"
+echo "o $NORM/pdmnormdp/util/bin" 
+echo ""
+echo "NOTE: If you have not edited these files you may want to <CNTR> c to"
+echo "      stop the build, check out these files, modify them, and"   
+echo "      check them back in. If this is done, the delta scripts will"
+echo "      copy them out during the build and therefore the build will"
+echo "      have the appropriate version and date. If you do not do this,"
+echo "      you run the risk of overwritting the changes your are making"
+echo "      during the build with a delta copy of an earlier version of"
+echo "      these files."
+echo ""
+echo "Do you wish to continue (y/n)? [y] \c"
+read CONTINUE
+if [ "$CONTINUE" = "n" ]
+then
+echo
+echo "Exiting from build procedure."
+echo
+exit 0 
+else
+echo "Build is starting now."
+echo""
+fi
+echo ""
+echo ""
+echo "MAKE_BUILD PROCEDURE SETUP"
+echo "__________________________"
+echo
+echo
+echo "////////////////////////"
+echo "Source Retrieval Section"
+echo "////////////////////////"
+echo
+echo
+echo "Do you wish to copy out all source - i.e. copy_out_wad (y/n)? [n] \c"
+read COW
+export COW=$COW
+echo
+
+if [ "$COW" = "y" ]
+then
+echo
+echo "NOTE:"
+echo "To perform a copy out of all source, ICOM will create the product"
+echo "directory structure in a directory on pdmdel, and then create a cpio"
+echo "file of that directory structure which is sent to a login you will"
+echo "choose. This cpio file is then uncompressed, updating that directory"
+echo "structure with the most up-to-date files from ICOM. Therefore, there"
+echo "must be enough space on the pdmdel partition you choose to copy out to,"
+echo "to create the directory structure."
+echo
+echo "The directory you choose does not have to exist."
+echo "If you choose a directory that does exist, all data in that directory"
+echo "will be lost."
+echo "If you choose more than one source platform to retrieve, the pdmdel"
+echo "login you choose will be remove and recreated after each platform."
+echo
+echo
+echo "Please give the PDMDEL directory to copy out source to: \c"
+read ICOMDIR
+echo
+
+while [ "$ICOMDIR" = "" ]
+do
+echo "Please give PDMDEL directory to copy out source to: \c"
+read ICOMDIR
+echo
+done
+
+ICOMDIR=$ICOMDIR
+echo "The pdmdel directory you have chosen is $ICOMDIR."
+fi
+
+if [ "$COW" != "y" ]
+then
+echo
+echo "Do you wish to retrieve source prior to a particular date (y/n)? [n] \c"
+read DELTA
+export DELTA=$DELTA
+if [ "$DELTA" = "y" ]
+then
+echo "Please give the date: (mmddyy) \c"
+read SINCE
+echo
+echo "Please give the PDMDEL directory to delta out source to: \c"
+read ICOMDIR
+echo
+
+while [ "$ICOMDIR" = "" ]
+do
+echo "Please give PDMDEL directory to delta out source to: \c"
+read ICOMDIR
+echo
+done
+
+fi
+fi
+echo
+
+if [ "$COW" = "y" ] || [ "$DELTA" = "y" ]
+then
+echo "Do you wish to retrieve PDM source (y/n)? [y] \c"
+read RETRIEVE_PDM
+if [ "$RETRIEVE_PDM" != "n" ]
+then
+echo "Please give login.password to retrieve PDM source to."
+echo "Example - pdmlogin.pdmpassword: \c"
+read PDMLOGIN
+export PDMLOGIN=$PDMLOGIN
+export PDMLOGNAME=`echo $PDMLOGIN | awk -F. '{print $1}'`
+fi
+
+echo
+echo "Do you wish to retrieve PDU source (y/n)? [y] \c"
+read RETRIEVE_PDU
+if [ "$RETRIEVE_PDU" != "n" ]
+then
+echo "Please give login.password to retrieve PDU source to."
+echo "Example - pdulogin.pdupassword: \c"
+read PDULOGIN
+export PDULOGIN=$PDULOGIN
+export PDULOGNAME=`echo $PDULOGIN | awk -F. '{print $1}'`
+fi
+
+echo
+echo "Do you wish to retrieve PDMNORM source (y/n)? [y] \c"
+read RETRIEVE_NORM
+if [ "$RETRIEVE_NORM" != "n" ]
+then
+echo "Please give login.password to retrieve PDMNORM source to."
+echo "Example - normlogin.normpassword: \c"
+read NORMLOGIN
+export NORMLOGIN=$NORMLOGIN
+echo
+fi
+echo
+fi
+
+if [ "$COW" != "y" ]
+then
+if [ "$DELTA" != "y" ]
+then
+echo
+echo "NOTE: No files are being retrieved from ICOM." 
+echo "Do you wish to continue (y/n)? [y] \c"
+read CONTINUE
+if [ "$CONTINUE" = "n" ]
+then
+echo
+echo "Exiting from build procedure."
+echo
+exit 0
+fi
+fi
+fi
+
+echo
+echo
+echo "//////////////////////////"
+echo "Source Compilation Section"
+echo "//////////////////////////"
+echo
+echo
+echo "Do you wish to compile any source platforms (y/n)? [y] \c"
+read COMPILE
+echo
+
+if [ "$COMPILE" != "n" ]
+then
+echo
+echo "Do you wish to compile the PDM directories (y/n)? [y] \c"
+read PDMCOMP
+echo
+echo
+
+echo "Do you wish to compile the PDU directories (y/n)? [y] \c"
+read PDUCOMP
+echo
+echo
+
+if [ "$CPU" != "sun" ]
+then
+echo "Do you wish to compile the PDMNORM directories (y/n)? [y] \c"
+read PDMNORMCOMP
+echo
+echo
+fi
+
+echo "Will you be compiling on a clipper or sun workstation (clip/sun)? [clip] \c"
+read CPU
+echo
+echo
+echo "Do you wish to compile for a different cpu than your workstation (y/n)? [n] \c"
+read CHGTARG
+echo
+
+if [ "$CHGTARG" = "y" ]
+then
+echo "NOTE: c100 should be entered for c300 workstations."
+echo "Please enter target cpu. (c100/c400): \c"
+read TARGET
+echo
+fi
+
+if [ "$CHGTARG" = "y" ]
+then
+while [ "$TARGET" != "c100" ] && [ "$TARGET" != "c400" ]
+do
+echo "Please enter target cpu. (c100/c400): \c"
+read TARGET
+echo
+done
+fi
+
+if [ "$TARGET" = "c100" ] || [ "$TARGET" = "c400" ]
+then
+export TARG=$TARGET
+echo
+echo "Target cpu is $TARG"
+echo
+fi
+
+if [ "$CHGTARG" != "y" ]
+then
+if [ "$CPU" != "sun" ]
+then
+case `inqcpuid`
+in
+C300 | c300 )
+TARG="c100"
+;;
+C400 | c400 )
+TARG="c400"
+;;
+* )
+TARG="c100"
+;;
+esac
+
+echo "NOTE: Your clipper CPU id is $TARG"
+echo
+echo
+fi
+fi
+
+echo "If your source has been compiled previouly with a different cpu target"
+echo "the .o files must be remove to avoid a mix-match of c100 and c400"
+echo "libraries."
+echo "Do you wish to remove .o files (y/n)? [n] \c"
+read REMOVEOBJ
+echo
+
+if [ "$REMOVEOBJ" = "y" ]
+then
+export REMOVEOBJ=y
+fi
+
+echo "Recompile message files (y/n)? [n] \c"
+read COMP_MSG
+echo
+
+if [ "$COMP_MSG" = "y" ]
+then
+export COMP_MSG=y
+fi
+
+echo
+echo "///////////////////////"
+echo "Source Delivery Section"
+echo "///////////////////////"
+echo
+echo
+echo "Do you wish to collect products for delivery within a build (y/n)? [y] \c"
+read DELIVER
+echo
+echo
+if [ "$DELIVER" != "n" ]
+then
+echo "Please give post date/time for collecting and delivering products."
+echo "Ex. 07271600 means July 27th @ 4:00 p.m.: \c"
+read POSTDATE
+echo
+echo "Please give version reference for products to be collected."
+echo "This number will be used for PDU, PDM, and PDMNORM."
+echo "Ex. version 2.4.x.x would be reference with 24: \c"
+read VERREF
+export VERREF=$VERREF
+echo
+
+while [ "$VERREF" = "" ]
+do
+echo "Please give version reference for our products."
+read VERREF
+export VERREF=$VERREF
+echo
+done
+
+echo "Would you like the PDM/PDU to be built for reactive loading (y/n)? [n] \c"
+read REACTIVE
+echo
+fi
+
+if [ "$REACTIVE" != "n" ] && [ "$REACTIVE" != "" ]
+then
+export REACTIVE=y
+fi
+
+fi #COMPILE
+
+
+echo 
+echo "MAKE_BUILD PROCEDURE SETUP COMPLETE"
+echo
+echo "___________________________________"
+echo
+echo
+
+if [ "$COMPILE" = "n" ]
+then
+if [[ "$DELTA" = "y" ]] || [[ "$COW" = "y" ]]
+then
+echo
+echo "NOTE: No products will be compiled. Only source will be retieved."
+echo
+fi
+fi
+
+if [ "$COMPILE" = "n" ]
+then
+if [[ "$DELTA" != "y" ]] && [[ "$COW" != "y" ]]
+then
+echo "You have selected no actions to perform."
+echo "Exiting from build procedure."
+echo
+fi
+fi
+
+if [ "$COMPILE" != "n" ]
+then
+if [[ "$DELTA" != "y" ]] && [[ "$COW" != "y" ]]
+then
+echo "NOTE: Build will be performed on existing source."
+echo
+fi
+fi
+
+if [ "$COMPILE" != "n" ]
+then
+if [ "$CPU" != "sun" ]
+then
+echo "Exporting TARG to $TARG to perform the $TARG build"
+echo ""
+export TARG=$TARG
+echo ""
+echo "Setting compiler to compile source for a $TARG workstation"
+export COMP=acc
+export COMP_OPT="-ansi -O3 -Atarg=$TARG"
+
+echo "TARG is set to:"
+echo $TARG
+echo ""
+echo "COMP is set to:"
+echo $COMP
+echo ""
+echo "COMP_OPT is set to:"
+echo $COMP_OPT
+echo ""
+
+elif [ "$CPU" = "sun" ]
+then
+echo "Exporting TARG to sparc to perform the SUN build"
+echo ""
+export TARG=sparc
+echo ""
+echo "Set compiler to compile source for a SUN workstation"
+export COMP=acc
+export COMP_OPT="-Xa -c -PIC"
+
+echo "TARG is set to:"
+echo $TARG
+echo ""
+echo "COMP is set to:"
+echo $COMP
+echo ""
+echo "COMP_OPT is set to:"
+echo $COMP_OPT
+echo ""
+fi
+
+fi
+
+#USER WANTS A DELTA INSTEAD OF A COPY_OUT_WAD 
+if [ "$DELTA" = "y" ]
+then
+echo "Removing $PDU/pdu24.*"
+echo ""
+cd $PDU
+rm pdu24.*
+echo ""
+echo "Removing $PDM/pdm24.*"
+echo ""
+cd $PDM
+rm pdm24.*
+echo "Removing $NORM/pdmnorm24.*"
+echo ""
+cd $NORM
+rm pdmnorm24.*
+echo ""
+echo "FMU to pdmdel and run delta_all_src"
+echo ""
+echo "Lock pdmdel logins"
+echo ""
+fmu pdmdel.root.mdel com /usr/icom/./lock_logins
+echo "***************************************************************"
+echo "$TARG -- delta_all_src started at:"
+date
+echo "***************************************************************"
+fmu pdmdel.root.mdel com /usr/icom/delta_all_src $SINCE $NODE $PDMLOGIN $PDULOGIN $NORMLOGIN $ICOMDIR
+echo "***************************************************************"
+echo "$TARG -- delta_all_src finished at:"
+date
+echo "***************************************************************"
+echo "Copying out source is complete"
+echo ""
+echo "Unlock pdmdel logins"
+echo ""
+fmu pdmdel.root.mdel com /usr/icom/./unlock_logins
+echo ""
+
+if [ "$RETRIEVE_PDU" != "n" ]
+then 
+echo "cd $PDU"
+echo ""
+cd $PDU
+echo "Uncompress the pdu24* cpio file"
+echo ""
+cat pdu24* | compress -d | cpio -ivmud
+fi
+
+if [ "$RETRIEVE_PDM" != "n" ]
+then
+echo "cd $PDM"
+echo ""
+cd $PDM
+echo "Uncompress the pdm24* cpio file"
+echo ""
+cat pdm24* | compress -d | cpio -ivmud
+echo ""
+fi
+
+if [ "$RETRIEVE_NORM" != "n" ]
+then
+echo "cd $NORM"
+echo ""
+cd $NORM
+echo "Uncompress the pdmnorm24* cpio file"
+echo ""
+cat pdmnorm24* | compress -d | cpio -ivmud
+echo ""
+fi
+
+#USER WANTS A COPY_OUT_WAD INSTEAD OF A DELTA 
+elif [ "$COW" = "y" ]
+then
+echo ""
+echo "Removing $PDU/pdu24.*"
+echo ""
+cd $PDU
+rm pdu24.*
+echo ""
+echo "Removing $PDM/pdm24.*"
+echo ""
+cd $PDM
+rm pdm24.*
+echo "Removing $NORM/pdmnorm24.*"
+echo ""
+cd $NORM
+rm pdmnorm24.*
+echo "FMU to pdmdel and run copy_all_src"
+echo ""
+#echo "Sending message that pdmdel is rebooting"
+#echo ""
+#$PDU/./sendmsg
+echo "Lock pdmdel logins"
+echo ""
+fmu pdmdel.root.mdel com /usr/icom/./lock_logins
+echo "FMU to pdmdel.icom and run copy_all_src"
+echo ""
+echo "***************************************************************"
+echo "$TARG -- copy_all_src started at:"
+date
+echo "***************************************************************"
+fmu pdmdel.root.mdel com /usr/icom/copy_all_src $NODE $PDMLOGIN $PDULOGIN $NORMLOGIN $ICOMDIR
+echo "***************************************************************"
+echo "$TARG -- copy_all_src finished at:"
+date
+echo "***************************************************************"
+echo "Copying out source is complete"
+echo ""
+echo "Unlock pdmdel logins"
+echo ""
+fmu pdmdel.root.mdel com /usr/icom/./unlock_logins
+echo ""
+
+if [ "$RETRIEVE_PDU" != "n" ]
+then
+echo "cd $PDU"
+echo ""
+cd $PDU
+echo "Uncompress the pdu24* cpio file"
+echo ""
+cat pdu24* | compress -d | cpio -ivmud
+echo
+fi
+
+if [ "$RETRIEVE_PDM" != "n" ]
+then
+echo "cd $PDM"
+echo ""
+cd $PDM
+echo "Uncompress the pdm24* cpio file"
+echo ""
+cat pdm24* | compress -d | cpio -ivmud
+echo ""
+fi
+
+if [ "$RETRIEVE_NORM" != "n" ]
+then 
+echo "cd $NORM"
+echo ""
+cd $NORM
+echo "Uncompress the pdmnorm24* cpio file"
+echo ""
+cat pdmnorm24* | compress -d | cpio -ivmud
+echo ""
+fi
+
+fi
+
+if [[ "$DELTA" = "y" ]] || [[ "$COW" = "y" ]]
+then
+echo
+echo "Retrieval of source is complete."
+echo
+fi
+
+if [ "$COMPILE" != "n" ]
+then
+if [ "$DELIVER" != "n" ]
+then
+echo ""
+echo "Receiving HELPFILE and HELPINFO"
+echo ""
+cd $PDU/config/english
+fmu pdmdel.build.build rec HELPFILE .
+fmu pdmdel.build.build rec HELPINFO .
+cd 
+echo ""
+echo "Receiving READMEAPI"
+echo ""
+cd $PDU/delivery/pdu
+fmu pdmdel.build.build rec READMEAPI .
+cd
+echo "Receiving man_pdu"
+echo ""
+fmu pdmdel.build.build rec man_pdu .
+cp man_pdu $PDU/config/english
+rm man_pdu
+echo ""
+echo "Copying $DBA/support to $PDU/dbasupport"
+echo ""
+cd $DBA/support
+cp *.* $PDU/dbasupport
+fi
+
+cd $PDU/config/dload
+chmod 777 *
+echo ""
+
+echo "removing libxc links to /usr/lib"
+echo
+rm /usr/lib/libxcmalloc.a
+rm /usr/lib/libdxcmalloc.a
+rm /usr/lib/libxc.a
+
+if [ "$TARG" = "c400" ]
+then
+echo "Linking libxc c400 libraries to /usr/lib"
+echo
+ln -s /usr4/ip32/libxc/lib/c400/libxcmalloc.a /usr/lib
+ln -s /usr4/ip32/libxc/lib/c400/libdxcmalloc.a /usr/lib
+ln -s /usr4/ip32/libxc/lib/c400/libxc.a /usr/lib
+else
+echo "Linking libxc c100 libraries to /usr/lib"
+echo
+ln -s /usr4/ip32/libxc/lib/c100/libxcmalloc.a /usr/lib
+ln -s /usr4/ip32/libxc/lib/c100/libdxcmalloc.a /usr/lib
+ln -s /usr4/ip32/libxc/lib/c100/libxc.a /usr/lib
+fi
+
+#export compiler options
+
+echo
+echo "Setting MK options"
+echo
+if [ "$PDUVERSION" = "31" ]
+then
+  if [ "$TARG" = "c400" ]
+  then
+  export MKDOPT="-DCLIX -DSYSV -DBSD -DENV5 -DLITTLE_ENDIAN -D__APGE__ -D__cpu_c400__ -DRISV4"
+  export MKMKOPT="-DCLIX -DSYSV -DBSD -DENV5 -DLITTLE_ENDIAN -D__APGE__ -D__cpu_c400__ -DRISV4 -i ${GRNUC}/Clipper.mkmk"
+  else
+  export MKDOPT="-DCLIX -DSYSV -DBSD -DENV5 -DLITTLE_ENDIAN -D__APGE__ -DRISV4"
+  export MKMKOPT="-DCLIX -DSYSV -DBSD -DENV5 -DLITTLE_ENDIAN -D__APGE__ -DRISV4 -i ${GRNUC}/Clipper.mkmk"
+  fi
+fi
+
+if [ "$PDUVERSION" = "32" ]
+then
+  if [ "$TARG" = "c400" ]
+  then
+  export MKDOPT="-DCLIX -DSYSV -DBSD -DENV5 -DLITTLE_ENDIAN -D__APGE__ -D__cpu_c400__ -DRISV5"
+  export MKMKOPT="-DCLIX -DSYSV -DBSD -DENV5 -DLITTLE_ENDIAN -D__APGE__ -D__cpu_c400__ -DRISV5 -i ${GRNUC}/Clipper.mkmk"
+  else
+  export MKDOPT="-DCLIX -DSYSV -DBSD -DENV5 -DLITTLE_ENDIAN -D__APGE__ -DRISV5"
+  export MKMKOPT="-DCLIX -DSYSV -DBSD -DENV5 -DLITTLE_ENDIAN -D__APGE__ -DRISV5 -i ${GRNUC}/Clipper.mkmk"
+  fi
+fi
+
+echo $MKDOPT
+echo $MKMKOPT
+echo
+
+if [ "$COMP_MSG" = "y" ]
+then
+  echo
+  echo "Compiling message files"
+  echo
+  cd $PDU/messages
+  ./umsall
+  echo
+fi
+
+if [ "$PDMCOMP" != "n" ]
+then
+echo "PDM will be compiled for $TARG"
+echo
+cd $PDU/config/dload/init
+rm PDM*.o
+echo "cd $PDM/make"
+echo ""
+cd $PDM/make
+echo "Running $PDM/make/makepdm"
+echo ""
+echo "***************************************************************"
+echo "$TARG -- makepdm started at:"
+date
+echo "***************************************************************"
+./makepdm
+echo "***************************************************************"
+echo "$TARG -- makepdm finished at:"
+date
+echo "***************************************************************"
+
+cd $PDU/pdubuild
+echo "Run genpdmapi.sh"
+echo
+./genpdmapi.sh
+echo
+
+#echo "Moving all $PDM/lib/*.a files to $PDM/lib/$TARG"
+#echo ""
+#cd $PDM/lib
+#mv *.a $PDM/lib/$TARG
+
+if [ "$DELIVER" != "n" ]
+then
+cd $PDM/delivery
+echo "Calling collect_pdm"
+echo ""
+echo "***************************************************************"
+echo "$TARG -- collect_pdm started at:"
+date
+echo "***************************************************************"
+
+$PDM/delivery/./collect_pdm $POSTDATE
+
+echo "***************************************************************"
+echo "$TARG -- collect_pdm finished at:"
+date
+echo "***************************************************************"
+
+echo "Calling deliver_pdm"
+echo ""
+echo "***************************************************************"
+echo "$TARG -- deliver_pdm started at:"
+date
+echo "***************************************************************"
+
+$PDM/delivery/./deliver_pdm $POSTDATE
+
+echo "***************************************************************"
+echo "$TARG -- deliver_pdm finished at:"
+date
+echo "***************************************************************"
+
+echo "Calling collect_pdmsrc"
+echo ""
+echo "***************************************************************"
+echo "$TARG -- collect_pdmsrc started at:"
+date
+echo "***************************************************************"
+
+$PDM/delivery/./collect_pdmsrc $POSTDATE
+
+echo "***************************************************************"
+echo "$TARG -- collect_pdmsrc finished at:"
+date
+echo "***************************************************************"
+
+echo "Calling deliver_pdmsrc"
+echo ""
+echo "***************************************************************"
+echo "$TARG -- deliver_pdmsrc started at:"
+date
+echo "***************************************************************"
+
+$PDM/delivery/./deliver_pdmsrc $POSTDATE
+
+echo "***************************************************************"
+echo "$TARG -- deliver_pdmsrc finished at:"
+date
+echo "***************************************************************"
+fi
+fi
+
+if [ "$PDUCOMP" != "n" ]
+then
+echo "PDU will be compiled for $TARG"
+echo
+cd $PDU/config/dload/init
+rm NFMlib.o
+rm PDU*.o
+echo ""
+echo "cd $PDU/ldpdu"
+echo ""
+cd $PDU/ldpdu
+echo ""
+echo "Running makepdu"
+echo ""
+echo "***************************************************************"
+echo "$TARG -- make_pdu started at:"
+date
+echo "***************************************************************"
+./makepdu
+echo "***************************************************************"
+echo "$TARG -- make_pdu finished at:"
+date
+echo "***************************************************************"
+
+cd $PDU/pdubuild
+echo "Run genpduapi.sh"
+echo
+./genpduapi.sh
+echo
+
+#echo "Moving all $PDU/lib/*.a files to $PDU/lib/$TARG"
+#echo ""
+#echo "These .a files will collected in the collect_22dp or collect_22dpc4"
+#echo "script depending on c100 or c400 workstations."
+#echo ""
+#cd $PDU/lib
+#mv *.a $PDU/lib/$TARG
+
+echo "Clean up $PDU/config/table directory by deleting files generated by"
+echo "slicbuild which do not need to be deliveried."
+echo
+rm command.cm.new
+rm command.cmd
+rm command.cmp
+rm command.sav
+rm ppl.cmd.new
+rm ppl.cmd
+rm ppl.cmp
+rm ppl.sav
+rm ppl_table.bak
+
+if [ "$DELIVER" != "n" ]
+then
+
+echo "copy $PDM/include/PDMstruct.h to $PDU/include"
+echo ""
+cp $PDM/include/PDMstruct.h $PDU/include/PDMstruct.h
+
+echo "copy $NFM/include/SQLerrordef.h to $PDU/include"
+echo ""
+cp $NFM/include/SQLerrordef.h $PDU/include/SQLerrordef.h
+
+echo "copy $NFM/include/NFMerrordef.h to $PDU/include"
+echo ""
+cp $NFM/include/NFMerrordef.h $PDU/include/NFMerrordef.h
+
+echo "copy $PDU/lib/$TARG/EXfile_form.o to $PDU/config/dload/patch"
+echo ""
+cp $PDU/lib/$TARG/EXfile_form.o $PDU/config/dload/patch
+
+echo "copy $PDU/design/PDUemshooks.o to $PDU/config/dload/patch"
+echo ""
+cp $PDU/design/PDUemshooks.o $PDU/config/dload/patch
+
+echo "copy $PDU/design/PDUdispasm.o to $PDU/config/dload/patch"
+echo ""
+cp $PDU/design/PDUdispasm.o $PDU/config/dload/patch
+
+echo "copy $PDM/pdmapi/src/PMfile_mem.o to $PDU/config/dload/patch"
+echo ""
+cp $PDM/pdmapi/src/PMfile_mem.o $PDU/config/dload/patch
+
+echo "copy $PDU/design/PMplprto.o to $PDU/config/dload/patch"
+echo ""
+cp $PDU/design/PMplprto.o $PDU/config/dload/patch
+
+echo "copy $PDM/pdmapi/src/PMread_buf.o to $PDU/config/dload/patch"
+echo ""
+cp $PDM/pdmapi/src/PMread_buf.o $PDU/config/dload/patch
+
+echo "copy $PDM/pdmapi/src/PMwrite_buf.o to $PDU/config/dload/patch"
+echo ""
+cp $PDM/pdmapi/src/PMwrite_buf.o $PDU/config/dload/patch
+
+echo "copy $PDU/lib/NFMRtic.o to $PDU/config/dload/init"
+echo ""
+cp $PDU/lib/NFMRtic.o $PDU/config/dload/init
+
+echo "copy $PDM/pdmapi/src/PDMapifrmstb.o to $PDM/lib/$TARG"
+echo ""
+cp $PDM/pdmapi/src/PDMapifrmstb.o $PDM/lib/$TARG
+
+echo "copy $PDU/lib/$TARG/PDMnfm_sac.o to $PDU/config/dload/patch"
+echo ""
+cp $PDU/lib/$TARG/PDMnfm_sac.o $PDU/config/dload/patch
+
+echo "copy global files to $PDU/config/dload/init"
+echo 
+cp $PDU/kernal/*.o $PDU/config/dload/init
+
+echo "copy PDUform.o to $PDU/config/dload/init"
+echo 
+cp $PDU/tools/PDUform.o $PDU/config/dload/init
+
+echo "copy PDUstatus.o to $PDU/config/dload/init"
+echo 
+cp $PDU/pdmr/PDUstatus.o $PDU/config/dload/init
+
+echo "copy PDUstartupi.o to $PDU/config/dload/init"
+echo 
+cp $PDU/design/PDUstartupi.o $PDU/config/dload/init
+
+echo "copy $PDU/design/PDUmlibutil.o to $PDU/config/dload/patch"
+echo ""
+cp $PDU/design/PDUmlibutil.o $PDU/config/dload/patch
+
+echo "copy $PDU/pal/src/funk/PDMselprt.o to $PDU/config/dload/init"
+echo ""
+cp $PDU/pal/src/funk/PDMselprt.o $PDU/config/dload/init
+
+echo "cd to $PDU/delivery"
+echo ""
+cd $PDU/delivery
+chmod 777 *
+echo "Calling collect_pdu"
+echo ""
+echo "***************************************************************"
+echo "$TARG -- collect_pdu started at:"
+date
+echo "***************************************************************"
+
+if [ "$TARG" = "c400" ]
+then
+$PDU/delivery/./collect_pdu $POSTDATE
+else
+$PDU/delivery/./collect_pdu1 $POSTDATE
+fi
+
+echo "***************************************************************"
+echo "$TARG -- collect_pdu finished at:"
+date
+echo "***************************************************************"
+
+echo "Calling deliver_pdu"
+echo ""
+echo "***************************************************************"
+echo "$TARG -- deliver_pdu started at:"
+date
+echo "***************************************************************"
+
+if [ "$TARG" = "c400" ]
+then
+$PDU/delivery/./deliver_pdu $POSTDATE
+fi
+
+echo "Calling collect_pdudp"
+echo ""
+echo "***************************************************************"
+echo "$TARG -- collect_pdudp started at:"
+date
+echo "***************************************************************"
+
+if [ "$TARG" = "c400" ]
+then
+$PDU/delivery/./collect_pdudp $POSTDATE
+else
+$PDU/delivery/./collect_pdudp1 $POSTDATE
+fi
+
+echo "***************************************************************"
+echo "$TARG -- collect_pdudp finished at:"
+date
+echo "***************************************************************"
+
+echo "Calling deliver_pdudp"
+echo ""
+echo "***************************************************************"
+echo "$TARG -- deliver_pdudp started at:"
+date
+echo "***************************************************************"
+
+if [ "$TARG" = "c400" ]
+then
+$PDU/delivery/./deliver_pdudp $POSTDATE
+fi
+
+echo "***************************************************************"
+echo "$TARG -- deliver_pdudp finished at:"
+date
+echo "***************************************************************"
+fi
+echo "rm $PDU/include/PDMstruct.h"
+echo ""
+rm $PDU/include/PDMstruct.h
+echo "rm $PDU/include/NFMerrordef.h"
+echo ""
+rm $PDU/include/NFMerrordef.h
+echo "***************************************************************"
+echo "$TARG -- deliver_pdu finished at:"
+date
+echo "***************************************************************"
+
+echo "Calling collect_pdusrc"
+echo ""
+echo "***************************************************************"
+echo "$TARG -- collect_pdusrc started at:"
+date
+echo "***************************************************************"
+
+if [ "$TARG" = "c400" ]
+then
+$PDU/delivery/./collect_pdusrc $POSTDATE
+fi
+
+echo "***************************************************************"
+echo "$TARG -- collect_pdusrc finished at:"
+date
+echo "***************************************************************"
+
+echo "Calling deliver_pdusrc"
+echo ""
+echo "***************************************************************"
+echo "$TARG -- deliver_pdusrc started at:"
+date
+echo "***************************************************************"
+
+if [ "$TARG" = "c400" ]
+then
+$PDU/delivery/./deliver_pdusrc $POSTDATE
+fi
+
+echo "***************************************************************"
+echo "$TARG -- deliver_pdusrc finished at:"
+date
+echo "***************************************************************"
+
+fi
+
+if [ "$PDMNORMCOMP" != "n" ]
+then
+echo "PDMNORM will be compiled for $TARG"
+echo ""
+echo "cd $NORM"
+echo ""
+cd $NORM
+export NORMRT=$NORM/pdmnormrt
+export NORMDP=$NORM/pdmnormdp
+#echo "Uncompress the pdmnorm24* cpio file"
+#echo ""
+#cat pdmnorm24* | compress -d | cpio -ivmud
+#echo ""
+echo "Running bldnorm.sh"
+echo ""
+echo "***************************************************************"
+echo "$TARG -- $NORM/bldnorm.sh started at:"
+date
+echo "***************************************************************"
+
+cd $NORM/pdmnormdp/util/bin
+if [ "$TARG" = "c400" ]
+then
+cp pdmnormc4.bak pdmnormc4.delv
+else
+cp pdmnorm.bak pdmnorm.delv
+fi
+
+cd $NORM
+
+$PDU/pdubuild/bldnorm.sh
+echo "***************************************************************"
+echo "$TARG -- $NORM/bldnorm.sh finished at:"
+date
+echo "***************************************************************"
+echo ""
+fi
+
+echo ""
+echo "$TARG BUILD IS COMPLETE"
+echo ""
+echo ""
+echo "Removing $PDU/pdu24.*"
+echo ""
+cd $PDU
+rm pdu24.*
+echo ""
+echo "Removing $PDM/pdm24.*"
+echo ""
+cd $PDM
+rm pdm24.*
+echo "Removing $NORM/pdmnorm24.*"
+echo ""
+cd $NORM
+rm pdmnorm24.*
+echo ""
+
+#if [ "$DELIVER" != "n" ]
+#then
+#echo "Initialize the products in newprod"
+#echo ""
+#if [ "$VERREF" == "32" ]
+#then
+#/usr2/load32/./init32
+#/usr2/32src/./init32src
+#else
+#/usr2/load31/./init31
+#/usr2/31src/./init31src
+#fi
+
+#Start backup sequence
+echo "Call startbackup"
+echo ""
+$PDU/pdubuild/./startbackup
+### Following fi commented out by Raj.
+#fi
+
+echo "BUILD COMPLETE"
+echo "***************************************************************"
+echo "make_build finished at:"
+date
+echo "***************************************************************"
+fi

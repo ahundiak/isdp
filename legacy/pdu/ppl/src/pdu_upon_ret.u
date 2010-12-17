@@ -1,0 +1,232 @@
+#include 	"ciminimum.h"
+#include 	"cimacros.h"
+#include 	"DIdef.h"
+#include        "grdpbdef.h"
+#include        "grdpb.h"
+#include 	"grdpbmacros.h"
+#include        "DIdef.h"
+#include        "DItypedef.h"
+#include        "DIprims.h"
+#include        "DIglob.h"
+#include 	"PDUstr.h"
+#include 	"PDUuser.h"
+#include 	"PDUerror.h"
+#include 	"PDUforms.h"
+
+extern PDUconstruct_asm_mgr_object();
+extern PDUmessage();
+extern PDUtranslate_message();
+extern UI_error();
+extern _pdm_status();
+extern _pdm_debug();
+extern PDUnullstr();
+extern PDUupdate_active_part_info();
+extern PDUupdate_active_object_space();
+extern PDMrcheck_part_status();
+extern PDMupdate_os_necessary();
+extern PDUload_exec_structure();
+extern PDMset_update_os_flag();
+extern PDUverify_part();
+extern GRdpb_get();
+extern GRdpb_put();
+extern PDUfill_in_string();
+extern PDMGetPartInfoGivenFileName();
+extern PDUget_parttype();
+extern PDUcleanup_refresh();
+extern PDUvalid_filename();
+extern PDUverify_file();
+
+extern int PDU_command;
+extern Form PDU_form_id;
+extern struct PDUuser *user;
+extern struct PDUrefresh *refresh;
+extern struct PDUforms forms;
+extern short PDU_loop_cmd;
+extern short PDU_dynamics_on;
+
+main()
+{
+ int sts;
+ struct GRid obj;
+ struct GRmd_env mod_env;
+ char *msg1;
+ char filename[DI_PATH_MAX];
+ char catalog[DI_PATH_MAX];
+ char partid[DI_PATH_MAX];
+ char revision[DI_PATH_MAX];
+ char *active_file;
+ long NumberOfBytes, BytesReceived;
+ long msg;
+ int dynflag;
+ int nret;
+ int sizbuf;
+
+ msg1 = NULL;
+ active_file = NULL; 
+ dynflag = 2;
+
+ _pdm_debug("In main for pdu_upon_ret.u", 0);
+
+ NumberOfBytes = sizeof(mod_env);
+ sts = gr$get_module_env(
+                          msg = &msg,
+                          sizbuf = &NumberOfBytes,
+                          buffer = &mod_env,
+                          nret = &BytesReceived
+                         );
+
+ /* Check to see if source parts is exploded */
+ di$give_pathname(
+                  osnum = mod_env.md_id.osnum,
+                  pathname = filename
+                 );
+ _pdm_debug("filename = <%s>", filename);
+
+ sizbuf = sizeof(int);
+
+ /* Construct the PDU display manager super object */
+ sts = PDUconstruct_asm_mgr_object(
+                                   NULL,
+                                   &obj
+                                  );
+ _pdm_status("PDUconstruct_asm_mgr_object", sts);
+
+ if (sts != PDM_S_SUCCESS)
+    {
+     msg1 = (char *)PDUtranslate_message(PDM_E_UPON_RETRIEVE);
+     UI_error(msg1);
+     exit;
+    }
+
+ /* Get current module environment information */
+/* already commented
+ NumberOfBytes = sizeof(mod_env);
+ sts = gr$get_module_env(
+                          msg = &msg,
+                          sizbuf = &NumberOfBytes,
+                          buffer = &mod_env,
+                          nret = &BytesReceived
+                         );
+*/
+
+ /* Check to see if source parts is exploded */
+/* already commented
+ di$give_pathname(
+                  osnum = mod_env.md_id.osnum,
+                  pathname = filename
+                 );
+ _pdm_debug("filename = <%s>", filename);
+*/
+ PDUfill_in_string(&active_file, filename);
+ active_file = active_file + 1;
+ 
+ if (PDU_loop_cmd == -1)
+ {
+ _pdm_debug("PDU_loop_command is not set; not checking dynamics", 0);
+ sts = PDUverify_file(active_file);
+ if (sts != PDM_S_SUCCESS)
+   {
+   sts = PDUverify_file("seed_file");
+   if (sts == PDM_S_SUCCESS) 
+     {
+     dynflag = 1;
+     gr$put_dynamics_on(msg = &sts, sizbuf = &sizbuf, buffer = &dynflag);
+     }
+   }
+ PDU_loop_cmd = FALSE;
+ }
+ else if (PDU_loop_cmd)
+ {
+ _pdm_debug("checking for dynamics", 0);
+ gr$get_dynamics_on(msg = &sts, sizbuf = &sizbuf, buffer = &dynflag, 
+                    nret = &nret);
+ _pdm_debug("dynflag = <%d>", (char *)dynflag);
+ if ((!dynflag) && (PDU_dynamics_on))
+   {
+   _pdm_debug("turning dynamics on for initial retrieve", 0);
+   dynflag = PDU_dynamics_on;
+   gr$put_dynamics_on(msg = &sts, sizbuf = &sizbuf, buffer = &dynflag);
+   }
+ PDU_loop_cmd = FALSE;
+ }
+ else
+ {
+ PDU_loop_cmd = TRUE;
+ }
+
+ if (user == NULL)
+   exit;
+
+ PDUfill_in_string(&refresh->act_filename, active_file);
+ sts = PDUverify_part('a');
+ _pdm_status("PDUverify_part", sts);
+
+ if (sts == PDM_S_SUCCESS)
+   {
+   sts = PDUvalid_filename(refresh->act_catalog, refresh->act_partid, 
+                              refresh->act_revision, active_file);
+    _pdm_status("PDUvalid_filename", sts);
+    if (sts != PDM_S_SUCCESS)
+      {
+      PDUfill_in_string(&refresh->act_catalog, NULL);
+      PDUfill_in_string(&refresh->act_partid, NULL);
+      PDUfill_in_string(&refresh->act_revision, NULL);
+      PDUfill_in_string(&refresh->act_filename, NULL);
+      }
+   }
+
+ sts = PDUverify_part('a');
+ _pdm_status("PDUverify_part", sts);
+
+ PDU_form_id = forms.design_form_id;
+ if (sts != PDM_S_SUCCESS)
+ {
+ sts = PDMGetPartInfoGivenFileName(active_file, catalog, partid, revision);
+ _pdm_status("PDMGetPartInfoGivenFileName", sts);
+
+ if (sts == PDM_S_SUCCESS)
+   {
+   PDUfill_in_string(&refresh->act_catalog, catalog);
+   PDUfill_in_string(&refresh->act_partid, partid);
+   PDUfill_in_string(&refresh->act_revision, revision);
+   PDUfill_in_string(&refresh->act_filename, active_file);
+   PDUget_parttype(refresh->act_catalog, refresh->act_partid, 
+                   refresh->act_revision, &refresh->act_parttype);
+   }
+ else
+   {
+   PDUfill_in_string(&refresh->act_catalog, NULL);
+   PDUfill_in_string(&refresh->act_partid, NULL);
+   PDUfill_in_string(&refresh->act_revision, NULL);
+   PDUfill_in_string(&refresh->act_filename, NULL);
+   PDUfill_in_string(&refresh->act_filename, NULL);
+   } 
+  }
+
+if ((PDU_command == 0) && (!PDUnullstr(user->username)))
+    {
+     sts = PDMrcheck_part_status(
+                                  refresh->act_catalog,
+                                  refresh->act_partid,
+                                  refresh->act_revision
+                                 );
+
+    _pdm_debug("Status is %d", (char *)sts);
+
+    if (PDMupdate_os_necessary())
+      {
+      PDUupdate_active_object_space(NULL, refresh->act_catalog, 
+                                    refresh->act_partid, refresh->act_revision);
+      }
+
+    if (forms.design_form_id)
+      {
+      PDU_form_id = forms.design_form_id;
+      PDUupdate_active_part_info;
+      }
+
+    PDUcleanup_refresh();
+    }
+
+  exit;
+}

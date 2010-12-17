@@ -1,0 +1,248 @@
+/*
+ * Author: Jamal Shakra
+ * Date: 6-12-92
+ * This command converts PDU1.4 to PDU2.0.
+ */
+
+
+#include        "OMminimum.h"
+#if ! defined(__sgi)
+#include        "unistd.h"
+#endif
+#include        "ciminimum.h"
+#include        "cimacros.h"
+#include        "partmacros.h"
+#include        "part.h"
+#include        "cieveryone.h"
+#include        "cimacros.h"
+#include        "acdef.h"
+#include        "acmacros.h"
+#include        "ACdb_info.h"
+#include        "macro.h"
+#include        "DItypedef.h"
+#include        "DIdef.h"
+#include        "DIglob.h"
+#include        "DIprims.h"
+#include        "grdpbdef.h"
+#include        "grdpb.h"
+#include        "grdpbmacros.h"
+#include        "growner.h"
+#include        "igrdp.h"
+#include        "madef.h"
+#include        "exdef.h"
+#include        "exmacros.h"
+#include        "dp.h"
+#include        "dpdef.h"
+#include        "msdef.h"
+#include        "PDUint.h"
+#include        "PDUintdef.h"
+#include        "grsymdef.h"
+#include        "grsym.h"
+#include        "grownerdef.h"
+#include        "dpmacros.h"
+#include        "comiscmac.h"
+#include        "coplcmac.h"
+#include        "cotxmacros.h"
+#include        "partdef.h"
+#include        "PDUconvert.h"
+
+
+/* External functions */
+extern        DPdisbyoid();
+extern        GRdpb_get();
+extern        _pdm_debug();
+extern        _pdm_status();
+extern        _pdm_status2();
+extern        PDUconvert_part_origins();
+extern        PDUconvert_part_pointers();
+extern        PDUget_all_reffile_objects();
+extern        PDUmessage();
+extern        EX_retrieve_os();
+extern        EX_retrieve_module();
+extern        EX_get_invis_info_by_index();
+extern        DIgive_pathname();
+extern        Close_OS();
+extern        free();
+
+
+/* External variables */
+
+main()
+{
+ IGRlong          status, sts, msg;
+ IGRint           count;
+ struct GRmd_env  mod_env;
+ struct GRmd_env  ref_mod_env;
+ struct PDUid     *ref_objects;
+ IGRchar          msg_var[DI_PATH_MAX];
+ IGRchar          file_path[DI_PATH_MAX];
+ IGRint           i;
+ IGRint           ref_count;
+ IGRshort         convert_flag1;
+ IGRshort         convert_flag2;
+ GRobjid          ref_objid;
+ IGRlong          NumberOfBytes, BytesReceived;
+ struct PDUnth_ref_objects   *ref_list; 
+ struct PDUnth_ref_objects   *head; 
+
+ _pdm_debug("In the ppl program cvt_objspace", 0);
+
+ /* Local variables initialization */
+ ref_list = NULL;
+ ref_count = 0;
+
+ /* Get active module information */
+ NumberOfBytes = sizeof(mod_env);
+ status = gr$get_module_env(
+                            msg = &sts,
+                            sizbuf = &NumberOfBytes,
+                            buffer = &mod_env,
+                            nret = &BytesReceived
+                           );
+
+ /* Get the <:filename> path */
+ di$give_pathname(osnum = mod_env.md_id.osnum, pathname = file_path);
+
+ _pdm_debug("Converting <%s>", file_path);
+
+ convert_flag1 = 0;
+ convert_flag2 = 0;
+
+ /* Convert active obj. space origins */
+ status = PDUconvert_part_origins(mod_env, 1, &convert_flag1);
+ _pdm_status("PDUconvert_part_origins", status);
+
+ if (status != PDM_S_SUCCESS)
+    {
+     _pdm_debug("PDUconvert_part_origins failed", 0);
+
+     exit;
+    }
+
+ /* Convert active obj. space part pointers */
+ status = PDUconvert_part_pointers(mod_env, 1, &convert_flag2);
+ _pdm_status("PDUconvert_part_pointers", status);
+
+ if (status != PDM_S_SUCCESS)
+    {
+     _pdm_debug("PDUconvert_part_pointers failed", 0);
+
+     exit;
+    }
+
+ if ( (convert_flag1 == 1) && (convert_flag2 == 1) )
+    {
+     _pdm_debug("%s Has Already Been Converted", file_path);
+    }
+
+ /* Get list of all attached ref. file objects including nth-level */
+ status = PDUget_all_reffile_objects(
+                                     mod_env.md_id.osnum,
+                                     1,
+                                     &ref_list
+                                    );
+ _pdm_status("PDUget_all_reffile_objects", status);
+
+ head = ref_list;
+ while (head)
+       {
+        ref_count = ref_count + 1;
+        head = head->next;
+       }
+
+ _pdm_debug("%d ref. file objects were found", ref_count);
+
+ /* Perform conversion on each ref. file */
+ head = ref_list;
+ while (head)
+       {
+        /* Get ref. file module environment */
+         status = ci$send(
+                         msg = message GRreffile.GRgetenvironment
+                                       (&msg, &mod_env, &ref_mod_env),
+                         targetos = head->obj_id.osnum,
+                         targetid = head->obj_id.objid
+                        );
+         _pdm_status2 ("GRreffile.GRgetenvironment", status, msg);
+
+         if (1&status && msg == MSSUCC)
+            {
+             /* Get the <:filename> path */
+             di$give_pathname(
+                              osnum = ref_mod_env.md_id.osnum,
+                              pathname = file_path
+                             );
+             _pdm_debug("converting ref. file <%s>", file_path);
+
+             convert_flag1 = 0;
+             convert_flag2 = 0;
+
+             /* Convert ref. obj. space origins */
+             status = PDUconvert_part_origins(ref_mod_env, 1, &convert_flag1);
+             _pdm_status("PDUconvert_part_origins", status);
+
+             if (status != PDM_S_SUCCESS)
+                {
+                 _pdm_debug(
+                            "PDUconvert_part_origins failed on osnum %d", 
+                            ref_mod_env.md_id.osnum
+                           );
+
+                 exit;
+                }
+
+             /* Convert ref. obj. space part pointers */
+             status = PDUconvert_part_pointers(ref_mod_env, 1, &convert_flag2);
+             _pdm_status("PDUconvert_part_pointers", status);
+
+             if (status != PDM_S_SUCCESS)
+                {
+                 _pdm_debug(
+                            "PDUconvert_part_pointers failed on osnum %d",
+                       	    ref_mod_env.md_id.osnum
+                           );
+
+                 exit;
+                }
+
+                if ( (convert_flag1 == 1) && (convert_flag2 == 1) )
+                   {
+                    _pdm_debug("%s Has Already Been Converted", file_path);
+                   }
+
+            }
+
+         else
+             {
+              _pdm_debug("GRreffile.GRgetenvironment failed", 0);
+
+              /* Process next ref. file */
+              head = head->next;
+              continue;
+             }
+
+        /* Process next ref. file */
+        head = head->next;
+
+       } /* end while loop */
+
+ /* Free variables */
+ if (ref_list)
+    {
+     head = ref_list;
+
+     while (ref_list)
+           {
+            ref_list = ref_list->next;
+            free(head);
+            head = ref_list;
+           }
+    }
+}
+
+int  delay()
+{
+ int i;
+
+ for (i = 0; i < 20000; i = i + 1);
+}

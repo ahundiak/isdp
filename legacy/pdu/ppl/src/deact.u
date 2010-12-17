@@ -1,0 +1,82 @@
+#include "ciminimum.h"
+#include "cimacros.h"
+#include "msmacros.h"
+#include "PDUstr.h"
+#include "PDUcommand.h"
+#include "PDUerror.h"
+#include "PDUprompt.h"
+
+extern int PDU_command;
+extern PDUdeactivate();
+extern malloc();
+extern PDUmessage();
+extern _pdm_status();
+extern _pdm_debug();
+extern PDUdo_origins_exist();
+
+extern struct PDUrefresh	*refresh;
+
+main()
+{
+ int     status;
+ char    answer[80];
+ char    status_msg[80];
+
+ _pdm_debug("In the function main in the file deact.u", 0);
+
+ strcpy(status_msg, "");
+ PDUmessage(PDU_command,'c');
+ refresh->status = PDM_E_FAILURE;
+
+ if (PDU_command == PDC_M_DEACTIVATE_PART)
+   ex$message(buff = status_msg, msgnumb = PDP_P_EXIT_DESIGN_SAVE);
+ if (PDU_command == PDC_M_EXIT_DESIGN)
+   ex$message(buff = status_msg, msgnumb = PDP_P_EXIT_DESIGN);
+ if (PDU_command == PDC_M_DEACTIVATE_CHECKIN)
+   ex$message(buff = status_msg, msgnumb = PDP_P_EXIT_SAVE_CHKIN);
+  _pdm_debug("message string = <%s>", status_msg);
+ again:
+ ci$get(string=answer,prompt=status_msg);
+
+ if ((strcmp(answer, "N") == 0) || (strcmp(answer, "n") == 0))
+   {
+   PDUmessage(PDM_E_CLEAR_FIELD,'c');
+   exit;
+   }
+
+ if ((strcmp(answer, "Y") == 0) || (strcmp(answer, "y") == 0) ||
+     (strcmp(answer, "") == 0))
+   {
+   /* Check to see if origins exist */
+   if (PDU_command == PDC_M_EXIT_DESIGN)
+     {
+     refresh->status = PDM_S_SUCCESS;
+     exit;
+     }
+   if( !PDUdo_origins_exist(0, 1) )
+     {
+      again1:
+      ex$message(buff = status_msg, msgnumb = PDP_P_CHECKIN_NO_ORIGIN);
+            ci$get(
+                   string=answer,
+                   prompt=status_msg
+                  );
+
+            if ((strcmp(answer, "N") == 0) || (strcmp(answer, "n") == 0) ||
+                (strcmp(answer, "") == 0))
+               {
+               PDUmessage(PDM_E_CLEAR_FIELD,'c');
+               exit;
+               }
+
+            if ((strcmp(answer, "Y") != 0) && (strcmp(answer, "y") != 0) )
+               goto again1;
+     }
+
+    refresh->status = PDM_S_SUCCESS;
+    exit;
+   }
+
+ else
+   goto again;
+}

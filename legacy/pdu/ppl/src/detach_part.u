@@ -1,0 +1,1229 @@
+/*
+ * Author: Jamal Shakra
+ * Date: 12-14-91
+ * This command graphically detachs a first-level part pointer.
+ */
+
+
+#if ! defined(__sgi)
+#include        "unistd.h"
+#endif
+#include 	"ciminimum.h"
+#include 	"cimacros.h"
+#include 	"PDUstr.h"
+#include        "ex.h"
+#include        "igrdp.h"
+#include 	"partmacros.h"
+#include 	"part.h"
+#include	"cieveryone.h"
+#include	"cimacros.h"
+#include	"acdef.h"
+#include	"acmacros.h"
+#include	"ACdb_info.h"
+#include	"macro.h"
+#include	"grdpbdef.h"
+#include	"grdpb.h"
+#include	"grdpbmacros.h"
+#include	"growner.h"
+#include	"igrdp.h"
+#include	"madef.h"
+#include	"exdef.h"
+#include	"exmacros.h"
+#include	"dp.h"
+#include	"dpdef.h"
+#include	"grcoordsys.h"
+#include	"csdef.h"
+#include	"msdef.h"
+#include	"PDUint.h"
+#include	"PDUintdef.h"
+#include	"grsymdef.h"
+#include	"grsym.h"
+#include	"grownerdef.h"
+#include 	"dpmacros.h"
+#include 	"comiscmac.h"
+#include 	"coplcmac.h"
+#include 	"cotxmacros.h"
+#include 	"partdef.h"
+#include        "DItypedef.h"
+#include        "DIdef.h"
+#include        "DIglob.h"
+#include        "DIprims.h"
+#include        "PDUgrpart.h"
+#include        "PDUfile_def.h"
+
+
+
+/* External functions */
+extern		GRdpb_get();
+extern		COpart_attr_func();
+extern          PDUdisplay_GRpart();
+extern          PDUfill_in_string();
+extern          DPdisbyoid();
+extern          malloc();
+extern          PDUunquote();
+extern          PDUmodify_exp();
+extern          DIgive_pathname();
+extern          DIfind();
+extern          PDUget_GRparts_ids();
+extern          PDMopen_buffer();
+extern          PDUevaluate_exp();
+extern          PDUload_local_file_buffer();
+extern          PDUdisplay_design_form();
+extern          PDMdetach_part();
+extern          free();
+extern          strrchr();
+extern          MEMclose();
+extern          PDUmessage();
+extern          _pdm_debug();
+extern          _pdm_status();
+extern          PDUdesign_parts_listing_form();
+extern          PDUget_coord_sys_id();
+extern          PDUget_all_ref_file_names();
+
+
+/* External global variables */
+extern    IGRshort        PDU_assy_cmd;
+extern    IGRshort        PDU_loop_cmd;
+extern    IGRint          PDU_command;
+extern struct GRid        *PDU_part_id;   
+extern MEMptr             PDU_detach_buffer;
+extern IGRshort           PDU_list_parts;
+extern IGRint             PDU_selected_rows;
+extern struct   PDUref_node *PDU_ref_filenames;
+
+
+main()
+{
+
+ struct GRmd_env  mod_env;
+ struct GRobj_env objects[1];
+ struct GRid      part_id;		
+ struct GRid      refid;		
+ struct GRid      *part_ids;		
+ GRobjid          window_id;
+ IGRchar          value[MAX_VALUE];
+ IGRchar          part_dir[DI_PATH_MAX];
+ IGRchar          part_path[DI_PATH_MAX];
+ IGRchar          assy_path[DI_PATH_MAX];
+ IGRchar          s[DI_PATH_MAX];
+ IGRchar          *child_no;
+ IGRchar          **parts;
+ IGRint           part_count;
+ IGRint           i;
+ IGRint           type;
+ IGRint           num_objects;
+ IGRint           temp_command;
+ IGRlong          msg, sts;
+ IGRlong          stat;
+ IGRchar          *catalog;
+ IGRchar          *number;
+ IGRchar          *revision;
+ IGRchar          *cat_no;
+ IGRchar          *item_no;
+ IGRchar          *filename;
+ IGRchar          *attached_value;
+ IGRchar          *file_value;
+ IGRint           count; 
+ IGRint           total_count; 
+ IGRshort         delete_file;
+ IGRshort         file_found;
+ IGRshort         unique_flag;
+ MEMptr           delete_list;
+ struct  PDUref_node  *buffer_files;
+ struct  PDUref_node  *temp;
+ struct  PDUref_node  *head;
+ struct  PDUref_node  *tail;
+ struct  PDUref_node  *top;
+ IGRlong	  NumberOfBytes, BytesReceived;
+ FILE             *pdu_debug_file;
+
+
+ _pdm_debug("In the detach part ppl program", 0);
+
+ /* Local variables initialization */
+ num_objects = 1;
+ child_no = NULL;
+ part_count = 0;
+ catalog = NULL;
+ number = NULL;
+ revision = NULL;
+ filename = NULL;
+ item_no = NULL;
+ cat_no = NULL;
+ parts = NULL;
+ count = 0;
+ delete_file = TRUE;
+ delete_list = NULL;
+ part_ids = NULL;
+ attached_value = NULL;
+ file_value = NULL;
+ total_count = 0;
+ buffer_files = NULL;
+ PDU_ref_filenames = NULL;
+
+
+
+ /* Get active module information */
+ NumberOfBytes = sizeof(mod_env);
+ stat = gr$get_module_env( 
+                           msg = &msg,
+			   sizbuf = &NumberOfBytes,
+			   buffer = &mod_env,
+			   nret = &BytesReceived
+                          );
+
+ /* Locate GRpart */
+ identify_GRpart:
+
+ PDUmessage(PDM_I_DETACH_PART,'s');
+
+ begincmd("locate part pointer");
+ endcmd();
+
+ if (PDU_part_id == NULL)
+    {
+     _pdm_debug("no PDU part located", 0);
+
+     if ( (PDU_list_parts) && (PDU_command == PDC_M_DETACH_PART) )
+        {
+         PDU_selected_rows = PDU_selected_rows - 1;
+
+         /* Display error status form */
+         if (PDU_selected_rows == 0)
+            {
+             /* Reset PDU_list_parts */
+             PDU_list_parts = FALSE;
+
+             PDUdisplay_design_form();
+            }
+        }
+
+     else
+         {
+          /* Display design form */
+          PDUdisplay_design_form();
+         }
+
+     exit;
+    }
+
+ /* Validate part pointer identity */
+ part_id.osnum = PDU_part_id->osnum;
+ part_id.objid = PDU_part_id->objid;
+
+ stat = co$part_get_attr (
+                          msg = &msg,
+                          mod_env = &mod_env,
+                          part = &part_id,
+                          attr = "attach_flag",
+                          value = value,
+                          type = &type 
+                         ); 
+
+ if ( (msg != MSSUCC) || (strcmp(value, "") == 0) )
+    {
+     status("Invalid part pointer");
+     delay();
+
+     /* Deallocate and initialize PDU_part_id */
+     free(PDU_part_id);
+     PDU_part_id = NULL;
+
+     goto identify_GRpart;
+    }
+
+ else
+    {
+     /* Make sure part is attached */
+     if (strcmp(value, "-1.000000") == 0)
+        {
+         status("Part is not attached");
+         delay();
+         delay();
+
+         /* Enable looping, if disabled */
+         if (PDU_command == PDC_M_REPLACE_PART)
+            {
+             /* Deallocate and initialize PDU_part_id */
+             if (PDU_part_id)
+                {
+                 free(PDU_part_id);
+                 PDU_part_id = NULL;
+                }
+
+             exit;
+            }
+
+         if (PDU_loop_cmd == FALSE)
+            PDU_loop_cmd = TRUE;
+
+         /* Deallocate and initialize PDU_part_id */
+         if (PDU_part_id)
+            {
+             free(PDU_part_id);
+             PDU_part_id = NULL;
+            }
+
+         if (PDU_command == PDC_M_DETACH_PART)
+            {
+             /* Display design form */
+             PDUdisplay_design_form();
+             }
+
+         exit;
+        }
+
+     /* Graphically detach part */
+ 
+     /* Erase part graphics */
+     dp$display(
+                msg = &sts,
+                oids = &part_id,
+                mode = GRbe
+               );
+
+     sscanf(value, "%d", &refid.objid);
+     refid.osnum = mod_env.md_id.osnum;
+     objects[0].obj_id.objid = refid.objid;
+     objects[0].obj_id.osnum = refid.osnum;
+     objects[0].mod_env = mod_env;
+
+     _pdm_debug("refid.objid = %d", refid.objid);
+     _pdm_debug("refid.osnum = %d", refid.osnum);
+
+     /* Get child number from GRpart */
+     co$part_get_attr (
+                       msg = &msg,
+                       mod_env = &mod_env,
+                       part = &part_id,
+                       attr = "child_no",
+                       value = value,
+                       type = &type
+                      );
+
+     PDUunquote(value);
+     PDUfill_in_string(&child_no, value);
+
+     /* Remove ref. file object from GRpart graphic group */
+     _pdm_debug("removing ref. from GRpart", 0);
+     ci$send(
+              msg = message GRowner.GRremove_components 
+                                   (
+                                    &sts,
+                                    &mod_env,
+                                    &num_objects,
+                                    objects
+                                   ),
+              targetid = part_id.objid,
+              targetos = part_id.osnum 
+            );
+
+     if (1&stat)
+        {
+         _pdm_debug("ereasing file attachment", 0);
+
+         /* Redraw part pointer */
+         dp$display(
+                    msg = &sts,
+                    oids = &part_id,
+                    mode = GRbd
+                   );
+
+         /* Delete ref. file attachment */
+         _pdm_debug("deleting ref attachment", 0);
+         ci$send(
+                 msg = message GRgraphics.GRdelete
+                                         (
+                                          &sts,
+                                          &mod_env
+                                         ),
+                 targetid = refid.objid,
+                 targetos = refid.osnum
+                );
+
+         /* Reset attach flag in detached part */
+         stat = co$part_put_attr (
+                                  msg = &msg,
+                                  mod_env = &mod_env,
+                                  part = &part_id,
+                                  attr = "attach_flag",
+                                  value = "-1",
+                                  type = &type
+                                 );
+
+         /* Reset view_name to "" in detached part */
+         stat = co$part_put_attr (
+                                  msg = &msg,
+                                  mod_env = &mod_env,
+                                  part = &part_id,
+                                  attr = "view_name",
+                                  value = "",
+                                  type = &type
+                                 );
+         if (msg == MSSUCC)
+            {
+             /* Update parent's attached flag in assy struct */
+             di$give_pathname(
+                              osnum = mod_env.md_id.osnum,
+                              pathname = part_dir
+                             );
+
+             strcpy(part_path, part_dir);
+             strcat(part_path, ":ASSEMBLY:P");
+             strcat(part_path, child_no);
+             _pdm_debug("part assy. path = <%s>", part_path);
+
+             PDUmodify_exp(
+                           0,
+                           part_path,
+                           "attached",
+                           "N",
+                           mod_env.md_id.osnum
+                          );
+
+             /* Get catalog from GRpart */
+             co$part_get_attr (
+                               msg = &msg,
+                               mod_env = &mod_env,
+                               part = &part_id,
+                               attr = "CATALOG",
+                               value = value,
+                               type = &type
+                              );
+             PDUfill_in_string(&catalog, value);
+
+             /* Get number from GRpart */
+             co$part_get_attr (
+                               msg = &msg,
+                               mod_env = &mod_env,
+                               part = &part_id,
+                               attr = "NUMBER",
+                               value = value,
+                               type = &type
+                              );
+             PDUfill_in_string(&number, value);
+
+             /* Get revision from GRpart */
+             co$part_get_attr (
+                               msg = &msg,
+                               mod_env = &mod_env,
+                               part = &part_id,
+                               attr = "REVISION",
+                               value = value,
+                               type = &type
+                              );
+              PDUfill_in_string(&revision, value);
+
+              /* Construct path to part directory */
+              sprintf(
+                      s,
+                      "%s:parts:%s:%s!%s:",
+                      part_dir,
+                      catalog,
+                      number,
+                      revision
+                     );
+
+              _pdm_debug("part full path = <%s>", s);
+
+              /* Check to see if part is attached in another occurence */
+              stat = PDUget_GRparts_ids(
+                                        s,
+                                        &part_ids,
+                                        &count
+                                       );
+
+              _pdm_status("PDUget_GRparts_ids", stat);
+
+              if (count > 0)
+                 {
+                  /* Open PDU_detach_buffer buffer, if necessary */
+                  if (PDU_detach_buffer == NULL)
+                     {
+                      PDMopen_buffer(
+                                     7,
+                                     &PDU_detach_buffer
+                                    );
+                     }
+
+                  /* Open delete buffer */
+                  PDMopen_buffer(
+                                 7,
+                                 &delete_list
+                                );
+
+                  /* Loop thru extracting attachment flag */
+                  for (i = 0; i < count; i = i + 1)
+                      {
+                       co$part_get_attr (
+                                         msg = &msg,
+                                         mod_env = &mod_env,
+                                         part = &part_ids[i],
+                                         attr = "attach_flag",
+                                         value = value,
+                                         type = &type
+                                        );
+
+                       if ( (strcmp(value, "-1.000000") != 0) &&
+                            (strcmp(value, "-2.000000") != 0) )
+                          {
+                           _pdm_debug("file is attached in another occurence",
+                                      0);
+
+                           MEMclose(&PDU_detach_buffer);
+                           PDU_detach_buffer = NULL;
+
+                           goto skip;
+                          }
+
+                      } /* end for loop */
+
+
+                  /* Get list of all attached ref. files */
+                  stat = PDUget_all_ref_file_names(&mod_env);
+                  _pdm_status("PDUget_all_ref_file_names", stat);
+
+                  if ( (PDU_ref_filenames != NULL) && (PDM_debug_on == 1) )
+                     {
+                      /* Open debug file */
+                      pdu_debug_file = fopen (PDU_DEBUG_FILE, "a");
+
+                      fprintf(
+                              pdu_debug_file,
+                              "PDU -- list of unique EMS attached files:\n\n"
+                             );
+
+                      head = PDU_ref_filenames;
+                      while (head)
+                            {
+                             fprintf(
+                                     pdu_debug_file,
+                                     "PDU -- file name = <%s>\n", head->filename
+                                    );
+
+                             fprintf(
+                                     pdu_debug_file,
+                                     "PDU -- ref. id = <%d>\n",
+                                                     (head->ref_id).objid
+                                    );
+
+                             fprintf(
+                                     pdu_debug_file,
+                                     "PDU -- ref. osnum = <%d>\n", 
+                                                          (head->ref_id).osnum
+                                    );
+
+                             fprintf(pdu_debug_file, "\n");
+
+                             head = head->next;
+                            }
+
+                      fprintf(pdu_debug_file, "\n");
+
+                      /* Close debug file */
+                      fclose(pdu_debug_file);
+                     }
+
+                   /* Extract part filename */
+/* ALR  6/23/94  Too many parameters */
+/*
+                   stat = PDUevaluate_exp(
+                                          part_path,
+                                          "file_name",
+                                          &filename,
+                                          mod_env.md_id.osnum
+                                         );
+*/
+                   stat = PDUevaluate_exp(
+                                          part_path,
+                                          "file_name",
+                                          &filename
+                                         );
+
+                   _pdm_status("PDUevaluate_exp", stat);
+
+                   /* Check to see if parent need to be added to delete list */
+                   file_found = FALSE;
+                   head = PDU_ref_filenames;
+
+                   while (head)
+                         {
+                          if (strcmp(head->filename, filename) == 0)
+                             {
+                              file_found = TRUE;
+                              break;
+                             }
+
+                          head = head->next;
+                         }
+
+                   if (file_found == FALSE)
+                      {
+                       /* Extract part catalog no */
+/* ALR  6/23/94  Too many parameters */
+/*
+                       stat = PDUevaluate_exp(
+                                              part_path,
+                                              "catalog_no",
+                                              &cat_no,
+                                              mod_env.md_id.osnum
+                                             );
+*/
+                       stat = PDUevaluate_exp(
+                                              part_path,
+                                              "catalog_no",
+                                              &cat_no
+                                              );
+
+                       _pdm_status("PDUevaluate_exp", stat);
+
+                       /* Extract part item no */
+/* ALR  6/23/94  Too many parameters */
+/*
+                       stat = PDUevaluate_exp(
+                                              part_path,
+                                              "item_no",
+                                              &item_no,
+                                              mod_env.md_id.osnum
+                                             );
+*/
+                       stat = PDUevaluate_exp(
+                                              part_path,
+                                              "item_no",
+                                              &item_no
+                                             );
+                       _pdm_status("PDUevaluate_exp", stat);
+
+                       stat = PDUload_local_file_buffer(
+                                                        cat_no,
+                                                        item_no,
+                                                        catalog,
+                                                        number,
+                                                        revision,
+                                                        filename,
+                                                        &delete_list
+                                                       );
+                       _pdm_status("PDUload_local_file_buffer", stat);
+
+                       /* Load PDU_detach_buffer */
+                       stat = PDUload_local_file_buffer(
+                                                        cat_no,
+                                                        item_no,
+                                                        catalog,
+                                                        number,
+                                                        revision,
+                                                        filename,
+                                                        &PDU_detach_buffer
+                                                       );
+                       _pdm_status("PDUload_local_file_buffer", stat);
+
+                       /* Create a node with buffer unique file info */
+                       temp = (struct PDUref_node *)
+                                         malloc(sizeof(struct PDUref_node));
+
+                       /* Initialize temp fields */
+                       temp->filename = NULL;
+                       temp->next = NULL;
+
+                       PDUfill_in_string(&(temp->filename), filename);
+
+                       /* Add file node to the end of unique file list */
+                       if (buffer_files)
+                          {
+                           /* Get to the end of list */
+                           tail = buffer_files;
+                           while (tail->next)
+                                 {
+                                  tail = tail->next;
+                                 }
+
+                           /* Add part to file link list */
+                           tail->next = temp;
+                          }
+
+                       else
+                          {
+                           /* This is the first node in the list */
+                           buffer_files = temp;
+                          }
+                      }
+                   
+                   /* Extract part's children entries from assy. structure */
+                   strcpy(assy_path, part_dir);
+                   strcat(assy_path, ":ASSEMBLY:P");
+                   strcat(assy_path, child_no);
+
+                   _pdm_debug("assy_path = <%s>", assy_path);
+
+                   stat = di$find (
+                                   start_dir = assy_path,
+                                   regexp = "P*",
+                                   lines = &parts,
+                                   ptr = &part_count,
+                                   max_level = -1
+                                  );
+
+                   if ( (stat == DIR_S_SUCCESS) && (part_count > 0) )
+                      {
+                       _pdm_debug("part is not atomic", 0);
+
+                       /* Check to see if any of the children is attached */
+                       for (i = 0; i < part_count; i = i + 1)
+                           {
+                            /* Get the child attached attribute */
+                            *((IGRchar *)strrchr(parts[i],':')) = '\0';
+/* ALR  6/23/94  Too many parameters */
+/*
+                            stat = PDUevaluate_exp(
+                                                   parts[i],
+                                                   "attached",
+                                                   &attached_value,
+                                                   mod_env.md_id.osnum
+                                                  );
+*/
+                            stat = PDUevaluate_exp(
+                                                   parts[i],
+                                                   "attached",
+                                                   &attached_value
+                                                  );
+                            _pdm_status("PDUevaluate_exp", stat);
+
+                            if (strcmp(attached_value, "Y") == 0)
+                               {
+                                /* Get same child file name */
+/* ALR  6/23/94  Too many parameters */
+/*
+                                stat = PDUevaluate_exp(
+                                                       parts[i],
+                                                       "file_name",
+                                                       &file_value,
+                                                       mod_env.md_id.osnum
+                                                      );
+*/
+                                stat = PDUevaluate_exp(
+                                                       parts[i],
+                                                       "file_name",
+                                                       &file_value
+                                                      );
+
+                                _pdm_status("PDUevaluate_exp", stat);
+                    
+                                /* Check to see if part is already attached */
+                                file_found = FALSE;
+                                head = PDU_ref_filenames;
+
+                                while (head)
+                                      {
+                                       if (strcmp(head->filename, file_value)
+                                                  == 0)
+                                                 {
+                                                  file_found = TRUE;
+                                                  break;
+                                                 }
+
+                                       head = head->next;
+                                      }
+
+                                if (file_found == FALSE)
+                                   {
+                                    /* Check to see if file is unique */
+                                    unique_flag = TRUE;
+                                    top = buffer_files;
+
+                                    while (top)
+                                          {
+                                           if (strcmp(top->filename,
+                                               file_value)  == 0)
+                                               {
+                                                _pdm_debug("file found", 0);
+                                                unique_flag = FALSE;
+                                                break;
+                                               }
+
+                                           else
+                                              top = top->next;
+                                          }
+
+                                    if (unique_flag == TRUE)
+                                       {
+                                        /* Extract child catalog name */
+/* ALR  6/23/94  Too many parameters */
+/*
+                                        stat = PDUevaluate_exp(
+                                                           parts[i],
+                                                           "catalog_name",
+                                                           &catalog,
+                                                           mod_env.md_id.osnum
+                                                          );
+*/
+                                        stat = PDUevaluate_exp(
+                                                           parts[i],
+                                                           "catalog_name",
+                                                           &catalog
+                                                           );
+
+                                        _pdm_status("PDUevaluate_exp", stat);
+
+                                        /* Extract child part number */
+/* ALR  6/23/94  Too many parameters */
+/*
+                                        stat = PDUevaluate_exp(
+                                                           parts[i],
+                                                           "part_number",
+                                                           &number,
+                                                           mod_env.md_id.osnum
+                                                          );
+*/
+                                        stat = PDUevaluate_exp(
+                                                           parts[i],
+                                                           "part_number",
+                                                           &number
+                                                          );
+
+                                        _pdm_status("PDUevaluate_exp", stat);
+
+                                        /* Extract child part revision */
+/* ALR  6/23/94  Too many parameters */
+/*
+                                        stat = PDUevaluate_exp(
+                                                           parts[i],
+                                                           "revision",
+                                                           &revision,
+                                                           mod_env.md_id.osnum
+                                                          );
+*/
+                                        stat = PDUevaluate_exp(
+                                                           parts[i],
+                                                           "revision",
+                                                           &revision
+                                                          );
+                                        _pdm_status("PDUevaluate_exp", stat);
+
+                                        /* Extract child part catalog no */
+/* ALR  6/23/94  Too many parameters */
+/*
+                                        stat = PDUevaluate_exp(
+                                                           parts[i],
+                                                           "catalog_no",
+                                                           &cat_no,
+                                                           mod_env.md_id.osnum
+                                                          );
+*/
+                                        stat = PDUevaluate_exp(
+                                                           parts[i],
+                                                           "catalog_no",
+                                                           &cat_no
+                                                          );
+
+                                        _pdm_status("PDUevaluate_exp", stat);
+
+                                        /* Extract child part item no */
+/* ALR  6/23/94  Too many parameters */
+/*
+                                        stat = PDUevaluate_exp(
+                                                           parts[i],
+                                                           "item_no",
+                                                           &item_no,
+                                                           mod_env.md_id.osnum
+                                                          );
+*/
+                                        stat = PDUevaluate_exp(
+                                                           parts[i],
+                                                           "item_no",
+                                                           &item_no
+                                                           );
+
+                                        _pdm_status("PDUevaluate_exp", stat);
+
+                                        stat = PDUload_local_file_buffer(
+                                                                   cat_no,
+                                                                   item_no,
+                                                                   catalog,
+                                                                   number,
+                                                                   revision,
+                                                                   file_value,
+                                                                   &delete_list
+                                                                        );
+                                        _pdm_status("PDUload_local_file_buffer",
+                                                 stat);
+
+                                        /* Load PDU_detach_buffer */
+                                        stat = PDUload_local_file_buffer(
+                                                                   cat_no,
+                                                                   item_no,
+                                                                   catalog,
+                                                                   number,
+                                                                   revision,
+                                                                   file_value,
+                                                              &PDU_detach_buffer
+                                                                        );
+                                        _pdm_status("PDUload_local_file_buffer",
+                                                 stat);
+
+                                        /*
+                                         * Create a node with buffer unique
+                                         * file info.
+                                         */
+                                        temp = (struct PDUref_node *)
+                                            malloc(sizeof(struct PDUref_node));
+
+                                        /* Initialize temp fields */
+                                        temp->filename = NULL;
+                                        temp->next = NULL;
+
+                                        PDUfill_in_string(&(temp->filename),
+                                                                file_value);
+
+                                        /* Add file node to the end of
+                                         * list
+                                         */
+                                         if (buffer_files)
+                                            {
+                                             /* Get to the end of the list */
+                                             tail = buffer_files;
+                                             while (tail->next)
+                                                   {
+                                                    tail = tail->next;
+                                                   }
+
+                                             /* Add part to file link list */
+                                             tail->next = temp;
+                                            }
+
+                                         else
+                                             {
+                                              /* This is the first node in the
+                                               * list
+                                               */
+                                               buffer_files = temp;
+                                             }
+                                       }
+                                    }
+                               }
+                           } /* end foor loop */
+                      }
+
+                   /* Delete file(s) locally */
+                   if (delete_list->rows > 0)
+                      {
+                       stat = PDMdetach_part(delete_list);
+                       _pdm_status("PDMdetach_part", stat);
+
+                       if (stat != PDM_S_SUCCESS)
+                          {
+                           _pdm_debug("SEVERE error: PDMdetach_part failed", 0);
+
+                           /* Free PDU_ref_filenames */
+                           if (PDU_ref_filenames)
+                              {
+                               head = PDU_ref_filenames;
+
+                               while (PDU_ref_filenames)
+                                     {
+                                      PDU_ref_filenames =
+                                                        PDU_ref_filenames->next;
+                                      free(head);
+                                      head = PDU_ref_filenames;
+                                     }
+                              }
+
+                           if (delete_list)
+                              {
+                              MEMclose(&delete_list);
+                              delete_list = NULL;
+                              }
+
+                           if (PDU_detach_buffer)
+                              {
+                               MEMclose(&PDU_detach_buffer);
+                               PDU_detach_buffer = NULL;
+                              }
+
+                           if (parts)
+                              di$free(lines = parts, count = part_count);
+
+                           if (part_ids)
+                              free(part_ids);
+
+                           if (buffer_files)
+                              {
+                               head = buffer_files;
+
+                               while (buffer_files)
+                                     {
+                                      buffer_files = buffer_files->next; 
+                                      free(head);
+                                      head = buffer_files;
+                                     }
+                              }
+
+                           if (file_value)
+                              free(file_value);
+
+                           if (filename)
+                              free(filename);
+
+                           if (attached_value)
+                              free(attached_value);
+
+                           if (catalog)
+                              free(catalog);
+
+                           if (number)
+                              free(number);
+
+                           if (revision)
+                              free(revision);
+
+                           if (item_no)
+                              free(item_no);
+
+                           if (cat_no)
+                               free(cat_no);
+
+                           PDUmessage(stat, 's');
+                           delay();
+
+                           /* Deallocate and initialize PDU_part_id */
+                           if (PDU_part_id)
+                              {
+                               free(PDU_part_id);
+                               PDU_part_id = NULL;
+                              }
+
+                           if (PDU_command == PDC_M_DETACH_PART)
+                              { 
+                               if (PDU_list_parts) 
+                                  {
+                                   PDU_selected_rows = PDU_selected_rows - 1;
+
+                                   /* Display part listing form */
+                                   if (PDU_selected_rows == 0)
+                                      {
+                                       /* Reset PDU_list_parts */
+                                       PDU_list_parts = FALSE;
+
+                                       if (PDU_command == PDC_M_DETACH_PART)
+                                         PDUdisplay_design_form();
+                                      }
+                                  }
+
+                               else
+                                   {
+                                    /* Display design form */
+                                    if (PDU_command == PDC_M_DETACH_PART)
+                                      PDUdisplay_design_form();
+                                   } 
+                              }
+
+                           exit;
+                          }
+                      }
+
+ skip:
+
+                   /* Free variables */
+                   if (parts)
+                      di$free(lines = parts, count = part_count);
+
+                   if (part_ids)
+                      free(part_ids);
+
+                   /* Free PDU_ref_filenames */
+                   if (PDU_ref_filenames)
+                      {
+                       head = PDU_ref_filenames;
+
+                       while (PDU_ref_filenames)
+                             {
+                              PDU_ref_filenames = PDU_ref_filenames->next;
+                              free(head);
+                              head = PDU_ref_filenames;
+                             }
+                      }
+
+                   if (buffer_files)
+                      {
+                       head = buffer_files;
+
+                       while (buffer_files)
+                             {
+                              buffer_files = buffer_files->next;
+                              free(head);
+                              head = buffer_files;
+                             }
+                      }
+
+                   if (delete_list)
+                      {
+                      MEMclose(&delete_list);
+                      delete_list = NULL;
+                      }
+
+                   if (file_value)
+                      free(file_value);
+
+                   if (filename)
+                      free(filename);
+
+                   if (attached_value)
+                      free(attached_value);
+
+                   if (catalog)
+                      free(catalog);
+
+                   if (number)
+                      free(number);
+
+                   if (revision)
+                      free(revision);
+
+                   if (item_no)
+                      free(item_no);
+
+                   if (cat_no)
+                      free(cat_no);
+                 }
+
+              else
+                  {
+                   _pdm_debug("SEVERE error: no parts found", 0);
+
+                   status("SEVERE error: No parts found");
+                   delay();
+
+                   /* Deallocate and initialize PDU_part_id */
+                   if (PDU_part_id)
+                      {
+                       free(PDU_part_id);
+                       PDU_part_id = NULL;
+                      }
+
+                   if (PDU_command == PDC_M_DETACH_PART)
+                      {
+                       if (PDU_list_parts)
+                          {
+                           PDU_selected_rows = PDU_selected_rows - 1;
+
+                           /* Display part listing form */
+                           if (PDU_selected_rows == 0)
+                              {
+                               /* Reset PDU_list_parts */
+                               PDU_list_parts = FALSE;
+
+                               if (PDU_command == PDC_M_DETACH_PART)
+                                 PDUdisplay_design_form();
+                              }
+                          }
+
+                       else
+                           {
+                            /* Display design form */
+                            if (PDU_command == PDC_M_DETACH_PART)
+                              PDUdisplay_design_form();
+                           }
+                       }
+
+                   exit;
+                  }
+
+              /* Deallocate and initialize PDU_part_id */
+              if (PDU_part_id)
+                 {
+                  free(PDU_part_id);
+                  PDU_part_id = NULL;
+                 }
+
+              if ( (PDU_list_parts) &&
+                   (PDU_command == PDC_M_DETACH_PART) )
+                 {
+                  PDU_selected_rows = PDU_selected_rows - 1;
+
+                  /* Display part listing form */
+                  if (PDU_selected_rows == 0)
+                     {
+                      /* Reset PDU_list_parts */
+                      PDU_list_parts = FALSE;
+
+                      if (PDU_command == PDC_M_DETACH_PART)
+                        PDUdisplay_design_form();
+                     }
+                 }
+
+              else
+                  {
+                   /* Display design form */
+                   if (PDU_command == PDC_M_DETACH_PART)
+                     PDUdisplay_design_form();
+                  }
+            }
+
+         else 
+            {
+             _pdm_debug("co$part_put_attr failed", 0);
+             status("SEVERE error: Part update failed");
+             delay();
+
+             /* Deallocate and initialize PDU_part_id */
+             if (PDU_part_id)
+                {
+                 free(PDU_part_id);
+                 PDU_part_id = NULL;
+                }
+
+             if (PDU_command == PDC_M_DETACH_PART)
+                { 
+                 if (PDU_list_parts)
+                    {
+                     PDU_selected_rows = PDU_selected_rows - 1;
+
+                     /* Display part listing form */
+                     if (PDU_selected_rows == 0)
+                        {
+                         /* Reset PDU_list_parts */
+                         PDU_list_parts = FALSE;
+
+                         if (PDU_command == PDC_M_DETACH_PART)
+                           PDUdisplay_design_form();
+                        }
+                    }
+
+                 else
+                     {
+                      /* Display design form */
+                      if (PDU_command == PDC_M_DETACH_PART)
+                           PDUdisplay_design_form();
+                     }
+                }
+            }
+       }
+
+    }
+ 
+}
+
+int  delay()
+ {
+  int  i;
+
+  for (i = 0; i < 20000; i = i + 1);
+ }
+int display_parts_form()
+
+  {
+  int response;
+  int stat;
+
+  _pdm_debug("Entering PDUdesign_parts_listing_form", 0);
+  stat = PDUdesign_parts_listing_form();
+
+  /* Pause until the form is accepted or cancelled */
+  _pdm_debug("Waiting on input", 0);
+  ci$get(prompt = "", response = &response);
+  if (response == MOVE_ON)
+    {
+     return(1);
+    }
+  else
+    return(0);
+  }

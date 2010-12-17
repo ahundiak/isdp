@@ -1,0 +1,557 @@
+/*
+ * Author: Audra Romans & Jenny Parrris
+ * Date: 09-21-93
+ * This ppl reconstructs the ASSEMBLY, ATTACH_INFO, PDU, and Parts
+   directories if the permissions have been corrupted.  
+*/
+
+#include "ciminimum.h"
+#include "cimacros.h"
+#include "exmacros.h"
+
+#include "OMindex.h"
+#include "OMprimitives.h"
+
+#include "DItypedef.h"
+#include "DIdef.h"
+#include "DIglob.h"
+#include "DIprims.h"
+#include "DImacros.h"
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <stdio.h>
+#include <PDUstr.h>
+#include <PDUerror.h>
+#include <PDUgr_info.h>
+#include <partdef.h>
+#include <partmacros.h>
+#include <PDUgrpart.h>
+#include <PDUintdef.h>
+
+extern _pdm_debug();
+extern _pdm_status();
+extern malloc();
+extern free();
+extern DIgive_pathname();
+extern DIfind();
+extern DImain();
+extern DImkpath();
+extern strstr();
+extern strtok();
+extern PDUload_assy_struct_buffer();
+extern PDUadd_assy_struct_from_buffer();
+extern PDUrmdir();
+extern PDUextract_dir_value();
+extern PDUupdate_attach_info();
+extern PDUremove_assembly();
+extern PDUfill_in_string();
+extern PDUget_all_GRpart_ids();
+extern PDUget_GRpart_all_attrs();
+extern COpart_attr_func();
+extern COpart_construct_func();
+extern PDUstrip_dir_entry();
+extern strrchr();
+extern PDU_remove_dir_tree();
+extern PDUevaluate_exp();
+
+/* External variables declaration */
+extern short PDU_activate_delete;
+
+main()
+{
+long msg;
+long NumberOfBytes,BytesReceived;
+int sts;
+int status;
+int count, error_flag;
+char filename[DI_PATH_MAX];
+char path[DI_PATH_MAX], dirstr[DI_PATH_MAX], newpath[DI_PATH_MAX];
+char clean_path[DI_PATH_MAX], prev_dir[DI_PATH_MAX], cur_dir[DI_PATH_MAX];
+char pdu_path[DI_PATH_MAX];
+char path14[DI_PATH_MAX];
+struct GRmd_env mod_env;
+char **parts, *strptr, test_str[DI_PATH_MAX];
+char **child, *child_value;
+char *dirptr, *ptr;
+char usr_path[DI_PATH_MAX], newpath2[DI_PATH_MAX];
+int part_count, i, j, k, file_flag, len, entry_count, child_count;
+int found,loaded22;
+MEMptr assem_buff;
+char *tag_seed, *child_seed, **exp;
+FILE *file_ptr;
+
+count = 0;
+entry_count = 0;
+exp = NULL;
+parts = NULL;
+file_flag = 0;
+error_flag = 0;
+assem_buff = NULL;
+tag_seed = NULL;
+child_seed = NULL;
+child = NULL;
+child_value = NULL;
+child_count = 0;
+
+
+begincmd("debug on");
+endcmd();
+
+file_ptr = fopen("fix_file.log","a+");
+
+
+/*
+begincmd("z d l");
+ ci$put(string = "PDMass_att.o");
+ ci$put(response = TERMINATE);
+endcmd();
+*/
+
+/*
+begincmd("z d l");
+ ci$put(string = "ITTfix.o");
+ ci$put(response = TERMINATE);
+endcmd();
+*/
+
+NumberOfBytes = sizeof(mod_env);
+sts = ci$get_module_info(md_env = &mod_env);
+di$give_pathname(osnum = mod_env.md_id.osnum, pathname = filename);
+
+/* Check for 1.4 files */
+strcpy(path14,filename);
+strcat(path14,":PDU:parts");
+sts = di$ls(regexp = path14, ptr = &count);
+if ((sts == DIR_S_SUCCESS) || (count > 0))
+  {
+  fprintf(file_ptr,"***** ERROR ***** This file <%s> has PDU 1.4 information that needs to be converted to 3.x \n", path14);
+  exit;
+  }
+
+count = 0;
+strcpy(path14,"");
+strcpy(path14,filename);
+strcat(path14,":PDU:origins");
+sts = di$ls(regexp = path14, ptr = &count);
+if ((sts == DIR_S_SUCCESS) || (count > 0))
+  {
+  fprintf(file_ptr,"***** ERROR ***** This file <%s> has PDU 1.4 information that needs to be converted to 3.x \n", path14);
+  exit;
+  }
+strcpy(path, filename);
+sts = di$find (
+                 start_dir = path,
+                 regexp = "*",
+                 lines = &parts,
+                 ptr = &part_count,
+                 max_level = -1
+               );
+strcpy(test_str,parts[0]);
+ptr = (char *)strstr(test_str,":");
+ptr = ptr + 1;
+ptr = (char *)strstr(ptr,":");
+ptr = ptr + 1;
+dirptr = (char *)strtok(ptr,":");
+strcpy(prev_dir,dirptr);
+
+for (i=0; i < part_count; i=i+1)
+ {
+   strcpy(test_str,parts[i]);
+   strptr = NULL;
+   strptr = (char *)strstr(test_str,":views:");
+   if (strptr != NULL)
+     continue;
+
+   strptr = NULL;
+   strptr = (char *)strstr(test_str,":IGENOD:");
+   if (strptr != NULL)
+     continue;
+
+   strptr = NULL;
+   strptr = (char *)strstr(test_str,"#");
+   if (strptr != NULL)
+     continue;
+
+   /* ALR  9/27/94 Added this to catch parts found by di$find that
+      are expressions returned without a path. */
+   strptr = NULL;
+   strptr = (char *)strstr(test_str,":");
+   if (strptr == NULL)
+    continue;
+
+   ptr = (char *)strstr(test_str,":");
+   ptr = ptr + 1;
+   ptr = (char *)strstr(ptr,":");
+   ptr = ptr + 1;
+   dirptr = (char *)strtok(ptr,":");
+   strcpy(cur_dir,dirptr);
+   if ((strcmp(prev_dir,cur_dir) != 0) || (i == (part_count - 1)))
+    {
+      if (file_flag)
+       {
+         fprintf(file_ptr,"\n");
+         fprintf(file_ptr,"File Failed:  %s \n",filename);
+         fprintf(file_ptr,"Load .o to ignore permissions \n"); 
+        /* Load the GRvalidate that ignores permissions */
+         begincmd("z d l");
+                 ci$put(string = "t.o");
+                 ci$put(response = TERMINATE);
+         endcmd();
+
+         /* clean up prev_dir stuff */
+   
+         if (strcmp(prev_dir,"PDU") == 0)
+          {
+           fprintf(file_ptr,"Correcting dir PDU \n"); 
+           di$give_pathname(osnum = mod_env.md_id.osnum, pathname = pdu_path);
+           exp = NULL;
+           strcat(pdu_path,":PDU"); 
+           sts = di$find(
+                          start_dir = pdu_path,
+                          regexp = "*",
+                          lines  = &exp,
+                          ptr = &entry_count,
+                          max_level = 1,
+                          deep = NULL,
+                          options = NULL
+                         );
+           if (entry_count > 0)   /* Clean up PDU dir and remake */
+           {
+            found = 0;
+            for (j=0; j < entry_count; j = j + 1)
+             {
+               if ((strstr(exp[j],"PDU:child_no") == NULL) &&
+                   (strstr(exp[j],"PDU:tag_no") == NULL))
+                    {
+                    status = PDM_S_SUCCESS;
+                    PDU_remove_dir_tree(exp[j],&mod_env); 
+                    }
+               else
+                    found = 1;    
+             }
+             if (found == 0)
+              {
+                /* remove dir PDU */
+                sts = PDUrmdir(pdu_path);
+                if (sts == DIR_S_SUCCESS)
+                 {
+                  strcat(pdu_path,":");
+                  sts = di$mkpath(pathname = pdu_path);
+                 }
+                 else
+                   fprintf(file_ptr,"Could not remove dir %s \n",pdu_path);
+              } 
+            }
+           exp = NULL;
+           strcpy(clean_path,pdu_path);
+           strcat(clean_path,":child_no");
+           sts = di$find(
+                          start_dir = clean_path,
+                          regexp = "*",
+                          lines  = &exp,
+                          ptr = &entry_count,
+                          max_level = 1,
+                          deep = NULL,
+                          options = NULL
+                         );
+           if (entry_count != 0)
+           {
+             sts = PDUrmdir(exp[0]);
+             PDUstrip_dir_entry(clean_path);
+             sts = PDUrmdir(clean_path);
+             strcpy(newpath,exp[0]);
+             strcat(newpath,":"); 
+/*
+             sts = di$mkpath(pathname = newpath);
+*/
+           }
+
+           exp = NULL;
+           strcpy(clean_path,pdu_path);
+           strcat(clean_path,":tag_no");
+           sts = di$find(
+                          start_dir = clean_path,
+                          regexp = "*",
+                          lines  = &exp,
+                          ptr = &entry_count,
+                          max_level = 1,
+                          deep = NULL,
+                          options = NULL
+                         );
+           if (entry_count != 0)
+           {
+             sts = PDUrmdir(exp[0]);
+             PDUstrip_dir_entry(clean_path);
+             sts = PDUrmdir(clean_path);
+             strcpy(newpath2,exp[0]);
+             strcat(newpath2,":");
+/*
+             sts = di$mkpath(pathname = newpath);
+*/
+           }
+           sts = PDUrmdir(pdu_path);
+           sts = di$mkpath(pathname = newpath);
+           sts = di$mkpath(pathname = newpath2);
+          }
+         if (strcmp(prev_dir,"parts") == 0)
+          {
+           fprintf(file_ptr,"Correcting dir parts \n"); 
+           if (clean_up_parts(mod_env,filename))
+             {
+              fprintf(file_ptr,"Could not construct parts \n");
+              fclose(file_ptr);
+              exit;
+             }
+          }
+         if (strcmp(prev_dir,"ASSEMBLY") == 0)
+          {
+           fprintf(file_ptr,"Correcting dir ASSEMBLY \n"); 
+           sprintf(usr_path,"%s:usr",path);
+           di$cd(dirname = usr_path);
+
+           di$give_pathname(osnum = mod_env.md_id.osnum, pathname = clean_path);
+           strcat(clean_path,":ASSEMBLY");
+
+           /* Check if file is 2.2 or 3.0 */
+/*
+  This has never been tested but ask to be added. 
+           sts = di$find (
+                 start_dir = clean_path,
+                 regexp = "*",
+                 lines = &child,
+                 ptr = &child_count,
+                 max_level = 1
+               ); 
+           loaded22 = FALSE;
+           for ( k = 0; k < child_count; k = k + 1)
+            {
+              sts =  PDUevaluate_exp(
+                                    child[i],
+                                    "loaded",
+                                    &child_value
+                                   );
+              if (sts != PDM_S_SUCCESS)
+                loaded22 = TRUE;
+            }
+           if (loaded22 == TRUE)
+            {
+*/
+               /* if 2.2 file then use PDUload_assy_struct_buffer from 2.2 */
+/*
+  This .o contains a 2.2 version of PDUload_assy_struct_buffer 
+              begincmd("z d l");
+              ci$put(string = "PDUass22.o");
+              ci$put(response = TERMINATE);
+              endcmd();
+
+             sts = PDUload_assy_struct_buffer(&assem_buff,mod_env.md_id.osnum,-1,NULL);
+             if (sts != PDM_S_SUCCESS)
+               fprintf(file_ptr,"PDUload_assy_struct_buffer failed <0x%.8x> \n",sts);
+            }
+           else
+            {
+*/
+             sts = PDUload_assy_struct_buffer(&mod_env,&assem_buff,-1,NULL);
+             if (sts != PDM_S_SUCCESS)
+               fprintf(file_ptr,"PDUload_assy_struct_buffer failed <0x%.8x> \n",sts);
+/*
+             }
+*/
+           PDUremove_assembly(clean_path,&mod_env);
+           sts = PDUadd_assy_struct_from_buffer(&mod_env,"","",assem_buff,0);
+           if (sts != PDM_S_SUCCESS)
+            fprintf(file_ptr,"PDUadd_assy_struct_from_buffer failed <0x%.8x> \n",sts); 
+          }
+
+         if (strcmp(prev_dir,"ATTACH_INFO") == 0)
+          {
+           fprintf(file_ptr,"Correcting dir ATTACH_INFO \n"); 
+           PDUupdate_attach_info(mod_env,NULL);
+          }
+         error_flag = 1;
+
+         /* Save the file */
+/*
+         begincmd("save=y");
+         endcmd();
+*/
+        /* load the Good GRvalidate */
+        fprintf(file_ptr,"Load the GRvalidate .o \n");
+
+        begincmd("z d l");
+           ci$put(string = "GRouplib.o");
+           ci$put(response = TERMINATE);
+         endcmd();
+       }
+      strcpy(prev_dir,cur_dir);
+      file_flag = 0; 
+    } 
+
+   /* check for dir */
+   strcpy(dirstr,parts[i]);
+   len = strlen(dirstr);
+   if (dirstr[len - 1] != ':')
+     strcat(dirstr,":");
+   strcat(dirstr,"*");
+   sts = di$ls(regexp = dirstr, ptr = &count); 
+    /* If not directory, then continue */
+   if (sts != DIR_S_SUCCESS) 
+      continue;
+   if (count <= 0)
+       continue;
+
+   /* Test for permission problems */
+   strcpy(dirstr,parts[i]);
+   len = strlen(dirstr);
+   if (dirstr[len - 1] != ':')
+     strcat(dirstr,":");
+   strcat(dirstr,"pdutest:");
+   sts = di$mkpath(pathname = dirstr);
+     /* Fail case */
+   if (sts != DIR_S_SUCCESS)
+       file_flag = 1;
+      /* success case */
+   else
+        sts = di$rmdir(dirname = dirstr, path = NULL);
+
+ }
+/* Save the file */
+begincmd("save=y");
+endcmd();
+
+if (error_flag == 0)
+ fprintf(file_ptr,"Successfull file %s \n",filename); 
+ fprintf(file_ptr,"\n");
+ fclose(file_ptr);
+exit;
+}
+
+
+clean_up_parts(mod_env,path)
+struct GRmd_env mod_env;
+char *path;
+{
+   int i, j, count, component_cnt, type;
+   int own_index[1], num_obj;
+   char attr_value[MAX_VALUE], class_msg[80];
+   struct PDUpart_node *head_part,*part_id;
+   struct PDU_GRpart_info *part_info, *temp, *head;
+   struct GRobj_env objects[1];
+   long sts, msg;
+   struct GRid newpart_id;
+
+   part_id = NULL;
+   part_info = NULL;
+   temp = NULL;
+   head = NULL;
+   head_part = NULL;
+
+
+   sts = PDUget_all_GRpart_ids(mod_env.md_id.osnum,&part_id,&count);
+  head_part = part_id;
+  while(part_id)
+    {
+     if (head == NULL)
+      {
+       temp = (struct PDU_GRpart_info *)malloc(sizeof(struct PDU_GRpart_info)); 
+       head = temp;
+       part_info = temp;
+       temp->next = NULL;
+      }
+     else
+      {
+       temp = (struct PDU_GRpart_info *)malloc(sizeof(struct PDU_GRpart_info)); 
+       temp->next = NULL;
+       part_info->next = temp;
+      }
+
+     temp->attributes = '\0';
+     temp->values = '\0';
+     temp->attribute_types = NULL;
+     temp->attribute_count = 0;
+     temp->component_ids = NULL;
+     temp->max_comp_count = 0;
+     temp->catalog = NULL;
+     temp->partnum = NULL;
+     temp->revision = NULL;
+     PDUget_GRpart_all_attrs(mod_env,NULL,NULL,NULL,&(temp->attributes),&(temp->values),&(temp->attribute_types),&(temp->attribute_count),&(part_id->part_id),0);
+
+      /* skip uniqueness attributes */
+      temp->attributes = temp->attributes + 4;
+      temp->values = temp->values + 4;
+      temp->attribute_types = temp->attribute_types + 4;
+      temp->attribute_count = temp->attribute_count - 4;
+      ci$send(msg = message GRowner.GRget_number_components(&sts,&(temp->max_comp_count)),targetid = part_id->part_id.objid, targetos = part_id->part_id.osnum);
+
+    if (temp->max_comp_count)
+     temp->component_ids  = (struct GRid *)malloc(sizeof(struct GRid) * temp->max_comp_count);
+
+     ci$send(msg = message GRowner.GRget_components(&sts,&mod_env,temp->component_ids,temp->max_comp_count,&component_cnt,0,temp->max_comp_count - 1), targetid = part_id->part_id.objid, targetos = part_id->part_id.osnum);
+    for (j=0; j < temp->max_comp_count; j = j + 1)
+     {
+      sts = om$get_classname(objid = temp->component_ids[j].objid,osnum = temp->component_ids[j].osnum,classname = class_msg); 
+      if ((strcmp(class_msg,"GRgencs") == 0) || (strcmp(class_msg,"GRreffile") == 0))
+      {
+        objects[0].obj_id.objid = temp->component_ids[j].objid;
+        objects[0].obj_id.osnum = temp->component_ids[j].osnum;
+        objects[0].mod_env = mod_env; 
+        num_obj = 1;
+        ci$send(msg = message GRowner.GRremove_components(&sts,&mod_env,&num_obj,objects),targetid = part_id->part_id.objid, targetos = part_id->part_id.osnum); 
+      }
+     }
+    co$part_get_attr(msg = &msg, mod_env = &mod_env, part = &(part_id)->part_id, attr = "CATALOG", value = attr_value, type = &type);
+    PDUfill_in_string(&temp->catalog,attr_value); 
+    co$part_get_attr(msg = &msg, mod_env = &mod_env, part = &(part_id)->part_id, attr = "NUMBER", value = attr_value, type = &type);
+    PDUfill_in_string(&temp->partnum,attr_value); 
+    co$part_get_attr(msg = &msg, mod_env = &mod_env, part = &(part_id)->part_id, attr = "REVISION", value = attr_value, type = &type);
+    PDUfill_in_string(&temp->revision,attr_value); 
+
+    temp->part_id.objid = part_id->part_id.objid;
+    temp->part_id.osnum = part_id->part_id.osnum;
+
+    PDU_activate_delete = FALSE;
+    ci$send(msg = message GRgraphics.GRdelete(&msg, &mod_env), targetid = part_id->part_id.objid, targetos = part_id->part_id.osnum);
+    PDU_activate_delete = TRUE;
+    part_id = part_id->next;
+   } 
+      /* remove parts dir */
+    strcat(path,":parts:");
+    sts = PDUrmdir(path); 
+
+
+    /* Replace the parts dir and its contents */
+    part_info = head;
+    while (part_info)
+    {
+      sts = co$part_construct(msg = &msg, mod_env = &mod_env, catalog = part_info->catalog, number = part_info->partnum, revision = part_info->revision, description = "", part = &newpart_id, attr = part_info->attributes, value = part_info->values, type = part_info->attribute_types, num = part_info->attribute_count); 
+      if (!(sts & msg & 1))
+        return(1); 
+      for (i = 0; i < part_info->max_comp_count; i = i + 1)
+       {
+         sts = om$get_classname(objid = part_info->component_ids[j].objid,osnum = part_info->component_ids[j].osnum,classname = class_msg); 
+         if ((strcmp(class_msg,"GRgencs") == 0) || (strcmp(class_msg,"GRreffile") == 0))
+        {
+         objects[0].obj_id.objid = part_info->component_ids[j].objid;
+         objects[0].obj_id.osnum = part_info->component_ids[j].osnum;
+         objects[0].mod_env = mod_env; 
+         own_index[0] = PDU_K_MAXINT;
+         num_obj = 1;
+         ci$send(msg = message GRowner.GRadd_components(&msg, &mod_env, &num_obj, objects, own_index, NULL), targetid = newpart_id.objid, targetos = newpart_id.osnum);
+         }
+       }
+       part_info = part_info->next; 
+    }
+
+/* free part_ids */
+
+if (head_part)
+{
+ part_id = head_part;
+ while(part_id)
+  {
+   part_id = part_id->next;
+   free(head_part);
+   head_part = part_id;
+  }
+ }
+}

@@ -1,0 +1,1845 @@
+/*
+ * Author: Jamal Shakra
+ * Date: 05-21-92
+ * This commands converts PDU 1.4.0 part pointers to 2.0 pointers.
+ */
+
+
+#include 	"ciminimum.h"
+#include 	"cimacros.h"
+#include 	"PDUstr.h"
+#include        "ex.h"
+#include        "igrdp.h"
+#include 	"partmacros.h"
+#include 	"part.h"
+#include	"cieveryone.h"
+#include	"cimacros.h"
+#include	"acdef.h"
+#include	"acmacros.h"
+#include	"ACdb_info.h"
+#include	"macro.h"
+#include	"grdpbdef.h"
+#include	"grdpb.h"
+#include	"grdpbmacros.h"
+#include	"growner.h"
+#include        "grgsmacros.h"
+#include        "grmessage.h"
+#include	"igrdp.h"
+#include	"madef.h"
+#include	"exdef.h"
+#include	"exmacros.h"
+#include	"dp.h"
+#include	"dpdef.h"
+#include	"grcoordsys.h"
+#include	"csdef.h"
+#include	"msdef.h"
+#include	"PDUint.h"
+#include	"PDUintdef.h"
+#include	"string.h"
+#include	"grsymdef.h"
+#include	"grsym.h"
+#include	"grownerdef.h"
+#include 	"dpmacros.h"
+#include 	"comiscmac.h"
+#include 	"coplcmac.h"
+#include 	"cotxmacros.h"
+#include 	"partdef.h"
+#include        "DItypedef.h"
+#include        "DIdef.h"
+#include        "DIglob.h"
+#include        "DIprims.h"
+#include        "expmacros.h"
+#include        "csmacros.h"
+#include        "PDUpart.h"
+#include        "PDUinform.h"
+#include        "PDUfile_def.h"
+#include        "PDUconvert.h"
+#include        "PDUassy.h"
+#include        "MEMstruct.h"
+#include        "MEMerrordef.h"
+
+
+
+/* External variables declaration */
+
+
+/* External function declaration */
+extern		_pdm_debug();
+extern		_pdm_status();
+extern          GRdpb_get();
+extern          DImain();
+extern          malloc();
+extern          DPsavevw_cons();
+extern          DIpwd();
+extern          DIgive_pathname();
+extern          DImkpath();
+extern          DIcd();
+extern          DPdisbyoid();
+extern          GRdpb_put();
+extern          PDUfill_in_string();
+extern          PDUget_coord_sys_id();
+extern          PDUcreate_part_pointer();
+extern          GRcsget_mgr();
+extern          PDUget_attr();
+extern          PDUget_date();
+extern          PDUfree_list();
+extern          PDUstring_to_matrix();
+extern          PDUdump_matrix();
+extern          PDUget_reffile_objects();
+extern          PDUget_alttag_no();
+extern          PDUget_incbom();
+extern          PDUget_incasm();
+extern          PDUget_explodebom();
+extern          PDUgenerate_instance_number();
+extern          PDUis_usage_unique();
+extern          PDUgenerate_child_no();
+extern          PDUgenerate_tag_no();
+extern          COpart_attr_func();
+extern          PDUunquote();
+extern          COpart_construct_func();
+extern          PDUincrement_tag_no();
+extern          PDUincrement_child_no();
+extern          PDUfree_string_array();
+extern          PDUremove_tree();
+extern          PDUextract_dir_value();
+extern          PDUget_exp_type();
+extern          PDUevaluate_exp();
+extern          PDMquery_part_type();
+extern          PDMget_assembly_structure();
+extern          PDMget_catno_partno();
+extern          PDUsetup_buffer();
+extern          PDUget_buffer_col();
+extern          PDUadd_assy_struct_from_buffer();
+extern          MEMbuild_array();
+extern          MEMclose();
+extern          _pdm_status2();
+extern          DIfind();
+extern          free();
+extern          MAidmx();
+extern          PDUrmdir();
+extern		PDUmessage();
+
+main()
+{
+
+ struct GRmd_env  mod_env;		
+ IGRlong          msg,sts;
+ IGRlong          status;
+ IGRlong	  NumberOfBytes, BytesReceived;
+ IGRshort         cstype;
+ GRobjid          csmgr_id;
+ struct GRid      act_coorid;
+ struct GRid      csobj;
+ struct GRid      ref_objid;
+ struct GRid      part_id;
+ struct GRid      *component_ids;
+ IGRint           component_count;
+ IGRint           tag_cnt_count;
+ IGRchar          tag_dir[DI_PATH_MAX];
+ IGRchar          child_dir[DI_PATH_MAX];
+ IGRchar          old_parts_dir[DI_PATH_MAX];
+ IGRchar          tmp_tag[DI_PATH_MAX];
+ IGRchar          tmp_alttag[DI_PATH_MAX];
+ IGRchar          tmp_usage_id[DI_PATH_MAX];
+ IGRchar          tmp_viewname[DI_PATH_MAX];
+ IGRchar          tmp_childno[DI_PATH_MAX];
+ IGRchar          tmp_value[DI_PATH_MAX];
+ IGRchar          old_dir[DI_PATH_MAX];
+ IGRmatrix        placement_matrix; 
+ struct  GRid     *old_part_ids;
+ struct  GRid     *bad_objids;
+ IGRint           part_count;
+ IGRint           badobj_count;
+ IGRint           i, j, k, m, n, p;
+ IGRint           num_objects;
+ struct PDUreport report;
+ IGRmatrix        idmatrix;
+ IGRint           type;
+ IGRint           ref_count;
+ IGRint           count;
+ IGRint           tag_count;
+ IGRint           childno_count;
+ IGRint           max_comp_count;
+ IGRint           entry_count;
+ IGRint           instance_no;
+ IGRint           item_no_col;
+ IGRint           cat_no_col;
+ IGRint           file_name_col;
+ IGRshort         ref_found;
+ IGRshort         flag;
+ IGRchar          part_label[MAX_VALUE];
+ IGRchar          ref_descr[100];
+ IGRchar          *tag_no;
+ IGRchar          *child_no;
+ IGRchar          *alt_tagno;
+ IGRchar          **attributes;
+ IGRchar          **values;
+ IGRchar          **old_dyn_names;
+ IGRchar          **old_dyn_values;
+ IGRchar          **old_dyn_types;
+ IGRchar          **row_data;
+ IGRint           *attribute_type;
+ IGRint           attribute_count;
+ IGRint           exp_count;
+ IGRint           explode_flag;
+ IGRchar          part_date[26];
+ IGRchar          serial_no[10];
+ IGRchar          attach_value[10];
+ IGRchar          s[DI_PATH_MAX];
+ IGRchar          *inc_bom;
+ IGRchar          *inc_asm;
+ IGRchar          *explode;
+ IGRint           GRpart_comp_no;
+ IGRint           basic_attr_count;
+ IGRshort         increment_tag_no;
+ IGRshort         part_added;
+ IGRchar          attr_value[MAX_VALUE];
+ IGRchar          *catpartrev;
+ IGRchar          **catpartrevs;
+ IGRchar          **tag_cnt_entry;
+ IGRchar          **exp_names;
+ IGRchar          **part_type_data;
+ IGRchar          regexp[MAX_VALUE];
+ IGRchar          *tag_cnt_value;
+ IGRchar          *exp_name;
+ IGRchar          *exp_value;
+ IGRchar          *exp_type;
+ IGRchar          *part_type;
+ IGRchar          *file_name;
+ IGRchar          *catalog_no;
+ IGRchar          *item_no;
+ IGRchar          *str_ptr;
+ IGRchar          description[DI_PATH_MAX];
+ OM_p_CLASSLIST   classlist;
+ OMuword          classid;
+ struct PDUid     *ref_objects;
+ struct IGRlbsys  lbs_geom;
+ struct GRobj_env objects[1];
+ struct GRobj_env GRpart_objects[2];
+ struct PDUold_part_list *old_part_list;
+ struct PDUold_part_list *temp;
+ struct PDUold_part_list *head;
+ struct PDUold_part_list *tail;
+ struct PDUnth_ref_objects *nth_ref_objects;
+ struct PDUnth_ref_objects *temp1;
+ struct PDUnth_ref_objects *tail1;
+ MEMptr           part_type_buffer;
+ MEMptr           assy_struct_bufr;
+ FILE             *pdu_debug_file;
+ 
+
+
+ _pdm_debug("In the convert part pointer command", 0);
+
+ PDUmessage(PDM_I_CONVERT_PDU_PART_POINT,'s');
+
+ /* Initialize local variables */
+ count = 0;
+ ref_count = 0;
+ part_count = 0;
+ badobj_count = 0;
+ component_count = 0;
+ num_objects = 1;
+ max_comp_count = 0;
+ tag_cnt_count = 0;
+ tag_count = 0;
+ childno_count = 0;
+ entry_count = 0;
+ increment_tag_no = FALSE;
+ basic_attr_count = 15;
+ tag_no = NULL;
+ child_no = NULL;
+ alt_tagno = NULL;
+ inc_bom = NULL;
+ inc_asm = NULL;
+ explode = NULL;
+ exp_value = NULL;
+ exp_type = NULL;
+ catpartrevs = NULL;
+ exp_names = NULL;
+ part_type = NULL;
+ catpartrev = NULL;
+ file_name = NULL;
+ catalog_no = NULL;
+ item_no = NULL;
+ tag_cnt_entry = NULL;
+ old_part_list = NULL;
+ nth_ref_objects = NULL;
+ tag_cnt_value = NULL;
+ old_dyn_names = NULL;
+ old_dyn_values = NULL;
+ old_dyn_types = NULL;
+ assy_struct_bufr = NULL;
+ part_type_buffer = NULL;
+
+
+ /* Get current module environment information */
+ NumberOfBytes = sizeof(mod_env);
+ status = gr$get_module_env(
+                            msg = &msg,
+                            sizbuf = &NumberOfBytes,
+                            buffer = &mod_env,
+                            nret = &BytesReceived
+                           );
+
+ /* Need to save the active coordinate system */
+ status =  cs$get_mgr (
+                       msg = &msg,
+                       osnum = mod_env.md_id.osnum,
+                       module = mod_env.md_id.objid,
+                       csmgr = &csmgr_id
+                      );
+
+ /* Get the obj id of the most recently defined coor sys */
+ status = ci$send(
+                  msg = message GRcsmgr.GRget_acs_info
+                                                      (
+                                                        &msg,
+                                                        NULL,
+                                                        NULL,
+                                                        NULL,
+                                                        NULL,
+                                                        NULL,
+                                                        NULL,
+                                                        &cstype,
+                                                        &act_coorid
+                                                      ),
+                  targetid = csmgr_id,
+                  targetos = mod_env.md_id.osnum
+                 );
+
+ /* Get the <:filename:PDU:parts> path */
+ di$give_pathname(osnum = mod_env.md_id.osnum, pathname = old_parts_dir);
+ strcat(old_parts_dir, ":PDU:parts");
+
+ _pdm_debug("full old parts path = <%s>", old_parts_dir);
+
+ /* Check to see if part pointer conversion is necessary */
+ count = 0;
+ status = di$ls(regexp = old_parts_dir, ptr = &count);
+ _pdm_status("di$ls", status);
+
+ if ( (status != DIR_S_SUCCESS) || (count == 0) )
+    {
+     _pdm_debug("part pointer conversion has already been made", 0);
+     exit;
+    }
+
+ /* Get the class id of GRclhdr */
+ status = om$get_classid(
+                         classname = "GRclhdr",
+                         p_classid = &classid
+                        );
+ _pdm_debug("GRclhdr class id = %d", classid);
+
+ /* Malloc classlist */
+ classlist = (struct OM_sd_classlist *) malloc (sizeof
+                        (struct OM_sd_classlist));
+
+ /* Initialize certain field in classlist */
+ classlist->w_count = 1;
+ classlist->w_flags = OM_CLST_internal;
+ classlist->p_classes = &classid;
+
+ /* Construct regexp */
+ strcpy(regexp, old_parts_dir);
+ strcat(regexp, ":*");
+
+ /* Extract all PDU 1.4 part pointers */
+ part_count = 0;
+ status = di$dump (
+                   regexp = regexp,
+                   p_classes = classlist,
+                   grids = &old_part_ids,
+                   ptr = &part_count
+                  );
+
+ if (part_count <= 0)
+    {
+     _pdm_debug("no PDU 1.4 part pointers were found", 0);
+
+     /* Remove old parts directores, if they exist */
+     status = di$find (
+                       start_dir = old_parts_dir,
+                       regexp = "*!*!*",
+                       lines = &catpartrevs,
+                       max_level = 1,
+                       ptr = &entry_count
+                      );
+
+     if (entry_count > 0)
+        {
+         for (i = 0; i < entry_count; i = i + 1)
+             {
+              /* Extract cat!part!rev string from full path entry */
+              *((IGRchar *)strrchr(catpartrevs[i], ':')) = '\0';
+
+              catpartrev = strchr(catpartrevs[i], '!');
+
+              while (catpartrev[0] != ':')
+                    catpartrev = catpartrev - 1;
+
+              catpartrev = catpartrev + 1;
+
+              _pdm_debug("catpartrev = <%s>", catpartrev);
+
+              /* Remove part <cat!part!rev> entry */
+              status = PDUremove_tree(
+                                      mod_env.md_id.osnum,
+                                      "",
+                                      catpartrev
+                                     );
+              _pdm_status("PDUremove_tree", status);
+             } /* end i for loop */
+        }
+ 
+     /* Remove the "converted" directory, if it exists */
+     strcpy(old_dir, old_parts_dir);
+     strcat(old_dir, ":converted:");
+     status = PDUrmdir(old_dir);
+     /*
+     status = di$rmdir(dirname = old_dir, path = NULL);
+     */
+     _pdm_status("di$rmdir", status);
+
+     /* Remove "tag_cnt" directory value, if it exists */
+     strcpy(old_dir, old_parts_dir);
+     strcat(old_dir, ":tag_cnt");
+
+     di$find (
+              start_dir = old_dir,
+              regexp = "*",
+              lines = &tag_cnt_entry,
+              max_level = 1,
+              ptr = &tag_cnt_count
+             );
+
+     if (tag_cnt_count > 0)
+        {
+         status = PDUextract_dir_value(
+                                       tag_cnt_entry[0],
+                                       "tag_cnt",
+                                       &tag_cnt_value
+                                      );
+
+         strcat(old_dir, ":");
+         strcat(old_dir, tag_cnt_value);
+         strcat(old_dir, ":");
+
+         status = PDUrmdir(old_dir);
+         /*
+         status = di$rmdir(dirname = old_dir, path = NULL);
+         */
+         _pdm_status("di$rmdir", status);
+        }
+
+     /* Remove the "tag_cnt" directory, if it exists */
+     strcpy(old_dir, old_parts_dir);
+     strcat(old_dir, ":tag_cnt:");
+
+     status = PDUrmdir(old_dir);
+     /*
+     status = di$rmdir(dirname = old_dir, path = NULL);
+     */
+     _pdm_status("di$rmdir", status);
+
+     /* Make sure no other objects exist under "parts" directory */
+     status = di$find (
+                       start_dir = old_parts_dir,
+                       regexp = "*",
+                       grids = &bad_objids,
+                       max_level = 1,
+                       ptr = &badobj_count
+                      );
+
+     if (badobj_count > 0)
+        {
+         for (i = 0; i < badobj_count; i = i + 1)
+             {
+              /* Erase remaining objects */
+              dp$display(
+                         msg = &sts,
+                         oids = &(bad_objids[i]),
+                         mode = GRbe
+                        );
+
+              /* Delete remaining objects */
+              ci$send(
+                      msg = message GRgraphics.GRdelete(
+                                                        &sts,
+                                                        &mod_env
+                                                        ),
+                      targetid = bad_objids[i].objid,
+                      targetos = bad_objids[i].osnum
+                     );
+              }
+        }
+
+
+     /* Delete parts directory, if it exists */
+     strcat(old_parts_dir, ":");
+     status = PDUrmdir(old_parts_dir);
+     /*
+     status = di$rmdir(dirname = old_parts_dir, path = NULL);
+     */
+     _pdm_status("di$rmdir", status);
+
+     /* Free variables */
+     if (catpartrevs)
+        di$free(lines = catpartrevs, count = entry_count);
+
+     if (tag_cnt_entry)
+        di$free(lines = tag_cnt_entry, count = tag_cnt_count);
+
+     exit;
+    }
+
+ _pdm_debug("%d PDU 1.4 part pointer(s) were found", part_count);
+
+ /* Turn part poiner display off */
+ begincmd("layers off");
+         ci$put(response = TERMINATE, pos = FRONT);
+         ci$put(string = "*", pos = FRONT);
+         ci$put(value = 1023, pos = FRONT);
+ endcmd();
+
+ /* Get list of directly attached ref. file objects */
+ status = PDUget_reffile_objects(
+                                 mod_env.md_id.osnum,
+                                 &ref_objects,
+                                 &ref_count
+                                );
+ _pdm_status("PDUget_reffile_objects", status);
+
+ if (ref_count <= 0)
+    {
+     _pdm_debug("no attachments found", 0);
+    }
+
+ _pdm_debug("%d directly attached ref. file(s) were found", ref_count);
+
+ /* Get nth-level direct attachments, if any */
+ flag = 0;
+ for (i = 0; i < ref_count; i = i + 1)
+     {
+      status = ci$send(
+                       msg = message GRreffile.GRgetdescription
+                                        (&msg, &flag, ref_descr),
+                       targetos = ref_objects[i].osnum,
+                       targetid = ref_objects[i].objid 
+                      );
+      _pdm_status2 ("GRreffile.GRgetdescription", status, msg);
+      _pdm_debug("ref_descr = <%s>", ref_descr);
+
+      if ( (ref_descr[0] == '\0') || (strcmp(ref_descr, "") == 0) )
+         continue;
+
+      str_ptr = ref_descr;
+      *((IGRchar *)strchr(str_ptr, ':')) = '\0';
+
+      if (strcmp(str_ptr, "0") != 0)
+         {
+          _pdm_debug("encountered an nth-level attachment", 0);
+          
+          /* Create a node with nth-level attach ref info */
+          temp1 = (struct PDUnth_ref_objects *)
+                 malloc(sizeof(struct PDUnth_ref_objects));
+
+          /* Initialize temp fields */
+          temp1->obj_id.objid = ref_objects[i].objid;
+          temp1->obj_id.osnum = ref_objects[i].osnum;
+          temp1->next = NULL;
+
+          /* Add node to the end of list */
+          if (nth_ref_objects)
+             {
+              /* Get to the end of list */
+              tail1 = nth_ref_objects;
+              while (tail1->next)
+                    {
+                     tail1 = tail1->next;
+                    }
+
+              /* Add part to list */
+              tail1->next = temp1;
+             }
+
+          else
+              {
+               /* This is the first node in the list */
+               nth_ref_objects = temp1;
+              }
+         }
+     } /* end for loop */
+
+ /* For each old part pointer, perform conversion */
+ for (i = 0; i < part_count; i = i + 1)
+     {
+      /* Extract part pointer info from cell */
+      report.type = PDU_REPORT_CONVERT;
+      report.data = NULL;
+      report.items = PDU_CONVERT_COLS;
+
+      status = PDUget_attr (&(old_part_ids[i]), &report);
+      _pdm_status ("PDUget_attr(1st level part info)", status);
+
+      if (1 & status)
+         {
+          if (PDM_debug_on)
+            {
+             /* Open debug file */
+             pdu_debug_file = fopen (PDU_DEBUG_FILE, "a");
+
+             fprintf(pdu_debug_file,
+                               "PDU -- List of 1.4 Part Pointer Info:\n\n");
+
+             for (m = 0; m < PDU_CONVERT_COLS; m = m + 1)
+                 {
+                  fprintf(pdu_debug_file,
+                        "PDU -- report.data[%d] = <%s> \n", m, report.data[m]);
+                 }
+
+             fprintf(pdu_debug_file, "\n");
+
+             /* Close debug file */
+             fclose(pdu_debug_file);
+            }
+
+          PDUstring_to_matrix(report.data[3], placement_matrix);
+          status = PDUdump_matrix(placement_matrix);
+          _pdm_status("PDUdump_matrix", status);
+
+          /* Get number of part pointer components */
+          ci$send(
+                  msg = message GRowner.GRget_number_components(
+                                                                &sts,
+                                                                &max_comp_count
+                                                               ),
+                  targetid = old_part_ids[i].objid,
+                  targetos = old_part_ids[i].osnum
+                 );
+
+          _pdm_debug("%d components were found", max_comp_count);
+
+
+          /* Malloc component_ids */
+          component_ids = 
+                 (struct GRid *) malloc(sizeof(struct GRid) * max_comp_count);
+
+          /* Get objids of all part pointer components */
+          ci$send(
+                  msg = message GRowner.GRget_components(
+                                                         &sts,
+                                                         &mod_env,
+                                                         component_ids,
+                                                         max_comp_count,
+                                                         &component_count,
+                                                         0,
+                                                         max_comp_count - 1 
+                                                        ),
+                  targetid = old_part_ids[i].objid,
+                  targetos = old_part_ids[i].osnum
+                 );
+
+          if (component_count <= 0)
+             {
+              _pdm_debug("SEVERE error: no part components found", 0);
+              exit;
+             }
+
+          ref_found = FALSE;
+
+          /* Exclude ref objects from deletion in old parts */
+          for (j = 0; (j < ref_count && (!ref_found)); j = j + 1)
+              {
+               for (k = 0; k < component_count; k = k + 1)
+                   {
+                    if ( (component_ids[k].objid == ref_objects[j].objid) &&
+                         (component_ids[k].osnum == ref_objects[j].osnum) )
+                       {
+                        /* Store ref. objid for new GRpart construction */
+                        ref_objid.objid = ref_objects[j].objid;
+                        ref_objid.osnum = ref_objects[j].osnum;
+    
+                        objects[0].obj_id.objid = ref_objects[j].objid;
+                        objects[0].obj_id.osnum = ref_objects[j].osnum;
+                        objects[0].mod_env = mod_env;
+
+                        /* Remove ref. object from part cell group */
+                        _pdm_debug(
+                                   "removing %d ref. file from cell group",
+                                   ref_objects[j].objid
+                                  );
+
+                        ci$send(
+                                msg = message GRowner.GRremove_components
+                                                     (
+                                                      &sts,
+                                                      &mod_env,
+                                                      &num_objects,
+                                                      objects
+                                                     ),
+                                targetid = old_part_ids[i].objid,
+                                targetos = old_part_ids[i].osnum
+                               );
+
+                        ref_found = TRUE;
+                        break;
+                       }
+
+                   } /* end k for loop */
+
+              } /* end j for loop */
+
+          /* Convert ref_objid to string */
+          if (ref_found)
+             {
+              sprintf(attach_value, "%d", ref_objid.objid);
+             }
+
+          else
+              {
+               strcpy(attach_value, "-1");
+              }
+
+          /* Erase PDU 1.4 part pointer text strings */
+          dp$display(
+                     msg = &sts,
+                     oids = &(old_part_ids[i]),
+                     mode = GRbe
+                    );
+
+          /* Delete PDU 1.4 part pointer text strings */
+          ci$send(
+                  msg = message GRgraphics.GRdelete(
+                                                    &sts,
+                                                    &mod_env
+                                                   ),
+                  targetid = old_part_ids[i].objid,
+                  targetos = old_part_ids[i].osnum
+                 );
+
+          /* Generate 2.0 part instance number */
+          status = PDUgenerate_instance_number(
+                                               report.data[0],
+                                               report.data[1],
+                                               report.data[2],
+                                               &instance_no,
+                                               &mod_env
+                                              );
+          _pdm_debug("instance no = %d", instance_no);
+
+          /* Default usage id if necessary */
+          if(strcmp(report.data[7], "...") == 0)
+            {
+             sprintf(
+                     part_label,
+                     "%s %s %s #%d",
+                     report.data[0],
+                     report.data[1],
+                     report.data[2],
+                     instance_no
+                    );
+
+            }
+
+          else
+              {
+               /* Make sure usage id is unique */
+               if (!PDUis_usage_unique(report.data[7]))
+                  {
+                   /* Default usage id */
+                   sprintf(
+                           part_label,
+                           "%s %s %s #%d",
+                           report.data[0],
+                           report.data[1],
+                           report.data[2],
+                           instance_no
+                          );
+                  }
+
+               else
+                   {
+                    strcpy(part_label, report.data[7]);
+                   }
+              }
+
+          /* Check to see if part label exceeds 25 characters */
+          if (strlen(part_label) > 25)
+             {
+              /* Use catalog no/part no pairs in the default usage id */
+              status = PDMget_catno_partno(
+                                           report.data[0],
+                                           report.data[1],
+                                           report.data[2],
+                                           &catalog_no,
+                                           &item_no
+                                          );
+              _pdm_status("PDMget_catno_partno", status);
+
+              if (status != PDM_S_SUCCESS)
+                 {
+                  _pdm_debug("SEVERE error: PDMget_catno_partno failed", 0);
+                  exit;
+                 }
+
+              /* Default usage id */
+              sprintf(
+                      part_label,
+                      "%s %s #%d",
+                      catalog_no,
+                      item_no,
+                      instance_no
+                     );
+             }
+
+          /* Create PDU 2.0 part pointer */
+          status = PDUcreate_part_pointer(
+                                          placement_matrix,
+                                          mod_env,
+                                          part_label,
+                                          NULL,
+                                          &csobj
+                                         );
+          _pdm_status("PDUcreate_part_pointer", status);
+
+          /* csobj. will be used as serial number */
+          sprintf(serial_no,"%d", csobj.objid);
+
+          /* Update display of new part pointer */
+          dp$display(
+                     msg = &sts,
+                     oids = &csobj,
+                     mode = GRbd
+                    );
+
+          /* Get tag number from object space */
+          di$give_pathname(
+                           osnum = mod_env.md_id.osnum,
+                           pathname = tag_dir
+                          );
+
+          strcat(tag_dir,":");
+          strcat(tag_dir,"PDU");
+          strcat(tag_dir,":");
+          strcat(tag_dir,"tag_no");
+
+          /* Check to see if tag seed exists */
+          status = di$ls(regexp = tag_dir, ptr = &tag_count);
+
+          if (tag_count == 0)
+          /* Need to create a tag seed */
+             {
+              _pdm_debug("tag seed will be created", 0);
+              strcat(tag_dir, ":");
+              strcat(tag_dir, "1");
+              strcat(tag_dir, ":");
+              status = di$mkpath(pathname = tag_dir);
+             }
+
+          /* Get child number seed from object space */
+          di$give_pathname(
+                           osnum = mod_env.md_id.osnum,
+                           pathname = child_dir
+                          );
+
+          strcat(child_dir,":");
+          strcat(child_dir,"PDU");
+          strcat(child_dir,":");
+          strcat(child_dir,"child_no");
+
+          /* Check to see if child number seed exists */
+          status = di$ls(regexp = child_dir, ptr = &childno_count);
+
+
+          if (childno_count == 0)
+          /* Need to create a child number seed */
+             {
+              _pdm_debug("child_no seed will be created", 0);
+              strcat(child_dir, ":");
+              strcat(child_dir, "1");
+              strcat(child_dir, ":");
+              status = di$mkpath(pathname = child_dir);
+              PDUfill_in_string(&child_no, "1");
+             }
+
+          else
+            {
+             /* Generate a child number */
+             status = PDUgenerate_child_no(
+                                           &child_no,
+                                           mod_env.md_id.osnum
+                                          );
+             _pdm_debug("child_no = <%s>", child_no);
+            }
+
+          if (instance_no == 1)
+          /* This is the first instance, need to generate a unique tag number */
+             {
+              status = PDUgenerate_tag_no(
+                                          &tag_no,
+                                          mod_env.md_id.osnum
+                                         );
+
+              _pdm_debug("tag_no = <%s>", tag_no);
+
+              /* Set increment tag no flag to TRUE */
+              increment_tag_no = TRUE;
+
+              /* Get alt tag no */
+              status = PDUget_alttag_no(
+                                        &alt_tagno,
+                                        mod_env.md_id.osnum,
+                                        report.data[0], /* catalog */
+                                        report.data[1], /* part id */
+                                        report.data[2]  /* revision */
+                                       );
+              _pdm_status("PDUget_alttag_no", status);
+              if (status != PDM_S_SUCCESS)
+                 {
+                  _pdm_debug("Defaulting alt_tagno to empty string",0);
+                  PDUfill_in_string(&alt_tagno, "");
+                 }
+             }
+
+          else
+              {
+               /* Other instances exist, get tag_no from any instance */
+               status = co$part_get_attr (
+                                          msg = &msg,
+                                          mod_env = &mod_env,
+                                          catalog = report.data[0],
+                                          number = report.data[1],
+                                          revision = report.data[2],
+                                          attr = "tag",
+                                          value = attr_value
+                                        );
+
+               if (msg != MSSUCC)
+                  {
+                   PDUmessage(PDM_E_PLACEMENT_FAILED,'s');
+                   exit;
+                  }
+
+
+               /* Unquote tag no */
+               PDUunquote(attr_value);
+               PDUfill_in_string(&tag_no, attr_value);
+  
+               /* Get alt. tag number from any instance */
+               status = co$part_get_attr (
+                                          msg = &msg,
+                                          mod_env = &mod_env,
+                                          catalog = report.data[0],
+                                          number = report.data[1],
+                                          revision = report.data[2],
+                                          attr = "alt_tag",
+                                          value = attr_value
+                                        );
+
+               if (msg != MSSUCC)
+                  {
+                   PDUmessage(PDM_E_PLACEMENT_FAILED,'s');
+                   exit;
+                  }
+
+               /* Unquote alt tag no */
+               PDUunquote(attr_value);
+               PDUfill_in_string(&alt_tagno, attr_value);
+              }
+
+          /* Enforce text type on tagno */
+          sprintf(tmp_tag,"\"%s\"", tag_no);
+
+          /* Enforce text type on usage id */
+          if (strcmp(part_label, "") != 0)
+             {
+              sprintf(tmp_usage_id,"\"%s\"", part_label);
+             }
+
+          else
+              {
+               strcpy(tmp_usage_id, "");
+              }
+
+          /* Enforce text type on view name */
+          if (strcmp(report.data[8], "") != 0)
+             {
+              sprintf(tmp_viewname,"\"%s\"", report.data[8]);
+             }
+
+          else
+              {
+               strcpy(tmp_viewname, "");
+              }
+
+          /* Enforce text type on alt_tagno */
+          if (strcmp(alt_tagno, "") != 0)
+             {
+              sprintf(tmp_alttag,"\"%s\"", alt_tagno);
+             }
+
+          else
+              {
+               strcpy(tmp_alttag, "");
+              }
+
+          /* Enforce text type on child number */
+          sprintf(tmp_childno,"\"%s\"", child_no);
+
+          /* Get include bom value and put it in inc_bom */
+          status = PDUget_incbom(
+                                 &inc_bom,
+                                 mod_env.md_id.osnum,
+                                 report.data[0], /* catalog */
+                                 report.data[1], /* part id */
+                                 report.data[2], /* revision */
+                                 report.data[6]  /* serial no */
+                                );
+          _pdm_status("PDUget_incbom", status);
+          if (status != PDM_S_SUCCESS)
+             {
+              _pdm_debug("Defaulting inc_bom to 'Y'",0);
+              PDUfill_in_string(&inc_bom, "Y");
+             }
+
+          /* Get include asm structure value and put it in inc_asm */
+          status = PDUget_incasm(
+                                 &inc_asm,
+                                 mod_env.md_id.osnum,
+                                 report.data[0], /* catalog */
+                                 report.data[1], /* part id */
+                                 report.data[2], /* revision */
+                                 report.data[6]  /* serial no */
+                                );
+          _pdm_status("PDUget_incasm", status);
+          if (status != PDM_S_SUCCESS)
+             {
+              _pdm_debug("Defaulting inc_asm to 'Y'",0);
+              PDUfill_in_string(&inc_asm, "Y");
+             }
+
+          /* Get the explode value and put it in explode */
+          status = PDUget_explodebom(
+                                     &explode,
+                                     mod_env.md_id.osnum,
+                                     report.data[0], /* catalog */
+                                     report.data[1], /* part id */
+                                     report.data[2], /* revision */
+                                     report.data[6]  /* serial no */
+                                    );
+          _pdm_status("PDUget_explodebom", status);
+          if (status != PDM_S_SUCCESS)
+             {
+              _pdm_debug("Defaulting explode to 'Y'",0);
+              PDUfill_in_string(&explode, "Y");
+             }
+         
+          /* Check if there are any dynamic attributes */
+          di$give_pathname(
+                           osnum = mod_env.md_id.osnum,
+                           pathname = regexp
+                          );
+
+          /* Construct <cat!part!rev> string */
+          sprintf(
+                  s,
+                  "%s!%s!%s",
+                  report.data[0],
+                  report.data[1],
+                  report.data[2]
+                 );
+
+          strcat(regexp, ":PDU:parts:");
+          strcat(regexp, s);
+          strcat(regexp, ":serial:");
+          strcat(regexp, report.data[6]);
+          strcat(regexp, ":*");
+
+          /* Get the class id of text_exp */
+          status = om$get_classid(
+                                  classname = "text_exp",
+                                  p_classid = &classid
+                                 );
+          _pdm_debug("GRclhdr class id = %d", classid);
+
+          /* Malloc classlist */
+          classlist = (struct OM_sd_classlist *) malloc (sizeof
+                                 (struct OM_sd_classlist));
+
+          /* Initialize certain field in classlist */
+          classlist->w_count = 1;
+          classlist->w_flags = OM_CLST_internal;
+          classlist->p_classes = &classid;
+          exp_count = 0;
+
+          status = di$dump(
+                           regexp = regexp,
+                           p_classes = classlist,
+                           lines = &exp_names,
+                           ptr = &exp_count
+                          );
+          _pdm_status ("di$dump", status);
+
+          if (exp_count > 0)
+             {
+              _pdm_debug("%d dynamic attributes were found", exp_count);
+
+              /* Allocate space for old_dyn_names */
+              old_dyn_names = (IGRchar **)malloc(exp_count * sizeof(IGRchar *));
+              memset(old_dyn_names, NULL, sizeof(IGRchar *));
+
+              /* Allocate space for old_dyn_values */
+              old_dyn_values =(IGRchar **)malloc(exp_count * sizeof(IGRchar *));
+              memset(old_dyn_values, NULL, sizeof(IGRchar *));
+
+              /* Allocate space for old_dyn_types */
+              old_dyn_types = (IGRchar **)malloc(exp_count * sizeof(IGRchar *));
+              memset(old_dyn_types, NULL, sizeof(IGRchar *));
+
+              p = 0;
+
+              for (n = 0; n < exp_count; n = n + 1)
+                  {
+                   /* Extract dynamic attribute name */
+                   exp_name = strrchr(exp_names[n], ':');
+                   exp_name = exp_name + 1;
+
+                   if (exp_name[0] != '\0')
+                      {
+                       _pdm_debug("old part dyn attr name = <%s>", exp_name);
+
+                       /* Get dyn attr value */
+                       *((IGRchar *)strrchr(exp_names[n], ':')) = '\0';
+
+                       status = PDUevaluate_exp(
+                                                exp_names[n],
+                                                exp_name,
+                                                &exp_value
+                                               );
+                       _pdm_status("PDUevaluate_exp", status);
+                       _pdm_debug("old part dyn attr value = <%s>", exp_value);
+
+                       /* Get dyn attr type */
+                       status = PDUget_exp_type(
+                                                exp_names[n],
+                                                exp_name,
+                                                &exp_type
+                                               );
+                       _pdm_status("PDUget_exp_type", status);
+                       _pdm_debug("old part dyn type = <%s>", exp_type);
+    
+                       PDUfill_in_string(&(old_dyn_names[p]), exp_name);
+                       PDUfill_in_string(&(old_dyn_values[p]), exp_value);
+                       PDUfill_in_string(&(old_dyn_types[p]), exp_type);
+
+                       p = p + 1;
+                      }
+
+                  } /* end n for loop */
+             }
+
+          else
+              {
+               _pdm_debug("no dyn attrs found for part <%s>", report.data[1]);
+              }
+
+          /* Check to see if part has already been added to old_part_list*/
+          part_added = FALSE;
+          head = old_part_list;
+          while (head)
+                {
+                 if ( (strcmp(head->catalog, report.data[0]) == 0) &&
+                      (strcmp(head->number, report.data[1]) == 0) &&
+                      (strcmp(head->revision, report.data[2]) == 0) )
+                    {
+                      part_added = TRUE;
+
+                      PDUfill_in_string(
+                                        &part_type,
+                                        head->part_type
+                                       );
+                      
+                      break;
+                     }
+
+                  head = head->next;
+                }
+
+          if (part_added == FALSE)
+             {
+              /* Get part type from PDM */
+              status = PDMquery_part_type(
+                                          report.data[0],
+                                          report.data[1],
+                                          report.data[2],
+                                          &part_type_buffer
+                                         );
+              _pdm_status("PDMquery_part_type",status);
+
+              if (status == PDM_S_SUCCESS)
+                 {
+                  status = MEMbuild_array(part_type_buffer);
+                  _pdm_status("MEMbuild_array",status);
+
+                  if (status != MEM_S_SUCCESS)
+                     {
+                      MEMclose(part_type_buffer);
+                      return(PDM_E_BUILD_BUFFER_ARRAY);
+                     }
+
+                  part_type_data = (char **)part_type_buffer->data_ptr;
+                  if (
+                      strcmp(part_type_data[(part_type_buffer->columns*0)+0],
+                      "") ! = 0
+                     )
+                     {
+                      PDUfill_in_string(
+                             &part_type,
+                             part_type_data[( part_type_buffer->columns * 0)+0]
+                                       );
+
+                     }
+                 } 
+             }
+
+          attribute_count = basic_attr_count + exp_count;
+
+          _pdm_debug("attribute count = %d", attribute_count);
+    
+          attributes = (IGRchar **) malloc(attribute_count*sizeof(char *));
+          memset(attributes, NULL, attribute_count*sizeof(char *));
+
+          values = (IGRchar **) malloc(attribute_count*sizeof(char *));
+          memset(values, NULL, attribute_count*sizeof(char *));
+
+          attribute_type = (IGRint *) malloc(attribute_count*sizeof(int));
+          memset(attribute_type, GR_STATIC_ATTR, attribute_count*sizeof(int));
+
+          /* Get part date */
+          PDUget_date(part_date);
+
+          PDUfill_in_string(&attributes[0], "tag");
+          PDUfill_in_string(&attributes[1], "serial");
+          PDUfill_in_string(&attributes[2], "quantity");
+          PDUfill_in_string(&attributes[3], "alt_tag");
+          PDUfill_in_string(&attributes[4], "usage_id");
+          PDUfill_in_string(&attributes[5], "view_name");
+          PDUfill_in_string(&attributes[6], "history");
+          PDUfill_in_string(&attributes[7], "date");
+          PDUfill_in_string(&attributes[8], "attach_flag");
+          PDUfill_in_string(&attributes[9], "child_no");
+          PDUfill_in_string(&attributes[10], "incl_BOM");
+          PDUfill_in_string(&attributes[11], "incl_asm");
+          PDUfill_in_string(&attributes[12], "explode_BOM");
+          PDUfill_in_string(&attributes[13], "part_type");
+          PDUfill_in_string(&attributes[14], "macro_name");
+
+          PDUfill_in_string(&values[0], tmp_tag);
+          PDUfill_in_string(&values[1], serial_no);
+          PDUfill_in_string(&values[2], report.data[4]);
+          PDUfill_in_string(&values[3], tmp_alttag);
+          PDUfill_in_string(&values[4], tmp_usage_id);
+          PDUfill_in_string(&values[5], tmp_viewname);
+          PDUfill_in_string(&values[6], report.data[5]);
+          PDUfill_in_string(&values[7], part_date);
+          PDUfill_in_string(&values[8], attach_value);
+          PDUfill_in_string(&values[9], tmp_childno);
+          PDUfill_in_string(&values[10], inc_bom);
+          PDUfill_in_string(&values[11], inc_asm);
+          PDUfill_in_string(&values[12], explode);
+          PDUfill_in_string(&values[13], part_type); 
+          PDUfill_in_string(&values[14], "");
+
+          attribute_type[0] = GR_STATIC_ATTR;
+          attribute_type[1] = GR_DYNAMIC_ATTR;
+          attribute_type[2] = GR_DYNAMIC_ATTR;
+          attribute_type[3] = GR_STATIC_ATTR;
+          attribute_type[4] = GR_DYNAMIC_ATTR;
+          attribute_type[5] = GR_DYNAMIC_ATTR;
+          attribute_type[6] = GR_DYNAMIC_ATTR;
+          attribute_type[7] = GR_DYNAMIC_ATTR;
+          attribute_type[8] = GR_DYNAMIC_ATTR;
+          attribute_type[9] = GR_DYNAMIC_ATTR;
+          attribute_type[10] = GR_DYNAMIC_ATTR;
+          attribute_type[11] = GR_DYNAMIC_ATTR;
+          attribute_type[12] = GR_DYNAMIC_ATTR;
+          attribute_type[13] = GR_STATIC_ATTR;
+          attribute_type[14] = GR_STATIC_ATTR;
+
+          /* Load dyn attrs, if any. */
+          for (m = 0; m < exp_count; m = m + 1)
+             {
+              /* Load dynamic attributes names */
+              PDUfill_in_string(
+                                &attributes[m + basic_attr_count],
+                                old_dyn_names[m] 
+                               );
+
+              /* Check dyn attr type */
+              if (strcmp(old_dyn_types[m], "TEXT") == 0)
+                 {
+                  _pdm_debug("attr <%s> is of type TEXT", old_dyn_names[m]);
+
+                  /* Need to quote attr value */
+                  sprintf(tmp_value, "\"%s\"", old_dyn_values[m]);
+                 } 
+
+              else
+                  strcpy(tmp_value, old_dyn_values[m]);
+
+              /* Load dynamic attributes values */
+              PDUfill_in_string(
+                                &values[m + basic_attr_count],
+                                tmp_value 
+                               );
+             } /* end for m loop */
+
+          if (PDM_debug_on)
+            {
+             /* Open debug file */
+             pdu_debug_file = fopen (PDU_DEBUG_FILE, "a");
+
+             for (m = 0; m < attribute_count; m = m + 1)
+                 {
+                  fprintf(pdu_debug_file,
+                          "PDU -- attributes[%d] = <%s> \n", m, attributes[m]);
+                  fprintf(pdu_debug_file,
+                          "PDU -- values[%d] = <%s> \n", m, values[m]);
+                  fprintf(pdu_debug_file,
+                    "PDU -- attribute_type[%d] = <%d>\n", m,attribute_type[m]);
+                 }
+        
+             /* Close debug file */
+             fclose(pdu_debug_file);
+            }
+
+          /* Add coor sys to GRpart */
+          GRpart_comp_no = 1;
+          GRpart_objects[0].obj_id.objid = csobj.objid;
+          GRpart_objects[0].obj_id.osnum = csobj.osnum;
+          GRpart_objects[0].mod_env = mod_env;
+
+          /* Add ref file obj, if any, to GRpart */
+          if (ref_found)
+             {
+              GRpart_objects[1].obj_id.objid = ref_objid.objid;
+              GRpart_objects[1].obj_id.osnum = ref_objid.osnum;
+              GRpart_objects[1].mod_env = mod_env;
+ 
+              GRpart_comp_no = 2;
+             }
+
+
+          /* Construct the part attribute system */
+          status = co$part_construct (
+                                      msg = &msg,
+                                      mod_env = &mod_env,
+                                      catalog = report.data[0],
+                                      number = report.data[1],
+                                      revision = report.data[2],
+                                      description = "",
+                                      part = &part_id,
+                                      attr = attributes,
+                                      value = values,
+                                      type = attribute_type,
+                                      num = attribute_count,
+                                      object = GRpart_objects,
+                                      num_objects = GRpart_comp_no 
+                                     );
+
+          if (msg == MSSUCC)
+            {
+             /* Need to increment tag no seed, if necessary */
+             if (increment_tag_no == TRUE)
+                {
+                 PDUincrement_tag_no(mod_env.md_id.osnum);
+                 increment_tag_no = FALSE;
+                }
+
+             /* Get part assembly structure */
+             if (strcmp(explode, "Y") == 0)
+                {
+                 explode_flag = MAX_LEVEL;
+                }
+
+             else
+                  {
+                   explode_flag = -1;
+                  }
+
+             status = PDMget_assembly_structure(
+                                                report.data[0],
+                                                report.data[1],
+                                                report.data[2],
+                                                explode_flag,
+                                                &assy_struct_bufr
+                                               );
+             _pdm_status("PDMget_assembly_structure", status);
+
+             if (status != PDM_S_SUCCESS)
+                {
+                }
+
+             
+             if (assy_struct_bufr == NULL)
+                {
+                 _pdm_debug("SEVERE error: assy_struct_bufr is empty", 0);
+            
+                 /* Erase part pointer */
+                 dp$display(
+                            msg = &sts,
+                            oids = &part_id,
+                            mode = GRbe
+                           );
+                 
+                 /* Erase part again */
+                 dp$display(
+                            msg = &sts,
+                            oids = &part_id,
+                            mode = GRbe
+                           );
+                 
+                 /* Roll back and delete GRpart */
+                 ci$send(
+                          msg = message GRgraphics.GRdelete(
+                                                         &sts,
+                                                         &mod_env
+                                                           ),
+                          targetid = part_id.objid,
+                          targetos = part_id.osnum
+                         );
+                 
+                 /* Display message to user */
+                 PDUmessage(PDM_E_PART_POINT_CONV_FAILED,'s');
+                 delay();
+                 delay();
+                 delay();
+
+                 exit;
+                }
+
+             MEMbuild_array(assy_struct_bufr);
+             PDUsetup_buffer(
+                             assy_struct_bufr,
+                             ROW,
+                             &row_data
+                            );
+
+             /* Extract catalog no column no */
+             PDUget_buffer_col(
+                               assy_struct_bufr,
+                               "n_ccatalogno",
+                               &cat_no_col
+                              );
+             
+             /* Extract item no column no */
+             PDUget_buffer_col(
+                               assy_struct_bufr,
+                               "n_citemno",
+                               &item_no_col
+                              );
+             
+             /* Extract file name column no */
+             PDUget_buffer_col(
+                               assy_struct_bufr,
+                               "n_cofilename",
+                               &file_name_col
+                              );
+             
+             /* Extract catalog no from buffer */
+             PDUfill_in_string(&catalog_no, row_data[cat_no_col]);
+             
+             /* Extract item no from buffer */
+             PDUfill_in_string(&item_no, row_data[item_no_col]);
+             
+             /* Extract file name from buffer */
+             PDUfill_in_string(&file_name, row_data[file_name_col]);
+             
+             /* Construct new ref. description */
+             sprintf(
+                     description,
+                     "PDU:%s:%s:%s", 
+                     catalog_no,
+                     item_no,
+                     file_name
+                    );
+
+             _pdm_debug("new ref. file description = <%s>", description);
+
+             /* Modify ref. file description */
+             flag = 0;
+             status = ci$send(
+                              msg = message GRreffile.GRputdescription
+                                        (&msg, &flag, ref_descr),
+                              targetos = ref_objects[i].osnum,
+                              targetid = ref_objects[i].objid
+                             );
+             _pdm_status2 ("GRreffile.GRputdescription", status, msg);
+
+             if (strcmp(explode, "Y") == 0)
+                {
+                 if (assy_struct_bufr->rows > 1)
+                    {
+                     /* Add part to assembly structure */
+                     status = PDUadd_assy_struct_from_buffer
+                                                (
+                                                 report.data[0],
+                                                 report.data[1],
+                                                 report.data[2],
+                                                 "",
+                                                 report.data[4],
+                                                 part_label,
+                                                 file_name,
+                                                 mod_env.md_id.osnum,
+                                                 child_no,
+                                                 catalog_no,
+                                                 item_no,
+                                                 assy_struct_bufr,
+                                                 1
+                                                );
+
+                     _pdm_status("PDUadd_assy_struct_from_buffer", status);
+                    }
+
+                 else
+                     {
+                      /* Add 1st-level assy part info only */
+                      status = PDUadd_assy_struct_from_buffer
+                                                (
+                                                 report.data[0],
+                                                 report.data[1],
+                                                 report.data[2],
+                                                 "",
+                                                 report.data[4],
+                                                 part_label,
+                                                 file_name,
+                                                 mod_env.md_id.osnum,
+                                                 child_no,
+                                                 catalog_no,
+                                                 item_no,
+                                                 NULL,
+                                                 1
+                                                );
+
+                      _pdm_status("PDUadd_assy_struct_from_buffer", status);
+
+                      /* Change explode attr to 'N' */
+                      status = co$part_put_attr (
+                                                 msg = &msg,
+                                                 mod_env = &mod_env,
+                                                 part = &part_id,
+                                                 attr = "explode_BOM",
+                                                 value = "N",
+                                                 type = GR_DYNAMIC_ATTR
+                                                );
+                     }
+                }
+
+             else
+                 {
+                  /* Add 1st-level assy part info only */
+                  status = PDUadd_assy_struct_from_buffer
+                                                (
+                                                 report.data[0],
+                                                 report.data[1],
+                                                 report.data[2],
+                                                 "",
+                                                 report.data[4],
+                                                 part_label,
+                                                 file_name,
+                                                 mod_env.md_id.osnum,
+                                                 child_no,
+                                                 catalog_no,
+                                                 item_no,
+                                                 NULL,
+                                                 1
+                                                );
+                 _pdm_status("PDUadd_assy_struct_from_buffer", status);
+                 }
+
+             /* Need to increment child number seed */
+             PDUincrement_child_no(mod_env.md_id.osnum);
+             _pdm_debug("current child_no = <%s>", child_no);
+
+             /* Add part, if not found in old_part_list */
+             if (part_added == FALSE)
+                {
+                 /* Create a node with old part info */
+                 temp = (struct PDUold_part_list *)
+                                      malloc(sizeof(struct PDUold_part_list));
+
+                 /* Initialize temp fields */
+                 temp->catalog = NULL;
+                 temp->number = NULL;
+                 temp->revision = NULL;
+                 temp->part_type = NULL;
+                 temp->next = NULL;
+
+                 PDUfill_in_string(&(temp->catalog), report.data[0]);
+                 PDUfill_in_string(&(temp->number), report.data[1]);
+                 PDUfill_in_string(&(temp->revision), report.data[2]);
+                 PDUfill_in_string(&(temp->part_type), part_type);
+
+                 /* Add node to the end of list */
+                 if (old_part_list)
+                    {
+                     /* Get to the end of list */
+                     tail = old_part_list;
+                     while (tail->next)
+                           {
+                            tail = tail->next;
+                           }
+
+                     /* Add part to list */
+                     tail->next = temp;
+                    }
+
+                 else
+                    {
+                     /* This is the first node in the list */
+                     old_part_list = temp;
+                    }
+                }
+
+             /* Free variables */
+             PDUfree_string_array(&values, attribute_count);
+    
+             /* Free attributes */
+             PDUfree_string_array(&attributes, attribute_count);
+
+             if ( report.data )
+                {
+                 PDUfree_list(report.data, report.items, 1);
+                 free (report.data);
+                }
+            }
+         }
+
+      else
+          {
+           _pdm_debug("PDUget_attr failed", 0);
+           
+           PDUmessage(PDM_E_PART_POINT_CONV_FAILED,'s');
+           delay();
+           delay();
+           delay();
+
+           exit;
+          }
+
+     } /* end i for loop */
+
+ PDUmessage(PDM_I_REMOVE_OLD_DIR,'s');
+
+ /* Remove old parts directores, if they exist */
+ status = di$find (
+                   start_dir = old_parts_dir,
+                   regexp = "*!*!*",
+                   lines = &catpartrevs,
+                   max_level = 1,
+                   ptr = &entry_count
+                  );
+
+ if (entry_count > 0)
+    {
+     for (i = 0; i < entry_count; i = i + 1)
+         {
+          /* Extract cat!part!rev string from full path entry */
+          *((IGRchar *)strrchr(catpartrevs[i], ':')) = '\0';
+
+          catpartrev = strchr(catpartrevs[i], '!');
+
+          while (catpartrev[0] != ':')
+                catpartrev = catpartrev - 1; 
+
+          catpartrev = catpartrev + 1;
+
+          _pdm_debug("catpartrev = <%s>", catpartrev);
+
+          /* Remove part <cat!part!rev> entry */
+          status = PDUremove_tree(
+                                  mod_env.md_id.osnum,
+                                  "",
+                                  catpartrev
+                                 );
+          _pdm_status("PDUremove_tree", status);
+         } /* end i for loop */
+    }
+
+ /* Remove the "converted" directory, if it exists */
+ strcpy(old_dir, old_parts_dir);
+ strcat(old_dir, ":converted:");
+ status = PDUrmdir(old_dir);
+ /*
+ status = di$rmdir(dirname = old_dir, path = NULL);
+ */
+ _pdm_status("di$rmdir", status);
+
+ /* Remove "tag_cnt" directory value, if it exists */
+ strcpy(old_dir, old_parts_dir);
+ strcat(old_dir, ":tag_cnt");
+
+ di$find (
+          start_dir = old_dir,
+          regexp = "*",
+          lines = &tag_cnt_entry,
+          max_level = 1,
+          ptr = &tag_cnt_count
+         );
+
+ if (tag_cnt_count > 0)
+    {
+     status = PDUextract_dir_value(
+                                   tag_cnt_entry[0],
+                                   "tag_cnt",
+                                   &tag_cnt_value
+                                  );
+
+     strcat(old_dir, ":");
+     strcat(old_dir, tag_cnt_value);
+     strcat(old_dir, ":");
+
+     status = PDUrmdir(old_dir);
+     /*
+     status = di$rmdir(dirname = old_dir, path = NULL);
+     */
+     _pdm_status("di$rmdir", status);
+    }
+
+ /* Remove the "tag_cnt" directory, if it exists */
+ strcpy(old_dir, old_parts_dir);
+ strcat(old_dir, ":tag_cnt:");
+ status = PDUrmdir(old_dir);
+ /*
+ status = di$rmdir(dirname = old_dir, path = NULL);
+ */
+ _pdm_status("di$rmdir", status);
+
+ /* Make sure no other objects exist under "parts" directory */
+ status = di$find (
+                   start_dir = old_parts_dir,
+                   regexp = "*",
+                   grids = &bad_objids,
+                   max_level = 1,
+                   ptr = &badobj_count
+                  );
+
+ if (badobj_count > 0)
+    {
+     for (i = 0; i < badobj_count; i = i + 1)
+         {
+          /* Erase remaining objects */
+          dp$display(
+                     msg = &sts,
+                     oids = &(bad_objids[i]),
+                     mode = GRbe
+                    );
+
+          /* Delete remaining objects */
+          ci$send(
+                  msg = message GRgraphics.GRdelete(
+                                                    &sts,
+                                                    &mod_env
+                                                    ),
+                  targetid = bad_objids[i].objid,
+                  targetos = bad_objids[i].osnum
+                 );
+          }
+    }
+
+ /* Delete old parts directory */
+ strcat(old_parts_dir, ":");
+ status = PDUrmdir(old_parts_dir);
+ /*
+ status = di$rmdir(dirname = old_parts_dir, path = NULL);
+ */
+ _pdm_status("di$rmdir", status);
+
+ /* Restore active coordinate system */
+ status = ci$send(
+                  msg = message GRcsmgr.GRset_active_cs
+                                       (
+                                        &msg,
+                                        &mod_env,
+                                        act_coorid.objid
+                                       ),
+                  targetid = csmgr_id,
+                  targetos = mod_env.md_id.osnum
+                 );
+
+ /* Free variables */
+ _pdm_debug("freeing variables", 0);
+
+ if (catpartrevs)
+    di$free(lines = catpartrevs, count = entry_count);
+
+ if (tag_cnt_entry)
+    di$free(lines = tag_cnt_entry, count = tag_cnt_count);
+
+ if (exp_names)
+    di$free(lines = exp_names, count = exp_count);
+
+ if (old_part_list)
+    free(old_part_list);
+
+ if (nth_ref_objects)
+    free(nth_ref_objects);
+
+ if (old_dyn_names)
+    PDUfree_string_array(&old_dyn_names, exp_count);
+
+ if (old_dyn_types)
+    PDUfree_string_array(&old_dyn_types, exp_count);
+
+ if (old_dyn_values)
+    PDUfree_string_array(&old_dyn_values, exp_count);
+
+ if (tag_no)
+    free(tag_no);
+
+ if (alt_tagno)
+    free(alt_tagno);
+
+ if (child_no)
+    free(child_no);
+
+ if (inc_bom)
+    free(inc_bom);
+
+ if (inc_asm)
+    free(inc_asm);
+
+ if (explode)
+    free(explode);
+
+ if (exp_value)
+    free(exp_value);
+
+ if (exp_type)
+    free(exp_type);
+
+ if (part_type)
+    free(part_type);
+
+ if (file_name)
+    free(file_name);
+
+ if (catalog_no)
+    free(catalog_no);
+
+ if (item_no)
+    free(item_no);
+
+ if (part_type_buffer)
+    MEMclose(&part_type_buffer);
+
+}
+
+int  delay()
+{
+ int i;
+
+ for (i = 0; i < 20000; i = i + 1);
+}
