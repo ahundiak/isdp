@@ -1,0 +1,226 @@
+#include	<string.h>
+#include	<sys/types.h>
+#include	<sys/stat.h>
+#include	<stdio.h>
+#include	<ctype.h>
+#include 	"FI.h"
+#include	"rMRPstr.h"
+#include 	"MRPmessage.h"
+#include 	"MEMstruct.h"
+#include 	"SQLerrordef.h"
+#include 	"PDUerror.h"
+#include 	"PDMproto.h"
+#include 	"PDUpdmrpro.h"
+#include        "PDUprompt.h"
+
+#define		finished = -1;
+
+/* Externs */
+static char errmsg[132];
+extern int dba_message_strip;
+
+/* Written to support generation of reports using DBAccess 
+   
+   Original code - Lynn Mettlen
+   Modified to suit PDM's needs - Kumar Narayanan
+*/
+
+int PSUexe_rpt ( psurpt, schema )
+  struct PSUrpt	*psurpt;
+  char		*schema;
+  {
+  int	i,just_cnt;
+  long	status = MRP_S_Success;
+  char  *fname = "PSUexe_rpt";
+
+ _PDMdebug(fname,"Enter:PSUexe_rpt\n");
+  /* update format values in database */
+_PDMdebug(fname,"psurpt->options.table = %s\n", psurpt->options.table);
+_PDMdebug(fname,"psurpt->options.template_name = %s\n", psurpt->options.template_name);
+_PDMdebug(fname,"psurpt->options.output = %s\n", psurpt->options.output);
+_PDMdebug(fname,"psurpt->options.subtotals = %d\n", psurpt->options.subtotals);
+_PDMdebug(fname,"psurpt->options.width = %d\n", psurpt->options.width);
+_PDMdebug(fname,"psurpt->options.totals = %d\n", psurpt->options.totals);
+_PDMdebug(fname,"psurpt->options.lines = %d\n", psurpt->options.lines);
+_PDMdebug(fname,"psurpt->options.description = %s\n", psurpt->options.description);
+_PDMdebug(fname,"psurpt->list_total = %d\n", psurpt->list_total);
+for ( i = 0; i < psurpt->list_total; ++i )
+   {
+_PDMdebug(fname,"psurpt->list[i].name = %s\n", psurpt->list[i].name);
+_PDMdebug(fname,"psurpt->list[i].header= %s\n", psurpt->list[i].header);
+_PDMdebug(fname,"psurpt->list[i].type = %d\n", psurpt->list[i].type);
+_PDMdebug(fname,"psurpt->list[i].start = %d\n", psurpt->list[i].start);
+_PDMdebug(fname,"psurpt->list[i].length = %d\n", psurpt->list[i].length);
+_PDMdebug(fname,"psurpt->list[i].decimal = %d\n", psurpt->list[i].decimal);
+_PDMdebug(fname,"psurpt->list[i].sort = %d\n", psurpt->list[i].sort);
+_PDMdebug(fname,"psurpt->list[i].subtotal = %d\n", psurpt->list[i].subtotal);
+_PDMdebug(fname,"psurpt->list[i].total = %d\n", psurpt->list[i].total);
+    }
+status = dba_setup (0, 0, 0, errmsg);
+_PDMdebug(fname,"after setup status = %d\n", status);
+dba_message_strip = 0;
+if (status) _PDMdebug(fname,"errmsg = %s\n", errmsg);
+else
+   {
+   status = dba_schema_select( schema );
+_PDMdebug(fname,"after dba_schema_select status = %d\n", status);
+   if (status) _PDMdebug(fname,"errmsg = %s\n", errmsg);
+   }
+  status = dba_add_to_table_list(0,psurpt->options.table);
+_PDMdebug(fname,"after dba_add_to_table_list status = %d\n", status);
+   if (status) _PDMdebug(fname,"errmsg = %s\n", errmsg);
+
+/* if ((!strcmp(psurpt->templatetype, "P") || !strcmp(psurpt->templatetype,"S")) && ( !status )) */
+if (!strcmp(psurpt->templatetype, "P") && ( !status ))
+   {
+     
+   status = dba_execute_default(psurpt->options, psurpt->list,
+                                  psurpt->list_total, 0, psurpt->where, 0);
+   if (status)
+      {_PDMdebug(fname,"dba_execute_default status = %s ", errmsg);}
+status = dba_set_variable_start ( 5, 1, "c_n_level");
+   if (status)
+      {_PDMdebug("dba_set_variable_start status = %s ", errmsg);}
+ 
+   status = dba_set_field_justify( 5, 1, 1 );
+   if (status)
+      {_PDMdebug(fname,"dba_set_field_justify status = %s ", errmsg);}
+   for ( just_cnt = 1; just_cnt < psurpt->list_total; ++just_cnt )
+       {
+       status = dba_set_field_justify( 5, just_cnt+1,
+                                        psurpt->justification[just_cnt] );
+       if (status)
+          {_PDMdebug(fname,"dba_set_field_justify status = %s\n", errmsg);}
+       else
+     {_PDMdebug(fname,"justifcation[%d] = %d\n", just_cnt,psurpt->justification[
+just_cnt]);}
+     }
+   status = dba_process_report(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 );
+   if (status)
+       {_PDMdebug(fname,"dba_process_report status = %s ", errmsg);}
+   }
+  else
+   {
+  status = dba_execute_default(psurpt->options, psurpt->list,
+			       psurpt->list_total, 0, psurpt->where, 0);
+  if (status) _PDMdebug(fname,"dba status = %s\n", errmsg);
+   for ( just_cnt = 0; just_cnt < psurpt->list_total; ++just_cnt )
+       {
+       status = dba_set_field_justify( 5, just_cnt+1,
+                                        psurpt->justification[just_cnt] );
+       if (status)
+          {_PDMdebug(fname,"dba_set_field_justify status = %s\n", errmsg);}
+       else
+     {_PDMdebug(fname,"justifcation[%d] = %d\n", just_cnt,psurpt->justification[
+just_cnt]);}
+     }
+if (!strcmp(psurpt->templatetype, "C") && ( !status ))
+   status = dba_process_report(0, 0, 0, 0, 0, psurpt->where, 0, 0, 0, 0, 0, 0 );
+ else
+   status = dba_process_report(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 );
+   if (status)
+       {_PDMdebug(fname,"dba_process_report status = %s ", errmsg);}
+    psurpt->templib = NULL;
+  if ( psurpt->templib != NULL )
+      status = dba_save_default(psurpt->options, psurpt->list,
+			     psurpt->list_total, psurpt->templib, 0, 0);
+   }
+  if (status)
+     {
+      _PDMdebug(fname,"dba status = %s\n", errmsg);
+      status = MRP_E_NoCatInfo;
+      }
+  else
+      status = MRP_S_Success;
+
+ _PDMdebug(fname,"Exit:PSUexe_rpt\n");
+  return (status);
+  }
+
+
+/* Written to support generation of reports using DBAccess template 
+   libraries 
+   - Kumar 
+*/
+
+
+int PDMreport_from_tmpfile 
+( 
+char *schema, 
+char *table, 
+char *templib, 
+char *template,
+char *saname, 
+char *output 
+)
+  {
+  long	status = PDM_S_SUCCESS;
+  char          template_name[40];
+  char       msg_str[200];
+  char       *msg = NULL;
+  char *fname = "PDMreport_from_tmpfile";
+
+_PDMdebug(fname, "Enter");
+
+status = PDMexport_ris_rpt(saname,template);
+              if(status != PDM_S_SUCCESS)
+              {
+    _PDMdebug(fname, "%s %d\n", "PDMexport_ris_rpt failed status ", status);
+               return(status);
+              }
+     msg = (char *)PDUtranslate_message(PDP_P_ENTER_TEMPLATE);
+     sprintf(msg_str,"%s %s", msg,templib);
+     UI_prompt (msg_str);
+     template_name[0] = '\0';
+     do
+        PDUget_keyin(template_name);
+        while(strlen(template_name) <= 0);
+
+     UI_prompt ("");
+
+  /*
+  status = PDUget_template_name(template_name);
+ci$get(string = template_name, prompt = "Enter template name");
+  */
+
+dba_message_strip = 0;
+status = dba_setup (0, 0, 0, errmsg);
+
+_PDMdebug(fname,"after setup status = %d\n", status);
+  if (status) _PDMdebug(fname,"errmsg = %s\n", errmsg);
+else
+   {
+   status = dba_schema_select( schema );
+   if (status)
+     {
+   _PDMdebug(fname, "dba_schema_select error status = %d\n", status);
+     _PDMdebug(fname,"dba_schema_select errmsg = %s\n", errmsg);
+     _PDMdebug(fname, "Exit- DB Access Error");
+      return(status);
+     }
+    }
+  /* Added by kumar to add the table to the schema list - 070293*/
+  status = dba_add_to_table_list(0,table);
+_PDMdebug(fname,"after dba_add_to_table_list status = %d\n", status);
+   if (status) _PDMdebug(fname,"errmsg = %s\n", errmsg);
+
+dba_message_strip = 0;
+  /* status = dba_single_report(templib, template,schema,0, table,
+			       output, "", 0,0,0,0,0,0); */
+  status = dba_single_report(template, template_name,0,0, table,
+			       output, "", 0,0,0,0,0,0);
+  if (status)
+  {
+  _PDMdebug(fname, "dba_single_report error status = %d\n", status);
+  _PDMdebug(fname, "dba_single_report errmsg = %s\n", errmsg);
+     _PDMdebug(fname, "Exit- DB Access Error");
+  return (PDM_E_DBA_SINGLE);
+  }
+
+_PDMdebug(fname, "Exit");
+return(PDM_S_SUCCESS);
+
+}
+
+
+
