@@ -1,0 +1,7 @@
+#define PDM_I_DEFINE_ORIGIN_MSG 0 
+#define PDM_I_PLACE_POINTER_MSG 1 
+#define PDM_I_ALIGN_PART_MSG 2 
+#define PDM_I_DATA_POINT 3 
+#define PDM_I_POINT_ONE 4 
+#define PDM_I_POINT_TWO 5 
+#define PDM_I_POINT_THREE 6 

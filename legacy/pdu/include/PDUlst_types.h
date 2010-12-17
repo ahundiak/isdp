@@ -1,0 +1,22 @@
+/* list types for all list buttons */
+#define REV_PROJECT_LIST            00
+#define REV_CATALOG_LIST            01
+#define REV_PARTID_LIST             02
+#define REV_REVISION_LIST           03
+#define REV_DESCRIPTION_LIST        04
+#define REV_FILENAME_LIST           05
+#define DWG_CATALOG_LIST            06
+#define DWG_NUMBER_LIST             07
+#define DWG_REVISION_LIST           08
+#define DWG_DESCRIPTION_LIST        09
+#define DWG_FILENAME_LIST           10
+#define DWG_SHEETNUM_LIST           11
+#define SERVER_LIST                 12
+#define ENVIRONMENT_LIST            13
+#define CAT_SEARCH_CONDS_LIST       14
+#define PART_SEARCH_CONDS_LIST      15
+#define CAT_SORT_CONDS_LIST         16
+#define PART_SORT_CONDS_LIST        17
+#define CAT_ATTR_LIST               18
+#define PART_ATTR_LIST              19
+#define DWG_SEED_FILES_LIST         20
