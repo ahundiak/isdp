@@ -1,0 +1,10 @@
+#define N_NAME_INDEX    	0
+#define N_CAT_NAME_INDEX        0
+#define N_TABLE_NO_INDEX 	1
+#define N_CAT_NO_INDEX 		1
+#define N_SEQNO_INDEX   	2
+#define N_SYNONYM_INDEX 	3
+#define N_DATATYPE_INDEX	4
+#define N_ADV_NAME_INDEX    	0
+#define N_ADV_SYNONYM_INDEX 	0
+#define N_ADV_DATATYPE_INDEX	1

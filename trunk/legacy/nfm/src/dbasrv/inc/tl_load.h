@@ -1,0 +1,29 @@
+/* $Revision: 1.1 $ */
+#ifndef _TL_LOAD_H
+#define _TL_LOAD_H
+
+#define TL_REGISTRATION_ERROR		1
+#define TL_NO_MEMORY			2
+#define TL_UNKNOWN_SORT			3
+#define TL_CANNOT_OPEN_LIB_FOR_WRITING	4
+#define TL_CANNOT_OPEN_LIB_FOR_READING	5
+#define TL_CANNOT_FIND_TEMPLATE		6
+#define TL_CANNOT_REPLACE_TEMPLATE	7		
+#define TL_TEMP_NAME_TOO_LONG		8
+#define TL_SCRIPT_NOT_COMPILED		9
+
+#define TL_SORT_TYPE		1
+#define TL_SORT_NAME		2
+#define TL_SORT_DATE		3
+
+#define TL_XREF_SCRIPT		1
+#define TL_XREF_SYMBOL		2
+
+#define TL_XREF_AUTO		0
+#define TL_XREF_CONST		1
+#define TL_XREF_STATIC		2
+#define TL_XREF_EXTERN		3
+#define TL_XREF_FUNCTION	9
+#define TL_XREF_INCLUDE		10
+
+#endif

@@ -1,0 +1,3 @@
+#define NFM_E_DIRECT_SIZE_BIG   1212
+
+#define NFM_BULK_CATALOG    1

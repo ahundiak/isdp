@@ -1,0 +1,17 @@
+SOURCE
+NFMmonitor.c
+
+INCLUDE
+${NFMINC}
+${INGRINC}
+${RISINC}
+${FORMSINC}
+${XFORMSINC}
+${FTRINC}
+${HELPINC}
+${RESINC}
+${X11INC}
+${RISCC}
+
+ARCHIVE
+libnfmmonitor.a

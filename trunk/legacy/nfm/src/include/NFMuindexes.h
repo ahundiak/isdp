@@ -1,0 +1,21 @@
+long i_fileno=-1; 
+long i_itemnum=-1; 
+long i_filenum=-1; 
+long i_cofilename=-1; 
+long i_fileversion=-1; 
+long i_filetype=-1;
+long i_fileclass=-1; 
+long i_restoreflag=-1; 
+long i_archiveno=-1; 
+long i_cisano=-1; 
+long i_cifilename=-1;
+long i_ciuser=-1; 
+long i_cidate=-1; 
+long i_cifilesize=-1; 
+long i_cocomment=-1; 
+long i_cosano=-1; 
+long i_couser=-1;
+long i_codate=-1; 
+long i_fileco=-1; 
+long i_convertind=-1;
+

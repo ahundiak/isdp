@@ -1,0 +1,11 @@
+#define WFF_WORKFLOW        0x00000400
+#define WFF_ACL             0x00000800
+#define WFF_NODE            0x00001000
+#define WFF_USER            0x00002000
+#define WFF_CONNECT         0x00010000
+#define WFF_DISCONNECT      0x00020000
+#define WFF_LOGIN           0x00040000
+#define WFF_LOGOUT          0x00080000
+#define WFF_BEGIN_RECORDING 0x00100000
+#define WFF_END_RECORDING   0x00200000
+#define WFF_BEGIN_PLAYBACK  0x00400000
