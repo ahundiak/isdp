@@ -1,7 +1,6 @@
 								/*+public*/
 class specification OMrtree (2:0) of OMindex;            	/*+cldesc*/
 
-#include "exsysdep.h"
 #include <stdio.h>
 #include "OMDB.h"
 

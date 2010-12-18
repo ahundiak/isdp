@@ -1,6 +1,5 @@
 class specification OMCluster (4:0) of Root;
 
-#include "exsysdep.h"
 #include 	"OMminimum.h"
 #include	"OMcluster.h"
 #include	<stdio.h>
