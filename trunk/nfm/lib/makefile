@@ -1,8 +1,10 @@
 objects = \
+	$(NFM)/lib/err.o      \
 	$(NFM)/lib/fto.o      \
+	$(NFM)/lib/initial.o  \
 	$(NFM)/lib/mem.o      \
-	$(NFM)/lib/systools.o \
-	$(NFM)/lib/err.o
+	$(NFM)/lib/nfmu.o     \
+	$(NFM)/lib/systools.o
 
 target: $(NFM)/lib/nfm.o
 
