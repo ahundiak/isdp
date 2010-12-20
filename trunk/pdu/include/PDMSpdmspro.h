@@ -109,7 +109,7 @@ extern int PDMcopy_data_buffer __PDMS((MEMptr bufr1, MEMptr *bufr2));
 
 /* ./pdms/PDMnet.c */
 extern int PDMverify_init __PDMS((void));
-extern int PDMterminate __PDMS((void));
+extern void PDMterminate __PDMS((int)); // needs to match signal prototype
 
 /* ./pdms/PDMnfm_sac.c */
 extern long NFMsearch_across_catalogs __PDMS((long user_id, char *cat_search_str, char *cat_sort_str, char *item_search_str, char *item_sort_str, MEMptr in_attr_list, MEMptr *out_buffer_list, MEMptr *mis_attr_list));

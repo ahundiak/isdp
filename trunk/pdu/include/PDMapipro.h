@@ -16,7 +16,7 @@ extern "C" {
 #endif
 
 extern int PDUcleanup_local_filemgr __PDM((void));
-extern void UI_status __PDM((void));
+extern void UI_status __PDM((char *msg));
 extern void MRPget_time __PDM((void));
 extern void MRPget_date __PDM((void));
 extern void MRPstrcpy __PDM((void));

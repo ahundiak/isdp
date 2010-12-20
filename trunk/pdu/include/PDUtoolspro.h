@@ -1,5 +1,5 @@
-#ifndef PDU_PROTO_H
-#define PDU_PROTO_H
+#ifndef PDU_TOOLS_PROTO_H
+#define PDU_TOOLS_PROTO_H
 
 #if defined(__STDC__) || defined(__cplusplus)
 #ifndef __PDU
