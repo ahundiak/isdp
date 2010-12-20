@@ -12,12 +12,13 @@
 #define APP_INIT(value)
 #endif
 
-#include "risnet.h"
-#include "risarch.h"
 #include "ris.h"
-#include "risapi.h"
 #include "rislimit.h"
 #include "risap_cl.h"
+#include "risnet.h"
+#include "risarch.h"
+
+#include "risapi.h"
 #include "rislang.h"
 #include "risstjmp.h"
 #include "risdebug.h"
@@ -564,9 +565,6 @@ extern int RISapp_init_version();
 /* appinit.c */
 extern void RISapp_initialize(char *language_name);
 
-/* interror.c */
-extern int RISAPI RISXint_error_msg(int	errcode, char *buf, char *errname);
-
 /* appclear.c */
 extern void RISapp_clear(short *id, int set_sqlcode, int client_flag, unsigned char execute_mode);
 
@@ -607,7 +605,7 @@ extern void RISapp_report_ss_error_to_buf(char *ss_name);
 
 extern void RISapp_execute_blob_to_buf(
   sqlvar        *input_blob_sqlvar,
-  int            text_type,
+  int            text_type_reserved,
   unsigned char  execute_mode,
   unsigned char *blobinfo);
 
@@ -658,10 +656,10 @@ extern void RISapp_restore_signal();
 /* appparms.c */
 extern void RISapp_move_to_next_row();
 extern void RISapp_adjust_parms(sqlda *parms, char *buf);
-extern void RISapp_fill_blob_parms(sqlvar *output_sqlvar, int text_type, int *array_full);
+extern void RISapp_fill_blob_parms(sqlvar *output_sqlvar, int text_type_reserved, int *array_full);
 extern void RISapp_process_parms(sqlda *source, sqlda *dest, int input);
 extern void RISapp_process_one_parm(sqlda *source, sqlda *dest, int input, int iparam);
-extern void RISapp_process_blob_parms(sqlvar *input_blob_sqlvar, int text_type, char *dest, unsigned char *blobinfo);
+extern void RISapp_process_blob_parms(sqlvar *input_blob_sqlvar, int text_type_reserved, char *dest, unsigned char *blobinfo);
 
 /* appdcml.c */
 extern void RISapp_char_to_decimal(char s[], int s_len, char d[], int d_len, int d_scale);
