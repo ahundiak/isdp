@@ -1,0 +1,2 @@
+#define MSG_FORM_TEXT     11
+#define MSG_SYMBOL_WIDTH  100

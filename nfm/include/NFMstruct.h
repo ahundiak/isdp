@@ -1,3 +1,6 @@
+#ifndef NFMstruct_h
+#define NFMstruct_h
+
 #include "MEMstruct.h"
 #include "NFMschema.h"
 
@@ -52,7 +55,8 @@ struct NFMglobal_st
 					  FRENCH, GERMAN, BRITISH,
                                           ANSI, USER_DEFINED */
   char time_format [50] ;              /* 24HR, 12HR */
-  char NFMversion [NFM_ITEMDESC+1] ;  /* version of environment */
+//char NFMversion [NFM_ITEMDESC+1] ;  /* version of environment */
+  char NFMversion [44] ;              /* version of environment */
   long NFMuserid ;                    /* userno << 16 | pid */
   long NFMuserno ;                    /* userno */
   char NFMusername [NFM_USERNAME+1] ; /* username */
@@ -160,3 +164,4 @@ typedef struct unit_info1
   int num_of_rows, num_of_cols ;
   char **data ;
 } UNIT_INFO ;
+#endif

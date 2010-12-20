@@ -1,6 +1,8 @@
 #ifndef NFMT_PROTO_H
 #define NFMT_PROTO_H
 
+#include "NFMfto_buf.h"
+
 #if defined(__STDC__) || defined(__cplusplus)
 # define __NFMT(s) s
 #else
