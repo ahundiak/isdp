@@ -1,28 +1,27 @@
-#include		<stdio.h>
+#include <glib.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <string.h>
 #include <errno.h>
 #include <sys/stat.h>
-#include		"PDUerror.h"
-#include		"MEMstruct.h"
-#include		"MEMerrordef.h"
-#include		"NFMerrordef.h"
-#include		"PDUstorage.h"
+#include <pwd.h>
+
+#include "PDUerror.h"
+#include "MEMstruct.h"
+#include "MEMerrordef.h"
+#include "NFMerrordef.h"
+#include "PDUstorage.h"
 #include "NFMstruct.h"
-/*#include "PDUris_incl.h"*/
- 
-/* "sql.h" renamed "ris.h" in RIS V5. 28/Feb/95 - raj. */
-#if defined ( RISV4 )
-#include "sql.h"
-#elif defined ( RISV5 )
+#include "SQLproto.h"
+
 #include "ris.h"
-#else
-#error "RIS version must be defined"
-#endif
- 
-#include		"PDMproto.h"
-#include		"PDUpdmrpro.h"
-#include		"PDUuser.h"
-#include		"PDMmessage.h"
-#include		"pwd.h"
+
+#include "PDMproto.h"
+#include "PDUproto.h"
+#include "PDUpdmrpro.h"
+#include "PDUuser.h"
+#include "PDMmessage.h"
 
 
 #define	     UNIX	1
@@ -36,6 +35,8 @@ extern struct NFMglobal_st NFMglobal;
 extern char     glob_var[100];
 extern long     NFM_PL_LOCK;
 extern char     RIS_parms_filename[];
+
+extern void RISget_schema_file_location(schema_file_parms *parms);
 
 /* ALR  8/5/93. This is for an api function to check if user is logged in */
 /* Global variable for login flag */
@@ -357,7 +358,8 @@ int             PDMlogin (
    /* Added support for SGI port MaC */
 
 #if defined (i386) || defined (__sgi)
-   status = NFMunix_log_in (PDMexec->catalog, PDMexec->part_num, pdmenv, "PDM");
+   g_error("Not using this");
+   //status = NFMunix_log_in (PDMexec->catalog, PDMexec->part_num, pdmenv, "PDM");
    if (status != NFM_S_SUCCESS)
 #else
    status = NFMlog_in (PDMexec->catalog, PDMexec->part_num, pdmenv, "PDM");

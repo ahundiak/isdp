@@ -1,8 +1,8 @@
 SOURCE
-PDMrefresh.c
+PDMnlogin.c
         
 LIB
-$PDU/lib/pdm_tools.o
+$PDU/lib/pdm_pdms.o
 
 INCLUDE
 $BS/include
@@ -12,3 +12,5 @@ $NFM/include
 $PDU/include
 $EXNUC/include
 $GRNUC/include
+$GLIBI
+$GLIBJ

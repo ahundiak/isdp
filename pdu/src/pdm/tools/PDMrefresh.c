@@ -1511,7 +1511,9 @@ int PDMcheck_part_status ()
 /* Add support for checking Max File Version MaC */
 
   sprintf (sql_str,
-  "SELECT %s FROM %s t1 ,f_%s t2 WHERE %s '%s' %s '%s' %s AND t2.n_fileversion = (SELECT MAX(n_fileversion) FROM f_%s t2 WHERE t1.n_itemno = t2.n_itemnum) ",
+  "SELECT %s FROM %s t1 ,f_%s t2 "
+  "WHERE %s '%s' %s '%s' %s AND "
+  "t2.n_fileversion = (SELECT MAX(n_fileversion) FROM f_%s t2 WHERE t1.n_itemno = t2.n_itemnum) ",
 	   " t1.n_status, t1.n_itemno, t2.n_couser  ",
 	   PDMexec->catalog, PDMexec->catalog,
 	   "t1.n_itemname = ", PDMexec->part_num,
@@ -1544,12 +1546,19 @@ int PDMcheck_part_status ()
     return (PDM_I_NEVER_CHECKED_IN);
   }
 
-  sprintf (sql_str, "SELECT t1.n_co,t1.n_copy,t1.n_sano, t1.n_ref FROM nfmsafiles t1, nfmcatalogs t2 WHERE t1.n_sano = %d AND t1.n_itemno = %s AND t2.n_catalogname = '%s' AND t2.n_catalogno = t1.n_catalogno ", storage->storage_no, data[1], PDMexec->catalog);
+  sprintf (sql_str, 
+    "SELECT t1.n_co,t1.n_copy,t1.n_sano, t1.n_ref FROM nfmsafiles t1, nfmcatalogs t2 "
+    "WHERE t1.n_sano = %d AND t1.n_itemno = %s AND t2.n_catalogname = '%s' AND t2.n_catalogno = t1.n_catalogno ",
+    storage->storage_no, data[1], PDMexec->catalog);
+
   status = SQLquery (sql_str, &file_bufr, 512);
   if (status != SQL_S_SUCCESS) {
     MEMclose (&file_bufr);
     if (status == SQL_I_NO_ROWS_FOUND) {
-      sprintf (sql_str, "SELECT t1.n_co,t1.n_copy,t1.n_sano, t1.n_ref FROM nfmsafiles t1, nfmcatalogs t2 WHERE t1.n_itemno = %s AND t2.n_catalogname = '%s' AND t2.n_catalogno = t1.n_catalogno ", data[1], PDMexec->catalog);
+      sprintf (sql_str,
+              "SELECT t1.n_co,t1.n_copy,t1.n_sano, t1.n_ref FROM nfmsafiles t1, nfmcatalogs t2 "
+              "WHERE t1.n_itemno = %s AND t2.n_catalogname = '%s' AND t2.n_catalogno = t1.n_catalogno ",
+              data[1], PDMexec->catalog);
 
       status = SQLquery (sql_str, &file_bufr, 512);
       if (status != SQL_S_SUCCESS) {

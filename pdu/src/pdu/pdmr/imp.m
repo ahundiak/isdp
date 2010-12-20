@@ -1,8 +1,9 @@
 SOURCE
 PDMrfmgr.c
-        
+PDMruser.c
+
 LIB
-$PDU/lib/pdmr.o
+$PDU/lib/pdu_pdmr.o
 
 INCLUDE
 $BS/include
