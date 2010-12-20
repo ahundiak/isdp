@@ -1,22 +1,22 @@
+#ifndef OS_SOLARIS
+#define OS_SOLARIS
+#endif
+
 #include <stdio.h>
-#include "machine.h"
+
 #include "INIT.h"
 #include "NFMsysstruct.h"
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <pwd.h>
-/* HP-PORT IGI 25 Aug 94 */
-#if (defined(OS_SUNOS) || defined(OS_SOLARIS) || \
-     defined(OS_SCO_UNIX) || defined(OS_HPUX))
-#include "NFMenv.h" /* Added for SUN/SCO port - SSRS - 9/11/93 */
-#endif
 
+#include "NFMenv.h" /* Added for SUN/SCO port - SSRS - 9/11/93 */
 #include "NFMporttypes.h"    /* to include OS specific type defs */
 
 #define GREP "grep"
 
-  extern MSGptr INITmsg_ptr;
-  extern struct NFMuser_info_struct NFMuser_info ;
+extern MSGptr INITmsg_ptr;
+extern struct NFMuser_info_struct NFMuser_info ;
 
 extern  char NFMCWD    [100];
 extern  char EXECPATH  [];

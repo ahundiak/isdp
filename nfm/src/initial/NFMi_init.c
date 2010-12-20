@@ -1,12 +1,36 @@
-#include "machine.h"
+
+#ifndef OS_SOLARIS
+#define OS_SOLARIS
+#endif
+
 #include "INIT.h"
+#include "INITproto.h"
+
+#include <stdlib.h>
+#include <unistd.h>
+
 #include <sys/types.h> 
 #include <sys/stat.h>
-#include "NFMversion.h"
-#include "SQLstruct.h"
+#include <string.h>
 
- extern MSGptr INITmsg_ptr;
- struct NFMglobal_st NFMglobal ;
+#include "NFMversion.h"
+#include "NFMsysstruct.h"
+#include "NFMfto_buf.h"
+
+#include "SQLstruct.h"
+#include "SQLproto.h"
+
+#include "MEMproto.h"
+#include "DBTproto.h"
+#include "SYSTproto.h"
+
+extern MSGptr INITmsg_ptr;
+struct NFMglobal_st NFMglobal ;
+
+// No protos
+extern int SQLload_schema();
+extern int _NFMdrop_tables();
+extern int del_ser_env(char *location, char *ser_env_name);
 
         char NFMCWD    [100];
 extern  char EXECPATH  [];
@@ -26,7 +50,7 @@ extern  char EXECPATH  [];
  *                                                                  *
  *                                                                  *
  ********************************************************************/
-
+#if 0
  long NFMris_init (node_attr, node_data, st_attr, st_data,
 		   user_attr, user_data, db_attr, db_data,
 		   db2_attr, db2_data, os_attr, os_data,
@@ -409,7 +433,8 @@ data [10]: Environment Passwd
      ERRload_struct (NFM, NFM_S_SUCCESS, NULL, NULL) ;
      return (NFM_S_SUCCESS);
    }
-
+#endif
+#if 0
  long NFMvalidate_init_buffers (node_data, st_data,
                                 user_data, db_data, os_data,
                                 user_name, passwd)
@@ -490,6 +515,7 @@ data [10]: Environment Passwd
     }
 
 
+extern char *g_get_host_name(void);
 
 long NFMupdate_db (node_data, user_data, st_data)
   MEMptr node_data, user_data, st_data ;
@@ -499,7 +525,7 @@ long NFMupdate_db (node_data, user_data, st_data)
   char  str_stmt [500], str_stmt1 [500], str_stmt2 [500] ;
   long status ;
   char  node_name [50] ;
-  char  **n_data, **u_data, *c_status, **s_data ;
+  char  **n_data, **u_data, *c_status, **s_data, *p ;
   MEMptr return_buffer = NULL ;
  
   /* Because Ingres does not allow updates in key combinations that
@@ -513,7 +539,10 @@ long NFMupdate_db (node_data, user_data, st_data)
   
   node_name [0] = 0;
   /* Missing 4th argument added - SSRS 2 Mar 94 */
-  c_status = (char *) clh_vbyop ("TEMPLATE", "NODENAME", node_name, 25);
+  // c_status = (char *) clh_vbyop ("TEMPLATE", "NODENAME", node_name, 25);
+  p = g_get_host_name();
+  strcpy(node_name,p);
+
   if (c_status)
     {
       _NFMdebug ((fname, "Node Name Not Defined : status = <0x%.8x>\n",
@@ -858,7 +887,7 @@ long _NFMcheck_ris_bad (ris_bad_file)
   _NFMdebug ((fname, "SUCCESSFUL\n")) ;
   return (NFM_S_SUCCESS) ;
 }
-
+#endif
 
 
 
