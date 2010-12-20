@@ -7,6 +7,7 @@ Desc : This is a very old version of source code of NFMlogin.c (1989 ?)
                      
                                       -- Jujare Govind Raj, 21-Dec-95 
 
+ * 17 Dec 2010 - one big difference is that this rouitne has no FTR support built in
 **********************************************/
 
 #include "machine.h"

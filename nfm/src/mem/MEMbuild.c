@@ -57,7 +57,11 @@ long MEMbuild_array (MEMptr list)
   if (tracex) { g_message(">>> %s\n",fname); }
 
   // Check args
-  g_return_val_if_fail(list,            MEM_E_NULL_LIST);
+  // This can happen
+  if (!list) return MEM_E_NULL_LIST;
+  
+  // g_return_val_if_fail(list,            MEM_E_NULL_LIST);
+
   g_return_val_if_fail(list->buffer_ptr,MEM_E_NULL_BUFFER);
 
   buffer_size = atol (list -> buffer_ptr + MEM_BUFFER_USED);

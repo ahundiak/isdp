@@ -1,7 +1,36 @@
-#include "machine.h"
+#ifndef OS_SOLARIS
+#define OS_SOLARIS
+#endif
+
+#include <glib.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <string.h>
+
+#include "NFMapi.h"
 #include "NFMU.h"
 #include "NFMfto_buf.h"
+#include "NFMstruct.h"
+#include "NFMsysstruct.h"
+#include "NFMitems.h"
+#include "NFMflag.h"
+
 #include "UTIerrordef.h"
+
+#include "MEMproto.h"
+
+#include "MSGstruct.h"
+#include "WFstruct.h"
+#include "WFproto.h"
+
+#include "SQLproto.h"
+#include "SYSTproto.h"
+
+#include "CMDTOOLS.h"
+#include "CMDTproto.h"
+#include "NFTproto.h"
+
+extern int _SQLglobal_init () ;
 
  struct NFMglobal_st NFMglobal ;
 
@@ -89,6 +118,8 @@
       _NFMdebug ((fname, "username %s : environment %s : application %s\n",
 		  user_name, environment, application)) ;
 
+      g_message("NFMlog_in for %s",user_name);
+      
       strcpy (NFMglobal.application, application) ;
       if (strcmp (user_name, "PUBLIC") == 0)
 	{
@@ -395,7 +426,7 @@ WHERE n_username = '%s' or n_username = 'PUBLIC'",
       return (NFM_S_SUCCESS) ;
     }
 
-
+#if 0
  long NFMget_schema_info (node_name, schema_name)
    char    *node_name;
    char    *schema_name;
@@ -1559,3 +1590,4 @@ long _NFMcheck_vault_version_number ()
   _NFMdebug ((fname, "EXIT Successful\n"));
   return (NFM_S_SUCCESS);
 }
+#endif

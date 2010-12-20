@@ -20,7 +20,7 @@
 #include "SYSTproto.h"
 #include "NETstruct.h"
 
-static int tracex = 0;
+static int tracex = 1;
 
 #define OS_SOLARIS
 

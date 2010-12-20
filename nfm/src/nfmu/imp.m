@@ -1,8 +1,10 @@
 SOURCE
-NFMi_init.c
+NFMlogin.c
 
 LIB
-$NFM/lib/initial.o
+$NFM/lib/nfmu.o
 
 INCLUDE
 $NFM/include
+$GLIBI
+$GLIBJ
