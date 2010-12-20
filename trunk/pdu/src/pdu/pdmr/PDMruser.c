@@ -22,13 +22,9 @@ extern struct PDUrefresh *refresh;
 int PDMsock;
 static char s[1024];
 
-int PDMrlogin (username, password, environment, login_flag, user_id)
-  char          *username;
-  char          *password;
-  char          *environment;
-  short         login_flag;   /* determines whether user is logging in or
-                                 reconnecting */
-  long		*user_id;           /*  o - 0 if function fails  */
+int PDMrlogin (char *username, char *password, char *environment,
+        short login_flag, // 1 = login, 0? = reconnect
+        long *user_id)    // 0 for failure
 
   {
         int     status = PDM_S_SUCCESS;
@@ -92,7 +88,8 @@ int PDMrterminate()
         PDUload_exec_structure("", "", "", "", "LOGOUT","","", 0, 0);
 
         /* Terminate PDM. */
-        status = PDMterminate();
+        PDMterminate(0);
+        status = PDM_S_SUCCESS;
         _pdm_status("PDMterminate", status);
 
         if (status != PDM_S_SUCCESS)

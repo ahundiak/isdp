@@ -1,7 +1,10 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 #include <errno.h>
+
 #include "PDUstr.h"
 #include "PDUuser.h"
 #include "PDUerror.h"
@@ -14,8 +17,8 @@ extern  short  PDU_refresh_loaded;
 extern  short  PDU_use_suffix;
 extern  char  *PDU_file_suffix;
 
-PDUdefine_refresh ()
-  {
+int PDUdefine_refresh ()
+{
 	int		status = PDM_S_SUCCESS;
 	char	path[512];
 	char	suffix_flag[3];
@@ -134,8 +137,8 @@ PDUdefine_refresh ()
   }
 
 
-PDUget_refresh ()
-  {
+int PDUget_refresh ()
+{
 	int		status = PDM_S_SUCCESS;
 	char	path[512];
 	FILE	*infile, *fopen ();
@@ -303,26 +306,21 @@ PDUget_refresh ()
   }
 
 
-PDUwrite_refresh_file (field, outfile)
-  char	*field;
-  FILE	*outfile;
-  {
-	if (field == NULL)
-	  {
-		fprintf (outfile, "\n");
+int PDUwrite_refresh_file (char *field, FILE *outfile)
+{
+  if (field == NULL)
+	{
+	  fprintf (outfile, "\n");
 		_pdm_debug ("PDUwrite_refresh_file: field is NULL", 0);
-	  }
+	}
 	else
-	  {
+	{
 		fprintf (outfile, "%s\n", field);
 		_pdm_debug ("PDUwrite_refresh_file: field = <%s>", field);
-	  }
-
+	}
 	return (PDM_S_SUCCESS);
-  }
-
-
-PDUread_refresh_file (field, path, infile)
+}
+int PDUread_refresh_file (field, path, infile)
   char	**field;
   char	*path;
   FILE	*infile;
@@ -357,7 +355,7 @@ PDUread_refresh_file (field, path, infile)
 	        _pdm_debug ("PDUread_refresh_file: field = <%s>", *field);
 	  }
 
-	return (PDM_S_SUCCESS);
+	  return (PDM_S_SUCCESS);
   }
 
 /**************************************************************************
@@ -376,77 +374,59 @@ PDUread_refresh_file (field, path, infile)
                 removed from the returned string.
 
 ***************************************************************************/
-char *myfgets(s,n,stream)
-char *s;
-int n;
-FILE *stream;
+char *myfgets(char *s, int n, FILE *stream)
+{
+  char *sts,*strchr();
+
+  if ((sts = fgets(s,n,stream)) == NULL) return(sts);
+
+  if ((sts = strchr(s,'\n'))    == NULL) return(s);
+  *sts = 0;
+
+  return(s);
+}
+
+int PDUget_login_form_data ()
+{
+  int    status = PDM_S_SUCCESS;
+  char   path[512];
+  FILE  *infile, *fopen ();
+  struct stat buf;
+  char  *cwd = NULL;
+  char  *teststr = NULL;
+
+  _pdm_debug("in the function PDUget_login_form_data", 0);
+
+  cwd = ((char *)getenv ("PWD"));
+  if (!cwd)
   {
-    char *sts,*strchr();
-
-    if ((sts = fgets(s,n,stream)) == NULL)
-      return(sts);
-
-    if ((sts = strchr(s,'\n')) == NULL)
-      return(s);
-    *sts = 0;
-
-    _pdm_debug("s = <%s>", s);
-    return(s);
+    _pdm_debug("error retrieving CWD", 0);
+    return(PDM_E_WRKST_CWD);
   }
-
-PDUget_login_form_data ()
-  {
-	int		status = PDM_S_SUCCESS;
-	char	path[512];
-	FILE	*infile, *fopen ();
-	struct	stat buf;
-	char    *cwd = NULL;
-	char    *teststr = NULL;
-
-        _pdm_debug("in the function PDUget_login_form_data", 0);
-
-        _pdm_debug("copying current working directory", 0);
-
-/* 12/1/95 MJG - use getenv instead of PDUgetcwd
-        cwd = (char *)PDUgetcwd(teststr, 64);
-*/
-        cwd = ((char *)getenv ("PWD"));
-        if (!cwd)
-          {
-          _pdm_debug("error retrieving CWD", 0);
-          return(PDM_E_WRKST_CWD);
-          }
-        strcpy(path, cwd);
-	strcat (path, "/.refresh.dat");
-        _pdm_debug("file path = <%s>", path);
+  strcpy(path, cwd);
+	strcat(path, "/.refresh.dat");
+  _pdm_debug("file path = <%s>", path);
 
 	if (stat (path, &buf))
-	  {
-		_pdm_debug ("PDUget_login_form_data: stat failed; errno = %d", 
-                             (char *)errno);
-		_pdm_debug ("PDUget_login_form_data: returning %d", 
-                             (char *)PDM_E_OPEN_FILE);
+	{
+		_pdm_debug ("PDUget_login_form_data: stat failed; errno = %d",  (char *)errno);
+		_pdm_debug ("PDUget_login_form_data: returning %d",             (char *)PDM_E_OPEN_FILE);
 		return (PDM_E_OPEN_FILE);
-	  }
+	}
 
 	if (buf.st_size == 0)
-	  {
-		_pdm_debug ("PDUget_login_form_data: file is empty", 0);
-
-	        user->environment = NULL;
-	        user->username = NULL;
-
-		_pdm_debug ("PDUget_refresh: returning %d", (char *)PDM_S_SUCCESS);
+	{
+    user->environment = NULL;
+	  user->username    = NULL;
 		return (PDM_S_SUCCESS);
-	  }
+	}
 
 	if ((infile = fopen (path, "r")) == NULL)
-	  {
+	{
 		_pdm_debug ("PDUget_login_form_data: error opening <%s>", path);
-		_pdm_debug ("PDUget_login_form_data: errno = <%d>", 
-                             (char *)errno);
+		_pdm_debug ("PDUget_login_form_data: errno = <%d>", (char *)errno);
 		return (PDM_E_OPEN_FILE);
-	  }
+	}
 
 	status = PDUread_refresh_file (&user->environment, path, infile);
 	if (status != PDM_S_SUCCESS)
@@ -462,7 +442,7 @@ PDUget_login_form_data ()
 		return (status);
 	  }
 
-        _pdm_debug("Closing ascii file and returning SUCCESS", 0);
+  _pdm_debug("Closing ascii file and returning SUCCESS", 0);
 	fclose (infile);
 	return (PDM_S_SUCCESS);
-  }
+}

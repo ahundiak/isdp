@@ -1,5 +1,6 @@
 objects = \
-	$(PDU)/lib/pdmr.o \
+	$(PDU)/lib/pdu_pdmr.o    \
+	$(PDU)/lib/pdu_filemgr.o \
 	$(PDU)/lib/pdm_tools.o
 
 target: $(PDU)/lib/pdu.o

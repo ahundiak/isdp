@@ -1,7 +1,10 @@
 #include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <string.h>
+
 #include <sys/utsname.h>
 #include <FI.h>
-#include <tools.h>
 #include <PDUuser.h>
 #include <PDUstr.h>
 #include <PDUforms.h>
@@ -24,6 +27,8 @@
 #include "PDUproto.h"
 #include "PDMproto.h"
 
+#include "NFMTproto.h"
+// #include "xcmisc.h"
 
 /* Gadgets */
 
@@ -35,8 +40,6 @@
 
 /* Externs */
 
-extern char * calloc();
-extern char * realloc();
 extern char *** PDU_update_struct;
 extern char *PDU_apimessage;
 extern int * PDU_gadget_labels;
@@ -65,13 +68,14 @@ extern struct PDUrefresh   *refresh;
 extern struct PDUforms      forms;
 
 extern int    passwd;
- 
+extern int Help_topic(char *topic);
+
 static short login_from_ex_file_form = FALSE;
 
 int login_notification_routine ( f_label, g_label, value, fp )
   int     f_label;        /* The label of the form   */
   int     g_label;       /* The label of the gadget */
-  double  value;          /* The value of the gadget */
+  IGRdouble  value;          /* The value of the gadget */
   Form    fp;            /* Pointer to the form     */
 {
   static char   * text;
@@ -475,46 +479,15 @@ int PDUlogin_form()
 
   return(PDM_S_SUCCESS);
 }
+extern int exitadd();
 
 int PDUprocess_login()
 {
-int      *fn;
-void       PDMterminate();
 int       status = PDM_S_SUCCESS;
 char     *msg = NULL;
-struct utsname system_name;
-char *env_var_name = NULL;
-
-  _pdm_debug("in the function PDUprocess_login", 0);
-
 
   /* Set up the environment variable INGRHOME if it has not been set */
-  /* ALR  2/3/94  */
-   env_var_name = (char *)getenv("INGRHOME");
-   _pdm_debug("env_var_name |%s| \n",env_var_name);
-/* ALR   5/11/94   This is not the correct settings for SGI ?? 
-   if (!((env_var_name) && (strcmp(env_var_name,"/usr/ip32") == 0)) ||
-      ((env_var_name) && (strcmp(env_var_name,"/var/opt/ingr") == 0)) || 
-      ((env_var_name) && (strcmp(env_var_name,"/opt/ingr") == 0)))
-*/
-    if (!env_var_name)
-    {
-     _pdm_debug("execute uname stmt \n",0);
-     uname(&system_name);
-     if (strncmp(system_name.sysname,"CLIX",4) == 0) 
-       putenv("INGRHOME=/usr/ip32");
-         /* SGI */
-     if (strncmp(system_name.sysname,"IRIX",4) == 0)
-       putenv("INGRHOME=/var/opt/ingr");
-     if (strncmp(system_name.sysname,"SunOS",5) == 0)
-      {     /* SunOS 4.1 */
-        if (strncmp(system_name.release,"4.1",2) == 0)
-          putenv("INGRHOME=/usr/ip32");
-           /* Solaris */
-        else 
-          putenv("INGRHOME=/opt/ingr");
-      }
-    }
+  if (!getenv("INGRHOME")) putenv("INGRHOME=/opt/ingr");
 
   /*_pdm_debug("server = <%s>", user->server);*/
   _pdm_debug("environment = <%s>", user->environment);
@@ -547,8 +520,8 @@ char *env_var_name = NULL;
     {
     _pdm_debug("user id returned from host = %d", (char *)user->user_id);
     _pdm_debug("Setting up function call to PDUlogout", 0);
-    fn = (int *)PDMterminate;
-    exitadd(fn);
+    //fn = (int *)PDMterminate;
+    exitadd(PDMterminate); // Bad prototype
 
 /* added 2 more signals...*/
 
@@ -732,9 +705,9 @@ char *path, **node;
      return ( NULL_STRING );
 }
  
+extern int WaitForEvent();
 
-int PDUautomatic_login(flag)
-short flag;
+int PDUautomatic_login(short flag)
 {
   int   status = PDM_S_SUCCESS;
   int   status1 = PDM_S_SUCCESS;
