@@ -3,7 +3,9 @@ SOURCE
 VDPaimPostMan.c
 VDPaimPostInt.c
 VDPaimUtil.c
-
+VDPaimLogin.c
+VDPutil.I
+        
 LIB
 $VDS/lib/vdiaimimp.o
 
@@ -12,6 +14,8 @@ $BS/include
 $BS/include/prototypes
 $UMS/include
 $FORMS/include
+$NFM/include
+$PDU/include
 $EXNUC/include
 $GRNUC/include
 $GRNUC/ingrsys

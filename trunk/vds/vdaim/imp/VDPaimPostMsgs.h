@@ -1,9 +1,7 @@
-#ifndef VDPaimPostMsgs_h_
-#define VDPaimPostMsgs_h_
 
+typedef char ascii_charx;
 
-
-static ascii_char *MsgOrigins [] = {			/* message originations */
+static ascii_charx *MsgOrigins [] = {			/* message originations */
 
 #define		MOID_NO_MSG					0		
 		"",
@@ -76,7 +74,7 @@ static ascii_char *MsgOrigins [] = {			/* message originations */
 
 	};
 
-	static ascii_char *Msgs [] = {				/* MESSAGES */
+	static ascii_charx *Msgs [] = {				/* MESSAGES */
 
 #define		MSGID_NOMSG					0
 		"",
@@ -172,4 +170,3 @@ static ascii_char *MsgOrigins [] = {			/* message originations */
 		"Buffer Lenght Too Short",
 	};
 
-#endif
