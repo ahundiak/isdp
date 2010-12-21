@@ -20,7 +20,6 @@ SOURCE
 VDPaimFileInfo.c
 VDPaimColl.I
 VDPaimDelete.I
-VDPaimPostMan.c
 VDPaimPost.c
 VDPaimPost2.c
 VDPaimValidate.c
