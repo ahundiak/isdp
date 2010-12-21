@@ -1,32 +1,18 @@
-/* $Id: VDgenOver.I,v 1.5 2002/06/07 14:44:14 ramarao Exp $ */
+/* $Id: VDgenOver.I,v 1.1.1.1 2001/06/01 20:06:27 tlstalli Exp $*/
 
 /* --------------------------------------------------------------------
- * I/VDS
+ * I/AIMSIR
  *
- * File:	vds/vdroot/VDgenOver.I
+ * File:	aim/src/sir/VDgenOver.I
  *
  * Description:
  *
  * Dependencies:
- *	$Log: VDgenOver.I,v $
- *	Revision 1.5  2002/06/07 14:44:14  ramarao
- *	Implemented To Do List.
- *	
- *	Revision 1.4  2002/06/03 19:17:18  ramarao
- *	Used a seperate flag for recompute info.
- *	
- *	Revision 1.3  2002/05/22 21:51:15  ramarao
- *	Added a bit of code to debug out the recompute info.
- *	
- *	Revision 1.2  2001/02/22 18:25:01  ad
- *	*** empty log message ***
- *	
  *
  * History:
  *	MM/DD/YY	AUTHOR		DESCRIPTION
  *      10/3/95		 MSM		Creation
  *      09/26/99	SSR		TR # MP1208
- *	02/22/01	adz		Change the return statements.
  *
  * -------------------------------------------------------------------*/
 
@@ -34,6 +20,11 @@ class implementation VDSroot ;
 
 #include "nd.h"
 #include "AS_status.h"
+
+/*
+#define vaimDEBUG
+#define vaimerrDEBUG
+*/
 
 #include <stdio.h>
 #include "string.h"
@@ -45,10 +36,9 @@ class implementation VDSroot ;
 #include "exmacros.h"
 #include "ACdb_info.h"
 #include "VDScheckdef.h"
-#include "VDobj.h"
 
 #include "v_miscmacros.h"
-#include "v_dbgmacros.h"
+#include "vadbgmacros.h"
 #include "v_datamacros.h"
 
 extern GRclassid        OPP_SMcomp_class_id;
@@ -88,8 +78,13 @@ method NDdelete( struct GRmd_env *md_env )
 		mode	 = OM_e_wrt_message );
   	as$status();
 
+	//SSR 26 AUG all transactions to be maintained in trans list even if
+	//ISDP is not connected to AIM. TR # MP1208
+	//if( IsPmeEnabled() == TRUE )
+	//{
 	status = VDPPmeDelete ( &msg, MyId, is_comp );
 	CheckRC ( status, msg );
+	//}
 wrapup:
 	End
 	return OM_S_SUCCESS;
@@ -105,21 +100,8 @@ method NDupdate( int *msg, cn_type, count;
 {
 	IGRlong			status;
 	struct GRid		MyId;
-	struct GRobj_env        myOE;
 
 	SetProc( VDSroot.NDupdate ); Begin
-
-	MyId.objid = my_id;
-	MyId.osnum = OM_Gw_current_OS;
-
-	myOE.obj_id  = MyId;
-	myOE.mod_env = *md_env;
-
-	if( VDgetCMPtoggle() )
-	{
-	    printf( "Recomputing (VDS) --- " );
-	    vdobj$Print( objID = &MyId );
-	}
 
 	*msg = MSSUCC;
 	new_objid->objid = NULL_OBJID;
@@ -131,27 +113,20 @@ method NDupdate( int *msg, cn_type, count;
 				md_env ),
                 targetid = my_id,
 		mode	 = OM_e_wrt_message );
-	if( ! ( status & 1 & (*msg) ) )
-	{
-	    VDaddToDoList( myOE );
-	}
-        else
-        {
-            VDremoveFromToDoList( myOE );
-        }
   	as$status();
 	__DBGpr_obj ( "new Objid :", *new_objid );
 
-	/*
-         * SSR 26 AUG all transactions to be maintained in trans list even if
-	 * ISDP is not connected to AIM. TR # MP1208
-	 * if( IsPmeEnabled() == TRUE )
-	 */
-	__DBGpr_obj("Recomputing :", MyId );
+	//SSR 26 AUG all transactions to be maintained in trans list even if
+	//ISDP is not connected to AIM. TR # MP1208
+	//if( IsPmeEnabled() == TRUE )
+	//{
+	MyId.objid = my_id;
+	MyId.osnum = OM_Gw_current_OS;
+	__DBGpr_obj("My ID :", MyId );
 
 	status = VDPPmeUpdate ( msg, MyId, *new_objid );
 	CheckRC ( status, *msg );
-	*msg = MSSUCC ;
+	//}
 	End
 	return OM_S_SUCCESS;
 }
@@ -184,6 +159,14 @@ method ACcontext_compute_feet(	IGRint 		count;
                           superclassname = "VDdrwGm" ) == OM_S_SUCCESS)
 
 		return ( OM_S_SUCCESS );
+
+/*****
+        if( om$is_ancestry_valid
+                        ( subclassid = ClassId,
+                          superclassname = "VLunwObj" ) == OM_S_SUCCESS)
+
+		return ( OM_S_SUCCESS );
+ *******/
 
 	/*
 	 * Call the default process.
