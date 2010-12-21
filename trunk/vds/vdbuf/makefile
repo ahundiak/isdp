@@ -28,3 +28,7 @@ target:	mkfile
 
 mkfile:	vdibuf.m
 	grmakemake vdibuf.m mkfile
+
+clean:
+	@rm -f mkfile *.o *.c
+
