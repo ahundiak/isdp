@@ -2441,14 +2441,4 @@ quit:
 	return (status);
 }
 
-IGRint VDPmeCheckin( IGRlong   *msg, IGRboolean TrSav  )
-{
-    SetProc( VDPmeCheckin ); Begin
-
-    *msg = MSSUCC;
-
-    End
-    return OM_S_SUCCESS;
-}
-
 end implementation ACdb_info ;
