@@ -1,4 +1,4 @@
-/* $Id: VDPtrUtil.I,v 1.1.1.1 2001/01/04 21:09:05 cvs Exp $  */
+/* $Id: VDPtrUtil.I,v 1.1.2.1 2003/05/27 13:36:50 ahundiak Exp $  */
 
 /* I/VDS
  *
@@ -9,11 +9,15 @@
  * Dependencies:
  *
  * History:
- *      MM/DD/YY        AUTHOR          DESCRIPTION
- *      -------------------------------------------
- *      09/02/98        Shailesh        Modified VDPGetTrTblId for SIR.
- *                                      refer TR # 179801453
- *      09/28/95        MSM             Creation
+ * MM/DD/YY  AUTHOR   DESCRIPTION
+ * -------------------------------------------
+ * 05/22/03  ah       Removed the WhichAim dependency so it works
+ *                    Even if sir was not connected to in a session
+ *
+ * 09/02/98  Shailesh Modified VDPGetTrTblId for SIR.
+ *                    refer TR # 179801453
+ *
+ * 09/28/95  MSM      Creation
  */
 
 class implementation VDPtrTbl;
@@ -43,7 +47,6 @@ class implementation VDPtrTbl;
 
 #include "VDPdef.h"
 #include "VDPtrTbl.h"
-extern WhichAim();
 
 /*+fi
   Internal Function VDPGetTrTblId()
@@ -93,97 +96,6 @@ IGRint  VDPGetTrTblId( IGRlong           *msg,
 
     ex$get_cur_mod( osnum = &curOs );
 
-    if ( WhichAim == PME ) {
-    /* get directory path name */
-
-    status = di$give_pathname(  osnum           = curOs,
-                                pathname        = DirName );
-
-    __CheckRC( status, 1, "di$give_pathname", wrapup );
-    __DBGpr_str( "Path name", DirName );
-
-    strcat( DirName, PME_GLOBAL_DIR );
-
-    status =
-    di$translate ( objname = DirName,
-                   p_objid = &DirId.objid,
-                   p_osnum = &DirId.osnum ) ;
-
-    __DBGpr_obj( "Dir Id", DirId );
-
-    /*A create PME_GLOBAL if it does not exist     */
-    if ( status != DIR_S_SUCCESS )
-    {
-	DirId.objid = NULL_OBJID;
-
-	status =
-	di$mkdir( dirname = DirName,
-		  p_dirid = &DirId.objid,
-		  p_osnum = &DirId.osnum );
-
-        __DBGpr_obj( "Dir Id", DirId );
-
-         if( status != DIR_S_SUCCESS )
-        {
-                  /*A Cannot create directory*/
-                  di$report_error( sts = status ) ;
-                  goto    wrapup;
-	}
-    }
-    else
-    {
-	sprintf( trTblName,"%s%s",DirName,PME_TRANS_LIST );
-	__DBGpr_str( "Transaction Table name", trTblName );
-	
-	status =
-	di$translate  ( objname = trTblName,
-			p_objid = &pTrTblId->objid,
-			p_osnum = &pTrTblId->osnum ) ;
-
-	__DBGpr_obj( "Trans Tbl Id", *pTrTblId );
-
-        switch( status ) 
-	{
-         case DIR_S_SUCCESS      :
-            trTblExist = TRUE;
-            break ;
-
-         case DIR_W_NAME_NOT_FOUND       :
-            trTblExist = FALSE ;
-            break ;
-
-         default              :
-        /*|ERROR : in di$translate*/
-            return status ;
-         }
-    }
-
-    /* If List does not exist create the object and add it to NOD */
-
-    if( !trTblExist )
-    {
-	pTrTblId->osnum = curOs;
-
-        status =
-        om$construct (  classid = OPP_VDPtrTbl_class_id,
-                        p_objid = &(pTrTblId->objid),
-                        osnum   = pTrTblId->osnum,
-                        msg = message VDPtrTbl.VDPinit( msg) );
-	__CheckRC( status, *msg,"om$construct", wrapup );
-	__DBGpr_obj ( "List Id ", *pTrTblId );
-
-	status =
-	di$add_name ( objname = trTblName,
-		      osnum   = pTrTblId->osnum,
-		      objid   = pTrTblId->objid );
-        __CheckRC( status, 1, "di$add_name", wrapup );
-    }
-
-    }  // End If PME
-
-
-    if ( WhichAim() == SIR )
-    {
      
     /* get directory path name */
 
@@ -269,9 +181,6 @@ IGRint  VDPGetTrTblId( IGRlong           *msg,
 		      objid   = pTrTblId->objid );
         __CheckRC( status, 1, "di$add_name", wrapup );
     }
-
-
-    } // Ens IF SIR
 
 wrapup :
 

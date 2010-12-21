@@ -1,4 +1,4 @@
- /* $Id */
+/* $Id */
 
 /* I/Vds
  *
@@ -81,8 +81,8 @@
 class implementation VDPtrTbl;
 
 /*
-#define vdsDEBUG
-#define vdserrDEBUG
+#define vaimDEBUG
+#define vaimerrDEBUG
 */
 
 #include <stdio.h>
@@ -94,10 +94,12 @@ class implementation VDPtrTbl;
 #include "exproto.h"
 #include "exdef.h"
 #include "exmacros.h"
+#include "execmsg.h"
 #include "MEMstruct.h"
 
+#include "VDPdef.h"
 #include "v_miscmacros.h"
-#include "v_dbgmacros.h"
+#include "vadbgmacros.h"
 #include "v_datamacros.h"
 #include "VDtypedef.h"
 
@@ -123,7 +125,6 @@ class implementation VDPtrTbl;
 #include "PDUstr.h"
 #include "PDUerror.h"
 
-#include "VDPdef.h"
 #include "VDPtrTbl.h"
 //include "Avon.h"
 #include "VDsa.h"
@@ -132,6 +133,13 @@ class implementation VDPtrTbl;
 #include "vdbmacros.h"
 #include "SQLerrordef.h"
 
+#include "VDpdm.h"  // SAUBY added for new sirid generation stuff
+#include "VDPaimUtil.h"
+
+#include "VDctx.h"
+
+//TLS TR 6230
+#include "VDos.h"
 
 #define FILE_PRINT	if (dm2_log) fprintf
 #define PRINT_FILE      if (fp) fprintf
@@ -602,7 +610,7 @@ method VDPpostPMEdata( IGRlong *msg; IGRboolean	 *allPosted )
     				DefDirName[DI_PATH_MAX], DirName[DI_PATH_MAX];
     char                        ** buf;
     char                        search[256],length_txt[20],unit_txt[10];
-    int                         num,sts, FileType, diagCtl;
+    int                         num,sts, FileType;
     IGRdouble                   length=1,m_weight,density_value,volume,units;
     IGRint                      n_items,  objcount = 0, objctr;
     struct GRid			*list = NULL;
@@ -613,827 +621,113 @@ method VDPpostPMEdata( IGRlong *msg; IGRboolean	 *allPosted )
     IGRchar			TmpFileName[270] ; 
     IGRchar			*token;
     time_t			ltime;
-    IGRint 			*yespost=0, *nopost=0; 
+    IGRint 			*yespost=0, *nopost=0;
+    int               ref  = 0, sclindex = 0, compindex = 0, frindex = 0, n = 0;
+    char                 compnum[30], fwdfrnum[30]; 
 
-    // Added by ah for globals
-    struct SRPartStat *partcount = (struct SRPartStat *)VDaimGetPartCount();
+  // Added by ah for globals
+  struct SRPartStat *partcount = (struct SRPartStat *)VDaimGetPartCount();
     
-    int CumPartVar = VDaimGetCumPartVar();
+  int CumPartVar = VDaimGetCumPartVar();
 
-	// Added by meghani , index to keep track of wet_weight in a structure
-	IGRint i_wwt = -1 ;
-	IGRint i_ewt = -1;
+  // Added by meghani , index to keep track of wet_weight in a structure
+  IGRint i_wwt = -1 ;
+  IGRint i_ewt = -1;
 
-
-	char seed_units[4];
+  char seed_units[4];
     
-	SetProc( VDPtrTbl.VDPpostPMEdata ); Begin
+  SetProc( VDPtrTbl.VDPpostPMEdata ); Begin
 
-    if( !msg )
-	return OM_E_INVARG;
+  if( !msg ) return OM_E_INVARG;
+  *msg = MSSUCC;
+  ObjInfo.quantity = 0;
 
-    *msg = MSSUCC;
-    ObjInfo.quantity = 0;
+  units = 0;            // Added by ah to avoid uninitted ref
+  seed_units[0]='\0';
+  FileName[0] = '\0';
+  TmpFileName[0] = '\0';
 
-        units = 0;            // Added by ah to avoid uninitted ref
-	seed_units[0]='\0';
-	FileName[0] = '\0';
-	TmpFileName[0] = '\0';
+  /* Verify file type is ARR or DM */
+  VDPaimGetDADCollector(NULL_OSNUM,0,&DefDat);
+  if (DefDat.objid == NULL_OBJID)
+  {
+    *msg = MSFAIL;
+    return OM_E_ABORT;
+  }
+  VDcollGetIntAttr(&DefDat,SIR_FILE_TYP,&FileType);
+  switch(FileType)
+  {
+    case VDP_ASIR_FILE_TYPE_ARR: break;
+    case VDP_ASIR_FILE_TYPE_DM:  break;
+    default:
+      *msg = MSFAIL;
+      return OM_E_ABORT;
+  }
 
-     get_local_fname(refresh->act_catalog, 
-			refresh->act_partid,
-			refresh->act_revision,
-			FileName );
+
+  /* Build log file */
+  get_local_fname(refresh->act_catalog, 
+                  refresh->act_partid,
+                  refresh->act_revision,
+		  FileName );
     
-	token = strtok ( FileName, "." );
-    sprintf( TmpFileName, "%s", token );
-    strcat ( TmpFileName, "_post.log" );
-    __DBGpr_str( " file ", TmpFileName );
-
-    time ( &ltime );
-
-    dm2_log = (FILE *)fopen(TmpFileName,"a");
-    if( dm2_log == NULL )
-	printf( "Cannot open file <%s>.\n",TmpFileName ); 
-
-    /* Query DM2 database for the attribute information */
-
-    if(WhichAim( ) == PME){         // post to pme
-    for ( i=0; i < 8; i++ )
-    {
-	nbClassAttr[i] = 0;
-	AttrType[i] = NULL;
-	TableAttr[i] = NULL;
-    }
-
-    status = VDPgetOccTemplate1( msg, VDP_EQUIP_CLASS,&nbClassAttr[VDP_EQUIP],
-				 &AttrType[VDP_EQUIP],&TableAttr[VDP_EQUIP] );
-    CheckRC ( status, *msg );
-
-    status = VDPgetOccTemplate1( msg, VDP_PIPING_CLASS,&nbClassAttr[VDP_PIPING],
-				 &AttrType[VDP_PIPING],&TableAttr[VDP_PIPING] );
-    CheckRC ( status, *msg );
-
-    status = VDPgetOccTemplate1( msg, VDP_HVAC_CLASS, &nbClassAttr[VDP_HVAC],
-				 &AttrType[VDP_HVAC],&TableAttr[VDP_HVAC] );
-    CheckRC ( status, *msg );
-
-    status = VDPgetOccTemplate1( msg, VDP_RWAY_CLASS, &nbClassAttr[VDP_RWAY],
-				 &AttrType[VDP_RWAY],&TableAttr[VDP_RWAY] );
-    CheckRC ( status, *msg );
-
-    status = VDPgetOccTemplate1( msg, VDP_BEAM_CLASS, &nbClassAttr[VDP_BEAM],
-				 &AttrType[VDP_BEAM],&TableAttr[VDP_BEAM] );
-    CheckRC ( status, *msg );
-
-    status = VDPgetOccTemplate1( msg, VDP_PLATE_CLASS, &nbClassAttr[VDP_PLATE],
-				 &AttrType[VDP_PLATE], &TableAttr[VDP_PLATE] );
-    CheckRC ( status, *msg );
-
-    status = VDPgetOccTemplate( msg,VDP_COMPART_CLASS,&nbClassAttr[VDP_COMPART],
-				 &AttrType[VDP_COMPART],&TableAttr[VDP_COMPART] );
-    CheckRC ( status, *msg );
-
-
-    nbObjects = om$dimension_of ( varray = me->transObj );
-    __DBGpr_int ( "Size of Trans List : ", nbObjects );
-
-    for ( i = 0; i < nbObjects; i++ )
-    {
-	if ( me->transObj[i].posted == TRUE )
-	    continue;
-
-	Obj.objid = me->transObj[i].VDSobjid;
-	Obj.osnum = OM_Gw_current_OS;
-
-        ObjInfo.quantity = 0; /* Initialising it to 0. 10.23.96 */
-
-	/*
-	 * If the object for some reason is deleted and it does not figure
-	 * in the trans list, then set it as deleted.
-	 */
-
-	if ((om$is_objid_valid ( objid = Obj.objid )) != OM_S_SUCCESS &&
-	    me->transObj[i].ActionCode != VDP_DEL_COMP )
-	    me->transObj[i].ActionCode = VDP_DELETE;
-
-	memcpy( &TrRow, &me->transObj[i], sizeof( struct VDPtrObjList ));
-
-	__DBGpr_int ( "Action Code :", me->transObj[i].ActionCode );
-	__DBGpr_obj ( "Processing Object :", Obj );
-
-        if( me->transObj[i].ActionCode != VDP_DEL_COMP )
-        {
-            status = _VD_SEND_OBJ( Obj, NDmacro.ACtest_consumed ( msg ));
-            if (*msg & 1 )
-            {
-                me->transObj[i].ActionCode = VDP_DELETE;
-                memcpy( &TrRow, &me->transObj[i], sizeof( struct VDPtrObjList ));
-            }
-        }
-
-
-	FILE_PRINT(dm2_log, "Posting Object : <%d/%d> \n", Obj.objid, Obj.osnum );
-	// printf("Posting Object : <%d/%d> \n", Obj.objid, Obj.osnum );
-
-	sprintf( Message, "Processing Object #%d %d \0", i, Obj.objid );
-	UI_status( Message );
-
-	if ((me->transObj[i].ActionCode) != VDP_DELETE && (me->transObj[i].ActionCode) != VDP_DEL_COMP )
-	{
-	    count = 1;
-	    /* Get DB info & quantity */
-	    status = VdsGet_db_info( &Obj, &ObjInfo, count );
-
-	    if (ObjInfo.quantity == EQUIPMENT_OBJ ) ObjType = VDP_EQUIP;
-	    else if (ObjInfo.quantity == PIPING_OBJ) ObjType = VDP_PIPING;
-	    else if (ObjInfo.quantity == HVAC_OBJ) ObjType = VDP_HVAC;
-	    else if (ObjInfo.quantity == RWAY_OBJ) ObjType = VDP_RWAY;
-	    else if (ObjInfo.quantity == STRUCT_BEAM_OBJ) ObjType = VDP_BEAM;
-	    else if (ObjInfo.quantity == STRUCT_PLATE_OBJ) ObjType = VDP_PLATE;
-	    else if (ObjInfo.quantity == COMPARTMENT_OBJ) ObjType = VDP_COMPART;
-	    else  /* Nozzles & other objects can also be enabled. After 
-		   * implementing it in PME, they will be posted 
-		   */
-	    {
-		me->transObj[i].posted = TRUE; continue;
-	    }
-	}
-        if ((me->transObj[i].ActionCode) == VDP_DEL_COMP )
-            ObjInfo.quantity = COMPARTMENT_OBJ;
-        __DBGpr_int ( "Quantity ", ObjInfo.quantity );
-
-
-	switch( me->transObj[i].ActionCode )
-	{
-	    case VDP_CREATE :
-	    case VDP_FRPLLST :
-	    case VDP_MODIFY :
-	    case VDP_REPLACE :
-
-		/* The object could have been deleted or replaced */
-		/* In such an event ignore and go to the next */
-		{
-		}
-
-		/* get the corresponding Collector */
-		nbAttr = nbClassAttr[ObjType];
-		__DBGpr_int("NbAttr :", nbAttr );
-		if ( nbAttr )
-		    Coll = _MALLOC ( nbAttr, struct ACrg_coll );
-		if ( Coll == NULL )
-		{
-		    UI_status("Error no dynamic memory");
-		    return OM_E_NODYNMEM;
-		}
-		memcpy (Coll, TableAttr[ObjType], nbAttr*sizeof(struct ACrg_coll ));
-		__DBGpr_com ("Memory Allocated for Coll");
-		size = sizeof( struct GRmd_env ) ;
-
-		gr$get_module_env(  msg    = msg,
-				    sizbuf = &size,
-				    buffer = &MdEnv,
-				    nret   = &ret_size );
-
-		/* Change attribute types obtained from PME to ones that are
-		   understood by VDS objects. 179602832 */
-
-		if( ObjType == VDP_BEAM )
-		{/* Change attribute name beam_type to family_name.
-		  Change section_name to part_num.*/
-		  for(ii=0; ii < nbAttr; ii++)
-		  {
-		    if( strcmp(Coll[ii].name, "beam_type") == 0 )
-		    {
-		      strcpy( Coll[ii].name, "family_name" );
-		      i_fam_beam = ii;
-		    }
-		    else if( strcmp(Coll[ii].name, "sect_name") == 0 )
-			 {
-		     	   strcpy( Coll[ii].name, "part_num" );
-			   i_prt_beam = ii;
-			 }
-
-		  }/* end for */
-		}
-
-		if( ObjType == VDP_PLATE )
-		{/*Change attribute name plate_type to family_name.
-		  Change plate_thk to part_num.*/
-		  for(ii=0; ii < nbAttr; ii++)
-		  {
-		    if( strcmp(Coll[ii].name, "plate_type") == 0 )
-		    {
-		      strcpy( Coll[ii].name, "family_name" );
-		      i_fam_plate = ii;
-		    }
-		    else if( strcmp(Coll[ii].name, "plate_thk") == 0 )
-			 {
-		     	   strcpy( Coll[ii].name, "part_num" );
-			   i_prt_plate = ii;
-			 }
-		  }/* end for */
-		}
-
-                if( ObjType == VDP_EQUIP )      /* TR#:179603260 */
-                {/*Change attribute name PmDesc to n_itemdesc.*/
-                  for(ii=0; ii < nbAttr; ii++)
-                  {
-                    if( strcmp(Coll[ii].name, "PmDesc") == 0 )
-                    {
-			strcpy( Coll[ii].name, "n_itemdesc" );
-			i_desc = ii;
-                    }
-
-// Added by meghani and ranade for wet weight computation
-    	   if(strcmp(Coll[ii].name,"wet_computed_wt") == 0)
-	   {
-		strcpy(Coll[ii].name,"wet_weight");
-		i_ewt = ii;
-		Coll[ii].desc.value.att_exp = 0.0;
-	   }
-
-
-         }/* end for */
-       }
-
-/* Change attribute dry_weight; Fix for TR# 179700720 */
-	length_txt[0]=NULL;
-         i_wt = i_lt = -1;
-	if(ObjType == VDP_PIPING)
-	  strcpy(length_txt,"pipe_length");
-        else
-           if(ObjType == VDP_HVAC || ObjType == VDP_RWAY)
-           strcpy(length_txt,"duct_length");   
-				  
-        for(ii=0;ii<nbAttr;ii++)
-        {
-           if(strcmp(Coll[ii].name,"dry_computed_wt") == 0)
-           {
-             strcpy(Coll[ii].name,"dry_wt");
-             i_wt = ii;
-             Coll[ii].desc.value.att_exp = 0.0;
-            }
-            if(length_txt[0] != NULL)
-                if(strcmp(Coll[ii].name,length_txt) == 0)
-                   i_lt = ii;
-
-// Added by meghani and ranade for wet weight computation
-	  if(strcmp(Coll[ii].name,"wet_computed_wt") == 0)
-          {
-               strcpy(Coll[ii].name,"wet_wt");
-               i_wwt = ii;
-               Coll[ii].desc.value.att_exp = 0.0;
-           }
-
-        }
-
-// Sets frame, side and usage strings for compartment-volumes, Added by A.Gupta
-		if( ObjType == VDP_COMPART )     
-		{
-			strcpy(Coll[6].name, "frame");
-			strcpy(Coll[7].name, "side");
-			strcpy(Coll[8].name, "usage");
-		}
-
-
-	status =
-		vd$review_params(   pMsg            = msg,
-				    pComponent      = &Obj,
-				    pMdEnv          = &MdEnv,
-				    pList           = Coll,
-				    NbParams        = nbAttr );
-
-/* Added By Meghani for UOM in PME an attribute UnitMeasure is added ant initialised to NULL*/
-
-               for(ii=0;ii<nbAttr;ii++)
-                 {
-                     if(!strcmp(Coll[ii].name,"UnitMeasure")){
-                         Coll[ii].desc.type=AC_ATTRIB_TEXT;
-                         Coll[ii].desc.value.att_txt[0]='\0';
-                         Coll[ii].desc.value.att_exp=0;
-                       }
-                 }
-
-
-		if( ObjType == VDP_BEAM )
-		{/** Change the attribute names back to what they were
-		  originally.*/
-		  strcpy( Coll[i_fam_beam].name, "beam_type" );
-		  strcpy( Coll[i_prt_beam].name, "sect_name" );
-		}
-
-		if( ObjType == VDP_PLATE )
-		{/** Change the attribute names back to what they were
-		  originally.*/
-		  strcpy( Coll[i_fam_plate].name, "plate_type" );
-		  strcpy( Coll[i_prt_plate].name, "plate_thk" );
-		  Coll[i_prt_plate].desc.type = AC_ATTRIB_DOUBLE;
-		  dValue = atof(Coll[i_prt_plate].desc.value.att_txt);
-		  Coll[i_prt_plate].desc.value.att_exp = dValue;
-		}
-
-/* Code added by A.Gupta, for posting compartment-volumes */
-        if(ObjType == VDP_COMPART)
-		{
-	      int i,j,nb_vol;
-		  int n_cmpvolattr = 4;
-
-		  // Copy strings known to PME
-		  strcpy(Coll[6].name,"cnum_frame");
-		  strcpy(Coll[7].name,"cnum_side");
-		  strcpy(Coll[8].name,"cpt_use");
-		  // Get the compartment volumes
-		  SMPmeGetNbVol(Obj,&nb_vol);
-          
-		  //Reallocate the Coll array			
-		  nbAttr = nbAttr + (nb_vol*n_cmpvolattr) +1;
-                 
-		  Coll = _REALLOC(Coll, nbAttr, struct ACrg_coll);
-		  AttrType[VDP_COMPART] = _REALLOC(AttrType[VDP_COMPART],nbAttr, int);
-                  
-           
-		  strcpy(Coll[9].name,"cnum_cmpvol");
-		  Coll[9].desc.type = AC_ATTRIB_DOUBLE;
-		  AttrType[VDP_COMPART][9] = AC_ATTRIB_DOUBLE;
-		  Coll[9].desc.value.att_txt[0]='\0';
-		  Coll[9].desc.value.att_exp=nb_vol;
-          
-		  /* Retrieve compartment-volume information */
-		  for (i=0;i<nb_vol;i++)
-		  {
-		    struct ACrg_coll * cmp_vol=NULL;
-
-		    SMPmeGetVolAtt(Obj,i,&cmp_vol);
-              	
-            /* Store the information in the posting buffer */
-		    for(j=0;j<n_cmpvolattr;j++)
-		    {
-              int index = (i*n_cmpvolattr)+10;
-
-              if(!strcmp(cmp_vol[j].name,"solid"))
-		     	strcpy(Coll[index+j].name, "PmDesc");
-		      else
-                if(!strcmp(cmp_vol[j].name,"deck"))
-		     	 strcpy(Coll[index+j].name, "cmp_deckStr");
-                else
-                 if(!strcmp(cmp_vol[j].name,"farea"))
-		     	  strcpy(Coll[index+j].name, "cmp_floorarea");
-                 else
-                  if(!strcmp(cmp_vol[j].name,"volume"))
-		     	   strcpy(Coll[index+j].name, "cmp_volume");
-                  else
-		     	   strcpy(Coll[index+j].name, "cmp_vol[j].name");
-
-              Coll[index+j].desc.type = cmp_vol[j].desc.type;
-                    
-		      AttrType[VDP_COMPART][index+j] = cmp_vol[j].desc.type;
-                     
-		     if(cmp_vol[j].desc.type == AC_ATTRIB_TEXT)
-		     {
-			   strcpy(Coll[index+j].desc.value.att_txt,
-			   cmp_vol[j].desc.value.att_txt);
-		     }
-		     else
-		     {
-			   Coll[index+j].desc.value.att_exp = 
-			   cmp_vol[j].desc.value.att_exp;
-		     }
-		    }
-		    _FREE(cmp_vol);
-                 
-	      }
-
-		}
-
-        if( ObjType == VDP_EQUIP )
-        {/** Change the attribute name back to what it was
-                  originally.*/
-                  strcpy( Coll[i_desc].name, "PmDesc" );
-
-		 // Change the name of wet weight attribute bvack to the PME one
-		  strcpy( Coll[i_ewt].name, "wet_computed_wt" );
-                }
-
-		/* Change the parameter names back to PME attribute names.
-		   TR#:179602832 */
-
-		 /* Find the units set */
-		status = VDPgetDBunits(seed_units); 
-		 // This will find the unit system in seed file
-		if(ObjType != VDP_BEAM && ObjType != VDP_PLATE)
-		{
-                    strcpy(unitColl.name,"units_set");
-                    unitColl.desc.type=AC_ATTRIB_DOUBLE;
-                    unitColl.desc.value.att_exp = 0.0;
-                    status =
-                    vd$review_params( pMsg    = msg,
-                                      pComponent      = &Obj,
-                                      pMdEnv          = &MdEnv,
-                                      pList           = &unitColl,
-                                      NbParams        = 1 );
-                    if(*msg != MSSUCC)
-			 break;
-
-		 units = unitColl.desc.value.att_exp; 
-		// This will find the unit system in PDM
-					
-		}  
-
-		/* wet weight computation , change names back to PME attributes name before computation */
-
-			if((i_wwt != -1) && !strcmp(Coll[i_wwt].name ,"wet_wt"))
-			{
-			   strcpy(Coll[i_wwt].name,"wet_computed_wt");
-   			   if(ObjType == VDP_PIPING)
-		       	   {
-				m_weight = 0.0;
-				length = 1.0;
-				if(i_lt != -1)
-				{
-				  length = Coll[i_lt].desc.value.att_exp;
-				}
-		   if ( length == 0.0 )
-		      length = 1.0; 
-
-				m_weight = Coll[i_wwt].desc.value.att_exp;
-
-	/* Depending upon the two unit systems , the corresponfing cnv_fact will come into play  */
-			if(units == 1 && !strcmp(seed_units,"ENG"))
-				 m_weight *= length * cnv_fact1;
-
-
-			if(units == 1 && !strcmp(seed_units,"MET"))
-				m_weight *= length * cnv_fact2;
-
-			if(units == 20 && !strcmp(seed_units,"ENG"))
-				 m_weight *= length * cnv_fact3;
-
-
-			if(units == 20 && !strcmp(seed_units,"MET"))
-				 m_weight *= length * cnv_fact4;
-
-			Coll[i_wwt].desc.value.att_exp = m_weight;
-		
-
-
-				} // end if for piping obj
-			} // end if for wet wt.
-
-		/* Calculating dry-weight; Fix for TR# 179700720 */
-                if((i_wt != -1) && !strcmp(Coll[i_wt].name ,"dry_wt"))
-                {
-			strcpy(Coll[i_wt].name,"dry_computed_wt");
-
- 			if(ObjType != VDP_BEAM && ObjType != VDP_PLATE)
-			{
-			   if(Coll[i_wt].desc.value.att_exp ==0)
-				  break;
-                       
-		     
-                    
-				m_weight = 0.0;
-				length = 1.0;
-
-				if(i_lt != -1)
-				{
-					length = Coll[i_lt].desc.value.att_exp;
-		     
-				}
-			if (length == 0.0 )
-			   length = 1.0;
-		    
-
-					m_weight = Coll[i_wt].desc.value.att_exp;
-
-	/* Depending upon the two unit systems , the corresponfing cnv_fact will come into play  */
-			if(units == 1 && !strcmp(seed_units,"ENG"))
-				m_weight *= length * cnv_fact1;
-
-
-			if(units == 1 && !strcmp(seed_units,"MET"))
-				m_weight *= length * cnv_fact2;
-
-			if(units == 20 && !strcmp(seed_units,"ENG"))
-				m_weight *= length * cnv_fact3;
-
-
-			if(units == 20 && !strcmp(seed_units,"MET"))
-				m_weight *= length * cnv_fact4;
-
-			Coll[i_wt].desc.value.att_exp = m_weight;
-		
-
-                  }
-                  else
-                  {
-	  /* Calculate weight for struct components */
-		volume = density_value = 0.0;
-		Material[0]=Grade[0]=Density[0]=NULL;
-
-                     /*Retrieve the material and grade*/
-		   for(ii=0;ii<nbAttr;ii++)
-		   {
-			if(strcmp(Coll[ii].name,"material") == 0)
-				strcpy(Material,Coll[ii].desc.value.att_txt);
-			else
-				if(strcmp(Coll[ii].name,"grade") == 0)
-					strcpy(Grade,Coll[ii].desc.value.att_txt);
-				else
-					if(strcmp(Coll[ii].name,"volume") == 0)
-					volume = Coll[ii].desc.value.att_exp;
-                      } 
-
-		  if (Material[0] == NULL || volume==0.0)
-                        break;
-                     /*Search for density in the 'material table' */
-                      n_items = 2;
-                      sprintf(search,"n_itemname = '%s' and n_itemrev = '%s'",
-                              Material,Grade);
-
-                      sts = vdb$RisSelect(select = "density,unit",
-                                          table_name = "material",
-                                          where = search,
-                                          numselect = n_items, 
-                                          p_numrows = &num,
-                                          p_buffer = &buf);
-                      if(sts != 1 || num ==0)
-                        break;
-                       vdb$RisExtractValue ( nbrows = num, nbcolumns = n_items,
-                                             buffer = buf, row =0, column = 0,
-                                             value = Density);
-
-                       vdb$RisExtractValue (nbrows = num, nbcolumns = n_items,
-                                            buffer = buf, row = 0, column = 1,
-                                            value = unit_txt);
-
-  			vdb$RisFreeBuffer( buffer = buf, size = n_items * num);
-                       if(Density[0] == NULL)
-                         break;
-                       /* Obtain the unit  */
-                       density_value = atof(Density);
-
-		       /*Convert density to metric system */
-                       if((unit_txt[0] == 'E' || unit_txt[0] == 'e') && !strcmp(seed_units, "MET") )
-                       {
-			   Coll[i_wt].desc.type = AC_ATTRIB_DOUBLE;
-			   Coll[i_wt].desc.value.att_exp = density_value *
-		                              volume * cnv_fact5;
-		       }
-
-		   if((unit_txt[0] == 'E' || unit_txt[0] == 'e') && !strcmp(seed_units, "ENG"))
-		   {
-			   Coll[i_wt].desc.type = AC_ATTRIB_DOUBLE;
-                           Coll[i_wt].desc.value.att_exp = density_value *
-                                                    volume * cnv_fact6;
-		   }
-
-		   if((unit_txt[0] == 'M' || unit_txt[0] == 'm') && !strcmp(seed_units, "MET"))
-		   {
-			Coll[i_wt].desc.type = AC_ATTRIB_DOUBLE;
-                        Coll[i_wt].desc.value.att_exp = density_value *
-                                                    volume * cnv_fact7;
-		   }
-
-		   if((unit_txt[0] == 'M' || unit_txt[0] == 'm') && !strcmp(seed_units, "ENG"))
-		   {
-			Coll[i_wt].desc.type = AC_ATTRIB_DOUBLE;
-			Coll[i_wt].desc.value.att_exp = density_value *
-					               volume * cnv_fact8;
-		   }
-             }
-	}
-
-		/* 
-		 * Commented because review_params assumes that the attributes
-		 * are valid attributes. It is not necessarily true. As the 
-		 * attribute names in the database may not be defined for the
-		 * components.
-		 */
-
-		/* CheckRC( status, *msg ); */
-		__DBGpr_int ( "Nb Attr : ", nbAttr );
-
-		/* 
-		 * If attribute is not defined, vd$review_params overwrites
-		 * the type to NOT_DEFINED.  Reset them to the default types
-		 */
-
-		break;
-	    case VDP_VERSION :
-		break;
-
-	    case VDP_DELETE :
-	    case VDP_DEL_COMP :
-		break;
-	}
-
-	sprintf( Message, "Posting Object #%d %d \0", i, Obj.objid );
-	UI_status( Message );
-
-	status = VDPpostObjectToDM2( msg, ObjInfo.quantity, TrRow, nbAttr, AttrType[ObjType], Coll, dm2_log );
-	CheckRC( status, *msg );
-	if ( !(status & *msg & 1 ))
-	{
-	    FILE_PRINT(dm2_log, "Posting of Object <%d> failed \n\n", 
-			me->transObj[i].VDSobjid );
-	    // printf("Posting of Object <%d> failed \n\n", me->transObj[i].VDSobjid );
-	    fflush(dm2_log);
-	    me->transObj[i].posted = FALSE;
-	}
-	else
-	{
-	    FILE_PRINT(dm2_log, "\n Successfully posted Object <%d> \n\n",
-			me->transObj[i].VDSobjid );
-	    // printf("\n Successfully posted Object <%d> \n\n", me->transObj[i].VDSobjid );
-	    fflush(dm2_log );
-	    me->transObj[i].posted = TRUE;
-	}
-	_FREE( Coll );
-    }
-
-    /* The transaction List object should be deleted by the caller */
-
-    *allPosted = TRUE;
-    for ( i = 0; i < nbObjects; i++ )
-    {
-	if (me->transObj[i].posted == FALSE )
-	{
-	    *allPosted = FALSE;
-	    break;
-	}
-    }
-} // end if for pME
-
-if ( WhichAim( ) == SIR )  // post to SIR
-{
+  token = strtok ( FileName, "." );
+  sprintf( TmpFileName, "%s", token );
+  strcat ( TmpFileName, "_post.log" );
+  __DBGpr_str( " file ", TmpFileName );
+
+  time ( &ltime );
+
+  dm2_log = (FILE *)fopen(TmpFileName,"a");
+  if( dm2_log == NULL )
+    printf( "Cannot open file <%s>.\n",TmpFileName ); 
+
+  /* ----------------------------------------------
+   * Sir posting Code
+   */
   for ( i=0; i < 8; i++ )
   {
     nbClassAttr[i] = 0;
     AttrType[i] = NULL;
     TableAttr[i] = NULL;
   } 
-    //get the size of enble list.
-   
-    ex$get_cur_mod( osnum = &curOs ); 
+  //get the size of enble list. 
+  ex$get_cur_mod( osnum = &curOs ); 
 
   nbObjects = om$dimension_of ( varray = me->transObj );
   __DBGpr_int ( "Size of Trans List : ", nbObjects );
 
-    //added for checking
-    /*
-    for ( i = 0; i < nbObjects; i++ )
-    {
-        printf(" i = %d ::\t ActionCode = %d\n\t VDSobjid = %d\n\t oldVDSobjid = %d\n\t PMEobid = %s\n",
-                i,
-                me->transObj[i].ActionCode,
-                me->transObj[i].VDSobjid,
-                me->transObj[i].oldVDSobjid,
-                me->transObj[i].PMEobid );
-    }
-*/
-
-  status = VDgetDiagCtlPar( msg, &diagCtl );
-  CheckRC( status, *msg );
-
-  status = di$give_pathname( osnum = curOs, // CR # 179801371
-      			pathname = DirName );
-
-  sprintf(DefDirName, "%s%s%s\0", DirName, SIR_GLOBAL_DIR, SIR_REQ_DATA);
-  status = di$translate(objname = DefDirName,
-      			p_objid = &DefDat.objid,
-			p_osnum = &DefDat.osnum);
-
-  strcpy(DefColl.name, SIR_FILE_TYP); // CR # 179801371
-  status = om$send(msg = message ACrg_collect.ACget_named_attribute(msg,
-							&DefColl),
-      			senderid = NULL_OBJID,
-			targetid = DefDat.objid,
-			targetos = DefDat.osnum );
-
-  __DBGpr_int( " FILETYPE ", DefColl.desc.value.att_exp);
-
-  if(!(*msg&1))
-    FileType = diagCtl; // OLD FILE
-  else
-    FileType = DefColl.desc.value.att_exp;
-
-  //if ( diagCtl == 1 )
-  if ( FileType == D_FILE  )
-    //FILE_PRINT ( dm2_log, "\n This is a Diagram File, therefore no Parts were posted." );
-    //printf("\n This is a Diagram File, therefore no Parts were posted." );//SSR18amy
-    //UI_status (" This is a Diagram File, therefore no Parts were posted.");
-  // Logfile message changed Rajendra 25Feb TR # 179900164
-
-  //if( diagCtl != 1 )
-  /* SSR 05Jul read the collector and initiate the global structure for reference file info */
-  //if((FileType == M_FILE)||(FileType == A_FILE)) // CR # 179801371
-  if(FileType > 3) // removed part posting
-  {
-    status = VDDelEBOMsir(  );
-
-   // get the list of VDS root object sin object on space.
-
-    EnabId.objid = NULL_OBJID; // CR # 179801371
-    status = VDPGetEnabledListId( msg, curOs, &EnabId );
-    __DBGpr_obj ( "Enabled List Id ", EnabId );
-  
-    status=VDobjInActiveSpace( msg, &objcount, &list,
-   			OPP_VDSroot_class_id);
- 
-    __DBGpr_int( " objcount ", objcount);
-
-    if ( objcount != 0 ) 
-    {
-      for( objctr = 0; objctr < objcount; objctr ++)
-      {
-	__DBGpr_int( " Object ", list[objctr].objid );
-	status = _VD_SEND_OBJN( EnabId, 
-	    VDPenabObj.VDPIsObjEnabled ( msg,
-	      list[objctr].objid,
-	      &flag ));
-	CheckRC ( status, *msg );
-	__DBGpr_int("Object Enabled ?", flag );
-	if( flag == FALSE )	
-	  status = VDaddPart4SIR( msg, list[objctr], dm2_log );
-
-	     /*
-	   for ( i =0; i < nbObjects; i++ )
-	   {
-
-	     if( list[objctr].objid !=  me->transObj[i].VDSobjid )
-	     {
-	       __DBGpr_obj( " object being added", list[objctr]); 
-	       __DBGpr_int( " object enabled ", me->transObj[i].VDSobjid);
-
-	       status = VDaddPart4SIR( msg, list[objctr], dm2_log );
-	     }
-	   }
-	     */
-        
-      } 
-
-        
-      __DBGpr_int( " no of posted parts variety", CumPartVar); 
-      
-      partcount = (struct SRPartStat *)VDaimGetPartCount();
-
-      if(( CumPartVar =  VDaimGetCumPartVar()) != 0)
-      {
-	   /*
-	   for(i = 0; i< CumPartVar; i++)
-	      printf( " \n <  %s\t\t\t%s\t\t\t%d  > \n\n", 
-	      		partcount[i].mino, 
-			partcount[i].cage, 
-			partcount[i].qty );
-		*/
-	FILE_PRINT(dm2_log, "PARTS  : \n");
-	// printf("PARTS  : \n");
-	   /*
-	   FILE_PRINT(dm2_log, " MINO\t\t\tCAGE\t\t\tQty \n");
-
-	   for(i = 0; i< CumPartVar; i++)
-	      FILE_PRINT(dm2_log, " \n%s\t\t\t%s\t\t\t%lf   \n\n", 
-			partcount[i].mino, 
-			partcount[i].cage, 
-			partcount[i].qty );
-			*/
-
-	status = VDpostPart2SIR( msg , dm2_log);
-      }
-    }  // end if objects exist
-  }   // end if file is of D type 
-
-
+  /* --------------------------------------------
+   * Occurence Templates 
+   */
   status = VDPgetOccTemplate1( msg, VDP_SIR_EQUIP_CLASS, 
-				&nbClassAttr[VDP_EQUIP],
-				 &AttrType[VDP_EQUIP],
-				 &TableAttr[VDP_EQUIP] );
+			      &nbClassAttr[VDP_EQUIP],
+			      &AttrType[VDP_EQUIP],
+			      &TableAttr[VDP_EQUIP] );
   CheckRC ( status, *msg );
 
-    status = VDPgetOccTemplate1( msg, VDP_SIR_PIPING_CLASS, 
-				&nbClassAttr[VDP_PIPING], 
-				&AttrType[VDP_PIPING],
-				&TableAttr[VDP_PIPING] );
-    CheckRC ( status, *msg );
+  status = VDPgetOccTemplate1( msg, VDP_SIR_PIPING_CLASS, 
+			      &nbClassAttr[VDP_PIPING], 
+			      &AttrType[VDP_PIPING],
+			      &TableAttr[VDP_PIPING] );
+  CheckRC ( status, *msg );
 
-    status = VDPgetOccTemplate1( msg, VDP_SIR_HVAC_CLASS, 
-    				&nbClassAttr[VDP_HVAC],
-				 &AttrType[VDP_HVAC],
-				 &TableAttr[VDP_HVAC] );
-    CheckRC ( status, *msg );
+  status = VDPgetOccTemplate1( msg, VDP_SIR_HVAC_CLASS, 
+    			      &nbClassAttr[VDP_HVAC],
+			      &AttrType[VDP_HVAC],
+			      &TableAttr[VDP_HVAC] );
+  CheckRC ( status, *msg );
 
-    status = VDPgetOccTemplate1( msg, VDP_SIR_RWAY_CLASS, 
-				&nbClassAttr[VDP_RWAY],
-				 &AttrType[VDP_RWAY],
-				 &TableAttr[VDP_RWAY] );
-    CheckRC ( status, *msg );
+  status = VDPgetOccTemplate1( msg, VDP_SIR_RWAY_CLASS, 
+			      &nbClassAttr[VDP_RWAY],
+			      &AttrType[VDP_RWAY],
+			      &TableAttr[VDP_RWAY] );
+  CheckRC ( status, *msg );
 
- 
-    for ( i = 0; i < nbObjects; i++ )  // if trans list existt
-    {
-      if ( me->transObj[i].posted == TRUE )
-	continue; 
+  /* Cycle through transaction list */
+  for ( i = 0; i < nbObjects; i++ )  // if trans list existt
+  {
+  if ( me->transObj[i].posted == TRUE ) continue; 
       
       Obj.objid = me->transObj[i].VDSobjid;
       Obj.osnum = OM_Gw_current_OS; 
@@ -1449,15 +743,13 @@ if ( WhichAim( ) == SIR )  // post to SIR
 
       if ((om$is_objid_valid ( objid = Obj.objid )) != OM_S_SUCCESS) 
 	setActionCode(&me->transObj[i].ActionCode, VDP_DELETE);
-      //printf("\n VDPpostPMEdata: ActionCode = %d", getActionCode(me->transObj[i].ActionCode));
-//	me->transObj[i].ActionCode = VDP_DELETE;
 	memcpy( &TrRow, &me->transObj[i], sizeof( struct VDPtrObjList ));
 
 	__DBGpr_int ( "Action Code  in me-> :", getActionCode(me->transObj[i].ActionCode) );
 	__DBGpr_obj ( "Processing Object :", Obj );
 
 	FILE_PRINT(dm2_log, "\nF S I  : [%d/%d]", Obj.osnum, Obj.objid);
-	// printf("\nF S I  : [%d/%d]", Obj.osnum, Obj.objid);//ssr18may
+	printf("\nF S I  : [%d/%d]", Obj.osnum, Obj.objid);//ssr18may
 
 	sprintf( Message, "Processing F S I  #%d %d \0", i, Obj.objid );
 	UI_status( Message );
@@ -1487,7 +779,6 @@ if ( WhichAim( ) == SIR )  // post to SIR
 	}
 
 	__DBGpr_int( " code " ,getActionCode(me->transObj[i].ActionCode));
-//	printf("\n in VDPPostPmeData: ActionCode(befoe switch) = %d",getActionCode(me->transObj[i].ActionCode)); 
 
 	switch( getActionCode(me->transObj[i].ActionCode) )//CR#17980169
 	{
@@ -1497,7 +788,7 @@ if ( WhichAim( ) == SIR )  // post to SIR
 	     nbAttr = nbClassAttr[ObjType];
 	     __DBGpr_int("NbAttr :", nbAttr );
 	     if ( nbAttr )
-	       Coll = _MALLOC ( (nbAttr + 8), struct ACrg_coll);
+	       Coll = _MALLOC ( (nbAttr + 9), struct ACrg_coll);
 	     if ( Coll == NULL )
 	     {
 	       UI_status("Error no dynamic memory");
@@ -1535,9 +826,26 @@ if ( WhichAim( ) == SIR )  // post to SIR
 	     
 	     strcpy( Coll[nbAttr+7].name, "sirid");
 	     strcpy(Coll[nbAttr+7].desc.value.att_txt, "");
-	     Coll[nbAttr+7].desc.type = AC_ATTRIB_TEXT; 
-	     
-	     nbAttr = nbAttr + 8;
+	     Coll[nbAttr+7].desc.type = AC_ATTRIB_TEXT;
+
+	     strcpy( Coll[nbAttr+8].name, "fwd_fr");
+             strcpy(Coll[nbAttr+8].desc.value.att_txt, "");
+             Coll[nbAttr+8].desc.type = AC_ATTRIB_TEXT;
+
+             nbAttr = nbAttr + 9;
+
+	    //added for equipment location enhancements
+ 
+	     for(n = 0; n < nbAttr; n++)
+             {
+                 if(!strcmp(Coll[n].name, "compt_number"))
+                     compindex = n;
+                 if(!strcmp(Coll[n].name, "fwd_fr"))
+                     frindex = n;
+                 if(!strcmp(Coll[n].name, "SCLSISeqp_loc"))
+                     sclindex = n;
+              }
+
 	     __DBGpr_com ("Memory Allocated for Coll");
 	     size = sizeof( struct GRmd_env ) ;
 
@@ -1553,6 +861,51 @@ if ( WhichAim( ) == SIR )  // post to SIR
 				    NbParams        = nbAttr );
 
 	     __DBGpr_int ( "Nb Attr : ", nbAttr );
+
+	      //added to get the value dynamically for the SILSISequipment
+	     //location attribute from compartment number and forword frame
+	     //attributes.
+
+	      compnum[0] = '\0';
+              fwdfrnum[0] = '\0';
+
+              if((strlen(Coll[frindex].desc.value.att_txt) == 0)||
+                (strlen(Coll[compindex].desc.value.att_txt) == 0))
+              {
+                  strcpy(Coll[sclindex].desc.value.att_txt, " ");
+                  Coll[sclindex].desc.type = AC_ATTRIB_TEXT;
+              }
+              else
+              {
+		  strcpy(compnum, Coll[compindex].desc.value.att_txt);
+                  strcpy(fwdfrnum, Coll[frindex].desc.value.att_txt);
+                  token = strtok(compnum, "-");
+                  while(token != NULL)
+                  {
+                       ref++;
+                       if(ref == 2)
+                       {
+                          strcat(Coll[sclindex].desc.value.att_txt, "-");
+                           strcat(Coll[sclindex].desc.value.att_txt, fwdfrnum);
+                       }
+                       else
+                       {
+                           if(ref == 1)
+                              strcpy(Coll[sclindex].desc.value.att_txt, token);
+                           else
+                           {
+                              strcat(Coll[sclindex].desc.value.att_txt, "-");
+                              strcat(Coll[sclindex].desc.value.att_txt, token);
+                           }
+                       }
+		       token = strtok(NULL, "-");
+                  }
+
+                  if(ref == 1)
+                     strcpy(Coll[sclindex].desc.value.att_txt, " ");
+
+                  Coll[sclindex].desc.type = AC_ATTRIB_TEXT;
+              }
 
 	     break; 
 	 
@@ -1605,18 +958,12 @@ if ( WhichAim( ) == SIR )  // post to SIR
       }
     } 
     
-    nopost = VDaimGetpostno();
+    nopost  = VDaimGetpostno();
     yespost = VDaimGetpostyes();
     FILE_PRINT(dm2_log,"\n %d Objects Posted, %d Errors.", *yespost, *nopost );
-    printf("\n %d Objects Posted, %d Errors.", *yespost, *nopost );//ssr18may
+    printf("\n %d Objects Posted, %d Errors.\n", *yespost, *nopost );//ssr18may
     sprintf(Message,"%d Objects Posted, %d Errors.", *yespost, *nopost );
     UI_status(Message);
-
-
-  //status = VDPWriteDiagramList();
-  //FILE_PRINT ( dm2_log, "\nPosting of Parts not supported; No Parts posted." );
-}  // end for sir
-
 
 wrapup:
 
@@ -2021,6 +1368,69 @@ method VDPtrtblcopy( IGRlong *msg;  GRobjid  *newobjid )
    return status;
 }
 
+/* ------------------------------------------------
+ * Get the PDM part from the SrUID.  
+ * SAUBY added this because of the change to sirid attribute
+ * in shuttle II requirements, CR 5522.
+ * ***/
+static IGRstat getUIDpart( char *sirid,
+	                   char *uidpart )
+{
+    int  retFlag = 0;
+    char buf[80];
+    char *p;
+    int  new_style;
+    char part_key[80];
+    char f_part[80],f_cat[80],f_rev[80];
+    int  f_key = 0;
+
+    // arg check
+    if (*sirid == 0) goto wrapup;
+    if (uidpart == NULL) goto wrapup;
+    *uidpart = 0;
+
+    // set buf
+    strcpy(buf,sirid);
+
+    // determine whether sirid has part or file_key, get part or filekey
+    p = strchr(buf,'-');
+    if (p) {
+	*p = 0;
+	strcpy(part_key,buf);
+	strcpy(buf,p+1);
+    }
+
+    // have part of file_key, which is it
+    // new_style <file_key-seqno-1> old_style <partno-seqno>
+    new_style = 0;
+    p = strchr(buf,'-');
+    if (p) new_style = 1;
+
+    // set uidpart according to new style
+    if (new_style) 
+    {
+	*f_part = 0;
+	f_key = atoi(part_key);
+	VDpdmGetCPRForFilekey(&f_key, f_cat, f_part, f_rev);
+	if (*f_part == 0) goto wrapup;
+	strcpy(uidpart,f_part);
+
+    }
+    else
+    {
+	strcpy(uidpart,part_key);
+    }
+
+    // done
+    if (*uidpart != 0) retFlag = 1;
+
+wrapup:
+    return retFlag;
+}
+
+    
+
+    
 
 int     VDPpostObjectToSIR( long                *msg,
 			    int                 ObjType,
@@ -2035,38 +1445,48 @@ int     VDPpostObjectToSIR( long                *msg,
   char                *inbuf=NULL, *token=NULL;
   char			Macro[20], ClassName[15], TagNum[20], SysName[20],
 			SrTagNo[40], mino[31], cage[6], EqpNum[20],
-			EqpPartNo[40], SrUID[30], UIDmdc[25], *UIDpart=NULL;
+			EqpPartNo[40], SrUID[30], UIDmdc[25], UIDpart[80];
   OMuword		curOs;
   int			code, i, inlen = 0, index = 0, outlen, dstat, mfail,localVar = 0 ,j;
   char			tmpstr[81], VDSobjid[10], MdCxId[25],
     				DefDirName[DI_PATH_MAX], DirName[DI_PATH_MAX];
   int			attrIndex, actualAttr, *ActCode = 0, diagCtl = 0,
-                attrcode = 0;
+                	attrcode = 0;
   char			*outbuf, *errmsg=0, FileTyp[2];
   char			srerrmsg[200], warn[210], class_name[80];
-  int           *nopost=0, *yespost=0, attravail=0, nbFiles=0, num=0, gnum=0;
-  struct GRid			 DefDat;
-  struct ACrg_coll            DefColl;
+  int           	*nopost=0, *yespost=0, attravail=0, nbFiles=0, num=0, gnum=0;
+  struct GRid		DefDat;
+  struct ACrg_coll      DefColl;
   struct SIRRefPDMInfo  *SrRefInfo;
   int RefAttached = FALSE;
 
+  //TLS TR 6230
+  TVDpdmInfo    	pdmInfo;
+  IGRchar		curFilename[257];
+  IGRchar		curFilekey[128];
+  IGRchar		*UIDfilekey=NULL;
+
+  IGRchar qtyText[ 32];
+  IGRchar hullApp[128];
+
+  TGRid objID;
 
   SetProc ( VDPpostObjectToSIR  ); Begin
 	
-	UI_status(" Posting FSIs to SIR");
+  UI_status(" Posting FSIs to SIR");
 
-	for (i = 0; i<20; i++)
-	{
-	TagNum[i] = '\0';
-	SysName[i] = '\0';
-	EqpNum[i] = '\0';
-	Macro[i] = '\0';
-	}
+  for (i = 0; i<20; i++)
+  {
+    TagNum[i] = '\0';
+    SysName[i] = '\0';
+    EqpNum[i] = '\0';
+    Macro[i] = '\0';
+  }
 
-	for (i = 0; i<31; i++) mino[i] = '\0';
-	for (i = 0; i<6; i++) cage[i] = '\0';
-	for (i = 0; i<40; i++) EqpPartNo[i] = '\0';
-        SrUID[0] = '\0';
+  for (i = 0; i<31; i++) mino[i] = '\0';
+  for (i = 0; i<6; i++) cage[i] = '\0';
+  for (i = 0; i<40; i++) EqpPartNo[i] = '\0';
+  SrUID[0] = '\0';
 
   /* Approximately 80+25 per attribute */
   inbuf = _MALLOC ( 106 * nbAttr + 100, char );
@@ -2080,25 +1500,10 @@ int     VDPpostObjectToSIR( long                *msg,
   __DBGpr_int ( "ObjType", ObjType );
   ClassName[0] = '\0';
 
-  /*
-  if ( ObjType == -50 )
-    strcpy ( ClassName, "SrEquip");
-
-  else if ( ObjType == PIPING_OBJ )
-    strcpy( ClassName, "SrPiping" );
-
-  else if ( ObjType == HVAC_OBJ )
-    strcpy( ClassName, "SrHvac" );
-
-  else if ( ObjType == RWAY_OBJ )
-    strcpy( ClassName, "SrRway" );
-
-  else
-    //return OM_S_SUCCESS; // deleted object may nit have objtype
-    strcpy( ClassName, "" );
-
-  */
   ex$get_cur_mod( osnum = &curOs );
+
+  objID.osnum = curOs;
+  objID.objid = TrRow.VDSobjid;
 
   status = om$get_classname ( objid = TrRow.VDSobjid, 
 				osnum = curOs, 
@@ -2111,7 +1516,7 @@ int     VDPpostObjectToSIR( long                *msg,
      __DBGpr_com( " Object not found ! " );
      strcpy( ClassName, "" );
      FILE_PRINT ( dm2_log, " \tObject is deleted " );
-     // printf (" \tObject is deleted " );//ssr18may
+     printf (" \tObject is deleted " );//ssr18may
 
   }
 
@@ -2119,7 +1524,7 @@ int     VDPpostObjectToSIR( long                *msg,
   {
     __DBGpr_str( " classname ", class_name );
     FILE_PRINT( dm2_log, "\t [%s]", class_name);
-    // printf("\t [%s]", class_name);//ssr18may
+    printf("\t [%s]", class_name);//ssr18may
 
     if ( !strcmp(class_name, "VDequipment" ) )
     {
@@ -2161,6 +1566,7 @@ int     VDPpostObjectToSIR( long                *msg,
 
   //  ActCode = &TrRow.ActionCode;
   localVar = getActionCode(TrRow.ActionCode);//CR#179801693
+printf("Delete code %d %d\n",VDP_DELETE,localVar);
   ActCode = &localVar;
   //  memcpy( &inbuf[index], ActCode, sizeof(int));
   memcpy( &inbuf[index], &localVar, sizeof(int));
@@ -2177,6 +1583,14 @@ int     VDPpostObjectToSIR( long                *msg,
   status = di$translate(objname = DefDirName,
       			p_objid = &DefDat.objid,
 			p_osnum = &DefDat.osnum);
+
+
+   if ( DefDat.objid == NULL_OBJID)
+       {
+	 UI_status ( "AIM Default Data not Set.");
+	 __DBGpr_com("AIM Default Data not Set. ");
+	 return OM_E_ABORT;
+       }
 
   strcpy(DefColl.name, SIR_FILE_TYP);
   status = om$send(msg = message ACrg_collect.ACget_named_attribute(msg,
@@ -2204,7 +1618,9 @@ int     VDPpostObjectToSIR( long                *msg,
 	 strcpy(FileTyp, "M");
        else if(DefColl.desc.value.att_exp == A_FILE)
 	 strcpy(FileTyp, "A");
-       else
+       else if(DefColl.desc.value.att_exp == DM_FILE)
+	 strcpy(FileTyp, "DM");
+        else
 	 printf("\n Missing Filetype");
      }
 
@@ -2242,6 +1658,9 @@ int     VDPpostObjectToSIR( long                *msg,
   __DBGpr_str ( " ClassName ", ClassName );
 
    if ( !strcmp(ClassName, "" )) goto step1;
+   //Added for Restore placements to delete Mdc relaions in AIM
+   //Added on 22 aug 2000
+   if ( nbAttr == 0) goto step1;
 
    for ( i =0; i < nbAttr; i++ )
 
@@ -2365,6 +1784,19 @@ int     VDPpostObjectToSIR( long                *msg,
 	   attravail = 1;
        }
      }
+     /* -----------------------------------------
+      * comp_tagx and comp_path
+      */
+     if (!strcmp(Coll[i].name,"comp_tagx"))
+     {
+       VDctxGetCompTagx(&objID,Coll[i].desc.value.att_txt);
+       Coll[i].desc.type = AC_ATTRIB_TEXT;
+      }
+     if (!strcmp(Coll[i].name,"comp_path"))
+     {
+       VDctxGetCompPath(&objID,Coll[i].desc.value.att_txt);
+       Coll[i].desc.type = AC_ATTRIB_TEXT;
+     }
    }   // end for nbattrs
 
    if ( attravail == 1) return OM_E_ERROR; 
@@ -2404,7 +1836,8 @@ int     VDPpostObjectToSIR( long                *msg,
      if(token != NULL)
        strcpy(mino, token); 
    }
-     
+   
+   
      if((strlen(cage)==0)||(strlen(cage)>5))
      {
        FILE_PRINT(dm2_log, "\n ERROR : Value for cage is incorrect"); 
@@ -2423,12 +1856,14 @@ int     VDPpostObjectToSIR( long                *msg,
 
    for(i=0; i<6; i++)
    {
-      cage[i] = toupper( cage[i] );
+      if(cage != NULL)
+      	cage[i] = toupper( cage[i] );
    }
 
    for(i=0; i<31; i++)
    {
-      mino[i] = toupper( mino[i] );
+    	if(mino != NULL)
+      	mino[i] = toupper( mino[i] );
    }
 
    
@@ -2457,21 +1892,44 @@ int     VDPpostObjectToSIR( long                *msg,
    index = inlen;
    __DBGpr_str ( " 3 SrUID ", SrUID );
    FILE_PRINT( dm2_log, "\t SrUID : %s", SrUID );
-   printf("\nUID : %s", SrUID );//ssr18may
+   printf("\nUID : %s\n", SrUID );//ssr18may
 
-   /* Initialize UID MDC value to current MDCOBID */
+   /* -------------------------------------------
+    * SIR_PE The object being posted will always
+    * be int he current file so all this nonsense goes away
+    */
    strcpy(UIDmdc, MdCxId);
+#if 0
+   /* Initialize UID MDC value to current MDCOBID */
+   if(MdCxId != NULL) 
+     strcpy(UIDmdc, MdCxId);
    __DBGpr_str("The UIDmdc is", UIDmdc);
-  status = VDPGetRefFileList(  &nbFiles, &SrRefInfo);
-  __DBGpr_int("The Reffile are", nbFiles);
-  UIDpart = strtok(SrUID, "-");
-  __DBGpr_str("The UIDpart is", UIDpart);
+   
+   status = VDPGetRefFileList(  &nbFiles, &SrRefInfo);
+   __DBGpr_int("The number of Reffiles are", nbFiles);
+   
+   if(SrUID != NULL) 
+   {
+  	//UIDpart = strtok(SrUID, "-");
+	getUIDpart(SrUID,UIDpart);
+        __DBGpr_str("SrUID is", SrUID);
+        __DBGpr_str("UIDpart is", UIDpart);
 
-  // 25 NOV 1379
-  if(strcmp(UIDpart, refresh->act_partid))
+	//TLS TR 6230 - need to get the filekey from the UID
+	//TLS - this is parseing the UID value to get the filekey
+        //UIDfilekey = strtok(SrUID, "-");
+        //__DBGpr_str("UIDfilekey is", UIDfilekey);
+    }
+  
+  /* 25 NOV 1379*/
+
+  __DBGpr_str("UIDpart is", UIDpart);
+  __DBGpr_str(" refresh->act_partid is", refresh->act_partid);
+  if(strcmp(UIDpart, refresh->act_partid) != 0)
   {
+    __DBGpr_com("the UIDpart and curFilekey do not match");
     // if UIDpart is not active part check ref files
-    if(nbFiles == 0  )
+    if(nbFiles == 0 )
     {
       // no ref files are attached! ERROR
       FILE_PRINT(dm2_log, "Part <%s> is not attached as reference.", UIDpart);
@@ -2483,12 +1941,15 @@ int     VDPpostObjectToSIR( long                *msg,
     {
       for(num =0; num< nbFiles; num++)
       {
+  	__DBGpr_str("SrRefInfo[num].RefPart", SrRefInfo[num].RefPart);
+  	__DBGpr_str("UIDpart is", UIDpart);
         if(!strcmp(SrRefInfo[num].RefPart, UIDpart))
 	{
 	  RefAttached = TRUE;
 	  break;
 	}
       }
+
       if(RefAttached == FALSE)
       {
         /* required file not attachde */
@@ -2498,9 +1959,18 @@ int     VDPpostObjectToSIR( long                *msg,
 	status = OM_E_ERROR;
 	goto wrapup;
       }
+
       for(gnum =0; gnum<GRefSize; gnum ++)
       {
-        if(!strcmp(SIR_Diag_Info[gnum].PdmPart, UIDpart))
+   	//TLS TR6230 - changed to filekey
+	//TLS - the value in SIR_Diag_Info[gnum].PdmPart is really the filekey
+	//TLS - change code to compare filekeys not parts
+        //TLS 4-8-02, changed back to part id
+
+  	__DBGpr_str("SIR_Diag_Info[gnum].PdmPart", SIR_Diag_Info[gnum].PdmPart);
+        //UIDfilekey = strtok(SrUID, "-");
+	//if(!strcmp(SIR_Diag_Info[gnum].PdmPart, UIDfilekey))
+	if(!strcmp(SIR_Diag_Info[gnum].PdmPart, UIDpart))
 	{
 	  if(SIR_Diag_Info[gnum].UpdFlag == 0)
 	    strcpy(UIDmdc, SIR_Diag_Info[gnum].Mdcobid);
@@ -2509,9 +1979,10 @@ int     VDPpostObjectToSIR( long                *msg,
 	  break;
 	} 
       } 
+
     } // end else nonzero reference files are attached 
   } // end if UIDpart == actual part
-
+#endif
    __DBGpr_str("UID MDCOBID", UIDmdc );
    __DBGpr_str("MDC in the buffer is", UIDmdc);
 
@@ -2520,30 +1991,30 @@ int     VDPpostObjectToSIR( long                *msg,
    index = inlen;
    __DBGpr_str ( " UID mdcobid", UIDmdc );
 
-
-  /* switch ( TrRow.ActionCode )
-   {
-      case VDP_MODIFY :
-	break;
-
-      case VDP_CREATE :
-	break;
-       
-       case VDP_DELETE :
-       break;
-   
-    case VDP_REPLACE :
-	break;
-   }
-*/
-
- // if ( TrRow.ActionCode != VDP_DELETE )
+  /* ---------------------------------------------
+   * SIR_PE Add in hull_app and qty
+   */
+#if 0
+   VDPaimFIGetHullApp(NULL,hullApp);
+printf("Post Hul App %s\n",hullApp);
+   strcpy( &inbuf[index], hullApp );
+   inlen += strlen(hullApp) + 1;
+   index = inlen;
+#endif
+   strcpy(qtyText,"1");
+   strcpy( &inbuf[index], qtyText);
+   inlen += strlen(qtyText) + 1;
+   index = inlen;
+ 
+ /* ---------------------------------------------
+  * Add in the occurance placements
+  */
  if ( localVar != VDP_DELETE ) //CR#179801693
   {
   memcpy( &inbuf[index], &nbAttr, sizeof(int));
   attrIndex = index;
   inlen += sizeof(int);
-   index = inlen;
+  index = inlen;
 
     actualAttr = nbAttr;
    for ( i =0; i < nbAttr; i++ )
@@ -2551,6 +2022,8 @@ int     VDPpostObjectToSIR( long                *msg,
    {
       if ( Coll[i].desc.type == AC_ATTRIB_TEXT )
       {
+printf(">>> TXT ATTR %s\n",Coll[i].name);
+
        strcpy( &inbuf[index], Coll[i].name );
        inlen += strlen(Coll[i].name) + 1;
        index = inlen;
@@ -2563,6 +2036,8 @@ int     VDPpostObjectToSIR( long                *msg,
       }
       else if ( Coll[i].desc.type == AC_ATTRIB_DOUBLE )
       {
+printf(">>> DBL ATTR %s\n",Coll[i].name);
+
         strcpy( &inbuf[index], Coll[i].name );
 	__DBGpr_str( "Attrib Name", Coll[i].name );
 	 inlen += strlen(Coll[i].name) + 1;
@@ -2577,12 +2052,16 @@ int     VDPpostObjectToSIR( long                *msg,
       else if ( AttrType[i] == SM_ATTRIB_INT &&
 			Coll[i].desc.type != AC_ATTRIB_TYPE_NOT_DEF )
       {
+printf(">>> INT ATTR %s\n",Coll[i].name);
+
+
       strcpy( &inbuf[index], Coll[i].name );
       __DBGpr_str( "Attrib Name", Coll[i].name );
       inlen += strlen(Coll[i].name) + 1;
       index = inlen;
       sprintf( tmpstr,"%lf\0", Coll[i].desc.value.att_exp );
-      strtok ( tmpstr,".");
+      if(tmpstr != NULL)
+      	strtok ( tmpstr,".");
       __DBGpr_str ( "Attrib Integer :", tmpstr );
       strcpy( &inbuf[index], tmpstr );
       inlen += strlen(tmpstr) + 1;
@@ -2592,11 +2071,8 @@ int     VDPpostObjectToSIR( long                *msg,
       else
       {
       actualAttr--;
-       __DBGpr_str("Unknown Attribute Type for ", Coll[i].name );
+       __DBGpr_str(" Unknown Attribute Type for ", Coll[i].name );
        }
-
-
-
 
    }  // end for loop
    __DBGpr_int( " actualAttr ", actualAttr);
@@ -2606,18 +2082,20 @@ int     VDPpostObjectToSIR( long                *msg,
 
  __DBGpr_int( "Total length of inbuf", inlen );
   
-  //for(j=0; j< inlen; j++)
-   // printf("%c", inbuf[j]);
-  
-
  step1: // SSR 13 Oct
+#if 0
  dstat = POSTMAN_REQUEST_ON_CLIX (   inlen,
 				     inbuf,
 				  &outlen,
 				  &outbuf,
 				  &mfail,
 				  &errmsg );
-
+#endif
+#if 1
+  _FREE( inbuf );
+  if (1) return OM_E_ABORT;
+#endif
+// printf("Posted %d %d\n",mfail,dstat);
   if( mfail )
   {
     __DBGpr_int("mfail:", mfail );
@@ -2634,7 +2112,7 @@ int     VDPpostObjectToSIR( long                *msg,
     printf("\t%s", errmsg );//ssr18amy
 
     nopost = VDaimGetpostno();
-    *nopost+=1;
+   *nopost+=1;
     _FREE( inbuf );
     *msg = mfail;
     //goto wrapup;
@@ -2644,7 +2122,13 @@ int     VDPpostObjectToSIR( long                *msg,
   {
     __DBGpr_int("dstat:", dstat );
     __DBGpr_str("errmsg:", errmsg );
-   
+    if(dstat == 12345 )
+    {
+      UI_status("AIM connection was reset by server.");
+      printf("AIM connection reset by server. Please Disconnect and Re-Connect.\n");
+      strcpy(srerrmsg, "AIM connection reset by server. Disconnect and Re-Connect.");
+      ex$message ( msgnumb = EX_F_Var1, type = "%s", var = srerrmsg );
+    }
     if(!errmsg || (errmsg && !errmsg[0]))
       errmsg="No error msg but should be";
     FILE_PRINT( dm2_log, "\n\t%s", errmsg );
@@ -2663,22 +2147,21 @@ int     VDPpostObjectToSIR( long                *msg,
     return dstat;
   }
 
-      yespost = VDaimGetpostyes();
-      *yespost+=1;
+  yespost = VDaimGetpostyes();
+ *yespost+=1;
 
-      __DBGpr_int("dstat:", dstat );
-      __DBGpr_int("mfail:", mfail );
-      __DBGpr_str("errmsg:", errmsg );
+  __DBGpr_int("dstat:", dstat );
+  __DBGpr_int("mfail:", mfail );
+  __DBGpr_str("errmsg:", errmsg );
 
-      wrapup :
+wrapup :
+   
+  _FREE ( inbuf );
+  End
 
-     
-      _FREE ( inbuf );
-       End
+  return OM_S_SUCCESS;
 
-   return OM_S_SUCCESS;
-
-  }
+}
 
 
   /*New function to set the posting status in the action code CR#179801693   */
@@ -2747,30 +2230,37 @@ int VDPGetPartFromUID( char UID, char *Part )
 
 int VDPGetPdmRevFromDiagList( char *PdmPart, int *ListIndex, char **PdmRev)
 {
-  int	i=0,AddFile=0;
   long  status = OM_S_SUCCESS;
+  int	i=0,AddFile=0;
+  int	dummysz=0;
 
   SetProc(VDPtrTbli.I.VDPGetPdmRevFromDiagList); Begin
 
-   __DBGpr_int("The Diagram File size is", GRefSize);
+  __DBGpr_int("The Diagram File size is", GRefSize);
 
   if(GRefSize) // If diag info exists
   {
+    __DBGpr_com("a diag infor exist");
     for(i=0;i<GRefSize;i++)
     {
       if(!strcmp(SIR_Diag_Info[i].PdmPart, PdmPart))
       {
-        *PdmRev = _MALLOC(strlen(SIR_Diag_Info[i].PdmRev), char);
+   	__DBGpr_com("compare SIR_Diag_Info[i].PdmPart and PdmPart");
+        *PdmRev = _MALLOC( ((strlen(SIR_Diag_Info[i].PdmRev))+1), char);
         strcpy(*PdmRev, SIR_Diag_Info[i].PdmRev);
+   	__DBGpr_str("SIR_Diag_Info[i].PdmPart = ", SIR_Diag_Info[i].PdmPart);
+   	__DBGpr_str("PdmPart = ", PdmPart);
         *ListIndex = i;
         //printf("\n entry found in global strivture at %d", ListIndex);
         AddFile = 1;
       }
     }
-    if(AddFile == 0)/* Create a dummy entry in SIR_Diag_Info*/
+
+    //Create a dummy entry in SIR_Diag_Info
+    if(AddFile == 0)
     {
       __DBGpr_com(" part not in global list");
-      /* increase the size */
+      //increase the size
       SIR_Diag_Info = _REALLOC(SIR_Diag_Info, 
                                GRefSize + 1, 
                                struct SIRRefInfo);
@@ -2780,11 +2270,12 @@ int VDPGetPdmRevFromDiagList( char *PdmPart, int *ListIndex, char **PdmRev)
         goto wrapup;
       }
       
-      /* Update the Global variable */
+      //Update the Global variable
       __DBGpr_int("The Global variable is", GRefSize);
-      *PdmRev = _MALLOC(strlen("DUMMY"), char);
+      *PdmRev = _MALLOC( ((strlen("DUMMY"))+1), char);
       strcpy(*PdmRev, "DUMMY");// dummy
       strcpy(SIR_Diag_Info[GRefSize].PdmPart, PdmPart);//PdmPart
+      SIR_Diag_Info[GRefSize].PdmRev[0]='\0';
       strcpy(SIR_Diag_Info[GRefSize].PdmRev, "DUMMY");//PdmRev dunmmy
       strcpy(SIR_Diag_Info[GRefSize].Mdcobid, "DUMMY");//MDCOBID dummy
       SIR_Diag_Info[GRefSize].UpdFlag = 0;
@@ -2798,28 +2289,47 @@ int VDPGetPdmRevFromDiagList( char *PdmPart, int *ListIndex, char **PdmRev)
   else// If diag info not exist, create
   {
     __DBGpr_com("Creating diag info ");
-    SIR_Diag_Info = _MALLOC(1, struct SIRRefInfo);
+    
+    SIR_Diag_Info = _MALLOC(2, struct SIRRefInfo);
     if(SIR_Diag_Info == NULL)
     {
       status = OM_E_NODYNMEM;
       goto wrapup;
     }
     
-    *PdmRev = _MALLOC(strlen("DUMMY"), char);
+    dummysz = strlen("DUMMY");
+    __DBGpr_int("dummysz", dummysz);
+
+    *PdmRev = _MALLOC( (dummysz + 1), char);
     strcpy(*PdmRev, "DUMMY");// dummy
-    strcpy(SIR_Diag_Info[GRefSize].PdmPart, PdmPart);//PdmPart
+    __DBGpr_str("PdmRev", *PdmRev);
+
     __DBGpr_int("Global Index", GRefSize);
+
+    SIR_Diag_Info[GRefSize].PdmPart[0]='\0';
+    strcpy(SIR_Diag_Info[GRefSize].PdmPart, PdmPart);//PdmPart
     __DBGpr_str("Part entry in global is", SIR_Diag_Info[GRefSize].PdmPart);
-    strcpy(SIR_Diag_Info[GRefSize].PdmRev, *PdmRev);//PdmRev dunmmy
+
+    SIR_Diag_Info[GRefSize].PdmRev[0]='\0';
+    //strcpy(SIR_Diag_Info[GRefSize].PdmRev, *PdmRev);//PdmRev dunmmy
+    strcpy(SIR_Diag_Info[GRefSize].PdmRev, "DUMMY");//PdmRev dunmmy
     __DBGpr_str("Revision entry in global is", SIR_Diag_Info[GRefSize].PdmRev);
+    //printf("Revision entry in global is %s\n", SIR_Diag_Info[GRefSize].PdmRev);
+
+    SIR_Diag_Info[GRefSize].Mdcobid[0]='\0';
+    //strcpy(SIR_Diag_Info[GRefSize].Mdcobid, *PdmRev);//MDCOBID dummy
     strcpy(SIR_Diag_Info[GRefSize].Mdcobid, "DUMMY");//MDCOBID dummy
     __DBGpr_str("MDC entry in global is", SIR_Diag_Info[GRefSize].Mdcobid);
-    __DBGpr_str("writing in global structure", *PdmRev);
+
+    //__DBGpr_str("writing in global structure", *PdmRev);
+    //strcpy(SIR_Diag_Info[GRefSize].PdmRev, "DUMMY");
+
     *ListIndex = GRefSize;
-    /* Initializing the global variable */
-    GRefSize=1;
+    //Initializing the global variable  
+     GRefSize=1;
   }
   __DBGpr_int("Returning index", *ListIndex );
+  __DBGpr_str("PdmPart", PdmPart);
 
   
   wrapup:
@@ -2842,6 +2352,9 @@ IGRint VDPGetRefFileList( int *nos, struct SIRRefPDMInfo **SrRefFileInfo)
   char **lines, **cat_lines, **att_lines, **data;
   int cat_nos, catctr, attctr, att_nos;
   MEMptr trial;
+  //TLS TR 6230
+  TVDosnum	refos;
+  TVDpdmInfo    pdmInfo;
 
   SetProc(VDPtrTbli.I.VDPGetRefFileList); Begin
   *nos = 0;
@@ -2873,7 +2386,6 @@ IGRint VDPGetRefFileList( int *nos, struct SIRRefPDMInfo **SrRefFileInfo)
     goto wrapup;
 
   status = di$pwd(dirname = newdir);
-  //printf("\n getting list of entries from %s present pwd %s", dir_name, newdir);
   lines = NULL;
   status = di$ls(regexp = "*",
                lines = &lines,
@@ -2890,11 +2402,30 @@ IGRint VDPGetRefFileList( int *nos, struct SIRRefPDMInfo **SrRefFileInfo)
     lines[j] = strrchr(lines[j],':' ) + sizeof(char);
     __DBGpr_str("ref file ", lines[j]);
     status=PDMGetPartInfoGivenFileName(lines[j], RCat, RPart, RRev);
-    //printf("INFO is %s %s %s at %d\n", RCat, RPart, RRev, j); 
+   
+    /* TLS TR 6230 - get the os for the ref file */
+    VDosGetFileNameOS( lines[j], &refos );
+
+    /* TLS TR 6230 - get the filekey for the ref file */
+    vdpdm$GetPdmInfo(osnum = refos, pdmInfo = &pdmInfo);
+    if (pdmInfo.filekey < 1)
+    {
+        //TLS - 02-13-02 - TR#6016 Added this print statement and set the
+        //                         status to bad so we know that we couldn't
+        //                         get a filekey.
+        __DBGpr_com ("WE DO NOT HAVE A FILEKEY...");
+        UI_status( "Failed to get Filekey...");
+        status = OM_E_ABORT;
+        goto wrapup;
+    }
+   
+    __DBGpr_int ("The Filekey is", pdmInfo.filekey);
+
     strcpy((*SrRefFileInfo)[j].RefFileName, lines[j]);
     strcpy((*SrRefFileInfo)[j].RefCat, RCat);
     strcpy((*SrRefFileInfo)[j].RefPart, RPart);
     strcpy((*SrRefFileInfo)[j].RefRev, RRev);
+    sprintf((*SrRefFileInfo)[j].RefFilekey, "%d", pdmInfo.filekey);
    
   }
  
@@ -2948,29 +2479,191 @@ IGRint VDPGetRefFileList( int *nos, struct SIRRefPDMInfo **SrRefFileInfo)
     return status;
 }
 
+int VDPGetPdmRevFromDL( char *PdmPart, int *ListIndex, char **PdmRev)
+{
+  long 	status = OM_S_SUCCESS;
+  int	dummysz=0;
+  int	i=0,AddFile=0;
+  char  f_part[80],f_cat[80],f_rev[80];
+  int   f_key = 0;
+
+  struct SIRRefPDMInfo	*cmpSrRefInfo = NULL;
+  int			refFiles=0;
+
+  SetProc(VDPtrTbli.I.VDPGetPdmRevFromDL); Begin
+
+  __DBGpr_int("The Diagram File size is", GRefSize);
+
+  if(GRefSize) // If diag info exists
+  {
+    __DBGpr_com("a diag list exist");
+    
+/*
+    __DBGpr_com("make sure it is a valid DL structure before using it");
+    
+    //get the attached reference files
+    status = VDPGetRefFileList(  &refFiles, &cmpSrRefInfo);
+
+    //compare the diag list with the ref file list
+    //and remove whats not correct.
+    for(x=0; x<GRefSize; x++)
+    {
+	//now get the 1st ref file
+	for(y=0; y<refFiles; y++)
+	{
+	  // now compare
+	  if(!strcmp(SIR_Diag_Info[x].PdmPart, SrRefInfo[i].RefPart)) 
+	 
+
+    __DBGpr_com("now continue processing the structure");
+*/
+    for(i=0;i<GRefSize;i++)
+    {
+      //TLS 4-8-02 - check to see if the diagram list is using a filekey
+      //             if so, change it to part id
+      f_key = atoi(SIR_Diag_Info[i].PdmPart);
+      VDpdmGetCPRForFilekey(&f_key, f_cat, f_part, f_rev);
+      if(f_part[0] != '\0')
+      {
+	//change what's in the DL to part id 
+	SIR_Diag_Info[i].PdmPart[0]='\0';
+        strcpy(SIR_Diag_Info[i].PdmPart, f_part);//PdmPart
+        __DBGpr_str("Part entry in global is", SIR_Diag_Info[i].PdmPart);
+      }
+
+      __DBGpr_com("comparing SIR_Diag_Info[i].PdmPart and PdmPart");
+      if(!strcmp(SIR_Diag_Info[i].PdmPart, PdmPart))
+      {
+        __DBGpr_com("SIR_Diag_Info[i].PdmPart and PdmPart match");
+	__DBGpr_str("SIR_Diag_Info[i].PdmPart = ", SIR_Diag_Info[i].PdmPart);
+	__DBGpr_str("PdmPart = ", PdmPart);
+
+        *PdmRev = _MALLOC( ((strlen(SIR_Diag_Info[i].PdmRev))+1), char);
+        strcpy(*PdmRev, SIR_Diag_Info[i].PdmRev);
+	__DBGpr_str("SIR_Diag_Info[i].PdmRev = ", SIR_Diag_Info[i].PdmRev);
+	__DBGpr_str("PdmRev = ", *PdmRev);
+        *ListIndex = i;
+        //printf("\n entry found in global strivture at %d", ListIndex);
+        __DBGpr_com("entry found in global structure");
+        AddFile = 1;
+      }
+    }
+
+    //Create a dummy entry in SIR_Diag_Info
+    if(AddFile == 0)
+    {
+      __DBGpr_com(" part not in global list");
+      //increase the size
+      SIR_Diag_Info = _REALLOC(SIR_Diag_Info, 
+                               GRefSize + 1, 
+                               struct SIRRefInfo);
+      if( SIR_Diag_Info == NULL )
+      {
+        status = OM_E_NODYNMEM;
+        goto wrapup;
+      }
+      
+      //Update the Global variable
+      __DBGpr_int("The Global variable is", GRefSize);
+      *PdmRev = _MALLOC( ((strlen("DUMMY"))+1), char);
+      strcpy(*PdmRev, "DUMMY");// dummy
+      strcpy(SIR_Diag_Info[GRefSize].PdmPart, PdmPart);//PdmPart
+      SIR_Diag_Info[GRefSize].PdmRev[0]='\0';
+      strcpy(SIR_Diag_Info[GRefSize].PdmRev, "DUMMY");//PdmRev dunmmy
+      strcpy(SIR_Diag_Info[GRefSize].Mdcobid, "DUMMY");//MDCOBID dummy
+      SIR_Diag_Info[GRefSize].UpdFlag = 0;
+      strcpy(SIR_Diag_Info[GRefSize].UpdRev, "DUMMY");//PdmRev dunmmy
+      strcpy(SIR_Diag_Info[GRefSize].UpdMdcobid, "DUMMY");//MDCOBID dummy
+      *ListIndex = GRefSize;
+      GRefSize=GRefSize+1;
+      __DBGpr_int("The new global is", GRefSize);
+    }
+  }
+  else// If diag info not exist, create
+  {
+    __DBGpr_com("Creating diag info ");
+    SIR_Diag_Info = NULL;
+    SIR_Diag_Info = _MALLOC(2, struct SIRRefInfo);
+    if(SIR_Diag_Info == NULL)
+    {
+      status = OM_E_NODYNMEM;
+      goto wrapup;
+    }
+    
+    dummysz = strlen("DUMMY");
+    __DBGpr_int("dummysz", dummysz);
+
+    *PdmRev = _MALLOC( (dummysz + 1), char);
+    strcpy(*PdmRev, "DUMMY");// dummy
+    __DBGpr_str("PdmRev", *PdmRev);
+
+    __DBGpr_int("Global Index", GRefSize);
+
+    SIR_Diag_Info[GRefSize].PdmPart[0]='\0';
+    strcpy(SIR_Diag_Info[GRefSize].PdmPart, PdmPart);//PdmPart
+    __DBGpr_str("Part entry in global is", SIR_Diag_Info[GRefSize].PdmPart);
+
+    SIR_Diag_Info[GRefSize].PdmRev[0]='\0';
+    //strcpy(SIR_Diag_Info[GRefSize].PdmRev, *PdmRev);//PdmRev dunmmy
+    strcpy(SIR_Diag_Info[GRefSize].PdmRev, "DUMMY");//PdmRev dunmmy
+    __DBGpr_str("Revision entry in global is", SIR_Diag_Info[GRefSize].PdmRev);
+    //printf("Revision entry in global is %s\n", SIR_Diag_Info[GRefSize].PdmRev);
+
+    SIR_Diag_Info[GRefSize].Mdcobid[0]='\0';
+    //strcpy(SIR_Diag_Info[GRefSize].Mdcobid, *PdmRev);//MDCOBID dummy
+    strcpy(SIR_Diag_Info[GRefSize].Mdcobid, "DUMMY");//MDCOBID dummy
+    __DBGpr_str("MDC entry in global is", SIR_Diag_Info[GRefSize].Mdcobid);
+
+    //__DBGpr_str("writing in global structure", *PdmRev);
+    //strcpy(SIR_Diag_Info[GRefSize].PdmRev, "DUMMY");
+
+    *ListIndex = GRefSize;
+    //Initializing the global variable  
+     GRefSize=1;
+  }
+  
+  __DBGpr_int("Returning index", *ListIndex );
+  __DBGpr_str("PdmPart", PdmPart);
+
+  wrapup:
+	End	
+  	return status;
+};
+
 /*function to Update Diag list in fact this is the global structure to update */
 
 IGRint VDPUpdateDiaglist( FILE *dm2_log )
 {
   long status = OM_S_SUCCESS, msg=MSSUCC;
-  struct GRid       *list, EnabListId;
-  struct ACrg_coll	*Coll;
+
+  struct GRid       *list = NULL;
+  struct GRid        EnabListId;
+
+  struct ACrg_coll	*Coll = NULL;
   struct GRmd_env	MdEnv;
-  struct SIRRefPDMInfo	*SrRefInfo;
+  struct SIRRefPDMInfo	*SrRefInfo = NULL;
   Tret_struct rs;
   IGRchar		cur_filedescr[OM_K_MAXOSNAME_LEN];
-  IGRchar		class_name[80], *PdmPart=NULL;
-  IGRchar		*PdmRev, *RefMdcObid=NULL;
+  IGRchar		class_name[80], *temp=NULL, PdmPart[128];
+  IGRchar		*PdmRev=NULL, *RefMdcObid=NULL;
   IGRchar		*SrFileName = NULL;
-  IGRchar		SrPart[128],UIDPart[30];
-  IGRchar		SrUID[30];
+  IGRchar		SrPart[128],UIDPart[128];
+  IGRchar		SrUID[128];
   int			notUsed,ret_msg;	
   IGRchar		AttrName[128], SrRefPart[128], SrRefRev[128];
   int 			nbDiagFiles=0,j=0, nbRefIndex=0;
   int			objcount, objctr, size,ret_size, nbObjs;
   int			DiagIndex=0, nbFiles=0, i=0, nbDiagSize=0;
-  OMuword             curOs;
-  struct GRobj_env    *listObjs = NULL;
+  OMuword               curOs;
+  struct GRobj_env      *listObjs = NULL;
+  //TLS TR 6230
+  TVDpdmInfo          	pdmInfo;
+  int			refFiles=0;
+  char			filekey[128], catalog[80], part[80], rev[80];
+  int			iFilekey=0;
+  IGRstat 		sts;
+
+  IGRint retFlag = OM_E_ABORT;
 
   SetProc( VDPtrTbli.I. VDPUpdateDiaglist); Begin
   SrUID[0]='\0';
@@ -2978,9 +2671,13 @@ IGRint VDPUpdateDiaglist( FILE *dm2_log )
   /* Get the attached reference list for the active file*/
   status = VDPGetRefFileList(  &nbFiles, &SrRefInfo);
   __DBGpr_int("Ref files are %d", nbFiles);
+  refFiles = nbFiles;
+  __DBGpr_int("refFiles", refFiles);
+
   if(nbFiles == 0)
   {
     __DBGpr_com("No reference files attached.");
+    retFlag = OM_S_SUCCESS;
     goto wrapup;
   }
   /* Get the Reference PDM File Info */
@@ -2989,9 +2686,10 @@ IGRint VDPUpdateDiaglist( FILE *dm2_log )
   {  
     __DBGpr_int("The Reference file name found at", i); 
     __DBGpr_str("The Reference file name is %s", SrRefInfo[i].RefFileName); 
-    __DBGpr_str("CATALOG NAME is", SrRefInfo[i].RefCat);
-    __DBGpr_str("PART NUMBER is", SrRefInfo[i].RefPart);
-    __DBGpr_str("PART REVISION is", SrRefInfo[i].RefRev);
+    __DBGpr_str("REF CATALOG NAME is", SrRefInfo[i].RefCat);
+    __DBGpr_str("REF PART NUMBER is", SrRefInfo[i].RefPart);
+    __DBGpr_str("REF PART REVISION is", SrRefInfo[i].RefRev);
+    __DBGpr_str("REF PART FILEKEY is", SrRefInfo[i].RefFilekey);
   } 
   
   /* Instead of scanning whole Onject Space, just get Eabled list and 
@@ -3021,6 +2719,7 @@ IGRint VDPUpdateDiaglist( FILE *dm2_log )
   if (nbObjs == 0 )
   {
     __DBGpr_com("No objects found in Enabled List");
+    retFlag = OM_S_SUCCESS;
     goto wrapup;
   } 
   
@@ -3054,27 +2753,103 @@ IGRint VDPUpdateDiaglist( FILE *dm2_log )
     __DBGpr_str("The UID value is %s", rs.var.text_st.text_string);
     strcpy(SrUID, rs.var.text_st.text_string);
     strcpy(UIDPart, SrUID);
-    PdmPart = strtok(UIDPart, "-");
-    __DBGpr_str("\n PdmPart from UID%s", PdmPart ); 
+    temp = strtok(UIDPart, "-");
+    //PdmPart[0]='\0';
+    //sprintf(PdmPart, "%s", temp);
+    filekey[0]='\0';
+    sprintf(filekey, "%s", temp);
+    __DBGpr_str("temp", temp ); 
+    __DBGpr_str("filekey from UID", filekey ); 
+
+    iFilekey = atoi(filekey);
+    __DBGpr_int("iFilekey", iFilekey ); 
+
+    catalog[0]  = '\0';
+    part[0]     = '\0';
+    rev[0]      = '\0';
+
+    //Get the part id from the filekey in the UID
+    sts = VDpdmGetCPRForFilekey(&iFilekey, catalog, part, rev);
+
+    __DBGpr_str("Catalog from filekey", catalog ); 
+    __DBGpr_str("Part from filekey", part ); 
+    __DBGpr_str("Rev from filekey", rev ); 
+
+    PdmPart[0]='\0';
+    sprintf(PdmPart, "%s", part);
+    __DBGpr_str("PdmPart", PdmPart ); 
     
+    /* TLS - Added to get the filekey for active part */
+    vdpdm$GetPdmInfo(osnum = curOs, pdmInfo = &pdmInfo);
+    if (pdmInfo.filekey < 1)
+    {
+        //TLS - 02-13-02 - TR#6016 Added this print statement and set the
+        //                         status to bad so we know that we couldn't
+        //                         get a filekey.
+        __DBGpr_com ("WE DO NOT HAVE A FILEKEY...");
+        UI_status( "Failed to get Filekey...");
+        status = OM_E_ABORT;
+        goto wrapup;
+    }
+   
+    __DBGpr_int ("The Filekey for active part is", pdmInfo.filekey);
+
+    //TLS TR 6230 - replaced with filekey
+    //TLS 4-8-02 Decided to leave it partid
     strcpy(SrPart, refresh->act_partid);
+    //sprintf(SrPart, "%d", pdmInfo.filekey);
     __DBGpr_str("Active Part is", SrPart);
+
+    __DBGpr_com("Comparing PdmPart and SrPart");
+/* ----------------------------------------------
+ * ah - This really should check catalog as well
+ *      Parts can be the same especially during testing
+ */
     if(!strcmp(PdmPart, SrPart)) 
     {
       __DBGpr_com("Part from UID and Active Part are same");
       continue;
     }
-    status = VDPGetPdmRevFromDiagList( PdmPart, &DiagIndex, &PdmRev);
-    __DBGpr_str("Rev", PdmRev);
+    __DBGpr_int("nbFiles", nbFiles);
+
+    //__DBGpr_str("REF PART FILEKEY is", SrRefInfo[0].RefFilekey);
+    __DBGpr_str("PdmPart", PdmPart ); 
+
+    PdmRev = NULL;
+    //status = VDPGetPdmRevFromDiagList( PdmPart, &DiagIndex, &PdmRev);
+    status = VDPGetPdmRevFromDL(PdmPart, &DiagIndex, &PdmRev);
+
+    __DBGpr_str("PdmPart", PdmPart ); 
+    __DBGpr_int("DiagIndex", DiagIndex ); 
+    
+    __DBGpr_str("After VDPGetPdmRevFromDL, Rev", PdmRev);
 
     nbRefIndex=0;
     SrRefPart[0]='\0';
 
-	//Run the loop thru the reflist to get the revision
-    for(j=0; j<nbFiles; j++)
+    //Run the loop thru the reflist to get the revision
+    __DBGpr_int("nbFiles", nbFiles);
+    __DBGpr_int("refFiles", refFiles);
+
+    for(j=0; j<refFiles; j++)
     {
+      //TLS TR 6230 - replaced with filekey 
+      //TLS 4-8-02, Change backed to part id
+
+      //if(!strcmp(PdmPart, SrRefInfo[j].RefPart))
+      //__DBGpr_com("comparing PdmPart and RefFilekey");
+      __DBGpr_com("comparing PdmPart and RefPart");
+      __DBGpr_int("j", j);
+      //__DBGpr_str("PdmPart (filekey) from UID", PdmPart ); 
+      __DBGpr_str("PdmPart", PdmPart ); 
+      //__DBGpr_str("REF PART FILEKEY is", SrRefInfo[j].RefFilekey);
+      __DBGpr_str("REF PART is", SrRefInfo[j].RefPart);
+
+      //if(!strcmp(PdmPart, SrRefInfo[j].RefFilekey))
       if(!strcmp(PdmPart, SrRefInfo[j].RefPart))
       {
+        //__DBGpr_com("PdmPart and RefFilekey match");
+        __DBGpr_com("PdmPart and RefiPart match");
 	strcpy(SrRefPart, SrRefInfo[j].RefPart);	
 	strcpy(SrRefRev, SrRefInfo[j].RefRev);	
 	nbRefIndex=j;
@@ -3082,22 +2857,31 @@ IGRint VDPUpdateDiaglist( FILE *dm2_log )
       }
     } 
     
+    __DBGpr_com("checking length of SrRefPart");
     if(strlen(SrRefPart)==0)
     {
       __DBGpr_com("No Reference file matched with UID Part value");
       continue;
     }
     __DBGpr_str("For the Reference File the info is...", SrRefInfo[nbRefIndex].RefFileName);
+
+    __DBGpr_com("comparing PdmRev and SrRefRev");
+    __DBGpr_str("PdmRev", PdmRev);
+    __DBGpr_str("SrRefRev", SrRefRev);
     if(strcmp(PdmRev, SrRefRev))
     {
       __DBGpr_com("Revisions mismatch");
       status = VDPGetMdcobidFromRefPart(SrRefInfo[nbRefIndex].RefFileName, &RefMdcObid);
-      if(RefMdcObid) __DBGpr_str("Referece mdc is %s", RefMdcObid);
-      if(strcmp(PdmRev, "DUMMY"))
+      if(RefMdcObid) 
+	__DBGpr_str("Referece mdc is %s", RefMdcObid);
+      __DBGpr_str("PdmRev", PdmRev);
+      //printf("PdmRev = <%s>\n", PdmRev);
+      if(!strcmp(PdmRev,"DUMMY") )
       {
 	__DBGpr_com("Updateing the diag list");
 	FILE_PRINT(dm2_log, "\nUpdating MDC Placement Relations for object <%d>",listObjs[objctr].obj_id.objid); 
-	printf("\nUpdating MDC Placement Relations for object <%d>",listObjs[objctr].obj_id.objid); 
+	//printf("\nUpdating MDC Placement Relations for object <%d>\n",listObjs[objctr].obj_id.objid); 
+	__DBGpr_int("Updating MDC Placement Relations for object ",listObjs[objctr].obj_id.objid); 
 	status = VDPUpdatePlacMdcReln( SrUID, RefMdcObid);
 	if(status != 0)
 	{
@@ -3110,7 +2894,8 @@ IGRint VDPUpdateDiaglist( FILE *dm2_log )
 	  else if(status == 21)
 	  {
 	    FILE_PRINT(dm2_log, "\nObject<%d> is not related to Current MDC.", listObjs[objctr].obj_id.objid);
-	    printf("\nObject<%d> is not related to Current MDC.", listObjs[objctr].obj_id.objid);
+	    //printf("\nObject<%d> is not related to Current MDC.\n", listObjs[objctr].obj_id.objid);
+	    __DBGpr_int("Object is not related to Current MDC", listObjs[objctr].obj_id.objid);
 	    VDPPmeUpdate(&msg,listObjs[objctr].obj_id,listObjs[objctr].obj_id );
 	  }
 	  else
@@ -3126,15 +2911,8 @@ IGRint VDPUpdateDiaglist( FILE *dm2_log )
       if(SIR_Diag_Info)
       {
 	__DBGpr_int("Glogal Index", DiagIndex);
-	__DBGpr_str("Part in Global is",SIR_Diag_Info[DiagIndex].PdmPart);
-	__DBGpr_str("Rev in Global is",SIR_Diag_Info[DiagIndex].PdmRev);
-	__DBGpr_str("MDC in Global is",SIR_Diag_Info[DiagIndex].Mdcobid);
 	strcpy(SIR_Diag_Info[DiagIndex].UpdRev, SrRefRev);
-	__DBGpr_str("NewRev in Global is",SIR_Diag_Info[DiagIndex].PdmRev);
-	__DBGpr_str("NewUpdRev inGlobal is",SIR_Diag_Info[DiagIndex].UpdRev);
 	strcpy(SIR_Diag_Info[DiagIndex].UpdMdcobid, RefMdcObid);
-	__DBGpr_str("NewMDC in Global is",SIR_Diag_Info[DiagIndex].Mdcobid);
-	__DBGpr_str("NewUpdMDC in Global is %s",SIR_Diag_Info[DiagIndex].UpdMdcobid);
 	SIR_Diag_Info[DiagIndex].UpdFlag = 1;
       }					
     }//Revision mismatch					
@@ -3144,25 +2922,32 @@ IGRint VDPUpdateDiaglist( FILE *dm2_log )
     if(GRefSize == 0 )
     {
       __DBGpr_com("No SIR_Diag_Info.");
+      retFlag = OM_S_SUCCESS;
       goto wrapup;
     }
 
-    for(nbDiagFiles = 0; nbDiagFiles<GRefSize; nbDiagFiles++ )
+   /* for(nbDiagFiles = 0; nbDiagFiles<GRefSize; nbDiagFiles++ )
     {
       __DBGpr_str("DIAG.PART %s", SIR_Diag_Info[nbDiagFiles].PdmPart );
       __DBGpr_str("DIAG.REV %s", SIR_Diag_Info[nbDiagFiles].PdmRev );
       __DBGpr_str("DIAG.MDCID %s", SIR_Diag_Info[nbDiagFiles].Mdcobid );
-    } 
+    }*/ 
   }// end for loop of objects in enabled list
-
+  retFlag = OM_S_SUCCESS;
 
 wrapup:
   if(list) _FREE(list);
-  if(dm2_log) fclose(dm2_log);
+
+  /* ---------------------------------------------
+   * Sorry but this is an arugment and I don't see how you close
+   * it here
+   */
+  // if(dm2_log) fclose(dm2_log);
+
   if(SrRefInfo) _FREE(SrRefInfo);
   if(listObjs) _FREE(listObjs);
   End
-  return status;
+  return retFlag;
 }
 
 /* New function for SIR
@@ -3183,9 +2968,8 @@ long VDPEnableFSIs( FILE *dm2_log, struct GRid object, char *uid )
   struct GRmd_env     MdEnv;
   int                 size, ret_size, diagCtl;
   struct ACrg_coll    Coll;
-  char                *sirobid = NULL;
-  
-
+  IGRchar sirid[128];
+ 
   SetProc (VDPCmdEnab.VDPEnableFSIs); Begin
   msg=MSSUCC;
 
@@ -3202,7 +2986,7 @@ long VDPEnableFSIs( FILE *dm2_log, struct GRid object, char *uid )
     status = VDPPmeEnable( &msg, object, NULL);
     goto wrapup;
   }
-  
+
   ex$get_cur_mod( osnum = &curOs ); 
   status = VDPGetEnabledListId ( &msg, curOs, &EnabListId );
   __CheckRC( status, msg, "VDPGetEnabledListId", wrapup );
@@ -3284,15 +3068,12 @@ long VDPEnableFSIs( FILE *dm2_log, struct GRid object, char *uid )
       if(diagCtl != D_FILE)
       {
         FILE_PRINT(dm2_log,"\nERROR : Duplicate sirid; Objects %d and %d have same uid.",object.objid, listObjs[i].obj_id.objid);
-        //FILE_PRINT(dm2_log, "\nObject %d not enabled",object.objid);
-        //printf("\nDuplicate sirid; Object %d not enabled",object.objid);
-        //DupUid =1;
         break;
       }
-      status = VDPSetUid( &sirobid );
-      __DBGpr_str("Created UID is", sirobid);
+      VDPaimGetNextSirid(NULL_OSNUM,1,sirid);
+
       /* Set UID value for the Placment object */
-      strcpy( Coll.desc.value.att_txt, sirobid );
+      strcpy( Coll.desc.value.att_txt, sirid );
       strcpy( Coll.name, "sirid" );
       Coll.desc.type = AC_ATTRIB_TEXT;
 
@@ -3314,35 +3095,60 @@ long VDPEnableFSIs( FILE *dm2_log, struct GRid object, char *uid )
     End
     return status;
 }
-
+/* ----------------------------------------------
+ * 27 Feb 2004 - Art
+ * The code was still enabled when delivered to Avondale
+ * as part of the posting enhancements.
+ * It's a bit confusing because it's called after the
+ * posting takes place.  I think it was bing used to validate
+ * sirid's that may have been copied.
+ *
+ * In any event, for lhar the diagram/model dependency
+ * has been rewritten.  So I am going to not call
+ * this routine anymore and see what happens.
+ */
 int CheckUid( IGRlong *msg, FILE *dm2_log)
 {
-    OMuword     curOs;
-    struct      ACrg_coll       SridColl, RefColl, FileColl, RefSizeColl;
-    struct      GRid            *list=NULL, CollId, DirId, DefCollId, RefCollId;
-    struct      GRmd_env        MdEnv;
-    IGRlong                             retmsg;
-    IGRchar                             class_name[80], exp[20];
-    IGRchar                             *sirobid=NULL, siruid[30];
-    IGRchar                             DirName[DI_PATH_MAX];
-    IGRchar CollName[DI_PATH_MAX];
-    int                                 j,  size, objcount=0 , objctr;
-    int  ret_size, nbRefNo;
-    int                                 status=OM_S_SUCCESS, FSI = -1;
-    int                                 CreateDiagramList, DupUID=0;
-    int                                 siruidsize=0, k=0;
-    TGRid       AttId;
-    TGRobj_env  AttrObjEnv;
-    char filen[80];
+  OMuword     curOs;
+  TACrg_coll  SridColl, RefColl, FileColl, RefSizeColl;
+  TGRid       *list=NULL, CollId, DirId, DefCollId, RefCollId;
+  TGRmd_env   MdEnv;
+  IGRlong     retmsg;
+  IGRchar     class_name[80], exp[20];
+  IGRchar     DirName[DI_PATH_MAX];
+  IGRchar     CollName[DI_PATH_MAX];
+  IGRint      j,  size, objcount=0 , objctr;
+  IGRint      ret_size, nbRefNo;
+  IGRint      status=OM_S_SUCCESS, FSI = -1;
+  IGRint      CreateDiagramList, DupUID=0;
+  IGRint      k=0;
+  TGRid       AttId;
+  TGRobj_env  AttrObjEnv;
+  IGRchar filen[80];
+
+  TVDpdmInfo curPdmInfo;
+  TVDpdmInfo siridPdmInfo;
+  IGRchar    sirid[128];
+  IGRint     siridFileKey;
+
+  TGRid   objID;
+  IGRchar mino[128];
+  IGRchar cage[128];
+  IGRchar comp_code[128];
+  IGRint  isNotFSI;
+
+  IGRstat retFlag = OM_E_ABORT;
 
   //Set Flag to FALSE
   SetProc(VDPquerydm2.I.CheckUid); Begin
   CreateDiagramList = 0;
-  siruid[0] = '\0';
   DirName[0] = '\0';
   CollName[0] = '\0';
+  *msg = MSSUCC;
 
+  /* Get the current file information */
   ex$get_cur_mod( osnum = &curOs );
+  VDpdmGetPdmInfo(curOs,&curPdmInfo);
 
   FILE_PRINT( dm2_log, "\n\tChecking Uid of ISDP objects");
 
@@ -3357,17 +3163,6 @@ int CheckUid( IGRlong *msg, FILE *dm2_log)
     __DBGpr_com("No Objects in the Active Space.");
     goto wrapup;
   }
-
-  //Coll = (struct ACrg_coll *) malloc(sizeof(struct ACrg_coll)*1);
-  //Coll = _MALLOC(1, struct ACrg_coll );
-
-  //if (Coll == NULL)
-  //{
-  //  UI_status("ERROR: No Dynamic memory");
-  //  return OM_E_NODYNMEM;
-  //}
-
-  //__DBGpr_com ("Memory Allocated for Coll");
 
   for( objctr  = 0; objctr < objcount; objctr = objctr+1)
   {
@@ -3387,6 +3182,26 @@ int CheckUid( IGRlong *msg, FILE *dm2_log)
         !strcmp(class_name, "VRRComp") ||
         !strcmp(class_name, "VRHComp") )
     {
+      /* ----------------------------------------
+       * AIM_PE The routines for testing FSI give spurious
+       * warnings if the item does not have cage or mino
+       * at least the ones at Intergraph do.
+       *
+       * Filter out objects without mino or cage and see what happens
+       */
+      if (strcmp(class_name, "VDequipment") &&
+          strcmp(class_name, "VREquipment"))
+      {
+
+        objID = list[objctr];
+        VDobjGetTxtAtr(NULL,&objID,"comp_code",comp_code);
+        if (!strcmp(comp_code,"dangle")) 
+        {
+          /* printf("Filtered dangle\n"); */
+          continue;
+        }
+      }
+
       //Prepare the expression for querying
       exp[0] = '\0';
       __DBGpr_str("classes are", class_name);
@@ -3418,13 +3233,15 @@ int CheckUid( IGRlong *msg, FILE *dm2_log)
                                jnt = &FSI );
       __DBGpr_obj("Querying smart FSI for object",list[objctr]);
       __DBGpr_int("FSI value is", FSI);
+
       if(!status)
       {
-        FILE_PRINT( dm2_log, "\nNo entry of object %d found in database table <static_additional> for expression <%s>.", list[objctr].objid, exp);
-        // printf("\nNo entry of object %d found in database table <static_additional>, for exression <%s>.", list[objctr].objid, exp );
+        FILE_PRINT(
+          dm2_log, 
+          "\nNo entry of object %d found in database table <static_additional> for expression <%s>.", 
+          list[objctr].objid, exp);
         continue;
       }
-
       if( FSI == 1 )
       {
         //Get the Uid attribute of the object
@@ -3439,6 +3256,39 @@ int CheckUid( IGRlong *msg, FILE *dm2_log)
                                     NbParams = 1 );
 
         CheckRC (status, *msg);
+/* ----------------------------------------------
+ * Want to verify that any existing sirid belongs to
+ * the current cat.part and was not generated from
+ * an attached diagram file.  This is mainly part of the
+ * posting enhancement process but is also a good
+ * error check against copying attributes from objects in
+ * a reference file
+ */
+  strcpy(sirid,SridColl.desc.value.att_txt);
+  if (*sirid)
+  {
+    siridFileKey = atoi(sirid);
+    if (siridFileKey != curPdmInfo.filekey)
+    {
+      VDpdmGetCPRForFilekey(&siridFileKey,
+                             siridPdmInfo.catalog,
+                             siridPdmInfo.part,
+                             siridPdmInfo.rev);
+      if (strcmp(curPdmInfo.catalog,siridPdmInfo.catalog) ||
+          strcmp(curPdmInfo.part,   siridPdmInfo.part)) 
+      {
+        /* --------------------------------------
+         * Whack it
+         * Also need to delete out of aim enabled items
+         * and the transaction list if one exists
+         */
+        *SridColl.desc.value.att_txt = 0;
+      }
+    }
+  }
+/* ----------------------------------------------
+ * And back to the regulary scheduled abortion
+ */
         if(strlen(SridColl.desc.value.att_txt) ==0)
         {
 
@@ -3478,15 +3328,23 @@ int CheckUid( IGRlong *msg, FILE *dm2_log)
                            targetos = DefCollId.osnum);
           __DBGpr_int( "FILE Type ", FileColl.desc.value.att_exp );
 
-          if ( FileColl.desc.value.att_exp == D_FILE ||
+/* ----------------------------------------------
+ * SIR_PE Changed D_FILE to DM_FILE
+ */
+          if ( FileColl.desc.value.att_exp == DM_FILE ||
             FileColl.desc.value.att_exp == A_FILE )
           {
-            status = VDPSetUid( &sirobid );
-            __DBGpr_str("Created UID is", sirobid);
 
-            strcpy(siruid, sirobid);
+            VDPaimGetNextSirid(NULL_OSNUM,1,sirid);
+            if (*sirid == 0)
+	    {
+            	__DBGpr_com("Failed to get UID");
+		UI_status( "Failed to get UID...");
+	    	status = OM_E_ABORT;		       
+		goto wrapup;
+	    }	
             /* Set UID value for the Placment object */
-            strcpy( SridColl.desc.value.att_txt, sirobid );
+            strcpy( SridColl.desc.value.att_txt, sirid );
             strcpy( SridColl.name, "sirid" );
             SridColl.desc.type = AC_ATTRIB_TEXT;
 
@@ -3495,26 +3353,39 @@ int CheckUid( IGRlong *msg, FILE *dm2_log)
           else
           {
             //Can't placee New FSIs in a 3D File
-            printf("\nERROR : UID Can't be set for 3D\n");
+            printf("\nERROR : UID Can't be set for 3D");
           }
 
         } // UID not available
         else
         {
           /* Check if active file is owner of Placement */
+/* ----------------------------------------------
+ * SIR_PE
+ * Don't create this list anymore because the whole
+ * notion of linking to sirid in a diagam file has gone
+ * bye bye
+ */
+#if 0
           CreateDiagramList = 1;  /* This should be corrected */
-          strcpy(siruid, SridColl.desc.value.att_txt);
-          __DBGpr_str("found sirobid", siruid);
+#endif
+          strcpy(sirid, SridColl.desc.value.att_txt);
+          __DBGpr_str("found sirid", sirid);
         }
 
-        status = VDPEnableFSIs( dm2_log, list[objctr], siruid );
+        /* --------------------------------------
+         * This seems kind of bad if you happened to be
+         * in a M or ASM file with no assigned sirid
+         * this get's called with the previous sirid
+         */
+        status = VDPEnableFSIs( dm2_log, list[objctr], sirid );
         CheckRC( status, *msg );
 
      }// end if FSI == TRUE
      else
      {
        FILE_PRINT(dm2_log,"\nFSI is NULL or FALSE for [%d]\n",list[objctr].objid);
-       // printf("\n FSI is NULL for <%d>", list[objctr].objid);
+       //printf("\n FSI is NULL for <%d>", list[objctr].objid);
      }
 
    }//End if class_name
@@ -3591,6 +3462,18 @@ int CheckUid( IGRlong *msg, FILE *dm2_log)
    __DBGpr_int("The value is %d", RefSizeColl.desc.value.att_exp);
    if( RefSizeColl.desc.value.att_exp != 0 )
    {
+     //TTT
+     //Delete the existing collector if it exist
+     __DBGpr_com ("Checking to see if the Global Structure EXIST");
+     if (SIR_Diag_Info != NULL)
+     {
+	__DBGpr_com ("Global Structure EXIST - free it");
+	free(SIR_Diag_Info);
+	__DBGpr_com ("the Global Structure is free");
+     }
+
+     SIR_Diag_Info = NULL;
+
      /*Read the collector and make a copy of global struct */
      SIR_Diag_Info = _MALLOC(RefSizeColl.desc.value.att_exp, struct SIRRefInfo);
 
@@ -3653,15 +3536,32 @@ int CheckUid( IGRlong *msg, FILE *dm2_log)
        __DBGpr_str("diag info UpdMdcobid", SIR_Diag_Info[nbRefNo].UpdMdcobid);
      }//Writing in Global structure for loop
    }//no reference files
+   else
+   { //make sure global values are being reset
+     //because the diag list does not exist in the collector
+
+     //TTTT
+     //Delete the existing structure if it exist
+     __DBGpr_com ("Checking to see if the Global Structure EXIST");
+     if (SIR_Diag_Info != NULL)
+     {
+	__DBGpr_com ("Global Structure EXIST - Free It");
+	free(SIR_Diag_Info);
+	SIR_Diag_Info=NULL;
+	__DBGpr_com ("the Global Structure is free");
+
+	__DBGpr_com ("Global Structure Size EXIST - set it to 0");
+	GRefSize = 0;
+     }
+   }
   }
 
-wrapup:
-  //if(Coll) _FREE(Coll);
-  if ( list ) _FREE(list);
-  if(sirobid) _FREE (sirobid);
+  retFlag = OM_S_SUCCESS;
 
+wrapup:
+  if ( list ) _FREE(list);
 End
-return status;
+return retFlag;
 }
 
 /*****************************************************************
@@ -3765,10 +3665,10 @@ int SrVDUpdCMattrs ( char *catalog,
                      char *Value )
 {
 
-   char query[150], err[60];
+   char query[1024], err[60];
    int status=0, ris_err_code=0;
 
-   SetProc(VDPquerydm2.I.SrVDUpdCMattrs ); Begin
+   SetProc(VDPtrTbli.I.SrVDUpdCMattrs ); Begin
    query[0] = '\0';
    err[0] = '\0';
    sprintf(query, "UPDATE %s SET %s ='%s' WHERE n_itemname = '%s' AND n_itemrev = '%s'", catalog, Attr, Value, partid, revision);
@@ -3897,7 +3797,7 @@ int SrVDGetCMState( char *catalog, char *part, char *rev, char *state )
  
 int CMget_wflow_name( char *cat, char *part, char *rev, char *w_flow)
 {
-  char searchst[70], st[5], searchwf_no[70], wf_no[5], searchwf_name[70];
+  char searchst[256], st[5], searchwf_no[100], wf_no[10], searchwf_name[100];
   char query[190], wf_name[20];
   char **bufst, **bufwf_no, **bufwf_name;
   int  num, rows, ris_err_code;
@@ -3984,5 +3884,44 @@ int CMget_wflow_name( char *cat, char *part, char *rev, char *w_flow)
   return 0;
 }
 
+/***************************************************************
+ * Added by Anjani
+ * SirVDUpdCMAttrs updates the values in the SirPdmtable attributes 
+ * which are written for CM management purpose
+ * **************************************************************/
+int SirVDUpdCMAttrs ( char *catalog, 
+                       char *partid, 
+		       char *revision, 
+		       char *Attr,
+                       char *Value )
+{
+       
+       char query[1024], err[60];
+       int status=0, ris_err_code=0;
+       char Table[15];
+
+          SetProc(VDPtrTbli.I.SirVDUpdCMAttrs ); Begin
+	     query[0] = '\0';
+	     err[0] = '\0';
+	     Table[0] = '\0';
+	     strcpy(Table, "SIR_PDM_TABLE");
+        sprintf(query, "UPDATE %s SET %s ='%s' WHERE pdu_catalog = '%s' AND pdu_part = '%s' AND pdu_revision = '%s'", Table, Attr, Value, catalog, partid, revision);
+	   __DBGpr_str( "Statement", query );
+          pdm$ris_stmt(status = &status,
+	                statement = query,
+	                ris_err_code = &ris_err_code);
+
+	  if( status != SQL_S_SUCCESS)
+	  {
+	   //printf("\n stat %d, ris err %d", status, ris_err_code);
+		__DBGpr_com("Not got SQL_S_SUCCESS");
+	      sprintf(err, "ERROR : Couldnot Update nfmattribute <%s>.", Attr );
+	       UI_status( err );
+	      return  1;
+	  }
+	  End
+	 return 0;
+}	
+	                           
 end implementation VDPtrTbl;
 
