@@ -32,11 +32,10 @@
 #
 # -------------------------------------------------------------------
 
-target: sl \
-	mkfile
+target: mkfile
 	grmake -r -k -f mkfile
 
-sl: VDCmdupdbox.S \
+slx: VDCmdupdbox.S \
 	SMCmdCvtCmp.S \
 	SMCmdCvtFrm.S \
 	VDrtupdcls.S
@@ -64,4 +63,7 @@ VDrtupdcls.S : VDrtupdcls.sl \
 
 mkfile: vdconvert.m
 	grmakemake vdconvert.m mkfile
+
+clean:
+	@rm -f mkfile *.o *.c
 
