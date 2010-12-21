@@ -35,3 +35,7 @@ target: mkfile
 
 mkfile : vdgraphfc.m
 	grmakemake vdgraphfc.m mkfile
+
+clean:
+	@rm -f mkfile *.o *.c
+
