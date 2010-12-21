@@ -34,3 +34,7 @@ target: mkfile
 
 mkfile: vdsymbhold.m
 	grmakemake vdsymbhold.m mkfile
+
+clean:
+	@rm -f mkfile *.o *.c
+
