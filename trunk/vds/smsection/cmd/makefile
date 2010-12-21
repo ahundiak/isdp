@@ -29,11 +29,10 @@
 #
 # -------------------------------------------------------------------
 
-target: sl \
-	mkfile
+target: mkfile
 	grmake -r -k -f mkfile 
 
-sl: SMCmdSect.S 
+slx: SMCmdSect.S 
 
 SMCmdSect.S : SMCmdSect.sl \
 	${VDS}/include/SMmsg.h ${VDS}/include/SMcmd.h \
@@ -42,4 +41,7 @@ SMCmdSect.S : SMCmdSect.sl \
 
 mkfile : smsectcmd.m
 	grmakemake smsectcmd.m mkfile
+
+clean:
+	@rm -f mkfile *.o *.c
 
