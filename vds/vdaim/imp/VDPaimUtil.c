@@ -26,12 +26,12 @@
 
 #include <assert.h>
 #include <string.h>
-
+#include "VDtypedefc.h"
 #include "VDPaimPostMan.h"
-
+#include "VDPdef.h"
 
 /* ----------------------------------------------
- * Moved from sir/VDPutil.I because of lod order issues
+ * Moved from sir/VDPutil.I because of load order issues
  */
 static char AIMUser[50];
 static char AIMServer[25];
@@ -99,7 +99,21 @@ int VDPaimGetServerInfo(char *user, char *server, char *env)
 wrapup:
   return sts;
 }
-#if 0
+/* ==============================================================
+ * Some poorly names status stuff
+ * */
+static int pme_enabled = 0;
+static int aimserver   = 3;  // Think this distungushes between SIR and something else, login sets to 1
+
+int EnablePME(int flag ) { pme_enabled = flag; return 0; }
+
+int IsPmeEnabled() { return pme_enabled; }
+
+int ConnectAIM(int flag ) { aimserver = flag; return 0; }
+
+int WhichAim() { return aimserver; }
+
+
 /* ----------------------------------------------
  * Simple file type number to string
  */
@@ -131,8 +145,8 @@ void VDPaimGetFileTypeDesc(int fileType, char *desc)
 /* ----------------------------------------------
  * PDU Nonsense
  */
-// #include "PDUstr.h"
-// #include "PDUuser.h"
+#include "PDUstr.h"
+#include "PDUuser.h"
 
 extern struct PDUrefresh *refresh;
 extern struct PDUuser	 *user;
@@ -202,4 +216,3 @@ IGRstat VDPaimIsPartCheckedOut()
 wrapup:
   return retFlag;
 }
-#endif

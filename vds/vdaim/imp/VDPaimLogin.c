@@ -38,12 +38,13 @@
 #include "VDfrmc.h"
 
 #include "VDPaimPostMan.h"
+#include "VDPaimUtil.h"
 
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
 #include <XFIproto_pub.h>
 
-VDASSERT_FFN("aim/src/sir/AIMlogin.c");
+VDASSERT_FFN("vds/vdaim/imp/VDPaimLogin.c");
 
 static Form    s_form;
 static IGRstat s_loop;
@@ -222,7 +223,12 @@ static FILE *AIMloginOpenServerListFile()
     //printf("Directory for tm_access.tbl file is [%s]\n",buf);
     
     file = fopen(buf,"r");
-    if (file != NULL) return file;
+
+    if (file != NULL)
+    {
+      // printf("%s\n",buf);
+      return file;
+    }
   }
 }
 
@@ -304,7 +310,7 @@ wrapup:
 /* ---------------------------------------------
  * Called by the PPL (VDpostconn.u), and function CMAimConnect, to wakeup the form
  * ***/
-IGRstat AIMlogin()
+IGRstat VDPaimLogin()
 {
     VDASSERT_FN("AIMlogin");
 
@@ -342,3 +348,5 @@ wrapup:
     return s_returnAIMlogin;
 
 }
+// Lots of code using old name, refactor later
+IGRstat AIMlogin() { return VDPaimLogin(); }
