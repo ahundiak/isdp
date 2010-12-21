@@ -2,12 +2,15 @@ CC
 acc -knr -O3
 
 SOURCE
+ids.c
+/*
 stub9.c
 stub10.c
 stub11.c
 stub12.c
 stub14.c
-        
+  */
+
 SPEC
 $(EXNUC)/spec
 $(GRNUC)/spec
