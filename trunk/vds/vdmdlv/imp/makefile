@@ -32,3 +32,7 @@ target:	mkfile
 
 mkfile:	vdmdlvimp.m
 	grmakemake vdmdlvimp.m mkfile
+
+clean:
+	@rm -f mkfile *.o *.c
+
