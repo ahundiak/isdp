@@ -14,27 +14,6 @@
  *      Revision 1.8  2001/10/19 18:21:34  ahundiak
  *      ah
  *
- *      Revision 1.7  2001/10/18 15:31:02  ahundiak
- *      ah
- *
- *      Revision 1.6  2001/08/24 20:00:01  ahundiak
- *      ah
- *
- *      Revision 1.5  2001/05/02 15:33:19  ahundiak
- *      ah
- *
- *      Revision 1.4  2001/04/06 12:43:21  ahundiak
- *      ah
- *
- *      Revision 1.3  2001/04/03 16:46:30  ahundiak
- *      ah
- *
- *      Revision 1.2  2001/03/13 00:17:58  ahundiak
- *      ah
- *
- *      Revision 1.1  2001/03/11 18:41:53  ahundiak
- *      ah
- *
  *
  * History:
  * MM/DD/YY  AUTHOR  DESCRIPTION
@@ -53,6 +32,8 @@
 #include "VDos.h"
 
 VDASSERT_FFN("vdctx/c/VDctxMgr.c");
+
+static tracex = 0;
 
 typedef struct 
 {
@@ -113,8 +94,8 @@ IGRstat VDctxInitSystem(IGRint cnt)
       // Free to allow for resizing
       s = vdGblStaticData02;
       if (s) {
-	free(s);
-	vdGblStaticData02 = NULL;
+	      free(s);
+	      vdGblStaticData02 = NULL;
       }
       break;
 
@@ -142,7 +123,7 @@ IGRstat VDctxInitSystem(IGRint cnt)
   VDctxInitOmCP  (&s->baseCP,&s->omCP );
   VDctxInitXdomCP(&s->baseCP,&s->xdomCP);
 
-  // printf(">>> %s %d\n",fn,cnt);
+  if (tracex) printf(">>> %s %d\n",fn,cnt);
   
   // Done
   retFlag = 1;
