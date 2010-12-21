@@ -29,11 +29,10 @@
 #
 # -------------------------------------------------------------------
 
-target: sl \
-	mkfile
+target: mkfile
 	grmake -r -k -f mkfile 
 
-sl: VDCmdgrset.S \
+slx: VDCmdgrset.S \
 	VDCmdsetop.S \
 	VDCmdCpSurf.S
 
@@ -56,3 +55,7 @@ VDCmdsetop.S : VDCmdsetop.sl \
 
 mkfile : vdgraphcmd.m
 	grmakemake vdgraphcmd.m mkfile
+
+clean:
+	@rm -f mkfile *.o *.c
+
