@@ -36,3 +36,6 @@ target: mkfile
 mkfile : smsectimp.m
 	grmakemake smsectimp.m mkfile
 
+clean:
+	@rm -f mkfile *.o *.c
+
