@@ -31,8 +31,8 @@
 class implementation VDPCmdShEn;
 
 /*
-#define vdsDEBUG
-#define vdserrDEBUG
+#define vaimDEBUG
+#define vaimerrDEBUG
 */
 
 #include <stdio.h>
@@ -51,7 +51,7 @@ class implementation VDPCmdShEn;
 #include "vdsmacros.h"
 
 #include "v_miscmacros.h"
-#include "v_dbgmacros.h"
+#include "vadbgmacros.h"
 #include "v_datamacros.h"
 
 #include "vdsetmacros.h"		/* for vd$filter_objects */
