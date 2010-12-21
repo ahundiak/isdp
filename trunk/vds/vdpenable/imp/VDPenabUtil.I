@@ -1,4 +1,4 @@
-/* $Id: VDPenabUtil.I,v 1.1.1.1 2001/01/04 21:08:59 cvs Exp $  */
+/* $Id: VDPenabUtil.I,v 1.1.1.1.2.1 2003/05/27 13:36:50 ahundiak Exp $  */
 
 /* I/VDS
  *
@@ -17,10 +17,10 @@
  */
 
 class implementation VDPenabObj;
-/*
-#define vdsDEBUG
-#define vdserrDEBUG
-*/
+
+/*#define vaimDEBUG
+#define vaimerrDEBUG*/
+
 
 #include <stdio.h>
 #include "string.h"
@@ -32,7 +32,7 @@ class implementation VDPenabObj;
 #include "exmacros.h"
 
 #include "v_miscmacros.h"
-#include "v_dbgmacros.h"
+#include "vadbgmacros.h"
 #include "v_datamacros.h"
 
 #include "DItypedef.h"
@@ -41,8 +41,6 @@ class implementation VDPenabObj;
 #include "DIprims.h"
 
 #include "VDPdef.h"
-
-extern WhichAim();
 
 /*+fi
   Internal Function VDPGetEnabledListId()
@@ -70,6 +68,10 @@ extern WhichAim();
   Returns
         Successful Return               OM_S_SUCCESS.
 
+* 22 May 2003 - Art Hundiak
+* the WhichAim dependency means that this will not work unless someone
+* has connected to sir during the current session.  Removed this dependency.
+
 -fi*/
 
 IGRint  VDPGetEnabledListId( IGRlong           *msg,
@@ -96,90 +98,6 @@ IGRint  VDPGetEnabledListId( IGRlong           *msg,
 
     if ( curOs == osnum )
 	CreateList = TRUE;
-
-    if ( WhichAim () == PME ) {
-    /* get directory path name */
-
-    status = di$give_pathname(  osnum           = osnum,
-                                pathname        = DirName );
-
-    __CheckRC( status, 1, "di$give_pathname", wrapup );
-    __DBGpr_str( "Path name", DirName );
-
-    strcat( DirName, PME_GLOBAL_DIR );
-
-    status =
-    di$translate ( objname = DirName,
-                   p_objid = &DirId.objid,
-                   p_osnum = &DirId.osnum ) ;
-
-    __DBGpr_obj( "Dir Id", DirId );
-
-    /*A create PME_GLOBAL if it does not exist     */
-    if ( status != DIR_S_SUCCESS  && CreateList )
-    {
-	DirId.objid = NULL_OBJID;
-
-	status =
-	di$mkdir( dirname = DirName,
-		  p_dirid = &DirId.objid,
-		  p_osnum = &DirId.osnum );
-
-        __DBGpr_obj( "Dir Id", DirId );
-
-         if( status != DIR_S_SUCCESS )
-        {
-                  /*A Cannot create directory*/
-                  di$report_error( sts = status ) ;
-                  goto    wrapup;
-	}
-    }
-    else /*if (CreateList) */
-    {
-	sprintf( ListName,"%s%s",DirName,PME_ENABLED_LIST );
-	__DBGpr_str( "Enabled List name", ListName );
-	
-	status =
-	di$translate  ( objname = ListName,
-			p_objid = &pEnabListId->objid,
-			p_osnum = &pEnabListId->osnum ) ;
-
-	__DBGpr_obj( "Enabled List Id", *pEnabListId );
-
-	if( status == DIR_S_SUCCESS )
-		ListExist = TRUE;
-	else
-		ListExist = FALSE;
-
-    }
-
-    /* If List does not exist create the object and add it to NOD */
-
-    if( !ListExist && CreateList )
-    {
-	pEnabListId->osnum = curOs;
-
-        status =
-        om$construct (  classid = OPP_VDPenabObj_class_id,
-                        p_objid = &(pEnabListId->objid),
-                        osnum   = pEnabListId->osnum,
-                        msg = message VDPenabObj.VDPinit( msg) );
-	__CheckRC( status, *msg,"om$construct", wrapup );
-	__DBGpr_obj ( "List Id ", *pEnabListId );
-
-	sprintf( ListName,"%s%s",DirName,PME_ENABLED_LIST );
-	__DBGpr_str( "Enabled List name", ListName );
-	status =
-	di$add_name ( objname = ListName,
-		      osnum   = pEnabListId->osnum,
-		      objid   = pEnabListId->objid );
-        __CheckRC( status, 1, "di$add_name", wrapup );
-    }
-
-    }   // End IF PME
-
-    if ( WhichAim () == SIR )
-    {
      
     /* get directory path name */
 
@@ -259,7 +177,6 @@ IGRint  VDPGetEnabledListId( IGRlong           *msg,
 		      objid   = pEnabListId->objid );
         __CheckRC( status, 1, "di$add_name", wrapup );
     }
-    }   // End If SIR
 
 
 wrapup :
