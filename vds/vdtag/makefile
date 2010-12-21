@@ -30,4 +30,6 @@ target:	mkfile
 mkfile:	vditag.m
 	grmakemake vditag.m mkfile
 
+clean:	
+	@rm -f mkfile *.o *.c
 
