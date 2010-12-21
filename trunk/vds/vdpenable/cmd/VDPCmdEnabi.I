@@ -1,9 +1,9 @@
-/* $Id */
+/* $Id: VDPCmdEnabi.I,v 1.1.1.1 2001/06/01 20:06:27 tlstalli Exp $ */
 
 /* ----------------------------------------------------------------------------
- * I/VDS
+ * I/AIMSIR
  * 
- * File :	vds/vdpenable/cmd/VDPCmdEnabi.I
+ * File :	aim/src/sir/VDPCmdEnabi.I
  *
  * Description:
  *	Implementation of the following methods.
@@ -31,12 +31,10 @@
 
 class implementation VDPCmdEnab;
 
-/*
-#define vdsDEBUG
-#define vdserrDEBUG
-*/
 
-#define FILE_PRINT if (dm2_log) fprintf
+/*#define vaimDEBUG
+#define vaimerrDEBUG*/
+
 
 #include <stdio.h>
 #include <string.h>
@@ -52,7 +50,7 @@ class implementation VDPCmdEnab;
 #include "DIprims.h"
 
 #include "v_miscmacros.h"
-#include "v_dbgmacros.h"
+#include "vadbgmacros.h"
 #include "v_datamacros.h"
 
 #include "vdsetmacros.h"		/* for vd$filter_objects */
@@ -61,23 +59,9 @@ class implementation VDPCmdEnab;
 
 #include "VDCmdDef.h"
 
-#include "VDPtrTbl.h"
 #include "VDPdef.h"
 
-#include "grdpbmacros.h"
-#include "grdpbdef.h"
-#include "ACrg_collect.h"
-#include "ACattrib.h"
-#include "vdparmacros.h"
-
 extern GRclassid	OPP_SMcomp_class_id;
-extern GRclassid	OPP_VDSroot_class_id;
-
-from ACrg_collect import ACget_named_attribute;
-from VDPenabObj import VDPgetPMenabledList;
-from VDPtrTbl           import VDPAddtoTrTable;
-from VDPtrTbl           import VDPprintTransTable;
-from VDPenabObj         import VDPIsObjEnabled;
 
 /*+me
  ---------------------------------------------------------------------------
@@ -140,17 +124,10 @@ method  my_init ( long * sts )
 
     if( WhichAim( ) == SIR )
     {
-      /* atribteu FSI takes care of differentiation between fsi and nonfsi.
-       * this function of enabling fsi is so no more required
-       *  */
-      UI_status("Command no more available");
-      me->state = _terminate;
-      goto wrapup;
-
-      /*ex$get_cur_mod( osnum = &curOs );*/
+      ex$get_cur_mod( osnum = &curOs );
 
      /* get directory path name */
-     /* status = di$give_pathname( osnum           = curOs,
+      status = di$give_pathname( osnum           = curOs,
 	  pathname        = DirName );
       CheckRC( status, 1 ); 
       
@@ -165,7 +142,7 @@ method  my_init ( long * sts )
 	UI_status ( " Default AIM Data not set." );
 	*sts = VD_ERROR;
 	me->state = _terminate;
-      } */
+      } 
     }
 wrapup:
     if( !(status & msg & 1))

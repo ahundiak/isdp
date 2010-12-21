@@ -30,3 +30,7 @@ ${VDS}/config/commands/VDPShEnIt: VDPCmdShEn.t \
 
 mkfile:	vdpenbcmd.m
 	grmakemake vdpenbcmd.m mkfile
+
+clean:
+	@rm -f mkfile *.o *.c
+
