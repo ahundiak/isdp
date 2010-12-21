@@ -27,11 +27,10 @@
 #
 # -------------------------------------------------------------------
 
-target:	sl \
-	mkfile
+target: mkfile
 	grmake -r -k -f mkfile
 
-sl:	VDCmdMngMV.S
+slx:	VDCmdMngMV.S
 
 VDCmdMngMV.S : VDCmdMngMV.sl \
 	${VDS}/include/SMmsg.h ${VDS}/include/SMcmd.h \
@@ -40,3 +39,7 @@ VDCmdMngMV.S : VDCmdMngMV.sl \
 
 mkfile:	vdmdlvcmd.m
 	grmakemake vdmdlvcmd.m mkfile
+
+clean:
+	@rm -f mkfile *.o *.c
+
