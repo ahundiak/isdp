@@ -25,15 +25,14 @@
 #
 #
 # History:
-#	MM/DD/YY	AUTHOR		DESCRIPTION
-#
+# MM/DD/YY AUTHOR DESCRIPTION
+# 12/21/10 ah     Removed slic target, lots of aim changes in the .I file
 # -------------------------------------------------------------------
 
-target:	sl \
-	mkfile
+target:	mkfile
 	grmake -r -k -f mkfile
 
-sl:	VDCmdChkIn.S
+slx:	VDCmdChkIn.S
 
 VDCmdChkIn.S : VDCmdChkIn.sl \
 	${VDS}/include/SMmsg.h ${VDS}/include/SMcmd.h \
