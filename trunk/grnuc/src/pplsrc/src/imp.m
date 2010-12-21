@@ -49,7 +49,7 @@ SOL_fcall.s
 #ifdef mips
 MIPS_fcall.s
 #endif
-#ifdef INTEL
+#ifdef INTELx
 X86_fcall.s
 #endif
 
