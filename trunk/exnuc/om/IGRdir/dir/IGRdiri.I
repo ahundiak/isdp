@@ -11,6 +11,7 @@ class implementation IGRdir;
 
 #undef close
 #include <string.h>
+#include <stdlib.h>
 #include "OMerrordef.h"
 #include "OMmacros.h"
 #include "DIdef.h"
@@ -54,6 +55,7 @@ method i_find ( DIint  *status;
   *deep = (*deep > level) ? *deep : level;
   my_count = 0;
   my_grids = NULL;
+  my_lines = NULL;
   om_st = om$send ( msg = message IGRdir.dump ( status, "*", NULL, &my_lines, 
                                                 &my_grids, &my_count, 
                                                 options & (OPT_ALL | OPT_SYS) ),

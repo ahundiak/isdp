@@ -8,6 +8,7 @@ class implementation DIrectory;
 
 #include <string.h> 
 #include <stdio.h> 
+#include <stdlib.h>
 
 #include "DIomac.h"
 #include "DIdef.h"
