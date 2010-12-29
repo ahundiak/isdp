@@ -32,6 +32,7 @@ ems001  02-dec-1991    Added the function som_is_om_file.
 #include	"exsysdep.h"
 #include	<errno.h>		/* UNIX error codes */
 #include 	<stdio.h>		/* standar i/o structs */
+#include  <stdlib.h>
 #include 	<sys/types.h>		/* special data types */
 #include 	<sys/stat.h>		/* struct for stat call */
 #include	<fcntl.h>
@@ -322,7 +323,7 @@ struct _stat status;
 }
 
 
-som_dynamic_load(char *object_file)
+int som_dynamic_load(char *object_file)
 {
 #ifndef NT    
    if (!dload(object_file, TEXTREF | DATAREF | TEXTREDEF |
@@ -581,12 +582,14 @@ int   *p_file_type;
 
 #include <fcntl.h>
 
+static int tracex = 0;
+
 /* avail_om is meaningless now that we don't use blkalloc blocks for
    om data anymore.  Always set it to zero in case anyone is still
    requesting this value.  total_free is now the same as avail_swap,
    in case anyone is still requesting this value.
 */
-som_get_mem_info(int *avail_swap, 
+int som_get_mem_info(int *avail_swap,
                  int *total_swap,
                  int *phys_mem,
                  int *avail_om, /* OBS - left in, but always 0 */
@@ -595,6 +598,17 @@ som_get_mem_info(int *avail_swap,
 {
    int   free_swap = 0; /* Used for both *avail_swap & *total_free */
 
+   if (tracex)
+   {
+     printf(">>> som_get_mem_info ");
+     if (avail_swap) printf("avail_swap ");
+     if (total_swap) printf("total_swap ");
+     if (phys_mem)   printf("phys_mem ");
+     if (avail_om)   printf("avail_om ");
+     if (total_om)   printf("total_om ");
+     if (total_free) printf("total_free ");
+     printf("\n");
+   }
 #ifdef   SYSV
 
 /* ----- Gathering avail_swap, total_free or total_swap for SYSV ----- */
@@ -625,18 +639,23 @@ som_get_mem_info(int *avail_swap,
       } swaptab;
       char  namebuf[1025];
 
-      if (swaptab.swt_n = swapctl(SC_GETNSWP, &swaptab))
+      if (swaptab.swt_n = swapctl(SC_GETNSWP, NULL))
       {
          if (swaptab.swt_n > 50)
             swaptab.swt_n = 50;
-         for(ii=0; ii<swaptab.swt_n; ii++)
+         for(ii=0; ii<swaptab.swt_n; ii++) {
             swaptab.swt_ent[ii].ste_path = namebuf;
+            swaptab.swt_ent[ii].ste_pages = 0;
+            swaptab.swt_ent[ii].ste_free  = 0;
+         }
          if (swapctl(SC_LIST, (struct swaptable *) &swaptab) == -1)
          {
 	    perror("swapctl failed");
          }
          else
          {
+           if (tracex) printf("swt_n: %d\n",swaptab.swt_n);
+
             for(ii=0; ii<swaptab.swt_n; ii++)
             {
                tot += swaptab.swt_ent[ii].ste_pages;
@@ -648,6 +667,7 @@ som_get_mem_info(int *avail_swap,
       if (total_swap)
          *total_swap = tot * OM_Gp_SYSINFO->pageSize;
    }
+
 #endif
 
 #if defined (IRIX4) || defined (CLIX)

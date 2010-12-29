@@ -195,7 +195,8 @@ extern int                      OM_Gi_number_of_appl_ids;
 extern INGR_p_PRODUCT_DEF       OM_GA_appl_version[];
 extern int                      *OM_GA_OSflags;
 extern OM_S_SYSINFO             *OM_Gp_SYSINFO;
-
+
+#define DEBUGx
 
 static som_putSysgenValue (ii, envTrans)
 int         ii;
@@ -998,6 +999,7 @@ int OM_export_pass ()
   OMuword       k_classid;
   
 #ifdef DEBUG
+  int last_index,i;
 printf("Entering export_pass with %d definitions \n\n",OM_Gi_number_of_defns);
 printf("Next class index is %d\n",OM_Gw_next_class_index);
 last_index = OM_Gw_next_class_index;  /*initialize 'last class created' */
@@ -1035,6 +1037,7 @@ for(i=last_index; i<OM_Gw_next_class_index; i++)
 #ifdef DEBUG
 printf("Leaving export_pass \n\n");
 #endif
+
   return (OM_S_SUCCESS);			/* export init finished */
 }
 
@@ -1341,8 +1344,10 @@ char	*param_list[];
 
   OM_Gw_known_class_max = (OMuword) ((OMuword) OM_Gi_number_of_defns +
      OM_Gw_numclasses - OM_K_NUM_META_CLASSES);
+//  OM_GA_known_classes = (OMuint *) om$calloc
+//         (size = ((OMuint) ((OM_Gw_known_class_max/8)+4)/4) * sizeof(OMuint));
   OM_GA_known_classes = (OMuint *) om$calloc
-         (size = ((OMuint) ((OM_Gw_known_class_max/8)+4)/4) * sizeof(OMuint));
+         (size = ((OMuint) (((OM_Gw_known_class_max+1024)/8)+4)/4) * sizeof(OMuint));
 
 #ifdef DEBUG
   printf("\n*** EXPORT PASS ***\n");
