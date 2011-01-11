@@ -21,7 +21,7 @@ typedef short		Int16;
 typedef int		Int32,
 			Int;
 
-typedef int            Boolean; // Was an int
+typedef char            Booleanx; // Was an int
 
 typedef unsigned char	uInt8,
 			Char8,
