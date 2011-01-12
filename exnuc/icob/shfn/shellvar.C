@@ -1,1 +1,1 @@
-#include "slishellvar.C"
+#include "../sli/slishellvar.C"
