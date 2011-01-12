@@ -27,8 +27,6 @@
         rme001  05-may-1987     Removed move array routine.
         ems001  08-may-1987     Added restricted channel mods.
 */
-
-#include	"exsysdep.h"
 #include	<stdio.h>
 #include	<string.h>
 #include	"OMobjectcomm.h"

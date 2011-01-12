@@ -1,4 +1,4 @@
-#include "exsysdep.h"
+
 #include "OMminimum.h"
 #include "OMDB.h"
 #include "OMindex.h"

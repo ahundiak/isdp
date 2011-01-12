@@ -1,5 +1,3 @@
-#include "exsysdep.h"
-
 /*
 -------------------------------------------------------------------------------
 Name:			OMclasssupp.c
@@ -62,7 +60,7 @@ extern void	*OM_Gp_inst_out;
 #endif
 #ifndef NT
 #include <dload.h>
-#include <error.h>
+// #include <error.h>
 #endif
 #include "version.h"
 

@@ -1,5 +1,3 @@
-#include "exsysdep.h"
-
 /*
 ---------------------------------------------------------------------------
 
@@ -58,7 +56,7 @@ saw001  23-feb-1989     OM_Gi_maxSheapSize taken out.  Now the only upper
                         bound on sheap size is OM_Gp_regSlotBottom.
 ---------------------------------------------------------------------------
 */
-
+
 #include	<stdio.h>
 #include	<errno.h>
 #include        <sys/types.h>
