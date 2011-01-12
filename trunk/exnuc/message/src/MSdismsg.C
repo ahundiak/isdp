@@ -420,6 +420,7 @@ IGRint justification;
 IGRchar *string;
 struct MS_sd_msg *MS_msg;
 IGRint delay_time;
+IGRint seconds;
 {
 
  if ( !EX_batch_mode )
