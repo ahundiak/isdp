@@ -1,4 +1,4 @@
-#include <exsysdep.h>
+
 #ifdef X11
 #ifdef OPENGL
 #include "wl.h"
