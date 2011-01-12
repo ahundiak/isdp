@@ -7,7 +7,7 @@
 
 
 #include "wl.h"
-#include "wl_internal.h"
+#include "../wl/wl_internal.h"
 #include "cm.h"
 
 
