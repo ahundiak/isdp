@@ -1,10 +1,10 @@
-## @start 1
 ## Process this file with automake to produce Makefile.in
 
 ACLOCAL_AMFLAGS = -I m4
 
-# SUBDIRS   = exec glib base .
+SUBDIRS = spec om icob exec message/src igefei version stubs lib app
 
-# CPPFLAGS = -I$(top_srcdir)/include
+# Fire off this target after a fresh checkout
+setup:
+	cd config/english/messages/src; make setup; cd $(abs_top_srcdir)
 
-## @end 1
