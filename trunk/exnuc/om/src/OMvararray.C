@@ -83,7 +83,7 @@
 		 	if move data flag is false then free space first
 			and then create new outrigger.  
 ---------------------------------------------------------------------------*/
-#include "exsysdep.h"
+
 #include <stdio.h>
 #include "OMobjectcomm.h"
 #include "OMcluster.h"

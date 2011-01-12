@@ -20,7 +20,7 @@ class	implementation	OMCluster;
 
 #include <errno.h>
 #include <assert.h>
-#include "exsysdep.h"
+
 #include "OMmacros.h"
 #include "OMminimum.h"
 #include "OMobjectcomm.h"
@@ -54,8 +54,6 @@ extern	OMuint			OM_Gi_checksum;
 extern	OMuint			OM_Gi_phyClusterSize;
 
 from OMFiledOS import get_freelist_ptr;
-
-
 
 som_file_freelist(ptr_list, cl_start, cl_oldsize, cl_newsize)
 

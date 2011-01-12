@@ -28,8 +28,6 @@ ems001  02-dec-1991    Added the function som_is_om_file.
 -------------------------------------------------------------------------------
 */
 
-
-#include	"exsysdep.h"
 #include	<errno.h>		/* UNIX error codes */
 #include 	<stdio.h>		/* standar i/o structs */
 #include  <stdlib.h>
@@ -322,7 +320,7 @@ struct _stat status;
 	}	/* end if if the file opened for read */
 }
 
-
+#if 1
 int som_dynamic_load(char *object_file)
 {
 #ifndef NT    
@@ -336,7 +334,7 @@ int som_dynamic_load(char *object_file)
 #endif   
    return(OM_S_SUCCESS);
 }
-
+#endif
 
 #define OM44        0x00040004    /*  translates to 1.1  */
 #define OM45        0x00050004    /*  translates to 1.2  */

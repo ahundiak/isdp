@@ -28,7 +28,6 @@
 -------------------------------------------------------------------------------
 */
 
-#include        "exsysdep.h"
 #include        "OMtypes.h"
 #include 	"OMlimits.h"
 #include 	"OMparameters.h"

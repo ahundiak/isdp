@@ -39,7 +39,6 @@
 
 class	implementation	OMFiledOS;
 
-#include "exsysdep.h"
 #include <errno.h>
 #include <stdio.h>
 #include <fcntl.h>

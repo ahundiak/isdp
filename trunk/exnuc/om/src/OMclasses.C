@@ -49,7 +49,6 @@ rme	25-may-1988	Remove MOSD.pass_thru, now send add_class message
 -------------------------------------------------------------------------------
 */
 
-#include	"exsysdep.h"
 #include 	"OMobjectcomm.h"
 #include 	"OMmetaclass.h"
 #include	"OMspecify.h"
