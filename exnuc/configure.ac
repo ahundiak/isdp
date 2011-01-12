@@ -8,7 +8,12 @@ AC_CONFIG_SRCDIR([configure.ac])
 AC_CONFIG_MACRO_DIR([m4])
 AC_CONFIG_AUX_DIR([auxx])
 
-AC_CONFIG_HEADERS([config.h::config-h.in])
+AC_CONFIG_HEADERS([config.h:config-h.in])
+
+# Do the config stuff before this
+AM_INIT_AUTOMAKE([1.9 foreign])
+AM_SILENT_RULES
+# AM_PROG_LEX
 
 # Checks for programs.
 AC_PROG_AWK
@@ -22,8 +27,17 @@ LT_PREREQ([2.2.6])
 LT_INIT([dlopen win32-dll pic-only disable-static])
 
 # ENV variable available as @DISPLAY@
-AC_SUBST([RIS])
-AC_SUBST([VDS])
+# AC_SUBST([BS])
+# AC_SUBST([UMS])
+# AC_SUBST([EXNUC])
+# AC_SUBST([LIBXC])
+# AC_SUBST([FORMS])
+
+AC_SUBST([IG_CPP])
+AC_SUBST([IG_OPP])
+AC_SUBST([IG_OPP_FLAGS])
+AC_SUBST([IG_OPP_DEFINES])
+AC_SUBST([IG_OPP_INCLUDES])
 
 # Checks for libraries.
 # FIXME: Replace `main' with a function in `-ldl':
@@ -46,6 +60,23 @@ PKG_CHECK_MODULES([gmodule_DEPS],[glib-2.0 >= 2.24.1 gmodule-2.0 >= 2.24.1])
 PKG_CHECK_MODULES([gio_DEPS],    [gio-2.0 >= 2.24.1])
 
 # Output
-AC_CONFIG_FILES([Makefile])
+AC_CONFIG_FILES([
+  Makefile
+  spec/Makefile
+  specx/Makefile
+  om/Makefile
+  om/spec/Makefile
+  om/src/Makefile
+  om/IGRdir/Makefile
+  icob/Makefile
+  exec/Makefile
+  message/src/Makefile
+  igefei/Makefile
+  version/Makefile
+  stubs/Makefile
+  lib/Makefile
+  app/Makefile
+])
+# config/english/messages/src/Makefile
 
 AC_OUTPUT
