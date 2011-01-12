@@ -1,5 +1,7 @@
 include $(top_srcdir)/build/makerules
 
+IG_OPP_INCLUDES += -I ../include -I ../spec
+
 noinst_LTLIBRARIES  = libom_spec.la
 
 libom_spec_la_CFLAGS   = $(gio_DEPS_CFLAGS)
