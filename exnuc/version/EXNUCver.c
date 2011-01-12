@@ -1,9 +1,9 @@
 #include "version.h"
-INGR_S_PRODUCT_DEF EXNUC_appl_version_id = {"I/EXNUC   03.04.00.21 29-Oct-10",0,"",0};
+INGR_S_PRODUCT_DEF EXNUC_appl_version_id = {"I/EXNUC   03.04.00.22 19-Dec-10",0,"",0};
 
 /* Copied this from target/exnuc/bin */
-#define exdatestr "Fri Oct 29 12:41:56 CDT 2010"
-#define exverstr "I/EXNUC version 03.04.00.21"
+#define exdatestr "Sun Dec i9 12:00:00 CDT 2010"
+#define exverstr "I/EXNUC version 03.04.00.22"
 
 extern char EX_version[50];
 extern char EX_date[35];
