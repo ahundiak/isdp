@@ -48,7 +48,7 @@ AC_CONFIG_FILES([Makefile])
 
 AC_CONFIG_FILES([exec/Makefile])
 
-AC_CONFIG_FILES([base/Makefile base/ris/Makefile base/ums/Makefile])
+AC_CONFIG_FILES([base/Makefile base/ris/Makefile base/ums/Makefile base/parser/Makefile])
 
 AC_CONFIG_FILES([glib/Makefile glib/lib/Makefile glib/basic/Makefile glib/dload/Makefile])
 

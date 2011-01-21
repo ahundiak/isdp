@@ -1,1 +1,1 @@
-SUBDIRS = ums
+SUBDIRS = ums parser

@@ -41,6 +41,7 @@
 #define ASYNC_TEST_MODE  (FINISH_MODE)
 #define ASYNC_WAIT_MODE  (FINISH_MODE|BLOCKING_MODE)
 
+// These both have size/len in front and are supposed to be 8 byte aligned
 typedef struct ris_appcli_buf
 {
   guchar opcode;
