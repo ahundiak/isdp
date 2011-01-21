@@ -124,6 +124,8 @@ void RISint_prepare(short *stmt_id, char *query, int clear_flag, int static_flag
 	if (!RIS_net)
 	{
 		// RISapp_start_client();
+    // Connect then send/receive arch
+    // RISapp_client_init_to_buf();
 	}
   // Clear the statement if it is not new
 	if (*stmt_id != -1)
