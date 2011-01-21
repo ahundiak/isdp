@@ -63,7 +63,6 @@ PKG_CHECK_MODULES([gio_DEPS],    [gio-2.0 >= 2.24.1])
 AC_CONFIG_FILES([
   Makefile
   spec/Makefile
-  specx/Makefile
   om/Makefile
   om/spec/Makefile
   om/src/Makefile
