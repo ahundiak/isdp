@@ -9,7 +9,7 @@
 #  VDS=$ISDP_SOURCE/vds  \
 
 ./configure \
-  CC=/opt/solstudio12.1/bin/cc \
+  CC=/opt/sunstudio12.1/bin/cc \
   CFLAGS="-Xc -xCC -m32 -g " \
   LDFLAGS="-L/usr/local/lib -R/usr/local/lib" \
   --prefix=/opt/ingr10
