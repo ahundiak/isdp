@@ -3,6 +3,7 @@
  * Author: impd
  *
  * Created on December 4, 2010, 8:20 AM
+ * Header pu in by nb?
  */
 #include "config.h"
 
@@ -20,7 +21,7 @@ int main (int   argc, char *argv[])
    
   g_test_add_func ("/basic/number assertion", test_number_assertion);
 
-  g_test_add("/basic/string test", StringTestFixture, &i, test_string_setup, test_string, test_string_teardown);
+//g_test_add("/basic/string test", StringTestFixture, &i, test_string_setup, test_string, test_string_teardown);
 
   g_test_add_func("/basic/version",test_version);
   g_test_add_func("/basic/sizeof",  test_sizeof);
