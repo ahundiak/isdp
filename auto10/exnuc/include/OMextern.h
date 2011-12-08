@@ -91,8 +91,10 @@ extern int som_dynamic_class __((char *p_parent_class[], OMuword num_parents,
 extern int som_dynamic_load __((char *object_file));
 extern int som_enough_disk_space __((OMuword input_osnum, char *osname,
 		char *filename, int filesize));
+#ifdef SOL10_SKIPS
 extern int som_find_space_in_lcd __((OM_p_LCD lcd, OMuint align_size,
 		OM_p_OBJECTHDR *p_instance, OM_p_CSD *p_csd));
+#endif
 extern int som_flagged_tag_connects __((OMuword osnum, OMuword tag_osnum,
 		OMuint *p_count, OMuint size, OM_p_TAG_CON_INFO p_tag_info,
 		OMuword mask));
@@ -191,7 +193,9 @@ extern int som_report_class_version __((OMuword classid, char *classname,
 		OMuword *major, OMuword *minor));
 extern void som_report_error __((OMulong sts));
 extern int som_report_version __((OMuword *major, OMuword *minor));
+#ifdef SOL10_SKIPS
 extern int som_rtree_get_op __((OM_S_RTREE_OP **rtree_op_pp));
+#endif
 extern int som_rtree_ops_init __((int count));
 extern int som_runtime_init __((int paramc, char *param_list[]));
 extern int som_send_channel __((OM_E_WRT_FLAG WRT_flag, OM_p_MESSAGE msg,
