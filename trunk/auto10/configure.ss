@@ -7,9 +7,11 @@
 # Had -Dunix
 #  LDFLAGS="-L/opt/ingr/lib -L/usr/local/lib -R/opt/ingr/lib -R/usr/local/lib" \
 #  VDS=$ISDP_SOURCE/vds  \
+ISDP_SOURCE=$HOME/source/isdp/auto10
 
 ./configure \
   CC=/opt/sunstudio12.1/bin/cc \
   CFLAGS="-Xc -xCC -m32 -g " \
   LDFLAGS="-L/usr/local/lib -R/usr/local/lib" \
+  EXNUC=$ISDP_SOURCE/exnuc  \
   --prefix=/opt/ingr10
