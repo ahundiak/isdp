@@ -3,7 +3,7 @@
 
 ACLOCAL_AMFLAGS = -I m4
 
-SUBDIRS  = exec glib .
+SUBDIRS  = exec glib exnuc .
 
 CPPFLAGS = -I$(top_srcdir)/include
 
