@@ -1,0 +1,65 @@
+# Introduction #
+
+Downloaded from sunfreeware along with a bunch of dependencies. 1.6.2
+
+Use the impd use for the initial tests, later will want to setup a svn user
+
+```
+svnadmin create $HOME/svn/isdp
+
+svn import /home/impd/ws02/libxc file:///home/impd/svn/isdp/libxc -m "Initial Import"
+
+svn copy file:///home/impd/svn/isdp/libxc/trunk file:///home/impd/svn/isdp/libxc/tags/original
+
+svn co file:///home/impd/svn/isdp/libxc/trunk libxc
+```
+
+So basically you setup the trunk/branches/tags layout, import the files then copy the initial trunk into a tags/original.  You can then check out the trunk and start making changes as desired.
+
+Assuming that later on the repository can be transferred to a server based system.
+
+### Net Beans Repository ###
+Used the complete 200mb net beans installation script.  Complains about Java 5 instead of Java 6 but still seems to run ok.  Saw some insatructions for upgrading Java but they seem complicated.  Try later.  SVN then worked from net beans.  No need to install a plugin.  Had to set proxy server and username/password.
+
+### Google Code Repository ###
+```
+svn checkout https://isdp.googlecode.com/svn/trunk/ isdp --username ahundiak
+```
+Worked from tortoise SVN on windows machine.
+
+Checked in xforms from dawn Willow machine at home
+
+Check the stuff back out on willow in the lab.  Had to set .subversion/servers proxy and port = 80.  Seemed to work ok.
+
+The repository itself is setup like:
+```
+isdp
+  branches
+    original\xforms
+  tags
+  trunk
+    xforms
+    exnuc
+    grnuc
+OR
+    tools
+      libxc
+      xforms
+    ems
+      exnuc
+      grnuc
+    isdp
+      vds
+      route
+```
+Not really ideal for versioning individual modules but expect everything will end up in the trunk anyways.  The copy capability should make is easier to split thinks up eventually.  Not sure we really need to do that.
+
+To make a branch:
+```
+svn mkdir https://isdp.googlecode.com/svn/branches/original \
+   -m "ah for storing original solaris 8 code"
+
+svn copy  https://isdp.googlecode.com/svn/trunk/xforms  \
+          https://isdp.googlecode.com/svn/branches/original \
+         -m "ah xforms original"
+```

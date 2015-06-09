@@ -1,0 +1,61 @@
+# Introduction #
+
+A considerable amount of time was spent in developing a makefile generator.
+
+A php baed mmx program was developed for converting dotm files to makefiles.  Details to follow but a simple makefile in each directory will kick off the build process.  Auto generated makefiles will have a .mkx extension.
+
+Need to sort of build and deploy at the same time.  Binaries go under /opt/ingr/bin and libraries end up under /opt/ingr/lib.  Just not sure how they will get there yet in an automated fashion.
+
+exnuc/om/opp/symtab
+
+
+To ignore a directory:
+
+svn propset svn:ignore lib .
+
+To ignore files within a directory
+
+svn propset svn:ignore -F .ignore .
+
+### Make file targets ###
+
+make clean - gets rid of all files not controlled by svn including .o, libraries, executables and even the generated makefile.mkx.
+
+make debug - kicks off same makefile with -g option set
+
+### DOTM General ###
+
+### DOTM File layout ###
+
+INCLUDE - List of include directories, passwd to CC/OPP/OMCPP
+
+SPEC - List of .S file directories, passed as an additional include to OPP
+
+DEPLIB - Seems to be overloaded.  List library and files that the target depends on. But it also seems to list thing that need to be linked in.  Problem is that the original designed relied heavily on archive(.a) type files with everything statically linked in.  Goint to try and ignore this section and move anything that still needs linking to LINKLIB.
+
+LINKLIB - Libraries and files to link in
+#ifdef LINK\_OLD\_STYLE
+-lxcmalloc
+-lxc
+#endif
+
+DEFINE - Not Sure
+
+SPECIAL
+POST\_SPECIAL - Ignoring for now but denotes a set of commands end by END\_SPECIAL
+
+SVN - Have been ignoring the lib directory but that means it will need to be created for a completely clean build.  Which is probably ok.
+
+Files with issues:
+DIbsti.I - opp coredumps unless DIomac.h is in local directory
+
+When a .so file is created using .so as input then you end up with the .so file linking all the little .so files.  Not quite what I want.  Need to revisit and make .o files in most cases.
+
+But still need to support executable files
+
+05 Aug 2009
+
+The solaris 10 version of opp fails on certain files such as those in icon/action.  The solaris 8 version from jwfrosch works at least on that one.  Tried it on om/spec, complains a lot more about /src/include files but still works.  Brought solaris 8 version of omcpp as well.  Everthing still compiles.  The sol10 versions are more than twice as big as their counter parts.
+
+Forge ahead with building.  Later we need to try using the native build scripts and see what happens.
+
